@@ -1,0 +1,51 @@
+name: battle_initVariantSpriteObject
+address: '0x080D1538'
+kind: function
+status: probable
+summary: 'Initializes a battle object after spawn: computes its pixel position from its panel, sets up
+  its sprite/animation/palette/flip, picks a variant word from Param1, and switches it to the update state.'
+interface: (r0 = ? unused in visible code, r5 = object header) -> void; writes object fields, no return
+  value
+details: 'This is a per-object setup routine running on the object pointed to by r5: it calls object_setCoordinatesFromPanels
+  to derive pixel X/Y from the grid position, zeroes the battle Z field, loads sprite resource 0x4A with
+  arguments 0x10/0x80, disables the shadow, sets header flags bit 1, resets CurAnim and CurAnimCopy to
+  0 and applies them via sprite_setAnimation/sprite_loadAnimationData, sets palette 0 and the sprite flip
+  from object_getFlip (alliance-side facing). It then reads oBattleObject_Param1, multiplies by 4, and
+  indexes a 4-entry word table (byte_80D1594: words 0x00050000, 0x00060000, 0x00070000, 0x00080000) storing
+  the result into ExtraVars+4 while clearing ExtraVars and Param2. Finally it writes CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, transitioning the object to its update phase.
+  No callers are known, so it is presumably reached through a spawn/state jump table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels and str r0,[r5,#oBattleObject_Z] set position and Z=0 (asm
+    lines 2-5); sprite_load/sprite_noShadow/sprite_setAnimation/sprite_loadAnimationData/sprite_setPalette/sprite_setFlip
+    chain configures the object's sprite rendering; ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,#2; ldr
+    r0,[r1,r0] shows a 4-way variant table selected by Param1 stored into ExtraVars+4; mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] ends the routine by entering the
+    update state
+  refs:
+  - bn6f/asm/asm31.s:55026
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080D1538
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which sprite/resource id 0x4A is and what game object uses it (no caller known to confirm)
+- meaning of the table words 0x50000..0x80000 stored in ExtraVars+4
+- what the 0x10/0x80 arguments to sprite_load mean (texture bank vs palette)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1538 -> battle_initVariantSpriteObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1538

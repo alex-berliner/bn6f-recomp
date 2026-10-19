@@ -1,0 +1,48 @@
+name: battle_dashForwardUpdate
+address: '0x080DDF18'
+kind: function
+status: probable
+summary: Battle-object phase handler that plays a dash animation/sound and slides the object forward across
+  the field for 10 frames, ending its action or destroying it if it leaves valid panels.
+interface: (r0 = scratch/anim id from [r5+Param1] via table, r5 = battle object) -> updates XVelocity/X/Timer/CurAnim/CurPhase/CurAction
+  in the object struct; r0 clobbered
+details: 'On CurPhase==0: stores phase 4, sets CurAnim from byte_80DDF84[Param1] (values 0x16/0x18, so
+  Param1 selects one of two variants), plays sound 0xF0, sets XVelocity to object_getFrontDirection()*0x80000
+  (so it always moves toward the enemy side), and sets Timer = SVC6 Div of (0x28<<16 * 2) / 0x80000 =
+  10. Each frame in phase 4 it adds XVelocity to X, refreshes PanelX/Y via object_setPanelsFromCoordinates
+  and object_updateCollisionPanels, and only counts the timer down while object_isCurrentPanelValid says
+  the panel is valid. Timer expiry sets CurAction=8 and phase 0 (normal action end); hitting an invalid
+  panel instead writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized after object_clearCollisionRegion.
+  The sound ID 0xF0 and anim IDs 0x16/0x18 would identify the specific attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; ldr r1,off_80DDF80; ldrb r0,[r1,r0] — animation picked from
+    2-entry table by Param1; mul r0,r1 with dword_80DDFFC=0x80000 stored to XVelocity after object_getFrontDirection
+    — forward speed times facing direction; svc 6 (Div) of 0x500000/0x80000 → Timer=10 frames of travel;
+    beq loc_80DDF76 → object_clearCollisionRegion + CUR_STATE_DESTROY when object_isCurrentPanelValid
+    fails; timer expiry sets CurAction=8 and phase 0, the normal end-of-action path
+  refs:
+  - bn6f/asm/asm31.s:81988
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DDF18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which attack/object uses this handler (sound 0xF0 and anim IDs 0x16/0x18 would identify it)
+- Meaning of CurAction=8 and what the two Param1 variants (0x16 vs 0x18) represent visually
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DDF18 -> battle_dashForwardUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDF18

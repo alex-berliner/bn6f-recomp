@@ -1,0 +1,49 @@
+name: ow_dealDamageToCurrentNavi
+address: '0x08142C46'
+kind: function
+status: probable
+summary: Subtracts the given damage from the currently selected navi's HP and plays hit feedback (effect
+  at player coords, camera shake, hit SFX).
+interface: (r0 = damage amount) -> r0 = sound-effect id from last PlaySoundEffect call; writes new HP
+  via sub_80010EC
+details: 'Reads the PET''s current navi and its max/cur HP, computes curHP - r0 clamped to a minimum of
+  0, and stores the result through sub_80010EC (which clamps stat 0x40 against the cap in stat 0x42).
+  It then fetches the overworld player object''s X/Y/Z and calls sub_8004822 with effect id 0x13 and arg
+  4 at those coords — likely a hit/damage flash effect on the player. camera_initShakeEffect_80302a8 is
+  called with magnitude 1 and duration 0x14. Two sound effects play: 0x6B (a hit sound) and 0x10A (0xd
+  + 0xff). byte_2006670 appears in the literal pool but is not referenced by any shown instruction, so
+  its role is unclear.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r4, r0, r4 / bge / mov r4,#0: computes curHP minus r0 and clamps to zero; bl sub_80010EC
+    with (r0 = navi id, r1 = new HP) stores the clamped HP; ReadOWPlayerObjectCoords + sub_8004822(0x13,
+    x, y, z, 4): spawns effect 0x13 at the player''s overworld position; camera_initShakeEffect_80302a8(1,
+    0x14) and PlaySoundEffect(0x6B) then (0x10A) are standard hit feedback; Sole caller sub_808999C is
+    unnamed, so call context is unconfirmed'
+  refs:
+  - bn6f/asm/asm37_1.s:2167
+  - 0x0808999C sub_808999C
+  - 0x080010B6 GetCurPETNavi
+  - 0x080010D4 GetMaxAndCurHPForCurPETNavi_80010D4
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x08142C46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_8004822 does and why effect id 0x13 with argument 4 (probably an OAM/particle spawner)
+- Purpose of byte_2006670 — possibly set by instructions not shown or by the caller
+- Which caller(s) trigger this (overworld hazards vs story-scripted damage)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142C46 -> ow_dealDamageToCurrentNavi
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142C46

@@ -1,0 +1,49 @@
+name: ai_attackTeleportToStrike
+address: '0x080F1D9A'
+kind: function
+status: probable
+summary: 'AI attack step: moves the enemy onto its reserved target panel, plays a windup animation, and
+  after 9 frames signals the strike by setting HitElement to 0x14 (Wood element, id 4).'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0; updates oAIAttackVars_AttackElement/StepTimer/HitElement,
+  oBattleObject_PanelX/Y, CurAnim
+details: On first call (AttackElement==0) it sets AttackElement=4, copies FuturePanelX/Y into PanelX/Y
+  so the enemy occupies the panel the AI reserved, then calls object_removePanelReserve, object_setCoordinatesFromPanels
+  and object_updateCollisionPanels to sync position and facing. It clears ObjectFlags1 bits 0x40 and 0x400000
+  (likely appear/tangible-related) and zeroes the invulnerability timer via object_clearInvulnerableTime,
+  then sets CurAnim=3 and StepTimer=9. On later frames it decrements StepTimer; when it reaches 0 it writes
+  HitElement=0x14, apparently the trigger for the actual hit object. No callers are known, so which enemy
+  uses this is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne gates a one-time setup branch, then mov r0,#4
+    stores element id 4; ldrb FuturePanelX/Y -> strb PanelX/Y followed by object_removePanelReserve +
+    object_setCoordinatesFromPanels + object_updateCollisionPanels shows the enemy taking over its reserved
+    panel; object_clearFlag with 0x40 and 0x1<<22 plus object_clearInvulnerableTime clears hide/invulnerable
+    state when appearing; CurAnim=3 and StepTimer=9 set a windup pose and countdown; countdown branch
+    ends with strh 0x14,[r7,#oAIAttackVars_HitElement], firing the attack after the delay
+  refs:
+  - bn6f/asm/asm31.s:125010
+  - 0x0801A15C object_clearFlag
+  - 0x0800EB08 object_clearInvulnerableTime
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080F1D9A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no callers known, so which enemy/attack uses this step is unconfirmed
+- the meaning of flag bit 0x400000 and HitElement=0x14 on the consuming side would confirm the attack
+  identity
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F1D9A -> ai_attackTeleportToStrike
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1D9A

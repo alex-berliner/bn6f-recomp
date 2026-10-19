@@ -1,0 +1,49 @@
+name: clear_gameStateForNewScene
+address: '0x08005DF0'
+kind: function
+status: probable
+summary: Full reset of game state, objects, graphics and global work structs when transitioning into a
+  new scene/area, ending with reloading the PET navi's HP.
+interface: () -> r0 = ...; no meaningful return, clobbers r4-r7
+details: Reads the toolkit's GameState pointer and stores NULL into its field at +0x20, then frees all
+  objects of type 0x25 via FreeAllObjectsOfSpecifiedTypes. Calls resetAllGraphicsState_8005F40 (VRAM/WRAmbuffers,
+  palettes, render info, dummy BG scroll callbacks) and runSetupStepAndClearWorkArea_8005F6C (sub_802FDB0
+  + cleareMemory_802FF2C). Reinitializes the battle-fade gfx state struct, zero-fills the fixed 0x50-byte
+  global at eStruct200a6a0, initializes the scenario effect state block at 0x2000780, and zero-fills via
+  zeroFill_8003AB2. Calls sub_8138294 (purpose unknown) and finally reloadCurNaviStatBoosts_813c3ac, which
+  clamps/heals the current PET navi's HP to MaxHP. The whole sequence matches a scene/area load or reload
+  rather than a single subsystem init.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0,[r5,#oGameState_Ptr_20] with r0=0 clears the active game-state pointer; bl FreeAllObjectsOfSpecifiedTypes
+    with r0=0x25 tears down one class of live objects; resetAllGraphicsState_8005F40 + sprite_initBattleFadeGfxState_80027C4
+    reset rendering and fade state for a fresh scene; zeroFill_80024A2 / scenario_initEffectState_8003962
+    / zeroFill_8003AB2 clear the global work structs used across scenes; reloadCurNaviStatBoosts_813c3ac
+    restores the PET navi's HP to MaxHP, consistent with entering a new map/scene
+  refs:
+  - bn6f/asm/asm00_1.s:6117
+  - 0x08097580 sub_8097580
+  - 0x0813C3AC reloadCurNaviStatBoosts_813c3ac
+  - 0x08005F40 resetAllGraphicsState_8005F40
+  - 0x08005F6C runSetupStepAndClearWorkArea_8005F6C
+  reproduce: python3 tools/asmcat.py 0x08005DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_8138294 does would confirm the exact transition context
+- The sole caller sub_8097580 is undocumented; seeing where it is invoked (area load, menu-to-map, scenario
+  reload) would pin the exact trigger
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8005DF0 -> clear_gameStateForNewScene
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005DF0

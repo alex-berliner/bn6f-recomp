@@ -1,0 +1,48 @@
+name: ai_stompAttackUpdate
+address: '0x08104640'
+kind: function
+status: probable
+summary: 'One phase of an enemy AI attack: on first call it plays a stomp/slam (animation, screen shake,
+  sound) and after a 10-frame timer writes 0x14 into the AI''s hit-element field to deal the damage.'
+interface: (r0 = unused/scratch, r7 = AI attack vars struct, r5 = battle object) -> r0 = undefined; sets
+  AttackElement, StepTimer, HitElement
+details: 'This is a two-step AI attack handler using oAIAttackVars. When AttackElement is 0 it initializes
+  the attack: sets AttackElement = 4, plays battle object animation 0x42, zeroes the object''s Z, sets
+  collision region 2 via object_setCollisionRegion, claims a battle status list slot with sub_801DC7C(0,0),
+  clears ObjectFlags1 bit 0x40, sets the currently-moving flag, triggers camera shake (magnitude 2, duration
+  30) and plays sound effect 0x1C8 (0xc9+0xff), then loads StepTimer = 10. On later calls it decrements
+  StepTimer; once it reaches 0 it writes 0x14 into oAIAttackVars_HitElement, presumably so the AI framework
+  applies the attack''s hit/damage with that element.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement] / bne loc_8104686 makes this a reentrant two-phase
+    attack step; camera_initShakeEffect_80302a8(2, 0x1e) plus PlaySoundEffect(0x1c8) present the attack
+    impact; mov r0,#0x42; strb r0,[r5,#oBattleObject_CurAnim] switches the battle object to the attack
+    animation; bl sub_801DC7C with (0,0) claims the battle status list slot for this object; StepTimer
+    counts down from 10 and then stores 0x14 into oAIAttackVars_HitElement, arming the hit
+  refs:
+  - bn6f/asm/asm31.s:163313
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08104640
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which enemy/boss uses this attack (no known caller), and what element/attack code 0x14 means in the
+  AI hit pipeline
+- Whether AttackElement = 4 is a 'none/charging' sentinel or a real element ID
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8104640 -> ai_stompAttackUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104640

@@ -1,0 +1,49 @@
+name: object_updateOrDestroy
+address: '0x080CDFEE'
+kind: function
+status: probable
+summary: 'Shared per-frame battle-object update: tears down collision data, frees the object if its Param2
+  flag is set, otherwise dispatches its CurAction state handler.'
+interface: (r5 = battle object ptr) -> void
+details: 'Runs each frame for a battle object (uses r5 as the object, set up by caller sub_80CDFA4). It
+  first removes the object''s collision data. If oBattleObject_Param2 is nonzero, it takes the destroy
+  path: clears its collision region, frees its collision-data slot via oBattleObject_CollisionDataPtr,
+  and releases the object slot entirely. Otherwise, if the battle is over it calls sub_802CEA6 with oBattleObject_Alliance
+  (probably a battle-end cleanup/notification), else it dispatches through a per-CurAction jump table
+  (off_80CE02C, two handlers: sub_80CE034, sub_80CE05E), and after the handler returns it refreshes collision
+  state via object_presentCollisionData.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData at entry: per-frame collision teardown; ldrb r0,[r5,#oBattleObject_Param2];
+    tst; bne destroy path calling object_clearCollisionRegion/object_freeCollisionData/object_freeMemory;
+    ldr r1,[r1,r0] indexed by oBattleObject_CurAction over off_80CE02C: state-machine dispatch; bl battle_isBattleOver
+    / sub_802CEA6(alliance): battle-over alternate branch; bl object_presentCollisionData after bx lr
+    handler: normal per-frame collision refresh'
+  refs:
+  - bn6f/asm/asm31.s:47781
+  - 0x080CDFA4 sub_80CDFA4
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080198CE object_freeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CDFEE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what sub_802CEA6 does with the alliance value on battle end
+- what the two CurAction handlers (sub_80CE034, sub_80CE05E) do, to identify the object type this handler
+  serves
+- exact semantics of oBattleObject_Param2 (destroy request flag vs lifetime counter)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CDFEE -> object_updateOrDestroy
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDFEE

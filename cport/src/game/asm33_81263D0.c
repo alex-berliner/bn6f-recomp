@@ -3525,7 +3525,7 @@ static void dispatch_battle_state(void) {
     case 3: GUEST_CALL(sub_8129454); break;
     case 4: GUEST_CALL(sub_812952C); break;
     case 5: GUEST_CALL(sub_812954C); break;
-    case 6: GUEST_CALL(sub_812956C); break;
+    case 6: GUEST_CALL(battle_frameUpdateAndStopRfuAfterFade); break;
     }
 }
 

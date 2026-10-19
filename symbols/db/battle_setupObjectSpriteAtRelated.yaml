@@ -1,0 +1,53 @@
+name: battle_setupObjectSpriteAtRelated
+address: '0x080BF710'
+kind: function
+status: probable
+summary: Loads and places a battle object's sprite from a small resource table indexed by Param1, anchoring
+  it to its related object's position.
+interface: (r0 = ignored, r5 = battle object) -> r0 = return of sub_80BF7BC; sets oBattleObject_NameID,
+  sprite, CurAnim, position fields, Flags|2, CurStateUpdate=CUR_STATE_UPDATE
+details: 'Indexes the 8-byte-per-entry table byte_80BF7A8 with Param1*8: copies entry halfword+2 into
+  NameID, and if entry byte0 has bit 0x80, decompresses with sprite_decompressTemp after masking to 0x7F.
+  Then calls sprite_load (entry byte0&0x7F as id, byte1 as palette/anim param) plus sprite_loadAnimationData
+  and sprite_hasShadow, and resets CurAnim=0 / CurAnimCopy=0xFF. Entry bytes 4 and 5 are signed X/Y offsets
+  (X multiplied by object_getFrontDirection''s facing) added to the first three words of RelatedObject1Ptr+0x34,
+  and the result triple is written both to object+0x34 and +0x40; object_setPanelsFromCoordinates then
+  recomputes PanelX/Y, Z is cleared, and Flags gets bit 2 set. Finally applies object_getFlip via sprite_setFlip,
+  runs unpackVerActorTyAndAIIdx_800F29C on NameID to derive actor type/AI index, calls sub_8010DF6, and
+  moves the object to its next state phase (CUR_STATE_UPDATE) before tail-calling sub_80BF7BC. The two
+  table entries suggest only two Param1 values are valid for whatever spawns this object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7, off_80BF7A8; ldrb r0,[r5,#Param1]; lsl r0,#3 — table indexed by Param1, halfword at
+    +2 stored to NameID; tst r0,#0x80 + bl sprite_decompressTemp, then bl sprite_load/sprite_loadAnimationData/sprite_hasShadow
+    — loads the entry's sprite with compression flag; ldrsb r0,[r7,#4] / [r7,#5]; mul r0,r4 (front direction);
+    add to ldmia from RelatedObject1Ptr+0x34; stmia to +0x34 and +0x40 — offsets relative to related object's
+    position; bl object_setPanelsFromCoordinates; str r0,[Z]; orr Flags,#2; bl object_getFlip; bl sprite_setFlip
+    — repositioning and orientation setup; ldrh r0,[r5,#NameID]; bl unpackVerActorTyAndAIIdx_800F29C;
+    mov r0,#CUR_STATE_UPDATE str [CurStateActionPhase...] — registers actor and advances state machine
+  refs:
+  - bn6f/asm/asm31.s:16051
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080BF710
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- 'No known callers: unknown which game state or spawner invokes this and for which object kind'
+- Meaning of the byte_80BF7A8 entries (which two entities use sprite ids 0x1A0 and 0x16D with palettes
+  0x00/0x13) and the exact signature of sub_80BF7BC
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BF710 -> battle_setupObjectSpriteAtRelated
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF710

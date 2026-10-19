@@ -1,0 +1,50 @@
+name: ai_frontPanelAttackStep
+address: '0x080F4F14'
+kind: function
+status: probable
+summary: 'AI attack state routine: on first run spawns a damaging collision region one panel in front
+  of the object plus its visual effect, then counts down and flags the hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars, r0 unused/clobbered) -> r0 = spawned effect object
+  (initial run) or clobbered; no meaningful flags
+details: 'Two-phase attack coroutine keyed on oAIAttackVars_AttackElement: when zero, it marks the attack
+  started (AttackElement=4), plays sound 0xC7, sets the object''s animation to 0x11, and spawns a collision
+  region at PanelX+frontDirection/PanelY with size words 0x700FF02 and 0x3, passing oAIAttackVars_Damage
+  and InitFlag as parameters. It then spawns a type-1 effect-0 object at that panel''s pixel coordinates
+  (object_getCoordinatesForPanels), with parameter r4 = (object_getFlip << 8) + 0x3A so the effect mirrors
+  the object''s facing. On subsequent calls (AttackElement != 0) it decrements StepTimer, and when the
+  12-frame timer (set to 0xC) expires it writes 0x18 into oAIAttackVars_HitElement to trigger the damage
+  application elsewhere. The push/pop of r7 around object_spawnCollisionRegion preserves the AI-vars base
+  pointer across the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]/bne -> branch splits first run vs. countdown phase;
+    mov r0,#4; strb [r7,#AttackElement]; PlaySoundEffect(0xC7); anim 0x11 on first run; object_spawnCollisionRegion
+    called with panel X+frontDirection, Y, r4=0x700FF02, r6=oAIAttackVars_Damage, r7(overridden)=3; effect
+    0x3A spawned at object_getCoordinatesForPanels(X+front,Y) with r4=(object_getFlip<<8)+0x3A; tail:
+    decrements StepTimer from 0xC and on expiry sets HitElement=0x18'
+  refs:
+  - bn6f/asm/asm31.s:131086
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080F4F14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which boss/chip this attack belongs to (no callers known, sound ID and effect 0x3A not identified)
+- exact meaning of collision-region params 0x700FF02/0x3 and how HitElement=0x18 is consumed by the shared
+  AI damage handler
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F4F14 -> ai_frontPanelAttackStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4F14

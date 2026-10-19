@@ -1,0 +1,50 @@
+name: battle_fieldBreakAttack
+address: '0x080BB52E'
+kind: function
+status: probable
+summary: Battle-object attack handler that breaks a whole group of panels around the object's position,
+  spawning dimming collision regions and impact effects, then shakes the camera.
+interface: (r5 = battle object pointer, panel coords in ExtraVars+0x14/+0x18, list selector in ExtraVars+0x1c)
+  -> r0 = 0; plays sound 0x10F and triggers camera shake before returning
+details: 'Reads the object''s facing via object_getFrontDirection, then picks a panel-offset list from
+  a pointer table (entry 4, or entry 0x1d when ExtraVars+0x1c is nonzero). It walks the list of signed-byte
+  (dx,dy) pairs until a 0x7F terminator: for each panel it adds the offsets to the object''s panel coordinates
+  (ExtraVars+0x14/+0x18), calls object_spawnDimmingCollisionRegion with the object''s Element and damage-disabler
+  fields and constant 0xA050601, calls object_breakPanel_dup2, converts the panel to screen pixels and
+  spawns a type-4 effect object at that spot. Afterwards it plays sound effect 0x10F and starts a camera
+  shake of magnitude 1, duration 30. The whole routine is a one-shot ''destroy this panel pattern'' attack
+  effect.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7, off_80BB5F0 // =PanelOffsetListsPointerTable; entry selected by r0=4 vs 0x1d based
+    on ExtraVars+0x1c flag; loop: ldrsb dx/dy from list, added to ExtraVars+0x14/+0x18 panel coords, terminated
+    by 0x7F sentinel; per panel: bl object_spawnDimmingCollisionRegion, bl object_breakPanel_dup2, bl
+    object_getCoordinatesForPanels then bl spawn_t1_0x0_EffectObject; after loop: PlaySoundEffect(0x10F)
+    and camera_initShakeEffect(1, 0x1e)'
+  refs:
+  - bn6f/asm/asm31.s:7052
+  - 0x080BB42E sub_80BB42E
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080BB52E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which attack/move invokes this (the only caller sub_80BB42E is also undocumented), and what the entry-4
+  vs entry-0x1D offset lists correspond to geometrically
+- Exact meaning of fields packed into 0xA050601 and the Element argument passed to object_spawnDimmingCollisionRegion
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BB52E -> battle_fieldBreakAttack
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB52E

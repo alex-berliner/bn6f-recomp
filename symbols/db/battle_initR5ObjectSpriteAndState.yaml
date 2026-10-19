@@ -1,0 +1,49 @@
+name: battle_initR5ObjectSpriteAndState
+address: '0x080C215C'
+kind: function
+status: probable
+summary: 'Initializer for a battle object held in r5: loads its sprite, resets animation/palette/flip,
+  sets its name ID to 0x1B7, and switches it into its update state.'
+interface: (r0/r1/r2 = scratch for callees; object pointer in r5 throughout) -> r0 clobbered; object at
+  r5 fully initialized with state = CUR_STATE_UPDATE
+details: After an unexamined setup call (sub_80C2678), it loads sprite resource 0x80/0xC via sprite_load
+  and sprite_loadAnimationData, marks the sprite shadowless, then zeroes the object's current-animation
+  byte fields (oBattleObject_CurAnim and its copy) and applies animation 0, palette 0, and the flip bits
+  from object_getFlip. It then calls sub_8010DF6(2, 0x24, 1) — purpose unknown, likely a battle-side resource
+  or behavior setup — writes the fixed name/string ID 0x1B7 into oBattleObject_NameID, clears oBattleObject_Param3,
+  and finally stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the
+  object begins its normal per-frame update. The object pointer lives only in r5, so the caller must set
+  r5 before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load(sprite_noShadow...) chain plus strb r0,[r5,#oBattleObject_CurAnim/CurAnimCopy] shows
+    per-object sprite initialization; ldr r0, dword_80C21A8 (=0x1B7); strh r0,[r5,#oBattleObject_NameID]
+    assigns a fixed name/text ID; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the routine by activating the object; object_getFlip -> sprite_setFlip shows it mirrors the sprite
+    according to the object's alliance side
+  refs:
+  - bn6f/asm/asm31.s:22059
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080C215C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_80C2678 does before the sprite load (likely resolves r5 or fetches object data)
+- What sub_8010DF6(2, 0x24, 1) does
+- Which in-game entity name ID 0x1B7 corresponds to, and where the caller sets r5
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C215C -> battle_initR5ObjectSpriteAndState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C215C

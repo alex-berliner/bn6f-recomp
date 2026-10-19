@@ -1,0 +1,48 @@
+name: battle_initSpriteObjectState
+address: '0x080CFD1C'
+kind: function
+status: probable
+summary: 'Finishes spawning a battle object: loads its sprite and animation, positions and orients it,
+  plays sound 0xED, and switches it to its update state.'
+interface: (r5 = battle object header) -> void; sets object flags, anim fields, state
+details: Loads the sprite identified by (0x80, 0x14, 0x1A) into the object in r5 plus its animation data,
+  and marks it shadowless via sprite_noShadow. It briefly sets then clears bit 0x2 of oObjectHeader_Flags
+  (probably a load/visibility toggle), zeroes oBattleObject_CurAnim and sets oBattleObject_CurAnimCopy
+  to 0xFF to force an animation restart. It recomputes pixel coordinates from panel grid coords, applies
+  the object's facing via object_getFlip/sprite_setFlip, and plays sound effect 0xED. Finally it stores
+  CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and tail-calls sub_80CFD64,
+  presumably that state's per-object handler. The hardcoded sprite IDs and sound suggest this is the spawn/init
+  routine for one specific enemy or object type.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls sprite_load with (0x80, 0x14, 0x1A) then sprite_loadAnimationData and sprite_noShadow
+    (asm lines 2-8); clears oBattleObject_CurAnim and writes 0xFF to oBattleObject_CurAnimCopy to reset
+    animation; calls object_setCoordinatesFromPanels and object_getFlip/sprite_setFlip to place and orient
+    the object; PlaySoundEffect(0xED) right before the state change; stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and calls sub_80CFD64
+  refs:
+  - bn6f/asm/asm31.s:51693
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CFD1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which enemy/object type uses sprite IDs 0x80/0x14/0x1A and sound 0xED
+- what sub_80CFD64 (the CUR_STATE_UPDATE handler) does
+- who calls this routine, which would confirm the entity it spawns
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CFD1C -> battle_initSpriteObjectState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFD1C

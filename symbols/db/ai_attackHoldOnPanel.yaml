@@ -1,0 +1,54 @@
+name: ai_attackHoldOnPanel
+address: '0x08104A30'
+kind: function
+status: probable
+summary: 'Per-frame AI attack-state handler: on first call it lunges the object onto its target panel
+  and arms contact collision, holds for AttackDuration frames, then tears the attack down and returns
+  to the idle animation.'
+interface: (r0 = unused; r5 = battle object, r7 = AI attack vars) -> r0 = clobbered; when AttackElement
+  was 0, sets it to 4 and StepTimer to AttackDuration, otherwise decrements StepTimer each frame
+details: 'On the initial call (oAIAttackVars_AttackElement == 0) it marks the attack started by setting
+  AttackElement = 4, plays anim 0x42, copies FuturePanelX/Y into PanelX/Y and recomputes pixel coordinates
+  via object_setCoordinatesFromPanels/object_updateCollisionPanels, zeroes Z, sets collision region 2,
+  clears flag 0x40, sets the ''currently moving'' flag, clears bit 22, and refreshes collision data with
+  args (1,2,3). It also copies the packed oBattleObject_DamageAndStaminaDamageCounterDisabler field into
+  the collision record: low halfword to oCollisionData_SelfDamage and (value>>16) low byte to oCollisionData_StaminaDamageCounterDisabler.
+  On subsequent frames it simply counts StepTimer down from oAIAttackVars_AttackDuration; when it reaches
+  0 it plays anim 0x40 and calls object_exitAttackState_801171C to clean up the attack. The self-damage
+  store suggests the attack exposes a damaging/contact body while holding the panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first-call init from per-frame countdown;
+    copies FuturePanelX/Y to PanelX/Y then bl object_setCoordinatesFromPanels + object_updateCollisionPanels
+    (movement onto target panel); strh AttackDuration -> oAIAttackVars_StepTimer, and decrement-and-bgt
+    loop implements the hold duration; tail calls object_exitAttackState_801171C and sets CurAnim 0x40
+    on expiry, showing it is an AI attack state with teardown; packed DamageAndStaminaDamageCounterDisabler
+    split into oCollisionData_SelfDamage and StaminaDamageCounterDisabler arms contact damage during the
+    hold
+  refs:
+  - bn6f/asm/asm31.s:163841
+  - 0x0801A15C object_clearFlag
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08104A30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers are known, so which boss/objects use this attack state is unknown
+- The meaning of AttackElement = 4 (which element/attack type) and of anim IDs 0x40/0x42 are not established
+- Whether the packed DamageAndStaminaDamageCounterDisabler source field is per-object config or scratch
+  is unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8104A30 -> ai_attackHoldOnPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104A30

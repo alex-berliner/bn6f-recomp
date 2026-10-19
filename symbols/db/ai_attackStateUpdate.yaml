@@ -1,0 +1,50 @@
+name: ai_attackStateUpdate
+address: '0x080EEE10'
+kind: function
+status: probable
+summary: 'Per-frame handler for an enemy AI attack: initializes animation/collision and releases the reserved
+  panel on the first frame, then counts a 5-frame timer and exits the attack state.'
+interface: (r0 = unused/scratch; reads object at r5 and AI vars at r7) -> r0 = clobbered by calls; updates
+  oAIAttackVars_StepTimer and oAIAttackVars_AttackElement
+details: 'If oAIAttackVars_AttackElement is nonzero, the attack is already running: it decrements oAIAttackVars_StepTimer
+  and, once the value goes negative, calls object_exitAttackState to return the AI to normal behavior.
+  On the first frame (element == 0) it runs the attack setup: object_setAnimation(obj, 0), object_setCollisionRegion(obj,
+  1), object_removePanelReserve using oBattleObject_FuturePanelX/FuturePanelY, ClearAIData_Unk_44_Flag
+  with mask 0x8000, object_clearFlag with bit 0x40, then stores StepTimer = 5 and AttackElement = 4 as
+  the in-progress marker. The panel-reserve release and region change suggest a short lunge/step attack
+  that reclaims the reserved target panel. The 5-frame timer means the attack lingers 5 frames after setup
+  before exiting.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, r0 / bne loc_80EEE40 splits first-frame init from the timer countdown path; init path
+    calls object_setAnimation(0), object_setCollisionRegion(1), object_removePanelReserve(FuturePanelX,
+    FuturePanelY); ClearAIData_Unk_44_Flag(dword_80EEE5C=0x8000) and object_clearFlag(0x40) clear AI and
+    object state bits; strh #5 into oAIAttackVars_StepTimer and strb #4 into oAIAttackVars_AttackElement
+    mark the attack active; decrement of StepTimer followed by bl object_exitAttackState when it goes
+    negative ends the attack'
+  refs:
+  - bn6f/asm/asm31.s:118685
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080EEE10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No caller is known, so which enemy/AI uses this handler is unclear
+- The exact attack behavior (animation 0, region 1) depends on per-enemy animation data not shown here
+- The meaning of AttackElement value 4 and AI flag 0x8000 would need confirmation from the AI state machine
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EEE10 -> ai_attackStateUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EEE10

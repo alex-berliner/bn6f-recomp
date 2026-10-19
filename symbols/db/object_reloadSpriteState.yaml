@@ -1,0 +1,50 @@
+name: object_reloadSpriteState
+address: '0x080BB62C'
+kind: function
+status: probable
+summary: Reinitializes a battle object's visuals (sprite, animation, palette, flip) and moves it into
+  the CUR_STATE_UPDATE state.
+interface: (r5 = battle object, implicit) -> r0 = ?; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_UPDATE
+details: Runs entirely against the object in r5 using the sprite subsystem's implicit-object convention.
+  It first recomputes the object's pixel X/Y from its panel coordinates and zeroes oBattleObject_Z (ground
+  height). It then loads sprite resource 0x80 (with args 8, 4), reloads animation data, enables the shadow,
+  resets CurAnim and CurAnimCopy to 0 via sprite_setAnimation, reloads animation data again, sets palette
+  0, and applies the object's effective facing via object_getFlip/sprite_setFlip. Finally it stores CUR_STATE_UPDATE
+  into the state/phase field, handing the object to the per-frame update path. The combination (reset
+  position + reload sprite + reset anim/palette + enter update state) is characteristic of a respawn or
+  state-reset routine, e.g. after an object is reused or restored.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then str r0,[r5,#oBattleObject_Z] zeroes height and repositions
+    from panels; bl sprite_load with r0=0x80, r1=8, r2=4 followed by sprite_loadAnimationData and sprite_hasShadow
+    reloads the object's visual; strb r0,[r5,#oBattleObject_CurAnim] / CurAnimCopy zeroed before sprite_setAnimation(0)
+    resets the animation; sprite_setPalette(0) and object_getFlip -> sprite_setFlip fully re-derive palette
+    and facing; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    ends by entering the update state
+  refs:
+  - bn6f/asm/asm31.s:7184
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080BB62C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers are known, so the exact use case (respawn, reuse, state transition) is unconfirmed
+- The meaning of sprite_load's arguments (0x80, 8, 4) — likely sprite id plus group/slot params — is not
+  verifiable here
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BB62C -> object_reloadSpriteState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB62C

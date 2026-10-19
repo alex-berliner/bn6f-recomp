@@ -1,0 +1,49 @@
+name: ai_attackReservePanelStep
+address: '0x08105AF6'
+kind: function
+status: probable
+summary: AI attack step that picks/reserves the target panel for an incoming strike and plays the windup
+  animation
+interface: () -> void; r5 = battle object, r7 = AI attack vars; r0/r1 from PanelChooseCallback stored
+  as target panel and flags
+details: On first entry (oAIAttackVars_AttackElement == 0) it writes 4 there, then calls object_canMove;
+  if the object is blocked it plays anim 0x14 and calls object_exitAttackState_801171C to abort. Otherwise
+  it calls the stored PanelChooseCallback (in lr=pc mode), whose r0/r1 results go to oAIAttackVars_AiAttackParam
+  and oAIAttackVars_PanelParamFlags2, copies the object's PanelX/PanelY into FuturePanelX/FuturePanelY,
+  claims the panel with object_reservePanel, and removes the object from collision via object_clearCollisionRegion.
+  It sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, plays anim 0x15 (windup), and sets StepTimer=4.
+  On subsequent calls it decrements oAIAttackVars_StepTimer, and at zero sets oAIAttackVars_HitElement=8,
+  handing off to the attack's damage step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#AttackElement] / strb #4: first-entry latch distinguishing setup from windup countdown;
+    ldr PanelChooseCallback; mov lr,pc; bx r0; str r0/r1 to AiAttackParam/PanelParamFlags2: per-attack
+    target-panel chooser; bl object_reservePanel + object_clearCollisionRegion + object_setFlag1(CANNOT_SLIDE):
+    claims the panel and freezes the attacker; canMove==0 path: anim 0x14 and bl object_exitAttackState_801171C
+    aborts the attack; StepTimer-- / bgt return, then strh #8 to HitElement: countdown leads into the
+    hit phase'
+  refs:
+  - bn6f/asm/asm31.s:165950
+  - 0x0800E5E2 object_canMove
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x08105AF6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which attack(s) use this handler (no known callers), so the exact element/attack (HitElement 8, AttackElement
+  4) and the PanelChooseCallback behavior are unidentified
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8105AF6 -> ai_attackReservePanelStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105AF6

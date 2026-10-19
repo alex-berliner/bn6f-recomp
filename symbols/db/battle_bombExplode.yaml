@@ -1,0 +1,53 @@
+name: battle_bombExplode
+address: '0x080CBDE6'
+kind: function
+status: probable
+summary: 'Detonation/destruction handler for a bomb-type battle object: plays the bomb-hit sound, spawns
+  an explosion effect, then tears the object down.'
+interface: (r5 = battle object, no args in r0-r3) -> r0 = CUR_STATE_DESTROY stored into object; no meaningful
+  return
+details: 'Operates on the battle object in r5. It first releases the panel reserved at the object''s FuturePanelX/Y
+  via object_removePanelReserve, then reads ObjectFlags2: if bit 0x8000 is clear it plays SOUND_HIT_BOMB_1
+  and spawns an effect object using the object''s position triple at +0x34 (r3 += 8, r4 = 0xE); if 0x8000
+  is set and bits 0x300000 are clear it calls sub_800F8CE (still holding Flag2 in r0), returning silently
+  on 0, destroying with no effect on 1, and otherwise spawning a larger effect (r3 += 0xC, r4 = 0x14).
+  In all destroy paths it clears the collision region, removes the object from the battle object list,
+  dispatches its destroy sub-events (only if battle flag 0x40 is set), and writes CUR_STATE_DESTROY into
+  the object''s state/phase field. The 0x300000 mask appears to suppress the explosion effect entirely.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: SOUND_HIT_BOMB_1 is played unconditionally on the normal (0x8000 clear) path, pointing at a
+    bomb/blast object; spawns effect objects at the object's +0x34 position with the two explosion-style
+    parameter pairs (8/0xE and 0xC/0x14); removes panel reservation by FuturePanelX/Y and clears the collision
+    region before teardown; ends with clearEntryOfBattleStateBattleObjectList + battle_dispatchDestroyEvents
+    + storing CUR_STATE_DESTROY, the standard battle-object death sequence; flags 0x8000/0x300000 in ObjectFlags2
+    select between explosion variants, no effect, and silent skip
+  refs:
+  - bn6f/asm/asm31.s:43282
+  - 0x080005CC PlaySoundEffect
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CBDE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- purpose of sub_800F8CE (called with Flag2 in r0, returning 0/1/other) is unknown and gates the 0x8000
+  path
+- no known caller, so whether this is a timer-expiry handler vs a hit handler for the bomb is inferred
+  rather than confirmed
+- meaning of ObjectFlags2 bits 0x8000 and 0x300000 and the r4 parameter (0xE/0x14) passed to the effect
+  spawner
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CBDE6 -> battle_bombExplode
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBDE6

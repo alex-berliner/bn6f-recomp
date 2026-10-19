@@ -1,0 +1,50 @@
+name: ai_attackStrikeFrontPanel
+address: '0x080ED82C'
+kind: function
+status: probable
+summary: AI attack handler that spawns a linked temp attack object, then after one frame strikes the panel
+  in front of the enemy with its damage at element 4.
+interface: (r5 = battle object, r7 = AI attack vars from its AIData+0x68) -> void; no return value
+details: 'On first invocation (oAIAttackVars_AttackElement == 0) it runs the setup phase: sets animation
+  0xB, resets the counter timer, spawns a type-1 subtype-5 temp attack object linked via AIData+0x68,
+  sets object flag bit 22, stores element 4 into AttackElement and clears StepTimer. On subsequent calls
+  it increments StepTimer and, once past frame 1, increments the temp attack object''s byte at +0x10,
+  plays sound 0xAF, computes the target panel as PanelX + object_getFrontDirection() at PanelY, and calls
+  sub_80D9130 with that panel position plus Damage+AttackBoost and AttackBoost2/InitFlag parameters; it
+  then sets HitElement to 4. The per-frame panel-advancing pattern matches an enemy melee/impact attack
+  that delivers damage to the panel in front of it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'setup branch only runs when AttackElement==0, then stores 4 to AttackElement and 0 to StepTimer
+    (asm: ldrb r0,[r7,#oAIAttackVars_AttackElement] ... strb r0,#4); callees object_setAnimation/object_setDefaultCounterTime/spawn_t1_0x5_tempAttackObject
+    mark it as an AI attack action; each frame increments temp attack object field 0x10 and plays sound
+    0xAF before striking (asm around PlaySoundEffect 0xaf); target panel is PanelX + object_getFrontDirection(),
+    PanelY, with damage Damage+AttackBoost passed to sub_80D9130; HitElement is forced to 4 after the
+    strike, tying the hit to the stored AttackElement value'
+  refs:
+  - bn6f/asm/asm31.s:115684
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800F2B6 object_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080ED82C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what sub_80D9130 does exactly (likely queues the hit/damage on the target panel), which would confirm
+  the strike semantics
+- what element/game mechanic value 4 denotes in oAIAttackVars_AttackElement/HitElement
+- no known callers, so which enemy AI table dispatches this attack is unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80ED82C -> ai_attackStrikeFrontPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED82C

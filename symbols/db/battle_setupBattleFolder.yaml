@@ -1,0 +1,54 @@
+name: battle_setupBattleFolder
+address: '0x0800A318'
+kind: function
+status: probable
+summary: 'Builds the battle''s shuffled folder: picks a source folder (preset, battle-mode table, or the
+  player''s folder keyed by current navi), copies 30 packed chips into eBattleFolder, decrypts/inserts
+  navi-chip swaps when special battle effects are active, then shuffles.'
+interface: (no args; uses r10 toolkit) -> void; writes eBattleFolder (60 halfwords), BattleState+0x17
+  and +0x44 flags; r4-r7 clobbered
+details: 'Source selection: battle effect 0x200000 uses unk_2039AA0; otherwise a per-battle-mode pointer
+  table (dword_802137C) is tried; otherwise the toolkit''s S_Chip (selected folder) pointer is used. When
+  the source is the player''s own S_Chip, the source pointer is advanced by (naviStatsByte(0x2D))*0x3C
+  — a per-navi 30-chip region — and r7=1 marks ''no decryption needed''; otherwise encryption_decryptPackTable30
+  decrypts the copied 30 packed (id | code<<9) entries in place. Battle effect 0x80 then performs swaps
+  in eBattleFolder: slot 0 is exchanged with the entry at an index from pet_getCurNaviChainedLookup, and
+  slots at 0x38/0x3A (halfword indices 28/29) are exchanged with an index pair from pet_getCurNaviStatusPair,
+  setting BattleState flags 0x17 and 0x44 respectively so the change can presumably be undone after battle.
+  Finally it tail-calls shuffleFolder_800A570(eBattleFolder, flag1, flag2), passing the two ''slot was
+  replaced'' markers, likely so the shuffle keeps those slots in place.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: GetBattleEffects + tst 0x200000 picks unk_2039AA0; GetBattleMode indexes dword_802137C as fallback
+    source pointers; cmp src, S_Chip_Ptr and battle_getNaviStatsByte(0x2D)*0x3C offset show per-navi adjustment
+    of the player folder, setting r7=1 to skip decryption; CopyHalfwords(eBattleFolder, src, 0x3C) copies
+    30 packed chip halfwords, matching symdb's eBattleFolder description; effect-0x80 block swaps halfwords
+    at slot 0 and slots 0x38/0x3A with navi-derived indices and sets BattleState+0x17/+0x44; tail call
+    shuffleFolder_800A570(eBattleFolder, r7, r6) passes the replacement flags into the shuffle
+  refs:
+  - bn6f/asm/asm00_1.s:16122
+  - 0x0802D246 GetBattleEffects
+  - 0x0802D234 GetBattleMode
+  - 0x080010B6 GetCurPETNavi
+  reproduce: python3 tools/asmcat.py 0x0800A318
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What battle effect 0x80 is (Chaos Unison / BeastOut chip insertion?) and what unk_2039AA0 and the dword_802137C
+  per-mode folders contain
+- Exact semantics of BattleState flags 0x17 and 0x44 (likely 'restore folder after battle') and of shuffleFolder_800A570's
+  two flag arguments
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800A318 -> battle_setupBattleFolder
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800A318

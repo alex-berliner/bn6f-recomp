@@ -1,0 +1,52 @@
+name: ai_attackStepOntoPanel
+address: '0x080EBB98'
+kind: function
+status: probable
+summary: 'AI attack step: once the attack animation reaches its impact frame, the object moves from its
+  reserved future panel onto the target panel and arms the hit with element 0x10.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0x10 stored to oAIAttackVars_HitElement;
+  no return value used
+details: This is an AI attack-state step for a battle object. It reads NaviStats byte 0x2C for the object's
+  alliance; if it is in range 0xB–0x18 the object skips the movement phase entirely and just sets HitElement=0x10
+  (a ranged/special attack variant that hits without stepping). Otherwise it waits until sprite_getFrameParameters
+  reports the 0x80 (impact) animation flag; when AiAttackParam==1 it toggles oBattleObject_DirectionFlip
+  and refreshes the sprite/arm and tracked-arm position, then copies oBattleObject_FuturePanelX/Y into
+  PanelX/Y, releases the reserved panel, updates collision panels, and recomputes pixel coordinates from
+  the new panel. Finally it stores 0x10 into oAIAttackVars_HitElement so the attack proceeds to hit processing
+  with that element. Pairs with ai_attackWaitForObject as the spawn/wait counterpart of the same attack
+  sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x2C; cmp 0x0B/0x18 ble loc_80EBBDC
+    skips movement for byte values 0xB-0x18; bl sprite_getFrameParameters; tst 0x80; beq locret — action
+    gated on the attack animation's impact frame; AiAttackParam==1 path flips oBattleObject_DirectionFlip
+    then calls battleObject_refreshSpriteAndArm_800F2C6 and battleRefreshTrackedObjectArmPos_801DBD4;
+    FuturePanelX/Y copied to PanelX/Y, then object_removePanelReserve, object_updateCollisionPanels, object_setCoordinatesFromPanels
+    — the object lands on its target panel; mov r0,#0x10; strh [r7,#oAIAttackVars_HitElement] — terminates
+    the step by arming the hit element
+  refs:
+  - bn6f/asm/asm31.s:111683
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080EBC0C ai_attackWaitForObject
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  reproduce: python3 tools/asmcat.py 0x080EBB98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which stat NaviStats offset 0x2C actually is and why 0xB-0x18 selects the no-move variant
+- What element value 0x10 denotes in the hit table
+- No known caller, so the AI attack table entry that selects this step is unverified
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EBB98 -> ai_attackStepOntoPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EBB98

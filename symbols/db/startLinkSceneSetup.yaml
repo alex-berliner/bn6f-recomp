@@ -1,0 +1,49 @@
+name: startLinkSceneSetup
+address: '0x08131F3C'
+kind: function
+status: probable
+summary: Waits for the screen fade, then initializes link state, camera layout and object state and starts
+  a fade as the first step of transitioning into a link scene.
+interface: (r5 = task/state struct, no register args) -> r0 = undefined; writes state id 4 to [r5+0x24]
+details: Early-outs while IsScreenFadeActive reports a fade in progress, so the setup runs exactly once
+  after the current fade finishes. It calls sub_813D90C(1) (unknown), initializes the camera/screen state
+  block via sub_803DCE8(0xC,3,2,0), and stores the magic word 0x42523545 ('E5RB') with halfwords 0x2000
+  and 0 into the global eLinkState struct via sub_803DCD8. It then dispatches an object's state thunk
+  through sub_81322E8 and clears a 0x100-byte buffer returned by sub_803EF60. It ends by starting a screen
+  fade SetScreenFade(8,0x10) and storing 4 (the next state id) into halfword [r5+0x24] of the caller's
+  state struct, so the surrounding state machine proceeds to step 4 on the next tick.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq locret after 'bl IsScreenFadeActive' makes the whole body conditional on no fade running;
+    'bl sub_803DCD8' with r0=0x42523545, r1=0x2000 writes the link config into eLinkState per that callee's
+    summary; 'bl sub_803DCE8' with (0xC,3,2,0) initializes the camera/screen layout block; 'bl SetScreenFade'
+    with (8,0x10) plus 'strh r0,#4,[r5,#0x24]' starts a fade and advances the caller's state id; callees
+    sub_81322E8/sub_803EF60 reinit object state dispatch and a 0x100-byte buffer, consistent with scene
+    (re)setup
+  refs:
+  - bn6f/asm/asm36.s:3768
+  - 0x0803DCD8 sub_803DCD8
+  - 0x0803DCE8 sub_803DCE8
+  - 0x0803EF60 sub_803EF60
+  reproduce: python3 tools/asmcat.py 0x08131F3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no caller is known, so the owning subsystem (which task/state machine owns [r5+0x24]) and the correct
+  prefix are unconfirmed
+- the meaning of the magic value 0x42523545 and halfword 0x2000 passed to sub_803DCD8 is unknown
+- sub_813D90C is not in the callee list, so its role in the setup is unknown
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8131F3C -> startLinkSceneSetup
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131F3C

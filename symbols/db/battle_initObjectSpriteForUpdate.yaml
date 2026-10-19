@@ -1,0 +1,49 @@
+name: battle_initObjectSpriteForUpdate
+address: '0x080D0524'
+kind: function
+status: probable
+summary: Initializes a battle object's placement and sprite (coords from panels, sprite 0x42, shadow,
+  anim/palette/flip) and switches it to the update state.
+interface: (r0 = unused/unknown; r5 = battle object pointer) -> r0 = CUR_STATE_UPDATE value stored to
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: r5 holds the battle object being set up. It recomputes the object's pixel X/Y from its panel
+  coordinates, zeroes the Z/height halfword, loads sprite 0x42 with palette slot 0x10 and flag 0x80, enables
+  the shadow via sprite_hasShadow, sets flag bit 2 in oObjectHeader_Flags, selects animation 0 (writing
+  both CurAnim and CurAnimCopy before sprite_setAnimation), loads the animation data, sets palette 0,
+  and applies the object's facing from object_getFlip via sprite_setFlip. It finishes by writing CUR_STATE_UPDATE
+  into the state/phase field so the object enters its update routine. The fixed sprite ID 0x42 and hardcoded
+  args suggest this is the spawn init for one specific battle entity, not a generic helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels then strh #0,[r5,#oBattleObject_Z16] places the object on
+    its panel at ground level; mov r1,#0x10 / mov r2,#0x42 / mov r0,#0x80 before bl sprite_load hardcodes
+    the sprite selection; ldrb r0,[r5,#oObjectHeader_Flags]; orr #2; strb sets flag bit 2 (likely ''sprite
+    loaded/active''); strb #0 to CurAnim and CurAnimCopy before sprite_setAnimation and sprite_loadAnimationData
+    initializes animation 0; final str CUR_STATE_UPDATE,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    hands the object to the update loop'
+  refs:
+  - bn6f/asm/asm31.s:52836
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080D0524
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No known caller, so the identity of the entity using sprite 0x42 and the meaning of the 0x80/flag-bit-2
+  arguments are unconfirmed
+- What r0 carries on entry is unclear since all callees operate on global r5
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0524 -> battle_initObjectSpriteForUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0524

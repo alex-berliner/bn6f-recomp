@@ -1,0 +1,51 @@
+name: battle_initObjectOnPlayerPanel
+address: '0x080E6580'
+kind: function
+status: probable
+summary: 'Initializes a battle object that anchors itself to the player''s panel: loads sprite 0x80/0xC/0x13,
+  copies the player''s panel coordinates, sets a palette from Param1, plays sound 0x29, and enters its
+  UPDATE state; destroys itself (and zeroes its related object''s flags) if no player is found.'
+interface: (r5 = BattleObject*) -> void; sets object CurState to UPDATE or CUR_STATE_DESTROY
+details: With the object in r5, it loads sprite resource (0x80, 0xC, 0x13) via sprite_load plus sprite_loadAnimationData,
+  and flags it shadowless. It sets CurAnim=1 and CurAnimCopy=0xFF, then calls battle_findPlayer with the
+  object's Alliance byte; if no player is returned, it clears oObjectHeader_Flags of RelatedObject1Ptr
+  and sets its own state to CUR_STATE_DESTROY, so the object only lives when a player exists. Otherwise
+  it copies the player's PanelX/PanelY into Param3/Param4, ORs flag bit 2 into oObjectHeader_Flags, sets
+  the sprite palette to Param1<<2 via sprite_setPalette, recomputes pixel coordinates from the panel,
+  plays sound effect 0x29 (0x2A-1), sets CurState to CUR_STATE_UPDATE, and calls sub_80E65E0. The Param1-derived
+  palette suggests callers pick a palette variant per instance.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_load/sprite_loadAnimationData/sprite_noShadow: sprite 0x80 group 0xC index 0x13 loaded
+    without shadow; bl battle_findPlayer with oBattleObject_Alliance; bne path copies oBattleObject_PanelX/Y
+    into Param3/Param4; no-player path: clears RelatedObject1Ptr flags and stores CUR_STATE_DESTROY in
+    oBattleObject_CurStateActionPhaseAndPhaseInitialized; bl sprite_setPalette with ldrb Param1 lsl #2
+    (palette = Param1*4); bl PlaySoundEffect with 0x2A-1 = 0x29, then stores CUR_STATE_UPDATE before tail
+    sub_80E65E0'
+  refs:
+  - bn6f/asm/asm31.s:100564
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E6580
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers known, so the object's identity (sprite 0x80/0xC/0x13) and why its flags bit 2 is set are
+  unclear
+- sub_80E65E0 not shown — likely the UPDATE-state step logic that would confirm the object's behavior
+- What Param1 means to callers (palette selector) and what RelatedObject1Ptr is for
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E6580 -> battle_initObjectOnPlayerPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6580

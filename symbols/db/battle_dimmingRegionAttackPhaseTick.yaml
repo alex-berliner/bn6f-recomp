@@ -1,0 +1,51 @@
+name: battle_dimmingRegionAttackPhaseTick
+address: '0x080BFB74'
+kind: function
+status: probable
+summary: 'Per-frame phase handler for a battle attack: plays anim/sfx, then on frame 10 spawns an element-typed
+  collision region on the front panel with its effect and a camera shake, ending the phase after 30 frames.'
+interface: (r5 = battle object) -> none; updates oBattleObject_Timer, CurAnim, CurPhaseAndPhaseInitialized
+details: Runs once per frame with the battle object in r5. On the first tick (PhaseInitialized==0) it
+  sets CurAnim=5, clears Timer, spawns temp attack object kind 5 with r7=r5+0x60 (parent pointer), plays
+  sfx 0xCE, and marks PhaseInitialized=4. When Timer hits 10 it computes the panel ahead (PanelX + object_getFrontDirection,
+  PanelY) and calls object_spawnDimmingCollisionRegion with the object's Element and params dword_80BFC20=0x405ff11
+  (likely damage/flags), converts those panels to pixel coords, and spawns an effect (kind 0, params 0x400+flip,
+  offset 0x1b, subparam 0x10) via spawn_t1_0x0_EffectObject. It then triggers camera shake (magnitude
+  2, 0x28 frames) and battle_spawnExtraVarsObject kind 0xA storing r5+0x60 as ExtraVars. Timer increments
+  each frame; at >30 it writes phase 8 into CurPhaseAndPhaseInitialized to finish.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: First tick sets CurAnim=5, Timer=0, spawns spawn_t1_0x5_tempAttackObject and plays PlaySoundEffect(0xCE)
+    before setting PhaseInitialized=4; At Timer==10 calls object_spawnDimmingCollisionRegion with PanelX+object_getFrontDirection,
+    PanelY, Element, r4=0x405ff11, r6=DamageAndStaminaDamageCounterDisabler; Immediately converts the
+    same panel coords via object_getCoordinatesForPanels and spawns an effect whose param adds object_getFlip,
+    showing a facing-aware visual at the struck panel; Calls camera_initShakeEffect(2, 0x28) and battle_spawnExtraVarsObject
+    (kind 0xA, ExtraVars=r5+0x60) on the strike frame; Timer counts to 0x1e then writes phase 8, a standard
+    phase-exit in these handlers
+  refs:
+  - bn6f/asm/asm31.s:16667
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080BFB74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which attack/boss uses this handler (sound 0xCE and anim 5 don't identify it without the animation/asset
+  tables)
+- What dword_80BFC20=0x405ff11 encodes for the dimming collision region (damage, duration, hitbox size)
+- What the r5+0x60 field is and what the ExtraVars object kind 0xA does with it
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BFB74 -> battle_dimmingRegionAttackPhaseTick
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFB74

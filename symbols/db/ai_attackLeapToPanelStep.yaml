@@ -1,0 +1,51 @@
+name: ai_attackLeapToPanelStep
+address: '0x080FED28'
+kind: function
+status: probable
+summary: AI attack step that launches the battle object in an arcing jump toward its future target panel
+  and commits the landing when the timer expires.
+interface: (r5 = battle object, r7 = AI attack vars) -> void; state advances via AttackElement (0 = launch,
+  4 = airborne)
+details: Two-phase step. On entry (AttackElement == 0) it sets AttackElement = 4, loads a flight-time
+  from the dword_80FEDC4 table indexed by AttackBoost2 into StepTimer, converts FuturePanelX/Y to pixel
+  coords, and calls math_getThrowSpeeds to get X/Y/Z velocities reaching that target in StepTimer frames
+  under gravity 0xFFFF6000 (-0xA000/frame), stored into the object's velocity fields. While airborne it
+  integrates X/Y/Z each frame, applies gravity to ZVelocity, updates panel/collision data, and counts
+  StepTimer down. On expiry it copies FuturePanelX/Y into PanelX/Y, releases the reserved panel, snaps
+  coordinates from panels, zeroes Z16, clears flag 0x40, sets the CURRENTLY_MOVING_1 flag, sets collision
+  region 1, and stores hit element 8 (Elec?) into HitElement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: math_getThrowSpeeds called with target pixel coords from FuturePanelX/Y, timer, and gravity
+    constant 0xFFFF6000, results stored to X/Y/ZVelocity; airborne branch adds X/Y/ZVelocity to X/Y/Z
+    and subtracts 0xA000 from ZVelocity each frame (gravity arc); on StepTimer hitting 0, FuturePanelX/Y
+    are copied to PanelX/Y and object_setCoordinatesFromPanels/object_removePanelReserve run; landing
+    sets object_setFlag1(1<<CURRENTLY_MOVING_1), object_clearFlag(0x40), object_setCollisionRegion(1),
+    and HitElement = 8; dword_80FEDC4 is a duration lookup indexed by oAIAttackVars_AttackBoost2 (first
+    entry 0x191E)
+  refs:
+  - bn6f/asm/asm31.s:151500
+  - 0x0801A15C object_clearFlag
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080FED28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact meaning of hit element 8 and the AttackElement value 4
+- what flags 0x40 and collision region 1 represent
+- which AI attack scripts invoke this step and what AttackBoost2 values index into the timer table
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FED28 -> ai_attackLeapToPanelStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FED28

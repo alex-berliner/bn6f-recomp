@@ -1,0 +1,51 @@
+name: submenu_linkResultHandler
+address: '0x08132194'
+kind: function
+status: probable
+summary: 'Link-menu state routine: compares link-peer data in eLinkState against a small known-entry table,
+  then sets sSubmenu state fields and fires a network text script (0x1E/0x1F) based on the outcome.'
+interface: () -> r0 = 0 or 4 (result code); writes sSubmenu.jo_01/unk_02/unk_03/unk_10/unk_11/unk_26/unk_2A
+  and eLinkState fields; flags not meaningful
+details: 'Clears sSubmenu.unk_10, then calls the eStruct200BC30 mode dispatcher sub_803EAE4: result 4
+  goes to a final branch (jo_01=0x34, clearing unk_02/unk_03), result 1 returns immediately. Otherwise
+  it sets unk_10=1, resets counters (unk_26=0 and a word cleared via sub_81325CC), then walks a 2-entry,
+  0x10-stride table (returned by sub_81323B0) comparing entry+4 and entry+2 against eLinkState+0x1c and
+  +0xa; r3=8 is halved per successful compare and mismatched word compares exit early. If r3 ends as 1
+  (word fields match, one halfword matches), it sets state unk_10=2, shows script 0x1F, sets unk_26=0x10
+  and writes 0x2000 to eLinkState+0xa. Otherwise it calls menu_dispatchStateHandler; on results 0x18/0x1C
+  it reads sSubmenu.unk_12 through the 10-entry table sub_81325F4 (compared to 0x14) and feeds the 0/1
+  into sub_81209DC, storing (bias<<8|elementId) in unk_2A, then shows script 0x1E with jo_01=0x14.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: off_8132274 loads sSubmenu and the routine writes its state bytes unk_10/unk_02/unk_03/jo_01
+    throughout; sub_803E8F8 (returns eLinkState) result is compared against table entries at +0x1c/+0xa
+    in the loop at loc_81321E0; menu_dispatchStateHandler result tested against 0x18/0x1C, followed by
+    sub_81325F4/sub_81209DC random-element pick into unk_2A; sub_803BB2C called with 0x1E and 0x1F, the
+    project-known network-text-script selector; success path writes 0x2000 to eLinkState+0xa and state
+    2 to sSubmenu.unk_10 before returning
+  refs:
+  - bn6f/asm/asm36.s:4077
+  - 0x08132290 menu_dispatchStateHandler
+  - 0x0803BB2C sub_803BB2C
+  - 0x0803E8F8 sub_803E8F8
+  reproduce: python3 tools/asmcat.py 0x08132194
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which menu/game flow owns sSubmenu and calls this (no callers known), and what scripts 0x1E/0x1F say,
+  to confirm it is the wireless/link connection screen
+- Exact meaning of the r3 halving scheme — why exactly one halfword match (r3==1) is the trigger state
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8132194 -> submenu_linkResultHandler
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132194

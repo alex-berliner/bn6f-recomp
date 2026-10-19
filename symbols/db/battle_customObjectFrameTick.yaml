@@ -1,0 +1,50 @@
+name: battle_customObjectFrameTick
+address: '0x080CD9CA'
+kind: function
+status: probable
+summary: 'Per-frame update tick for one battle object: palette/HP end-of-battle handling, hit-reaction
+  teardown, action dispatch, sprite and collision update.'
+interface: (r5 = battle object, oBattleObject) -> r0 = destroyed; clobbers lr
+details: 'Runs the full per-frame pipeline for a single battle object held in r5. First it clears the
+  sprite final-palette high nibble (undoing flash), then if the battle is over it stores 0 into oBattleObject_HP
+  to kill the object. It then calls object_finishCollisionHitReaction to wind down collision state and
+  spawn effects, and dispatches the object''s CurAction handler via battleObject_dispatchActionHandler
+  using an embedded 10-entry table (off_80CD9F4: sub_80CDA1C, ResetObjectActionState, sub_80CDBE8, etc.)
+  — this object''s private action list. Finally it advances the object''s animation via object_updateSprite
+  and refreshes its collision state via object_presentCollisionData. The pointer at off_80CD9F0 points
+  back at off_80CD9F4, so the action table is passed as a pointer-to-pointer to the dispatcher.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sequence sprite_clearFinalPalette / battle_isBattleOver / HP=0 store matches end-of-battle
+    cleanup for an object (asm loc_80CD9DC area); bl battleObject_dispatchActionHandler_801B394 with ldr
+    r0, off_80CD9F0 pointing at a local handler table shows a per-object action dispatch; embedded table
+    off_80CD9F4 includes battle_ResetObjectActionState_80165B8 and battleObject_initAndRunAI_8016B02,
+    standard action states; trailing bl object_updateSprite then bl object_presentCollisionData is the
+    standard end-of-frame object update pattern; caller sub_80CD91E is the only caller, consistent with
+    a single object type owning this tick
+  refs:
+  - bn6f/asm/asm31.s:46995
+  - 0x080CD91E sub_80CD91E
+  - 0x0801B394 battleObject_dispatchActionHandler_801B394
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  reproduce: python3 tools/asmcat.py 0x080CD9CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which specific object/boss this tick belongs to — the callees sub_80CDA1C, sub_80CDBE8, sub_80CDAD8,
+  sub_80CDBAC would identify its behaviors
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD9CA -> battle_customObjectFrameTick
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD9CA

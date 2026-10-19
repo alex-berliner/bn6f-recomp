@@ -1,0 +1,51 @@
+name: ai_objectThrowStep
+address: '0x080F0798'
+kind: function
+status: probable
+summary: 'AI attack step that hurls an object three panels in front of the user: it launches it with computed
+  ballistic speed, simulates its arc with gravity each frame, and on landing sets the resulting hit element
+  depending on whether the panel is broken/holey.'
+interface: (r0 = object ptr in r5, r7 = AI attack vars; reads oAIAttackVars_AttackElement as phase flag)
+  -> void; writes object velocities/position/anim and oAIAttackVars_HitElement/StepTimer
+details: 'On first invocation (AttackElement == 0) it sets AttackElement = 4, clears the object''s collision
+  region, copies its PanelX/Y to FuturePanelX/Y, reserves the panel, plays animation 0x12, and calls math_getThrowSpeeds
+  with a target computed as the object''s panel shifted 3*facingDirection panels forward, storing the
+  resulting X/Y/Z velocities and a 20-frame StepTimer. Subsequent calls decrement the timer and while
+  it is negative integrate X/Y/Z positions from the velocities, applying gravity constant 0xfffe8000 (-6144)
+  to ZVelocity each frame and refreshing the object''s panel from its coordinates. When the timer expires
+  the object''s Z16 is zeroed (it has landed) and the landing panel''s status flags are checked: flag
+  0x10 (hole/broken) sets oAIAttackVars_HitElement = 4, otherwise 8. r5 is the thrown battle object, r7
+  its AI attack-state block.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase gate on oAIAttackVars_AttackElement: bne loc_80F07E8 splits launch vs. flight/landing;
+    launch branch: object_reservePanel + CurAnim=0x12 + math_getThrowSpeeds from target PanelX+3*frontDirection,
+    results stored to X/Y/ZVelocity; flight loop: adds X/Y/ZVelocity to X/Y/Z and dword_80F0938 (0xfffe8000)
+    to ZVelocity, then object_setPanelsFromCoordinates; landing: object_getPanelParameters, test flag
+    0x10, stores 4 or 8 into oAIAttackVars_HitElement; callees (object_getCoordinatesForPanels, object_getFrontDirection,
+    object_reservePanel) all operate on the battle object in r5'
+  refs:
+  - bn6f/asm/asm31.s:121954
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F0798
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which enemy/attack this step belongs to (no callers known)
+- exact meaning of HitElement values 4 vs 8 downstream, and of panel flag 0x10 (assumed broken/hole)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F0798 -> ai_objectThrowStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0798

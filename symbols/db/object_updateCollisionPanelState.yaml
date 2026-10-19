@@ -1,0 +1,55 @@
+name: object_updateCollisionPanelState
+address: '0x080C98DC'
+kind: function
+status: probable
+summary: Per-frame battle-object tick that rebuilds the object's collision on its current panel, dispatches
+  its action handler, flags standing on a foreign-alliance panel, and despawns via an effect when the
+  battle ends.
+interface: (r5 = battle object) -> r0 = ?; sets oBattleObject_Param4 and possibly CurState to CUR_STATE_DESTROY
+details: 'Runs each frame for a battle object (this-pointer in r5): it first tears down and respawns the
+  object''s collision data, then exits early if the battle is over, in which case it spawns an effect
+  using the coordinates at r5+0x34 with r4=0x14, clears the collision region, and writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized. Otherwise it reads the collision data pointer,
+  clears the collision region if collision flags are set, and dispatches via oBattleObject_CurAction through
+  table off_80C9960 (branch to handler sub_80C9964). If oBattleObject_Param4 is 0 and the panel''s oPanelData_Alliance
+  XORs to differ from the object''s oBattleObject_Alliance, it sets Param4=1. Finally, if CurState !=
+  8 and the object moved to a new panel (panel XY changed since entry), it re-registers the collision
+  region with object_setCollisionRegion(1), then refreshes collision via object_presentCollisionData and
+  marks the occupied panel with object_highlightPanel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'opens with bl object_removeCollisionData / object_spawnCollisionEffect — per-frame collision
+    rebuild; loc_80C9946: battle-over path spawns an effect and stores CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    eor of oPanelData_Alliance with oBattleObject_Alliance sets oBattleObject_Param4=1 — flags standing
+    on a hostile-alliance panel; object_setCollisionRegion(1) is called only when oCollisionData_PanelXY
+    changed and CurState != 8; tail calls object_presentCollisionData then object_highlightPanel with
+    the collision panel X/Y'
+  refs:
+  - bn6f/asm/asm31.s:38347
+  - 0x080C9848 sub_80C9848
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x080C98DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which battle object(s) use this handler — the single caller sub_80C9848 and the action-table handler
+  sub_80C9964 are unknown
+- meaning of oBattleObject_Param4 (set when the object stands on a differently-allied panel)
+- what the effect spawned on battle end (r4=0x14, coords at r5+0x34) looks like
+- why CurState==8 skips collision-region re-registration
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C98DC -> object_updateCollisionPanelState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C98DC

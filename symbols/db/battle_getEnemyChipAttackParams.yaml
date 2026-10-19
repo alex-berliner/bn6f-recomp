@@ -1,0 +1,54 @@
+name: battle_getEnemyChipAttackParams
+address: '0x0800EE26'
+kind: function
+status: probable
+summary: Builds the attack parameters (chip ID, effect result, total power, element/count) for an enemy's
+  chip attack, with a special path for a particular version/actor enemy type that draws its chip and power
+  from a per-alliance AI record.
+interface: (r0 = battle object) -> r0 = chip ID, r1 = chip-effect dispatcher result, r2 = summed attack
+  power, r3 = element ID (special path) or ChipsHeld count (normal path)
+details: 'For enemies whose unpacked version/actor-type value is 2, it selects a 0x1D0-byte AI record
+  indexed by the object''s Alliance, refreshes it via sub_800EE98 (which apparently also sets r7 to an
+  AI-attack-vars struct, since the chip''s power byte [chip+0xF] is stored to oAIAttackVars_PwrAtkState
+  through it), reads the record''s chip ID at +0x34, computes the element-weakness bonus, and dispatches
+  the chip''s use handler with (chipID, alliance). Chip-data flag byte at +9 then gates two additive power
+  fields: bit1 adds record +0x36 and bit2 adds +0x38 to the running total in r2, zeroing each field after
+  use, and the record''s chip ID is reset to 0 on return. All other enemies take the simple path: return
+  the object''s own oBattleObject_Chip, with r1=r2=0 and r3=ChipsHeld.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#2 / bne loc_800EE8E splits special vs normal enemy handling after unpackVerActorTyAndAIIdx;
+    getEntryPtr_2036120_1D0_802E070 with Alliance as index selects the enemy AI record whose +0x34 holds
+    the chip ID; battle_chipEffectDispatcher_80109A4(chipID, alliance) and battle_chipElementWeaknessBonus
+    feed the returned r1/r2 values; bit tests of chipData[+9] against #2 and #4 add record fields +0x36/+0x38
+    into r2 and clear them after use; normal path just loads oBattleObject_Chip, zeros r1/r2, and returns
+    oBattleObject_ChipsHeld in r3'
+  refs:
+  - bn6f/asm/asm00_2.s:108
+  - 0x080127C0 useChipRelated_80127C0
+  - 0x080109A4 battle_chipEffectDispatcher_80109A4
+  - 0x0800EF34 battle_chipElementWeaknessBonus_800EF34
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x0800EE26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_800EE98 does and why r7 (not set in this function) receives the AI-attack-vars pointer — likely
+  a nonstandard in-register return
+- Semantics of chip-data byte +9 bit flags and record fields +0x36/+0x38 (power modifiers? panel/bonus
+  adds?)
+- What the caller useChipRelated_80127C0 does with the r1 result of the dispatcher
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800EE26 -> battle_getEnemyChipAttackParams
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EE26

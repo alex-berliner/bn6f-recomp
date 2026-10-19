@@ -1,0 +1,48 @@
+name: ai_attackRecoveryStep
+address: '0x080EE9F2'
+kind: function
+status: probable
+summary: 'AI attack wind-down: once an attack lands/finishes, restores the object''s animation and collision,
+  releases its reserved panel, clears AI/obj flags, and counts a short timer before leaving the attack
+  state.'
+interface: (r5 = battle object ptr, r7 = AI attack vars) -> r0 = undefined; flags from timer decrement
+details: 'Guards on oAIAttackVars_AttackElement: if it is 0, this is the one-time recovery setup — animation
+  0 via object_setAnimation, collision region 1 via object_setCollisionRegion, release the panel reserved
+  at oBattleObject_FuturePanelX/Y, clear AI-data flag 0x200 (ClearAIData_Unk_44_Flag) and ObjectFlags1
+  bit 0x40 (object_clearFlag). It then stores StepTimer=5 and sets AttackElement=4 to mark the recovery
+  phase. On every later call (AttackElement != 0) it just decrements oAIAttackVars_StepTimer; when it
+  goes negative it calls object_exitAttackState. Effectively the post-attack cooldown tail of an AI attack
+  routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips setup on repeat calls; mov r0,#0; bl
+    object_setAnimation + mov r0,#1; bl object_setCollisionRegion restore normal pose/hitbox; ldrb FuturePanelX/Y
+    + bl object_removePanelReserve frees the reserved attack panel; off_80EEA30 =0x200 -> ClearAIData_Unk_44_Flag
+    and 0x40 -> object_clearFlag undo attack-time state; StepTimer=5 countdown then bl object_exitAttackState
+    when negative
+  refs:
+  - bn6f/asm/asm31.s:118123
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080EE9F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No known caller, so which AI attack routines dispatch here and what phase ids (the stored 4 in AttackElement)
+  mean is unconfirmed
+- Semantic meaning of AI-data flag 0x200 and ObjectFlags1 0x40 is inferred only from this cleanup context
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EE9F2 -> ai_attackRecoveryStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE9F2

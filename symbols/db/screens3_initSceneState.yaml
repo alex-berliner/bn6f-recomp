@@ -1,0 +1,50 @@
+name: screens3_initSceneState
+address: '0x0812C094'
+kind: function
+status: probable
+summary: 'One-time setup for a screens3 menu state: waits for the fade, initializes the battle scene,
+  loads entity/background graphics, spawns eStruct records, and resets state fields.'
+interface: (r5 = menu/state record) -> r0 = 0 (clobbered); writes r5+3 = 0x10, r5+0x1E = 0, zeroes 16
+  bytes at unk_20251A0
+details: 'Entry is gated on IsScreenFadeActive: while the branch is taken the function returns immediately,
+  so the init body runs only once the fade condition allows it. The body calls battle_initScene_8129248
+  to prepare the battle-scene render info, loadEntityJumpOffset00Gfx_812B530 to DMA entity graphics, and
+  sub_8132614, which dispatches on a menu choice and writes the next handler index into the menu record.
+  It then sets state fields at r5+3 = 0x10 and r5+0x1E = 0, zero-fills 16 bytes of unk_20251A0, loads
+  a 30x20 background tilemap via screens3_loadBackgroundTiles, and spawns eStruct (type 9) records from
+  the table at byte_8129150. This is a state-handler-style init routine for one of the screens3 menu screens,
+  with r5 being the menu/state record passed in globally.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq locret_812C0C2 after IsScreenFadeActive gates the whole init on the fade state; bl battle_initScene_8129248
+    + bl loadEntityJumpOffset00Gfx_812B530 set up the battle scene and entity GFX; strb r0(0x10),[r5,#3]
+    / strb r0(0),[r5,#0x1e] reset state fields of the record in r5; ZeroFillByWord(unk_20251A0, 0x10)
+    then screens3_loadBackgroundTiles prepare menu buffers/background; battle_spawnEStructRecordsFromTable_80465A0(byte_8129150)
+    spawns eStruct records from a 0xFF-terminated table
+  refs:
+  - bn6f/asm/asm33.s:18619
+  - 0x080008E0 ZeroFillByWord
+  - 0x08129248 battle_initScene_8129248
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x0812C094
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which screens3 screen/state this handler belongs to (no callers known; byte_8129150 table contents would
+  identify the spawned entities)
+- Exact meaning of the r5+3 = 0x10 and r5+0x1E = 0 state fields and whether IsScreenFadeActive gates on
+  fade-start or fade-end
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812C094 -> screens3_initSceneState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812C094

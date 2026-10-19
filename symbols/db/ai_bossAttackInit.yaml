@@ -1,0 +1,50 @@
+name: ai_bossAttackInit
+address: '0x0810064C'
+kind: function
+status: probable
+summary: 'Initializes a boss AI attack: reads the difficulty tier, sets up attack timing/boost parameters,
+  and targets the opposing player before launching attack state 0.'
+interface: (r0 = ???, r7 = boss AI attack vars struct) -> r0 = 0xe passed to object_setAttack0; no meaningful
+  return
+details: Stores the difficulty tier from battle_getAiDifficultyTier_800FE36 into oAIAttackVars_AiDifficultyTier
+  and sets oAIAttackVars_InitFlag to 3 (an attack-state/init marker). It then calls sub_810067E with 3
+  and sub_8100500 to obtain a duration written to oAIAttackVars_AttackDuration, and sub_81004EC for a
+  value stored in oAIAttackVars_AttackBoost2. It resolves the target by XOR-ing the caller object's oBattleObject_Alliance
+  with 1 and calling battle_findPlayer, saving the opposing player pointer into oAIAttackVars_TargetObjectPtr.
+  Finally it calls object_setAttack0 with 0xe to start attack ID 0xe on the boss object. Called twice
+  from ai_bossTurnThink's attack-step dispatch, so it is the entry setup for a specific boss attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after battle_getAiDifficultyTier_800FE36 call;
+    mov r0,#3; strb r0,[r7,#oAIAttackVars_InitFlag] marks the state as initialized; eor r0,r1 with Alliance
+    then battle_findPlayer -> str r0,[r7,#oAIAttackVars_TargetObjectPtr] picks the enemy player as target;
+    mov r0,#0xe; bl object_setAttack0 launches a concrete attack; both call sites are inside ai_bossTurnThink's
+    attack dispatch (0x08100308/0x08100314)
+  refs:
+  - bn6f/asm/asm31.s:154804
+  - 0x08100308 ai_bossTurnThink
+  - 0x08100314 ai_bossTurnThink
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810064C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what r0 the callers pass in (unused by visible code? possibly forwarded via sub_810067E)
+- meaning of the 0xe attack ID and which boss it belongs to
+- exact semantics of oAIAttackVars_InitFlag=3 and the helpers sub_81004EC/sub_8100500
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810064C -> ai_bossAttackInit
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810064C

@@ -1,0 +1,52 @@
+name: battle_finalizeObjectRemoval
+address: '0x080DB252'
+kind: function
+status: probable
+summary: 'Final step of removing a battle object from the field: releases its panel and list entry, spawns
+  its deletion/explosion effect, and switches it to the destroy state.'
+interface: (r0 = battle object pointer, kept in r5) -> r0 = 0/void; sets object state to CUR_STATE_DESTROY
+  and clears ObjectHeader.Flags bit 2
+details: 'Takes the battle object in r5. It first clears the object''s collision region, releases its
+  reserved panel using FuturePanelX/Y, dispatches destroy events (if battle flag 0x40), and removes the
+  object from the battle-state object list. It then tests ObjectFlags2 against 0x300000: if any of those
+  bits are set it calls sub_800F90E(0xE) instead of spawning effects. Otherwise sub_800F8CE''s result
+  gates the effect (0 -> return with no state change, 1 -> just finish); other values spawn a type-0 effect
+  at the object''s +0x34 position triple: kind 0x14 (z+0xC) when HP is nonzero, or kind 2 (z+0x10) plus
+  sound effect 0x90 when HP is 0, i.e. the destruction explosion. Finally it clears Flags bit 2 and writes
+  CUR_STATE_DESTROY to the object''s state word so it stops being processed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_clearCollisionRegion / object_removePanelReserve / battle_dispatchDestroyEvents /
+    clearEntryOfBattleStateBattleObjectList_800F656 — teardown of the object''s field presence; HP==0
+    path: ldrh r0,[r5,#oBattleObject_HP]; tst; beq -> effect kind 2 + PlaySoundEffect(0x90) = death explosion;
+    HP!=0 path spawns the same type-0 effect with kind 0x14 — a non-lethal removal effect (e.g. vanish/delete);
+    coda writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized and bic bit
+    2 of oObjectHeader_Flags; callees'' known summaries (panel reserve release, destroy-event dispatch,
+    effect spawn wrapper) match an object-removal teardown routine'
+  refs:
+  - bn6f/asm/asm31.s:76053
+  - 0x080005CC PlaySoundEffect
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DB252
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Meaning of ObjectFlags2 bits 0x300000 and what sub_800F90E(0xE) does in that branch
+- What sub_800F8CE checks (likely sprite/visibility state) and why result 0 skips the state change entirely
+- No known caller, so the entry conditions (who calls this and with which objects) are unconfirmed
+- Exact identity of effect kinds 0x14 vs 2 and sound 0x90
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DB252 -> battle_finalizeObjectRemoval
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB252

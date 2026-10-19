@@ -1,0 +1,46 @@
+name: battle_loadCustGaugeGfx
+address: '0x0801DF32'
+kind: function
+status: probable
+summary: Resets the in-battle custom gauge and loads its tile graphics and 16-color palette, then flags
+  the palette for upload.
+interface: () -> r0 = 0 (clobbered by calls); queues VRAM/palette transfers and sets request bit 0x20000
+details: First calls ClearCustGauge to zero the gauge progress. It then queues a small graphics list whose
+  two entries copy tile data from ROM (dword_86E4C1C, dword_86E489C) to VRAM 0x600C7C0 (0x180 bytes) and
+  0x600C440 (0x380 bytes) — the custom gauge tiles. Next it copies 0x20 bytes (16 colors, one BG palette)
+  from dword_86E1C78 into the palette staging buffer byte_3001B00. Finally it ORs bit 0x20000 into the
+  request dword at eStruct2035280+0x40 and dispatches that bit via dispatch_801DA48, which presumably
+  commits the palette in the next frame update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls ClearCustGauge first, tying the function to the custom gauge; gfx list entries target
+    VRAM 0x600C7C0/0x180 and 0x600C440/0x380 — tile graphics, matching gauge tile blocks; 0x20-byte copy
+    to byte_3001B00 is exactly one 16-color palette load from ROM dword_86E1C78; sets request bit 0x20000
+    via eStruct2035280_SetRequestBits_801BECC then immediately dispatches it, marking the palette buffer
+    for upload
+  refs:
+  - bn6f/asm/asm00_2.s:31400
+  - 0x0801DF92 ClearCustGauge
+  - 0x08000B8E QueueGFXTransfersInList
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  reproduce: python3 tools/asmcat.py 0x0801DF32
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact caller/trigger (battle start vs. returning from the custom screen) is unknown since no callers
+  are identified
+- what dispatch_801DA48 does with bit 0x20000 — presumed palette DMA/commit but not verified
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801DF32 -> battle_loadCustGaugeGfx
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DF32

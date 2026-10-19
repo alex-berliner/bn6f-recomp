@@ -1,0 +1,52 @@
+name: ow_bugfragTraderExchange
+address: '0x0809A078'
+kind: function
+status: probable
+summary: 'BugFrag trader interaction: waits for the chatbox to be free, then takes 10 bugfrags, grants
+  one random chip, and opens the ChipTrader text script.'
+interface: (r5/r10 = object/work pointers set up by caller, r0/r1 unused on entry) -> r0 = 0 when idle/done,
+  1 while the trader state (loc_809A0E8) runs; no flags meaningful
+details: First masks bit 0x80 and bit 0x8 of the chatbox/event flag word eFlags2009F38 and reads the chatbox
+  state selector; it only acts when the chatbox is idle (state low bits == 0). It then calls sub_804BD00,
+  which yields a chip id and code in r0/r1 that are stashed into eS200AC80 fields +4/+6, calls GiveChips
+  with count=1 using those values, and calls TakeBugfrags(10) — the classic 10-frag trade. It copies the
+  traded chip id into a per-object counter ([r10,#0x3c]+0xc -> +0xc), refreshes something via sub_803F798,
+  stores the chip id/code into work structs at [r10,#0x2c]+0x4c/+0x50 and r5+0x7c/0x80, then runs script
+  0xF of TextScriptChipTrader86C580C via chatbox_runScript and resets the trader state fields. When flag
+  0x8 is set instead, it only calls sub_809A360([r5,#0x74]) and returns 1, presumably holding the object
+  in its 'trading' state until the exchange finishes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl TakeBugfrags with r0=0xa immediately after bl GiveChips with r2=1: pays 10 bugfrags for
+    one chip; off_809A100 = TextScriptChipTrader86C580C passed to chatbox_runScript with index 0xf; sub_804BD00
+    results stored to eS200AC80+4/+6 (chip id + code) and fed to GiveChips, so the chip is chosen dynamically
+    (likely random); gates on chatbox_mask_eFlags2009F38(0x80)/(0x8) and chatbox_GetState==0 before acting,
+    i.e. a talk-interaction state machine; both exits call sub_809A360([r5,#0x74]) on an object pointer,
+    and work fields at r5+0x74..0x80 are the object''s state block'
+  refs:
+  - bn6f/asm/asm28_0.s:1065
+  - 0x08021AEE GiveChips
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0809A078
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact meaning of the eFlags2009F38 bits 0x8/0x80 and the return-value convention the caller uses (0
+  vs 1)
+- what sub_804BD00, sub_803F798 and sub_809A360 do precisely (random chip pick, frag-count display, object
+  state advance?)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809A078 -> ow_bugfragTraderExchange
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A078

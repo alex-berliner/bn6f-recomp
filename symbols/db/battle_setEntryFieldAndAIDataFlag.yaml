@@ -1,0 +1,51 @@
+name: battle_setEntryFieldAndAIDataFlag
+address: '0x0802E62A'
+kind: function
+status: probable
+summary: Writes a halfword into a 0x1D0-byte battle record, conditionally sets event flag EVENT_2020+value
+  with a save re-encryption, and raises flag 0x10000 in the player's AI data word 0x44.
+interface: (r0 = record index, r1 = halfword value, r2 = suppress-flag) -> r0 = 1; r1..r3, r4-r7 clobbered
+details: Computes record r0 of the 0x1D0-stride array at unk_2036120 and stores r1 (halfword) at record+0x34,
+  so it is a 16-bit counter/value field. If both r0 == 0 and r2 == 0, it calls SetEventFlag with EVENT_2020
+  + r1 — the record index 0 is a trigger case where the stored value also selects which story/event flag
+  gets set — then calls encryption_80070bc to re-encrypt the save after the flag change. Unconditionally
+  afterwards it calls battle_findPlayer(0) to get the player's battle object and passes 0x10000 to SetAIData_Unk_44_Flag,
+  OR-ing bit 0x10000 into the AI-data word at +0x44 (a battle-scoped effect tied to the record update,
+  since a local event flag is only set in the guarded path). Always returns 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh r1,[r0,#0x34] after getEntryPtr_2036120_1D0_802E070: r1 is stored as halfword field +0x34
+    of the indexed record; tst r0,r0 / bne skips SetEventFlag(EVENT_2020 + [sp,#4]) only when r0==0 and
+    r2==0; SetEventFlag is a known story-flag setter; bl encryption_80070bc immediately after SetEventFlag:
+    save re-encryption following a persistent-flag write; bl battle_findPlayer with r0=0 (alliance=false)
+    then SetAIData_Unk_44_Flag with dword_802E944=0x10000 targets the player battle object''s AI word
+    +0x44; single caller sub_802E2C4 is itself undocumented, so caller context does not refine the purpose'
+  refs:
+  - bn6f/asm/asm03_0.s:17842
+  - 0x0802E2C4 sub_802E2C4
+  - 0x0802F114 SetEventFlag
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  - 0x0800FFE4 SetAIData_Unk_44_Flag
+  reproduce: python3 tools/asmcat.py 0x0802E62A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what the 0x1D0-byte record array at unk_2036120 actually is (task/quest table? encounter table?), which
+  would give the game-term meaning of field +0x34
+- what AI-data offset 0x44 bit 0x10000 does in battle
+- why the event flag is only set for record index 0 with r2==0 — the caller sub_802E2C4 would show the
+  intended call sites
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802E62A -> battle_setEntryFieldAndAIDataFlag
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E62A

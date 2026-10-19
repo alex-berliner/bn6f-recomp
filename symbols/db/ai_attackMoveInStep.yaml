@@ -1,0 +1,47 @@
+name: ai_attackMoveInStep
+address: '0x081063A4'
+kind: function
+status: probable
+summary: Per-frame handler of an enemy AI attack that slides the enemy onto the targeted panel, then after
+  a short delay schedules the attack's hit element.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = scratch/void; updates object fields and sets
+  HitElement when the step timer expires
+details: 'On first entry (AttackElement == 0) it initializes the attack: sets AttackElement = 4, plays
+  animation 0x16, applies the object''s facing via object_getFlip/sprite_setFlip, sets collision region
+  1, commits FuturePanelX/Y into PanelX/Y, zeroes Z, recomputes pixel coordinates and syncs the collision
+  record, then loads StepTimer = 4. If the attack''s ScratchVar is nonzero it also calls sub_80E8FC8 (unknown,
+  likely an effect/sound). On subsequent frames it decrements StepTimer; when it reaches 0 it stores HitElement
+  = 0x1C, which presumably makes the generic hit-resolution code apply the attack with element 28.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: first-entry branch writes AttackElement=4 and anim 0x16, then moves FuturePanelX/Y into PanelX/Y
+    and zeroes Z (asm start); calls object_setCoordinatesFromPanels and object_updateCollisionPanels after
+    committing panel coords, confirming a move-onto-panel attack; StepTimer loaded with 4 and decremented
+    on later frames, then HitElement set to 0x1C on expiry; callees object_getFlip/sprite_setFlip/object_setCollisionRegion
+    all take the battle object, matching the r5/r7 AI attack variable block
+  refs:
+  - bn6f/asm/asm31.s:167162
+  - 0x0800E456 object_getFlip
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081063A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what sub_80E8FC8 does (effect, sound or damage?)
+- which attack/element 0x1C corresponds to and which enemy uses this handler
+- the meaning of ScratchVar gating the extra call
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81063A4 -> ai_attackMoveInStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81063A4

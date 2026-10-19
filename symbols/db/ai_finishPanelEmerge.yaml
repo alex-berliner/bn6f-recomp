@@ -1,0 +1,49 @@
+name: ai_finishPanelEmerge
+address: '0x080153EC'
+kind: function
+status: probable
+summary: 'Completes an AI-controlled object''s emergence onto its reserved target panel: commits panel
+  coords, updates collision/sprite, clears invulnerability, and advances the AI attack state.'
+interface: (r5 = battle object, r7 = oAIAttackVars of the AI attack state) -> void; r0 = 4 (HitElement)
+  on return
+details: Sets AIData 0x48 flag bits 0x80000 via SetAIDataUnk0x48Flag, then copies FuturePanelX/FuturePanelY
+  into PanelX/PanelY, releasing the previously reserved panel (object_removePanelReserve). Recomputes
+  the object's coordinates and collision panels, ends post-hit invulnerability, and stores battle_checkEmergeDirectionFlip's
+  result into DirectionFlip, refreshing the sprite and arm position. Clears the charged/PwrAtk state and
+  resets the animation frame from AIData_AIScriptOffset. If RelatedObject2Ptr is set, it writes Param3=1
+  and ORs flag 0x14 into that object's header flags. Finally it writes step timer 6 and HitElement 4 into
+  the oAIAttackVars at r7, advancing the attack sequence to its next step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: FuturePanel->Panel copy plus object_removePanelReserve/object_setCoordinatesFromPanels shows
+    panel-position commit at 0x08015400-0x08015410; battle_checkEmergeDirectionFlip result stored to oBattleObject_DirectionFlip
+    ties this to panel emerge handling; writes to oAIAttackVars_StepTimer/HitElement (r7) show it is a
+    step in an AI attack state machine; callee summaries (removePanelReserve, clearInvulnerableTime, checkEmergeDirectionFlip,
+    clearPwrAtkState) all match emerge-completion semantics; RelatedObject2 notification (Param3=1, flags
+    |= 0x14) suggests it informs a linked object (e.g. the attack target/hologram) of the emerge
+  refs:
+  - bn6f/asm/asm00_2.s:14907
+  - 0x08010312 SetAIDataUnk0x48Flag
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  reproduce: python3 tools/asmcat.py 0x080153EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no caller is known, so the AI script/attack that invokes this step (and what step 6 / element 4 lead
+  into) is unconfirmed
+- exact meaning of the 0x80000 AIData 0x48 flag and the 0x14 RelatedObject flag bit
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80153EC -> ai_finishPanelEmerge
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80153EC

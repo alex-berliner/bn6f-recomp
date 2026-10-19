@@ -1,0 +1,48 @@
+name: ai_attackHopToTargetPanel
+address: '0x08108A5A'
+kind: function
+status: probable
+summary: 'AI attack step: hops the enemy onto the reserved target panel, plays the move anim, then waits
+  out the step timer before leaving attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = undefined; sets ObjectFlags1 currently-moving
+  bit, clears 0x40 flag
+details: On first entry (AttackElement == 0) it sets AttackElement = 4 and anim 3, releases the panel
+  reserve at (TargetPanelX, TargetPanelY) and the object's own future-panel reserve, copies FuturePanelX/Y
+  into PanelX/Y, recomputes pixel coordinates from panels, syncs the collision record/facing via object_updateCollisionPanels,
+  clears flag 0x40 and sets the CURRENTLY_MOVING_1 flag, then loads StepTimer = 0xD. While the timer counts
+  down it does nothing; at zero it calls object_exitAttackState. Two nonzero fields in the attack vars
+  (AiAttackParam and PanelParamFlags2) trigger a call to sub_80B8E58 (unknown, likely a sound or spawn
+  effect).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sets AttackElement=4 and anim 3 then 'bl object_removePanelReserve' with TargetPanelX/Y (0x8108A60-0x8108A76);
+    copies FuturePanelX/Y into PanelX/Y and removes the second reserve before object_setCoordinatesFromPanels/object_updateCollisionPanels;
+    sets ObjectFlags1 bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1 and StepTimer=0xD, waits, then 'bl object_exitAttackState';
+    all callees are battle-object panel/collision/flag helpers, confirming it manipulates one battle object's
+    movement
+  refs:
+  - bn6f/asm/asm31.s:172356
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08108A5A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- purpose of sub_80B8E58 (called for AiAttackParam and PanelParamFlags2)
+- which enemy/AI attack uses element code 4 and whether the anim ID 3 is a shared hop animation
+- meaning of the 0x40 flag cleared via object_clearFlag
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108A5A -> ai_attackHopToTargetPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108A5A

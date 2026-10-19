@@ -1,0 +1,54 @@
+name: object_syncToRelatedArmPosition
+address: '0x080E9B56'
+kind: function
+status: probable
+summary: Repositions a battle object at its related object's arm attachment point, copies the parent's
+  sprite render state, and destroys itself once the parent no longer needs it.
+interface: (r0 = this battle object (in r5)) -> r0 = destroyed (state CUR_STATE_DESTROY) or kept while
+  parent flag 0x10000 set; no meaningful return
+details: 'r5 is a battle object whose RelatedObject1Ptr points to a parent object. It asks getBattleArmPositionMaybe
+  for the attachment offset of slot 0x21 using the parent''s NameID, Alliance and DirectionFlip, then
+  reads the parent''s three world-position words at +0x34, adds the arm offset to X and Z(-ish) fields
+  and raises two of them by 0x60000 (6 fixed-point units), and stores the result into its own +0x34. It
+  then pulls the parent''s sprite render info (flag-0x10 byte, render-info high byte, mosaic/scaling params)
+  and applies alpha, so the child sprite mirrors the parent''s rendering. It recomputes its PanelX/PanelY
+  via object_setPanelsFromCoordinates; if the resulting panel is invalid it clears its own oObjectHeader_Flags
+  bit 2, and bit 2 is then synced to the parent''s bit 2 (visibility inheritance). Finally, if [ExtraVars]
+  points to a nonzero value it reads the parent''s object flag: while bit 0x10000 is set the object survives;
+  otherwise [ExtraVars] is zeroed and the object''s state word is set to CUR_STATE_DESTROY.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: getBattleArmPositionMaybe called with parent NameID/Alliance/Flip and slot 0x21, results added
+    to parent position words at +0x34 (asm lines 2-15); +0x60000 added to two position words and result
+    stored to r5+0x34 — child repositioned relative to parent arm (lines 12-19); obj_getSpriteFlag10AndRenderInfoHigh
+    / sprite_getMosaicScalingParameters / sprite_setAlpha all take parent ptr — render-state inheritance
+    (lines 21-27); object_isCurrentPanelValid clears own flag bit2, which is then OR'd in from the parent's
+    flags (lines 29-42); [ExtraVars] deref and parent-flag 0x10000 test gate CUR_STATE_DESTROY self-destruct
+    (lines 43-56)
+  refs:
+  - bn6f/asm/asm31.s:108040
+  - 0x080E9B14 sub_80E9B14
+  - 0x08018810 getBattleArmPositionMaybe_8018810
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x080E9B56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What object type uses this (which chip/effect spawns it) — need the spawner to name it precisely
+- Exact meaning of fields at +0x34 (X/Y vs X/Z order) and of ExtraVars' pointed-to counter
+- Meaning of parent flag bit 0x10000 (likely 'attack/effect still active')
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E9B56 -> object_syncToRelatedArmPosition
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9B56

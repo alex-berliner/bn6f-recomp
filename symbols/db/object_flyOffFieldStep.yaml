@@ -1,0 +1,46 @@
+name: object_flyOffFieldStep
+address: '0x080D0952'
+kind: function
+status: probable
+summary: 'Per-frame update that flings a battle object off the battlefield: on entry plays a sound and
+  initializes, then each frame moves it by its velocity until it leaves the field and is destroyed.'
+interface: (r0 = unused, r5 = battle object pointer by convention) -> r0 = clobbered; sets oBattleObject_CurPhase/CurState
+  on the object
+details: On the first invocation (CurPhase == 0) it sets the object's phase to 4, plays sound effect 0xB3,
+  and calls sub_80D09BE to finish setup. In phase 4 it adds the object's X/Y velocity fields to its X/Y
+  world position each frame, then recomputes the object's panel coordinates and collision panels. If the
+  resulting panel is still a valid battlefield position, it keeps flying; otherwise it clears the object's
+  collision region and sets CurState to CUR_STATE_DESTROY. This is the classic 'blown/knocked off the
+  field' movement handler for battle entities.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; tst; beq-path sets phase 4 and plays PlaySoundEffect(0xb3)
+    once on entry; adds oBattleObject_XVelocity/oBattleObject_YVelocity into oBattleObject_X/oBattleObject_Y
+    each frame; calls object_setPanelsFromCoordinates, object_updateCollisionPanels, object_isCurrentPanelValid
+    to track battlefield position; on invalid panel calls object_clearCollisionRegion and stores CUR_STATE_DESTROY
+    into oBattleObject_CurState
+  refs:
+  - bn6f/asm/asm31.s:53390
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080D0952
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_80D09BE initializes (likely sets the fling velocity/direction) is unknown, and no caller is
+  known, so the exact gameplay trigger (wind, blow-back, deletion effect) is unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0952 -> object_flyOffFieldStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0952

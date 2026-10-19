@@ -1,0 +1,55 @@
+name: battle_initRoundState
+address: '0x081378D4'
+kind: function
+status: probable
+summary: 'Initializes a battle-overlay scene/round state: wipes video buffers, resets scene records, clears
+  a run of event flags, and sets up the first object''s animation with a screen fade.'
+interface: (r0-r3 unused; r5 = scene state struct base, r10[8] = render-state struct) -> r0 = 0; writes
+  state fields at r5+0x1,0x2,0xc,0xd,0xe,0x1e and render fields at r10[8]+0x0,0x10..0x1a; invokes screen
+  fade
+details: The function wipes VRAM, the 0x3001960 palette buffer, and the 0x2000-byte BG tile block, applies
+  overlay palette slot 0x10, and resets the eStructArr scene records — a full battle-scene visual reset.
+  It zeroes a byte at r5+0xc (cleared as four state bytes), then unless sSubmenu's byte equals 0x18, clears
+  18 consecutive event flags starting at EVENT_BF (entry 0x12), likely round/turn event flags that don't
+  reset in that special submenu mode. It calls five init helpers (sub_8137BF0..F5C) whose result is stored
+  at r5+0x1e, sets a halfword 0x1F40 (8000) at r10[8] plus six zero halfwords at +0x10..0x1a, sets state
+  bytes r5+1=4 and r5+2=0, and computes the initial animation byte for object 0 via the 0xFF-terminated
+  anim-table walker, OR-ing the table entry<<4 into the state bytes. Finally it triggers SetScreenFade(8,
+  0x10), a fade-in/out pair, and returns 0. This reads like the start-of-battle/round setup step of the
+  overlay's state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl zeroFillVRAM/ZeroFill_byte_3001960/ZeroFillGFX30025c0 — full video-buffer wipe typical of
+    battle scene start; bl battle_resetEStructRecords_8046664 — resets the battle-overlay scene record
+    array; movflag EVENT_BF; mov r2,#0x12; bl ClearEventFlagRangeFromImmediate — clears 18 flags unless
+    sSubmenu byte == 0x18; bl battleObject_advanceAnimTableBy0xFF_8120CC8 with dword_81378A0 table — initializes
+    object 0's anim state into r5+0xc..0xe; mov r0,#4 strb [r5,#1]; bl SetScreenFade(8,0x10) — advances
+    state machine and starts fade, consistent with round/scene init
+  refs:
+  - bn6f/asm/asm36.s:15923
+  - 0x0802F1A8 ClearEventFlagRangeFromImmediate
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x080017E0 ZeroFill_byte_3001960
+  reproduce: python3 tools/asmcat.py 0x081378D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No caller is known, so the exact game context (battle intro vs. round restart vs. specific boss cutscene)
+  is unconfirmed
+- What the five callee helpers sub_8137BF0..sub_8137F5C initialize, and the meaning of the 0x1F40 halfword
+  at r10[8]
+- Why sSubmenu byte 0x18 skips the event-flag clearing
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81378D4 -> battle_initRoundState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81378D4

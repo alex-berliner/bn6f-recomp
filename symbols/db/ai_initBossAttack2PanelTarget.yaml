@@ -1,0 +1,52 @@
+name: ai_initBossAttack2PanelTarget
+address: '0x080F5AA0'
+kind: function
+status: probable
+summary: 'Initializes one boss AI attack mode: reads the difficulty tier, loads attack 2''s damage pair,
+  installs the panel-choose/state handlers, and targets the opposing player before entering attack state
+  0xb.'
+interface: (r5 = boss BattleObject, r7 = boss AIAttackVars struct) -> r0 = destroyed; writes tier, init
+  flag, callbacks, param and target into the AI attack vars
+details: 'The routine reads the AI difficulty tier (only meaningful for AI data version 4) and stores
+  it into oAIAttackVars_AiDifficultyTier, then sets InitFlag to 3 to mark this attack setup as done. It
+  loads the damage word pair for boss attack index 2 via ai_loadBossAttackDamagePair. Two function pointers
+  are installed: a panel-choose callback (sub_80F61B6) into PanelChooseCallback and another handler (sub_80F61E4)
+  into ScratchVar, implying the attack depends on panel selection. It stores r5+0x60 (a sub-structure
+  of the boss object, likely its attack/panel data block) as AiAttackParam, resolves the opposing-side
+  player via battle_findPlayer(alliance^1) into TargetObjectPtr, and finally starts attack state 0xb through
+  object_setAttack0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] / InitFlag=3 right after battle_getAiDifficultyTier
+    call (asm lines 2-5); mov r0,#2; bl ai_loadBossAttackDamagePair — damage pair for attack index 2;
+    off_80F5B7C/off_80F5B80 stored into oAIAttackVars_PanelChooseCallback and ScratchVar — panel-choose
+    and per-step handlers; eor r0,r1; bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    — targets the opposing player; mov r0,#0xb; bl object_setAttack0 — enters attack state 0xb
+  refs:
+  - bn6f/asm/asm31.s:132539
+  - 0x080F594C ai_decideAttackPattern
+  - 0x080F59E8 ai_resetAttackIfNotMoved
+  - 0x080F5AD4 ai_loadBossAttackDamagePair
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080F5AA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What attack this index-2 setup corresponds to for which boss (depends on the versioned damage tables
+  at ai_loadBossAttackDamagePair)
+- What object field +0x60 holds and how sub_80F61B6/sub_80F61E4 use AiAttackParam and ScratchVar
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5AA0 -> ai_initBossAttack2PanelTarget
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5AA0

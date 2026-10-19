@@ -1,0 +1,51 @@
+name: ai_attackStateShakeAndSpawnUpdate
+address: '0x08104290'
+kind: function
+status: probable
+summary: 'Battle AI attack step handler: on first run it launches an attack (anim 0x42, camera shake,
+  sfx 0x1C8, spawns an effect/attack object at the target), then counts down and tears down the attack
+  state when the timer expires.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; StepTimer is used as the per-step countdown
+details: 'Runs as an AI attack-state update; r5 is the acting battle object and r7 its oAIAttackVars.
+  On entry, if oAIAttackVars_AttackElement is still 0 it performs the one-time launch: sets element to
+  4, current anim to 0x42, Z to 0, collision region to 2 via object_setCollisionRegion, calls sub_801DC7C(0,0),
+  clears ObjectFlags1 bit 0x40, sets the CURRENTLY_MOVING flag, requests a camera shake (magnitude 2,
+  duration 0x1e) and plays sound 0x1C8 (0xC9+0xFF). It then packs {Timer*2 | Timer<<8 | SubStepIndex<<16}
+  and calls sub_80E9D0C with that, oAIAttackVars_Damage and oAIAttackVars_TargetObjectPtr — apparently
+  spawning the attack/effect object parameterized for the target — and sets StepTimer from oAIAttackVars_AttackDuration.
+  On subsequent calls it simply decrements StepTimer; when it reaches 0 it switches the anim to 0x40 and
+  calls object_exitAttackState_801171C to clean up the attack. The exact attack identity (which boss/enemy
+  uses it) is not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0 / bne on oAIAttackVars_AttackElement guards a one-time init branch that sets element=4
+    and anim 0x42; bl camera_initShakeEffect_80302a8(2,0x1e) and PlaySoundEffect(0x1c8) fire only during
+    that launch; args packed from Timer/SubStepIndex/Damage/TargetObjectPtr are passed to sub_80E9D0C,
+    i.e. a spawn with target parameters; ldrh StepTimer / sub 1 / bgt loop, then anim 0x40 + bl object_exitAttackState_801171C
+    shows a timed attack teardown
+  refs:
+  - bn6f/asm/asm31.s:162813
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08104290
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_80E9D0C spawns (its object kind and use of the packed timer/substep word) — knowing it would
+  name the attack precisely
+- Which caller/AI mode table invokes this handler, to identify the boss or enemy attack this belongs to
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8104290 -> ai_attackStateShakeAndSpawnUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104290

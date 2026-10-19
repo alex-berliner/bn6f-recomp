@@ -1,0 +1,50 @@
+name: battle_setupObjectSpriteAnim
+address: '0x0801BE2A'
+kind: function
+status: probable
+summary: Loads a sprite and its animation data onto the battle object in r5 from a packed word argument,
+  then applies the shadow flag and current facing flip.
+interface: '(r0 = packed: byte0 = sprite id, byte1 = anim id for oBattleObject_CurAnim, byte2 = sprite_load
+  arg, byte3 = shadow flag) -> r0 = 1; object passed in r5'
+details: 'Unpacks r6 = r0: byte2 and byte0 are passed to sprite_load (r0 = 0x80 as a fixed first argument,
+  likely a bank/flags selector), then sprite_loadAnimationData is chained. Byte3 selects shadow rendering:
+  nonzero calls sprite_hasShadow, zero calls sprite_noShadow. Byte1 is stored to oBattleObject_CurAnim
+  and 0xFF to oBattleObject_CurAnimCopy (forcing an anim restart). Finally object_getFlip''s result is
+  fed to sprite_setFlip so the sprite matches the object''s effective facing, and the function returns
+  1. The stale references off_801BE68/off_801BE6C (PanelOffsetListsPointerTable, byte_8019C34) appear
+  to be pool data misattributed to this tail, not code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_801BE2A: r1/r2 extracted from r6 bytes 2/0 and passed with r0=0x80 to sprite_load, then
+    sprite_loadAnimationData; sub_801BE2A: lsr r0,r6,#0x18; tst; beq picks sprite_hasShadow vs sprite_noShadow
+    (byte3 = shadow flag); sub_801BE2A: byte1 stored to [r5,#oBattleObject_CurAnim] with 0xFF to CurAnimCopy;
+    sub_801BE2A: object_getFlip result passed straight to sprite_setFlip; All callees operate on the battle-object
+    sprite state, matching the oBattleObject_ field stores'
+  refs:
+  - bn6f/asm/asm00_2.s:26809
+  - 0x080C0680 sub_80C0680
+  - 0x080E3174 sub_80E3174
+  - 0x080E5734 sub_80E5734
+  - 0x0800E456 object_getFlip
+  - 0x08002E3C sprite_hasShadow
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x0801BE2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Meaning of the fixed 0x80 first argument to sprite_load (bank/flag?) and of the byte2 parameter
+- Which callers (sub_80C0680, sub_80E3174, sub_80E5734) build the packed argument to confirm field semantics
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801BE2A -> battle_setupObjectSpriteAnim
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801BE2A

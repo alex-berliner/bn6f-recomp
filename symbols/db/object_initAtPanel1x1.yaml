@@ -1,0 +1,52 @@
+name: object_initAtPanel1x1
+address: '0x080CDFA4'
+kind: function
+status: probable
+summary: Initialization for a battle object placed on panel (1,1) that sets up a large collision region
+  and enters its update state.
+interface: (r5 = battle object, r0 unused) -> r0 = 1 on success, 0 if object was freed; no flags guaranteed
+details: Stores panel X=1 and Y=1 into the object at oBattleObject_PanelX/Y, then calls object_createCollisionData;
+  if no slot is available it frees the whole object via object_freeMemory and returns 0. Otherwise it
+  initializes the collision block with object_setupCollisionData (r2=0x18 as its size/parameter, r3=0),
+  sets collision region 0x80, ORs the flag word 0x1000000 (bit 24, likely an untargetable/hide-type flag)
+  into the ObjectFlags1 word, and refreshes collision state with object_presentCollisionData. It then
+  stores CollisionDataPtr+0x84 into oBattleObject_ExtraVars and zeroes ExtraVars+4, presumably reserving
+  scratch state at the end of the collision block. Finally it sets the object's state to CUR_STATE_UPDATE,
+  calls sub_80CDFEE (first update pass), and writes 1 to ExtraVars+4 before returning 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0, [r5,#oBattleObject_PanelX/Y] with r0=1 pins the object to panel (1,1); bne on object_createCollisionData
+    falls through to object_freeMemory + pop {pc}: alloc-fail frees the object; object_setCollisionRegion(0x80)
+    and object_setFlag1(0x1000000) configure an unusual full/odd collision region and a high flag bit;
+    ExtraVars = CollisionDataPtr+0x84, ExtraVars+4 zeroed then set to 1 after the first sub_80CDFEE call:
+    per-object state scratch; r0=#CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    before calling sub_80CDFEE'
+  refs:
+  - bn6f/asm/asm31.s:47746
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CDFA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What game object uses this init — no callers known; finding the spawn site would identify the entity
+  (a hidden/field-effect object?)
+- Meaning of collision region 0x80 and flag 0x1000000 in the collision flag tables
+- What sub_80CDFEE does and what the ExtraVars+4 flag toggles between first and later update calls
+- Layout of the collision-data struct around offset 0x84 to confirm ExtraVars points to trailing scratch
+  space
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CDFA4 -> object_initAtPanel1x1
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDFA4

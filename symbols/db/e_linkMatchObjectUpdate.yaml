@@ -1,0 +1,54 @@
+name: e_linkMatchObjectUpdate
+address: '0x08130A04'
+kind: function
+status: probable
+summary: Per-frame state-machine update for an interactive object that matches a looked-up record against
+  the eLinkState global and runs text scripts 0x40/0x41 from eTextScript201BA20.
+interface: (r0 = ? (unused), r5 = object work struct, preloaded) -> r0 = ?; sets state bytes [r5+0x10]/[r5+2]/[r5+0x1f],
+  counters [r5+0x26]/[r5+0x28]/[r5+0x2a]
+details: 'Sets state [r5+0x10]=0x20, calls sub_81312D8, and dispatches on eStruct200BC30''s mode: result
+  4 fades the screen via sub_81313C0/sub_8131210, result 1 just ticks sub_8131570/sub_8131458. Bits 0x10/0x8
+  of the dispatch result gate a branch where, if eStruct200BC30_getJumpOffset00 is 0, it sets [r5+2]=0x30,
+  [r5+0x1f]=4, runs text script 0x41 and sets a 0xf0 timer at [r5+0x28]. Otherwise it fetches eLinkState,
+  calls sub_81323B0 (0xffffffff = no record), and compares the found record''s word at +4 with eLinkState+0x1c
+  and halfword at +2 with eLinkState+0xa across a 0x10-stride range, aborting on any mismatch. With a
+  match, sub_8132430''s result drives branches: <=2 sets state 4 (and script 0x40 with final state 3 or
+  4 depending on [r5+0x26]==8), result 4 compares the record''s two halfwords at +0xa (entry[0] vs entry[1])
+  and either runs script 0x41 with a reset record and [r5+0x2a]=0xfed9, or calls sub_813178C; result 0xff
+  waits for the screen fade; other results require a newly pressed B button (sub_8131768). Every exit
+  path ticks sub_8131570 and sub_8131458.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_803EAE4 result 4 path: bl sub_81313C0 / IsScreenFadeActive / bl sub_8131210 — fade-driven
+    state advance; bit 0x8 branch: bl eStruct200BC30_getJumpOffset00, cmp r0,#0 beq loc_8130B12 -> script
+    0x41 via chatbox_runScript_803FD9C_on_eTextScript201BA20; loc_8130A62 loop compares [rec+4] vs [r6=eLinkState+0x1c]
+    and [rec+2] vs [r6+0xa] at 0x10 stride, bne exits on mismatch; cmp r0,#2 bgt after sub_8132430; <=2
+    path runs script 0x40 and writes 3 or 4 to [r5+0x10] based on [r5+0x26]==8; loc_8130AC8 compares ldrh
+    [r0,#0xa] vs [r0+0x10,#0xa] then resets record fields and runs script 0x41 with 0xfed9 in [r5+0x2a]'
+  refs:
+  - bn6f/asm/asm36.s:1271
+  - 0x0811F7EC IsButtonPressed
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  reproduce: python3 tools/asmcat.py 0x08130A04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What game entity owns the r5 work structure (no known callers to identify it)
+- What text scripts 0x40 and 0x41 in eTextScript201BA20 say, which would pin down the event's narrative
+  role
+- What sub_81323B0's record list actually contains and how it relates to eLinkState fields +0xa/+0x1c
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8130A04 -> e_linkMatchObjectUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130A04

@@ -1,0 +1,51 @@
+name: battle_objectSpawnForwardDash
+address: '0x080CE83C'
+kind: function
+status: probable
+summary: 'Spawn/entry-state handler for a battle object: loads its sprite, positions it on its panel,
+  gives it forward velocity with a sound effect, and switches it to the normal update state.'
+interface: (no args; r5 = battle object header) -> r0 = 0 on success path (state set), object freed and
+  returns if sprite init fails
+details: Sets flag bit 1 in oObjectHeader_Flags, then initializes the object's sprite/collision via battleObject_initSpriteAndCollision
+  with sprite resources 0x1000c0b and 0x7050100; on failure it frees the object and returns. On success
+  it recomputes pixel coordinates from panel coordinates, reads the object's facing direction (object_getFrontDirection,
+  +1/-1) and stores direction*0x50000 into oBattleObject_XVelocity, i.e. a fixed-point 5 px/frame dash
+  in the facing direction. It refreshes collision state via object_presentCollisionData, plays sound effect
+  0x120, and sets oBattleObject_CurState to CUR_STATE_UPDATE so the per-frame update handler takes over.
+  The r5-based access and state-field write show this runs as a state/spawn handler with the object pointer
+  held in r5 rather than passed in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/strb sets oObjectHeader_Flags bit 1, then battleObject_initSpriteAndCollision_8011504(0x1000c0b,
+    0x7050100) with object_freeMemory on failure (asm at 80CE83C-80CE854); str r0,[r5,#oBattleObject_XVelocity]
+    stores object_getFrontDirection() * 0x50000 (asm at 80CE85C-80CE868); PlaySoundEffect(0x21+0xff =
+    0x120) after object_presentCollisionData (asm at 80CE86C-80CE874); mov r0,#CUR_STATE_UPDATE; strb
+    r0,[r5,#oBattleObject_CurState] transitions to the running state (asm at 80CE878-80CE87C); callee
+    set object_setCoordinatesFromPanels and object_presentCollisionData match a battle-object spawn setup
+    sequence
+  refs:
+  - bn6f/asm/asm31.s:48937
+  - 0x080005CC PlaySoundEffect
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CE83C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which object uses this handler — its sprite resources and sound 0x120 would identify the specific enemy/attack
+- 'Exact caller/context: no callers known, so whether this is a spawn state or an action state handler
+  is inferred from the CUR_STATE_UPDATE transition'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CE83C -> battle_objectSpawnForwardDash
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE83C

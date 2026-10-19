@@ -1,0 +1,49 @@
+name: battle_initPanelObject
+address: '0x080D1A28'
+kind: function
+status: probable
+summary: 'Battle-object spawn initializer: places the object on its panel, allocates its collision data,
+  and switches it into its update state.'
+interface: (r5 = battle object) -> r0 = destroyed; calls object_freeMemory and returns if collision slot
+  allocation fails
+details: Recomputes the object's pixel X/Y from its panel coordinates via object_setCoordinatesFromPanels,
+  sets oBattleObject_Z to 0x30, then calls object_createCollisionData; on failure (r0==0) it frees the
+  object entirely via object_freeMemory. On success it configures the collision slot with object_setupCollisionData
+  using the object's Param2/Param3 and constant 3, stores Param4 as the hit effect (object_setCollisionHitEffect),
+  clears the collision region, refreshes the collision state for the frame (object_presentCollisionData),
+  and writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object's
+  per-frame update handler (sub_80D1A64) takes over next.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels + str 0x30 to oBattleObject_Z positions the object on its
+    panel at fixed height; bl object_createCollisionData followed by tst/bne and bl object_freeMemory
+    on failure shows init-or-free spawn logic; ldrb Param2/Param3 with mov r3,#3 into object_setupCollisionData
+    and Param4 into object_setCollisionHitEffect configures the collider from object params; mov #CUR_STATE_UPDATE
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized plus bl sub_80D1A64 transitions to the update
+    phase'
+  refs:
+  - bn6f/asm/asm31.s:55673
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D1A28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact meaning of the constant 3 passed to object_setupCollisionData (dimension/team flag?)
+- Which object type uses this initializer — no callers known, so the spawning context and what sub_80D1A64
+  does are unidentified
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1A28 -> battle_initPanelObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1A28

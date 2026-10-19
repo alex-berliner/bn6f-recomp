@@ -1,0 +1,53 @@
+name: battle_objectStepCollision
+address: '0x080DC2D4'
+kind: function
+status: probable
+summary: 'Per-frame collision routine for a battle object (r5): tears down old collision data, spawns
+  hit effects, then dispatches the object''s current action via a table, or destroys the object if the
+  battle is over.'
+interface: (r0 = object handle/id, r5 = oBattleObject) -> r0 = clobbers; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_DESTROY on battle over
+details: Starts by removing the object's collision data (object_removeCollisionData) and spawning a hit-effect
+  object for its last collision (object_spawnCollisionEffect), then checks battle_isBattleOver. While
+  the battle continues, it reads oBattleObject_CurAction from r5, indexes a dispatch table (off_80DC308
+  -> off_80DC30C) with it, and jumps to the handler in thumb mode via mov lr, pc / bx r1; this instance's
+  table has only one entry (sub_80DC310), after which it refreshes collision state via object_presentCollisionData.
+  If the battle is over, it instead clears the object's collision region byte, zeroes the word at oBattleObject_ExtraVars,
+  and sets the object's state field to CUR_STATE_DESTROY so the object tears itself down. The table pointer
+  is loaded through a double indirection (off_80DC308 points to off_80DC30C), suggesting per-object-type
+  dispatch tables shared by many objects using this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl object_removeCollisionData and bl object_spawnCollisionEffect, matching per-frame
+    collision teardown/effect logic; bne after bl battle_isBattleOver branches to a block that stores
+    CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized; ldrb r0,[r5,#oBattleObject_CurAction]
+    + ldr r1,[r1,r0] + mov lr,pc / bx r1 is an action dispatch table jump (single entry sub_80DC310);
+    battle-over path also zeroes [r7] where r7 = [r5,#oBattleObject_ExtraVars] and tail-calls object_clearCollisionRegion;
+    normal path ends with bl object_presentCollisionData before returning
+  refs:
+  - bn6f/asm/asm31.s:78226
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DC2D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no callers are known, so whether this is a generic per-object step invoked from the main object loop
+  or a specific handler variant is unconfirmed
+- the meaning of oBattleObject_ExtraVars being zeroed on destruction, and what sub_80DC310 (the sole table
+  entry) does, are not shown
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DC2D4 -> battle_objectStepCollision
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC2D4

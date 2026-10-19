@@ -1,0 +1,53 @@
+name: battle_processObjectHitState
+address: '0x080C5FDE'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object''s hit state: strips its collision data, spawns the hit
+  effect, counts down a timer, and destroys the object when the hit resolves or the battle ends.'
+interface: (r0-r4 = caller args passed through to callees; r5 = battle object pointer) -> r0 = destroyed
+  (0) or still active (nonzero) from battle_isBattleOver/object_presentCollisionData; flags from tst
+details: Acts as the per-frame 'hit' handler for the battle object at r5. It first tears down the object's
+  collision data and spawns the hit-effect object at the recorded collision point (jittered by RNG), so
+  the effect fires once when the hit begins. It then returns early with nonzero r0 if the battle is over,
+  if the object's Timer (oBattleObject_Timer) counts below zero, or if the collision record's flags word
+  (oCollisionData_FlagsFromCollision) is nonzero; otherwise it refreshes the object's collision state
+  for the frame via object_presentCollisionData. On any of the terminating conditions it clears bit 1
+  (present/active) of oObjectHeader_Flags, clears the collision region, and stores CUR_STATE_DESTROY into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized, so the object scheduler will delete it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / bl object_spawnCollisionEffect back-to-back: hit begins by
+    unregistering the victim and spawning its hit effect; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1;
+    blt destroy: timed lifetime gate typical of a one-shot hit state; ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    tst r0,r0; bne destroy: exits once collision flags record the hit as processed; bl object_presentCollisionData
+    before the early-return path: normal frames still run shared collision processing; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]: hands the object to the destroy
+    state, matching battle object lifecycle conventions'
+  refs:
+  - bn6f/asm/asm31.s:30461
+  - 0x080C5F84 sub_80C5F84
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080C5FDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- The only caller sub_80C5F84 is undocumented, so which object kind or state-action dispatches into this
+  handler is unconfirmed
+- Exact meaning of bit 1 in oObjectHeader_Flags and of nonzero oCollisionData_FlagsFromCollision could
+  refine the summary
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C5FDE -> battle_processObjectHitState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5FDE

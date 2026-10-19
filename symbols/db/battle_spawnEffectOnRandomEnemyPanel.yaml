@@ -1,0 +1,50 @@
+name: battle_spawnEffectOnRandomEnemyPanel
+address: '0x080BD2D8'
+kind: function
+status: probable
+summary: Picks a random enemy-occupied panel in front of the battle object and spawns an effect object
+  there.
+interface: (r5 = battle object) -> r0 = spawned effect handle/0; r0-r3, r4-r7 clobbered
+details: Starting at PanelX plus the front direction, it sweeps columns until off-grid; for each column
+  it checks rows 1-3, recording (col<<4|row) into a stack buffer whenever the panel occupant's oPanelData_Alliance
+  differs from the object's oBattleObject_Alliance. If any enemy panels were found, GetPositiveSignedRNG
+  is divided by the count via SWI 6 (Div) and the remainder indexes the buffer. The chosen column/row
+  go through object_getCoordinatesForPanels, object_getFlip supplies horizontal facing (<<8 added to the
+  effect ID), and spawn_t1_0x0_EffectObject spawns effect 0x21, or 0x16 if oBattleObject_Param1 is nonzero.
+  If no enemy panel is found, r6 stays 0 and division by zero would fault — callers presumably guarantee
+  a target.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Alliance check 'cmp r1, r2; beq' skips own-side panels while collecting col<<4|row bytes (loc_80BD2EE..80BD318);
+    svc 6 with r1=count after GetPositiveSignedRNG is SWI Div; remainder picks the random entry from the
+    stack buffer; lsr/lsl split of the picked byte into column (>>4) and row (&0xF) feeds object_getCoordinatesForPanels;
+    mov r4,#0x21 / 0x16 on oBattleObject_Param1 plus flip<<8 passed to spawn_t1_0x0_EffectObject
+  refs:
+  - bn6f/asm/asm31.s:11091
+  - 0x080BCF7A sub_80BCF7A
+  - 0x080BD156 sub_80BD156
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080BD2D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which in-game attack/chip uses this (effect IDs 0x21 vs 0x16) — callers sub_80BCF7A/sub_80BD156 would
+  tell
+- Whether the sweep also should include the object's own starting column or stops strictly at adjacent-and-beyond
+- Exact meaning of oBattleObject_Param1 selecting the 0x16 variant
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BD2D8 -> battle_spawnEffectOnRandomEnemyPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD2D8

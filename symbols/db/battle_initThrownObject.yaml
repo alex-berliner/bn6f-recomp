@@ -1,0 +1,49 @@
+name: battle_initThrownObject
+address: '0x080DE024'
+kind: function
+status: probable
+summary: 'Initializes a battle object as a thrown/tossed item: loads its sprite, aims an arc trajectory
+  from its current position to the panel given in Param3/Param4, and enters the update state.'
+interface: (r5 = battle object header) -> void; sets oBattleObject_X/Y/ZVelocity, Timer=20, CurState=CUR_STATE_UPDATE
+details: Sets an object-header flag bit (|2), loads sprite (0x80, 0xc, 0x4d), disables its shadow, resets
+  the animation to 0 and reloads animation data, then mirrors the sprite to face per object_getFlip. It
+  reads oBattleObject_Param3/Param4 as a target panel column/row, converts them to screen pixels via object_getCoordinatesForPanels,
+  and calls math_getThrowSpeeds with r4=0x14 (peak height) and constant 0xffff7778 (negative 16.16 gravity
+  term) to compute X/Y/Z velocities stored at +0x34 onward, so the object arcs onto that panel. Finally
+  it sets a 20-frame timer and switches the object's state to CUR_STATE_UPDATE so the flight is simulated
+  each frame. Because it fully configures velocity, sprite, and state, it is almost certainly the spawn/init
+  handler for a thrown projectile or tossed object in battle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,oBattleObject_Param3]/[Param4] then object_getCoordinatesForPanels feeds math_getThrowSpeeds,
+    whose r0/r1/r2 results are stored into oBattleObject_X/Y/ZVelocity; ldr r6, dword_80DE138 =0xffff7778
+    (negative fixed-point constant passed to math_getThrowSpeeds, consistent with gravity); sprite_load(0x80,0xc,0x4d)
+    + sprite_noShadow + sprite_setAnimation(0) + object_getFlip/sprite_setFlip configure the object's
+    visuals; mov r0,#CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState] with Timer=0x14 ends the routine
+    like other battle spawn handlers
+  refs:
+  - bn6f/asm/asm31.s:82139
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080DE024
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which object/sprite 0x4d is and which enemy move or item toss invokes this — no caller is known
+- Exact meaning of r4=0x14 and the 0xffff7778 constant in math_getThrowSpeeds (assumed arc height and
+  gravity)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DE024 -> battle_initThrownObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE024

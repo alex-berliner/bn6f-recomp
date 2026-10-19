@@ -1,0 +1,51 @@
+name: rfu_handleConnectionEvent
+address: '0x08145658'
+kind: function
+status: probable
+summary: 'Wireless-adapter connection state-machine dispatcher: handles one link event against the rfu
+  connection struct at 200FE00, advancing/clearing search-and-connect states.'
+interface: (r0 = event id (0x10..0x3D dispatch range), r1 = param (0 = action allowed, nonzero = ignored))
+  -> r0 = result/status of the branch taken; clobbers r4-r7, uses eStruct200FE00
+details: 'First checks byte 200FE0E as a busy/queue flag — if zero it returns immediately, otherwise clears
+  it and switches on (r0 - 0x10) over a 46-entry jump table (most cases are defaults). Each case implements
+  a step of the librfu parent/child connection flow: copying state byte 0x05 into 0x04 (prev state / current
+  state pair), setting new states, decrementing the countdown at 200FE1A and transitioning on expiry,
+  and calling rfu APIs — rfu_getConnectParentStatus into buffer 200FE10, rfu_REQ_endSearchParent when
+  a parent slot reports status 4 via dword_2010CC0, plus rfu_clearSlot, rfu_NI_CHILD_setSendGameName,
+  rfu_CHILD_getConnectRecoveryStatus elsewhere. Cases store error/parent-count codes into word 200FE14
+  and word 200FE1E, then signal via sub_81461B0. Several branches bail (returning early) unless r1 ==
+  0, so r1 acts as an ''abort/no-op'' flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: callees rfu_getConnectParentStatus (loc_81458BC/loc_8145904) and rfu_REQ_endSearchParent (loc_8145804)
+    show this drives the wireless parent-search/connect flow; switch on (r0-0x10) bounded to 0x2D with
+    jpt_814568C of 46 entries is an event/message dispatcher, not an ordinary routine; state pair byte_200FE04/byte_200FE05
+    copied between each other on transitions is a classic current/next state machine update; word_200FE1A
+    decremented and triggering state change on zero is a per-state timeout timer; guard byte 200FE0E cleared
+    at entry and early-out when zero marks it as a once-per-event queue flag
+  refs:
+  - bn6f/asm/libs.s:3030
+  - 0x0814A750 rfu_CHILD_getConnectRecoveryStatus
+  - 0x0814ABB8 rfu_NI_CHILD_setSendGameName
+  - 0x0814957C rfu_REQ_RFUStatus
+  reproduce: python3 tools/asmcat.py 0x08145658
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact meaning of each event id in the 0x10..0x3D range (jump-table semantics for cut cases)
+- full layout of eStruct200FE00 (fields 0x07, 0x0B, 0x1E beyond what is touched here)
+- which game code calls this dispatcher and with which event ids, to confirm the exact trigger source
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8145658 -> rfu_handleConnectionEvent
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8145658

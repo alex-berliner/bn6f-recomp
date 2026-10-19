@@ -1,0 +1,49 @@
+name: battle_showCommError
+address: '0x08007EB8'
+kind: function
+status: probable
+summary: 'Aborts an ongoing battle as a link/communication error: pauses the battle, resets the link hardware,
+  shows the appropriate comm-error message, and switches the battle state to 4.'
+interface: () -> void; writes battle state byte (oBattleState_Index_01 = 4); clobbers r4
+details: 'It pauses the battle (PauseBattle), resets SIO/link buffers, then clears flag bits 0x280000
+  in the eStruct flags word and dispatches on the updated value. After some mode setup (setTwoStructs(5),
+  sub_80062EC), it reads the current PET navi and the battle-effects bitmask. Message index selection:
+  if effects bit 0x200000 is set the navi is forced to 0; if bit 0x8 is set the index is 0x5c + navi,
+  otherwise it is navi*4, plus 3 when bit 0x20 is clear. That index is passed to chatbox_runScript with
+  the TextScriptCommError87370C0 archive, and finally the battle-state byte is set to 4 to leave the battle
+  into the error/exit flow.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl PauseBattle + bl link_resetHardwareAndClearLinkBuffers_81440D8 at entry: tear down an in-progress
+    linked battle; ldr r0,=0x280000 / flags_clearBits / dispatch: clears battle-related flag bits; bl
+    GetCurPETNavi + bl GetBattleEffects with tst against 0x200000/0x8/0x20 drives the message-index arithmetic;
+    chatbox_runScript called with off_8008014 = TextScriptCommError87370C0, so the displayed script is
+    a comm-error message; strb #4, [r5,#oBattleState_Index_01] at end: transitions the battle state machine
+    to state 4'
+  refs:
+  - bn6f/asm/asm00_1.s:10791
+  - 0x0802D246 GetBattleEffects
+  - 0x080010B6 GetCurPETNavi
+  - 0x0800A028 PauseBattle
+  reproduce: python3 tools/asmcat.py 0x08007EB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact meaning of battle-state 4 (likely error/exit screen) and what sub_801FE64, setTwoStructs(5) and
+  sub_80062EC prepare
+- What the 0x280000 flag bits and effect bits 0x8/0x20/0x200000 represent semantically (they only pick
+  which error text variant shows)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8007EB8 -> battle_showCommError
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8007EB8

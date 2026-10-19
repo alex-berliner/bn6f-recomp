@@ -1,0 +1,53 @@
+name: object_runVanishPhase
+address: '0x080D4DF0'
+kind: function
+status: probable
+summary: 'Battle-object phase handler for an object that has hidden itself: keeps it out of collision,
+  periodically queues a battle effect tied to its panel/element, and destroys it (with a poof effect)
+  once its vanish timer expires or the battle ends.'
+interface: (r5 = battle object pointer) -> r0 = clobbered; sets oBattleObject_CurPhase to 4, or destroys
+  the object via CUR_STATE_DESTROY
+details: The routine first bails out during time-stop, clears oBattleObject_PreventAnim and removes the
+  object from its collision region (so it is intangible). It then calls sub_80D4FF6 on oBattleObject_ExtraVars;
+  a 0xff result means the hidden state is finished, otherwise the returned value is stored into oBattleObject_Alliance
+  (the object apparently changes side/identity while hidden). It fires dispatch_801DACC with flag 0x40,
+  computes an effect id via sub_80E6878 from oBattleObject_PanelX/PanelY/Element (r3=0), Params and DamageAndStaminaDamageCounterDisabler
+  with base 0x75, and passes it to battle_queueEffectRequest as an active effect request with side flag
+  1, then advances oBattleObject_CurPhase to 4. In the battle-over/expired path it clears the collision
+  region again, reads three words at r5+0x34 (position/anim data, y-offset + 0x100000) to spawn a type-0
+  effect object, clears object flag bit 1 (visible/active), and sets the combined state word to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_clearCollisionRegion plus strb r0,[r5,#oBattleObject_PreventAnim] show the object
+    is made intangible/inactive while in this phase; cmp r0,#0xff / beq loc_80D4E40: sub_80D4FF6''s 0xff
+    result routes to the destroy path instead of storing oBattleObject_Alliance; bl battle_queueEffectRequest
+    with r2 from sub_80E6878(PanelX,PanelY,Element,0,Params,Damage...,0x75) queues a position/element-derived
+    battle effect; strb r0,#4 into oBattleObject_CurPhase advances the object''s phase machine after queuing
+    the effect; destroy path: ldmia r5+0x34 into spawn_t1_0x0_EffectObject, bic flag bit 1 of oObjectHeader_Flags,
+    then CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:62676
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0800BF16 battle_queueEffectRequest
+  reproduce: python3 tools/asmcat.py 0x080D4DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Unknown what sub_80D4FF6 does with oBattleObject_ExtraVars (timer/counter semantics) and what 0x75-based
+  id sub_80E6878 computes — the exact in-game object (e.g., a burrowing or vanishing trap) needs an identifying
+  caller or effect table
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D4DF0 -> object_runVanishPhase
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4DF0

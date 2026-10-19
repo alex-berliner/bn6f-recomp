@@ -1,0 +1,50 @@
+name: ai_attackTimerFinishStep
+address: '0x080155CC'
+kind: function
+status: probable
+summary: 'Per-frame step of an enemy AI attack: waits 20 frames (state 4), then marks a table byte, clears
+  AI/battle flags and exits the attack state.'
+interface: (r5 = battle object, r7 = object's AI attack vars) -> r0 = 0 or clobbered; called per frame
+  while the attack is active
+details: 'On first entry (AttackElement==0) it stores a 0x14-frame timer and writes 4 into oAIAttackVars_AttackElement,
+  which here acts as an attack-state marker. Each later call decrements oAIAttackVars_StepTimer and returns
+  while it is still >= 0. When the timer expires it writes value 1 into byte 0xb of the alliance-indexed
+  entry in the 16-byte-stride table at byte_203EAE0 (setIndexedTableByte), clears AI-data Unk_48 flag
+  bits 0x80 and 0x80000, clears battle-state flag bit 0x20, clears Unk_44 AI flag bits 0x80008600 (a broad
+  mask covering several attack-related conditions), and finally calls object_exitAttackState. So it is
+  the delayed ''wind-up/resolve'' tail of an attack: hold for 20 frames, flag the effect into the table,
+  then clean up all attack state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — one-shot init: timer 0x14 + state 4;
+    ldrh/sub/strh on oAIAttackVars_StepTimer with bge locret — plain frame countdown gate; ldrb r0,[r5,#oBattleObject_Alliance];
+    mov r1,#0xb; mov r2,#1; bl setIndexedTableByte — writes byte 11 of the object''s table entry at byte_203EAE0;
+    bl ClearAIDataUnk0x48Flag / ClearAIData_Unk_44_Flag with masks 0x80,0x80000 and 0x80008600, then bl
+    battle_clearFlags with 0x20 — attack-state cleanup; tail call bl object_exitAttackState confirms this
+    is the end of an attack routine'
+  refs:
+  - bn6f/asm/asm00_2.s:15123
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0800A2E4 battle_clearFlags
+  - 0x0800AB2E setIndexedTableByte
+  reproduce: python3 tools/asmcat.py 0x080155CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers are known, so the owning enemy/attack and the meaning of table byte 0xb at byte_203EAE0 (e.g.
+  a hit marker, tile effect, or per-enemy attack slot) are unconfirmed; a caller or the table's consumers
+  would pin down what the value 1 triggers.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80155CC -> ai_attackTimerFinishStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80155CC

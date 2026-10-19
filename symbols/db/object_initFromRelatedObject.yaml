@@ -1,0 +1,54 @@
+name: object_initFromRelatedObject
+address: '0x080D18F8'
+kind: function
+status: probable
+summary: Initializes a battle object from a related/parent object by copying its position block, then
+  sets up and runs its collision data once, advancing to the UPDATE state.
+interface: (r0 = ?, r5 context = battle object with oBattleObject_RelatedObject1Ptr set) -> r0 = clobbered;
+  sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE, or frees the object on
+  failure
+details: Reads the related-object pointer from oBattleObject_RelatedObject1Ptr and copies 3 words from
+  offset 0x34 of that object to the same offset in r5 (likely world X/Y/Z or similar transform fields).
+  It then calls object_setPanelsFromCoordinates to derive PanelX/PanelY from the copied position, and
+  object_createCollisionData to allocate a collision slot; if that returns zero the object frees itself
+  via object_freeMemory. Otherwise it calls object_setupCollisionData with r1/r2 = oBattleObject_ExtraVars[0..1]
+  and r3 = oBattleObject_Param1, stores Param2 as the hit effect via object_setCollisionHitEffect, refreshes
+  collision via object_presentCollisionData, and sets the object's state field to CUR_STATE_UPDATE so
+  the main update path takes over next frame. r4 is used only to hold the related-object pointer; r0 is
+  passed untouched (0?) to the first call, suggesting a parameter convention where r0 is unused or a scratch
+  arg.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia/stmia of 12 bytes at +0x34 from [r5+RelatedObject1Ptr] to r5 copies position-like data
+    from a parent object; object_setPanelsFromCoordinates immediately after the copy recomputes PanelX/Y
+    from the new world position; createCollisionData returning 0 leads to object_freeMemory, i.e. self-delete
+    on allocation failure; object_setupCollisionData is fed oBattleObject_ExtraVars and Param1, and Param2
+    is stored as hit effect; final 'mov r0,#CUR_STATE_UPDATE; str' to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    transitions the object into its update state
+  refs:
+  - bn6f/asm/asm31.s:55514
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D18F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What the 12 bytes at offset 0x34 of the related object actually are (position vs. other transform data)
+- Which callers create the object and set RelatedObject1Ptr — needed to confirm whether this is a spawn-from-parent
+  or a state-machine init step for a specific object kind
+- Whether r0 is meant to carry an argument into object_setPanelsFromCoordinates
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D18F8 -> object_initFromRelatedObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D18F8

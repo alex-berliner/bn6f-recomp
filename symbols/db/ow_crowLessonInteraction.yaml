@@ -1,0 +1,52 @@
+name: ow_crowLessonInteraction
+address: '0x08142FC8'
+kind: function
+status: probable
+summary: 'Per-frame overworld handler for the Cybercrow lesson spot: a denied forward/jack-in press begins
+  a flag-staged cutscene sequence with the crows.'
+interface: () -> r0 = 0 always; runs each frame while the player stands at the spot, setting/clearing
+  EVENT_962/EVENT_963 and starting cutscenes as side effects
+details: 'Runs only when check_playerCanAdvanceForward_8034C36 reports the player is pressing forward
+  at this tile. First press: sub_81433DA succeeds -> set EVENT_962 (stage 1), otherwise PlaySoundEffect(SOUND_CANT_JACK_IN).
+  Next frames (EVENT_962 set): set EVENT_963 (stage 2), and if no other script is active (sub_80357AE),
+  start cutscene byte_808C2F0 and call sub_81433F6(1). Stage-2 helper sub_8143088 (which manipulates the
+  crow record array byte_2000D20: +0 state, +2/+6 timers, +4 heading, +8..+0x10 XYZ) yields an index used
+  to pick one of two follow-up cutscenes from the table off_8143078; sub_8143198 signals when the lesson
+  sequence is done, at which point both flags are cleared and the handler returns 0. The flags are also
+  cleared every frame on the early-exit paths, so they act as one-frame-latched step markers rather than
+  persistent progress.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl check_playerCanAdvanceForward_8034C36 / beq exit gates the whole body on a forward-input
+    interaction; SOUND_CANT_JACK_IN played when sub_81433DA fails before EVENT_962 is set — a denied jack-in/advance
+    attempt; EVENT_962 then EVENT_963 set in order, both cleared on completion and exit: a two-step staged
+    sequence; StartCutscene(byte_808C2F0) mid-sequence and a 2-entry script table off_8143078 indexed
+    by sub_8143088''s return at the end; off_8143084 points at byte_2000D20, the symdb-identified Cybercrow
+    crow record array driven by the sibling helpers'
+  refs:
+  - bn6f/asm/asm37_1.s:2587
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F110 SetEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x08142FC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact location/NPC this handler is attached to, and the contents of cutscene scripts byte_808C004/byte_808C0F4/byte_808C2F0,
+  are unknown without script data
+- Return values of the local helpers sub_81430DC/sub_81433DA/sub_8143198/sub_8143088 are unread here;
+  their summaries would confirm whether sub_8143198 means 'lesson cutscene finished'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142FC8 -> ow_crowLessonInteraction
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142FC8

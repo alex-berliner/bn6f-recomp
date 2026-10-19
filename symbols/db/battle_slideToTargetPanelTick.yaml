@@ -1,0 +1,52 @@
+name: battle_slideToTargetPanelTick
+address: '0x080D1610'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that slides along one panel axis toward a target coordinate,
+  highlighting panels it passes, then plays SFX 0xBD and spawns a linked effect object on arrival (or
+  destroys itself on invalid panels).
+interface: (r5 = battle object ptr) -> r0 = 0/void; sets CurPhase, XVelocity/YVelocity, X/Y, CurState
+details: 'Runs on r5 = battle object. In phase 0 it sets CurPhase=4, computes XVelocity = object_getFrontDirection()
+  * ExtraVars+4 (speed) and zeroes YVelocity. Each tick it moves X/Y by the velocity; ExtraVars bit0 selects
+  which axis is the travel axis and thus which coordinate (X or Y from object_getCoordinatesForPanels)
+  is compared against the target; when the previous coordinate equals the target it snaps via object_setCoordinatesFromPanels
+  and calls sub_80D172C. Every tick it updates its panel via object_setPanelsFromCoordinates and marks
+  the current panel highlighted. If Param2 is zero it polls sub_80D1700; a nonzero result means arrival:
+  play SFX 0xBD and battle_spawnLinkedObject31 with argument (Alliance<<8)|8, coords r0/r1 = the new panel''s
+  pixel position. Otherwise, if the current panel is invalid, it clears ExtraVars+8 and sets CurState
+  = CUR_STATE_DESTROY.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase-0 block: strb #4 CurPhase, mul of object_getFrontDirection result by ExtraVars+4 stored
+    to XVelocity; lsr r6,r6,#1 / bcs picks X vs Y target coordinate and comparison operand around loc_80D163E;
+    arrival path: object_setCoordinatesFromPanels, PlaySoundEffect(0xBD), battle_spawnLinkedObject31 with
+    (Alliance<<8)|8 and panel pixel coords; failure path loc_80D16CA: zero ExtraVars+8 and strb CUR_STATE_DESTROY
+    to CurState; every tick calls object_setPanelsFromCoordinates then object_highlightPanel on the occupied
+    panel'
+  refs:
+  - bn6f/asm/asm31.s:55132
+  - 0x080005CC PlaySoundEffect
+  - 0x080E3FB4 battle_spawnLinkedObject31
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080D1610
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_80D1700 (arrival/trigger check), sub_80D172C and sub_80D1784 do, to confirm the arrival behavior
+- Which attack/object this is (what linked object id 0x31 renders as) and what ExtraVars bit0, +4, +8
+  are set to by the spawner
+- No caller known, so the spawn context and the meaning of Param2 are unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1610 -> battle_slideToTargetPanelTick
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1610

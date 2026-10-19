@@ -1,0 +1,53 @@
+name: object_updateBattleTick
+address: '0x080D390A'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: refresh its collision state, spawn hit effects, run its
+  behavior hook and sprite, and self-destruct when the battle ends.'
+interface: (r5 = battle object) -> void; sets the object's state to CUR_STATE_DESTROY when the battle
+  is over
+details: Takes the object in r5 (no args in r0-r3). First calls object_removeCollisionData to tear down
+  previous-frame collision data and object_spawnCollisionEffect to spawn the hit-effect object for the
+  last collision. If battle_isBattleOver says the battle is still running, it reads the object's CollisionDataPtr,
+  and if FlagsFromCollision is nonzero calls object_clearCollisionRegion; then calls the behavior hook
+  sub_80D3946, object_updateSprite, and object_presentCollisionData to rebuild this frame's collision
+  state. If the battle is over it clears bit 0x2 of oObjectHeader_Flags, clears the collision region,
+  and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized. The whole routine
+  follows the standard battle-object update shape (remove -> effect -> behavior -> sprite -> present),
+  so sub_80D3946 is the object-type-specific behavior callback.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'calls object_removeCollisionData at entry and object_presentCollisionData at the end of the
+    alive path — the standard per-frame collision refresh pair; battle_isBattleOver branch: alive path
+    runs sprite/collision updates, over path destroys the object; over path writes CUR_STATE_DESTROY to
+    oBattleObject_CurStateActionPhaseAndPhaseInitialized and clears oObjectHeader_Flags bit 0x2; object_spawnCollisionEffect
+    (per its doc, uses r5 as the battle object) implies r5 is the object pointer throughout; sub_80D3946
+    is invoked with no visible setup between collision handling and object_updateSprite, fitting a per-object
+    behavior callback'
+  refs:
+  - bn6f/asm/asm31.s:59857
+  - 0x080D387C sub_80D387C
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D390A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what sub_80D3946 does — it would confirm whether this tick is shared by many object types or specific
+  to one
+- which object(s) use this update via sub_80D387C, and what oObjectHeader_Flags bit 0x2 means (active/present?)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D390A -> object_updateBattleTick
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D390A

@@ -1,0 +1,53 @@
+name: object_initAppearance
+address: '0x080DB6D4'
+kind: function
+status: probable
+summary: State-handler step that (re)places a battle object on its panel, loads its sprite/shadow/animation,
+  and hands control to the update state.
+interface: (r5 = battle object) -> r0 = next state (CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized);
+  no meaningful return
+details: The routine recomputes the object's pixel position from its panel coordinates, zeroes the Z height,
+  then nudges X by 18 pixels times the object's facing direction (object_getFrontDirection), i.e. it stands
+  the object slightly behind/in front of its panel center depending on which side it is on. It loads sprite
+  resources via sprite_load(0x80, 8, 10), enables the shadow, sets oObjectHeader_Flags bit 1 (0x2), selects
+  animation 0x19 (also copied to CurAnimCopy) through sprite_setAnimation, loads the animation data, sets
+  palette 0, and mirrors the object's horizontal flip onto the sprite via object_getFlip/sprite_setFlip.
+  Finally it writes CUR_STATE_UPDATE into the state/phase field, so this is one step of an object's state
+  machine (an init/appear handler) rather than a standalone utility. With no known caller it is presumably
+  referenced from an object's state-handler table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels + strh 0 to oBattleObject_Z16: snaps object to panel grid
+    at ground level; mul by 0x12 after object_getFrontDirection, added to oBattleObject_X: 18px offset
+    away from panel center per facing; sprite_load(0x80,8,10), sprite_hasShadow, anim 0x19 in CurAnim
+    and CurAnimCopy, sprite_setPalette(0), sprite_setFlip(getFlip()): full sprite setup for the object;
+    orr oObjectHeader_Flags with 2 then final ''mov r0,#CUR_STATE_UPDATE; str to oBattleObject_CurStateActionPhaseAndPhaseInitialized'':
+    terminates by entering the update state, typical state-machine step'
+  refs:
+  - bn6f/asm/asm31.s:76647
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080DB6D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which entity/attack uses this handler (anim 0x19, sprite args 0x80/8/10) — needs the state-handler table
+  or a caller to identify the object type
+- Meaning of oObjectHeader_Flags bit 0x2
+- Whether the 18px offset direction convention means 'behind the panel relative to the enemy' or an attack-telegraph
+  position
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DB6D4 -> object_initAppearance
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB6D4

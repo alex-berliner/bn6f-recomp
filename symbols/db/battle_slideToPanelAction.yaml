@@ -1,0 +1,55 @@
+name: battle_slideToPanelAction
+address: '0x080C2324'
+kind: function
+status: probable
+summary: 'Battle-object action handler that slides the object to a target panel: reserves the destination,
+  moves it there with sound/anim, spawns an effect object, and times the move out back to idle.'
+interface: (r0 = unused/pass-through, r5 = battle object) -> r0 = trash; updates object panel fields,
+  timer, CurAnim, CurAction/Phase, reserves panels, plays SFX 0xB0, spawns temp attack object
+details: 'On first entry (PhaseInitialized==0) it sets PhaseInitialized=4 and Timer=0x1E (30 frames),
+  releases the panel reserved at FuturePanelX/Y, then calls sub_80C2518(1) to validate/resolve the move;
+  on success it copies the returned target into PanelX/PanelY and DirectionFlip, recomputes pixel coordinates
+  and sprite flip, copies the panel back into FuturePanelX/Y, reserves the new panel via object_reservePanel,
+  plays SFX 0xB0, sets CurAnim=5, and spawns a type-1 subtype-5 temp attack object (header 0x10D03) linked
+  at object+0x64. If the move is rejected it sets Param3=1 and calls sub_80C2678 instead. During the timed
+  phase it decrements Timer: with Param3==0 it at Timer==0x12 calls sub_80C26A0(0x17) and sub_80C2600(1),
+  and at 0 resets CurAnim and calls sub_80B8E58(ExtraVars+4); with Param3!=0 it just counts down. On expiry
+  (or failure path end) it clears Param3, sets CurAction=0x14 and CurPhase=0, returning the object to
+  its idle action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: init branch reads FuturePanelX/Y, calls object_removePanelReserve then later object_reservePanel
+    after copying new PanelX/Y (loc_80C2324..80C2378); object_setCoordinatesFromPanels and object_getFlip/sprite_setFlip
+    are called right after writing PanelX/PanelY/DirectionFlip; PlaySoundEffect(0xB0), CurAnim=5, and
+    spawn_t1_0x5_tempAttackObject with dword 0x10D03 fired once during move setup; Timer counts down from
+    0x1E with mid-move hook at 0x12 and cleanup (sub_80B8E58 on ExtraVars+4) at 0; exit path sets CurAction=0x14
+    and CurPhaseAndPhaseInitialized=0, the standard return-to-idle pattern
+  refs:
+  - bn6f/asm/asm31.s:22296
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080C2324
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What sub_80C2518(1) validates or computes (panel coordinates in r0/r1 and flip in r2?) - its body would
+  confirm the move-target semantics
+- Whether the spawned 0x10D03 object is an attack, dust, or other effect, and what sub_80C26A0(0x17)/sub_80C2600(1)
+  do mid-slide
+- Which AI/phase sets FuturePanelX/Y and enters this action, to confirm whether it is an enemy slide/step
+  or a knockback-style forced move
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C2324 -> battle_slideToPanelAction
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2324

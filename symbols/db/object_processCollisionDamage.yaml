@@ -1,0 +1,55 @@
+name: object_processCollisionDamage
+address: '0x080D3A7C'
+kind: function
+status: probable
+summary: 'Per-frame collision handler for a battle object: tears down its collision data, spawns the hit
+  effect, applies the pending damage (setting the flinch action if HP dropped), dispatches the current
+  action''s handler, or destroys the object.'
+interface: (r5 = battle object pointer; no args in r0-r3) -> r0 = destroyed/battle-over flag from battle_isBattleOver;
+  updates oBattleObject_HP, CurAction, CurPhaseAndPhaseInitialized, CurState
+details: 'Runs for a battle object each frame while it is in a collision. It first removes the object''s
+  collision data and spawns the hit-effect object for its last collision (jittered position). If the battle
+  is over it goes straight to teardown; otherwise it calls object_applyDamage with r0=0 (apply the collision''s
+  queued damage to HP). If HP decreased and CurAction isn''t already 0xC, it sets CurAction to 0xC (flinch/hurt
+  action) and resets the phase field to 0. It then tests the collision''s flags against a per-alliance
+  mask table (byte_80D3B00: alliance 0 = 0x05800000, alliance 1 = 0x0A800000); if any flagged bit is set
+  the object is destroyed. Otherwise it either dispatches via a jump table indexed by CurAction (five
+  handlers at off_80D3AE8) when time is not stopped, or merely refreshes the collision state via object_presentCollisionData
+  during time-stop; the destroy path clears the collision region, calls sub_80D3F32, and sets CurState
+  to CUR_STATE_DESTROY.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / bl object_spawnCollisionEffect at start: standard hit-processing
+    prologue on r5''s last collision; ldrh r4,[r5,#oBattleObject_HP]; bl object_applyDamage; cmp HP before/after
+    -> sets CurAction=0xC and phase 0 when HP dropped (flinch on damage); ldr r2,[r5,#oBattleObject_CollisionDataPtr];
+    tst against per-alliance byte_80D3B00 masks 0x05800000/0x0A800000 -> destroy branch; off_80D3AE8 jump
+    table indexed by [r5,#oBattleObject_CurAction] guarded by bl battle_isTimeStop, else object_presentCollisionData;
+    destroy path: object_clearCollisionRegion, sub_80D3F32, CurState = CUR_STATE_DESTROY'
+  refs:
+  - bn6f/asm/asm31.s:60038
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D3A7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact semantics of object_applyDamage's r0=0 argument (apply stored collision damage vs. add 0) and
+  where the damage amount is stored
+- Meaning of the alliance flag masks 0x05800000/0x0A800000 in byte_80D3B00 (which collision flags force
+  destruction)
+- What sub_80D3F32 does in the destroy path, and which callers invoke this routine (none known)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D3A7C -> object_processCollisionDamage
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3A7C

@@ -1,0 +1,57 @@
+name: object_continuePanelMoveStep
+address: '0x08017CE0'
+kind: function
+status: probable
+summary: 'Continues a battle object''s multi-panel move: snaps the object onto its reached panel, then
+  either launches the next step (velocity toward the following panel, panel reserved, MoveSubState=4)
+  or ends the move (CurPhase=0x18, MoveSubState=8).'
+interface: (r5 = battle object, no register args) -> r0 = 0/1-like status unused by callers visible; touches
+  ObjectFlags1, PanelXY, velocities, MoveSubState, CurPhase
+details: Operates on the battle object in r5 (register-passed 'this', no argument setup). It sets ObjectFlags1
+  bit 0x100000, clears RelatedObject1Ptr, copies FuturePanelXY into PanelXY (completing the previous panel
+  step), recomputes pixel coords via object_setCoordinatesFromPanels and object_updateCollisionPanels,
+  clears collision flag bits 0x1040, and releases the previously reserved panel via object_removePanelReserve.
+  sub_800F598 then returns the next step's panel offset (stored into ContactPanelOffsetX/ContactOffsetY)
+  plus a continuation flag stored to PhaseInitialized. If the move continues, it validates the target
+  panel (PanelX+offset, PanelY+offset) with sub_800F50C, sets XVelocity = 0xA0000 * signed offset byte
+  at 0x1c and YVelocity = 0x60000 * byte at 0x1d (fixed-point per-frame slide speed toward the target),
+  writes the target into FuturePanelX/Y, claims it with object_reservePanel, and sets MoveSubState=4 (sliding).
+  Otherwise it sets CurPhase=0x18 and MoveSubState=8, ending the move sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh FuturePanelXY->PanelXY + object_setCoordinatesFromPanels/object_updateCollisionPanels:
+    snaps object onto the panel it just reached; object_removePanelReserve then object_reservePanel with
+    new FuturePanelX/Y: releases old panel claim and claims the next step''s target; XVelocity = 0xA0000
+    * ldsb [r5,#0x1c], YVelocity = 0x6000 * ldsb [r5,#0x1d]: slide velocity derived from the step''s panel
+    offset; strb r2 -> PhaseInitialized with beq to the CurPhase=0x18 / MoveSubState=8 path: continuation
+    flag selects between next step and move end; callees object_setFlag1/object_clearFlag/object_updateCollisionPanels
+    match battle object movement bookkeeping'
+  refs:
+  - bn6f/asm/asm00_2.s:20207
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x08017CE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No known caller, so the phase (CurPhase 0x18) and the exact movement kind (step vs. slide vs. pushback)
+  can't be confirmed
+- Exact meaning of sub_800F598's three return values (offset X/Y and continuation flag) is inferred from
+  storage sites, not from its own body
+- Whether bytes 0x1c/0x1d are exactly the ContactPanelOffset fields just written is assumed from adjacent
+  stores
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8017CE0 -> object_continuePanelMoveStep
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017CE0

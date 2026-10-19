@@ -1,0 +1,53 @@
+name: battle_phaseFrontPanelStrikeUpdate
+address: '0x080BE312'
+kind: function
+status: probable
+summary: 'Phase-update for a battle attack: after a wind-up it spawns an effect and an elemental dimming
+  collision region on the panel in front of the attacker, then ends the phase.'
+interface: (r5 = battle object; r0 unused on entry) -> void; sets PhaseInitialized, CurAnim, Timer, and
+  finally CurPhaseAndPhaseInitialized = 0x10
+details: On first entry it sets CurAnim=5, plays sound effect 0xB0, clears the Timer and sets PhaseInitialized=4.
+  When the Timer reaches 10 it reads ExtraVars+4; if that pointer is set and its byte at +7 is nonzero,
+  it uses the alternate parameters (0x36 and data 0x405ff13) instead of (0x18 and 0x405ff01). It then
+  combines object_getFlip with that parameter, adds object_getFrontDirection to PanelX, converts the panel
+  to pixel coordinates via object_getCoordinatesForPanels, and spawns a type-4 effect object; immediately
+  after it spawns a dimming collision region on the front panel, passing the object's Element, the DamageAndStaminaDamageCounterDisabler
+  pointer, and 3 as arguments. The Timer then counts up each frame; once it exceeds 0x32 the phase field
+  is set to 0x10, ending the attack. The alternate parameter path suggests a charged/variant version of
+  the same attack driven by a per-instance byte in the object's extra data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-entry block: strb #5 CurAnim, PlaySoundEffect(0xB0), Timer=0, PhaseInitialized=4 (sub_80BE312
+    early lines); timer==10 branch: object_getFlip + param 0x18/0x36 combined, object_getFrontDirection
+    + PanelX/Y -> object_getCoordinatesForPanels -> spawn_t1_0x0_EffectObject; same branch: object_spawnDimmingCollisionRegion
+    called with Element in r2 and DamageAndStaminaDamageCounterDisabler in r6, constant 3 in r7; callees''
+    known summaries: object_spawnDimmingCollisionRegion ''keep updating during timestop'' marks this as
+    a real attack hitbox, not cosmetic; tail: Timer incremented and compared to 0x32, then CurPhaseAndPhaseInitialized=0x10
+    ends the phase'
+  refs:
+  - bn6f/asm/asm31.s:13318
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080BE312
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which attack/object uses this phase (no callers known) — the owner's ID would name the specific chip
+  or boss attack
+- the meaning of the 0x405ff01/0x405ff13 data words and the byte at ExtraVars+7 that selects the alternate
+  variant
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BE312 -> battle_phaseFrontPanelStrikeUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE312

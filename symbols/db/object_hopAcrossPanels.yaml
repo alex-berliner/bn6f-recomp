@@ -1,0 +1,56 @@
+name: object_hopAcrossPanels
+address: '0x080C9964'
+kind: function
+status: probable
+summary: Battle-object state handler that repeatedly hops the object from its panel to a target panel
+  over a fixed timer, then destroys it (or destroys it early if it lands on a solid/off-grid panel).
+interface: (r0 = battle object) -> void; on failure/finish spawns effect t1 0x14, clears collision region,
+  sets state CUR_STATE_DESTROY
+details: 'This is a per-frame state routine for a battle object that moves panel-by-panel. On first entry
+  (PhaseInitialized==0) it reads a small config struct at oBattleObject_ExtraVars: byte+0 = number of
+  hops (repeat count), byte+1 = selects which velocity solver runs (sub_80C9A58 vs sub_80C9AAA), byte+2
+  = hop duration in frames; it stores the target panel (ExtraVars+4/+8, seeded from PanelX/PanelY later)
+  and computed pixel target/velocities (ExtraVars+0xC/+0x10, X/YVelocity), calls object_updateCollisionPanels,
+  resets Timer, and sets PhaseInitialized=4. Each frame it increments Timer; at half the duration it converts
+  its current interpolated X/Y via convertXYToPanelXY to keep CollisionData PanelX/Y in sync mid-flight;
+  at full duration it re-solves a new target from the current panel, incrementing Param3 until the repeat
+  count is reached. Every frame it interpolates position via sub_80C9B36 (object_getCoordinatesForPanels
+  start/target + Timer), writes X/Y, and refreshes panels with object_setPanelsFromCoordinates. If the
+  occupied panel is solid (object_isPanelSolid) or out of the 6x3 grid (object_isValidPanel fails), or
+  the hops are exhausted, it spawns effect 0x14, clears its collision region, and destroys itself.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r7,[r7,#1]; bne between bl sub_80C9A58 / bl sub_80C9AAA picks the trajectory solver (config
+    byte+1); bl convertXYToPanelXY_800E258 at Timer==duration/2 stores result into oCollisionData_PanelX/Y,
+    keeping the panel in sync mid-hop; ldrb r1,[r1]; ... cmp r0,r1 (ExtraVars byte+0) against incremented
+    Param3 gates the hop repeat loop; bl object_isPanelSolid / object_isValidPanel falling through to
+    loc_80C9A42 which spawns effect 0x14 and sets CUR_STATE_DESTROY; Callees object_getCoordinatesForPanels
+    + object_setPanelsFromCoordinates show it interpolates world position between panels and re-derives
+    PanelX/PanelY
+  refs:
+  - bn6f/asm/asm31.s:38414
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080C9964
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which movement/trajectory each of sub_80C9A58 and sub_80C9AAA computes (arc vs straight-line hop) is
+  not shown here
+- Exact gameplay identity of the caller (which enemy/attack uses this hop) and what effect object 0x14
+  is
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C9964 -> object_hopAcrossPanels
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9964

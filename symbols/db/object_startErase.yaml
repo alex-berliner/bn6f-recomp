@@ -1,0 +1,44 @@
+name: object_startErase
+address: '0x08018154'
+kind: function
+status: probable
+summary: 'Begins a battle object''s removal: flags it as erased, disables its collision, frees its reserved
+  panel, and starts a 60-frame vanish timer with PreventAnim 4.'
+interface: (r0 = battle object pointer, also in r5) -> void; flags preserved/irrelevant
+details: 'Reads the object''s ObjectFlags2 and tests bit 0x1000: if clear it sets ObjectFlags1 bit 0x10000000,
+  otherwise bit 0x20000000 (two distinct erase states). It clears ObjectFlags2 bits 0x3000, stores 0x3C
+  into the WobbleOrEffectTimer byte to run a 60-frame effect, then releases the panel reserved via FuturePanelX/FuturePanelY,
+  clears the collision region byte so the object leaves its collision region, and writes 4 to PreventAnim
+  so the erase animation is not interrupted.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlag2 followed by tst r0,0x1000 selects ObjectFlags1 bit 0x10000000 vs 0x20000000
+    (two erase variants); bl object_clearFlag2 with 0x3000 strips collision-relevant flag bits; strb 0x3C
+    into oBattleObject_WobbleOrEffectTimer starts a 60-frame vanish/effect countdown; bl object_removePanelReserve
+    with FuturePanelX/Y frees the panel the object occupied; bl object_clearCollisionRegion and PreventAnim=4
+    remove it from collisions and freeze its animation
+  refs:
+  - bn6f/asm/asm00_2.s:20795
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A176 object_clearFlag2
+  - 0x0801A180 object_getFlag2
+  reproduce: python3 tools/asmcat.py 0x08018154
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact meaning of ObjectFlags1 bits 0x10000000 vs 0x20000000 (erase vs destroy?) and of ObjectFlags2
+  bit 0x1000; a caller would disambiguate which object types take each branch
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8018154 -> object_startErase
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8018154

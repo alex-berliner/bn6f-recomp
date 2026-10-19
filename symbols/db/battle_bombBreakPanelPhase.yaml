@@ -1,0 +1,49 @@
+name: battle_bombBreakPanelPhase
+address: '0x080C6698'
+kind: function
+status: probable
+summary: 'Battle-object attack phase: turns the cracked panel under the object into a broken panel, spawns
+  an explosion effect with bomb hit sound, then waits in a new phase.'
+interface: (r0/r1 unused at entry; r5 = battle object) -> sets object phase to 4 and timer to 12; returns
+  nothing meaningful
+details: 'Runs once per activation, guarded by a done-flag at oBattleObject_ExtraVars+0xc: it reads the
+  status word of the object''s panel (PanelX/PanelY) via object_getPanelParameters and, if bit 0x10 is
+  set (cracked panel), rewrites that panel with object_setPanelType type 6, i.e. the broken/hole variant.
+  It then fetches the object''s collision data pointer, calls sub_80C6726 on it, and sets collision region
+  1 via object_setCollisionRegion. It spawns a type-4 effect object (effect id 0x23, the bomb/explosion
+  effect) at the object''s coords, plays SOUND_HIT_BOMB_1, sets oBattleObject_Timer to 12 frames and oBattleObject_CurPhaseAndPhaseInitialized
+  to 4, advancing the state machine. The r4 load before spawn_t1_0x0_EffectObject (0x23) appears to be
+  an artifact; r4 is never used otherwise.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#0x10 / beq: only a specific panel status bit triggers the panel rewrite; mov r2,#6
+    / bl object_setPanelType: converts the panel to type 6 at the object''s PanelX/PanelY; bl spawn_t1_0x0_EffectObject
+    with r4=0x23 and PlaySoundEffect(SOUND_HIT_BOMB_1): explosion visual+audio at object coords; strh
+    #0xc,[Timer]; strh #4,[CurPhaseAndPhaseInitialized]: schedules the next phase (4) after 12 frames;
+    flag store at ExtraVars+0xc makes the panel-break/effect run only on the first invocation'
+  refs:
+  - bn6f/asm/asm31.s:31344
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C6698
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact panel type 6 semantics (broken vs hole) and meaning of status bit 0x10
+- what sub_80C6726 does to the collision data
+- which attack/object uses this phase table (no callers known)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C6698 -> battle_bombBreakPanelPhase
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6698

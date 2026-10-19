@@ -1,0 +1,48 @@
+name: init_videoSystemsReset
+address: '0x08039630'
+kind: function
+status: probable
+summary: 'When no screen fade is running, resets the whole video pipeline: clears VRAM and the BG tile
+  buffer, reloads base graphics, re-inits chatbox/start-screen renderers, and blanks DISPCNT.'
+interface: () -> void; returns early via IsScreenFadeActive flags when a fade is active
+details: 'Calls IsScreenFadeActive and if the Z flag indicates a fade is in progress it returns without
+  touching anything. Otherwise it performs a full video reset: zeroFillVRAM clears 0x6000000-0x600DFFF,
+  ZeroFillGFX30025c0 zeroes the 0x2000-byte BG tile buffer, copyMemory_8001850 loads a fixed 0x800-byte
+  graphics block into VRAM 0x600D400 plus 32 bytes to IWRAM 0x3001B40, then chatbox_8040818 and startScreen_init_802F530
+  reinitialize the text and start-screen renderers. Finally it writes 0x40 (DISPCNT forced-blank bit)
+  via SetRenderInfoLCDControl into the current frame''s render info, leaving the screen blanked with freshly
+  loaded base graphics. No arguments or results are passed; r4-r7 are pushed but unused, suggesting a
+  standard engine-call signature.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret_8039652: entire body is guarded by fade state; bl zeroFillVRAM
+    then bl ZeroFillGFX30025c0: full VRAM + BG tile buffer wipe, a startup/reset pattern; bl copyMemory_8001850:
+    reloads the fixed base GFX block (VRAM 0x600D400, IWRAM 0x3001B40); bl chatbox_8040818 and bl startScreen_init_802F530:
+    re-inits both renderer subsystems after the VRAM wipe; ldr r0, =0x40 / bl SetRenderInfoLCDControl:
+    writes DISPCNT forced-blank (0x40) as the final step'
+  refs:
+  - bn6f/asm/asm03_1_1.s:1381
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08001850 copyMemory_8001850
+  reproduce: python3 tools/asmcat.py 0x08039630
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No caller is known, so it is unclear which scene transitions invoke this and whether IsScreenFadeActive's
+  Z convention is 'fade active' (skip) as assumed
+- What the 0x800-byte gfx block loaded to 0x600D400 contains (fonts, shared tiles?) is not shown here
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8039630 -> init_videoSystemsReset
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039630

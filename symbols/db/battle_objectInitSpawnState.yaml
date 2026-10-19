@@ -1,0 +1,50 @@
+name: battle_objectInitSpawnState
+address: '0x080CFC28'
+kind: function
+status: probable
+summary: 'Spawn-time setup for a battle object: sets 100/8-frame timers, allocates and configures collision
+  data, plays sound 0xAD, and advances to the UPDATE state phase.'
+interface: (r5 = battle object; no args) -> r0 = 0 (object_createCollisionData result consumed); updates
+  object state to CUR_STATE_UPDATE, or frees the object if collision allocation fails
+details: 'Operates on the battle object in r5: stores 0x64 to oBattleObject_Timer and 8 to oBattleObject_Timer2,
+  then allocates a collision slot via object_createCollisionData. If allocation succeeds it calls object_setupCollisionData
+  with collision type 0x1b and zero target coords, immediately clears the collision region (so no active
+  hitbox), plays sound effect 0xAD, writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  and tail-calls sub_80CFC5E. If collision allocation fails, it frees the object via object_freeMemory
+  instead. The 100-frame Timer plus an immediate sound effect suggests a timed telegraph or materialization
+  before some action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh 0x64/8 to oBattleObject_Timer/Timer2 sets up a long countdown before the state logic runs;
+    object_createCollisionData failure path calls object_freeMemory, the standard object-abort pattern;
+    mov r0,#CUR_STATE_UPDATE then str to oBattleObject_CurStateActionPhaseAndPhaseInitialized advances
+    the object's state machine; PlaySoundEffect(0xAD) gives an audible cue tied to this one-time setup;
+    collision setup type 0x1b followed immediately by object_clearCollisionRegion means the hitbox is
+    prepared but not yet active
+  refs:
+  - bn6f/asm/asm31.s:51560
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CFC28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers known, so the owning object/enemy and when this state fires are unidentified
+- sub_80CFC5E (the next state handler) is unknown and likely reveals what the 100-frame timer counts down
+  to
+- Which sound 0xAD is, and what collision type 0x1b represents, are not confirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CFC28 -> battle_objectInitSpawnState
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFC28

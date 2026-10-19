@@ -1,0 +1,49 @@
+name: battle_stateBreakPanelHit
+address: '0x080D1AD2'
+kind: function
+status: probable
+summary: Battle-object state handler that spawns an effect, breaks the panel under the object, holds a
+  10-frame hitbox, then destroys itself.
+interface: (r0 = battle object ptr, in r5 also) -> r0 = unused; sets object CurPhase, Timer, collision
+  region, and eventually CurState=DESTROY
+details: 'On entry with CurPhase==0 it advances the phase to 4, assigns collision region 1 via object_setCollisionRegion,
+  reads the object''s facing with object_getFlip, and builds r4 = (flip<<8)+0x34 (an animation/parameter
+  index for the spawned effect). It converts the object''s PanelX/PanelY to screen coordinates with object_getCoordinatesForPanels
+  and spawns an effect object (spawn_t1_0x0_EffectObject, effect type 0) at that position, then calls
+  object_breakPanel_dup3 on the same panel to crack/break it, and loads Timer = 0xF-5 = 10 frames. Once
+  the timer counts down past zero, it clears its collision region and sets the object''s state word to
+  CUR_STATE_DESTROY so the engine deletes it. This is the classic one-shot attack state pattern: brief
+  damaging hitbox + visual effect + panel break, then cleanup.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase 0 branch stores 4 into oBattleObject_CurPhase and calls object_setCollisionRegion(1) to
+    arm the hitbox; object_getFlip result shifted into r4=(flip<<8)+0x34 before spawning the effect, indicating
+    a mirrored animation/variant index; object_breakPanel_dup3 called with the object's own PanelX/PanelY
+    right after spawning the effect; Timer set to 0xF-5=10 and decremented in the second phase until it
+    hits 0; on expiry object_clearCollisionRegion then CurState=CUR_STATE_DESTROY, the standard object
+    teardown path
+  refs:
+  - bn6f/asm/asm31.s:55762
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080D1AD2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no known caller, so which attack/weapon assigns this handler is unidentified
+- the meaning of the 0x34 passed in r4 to the effect spawner (animation id vs subtype) is unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1AD2 -> battle_stateBreakPanelHit
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1AD2

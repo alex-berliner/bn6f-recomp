@@ -1,0 +1,53 @@
+name: battle_beastOutTransformAction
+address: '0x080E95D8'
+kind: function
+status: probable
+summary: 'Battle action handler that performs the player navi''s Beast Out transformation: roar effect
+  and sound, beast-out stat boosts, then a 60-frame animation wait.'
+interface: (r5 = battle object ptr, frame-stepped) -> void; sets object CurAction=12 and phase=0 when
+  the timer expires
+details: 'r5 is a battle object; phase 0 is one-shot setup: sets phase=1, timer=60, copies three words
+  from RelatedObject1+0x34, computes the navi''s arm position from NameID/Alliance/DirectionFlip and spawns
+  effect object type 0x5a there, plays SFX 0x19. It then applies beast-out bonuses to the navi''s NaviStats
+  record via the alliance-aware byte accessors: byte1 += (5 - beastOutDamageCap) if cap < 5, byte2=4,
+  byte3=4, byte0xA=8, byte7=59 if it was 0xFF (also written directly through GetBattleNaviStatsAddr),
+  and bytes 0x1B-0x1D=1; it also sets object flag 0x40030 and updates collision data (offset 0x10, 2 entries),
+  skipped when Custom+ is disabled (battle_IsNoCustomPlusActive). Byte 0x63 is compared to BattleState.BattlePhase
+  and set to phase+1 if nonzero and not ahead of the phase. Phase 1 just counts the 60-frame timer down
+  (SFX 77 at timer==28), then sets CurAction=0xC and phase=0 to end the action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'computeBeastDamageCap_801265A is called and its result gates the byte1 bonus — the bonus size
+    is tied to beast-out state; spawn_t1_0x0_EffectObject with r4=0x5a at getBattleArmPositionMaybe_8018810
+    output: transformation effect at the navi''s arm; PlaySoundEffect(0x19) on entry and PlaySoundEffect(SOUND_LOG_IN_77)
+    at timer 0x1c: transformation roar then a mid-animation sound; SetBattleNaviStatsByte calls write
+    byte2=4, byte3=4, byte0xA=8 and flag/collision setup (0x40030, object_updateCollisionData) — permanent
+    form-change buffs applied once; Timer counts 60 frames down then sets CurAction=0xC and phase=0, matching
+    an action state that ends after an animation'
+  refs:
+  - bn6f/asm/asm31.s:107334
+  - 0x08013682 GetBattleNaviStatsAddr
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080E95D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Exact meanings of NaviStats bytes 2, 3, 0xA, 0x1B-0x1D (attack/charge/defense bonuses?) and the byte
+  0x63 / BattlePhase counter semantics
+- Which object/action id 0xC is (confirming this is Beast Out rather than another transformation), and
+  what the 0x34 block copied from RelatedObject1 represents
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E95D8 -> battle_beastOutTransformAction
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E95D8

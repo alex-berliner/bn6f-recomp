@@ -1,0 +1,48 @@
+name: battle_spawnPanelCollisionObject
+address: '0x080C65A0'
+kind: function
+status: probable
+summary: 'One-time spawn/init phase for a battle object: places it on its panel, allocates and initializes
+  its hitbox, then queues the update state.'
+interface: (r5 = battle object) -> r0 = 0/destroyed object flag path; uses no register arguments, reads/writes
+  fields of the object at r5
+details: Recomputes the object's pixel position from its panel coordinates and stores the facing multiplier
+  (+1/-1) as its X velocity. Allocates a collision-data slot via object_createCollisionData and, if none
+  is free, destroys the object via object_freeMemory. Initializes the collision block with type 0x3d and
+  params (5, 0), sets PrimaryElement to 0 (non-elemental), and immediately refreshes collision via object_presentCollisionData.
+  Sets Param2 to 2 and Timer2 to a 12-frame countdown, then switches the object to the CUR_STATE_UPDATE
+  phase. If Param1 is nonzero it sets CurAction to 4, and if Param1 is not 0xFF additionally calls sub_80C673A
+  (likely variant-specific setup).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then str r0, [r5,#oBattleObject_XVelocity] after object_getFrontDirection
+    (facing as movement direction); bne loc_80C65BA / bl object_freeMemory — object is freed when no collision
+    slot is available; mov r1,#0x3d, mov r2,#5 followed by bl object_setupCollisionData and PrimaryElement
+    = 0; Param2=2, Timer2=0xC, CurStateActionPhaseAndPhaseInitialized=CUR_STATE_UPDATE set as the phase
+    handoff; ldrb r0,[r5,#oBattleObject_Param1]; nonzero -> CurAction=4 and call sub_80C673A
+  refs:
+  - bn6f/asm/asm31.s:31218
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C65A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which in-game object/attack uses this init (collision type 0x3d is unidentified)
+- What sub_80C673A does for Param1 variants
+- What Param2=2 and Timer2=12 mean in the update phase
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C65A0 -> battle_spawnPanelCollisionObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C65A0

@@ -1,0 +1,51 @@
+name: event_playPetEffectAndReloadGfx
+address: '0x0809A260'
+kind: function
+status: probable
+summary: Event-script routine that plays PET effect 1, reloads the map's graphics into VRAM, and clears
+  the scenario/event flags to finish a scene
+interface: () -> r0 = 0; flags not meaningful
+details: 'The function takes no arguments and immediately triggers PET effect 1 via doPETEffect_8033fc0,
+  then restores graphics: copyMemory_8001850 loads a 0x800-byte tile block to VRAM 0x600D400 plus a 32-byte
+  block to IWRAM 0x3001B40, and gfxTransfer_8033978 re-queues the sprites/font tiles for the current map
+  group. It then resets the scenario-effect machinery (scenario_initEffectState_8003962, zeroFill, scenario_ClearEffectActiveFlag_800399A
+  clearing bit 7 of 0x2000780) and acks the event''s fresh flag by clearing bit 7 of the byte at eStruct2001010.
+  This combination — effect + graphics reload + clearing ''effect active'' and ''new event'' flags — reads
+  as the tail of a scripted scene or transition (e.g. a PET animation during a map/event change) that
+  cleans up event state when it ends. The trailing data at byte_809A2AC and the small lookup sub_809A284
+  (maps a 16-bit GameState value from the game-state block''s bytes 4-5 to a byte in a 6-entry table)
+  belong to the next function, not this one.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#1; bl doPETEffect_8033fc0 — plays PET effect index 1 at entry; bl copyMemory_8001850
+    followed by bl gfxTransfer_8033978 — reloads VRAM tiles and map sprite/font graphics; bl scenario_initEffectState_8003962
+    then bl scenario_ClearEffectActiveFlag_800399A — initializes then deactivates the scenario-effect
+    state at 0x2000780; bl event_ackNewFlagByte_8003AEA — clears the 'new event pending' bit of eStruct2001010,
+    typical end-of-event bookkeeping; mov r0,#0; pop — returns 0 unconditionally; all callees are called
+    with no arguments
+  refs:
+  - bn6f/asm/asm28_0.s:1302
+  - 0x08001850 copyMemory_8001850
+  - 0x08033FC0 doPETEffect_8033fc0
+  - 0x08003AEA event_ackNewFlagByte_8003AEA
+  reproduce: python3 tools/asmcat.py 0x0809A260
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers known, so the game situation in which this runs (which scene/transition uses PET effect 1)
+  is unconfirmed
+- What zeroFill_8003AB2 zeroes, and whether the VRAM block at 0x600D400 is a specific BG layer's tiles
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809A260 -> event_playPetEffectAndReloadGfx
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A260

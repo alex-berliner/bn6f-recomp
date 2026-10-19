@@ -1,0 +1,51 @@
+name: battle_initAttachedEffect
+address: '0x080BCA24'
+kind: function
+status: probable
+summary: Spawn/init handler for a battle object that positions itself just above a related object, copies
+  its palette, and plays animation 5 before entering its update state.
+interface: (r5 = battle object, no args) -> r0 = 0 (probably ignored); sets object's sprite, position,
+  animation and state fields
+details: The routine treats r5 as a battle object and first loads sprite resource 0x80/variant 4 with
+  palette 0x13, then loads its animation data and disables the shadow. It reads the object linked via
+  oBattleObject_RelatedObject1Ptr, copies that object's palette ID onto itself via sprite_getPalette/sprite_setPalette,
+  and adopts its X/Y/Z coordinates with a +2 Y and +0x18 Z offset, i.e. it floats slightly above/behind
+  the related object. It selects animation 5 (writing 5 into oBattleObject_CurAnimAndCurAnimCopy and calling
+  sprite_setAnimation), reloads animation data and updates the sprite. Finally it zeroes oBattleObject_ExtraVars,
+  stores CUR_STATE_UPDATE into the state field to hand control to the state machine, and tail-ish calls
+  sub_80BCA72 as the first update step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_load/sprite_loadAnimationData/sprite_noShadow with r0=0x80, r1=4, r2=0x13 sets up
+    the object''s sprite immediately; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; bl sprite_getPalette;
+    bl sprite_setPalette copies the related object''s palette; position copied from related object: X
+    as-is, Y16+2, Z16+0x18 writes into r5''s own X/Y/Z fields; mov r0,#5; strh into oBattleObject_CurAnimAndCurAnimCopy;
+    bl sprite_setAnimation selects animation 5; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    then bl sub_80BCA72 hands off to the state machine'
+  refs:
+  - bn6f/asm/asm31.s:9918
+  - 0x08002D8C sprite_getPalette
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080BCA24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which sprite 0x80/anim 5 corresponds to (visual identity of the effect) and what sub_80BCA72 does each
+  frame would confirm the effect's gameplay role
+- No callers known, so it is presumably referenced by a spawn table or state-table entry not yet in the
+  database
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BCA24 -> battle_initAttachedEffect
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCA24

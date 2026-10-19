@@ -1,0 +1,48 @@
+name: battle_initObjectAtPanel
+address: '0x080DB8EC'
+kind: function
+status: probable
+summary: Positions a battle object on its current panel, allocates and configures its collision data,
+  and switches it into its update state, freeing the object if placement fails.
+interface: (r5 = battle object) -> r0 = clobbered; object state field set to CUR_STATE_UPDATE
+details: Takes the object in r5 and first validates its current panel via object_isCurrentPanelValid;
+  on failure it despawns via object_freeMemory. Otherwise it reads oBattleObject_PanelX/PanelY, converts
+  them to fixed-point screen coordinates with object_getCoordinatesForPanels, and stores them into oBattleObject_X/Y.
+  It then allocates a collision slot with object_createCollisionData (r7); if none is free, the object
+  is freed. The collision data is set up with parameters (7, 5, 3) via object_setupCollisionData, byte
+  1 of the collision record is set to 0xB, the hit effect is set to 0xFF, and object_presentCollisionData
+  refreshes the current-frame collision state. Finally the object's state field (oBattleObject_CurStateActionPhaseAndPhaseInitialized)
+  is set to CUR_STATE_UPDATE and control passes to sub_80DB934, presumably the state's update handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq after object_isCurrentPanelValid jumps to object_freeMemory — invalid placement despawns
+    the object; object_getCoordinatesForPanels results stored to oBattleObject_X/oBattleObject_Y from
+    oBattleObject_PanelX/PanelY; object_createCollisionData failure path also falls into object_freeMemory;
+    object_setupCollisionData called with r1=7, r2=5, r3=3, then collision byte 1 = 0xB and object_setCollisionHitEffect(0xFF);
+    state field set to CUR_STATE_UPDATE before tail-calling sub_80DB934, the next-state entry
+  refs:
+  - bn6f/asm/asm31.s:76937
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080DB8EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Meaning of the setupCollisionData parameters (7, 5, 3) and the 0xB value stored at collision byte 1
+- What sub_80DB934 does (presumably this object type's CUR_STATE_UPDATE handler), and which caller/spawner
+  invokes this function with which object type
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DB8EC -> battle_initObjectAtPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB8EC

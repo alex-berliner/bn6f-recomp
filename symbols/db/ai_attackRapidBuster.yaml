@@ -1,0 +1,52 @@
+name: ai_attackRapidBuster
+address: '0x080F014C'
+kind: function
+status: probable
+summary: Enemy AI attack state that repeatedly fires buster shots (up to ~9 shots on a step/charge cycle
+  counter) then ends the attack.
+interface: (r5 = battle object, r7 = AI attack vars block) -> void; no return value
+details: 'This is one state routine of a per-object AI attack state machine. When oAIAttackVars_AttackElement
+  is 0 it starts the attack: plays anim 0xe on the object, marks CurAnimCopy 0xFF, and if no shots have
+  been charged (ChargeCycles==0) just clears the attack variable, otherwise tears down the TempAttackObject
+  and ends the related object''s animation; it then sets an object flag (bit 22), zeroes StepTimer and
+  sets AttackElement=4. When StepTimer hits 1 it plays the buster sound, computes the spawn panel (panelX
+  + facing dir, panelY + signed scratch offset), spawns a type-3 projectile object with the AI''s Damage/AttackBoost2
+  values and also a t1/0x5 temp attack object, then increments StepTimer each call. After StepTimer passes
+  5 it increments ChargeCycles; if fewer than 9 it resets AttackElement to 0 to fire again (a repeating
+  multi-shot attack), otherwise sets oAIAttackVars_HitElement to 8 to move to the attack''s hit/finish
+  phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl PlaySoundEffect with SOUND_BUSTER_6A right before spawning the projectile (loc_80F0188);
+    bl battle_SpawnAndInitObjectType3_80C4FFE with Damage/AttackBoost2 and front-direction-adjusted panel
+    coords fires the shot; loop back: ChargeCycles < 9 re-writes AttackElement=0 so the start block runs
+    again (loc_80F01E2 path); ChargeCycles >= 9 stores 8 into oAIAttackVars_HitElement, handing control
+    to the next attack phase; object_setAnimation 0xe + object_setFlag1 bit22 on entry are standard AI
+    attack-start actions'
+  refs:
+  - bn6f/asm/asm31.s:121159
+  - 0x080F0110 sub_80F0110
+  - 0x080005CC PlaySoundEffect
+  - 0x080EB562 ai_clearAttackVar
+  - 0x080C44D2 battle_EndObjectCurrentAnim_80C44D2
+  reproduce: python3 tools/asmcat.py 0x080F014C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact enemy/move this belongs to (which enemies use this AI block) and the meaning of HitElement=8 /
+  AttackElement=4 in the surrounding state machine
+- role of sub_80B8E7C on TempAttackObjectPtr at attack start
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F014C -> ai_attackRapidBuster
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F014C

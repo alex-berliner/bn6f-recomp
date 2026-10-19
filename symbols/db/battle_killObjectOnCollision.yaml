@@ -1,0 +1,49 @@
+name: battle_killObjectOnCollision
+address: '0x080DB934'
+kind: function
+status: probable
+summary: Tears down a battle object after it has been hit (spawning its hit effect), or lets it linger
+  on a countdown timer before freeing it.
+interface: (r5 = battle object) -> void; no return value
+details: 'Runs on an object held in r5. It first removes the object''s collision data, then spawns the
+  hit effect for its last collision (jittered via GetRNG). It then reads the collision flags from the
+  CollisionDataPtr: if flags are zero, it decrements oBattleObject_Timer and, while the timer is still
+  positive, refreshes the collision state via object_presentCollisionData and returns, keeping the object
+  alive another frame. If the timer expired, or if the flags are set and include bits 0xC000000, it falls
+  through to teardown (bit 0xC000000 additionally calls sub_80E8912 first, likely a per-type death hook).
+  Teardown clears the collision region, frees the collision data slot, and releases the object''s memory
+  slot.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry: hit teardown sequence
+    on the r5 object; loc_80DB952: decrement oBattleObject_Timer, if still >0 bl object_presentCollisionData
+    and return alive; flags test tst r0, r1 with 0xC000000 gates the extra call to sub_80E8912 before
+    death; loc_80DB960: object_clearCollisionRegion + object_freeCollisionData + object_freeMemory is
+    full object teardown; sole caller sub_80DB8EC plus callees all take the battle object in r5'
+  refs:
+  - bn6f/asm/asm31.s:76971
+  - 0x080DB8EC sub_80DB8EC
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080DB934
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact meaning of collision flag bits 0xC000000
+- what sub_80E8912 does (per-object-type death routine?)
+- whether the caller sets Timer as the post-hit linger duration
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DB934 -> battle_killObjectOnCollision
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB934

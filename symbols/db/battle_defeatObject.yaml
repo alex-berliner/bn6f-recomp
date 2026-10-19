@@ -1,0 +1,47 @@
+name: battle_defeatObject
+address: '0x08016EE0'
+kind: function
+status: probable
+summary: 'Fully resets the current battle object as defeated: clears all collision/AI state, releases
+  its slot, updates alliance counts, dispatches destroy events, and sets HP to 0 with phase 4 (dead).'
+interface: (r5 = battle object pointer, no args) -> r0 = 4 (phase value written); no meaningful return
+details: 'Operates on the battle object at r5. It first wipes the object''s interaction state: clears
+  its collision region, collision result, collision state, and releases its tile/slot via releaseSlotByValue_801DC36.
+  It then clears chip-related fields (ChipsHeld = 0, Chip = -1) and the RelatedObject1Ptr, plus AI data
+  and barrier flag. If Param2 < 1 it calls relatedToIsBattleOver_800A11C to decrement the actor''s alliance
+  member count and remove it from alive-actor lists, then dispatches the object''s destroy sub-events
+  via battle_dispatchDestroyEvents_802EF5C. Finally it writes HP = 0 and phase 4 into oBattleObject_CurPhaseAndPhaseInitialized,
+  which is presumably the ''dead/defeated'' phase the object''s state machine then handles.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Sequence of clears (collision region, result, state, slot) matches stripping a live actor of
+    all battlefield presence; strh #0 to oBattleObject_HP and #4 to oBattleObject_CurPhaseAndPhaseInitialized
+    marks the object dead in its phase state machine; relatedToIsBattleOver_800A11C ''actor leaves/is
+    deleted'' decrement confirms this removes an actor from battle; battle_dispatchDestroyEvents_802EF5C
+    fires the object''s destroy sub-event handler before the phase is set'
+  refs:
+  - bn6f/asm/asm00_2.s:18417
+  - 0x0801A5E2 battle_ClearObjectCollisionResult_801A5E2
+  - 0x0801A7F4 battle_clearAIDataAndBarrier_801A7F4
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  reproduce: python3 tools/asmcat.py 0x08016EE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No callers known, so the trigger context (hit by attack vs. scripted removal) is unconfirmed
+- Exact meaning of phase 4 and the oBattleObject_Param2 >= 1 guard (skips alliance-count decrement) is
+  inferred, not proven
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8016EE0 -> battle_defeatObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016EE0

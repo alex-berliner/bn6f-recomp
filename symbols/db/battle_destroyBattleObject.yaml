@@ -1,0 +1,47 @@
+name: battle_destroyBattleObject
+address: '0x080D49A0'
+kind: function
+status: probable
+summary: 'Tears down the battle object in r5: unhides it, removes it from the object list, collision and
+  panel reservation, then marks it destroyed (skipped while time stop is active).'
+interface: () -> void; r5 = battle object header, clobbered by callees
+details: Clears flag bit 2 in oObjectHeader_Flags (likely the 'active/visible' bit) on the object pointed
+  to by r5, then calls battle_isTimeStop; if time stop is in effect it returns early, leaving the object
+  for later. Otherwise it dispatches event 0x40 (a per-object death/removal handler via dispatch_801DA48),
+  removes the object's entry from the battle-state object list, clears its collision region so it no longer
+  participates in collisions, and releases any panel it had reserved using oBattleObject_FuturePanelX/Y.
+  Finally it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the
+  object's state machine ends. All work targets the object in r5, so this is a leaf-style 'kill this object'
+  helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: clears oObjectHeader_Flags bit 2 and early-returns on battle_isTimeStop != 0, deferring teardown
+    during frozen battles; dispatch_801DA48(0x40) followed by clearEntryOfBattleStateBattleObjectList_800F656
+    removes the object from play; object_clearCollisionRegion + object_removePanelReserve(FuturePanelX,
+    FuturePanelY) release the object's board/collision footprint; stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    as the final action
+  refs:
+  - bn6f/asm/asm31.s:62087
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080D49A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no caller is known, so it is unclear whether r5 is always the caller's own object or can target arbitrary
+  objects; the meaning of flag bit 2 and dispatch code 0x40 is inferred
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D49A0 -> battle_destroyBattleObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D49A0

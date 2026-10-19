@@ -1,0 +1,50 @@
+name: object_updateCollisions
+address: '0x080DE4EC'
+kind: function
+status: probable
+summary: 'Per-frame collision-processing routine for a battle object: tears down old collision data, spawns
+  hit effects, and dispatches by the object''s current action (or destroys the object once the battle
+  is over).'
+interface: (r5 = battle object ptr) -> void; destroys object by writing CUR_STATE_DESTROY when battle
+  is over
+details: Uses r5 as the battle object this-pointer. It first calls object_removeCollisionData and object_spawnCollisionEffect
+  (hit-effect at the last collision, RNG-jittered), so this runs once per frame after a collision was
+  detected. If the battle is over it clears the object's collision region and sets its state word (oBattleObject_CurStateActionPhaseAndPhaseInitialized)
+  to CUR_STATE_DESTROY, ending the object. Otherwise, if any of the top bits of oCollisionData_FlagsFromCollision
+  (mask 0xFF800000) are set it also clears the collision region. When time-stop is not active it jumps
+  through a 3-entry table indexed by oBattleObject_CurAction to action-specific handlers (sub_80DE544/80DE594/80DE618);
+  when time-stop is active it only refreshes collision data and highlights the collision panels.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry (asm lines 2-3); bne loc_80DE526
+    after battle_isBattleOver: clearCollisionRegion + mov r0,#CUR_STATE_DESTROY into state field; tst
+    r0,r1 with 0xFF800000 against oCollisionData_FlagsFromCollision gates object_clearCollisionRegion;
+    ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 dispatches to one of three action handlers
+    at off_80DE534; battle_isTimeStop branch skips the dispatch and only runs object_presentCollisionData
+    + object_highlightCurrentCollisionPanels'
+  refs:
+  - bn6f/asm/asm31.s:82750
+  - 0x080DE430 sub_80DE430
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DE4EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- What the three action handlers (sub_80DE544/594/618) do specifically, and which object class uses this
+  update — the caller sub_80DE430 would need analysis to confirm
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DE4EC -> object_updateCollisions
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE4EC

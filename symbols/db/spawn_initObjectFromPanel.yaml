@@ -1,0 +1,50 @@
+name: spawn_initObjectFromPanel
+address: '0x080D0AC8'
+kind: function
+status: probable
+summary: 'Init phase of a battle object''s state machine: places it on its panel, allocates collision
+  data, and if that fails, deletes the object.'
+interface: (r5 = battle object pointer, thumb-style callee register) -> r0 = 0 or garbage via callees;
+  advances object state to CUR_STATE_UPDATE on success
+details: Recomputes the object's pixel X/Y from its panel coordinates, clears its Z halfword, and allocates
+  a collision-data slot. On success it initializes collision with type params 0x31/0x41 (flag-table indices),
+  sets hit effect 0xFF (likely 'none'), refreshes present-collision state for the frame, zeroes Timer2/ExtraVars+4/Param2,
+  and sets the state word to CUR_STATE_UPDATE so the update phase runs next, finally calling sub_80D0B0E
+  (probably per-object init logic). On failure it zeroes a counter through the ExtraVars pointer and calls
+  object_freeMemory, deleting the object (collision slots are exhausted, 32 max).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels then strh 0 -> [r5,oBattleObject_Z16]: panel-based placement
+    of the object; bl object_createCollisionData; tst/beq failure path calls object_freeMemory — collision
+    allocation failure deletes the object; mov r1,#0x31 / r2,#0x41 then bl object_setupCollisionData:
+    fixed self/target collision type tables for this object kind; mov r0,#CUR_STATE_UPDATE; str [r5,oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    standard init->update phase transition; callees are all object_* battle-object routines (createCollisionData,
+    setupCollisionData, setCollisionHitEffect, presentCollisionData, freeMemory)'
+  refs:
+  - bn6f/asm/asm31.s:53593
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D0AC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which object kind uses this init (callers/handler table unknown) — needed to confirm identity and refine
+  name
+- Meaning of collision params 0x31 and 0x41 (which collision-type flag tables those index)
+- What sub_80D0B0E does (likely object-specific extra init)
+- How the ExtraVars pointer used in the failure path is set up
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0AC8 -> spawn_initObjectFromPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0AC8

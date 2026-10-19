@@ -1,0 +1,53 @@
+name: battle_spawnEnemyObject
+address: '0x080076A0'
+kind: function
+status: probable
+summary: Spawns a battle enemy object at a panel position, initializes its AI data, stats and alliance,
+  and returns the object pointer.
+interface: '(r0 = enemy_index: u16, r1 = panel_x, r2 = panel_y, r3 = alliance, stack+0x14 = unk param
+  stored to AIData+0x14/BattleObject_Param2) -> r0 = *BattleObject or NULL on allocation failure'
+details: 'Looks up the enemy index via GetVerActorTyAndAIIdx_80182B4 to get version/actor_type/ai_index,
+  converts panel coords to object coordinates and calls object_spawnType1. Allocates an AIData slot (object_createAIData),
+  freeing the object and aborting if none is free; if modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778
+  fails it also frees the AIData and returns NULL. Sets BattleObject.Alliance, sets flag bit 4 in the
+  object header, stores the enemy index as NameID, copies version/actorType/AIIndex/variant into AIData,
+  and reads enemy_getStruct2''s record: low 12 bits are HP (also MaxHP), bits 12+ are Element, halfword
+  at +4 is Damage; sets StaminaDamageCounterDisabler to 10 and Chip to 0xFFFF. Stores panel x/y into current
+  and future panel fields, writes the unk param into AIData_BubbleSourceObjectPtr and DisableCounterDecrement/Param2,
+  sets AISubordinateSlot to 0xFF, and if the unk param is 0 appends the object to its alliance''s entry
+  list via battle_addObjectToAllianceEntryList_80077D2. Returns the object pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'object_spawnType1 + GetVerActorTyAndAIIdx_80182B4: creates the battle object from the enemy
+    index''s version/actor-type/AI record; HP/element split of enemy_getStruct2 record (lsl/lsr 0x14)
+    written to oBattleObject_HP/MaxHP and oBattleObject_Element; strh 0xFFFF to oBattleObject_Chip and
+    0xFF to oAIData_AISubordinateSlot mark it as a non-chip enemy combatant; battle_addObjectToAllianceEntryList_80077D2
+    call registers the object in its alliance''s entry list when unk param is 0; Failure paths free the
+    object/AIData via object_freeMemory, confirming it is a spawn-and-init routine'
+  refs:
+  - bn6f/asm/asm00_1.s:9608
+  - 0x0802AEEA sub_802AEEA
+  - 0x080182B4 GetVerActorTyAndAIIdx_80182B4
+  - 0x080077D2 battle_addObjectToAllianceEntryList_80077D2
+  - 0x0800F214 enemy_getStruct1
+  reproduce: python3 tools/asmcat.py 0x080076A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Meaning of the stack+0x14 param (stored to DisableCounterDecrement, Param2, and BubbleSourceObjectPtr;
+  nonzero skips the entry-list add) — caller sub_802AEEA's context would clarify
+- Exact semantics of modifyBattleStateBasedOnAliveBattleActorsAndUnkCond_8007778's failure condition
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80076A0 -> battle_spawnEnemyObject
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80076A0

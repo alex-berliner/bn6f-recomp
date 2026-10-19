@@ -1,0 +1,51 @@
+name: object_lingerDuringOwnerDeletion
+address: '0x080D51E4'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that survives while its related object is in the deleted
+  action (0xB), running its own sub-state handler, and destroys itself otherwise.
+interface: (r5 = battle object) -> void; destroys object by setting oBattleObject_CurState = CUR_STATE_DESTROY
+  when battle is over, PhaseInitialized is set, or the owner's CurAction != 0xB
+details: Spawns the hit-effect object for r5's last collision (jittered by GetRNG), then keeps the object
+  alive only while battle_isBattleOver is false, oBattleObject_PhaseInitialized is 0, and the related
+  object's oBattleObject_CurAction equals 0xB. When time is stopped it only calls object_presentCollisionData
+  to refresh collision state; otherwise it dispatches through off_80D5230, a 2-entry table indexed by
+  the object's own oBattleObject_CurAction (0 -> sub_80D5240, 1 -> sub_80D5280), implying two sub-states
+  in this state. On any exit path it calls object_clearCollisionRegion, then sub_80D5348 (unknown), and
+  sets oBattleObject_CurState to CUR_STATE_DESTROY. dword_80D523C (0x281E140A) looks like packed parameters/flag
+  data sitting next to the table, probably consumed by the sub-handlers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnCollisionEffect at entry refreshes the hit effect for the object''s last collision
+    each frame; destroy path: bl battle_isBattleOver / tst / bne loc_80D521C plus PhaseInitialized and
+    owner-CurAction==0xB checks gate continued life; bl battle_isTimeStop; bne skips the handler dispatch
+    and only runs object_presentCollisionData; ldr r1, off_80D522C; ldr r1,[r1,r0]; bx r1 dispatches to
+    sub_80D5240/sub_80D5280 by the object''s own CurAction; exit sets mov r0,#CUR_STATE_DESTROY; strb
+    r0,[r5,#oBattleObject_CurState] after object_clearCollisionRegion'
+  refs:
+  - bn6f/asm/asm31.s:63183
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D51E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Meaning of action 0xB on the related object (assumed 'deleted') is not confirmed from this code
+- What sub_80D5348 does before the destroy transition
+- What sub_80D5240 and sub_80D5280 (the two sub-state handlers) do, and the use of dword_80D523C = 0x281E140A
+- No callers known, so which state assigns this handler to which object type is unidentified
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D51E4 -> object_lingerDuringOwnerDeletion
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D51E4

@@ -1,0 +1,50 @@
+name: battle_drawChipSelectScreen
+address: '0x08126030'
+kind: function
+status: probable
+summary: Redraws the battle chip-selection screen (slot frame, chip icons, packed slot data) in one of
+  two layouts depending on a mode field.
+interface: (r5 = screen/work struct ptr) -> void; r7 = r5 internally
+details: 'Takes the state struct in r5 (copied to r7). If [r7,#0x64] is 0 it does nothing; if it equals
+  0xF it uses layout A (frame strips at base-0x4D +1/+4/+6/+0xE), otherwise layout B (+3/+1/+4/+0xB),
+  suggesting two variants of the select screen (e.g. dark-chip / regular variant). Both layouts: draw
+  a tile region via sub_812626C, blit an 8-wide tile strip (0xE rows) into tile block 2, load the hand''s
+  chip icon GFX into VRAM 0x6007800 via battle_loadChipIconSprites (folder data at dword_201F420, scratch
+  tile buffer byte_2017A00), pack the 7 chip-selection slot records via packSelectionSlots, then draw
+  a 2x14 region and a 3x14 tile patch. [r7,#0x74] looks like a base tile/VW index (0x4D subtracted for
+  the frame origin); [r7,#0x36] is a u16 passed to the icon loader and region draw. byte_2017A00 serves
+  as scratch tile-id/working buffer for all the bg helpers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls battle_loadChipIconSprites_8126430 with dword_201F420 and 0x6007800 — chip icon GFX of
+    the current hand; calls packSelectionSlots_8126494 with dword_201F420 — fills the 7 chip-selection
+    slots; all bg_draw*/copy helpers target tile block 2 with byte_2017A00 scratch — screen redraw, not
+    battle logic; branch on [r7,#0x64]==0xF switches between two offset sets of the same draw sequence
+    — two screen layouts; [r7,#0x74]-0x4D used as base for every strip/patch offset — frame anchored to
+    one origin field
+  refs:
+  - bn6f/asm/asm33.s:6058
+  - 0x08126430 battle_loadChipIconSprites_8126430
+  - 0x081264E4 bg_copyTilePatchBlock2_81264E4
+  - 0x08126484 bg_drawTileRegion2x14_8126484
+  reproduce: python3 tools/asmcat.py 0x08126030
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- no caller known, so the exact screen (chip select vs custom screen) and meaning of mode 0xF are inferred
+  only from callee summaries
+- meaning of [r7,#0x36] and [r7,#0x74] fields, and what sub_812626C draws, are unconfirmed
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8126030 -> battle_drawChipSelectScreen
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126030

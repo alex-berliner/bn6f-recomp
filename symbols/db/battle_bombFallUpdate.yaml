@@ -1,0 +1,49 @@
+name: battle_bombFallUpdate
+address: '0x080DDD30'
+kind: function
+status: probable
+summary: 'Per-frame update for a falling bomb battle object: moves it via velocity each frame, then on
+  landing explodes, shakes the camera, and cracks the panel.'
+interface: (r5 = battle object) -> void; sets oBattleObject_CurAction=4 and clears phase on landing, clears
+  object flag bit 1
+details: 'Decrements oBattleObject_Timer; while it counts down, adds XVelocity/YVelocity to X/Y and subtracts
+  ZVelocity from Z, and every other frame (Timer & 4) highlights the panel under the bomb via object_highlightPanel.
+  When the timer hits 0, it recomputes pixel coordinates from panel coordinates, zeroes Z, and reads the
+  panel status via object_getPanelParameters; if the panel is usable (status & 0xF800010 == 0, i.e. not
+  a hole/void panel), it spawns effect object #5 (explosion), plays SOUND_HIT_BOMB_1, triggers camera
+  shake (magnitude 1, duration 15), cracks the panel, and sets collision region 1. Finally it transitions
+  the object to CurAction 4 with phase 0 and clears bit 1 of oObjectHeader_Flags. r5 is the object pointer
+  throughout, so callers must set it up (this is a state-handler called via the battle object update table).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: countdown of oBattleObject_Timer with per-frame velocity integration of X/Y/Z (locregions around
+    loc_80DDD8A) shows a falling projectile; landing branch calls spawn_t1_0x0_EffectObject with r4=5
+    and PlaySoundEffect(SOUND_HIT_BOMB_1), the explosion; camera_initShakeEffect_80302a8(1,15) and object_crackPanel
+    on the bomb's panel match a bomb impact; panel status tested against 0xF800010 before cracking, so
+    holes/invalid panels are skipped; CurAction=4 and phase reset to 0 is the standard battle-object state
+    transition on impact
+  refs:
+  - bn6f/asm/asm31.s:81737
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080DDD30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which attack/chip spawns this bomb object (no caller known), to confirm it is the bomb rather than another
+  falling-breakable projectile
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DDD30 -> battle_bombFallUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDD30

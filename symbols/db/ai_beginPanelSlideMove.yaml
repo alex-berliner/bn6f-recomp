@@ -1,0 +1,51 @@
+name: ai_beginPanelSlideMove
+address: '0x08017E44'
+kind: function
+status: probable
+summary: 'Battle-object AI step: snaps the object onto its queued next panel, picks an adjacent-panel
+  slide direction, and starts a velocity-driven move onto it (or falls back to phase 0x18 if blocked).'
+interface: (r5 = current battle object, no args) -> void; sets XVelocity/YVelocity, MoveSubState, CurPhase
+details: Operates on the global current battle object (r5). It sets ObjectFlags1 bit 0x100000, clears
+  RelatedObject1Ptr, commits FuturePanelXY into PanelXY, and resyncs pixel position and collision panels
+  via object_setCoordinatesFromPanels/object_updateCollisionPanels, clears flags 0x1040, and releases
+  the panel reserve for the old target. It then calls sub_800F598 to fill ContactPanelOffsetX/ContactOffsetY/DirectionAngle,
+  builds an index r4 from the direction angle and the target panel's flag 0x20, and looks up byte_8017F24
+  (values 0,1,1,2,2) to choose a direction; if nonzero it checks the candidate panel (panel + signed bytes
+  at offsets 0x1c/0x1d) via sub_800F55C, else defaults direction 0 and checks via sub_800F534. On success
+  it sets XVelocity = off0x1c * 0xA0000, YVelocity = off0x1d * 0x60000, stores the candidate into FuturePanelX/Y,
+  and sets MoveSubState = 4; if the target check fails (beq) it sets CurPhase = 0x18 and MoveSubState
+  = 8 instead.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: commits FuturePanelXY -> PanelXY then bl object_setCoordinatesFromPanels / object_updateCollisionPanels
+    (start of function); index r4 built from DirectionAngle, ContactPanelOffsetX and panel flag 0x20,
+    then byte_8017F24[r4] selects a direction value; target panel = PanelX/Y + signed bytes at +0x1c/+0x1d,
+    validated by sub_800F55C or sub_800F534 before committing; XVelocity = *(r5+0x1c)*0xA0000 and YVelocity
+    = *(r5+0x1d)*0x60000 with FuturePanelX/Y updated and MoveSubState=4 on success; failure path (beq)
+    sets CurPhase=0x18, MoveSubState=8, a known abort/idle move state
+  refs:
+  - bn6f/asm/asm00_2.s:20386
+  - 0x0801A15C object_clearFlag
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08017E44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- exact behavior of sub_800F598/sub_800F55C/sub_800F534 (offset lookup and panel-occupancy checks) to
+  confirm the direction-selection logic
+- no known caller, so which enemy/object AI phase invokes this and what phase 0x18 represents
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8017E44 -> ai_beginPanelSlideMove
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017E44

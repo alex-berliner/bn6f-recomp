@@ -1,0 +1,45 @@
+name: ai_attackStepMoveIntoPanel
+address: '0x080F6052'
+kind: function
+status: probable
+summary: 'AI attack-state step: slides the enemy into its target panel on the first call, then after 3
+  frames marks the hit element as charged.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value
+details: 'State machine step keyed on oAIAttackVars_AttackElement in the r7 AI attack var block. If it
+  is zero, this is the windup frame: writes element 4, sets the object''s CurAnim to 3, calls object_removePanelReserve
+  for both PanelX/Y and FuturePanelX/Y, copies FuturePanel into Panel (committing the move), re-releases
+  the reserve, recomputes pixel coordinates and collision panels, clears collision flag 0x40, sets the
+  CURRENTLY_MOVING flag, and loads StepTimer with 3. Subsequent calls decrement StepTimer and, on expiry,
+  write 0x30 to oAIAttackVars_HitElement, advancing the attack to its hit phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: reads/writes oAIAttackVars_AttackElement, StepTimer, HitElement via r7 offsets (first and last
+    blocks); copies oBattleObject_FuturePanelX/Y into PanelX/Y then calls object_removePanelReserve twice;
+    calls object_setCoordinatesFromPanels and object_updateCollisionPanels after the panel commit; sets
+    CURRENTLY_MOVING flag via object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT); StepTimer countdown
+    terminating in strh 0x30 -> HitElement
+  refs:
+  - bn6f/asm/asm31.s:133341
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080F6052
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- meaning of AttackElement value 4 and HitElement value 0x30 (element/hit-type constants not yet labeled)
+- which caller/state machine feeds r7 and what the preceding attack stage is
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F6052 -> ai_attackStepMoveIntoPanel
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6052

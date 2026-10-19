@@ -1,0 +1,54 @@
+name: object_processCollisionFrame
+address: '0x080D6E1E'
+kind: function
+status: probable
+summary: 'Per-frame collision processing for a battle object: spawn hit effects, handle battle-end teardown,
+  dispatch the action''s collision handler, and refresh collision state.'
+interface: (r5 = battle object, no args in r0-r3) -> r0 = result passed through from callees/handler;
+  sets object CurState to CUR_STATE_DESTROY when battle is over
+details: Expects the object in r5 (Thumb calling quirk). It first calls object_removeCollisionData and
+  object_spawnCollisionEffect, so the previous frame's collision is finalized and its hit effect spawned.
+  If battle_isBattleOver returns nonzero, it clears the collision region and writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, ending the object. Otherwise it reads oCollisionData_FlagsFromCollision
+  from the object's collision-data pointer; if nonzero it calls object_clearCollisionRegion and zeroes
+  that flag. If oBattleObject_Param3 is zero, the rest is skipped while battle_isTimeStop is set; otherwise
+  it dispatches through a jump table indexed by oBattleObject_CurAction (table at off_80D6E6C currently
+  with one entry, sub_80D6E70), then calls object_presentCollisionData to rebuild the frame's collision
+  state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at start: finalizes last collision
+    and spawns its hit effect; bne loc_80D6E5C after battle_isBattleOver leads to clearCollisionRegion
+    + CUR_STATE_DESTROY store; ldr r0,[r4,#oCollisionData_FlagsFromCollision]; tst; beq -> clearCollisionRegion
+    and zero the flag only when a collision left flags; ldrb r0,[r5,#oBattleObject_Param3]; bl battle_isTimeStop;
+    bne locret: Param3 overrides time-stop skip; ldr r1,[r1,r0] with r0=oBattleObject_CurAction dispatches
+    per-action handler, then bl object_presentCollisionData'
+  refs:
+  - bn6f/asm/asm31.s:66937
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D6E1E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- No known caller, so it is unconfirmed where in the object-update loop this runs and what r0-r4 must
+  hold on entry
+- The jump table has a single visible entry (sub_80D6E70); its purpose and whether other CurAction handlers
+  exist elsewhere is unknown
+- The exact meaning of oBattleObject_Param3 (force collision processing during time stop?) is inferred
+  only from the branch
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D6E1E -> object_processCollisionFrame
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6E1E

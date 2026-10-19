@@ -1,0 +1,53 @@
+name: battle_dimmingRegionAttackUpdate
+address: '0x080BED0C'
+kind: function
+status: probable
+summary: 'Phase handler for an attack object: plays sound 0xB0 and spawns a temp attack visual, then on
+  timer 9 places a timestop-safe dimming collision region plus effect on the panel ahead, ending after
+  21 frames.'
+interface: (r5 = battle object, no args) -> void; sets CurAnim, Timer, PhaseInitialized, and finally CurAction=0x20/phase=0
+details: Init branch (PhaseInitialized==0) sets CurAnim=5, plays sound effect 0xB0, and spawns a t1-kind-5
+  temp attack object via spawn_t1_0x5_tempAttackObject_80B8E30, storing it in oBattleObject_ExtraVars+4;
+  the constant added to 0x10000 is byte_80BEDC6[oBattleObject_Param3] (0x3,0x3,0x19..0x1C for variants
+  0-5). At Timer==9 it builds the target panel (PanelX+object_getFrontDirection, PanelY) and calls object_spawnDimmingCollisionRegion
+  with a packed parameter word byte_80BEDA8[Param3<<2] (variants pack 1/0xFF/5/4 or 4/0xFF/5/4), the object's
+  Element in r2, and r6=oBattleObject_DamageAndStaminaDamageCounterDisabler. The same panel is converted
+  to pixel coordinates via object_getCoordinatesForPanels and spawns an effect object with r4 = (object_getFlip<<8)
+  + byte_80BEDC0[Param3], setting bit16 when Param3>=2. It also spawns kind-0xA extra-vars object via
+  battle_spawnExtraVarsObject with value 0x10A00. Timer increments each frame; once past 0x15 the object
+  transitions to CurAction=0x20 with phase cleared.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init block: strb #5 CurAnim, PlaySoundEffect(0xB0), spawn_t1_0x5_tempAttackObject_80B8E30 result
+    stored at ExtraVars+4; loc_80BED3A Timer==9: object_getFrontDirection+PanelX/PanelY then object_spawnDimmingCollisionRegion
+    with r4=byte_80BEDA8[Param3<<2]; effect spawn: object_getCoordinatesForPanels(panelX,panelY) then
+    spawn_t1_0x0_EffectObject with r4=(object_getFlip<<8)+byte_80BEDC0[Param3]; battle_spawnExtraVarsObject
+    called with dword 0x10A00 right after the effect spawn; end: Timer>0x15 sets CurAction=0x20 and clears
+    CurPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:14647
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080BED0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- which attack/ID this object represents (no known caller, no spawn site seen)
+- exact meaning of the byte_80BEDA8 word fields (damage/flags layout of the dimming collision region)
+  and of the byte_80BEDC6 constant added to 0x10000
+- role of the kind-0xA extra-vars object with value 0x10A00
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BED0C -> battle_dimmingRegionAttackUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BED0C

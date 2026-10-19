@@ -1,0 +1,50 @@
+name: ai_stepMoveBehindTarget
+address: '0x08107568'
+kind: function
+status: probable
+summary: 'AI attack step: reserves the panel 3 tiles behind the target and enters a move animation, or
+  falls to a failure state'
+interface: () -> void; uses r5 = battle object, r7 = oAIAttackVars; sets oAIAttackVars_HitElement to 0x18
+  on success or 0x28 on failure
+details: Releases any prior panel reservation for the stored target panel coords and clears flag 0x40,
+  then sets CURRENTLY_MOVING and checks object_canMove. It computes target X = targetObject.field0x12
+  - 3*frontDirection (the panel three tiles on the far side of the target) and if the object's future
+  panel coords already match it, skips the panel check. The panel check uses the inline mask pair dword_81075E0/E4
+  (require 0x10000 set, 0xF880080 clear — likely 'not hole/broken/occupied' bits) via object_checkPanelParameters.
+  On success it stores the chosen panel coords, reserves the panel for the object, sets OBJECT_FLAGS_CANNOT_SLIDE,
+  plays anim 4, sets StepTimer=3, HasMoved=1 and HitElement=0x18; otherwise HitElement=0x28 acts as the
+  next-state selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r0,r0; mov r1,#3; mul with frontDirection plus target byte 0x12 → panel 3 behind target
+    (8107578-8107588); off_81075DC -> dword_81075E0=0x10000 / 0xF880080 passed as mask pair to object_checkPanelParameters
+    (810758E-810759E); strb target coords then bl object_reservePanel followed by OBJECT_FLAGS_CANNOT_SLIDE
+    setFlag1 (81075B6-81075C4); HitElement written 0x18 on success vs 0x28 on failure, and StepTimer/HasMoved
+    set — state-machine step pattern (81075C6-81075D8); Callees object_removePanelReserve/object_clearFlag/object_canMove/object_getFrontDirection
+    are all known battle-object helpers
+  refs:
+  - bn6f/asm/asm31.s:169514
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08107568
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- Which enemy/AI script invokes this (no callers known), and the exact meaning of HitElement values 0x18/0x28
+  in the AI step state machine
+- Whether field 0x12 of the target object is its panel X or an offset
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107568 -> ai_stepMoveBehindTarget
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107568

@@ -1,0 +1,50 @@
+name: object_perFrameUpdate
+address: '0x080CA074'
+kind: function
+status: probable
+summary: 'Generic per-frame update for a battle object: refresh its collision lifecycle, spawn hit effects,
+  run its state handler and sprite, and self-destruct when the battle ends.'
+interface: (r5 = battle object pointer) -> void; destroys the object (state CUR_STATE_DESTROY) if the
+  battle is over
+details: Uses r5 as the battle object pointer throughout, matching the callees' documented convention.
+  Each frame it first tears down the previous frame's collision data (object_removeCollisionData), then
+  spawns the hit-effect object for any new collision (object_spawnCollisionEffect). If the battle is still
+  running it reads oBattleObject_CollisionDataPtr -> oCollisionData_FlagsFromCollision, clearing the object's
+  collision region when flags are nonzero, then calls the object's state-specific handler sub_80CA0B0,
+  advances the sprite (object_updateSprite), and refreshes present-collision state for this frame (object_presentCollisionData).
+  When battle_isBattleOver reports the battle ended, it clears bit 1 of oObjectHeader_Flags, clears the
+  collision region, and sets the object's state to CUR_STATE_DESTROY so the engine removes it. This is
+  the standard per-frame wrapper pattern around an object-specific sub_80CA0B0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: uses r5 as object pointer, matching object_spawnCollisionEffect's documented 'object in r5'
+    behavior; removeCollisionData ... presentCollisionData bracket the frame, the standard collision-data
+    lifecycle; battle-over branch clears oObjectHeader_Flags bit 1 and stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    reads oCollisionData_FlagsFromCollision and clears the collision region when flags are set; object_updateSprite
+    and object_presentCollisionData callees are documented per-frame tickers, backing the wrapper role
+  refs:
+  - bn6f/asm/asm31.s:39340
+  - 0x080C9F98 sub_80C9F98
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CA074
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614'
+open_questions:
+- what sub_80CA0B0 (the object-specific state handler) does, which would identify which object type this
+  wrapper belongs to
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 45d4a3fb
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CA074 -> object_perFrameUpdate
+  where: bn6f 96b5015b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA074
