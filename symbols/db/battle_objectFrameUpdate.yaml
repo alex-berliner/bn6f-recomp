@@ -1,0 +1,52 @@
+name: battle_objectFrameUpdate
+address: '0x080CD5F8'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: marks a flag, resolves pending hit reactions/effects,
+  ticks its lifetime timer, dispatches its state handler from a jump table, then updates sprite and collision
+  presentation.'
+interface: (r5 = battle object header pointer; r0/r1 scratch) -> r0 = result of object_presentCollisionData;
+  flags clobbered by calls
+details: Takes r5 as the object header (no other args are set up). First it ORs bit 0x02 into the object's
+  Flags byte at offset oObjectHeader_Flags, then calls the hit-reaction teardown, effect spawner, and
+  sub_80CD7A0 helpers. If oBattleObject_Param1 is zero it runs battle_objectTimerCountdown so the object's
+  lifetime tick can destroy it. It then loads off_80CD628 into r0 and calls sub_801B750, which dispatches
+  via the 10-entry table off_80CD62C (containing battle_ResetObjectActionState_80165B8, battleObject_initAndRunAI_8016B02,
+  etc.), i.e. a per-state handler for this object's current action state. Finally it advances the sprite
+  animation and refreshes collision presentation. The unconditional set of flag bit 0x02 every frame is
+  likely a 'currently active/being processed' marker consumed by the collision helpers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/orr/strb on [r5,#oObjectHeader_Flags] sets bit 0x02 before the collision helpers run; calls
+    object_finishCollisionHitReaction_801AD12 and object_spawnCollisionEffect, which operate on r5's last
+    collision; ldrb [r5,#oBattleObject_Param1]; beq battle_objectTimerCountdown — timer only ticks when
+    Param1 is 0; ldr r0,=off_80CD628; bl sub_801B750 with table containing battle_ResetObjectActionState_80165B8
+    and battleObject_initAndRunAI_8016B02 — state dispatch; ends with object_updateSprite and object_presentCollisionData,
+    the standard per-frame object render/collision tail
+  refs:
+  - bn6f/asm/asm31.s:46582
+  - 0x080CD50C sub_80CD50C
+  - 0x0800F672 battle_objectTimerCountdown
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CD5F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_80CD7A0 does (not in the known-callee list) and what flag bit 0x02 means to the collision helpers
+- Which object type(s) use this update — need callers above sub_80CD50C or the object's spawn site to
+  confirm; sub_801B750's dispatch key (which state field it reads) is also unverified
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD5F8 -> battle_objectFrameUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD5F8

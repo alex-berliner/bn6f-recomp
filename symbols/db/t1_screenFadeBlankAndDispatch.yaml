@@ -1,0 +1,51 @@
+name: t1_screenFadeBlankAndDispatch
+address: '0x0803CC40'
+kind: function
+status: probable
+summary: While a screen fade is active, blanks the BG layers (LCD control 0x40), runs a chatbox update,
+  then tail-jumps to a handler pointer stored in a struct at [r5+4].
+interface: (r0 = unused on entry; r5 = pointer to a struct whose +4 field is a function pointer) -> does
+  not return to caller normally; control passes to the [r5+4] handler, whose return reaches this function's
+  caller; flags clobbered by calls.
+details: First checks IsScreenFadeActive and exits immediately if no fade is running, so this is fade-gated
+  transition code. On the fade path it calls chatbox_8040818, then writes DISPCNT-style value 0x40 (OBJ
+  layer only, all BG layers off) into the current frame's render info via SetRenderInfoLCDControl, blanking
+  the background. It then loads a function pointer from [r5+4] and does mov lr,pc / bx r0, i.e. an unconditional
+  tail-call into that handler — the pointer likely switches to the next screen/mode during the fade-out.
+  r5 and r4/r6/r7 are never set inside the function, so the caller must supply r5 as a context/mode struct;
+  r0 on the final call is the leftover value loaded for the LCD write (0x40).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq after bl IsScreenFadeActive gates the whole body on an active screen fade; ldr r0, off_803CC5C
+    (=0x40) + bl SetRenderInfoLCDControl writes LCD control 0x40, disabling BG layers during the fade;
+    ldr r0,[r5,#4]; mov lr,pc; bx r0 tail-calls a handler from the r5 struct instead of returning; bl
+    chatbox_8040818 runs a chatbox-related step on the fade path; no known callers, so the r5 struct and
+    handler target are unconfirmed
+  refs:
+  - bn6f/asm/asm03_1_1.s:8283
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08040818 chatbox_8040818
+  reproduce: python3 tools/asmcat.py 0x0803CC40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Callers are unknown, so the r5 struct (what +4 points to, what the handler is) and the transition context
+  cannot be confirmed
+- What chatbox_8040818 does on the fade path
+- Whether 0x40 is meant as 'OBJ only' or the render-info layer masks it differently; a caller plus the
+  r5 struct layout would settle the purpose
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CC40 -> t1_screenFadeBlankAndDispatch
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CC40

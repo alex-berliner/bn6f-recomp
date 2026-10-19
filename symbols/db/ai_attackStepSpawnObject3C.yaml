@@ -1,0 +1,52 @@
+name: ai_attackStepSpawnObject3C
+address: '0x081025DA'
+kind: function
+status: probable
+summary: 'AI attack routine: winds up (anim 6), then at step 5 shakes the camera and spawns attack object
+  0x3C on the panel in front of the user, ending after 18 steps by flagging the hit.'
+interface: (r0 unused on entry; r5 = battle object, r7 = AI attack vars) -> r0 = trash; updates oAIAttackVars
+  state fields and spawns an attack object
+details: 'This is a per-frame step handler for one enemy AI attack, driven by oAIAttackVars. On the first
+  call (AttackElement == 0) it enters the wind-up: sets the object''s CurAnim to 6, clears StepTimer,
+  restarts the temp attack object''s animation via battle_setObjectAnim, sets counter time 0x10, and stores
+  4 into AttackElement to mark the active phase. On later frames it increments StepTimer; when the timer
+  is exactly 5 it triggers a camera shake (magnitude 1, duration 0x14), gets the object''s facing direction,
+  and calls battle_spawnObject3COnPanel at PanelX+direction, PanelY with element/damage parameters (r4
+  = AttackBoost2, r6 = Damage, r2 = 0, r3 = 0x18<<16). When the timer reaches 0x12 it stores 8 into HitElement,
+  presumably so the shared attack code applies the hit, and the routine returns until reset.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] / strb #4 selects init vs. active phase of the attack
+    state machine; mov r0,#6; strb [r5,#oBattleObject_CurAnim] plus battle_setObjectAnim on the AIData
+    temp attack object is a wind-up animation; camera_initShakeEffect(1,0x14) and object_getFrontDirection
+    before battle_spawnObject3COnPanel place the attack on the adjacent front panel; StepTimer counts
+    to 0x12 then writes 8 into oAIAttackVars_HitElement, the standard way these AI attack steps hand off
+    to the hit phase; callee battle_spawnObject3COnPanel is documented as spawning kind 0x3C with panel,
+    element, damage and alliance fields filled in'
+  refs:
+  - bn6f/asm/asm31.s:159243
+  - 0x080B8E70 battle_setObjectAnim
+  - 0x080CB8DE battle_spawnObject3COnPanel
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x081025DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which enemy/boss attack this is (object kind 0x3C's visual identity) is not shown in this function;
+  the caller table of AI attack handlers would identify it
+- Exact meaning of the r4/r6/r2/r3 extra parameters to battle_spawnObject3COnPanel (r4 = AttackBoost2,
+  r6 = Damage, r3 = 0x18<<16) depends on that callee's undocumented contract
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81025DA -> ai_attackStepSpawnObject3C
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81025DA

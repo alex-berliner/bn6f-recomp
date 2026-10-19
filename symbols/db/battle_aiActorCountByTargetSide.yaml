@@ -1,0 +1,48 @@
+name: battle_aiActorCountByTargetSide
+address: '0x080319E6'
+kind: function
+status: probable
+summary: AI helper that returns the actor count (3 or 2) for a sub-state chosen by which side of the horizontal
+  line y=12 the target lies on.
+interface: (r0 = entity ptr, r1 = target ptr) -> r0 = 3 if target is on the negative (clockwise) side
+  of edge (0,12)-(16,12), else 2; flags clobbered by calls
+details: First calls battle_calcRelPosToTarget to fill the scratch buffer with the entity's (and next-position's)
+  coordinates relative to a doubled target reference point; r0/r1 then carry the point coordinates into
+  math_pointCrossHalfPlaneTest with the edge (r2,r4)=(0,12) to (r3,r5)=(0x10,12) — a horizontal boundary
+  across x=0..16. The 0/1 half-plane result is passed directly as the AI sub-state index to battle_aiIndexToActorCount,
+  so side==1 yields 3 actors and side==0 yields 2. The constant edge suggests a fixed vertical row split
+  in battle coordinates used by some enemy AI phase. No callers are visible, so which entity/target pair
+  is passed and what the count is used for remain unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_calcRelPosToTarget_803172E supplies the point coords for the half-plane test; r2=0,
+    r4=0xC, r3=0x10, r5=0xC set the fixed edge (0,12)-(16,12) before bl math_pointCrossHalfPlaneTest_8031594;
+    the cross-test result in r0 is passed straight to bl battle_aiIndexToActorCount_8031980 (1 -> 3, 0
+    -> 2) and popped as the return value
+  refs:
+  - bn6f/asm/asm03_0.s:25507
+  - 0x08031980 battle_aiIndexToActorCount_8031980
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  - 0x08031594 math_pointCrossHalfPlaneTest_8031594
+  reproduce: python3 tools/asmcat.py 0x080319E6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no known callers, so the purpose of the returned actor count and which entities are passed are unverified
+- exact field layout of the scratch buffer written by battle_calcRelPosToTarget (which fields land in
+  r0/r1) is unknown
+- what game coordinate the y=12 boundary corresponds to (row split? panel edge?)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80319E6 -> battle_aiActorCountByTargetSide
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80319E6

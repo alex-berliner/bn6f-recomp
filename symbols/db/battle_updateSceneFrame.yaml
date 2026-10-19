@@ -1,0 +1,53 @@
+name: battle_updateSceneFrame
+address: '0x08124ED4'
+kind: function
+status: probable
+summary: 'Per-frame battle-scene update: re-inits the chip-sprite slot buffer, scrolls a counter down,
+  forces the transition pump to reload tilemaps, redraws the arena floor, and repositions two groups of
+  pooled sprite structs.'
+interface: (r0 = unused/0, r5 = battle-scene state struct) -> r0 = last sprite_setStructHalfwordPairOnThree
+  result; updates [r5+0x74] counter, [r5+0x70] flag, [r5+0x2] byte, and sprite-struct +0xC/+0xE pairs
+details: r5 points to a battle-scene state struct. It first calls the chip-sprite slot buffer init with
+  r0=0 (idle chip-frame sprite in oToolkit_Unk200f3a0), then decrements the halfword at [r5+0x74] each
+  call, clamping it at 0x6A and writing 0x24 to byte [r5+0x2] once clamped (a scroll/countdown that settles
+  after a few frames). It stores 0xFF into [r5+0x70], the flag that battle_runTransition consumes to clear
+  itself and reload the static+scene tilemaps, then redraws the arena floor tiles. Finally it computes
+  one halfword from state fields — [r5+0x1C] if [r5+0x5C]==0x27, [r5+0x30] if [r5+0x64]==0xF and the counter
+  is <=0x72, [r5+0x26] if [r5+0x60]==5, else 0 — and passes it twice to sprite_setStructHalfwordPairOnThree
+  with r2=7 and r2=4, filling the +0xC/+0xE position pairs of structs from the 0x2008450 sprite pool,
+  apparently for two sprite groups (7 and 4 slots).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battleObject_initChipSpriteSlotBuffer_8126818 with r0=0 re-stages the idle chip-frame sprite
+    each frame; [r5+0x74] decremented and clamped to 0x6A with [r5+0x2]=0x24 written on clamp (asm lines
+    4-13); mov r0,#0xFF; str r0,[r5,#0x70]; bl battle_runTransition_8125444 matches the callee's documented
+    'r5+0x70 flag set -> reload tilemaps' behaviour; bl bg_drawArenaTiles_8125E78 redraws the arena floor
+    as part of the same refresh; two tail calls to sprite_setStructHalfwordPairOnThree_8117084 with field-selected
+    r1 values and r2=7/r2=4 write position pairs into pooled sprite structs
+  refs:
+  - bn6f/asm/asm33.s:3742
+  - 0x08126818 battleObject_initChipSpriteSlotBuffer_8126818
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  reproduce: python3 tools/asmcat.py 0x08124ED4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known caller, so the exact scene/mode in which this runs (battle intro vs chip-select) is unconfirmed
+- Meaning of the discriminator fields [r5+0x5C]/[r5+0x64]/[r5+0x60] (values 0x27, 0xF, 5) and of the source
+  halfwords +0x1C/+0x30/+0x26
+- Whether r2=7/r2=4 in the sprite_setStructHalfwordPairOnThree calls are slot counts or starting indices
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8124ED4 -> battle_updateSceneFrame
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8124ED4

@@ -1,0 +1,50 @@
+name: battle_aiActorCountByFieldSide
+address: '0x08031A46'
+kind: function
+status: probable
+summary: Battle-AI helper that returns 3 or 2 actors depending on which side of the field diagonal the
+  entity is relative to its target.
+interface: (r0 = entity struct passed to calcRelPosToTarget) -> r0 = actor count for the AI sub-state
+  (3 if the relative point is left of the (0,16)->(16,0) diagonal, else 2); flags set by callees
+details: 'First calls battle_calcRelPosToTarget_803172E, which stores the entity''s coordinates (and next-position
+  coordinates) relative to a doubled target reference point in a scratch buffer; r0 presumably then points
+  at that buffer. It configures math_pointLeftOfLineTest_80315DC with a fixed directed line from (r2,r4)=(0,0x10)
+  to (r3,r5)=(0x10,0) — a diagonal across the battle field — and feeds the relative position as the test
+  point. The 0/1 result of the line test is used directly as an ''AI index'' argument to battle_aiIndexToActorCount_8031980,
+  which maps AIIndex 1 to 3 and anything else to 2. So the geometric half-plane test acts as a selector:
+  entities on one side of the diagonal get a 3-actor arrangement, the others a 2-actor one. This looks
+  like AI spawn/formation logic choosing how many actors to use based on player/enemy relative position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_calcRelPosToTarget_803172E then r0 fed as the point to the line test — relative position
+    is the tested point; line endpoints hardcoded: r2=0,r4=0x10,r3=0x10,r5=0 — a fixed diagonal, no caller
+    data; bl math_pointLeftOfLineTest_80315DC returns 0/1 which is passed unchanged (r0) to the next call;
+    bl battle_aiIndexToActorCount_8031980 maps the 0/1 test result to 3-vs-2 actors per its known summary;
+    no other computation or stores in the 12-instruction body — it is purely select-and-return'
+  refs:
+  - bn6f/asm/asm03_0.s:25563
+  - 0x08031980 battle_aiIndexToActorCount_8031980
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  - 0x080315DC math_pointLeftOfLineTest_80315DC
+  reproduce: python3 tools/asmcat.py 0x08031A46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which entity/target the caller passes and in what game situation (which AI routine calls this) is unknown
+  — no callers are known
+- What the 2-vs-3 actor count controls (spawn wave size? formation slots?) needs the caller context to
+  confirm
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8031A46 -> battle_aiActorCountByFieldSide
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8031A46

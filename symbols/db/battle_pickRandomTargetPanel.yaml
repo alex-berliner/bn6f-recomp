@@ -1,0 +1,49 @@
+name: battle_pickRandomTargetPanel
+address: '0x0802D430'
+kind: function
+status: probable
+summary: Picks a random panel for an attack, preferring panels occupied by objects over empty filtered
+  panels, and returns its coordinates.
+interface: (r0 = row/alliance param for the row-object picker, r2/r3 = filter args, r5 = source battle
+  object) -> r0 = panel x (low 3 bits), r1 = panel y; flags clobbered
+details: 'Reserves the panel under object r5 via object_reservePanel, then scans rows 1-3: battle_pickRandomRowObjectFields_810971A
+  picks a random object per row and sub_8015CC0 turns it into panel coords packed as x|(y<<4) into a 32-byte
+  stack buffer, counting hits in r6. If no object panels were found, it falls back to object_getPanelsInRowFiltered
+  over the same rows, appending every filtered panel''s coords. If the buffer is still empty it uses the
+  source object''s own panel x/y. Otherwise GetPositiveSignedRNG with svc 6 (modulo r6) selects one entry,
+  decoded to x (bits 0-2) and y (bits 4+). Finally object_removePanelReserve releases the reservation
+  taken at entry before returning.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry: ldrb x/y from r5 then bl object_reservePanel; mirrored object_removePanelReserve before
+    return; loop r4=1..3 calls battle_pickRandomRowObjectFields_810971A, packs result via lsl r1,#4/orr
+    r0 as x|y<<4 byte; fallback path calls object_getPanelsInRowFiltered per row and accumulates counts
+    into r6/buffer pointer; GetPositiveSignedRNG + svc 6 (mod r6) indexes the buffer; lsr #4 / lsl 29,lsr
+    29 split y and x; empty-buffer fallback returns r5''s own oBattleObject_PanelX/PanelY'
+  refs:
+  - bn6f/asm/asm03_0.s:15502
+  - 0x0802D3CA sub_802D3CA
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  - 0x0800D012 object_getPanelsInRowFiltered
+  reproduce: python3 tools/asmcat.py 0x0802D430
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of r2/r3 (filter id / alliance?) passed to sub_8015CC0 and object_getPanelsInRowFiltered
+- which attack or Beast Out mechanic calls this via sub_802D3CA
+- semantics of rows 1-3 vs 0 (why row 0 excluded)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D430 -> battle_pickRandomTargetPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D430

@@ -1,0 +1,48 @@
+name: battle_cardDrawAnimUpdate
+address: '0x080C33CA'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that, on a flagged animation frame, deals the next card
+  into the opposite alliance player's hand and advances itself into the post-draw phase.
+interface: (r0 = ignored, r5 = BattleObject this update runs on) -> r0 = collision data pointer from object_setCollisionRegion;
+  flags clobbered
+details: First calls sprite_getFrameParameters and only acts when the current frame's attribute byte has
+  bit 0x80 set, so this is an animation-frame-triggered event handler. If oBattleObject_Param3 already
+  equals 0x17e it skips the draw step, suggesting 0x17e marks 'card already dealt'. Otherwise it XORs
+  oBattleObject_Alliance with 1, calls battle_findPlayer to get the opposing side's player, and calls
+  battle_drawCardToHand_800FC7C to deal that player's next card during card selection. It then sets its
+  own CurAnim to 3, Timer to 60 frames, collision region to 1, and writes 0x10 to oBattleObject_CurPhaseAndPhaseInitialized,
+  entering the next phase. If the attribute bit is clear it returns immediately without changing state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,#0x80 after sprite_getFrameParameters gates the whole body on an anim-frame attribute
+    flag; eor with 1 on oBattleObject_Alliance + battle_findPlayer selects the opposite alliance's player;
+    bl battle_drawCardToHand_800FC7C deals that player's next card, matching its known summary; CurAnim=3
+    / Timer=0x3c / phase=0x10 store looks like entering the card-selection state; Param3 == 0x17e check
+    skips the draw, implying a once-per-anim guard
+  refs:
+  - bn6f/asm/asm31.s:24567
+  - 0x0800FC7C battle_drawCardToHand_800FC7C
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C33CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which object runs this update (no callers known)
+- what Param3 == 0x17e exactly encodes
+- what phase 0x10 and anim 3 correspond to in the card-selection state machine
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C33CA -> battle_cardDrawAnimUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C33CA

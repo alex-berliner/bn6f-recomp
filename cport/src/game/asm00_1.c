@@ -3498,7 +3498,7 @@ Next mainState_runFrame_8005814(void) {
  * The jump table is indexed by the warp's type *byte* (ldr r0,[r0,r1] with no
  * shift), so warp types 0,4,8,...,0x20 select its nine entries:
  *   0x00 gameState_beginEndingSequence_800596C  fade to black warp
- *   0x04 sub_8005990                            fade to white warp
+ *   0x04 gamestate_setEventFlagsAndFadeOut                            fade to white warp
  *   0x08 map_onMapWarpCutscene_80059B4          jack out anim, fade to black,
  *                                               fade from black, jack in anim,
  *                                               walk in direction
@@ -3508,7 +3508,7 @@ Next mainState_runFrame_8005814(void) {
  *                                               direction
  *   0x10 ow_startJackOutMapEnterCutscene                            jack out warp
  *   0x14 startBeastSpCutscene                            levbus warp
- *   0x18 sub_8005A0C                            underground warp
+ *   0x18 start_cutsceneWithFlagSwap                            underground warp
  *   0x1C sub_8005A28                            like 0x00, but with a delay +
  *                                               plays a hardcoded sound
  *   0x20 sub_8005A50                            same as above, different delay

@@ -1,0 +1,49 @@
+name: battle_slideXMovePhase
+address: '0x080BBA26'
+kind: function
+status: probable
+summary: 'Per-frame phase handler for a battle object sliding along X: integrates its velocity, tracks
+  which panel it crosses, and ends the action on timeout or when it leaves solid ground.'
+interface: (r5 = battle object, read/modified in place) -> void; sets CurPhase/CurAction/Timer, plays
+  sound 0xE3 once
+details: 'This is one case of a battle-object state machine (r5 = object; callers must be a jump table,
+  hence none found). On phase 0 it plays sound 0xE3, sets CurPhase=4, and calls sub_80BBAEC (likely one-time
+  setup/spawn). Each frame afterwards it adds oBattleObject_XVelocity to oBattleObject_X, converts the
+  new X/Y to panel coords, and: if the panel is off the 6x3 grid or the PanelX didn''t change, just decrements
+  oBattleObject_Timer, and on zero sets CurAction=0x10 and resets phase (action finished); if the new
+  panel is NOT solid it immediately switches to CurAction=0xC (a different follow-up action, e.g. landing/falling);
+  if the panel is solid and PanelX changed, it calls sub_80BBB18 (per-panel-crossed effect) and continues
+  counting down.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc entry: ldrb CurPhase, beq -> PlaySoundEffect(0xE3), CurPhase=4, bl sub_80BBAEC; move step:
+    ldr XVelocity + ldr X, add, str X, then convertXYToPanelXY_800E258(X, Y); grid/solid checks: bl object_isValidPanel;
+    bl object_isPanelSolid; beq -> CurAction=0xC; panel-cross hook: ldrb PanelX, cmp with saved r4, bne
+    -> bl sub_80BBB18; timeout: ldrh Timer, sub #1, strh, bgt exit; else CurAction=0x10, CurPhaseAndPhaseInitialized=0'
+  refs:
+  - bn6f/asm/asm31.s:7739
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800CCB2 object_isPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080BBA26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_80BBAEC and sub_80BBB18 do (init vs. per-crossed-panel effect) would confirm the attack/object
+  identity
+- Which parent state machine dispatches here, and what CurAction 0xC and 0x10 mean, is unknown without
+  callers
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BBA26 -> battle_slideXMovePhase
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBA26

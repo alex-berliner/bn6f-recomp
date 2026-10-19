@@ -1,0 +1,46 @@
+name: battle_panelConvertUpdate
+address: '0x080E1F32'
+kind: function
+status: probable
+summary: Battle-object routine that gradually converts all panels on one side of the field (relative to
+  its PanelX) to a given panel type, blinking them for a while, then commits the change and frees itself.
+interface: (r5 = battle object) -> r0 destroyed; frees the object via object_freeMemory when done
+details: 'A per-frame update for a battle object: increments oBattleObject_Timer and compares it to oBattleObject_Param3.
+  While Timer < Param3, every 8 frames (carry from Timer>>3) it sweeps columns r6=6..0 and rows r7=3..0,
+  skipping panels whose column is <= the object''s PanelX (direction flipped by oBattleObject_Alliance)
+  and skipping empty panels (oPanelData_Type==0), calling object_setPanelTypeBlink with Param1 as the
+  panel type. Once Timer reaches Param3, the same sweep calls object_setPanelType instead, making the
+  change permanent, then the object frees itself with object_freeMemory. Param1 selects the target panel
+  type; the blink phase previews the conversion (8 frames on / 8 off) before it takes hold.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Timer increment and comparison: ldrh r0,[r5,#oBattleObject_Timer]; add/add/strh; cmp r0,r1
+    (Param3); bge loc_80E1F7C; Blink pacing: lsr r0,r0,#3; bcs locret — the setPanelTypeBlink pass only
+    runs on alternating 8-frame windows; Field sweep: two nested loops over r7=#3..0 (rows) and r6=#6..0
+    (cols) calling object_getPanelDataOffset(x,y); Alliance decides side: tst [oBattleObject_Alliance]
+    flips cmp r6 vs PanelX, skipping panels on the near side; Finish: after Param3 frames the same loop
+    calls object_setPanelType and then bl object_freeMemory'
+  refs:
+  - bn6f/asm/asm31.s:90876
+  - 0x08003458 object_freeMemory
+  - 0x0800C90A object_getPanelDataOffset
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080E1F32
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which chips/effects spawn this object and what panel type Param1 carries in each case (no caller found)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1F32 -> battle_panelConvertUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1F32

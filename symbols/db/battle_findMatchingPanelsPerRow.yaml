@@ -1,0 +1,50 @@
+name: battle_findMatchingPanelsPerRow
+address: '0x0800D300'
+kind: function
+status: probable
+summary: Scans each battle-field row from an entity's column outward and records the coordinate of the
+  first panel whose status high byte matches a given value, one per row.
+interface: (r0 = panel status high-byte value to match, r1 = unused?, r2 = required-flag mask, r3 = forbidden-flag
+  mask; r5 = entity, r7 = output byte buffer) -> r0 = number of panels found (0-3); flags clobbered
+details: Gets the entity's horizontal flip direction and starts each of three row iterations (rows 1-3)
+  at the entity's panel column, read from entity+0x12. Per row it first walks opposite the flip direction
+  while the panel's status high byte (paneldata+3) equals r0, then aborts the row if that boundary panel's
+  status word has any of 0x01800000 bits (0x02800000 when r0==0). It then walks in the flip direction
+  until the high byte matches r0 again, verifies that panel with object_checkPanelParameters using the
+  caller's required/forbidden masks, and if it passes stores (x | row<<4) as one byte into a buffer at
+  r7, bumping a count. Returns the count in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlipDirection at 0x0800D30C sets the ±1 scan direction from entity facing; ldrb
+    r0,[r5,#0x12] at 0x0800D31A seeds the scan from the entity's panel column; row loop counter [sp,#0x1c]
+    runs 1..3; ldrb r1,[r0,#3]; cmp r1,r2 compares the panel data +3 byte against arg0 twice, stepping
+    x by ±flip; tst r0,r1 against 0x1800000/0x2800000 (dword_800D4A4/A8) aborts the row when the boundary
+    panel has those status bits; orr r0,r1 / strb r0,[r7,r6] packs (x | row<<4) into the r7 buffer and
+    counts matches returned in r0
+  refs:
+  - bn6f/asm/object.s:3859
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x0800D300
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the game effect (e.g. which attack/ability uses these found panels) is unidentified
+- Exact meaning of the panel status high byte values compared against r0, and of mask bits 0x00800000/0x01000000/0x02000000
+- Who supplies r7 and how the packed (x|row<<4) results are consumed
+- Why r1 is saved but never read
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800D300 -> battle_findMatchingPanelsPerRow
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D300

@@ -1,0 +1,49 @@
+name: battle_edgeTestGetCurrentTableEntry
+address: '0x080317DE'
+kind: function
+status: probable
+summary: Computes an entity's position relative to a target, runs a half-plane test against a fixed edge,
+  then returns a pointer into the current hit-area table entry with r1 cleared.
+interface: (r0 = entity ptr, r1 = target/ref ptr) -> r0 = pointer to current table entry header + offset,
+  r1 = 0; flags from the final add
+details: First calls battle_calcRelPosToTarget_803172E to fill the shared scratch buffer with the entity's
+  (and next-position's) coordinates relative to a doubled target point. It then sets up a fixed edge/point
+  pair (0, 0x10)-(0xC, 0xC) in r2-r5 and calls math_pointCrossHalfPlaneTest_8031594, the inner test of
+  the polygon/hit-area fill machinery. No branch is taken on that result, so within this function the
+  test's side effect (scratch state) matters, not its return value. Finally table_GetCurrentEntryHeader_8031760
+  is called on the dword_2011A20 table iterator, and r0+r1 yields a pointer to the current entry's payload
+  with r1 = 0. Without any caller it is unclear whether callers chain this per-edge or ignore the half-plane
+  result.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_calcRelPosToTarget_803172E — first action is the relative-position computation; mov
+    r2,#0 / r4,#0xc / r3,#0x10 / r5,#0xc then bl math_pointCrossHalfPlaneTest_8031594 — fixed-edge half-plane
+    test with no branch on r0; bl table_GetCurrentEntryHeader_8031760; add r0,r0,r1; mov r1,#0 — returns
+    header+offset pointer and clears r1; callee doc: math_pointCrossHalfPlaneTest is ''the inner test
+    of a polygon/hit-area fill routine'''
+  refs:
+  - bn6f/asm/asm03_0.s:25211
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  - 0x08031594 math_pointCrossHalfPlaneTest_8031594
+  - 0x08031760 table_GetCurrentEntryHeader_8031760
+  reproduce: python3 tools/asmcat.py 0x080317DE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the caller context that would show why the half-plane result is not branched on
+  (per-edge chaining? side-effect only?) is missing
+- The exact field layout of the dword_2011A20 table entry header (which offset r1 represents) is unknown
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80317DE -> battle_edgeTestGetCurrentTableEntry
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80317DE

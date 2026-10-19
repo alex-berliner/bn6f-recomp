@@ -1,0 +1,47 @@
+name: spawn_effectAtFrontPanel
+address: '0x080F0BA4'
+kind: function
+status: probable
+summary: Spawns a type-0 effect object on the panel directly in front of the calling battle object.
+interface: (r0 = battle object (kept in r5)) -> r0 = spawned effect object pointer; flags clobbered
+details: Reads the object's effective facing via object_getFlip and object_getFrontDirection, adds the
+  direction to oBattleObject_PanelX to get the front panel, and converts that column/row to 16.16 screen
+  coordinates with object_getCoordinatesForPanels. It then calls spawn_t1_0x0_EffectObject with x in r1,
+  y in r2, and a fixed height parameter of 0x10000 (1.0) in r3, returning the spawned object. It also
+  computes r4 = 0x16 + flip*0x100 + 3*0x10000 but never uses it — dead code, apparently a packed parameter
+  (id 0x16, flip, class 3) left from an earlier version. The object pointer in r0/r5 is preserved across
+  the calls since it is only read via r5 afterwards.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlip / object_getFrontDirection determine facing before use (asm lines 3, 9); ldrb
+    r1,[r5,#oBattleObject_PanelX]; add r0,r0,r1 — front panel = PanelX + direction; bl object_getCoordinatesForPanels
+    converts panel col/row to fixed-point pixel coords; bl spawn_t1_0x0_EffectObject with r3=0x10000 spawns
+    effect type 0 at that position; r4 = 0x16 + flip<<8 + 3<<16 is computed but never read afterward —
+    dead leftover
+  refs:
+  - bn6f/asm/asm31.s:122685
+  - 0x080F0A7A sub_80F0A7A
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F0BA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What the dead r4 value (0x16 / flip / 3 packed) was meant to select — possibly an effect variant now
+  hardcoded to type 0
+- Which caller context (sub_80F0A7A) triggers this — likely an attack or trap spawning a front-panel effect
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0BA4 -> spawn_effectAtFrontPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0BA4

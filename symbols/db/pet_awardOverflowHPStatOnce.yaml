@@ -1,0 +1,50 @@
+name: pet_awardOverflowHPStatOnce
+address: '0x0808C6A4'
+kind: function
+status: probable
+summary: One-shot routine that, the first time it runs, plays a jingle and grants the equipped PET navi
+  stat 0x40 a value derived from its max HP (surplus over a threshold read from unk_2000B40+6), clamped
+  to the stat's cap, then latches event flag 0x9D5 so it never runs again.
+interface: (r0 = unused/must be 0) -> r0 = 0; sets event flag EVENT_9D5 and PET navi stat 0x40 on first
+  call; flags not meaningful
+details: If event flag 0x9D5 is already set, the function just returns 0. Otherwise it plays sound effect
+  0x6B, calls GetMaxAndCurHPForCurPETNavi(0) and compares one of the returned HP values against ([unk_2000B40+6]
+  * 0x64). The grant value is max(1, hp - threshold), i.e. at least 1 and otherwise the excess over the
+  threshold. It then calls sub_80010EC(0, grantValue), which writes PET navi stat 0x40 clamped to the
+  cap stored in stat 0x42, and finally sets flag 0x9D5. The flag makes the award one-time; the threshold
+  lives in RAM at unk_2000B40+6, a struct of unknown meaning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne loc_808C6DC after TestEventFlagFromImmediate(EVENT_9D5) skips the whole body, making it
+    one-shot; bl PlaySoundEffect with r0=#0x6b then bl GetMaxAndCurHPForCurPETNavi_80010D4 with r0=#0
+    (navi slot 0); ldrh r2,[r5,#6]; mov r3,#0x64; mul r2,r3; cmp r0,r2 — threshold is field+6 times 100;
+    r1 = 1 if hp <= threshold else hp - threshold, then bl sub_80010EC which the DB says clamps PET navi
+    stat 0x40 to the cap in stat 0x42; SetEventFlagFromImmediate(EVENT_9D5) at the end, matching the test
+    at entry
+  refs:
+  - bn6f/asm/asm24.s:721
+  - 0x080010D4 GetMaxAndCurHPForCurPETNavi_80010D4
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F110 SetEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0808C6A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which value GetMaxAndCurHPForCurPETNavi returns in r0 (max vs current HP)
+- what unk_2000B40 is and what field +6 holds (the threshold seems to be a multiplier of 100)
+- what PET navi stat 0x40/0x42 mean in game terms, and which caller invokes this (none known), needed
+  to name the feature precisely
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808C6A4 -> pet_awardOverflowHPStatOnce
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808C6A4

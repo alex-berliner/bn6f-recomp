@@ -1,0 +1,50 @@
+name: ai_gregarInitAttackVars
+address: '0x08103FE8'
+kind: function
+status: probable
+summary: 'Gregar AI attack setup: reads difficulty tier, initializes the AI attack-vars struct, picks
+  the enemy player as target, and starts attack 0xC.'
+interface: (r7 = * AIAttackVars of caller's object, r5 = * BattleObject) -> r0 = clobbered; fields of
+  oAIAttackVars written
+details: Maps the enemy AI data difficulty byte to tier 0-2 and stores it in oAIAttackVars_AiDifficultyTier,
+  then clears oAIAttackVars_InitFlag (per-attack init flag consumed later by the step logic). Calls sub_810407E
+  with 3 and sub_81040AC with 4, storing the latter's return in oAIAttackVars_ScratchVar, and stores sub_8103EE4's
+  result in oAIAttackVars_AttackBoost2; these look like attack-parameter/timing lookups whose meaning
+  is only implied. It then eors the object's Alliance flag and calls battle_findPlayer to fetch the opposing
+  (player-side) object into oAIAttackVars_TargetObjectPtr. Finally calls object_setAttack0 with 0xC to
+  launch attack id 0xC, matching the caller's RNG-gated attack step (GetPositiveSignedRNG & 0xF < 8).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 stores
+    the tier; eor r0,r1 + bl battle_findPlayer with Alliance^1 stores the opposing object as oAIAttackVars_TargetObjectPtr;
+    mov r0,#0xc; bl object_setAttack0 launches attack 0xC; caller sub_8103CD0 gates entry with GetPositiveSignedRNG&0xF<8,
+    so this is the attack-start branch; strb r0,[r7,#oAIAttackVars_InitFlag] with 0 clears the per-attack
+    init flag
+  refs:
+  - bn6f/asm/asm31.s:162774
+  - 0x08103CD0 sub_8103CD0
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08103FE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what sub_810407E(3), sub_81040AC(4) and sub_8103EE4 return (attack timing/parameter tables) would confirm
+  the attack type
+- what attack id 0xC is for Gregar and how oAIAttackVars_ScratchVar/AttackBoost2 are consumed by the AI
+  step
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8103FE8 -> ai_gregarInitAttackVars
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103FE8

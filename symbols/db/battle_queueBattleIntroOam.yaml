@@ -1,0 +1,49 @@
+name: battle_queueBattleIntroOam
+address: '0x08033AF0'
+kind: function
+status: probable
+summary: 'One step of the battle-intro (jack-in) animation: queues the navi frame, the battle-start overlay,
+  an extra step handler, and the real-world navi icon OAM.'
+interface: '(self in r5: * S2011E30) -> r0 = last callee''s return; no flags relied on by caller'
+details: This is a tiny sequencer that runs with the object/state pointer in r5 (struct S2011E30). It
+  first calls sprite_queueOamByFrameIndex with r0=1 (a frame-select parameter), which queues one OAM entry
+  using the periodic 0x18-entry table indexed by the frame counter at [r5+5]. It then calls battle_drawBattleStartOverlay
+  with r0=0, which conditionally DMAs and queues the battle-start overlay entry depending on a game-state
+  flag. Next it invokes sub_8033CF0 (still undocumented) and finally battleObject_queueRealWorldNaviIconOAM,
+  which swaps in the current PET navi's real-world icon tile/palette and queues that sprite transfer.
+  The ordering (navi frame, overlay, extra step, navi icon) suggests it is one per-frame update of the
+  battle-intro OAM composition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: body is four tail-ish bl calls with no other state changes; self pointer lives in r5 per the
+    signature comment; sprite_queueOamByFrameIndex_8033B80 queues one OAM entry from table indexed by
+    [r5+5] frame counter — called with r0=1; battle_drawBattleStartOverlay_8033F80 queues battle-start
+    overlay OAM based on a game-state flag — called with r0=0; battleObject_queueRealWorldNaviIconOAM_8033BE8
+    queues the current navi's real-world icon sprite; no callers known yet, so the exact stage of the
+    battle-intro sequence is inferred from the callees' battle-start context
+  refs:
+  - bn6f/asm/asm03_1_0.s:440
+  - 0x08033BE8 battleObject_queueRealWorldNaviIconOAM_8033BE8
+  - 0x08033F80 battle_drawBattleStartOverlay_8033F80
+  - 0x08033B80 sprite_queueOamByFrameIndex_8033B80
+  reproduce: python3 tools/asmcat.py 0x08033AF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what sub_8033CF0 does (likely another OAM/sprite step of the same intro)
+- which caller invokes this and with which S2011E30 state, to pin down the exact battle-intro phase
+- meaning of the r0 arguments (1 to the frame queue, 0 to the overlay)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8033AF0 -> battle_queueBattleIntroOam
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033AF0

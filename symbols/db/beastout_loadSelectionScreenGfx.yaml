@@ -1,0 +1,49 @@
+name: beastout_loadSelectionScreenGfx
+address: '0x080287A4'
+kind: function
+status: probable
+summary: 'Loads the graphics needed for one step of the Beast Out selection screen: a sprite tile row,
+  a VRAM graphics block, a 0x20-byte chunk, and the Beast Out sprite sheets.'
+interface: (r0 = pointer to selection-screen entry struct; if [r0]==5 r0 is rewound 0xC to the real entry)
+  -> void; uses [r0+4] as descriptor/slot index
+details: 'Reads a byte at [r0]; when it equals 5 the pointer is backed up 0xC bytes, handling two entry
+  layouts that share this loader. It then takes the byte at [r0+4] and passes it to loadOneSpriteTileRow_80287D2,
+  which primes the engine sprite-descriptor slot and queues a 0x20-byte tile row into VRAM. Two QueueEightWordAlignedGFXTransfer
+  calls follow: one copying 0x540 bytes of ROM data (dword_8722AF4) to VRAM at 0x6009560 (the selection
+  screen''s graphic block), and one copying 0x20 bytes (dword_8725854) to the EWRAM buffer unk_3001AA0.
+  Finally beastout_LoadSelectionScreenSpriteSheets_802869E loads the three Beast Out selection sprite
+  sheets into VRAM slots 1-3.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r1,#5 / sub r0,#0xC: two struct layouts share this loader, real field read at [r0+4]; loadOneSpriteTileRow_80287D2
+    called with [r0+4]: queues 0x20-byte tile row via engine sprite descriptor; GFX queue to 0x6009560
+    size 0x540 from dword_8722AF4: bulk VRAM graphics upload; GFX queue of 0x20 bytes to unk_3001AA0:
+    small RAM-side copy of companion data; tail call beastout_LoadSelectionScreenSpriteSheets_802869E
+    ties it to the Beast Out selection screen'
+  refs:
+  - bn6f/asm/asm03_0.s:5023
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x0802869E beastout_LoadSelectionScreenSpriteSheets_802869E
+  - 0x080287D2 loadOneSpriteTileRow_80287D2
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x080287A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of the byte at [r0] and the 0xC-byte alternative layout
+- what unk_3001AA0 receives (palette, attribute, or descriptor data)
+- whether dword_8722AF4 is a tilemap or raw bitmap for the selection background
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80287A4 -> beastout_loadSelectionScreenGfx
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80287A4

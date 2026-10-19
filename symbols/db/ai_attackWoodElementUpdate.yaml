@@ -1,0 +1,51 @@
+name: ai_attackWoodElementUpdate
+address: '0x080EFEAC'
+kind: function
+status: probable
+summary: Per-frame AI attack-state handler that makes the object's attack wood-element (element 4), holds
+  a flag for its duration, then ends the attack when the timer runs out.
+interface: (r7 = battle object with AIAttackVars) -> void; sets object flag bit 22, AI data 0x48 flag
+  0x800 while active, writes oAIAttackVars_AttackElement = 4, decrements oAIAttackVars_StepTimer, calls
+  object_exitAttackState on expiry
+details: If oAIAttackVars_AttackElement is still 0, it ORs object flag bit 22 into CollisionData ObjectFlags1,
+  sets AI data word 0x48 bit 0x800 (SetAIDataUnk0x48Flag), and stores element 4 (wood) into AttackElement
+  — a one-time init on entry. Each frame after that it decrements oAIAttackVars_StepTimer; while the timer
+  is >= 0 nothing else happens. Once the timer goes negative, it clears the same 0x800 flag in AI data
+  0x48 and calls object_exitAttackState to leave the attack state. The 0x800 AIData flag tracks the attack's
+  active window, and the element assignment presumably makes the attack subject to wood-element interactions
+  (grass status, etc.). Uses r7 as the object pointer rather than r0, so it is called as a tail-context
+  routine from an AI attack state table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne skip — init block runs only once, sets element
+    to 4; bl SetAIDataUnk0x48Flag with 0x800, then ClearAIDataUnk0x48Flag with same mask — flag brackets
+    the attack duration; bl object_setFlag1 sets OBJECT_FLAGS_UNK_BIT_22 once at entry alongside the element
+    write; sub timer/strh/bge pattern plus bl object_exitAttackState on expiry — standard attack-state
+    countdown exit; callee summaries (object_setFlag1, object_exitAttackState) confirm battle-object AI
+    attack context
+  refs:
+  - bn6f/asm/asm31.s:121006
+  - 0x08010312 SetAIDataUnk0x48Flag
+  - 0x0801A152 object_setFlag1
+  - 0x0801031C ClearAIDataUnk0x48Flag
+  reproduce: python3 tools/asmcat.py 0x080EFEAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which enemy/attack uses this (no callers known), and what gameplay effect object flag bit 22 or AIData
+  0x48 bit 0x800 has
+- whether element 4 is wood in this game's element enum or a different attack attribute
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EFEAC -> ai_attackWoodElementUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFEAC

@@ -1,0 +1,48 @@
+name: battle_initAiAttack
+address: '0x080F4B34'
+kind: function
+status: probable
+summary: 'Initializes the AI attack vars for an enemy attack (attack id 2): loads version-dependent parameters,
+  picks the opposing player as target, and starts attack state 0xC.'
+interface: (r0 = 2 attack index; r5 = battle object, r7 = AI attack vars struct) -> r0 = object_setAttack0
+  result; sets AIAttackVars fields and attack state
+details: Reads the enemy AI difficulty tier and clears the InitFlag, then loads the attack's damage-related
+  word for attack index 2 from version-dependent tables. Sub-calls sub_80F4A54/sub_80F4A78/sub_80F4A8C
+  fill AttackDuration, ScratchVar, and several per-attack parameters (AttackBoost2, TimerOrCycles, SubStepIndex),
+  and it installs sub_80F55AC+1 as PanelChooseCallback. It stores battle_findPlayer(alliance ^ 1) as the
+  target object, i.e. the opposing side's player, then invokes object_setAttack0(0xC) to enter the attack.
+  This is a per-attack setup routine in the enemy AI attack state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_*] stores to every field of the AI attack vars struct (tier, init
+    flag, duration, scratch, callback, params); bl battle_aiLoadAttackDamage with r0=2 loads that attack's
+    damage word; eor alliance with 1 then bl battle_findPlayer stores the opposing player as oAIAttackVars_TargetObjectPtr;
+    mov r0,#0xc; bl object_setAttack0 starts the attack in state 0xC; called from sub_80F48E8, which otherwise
+    only appears as this attack's dispatcher
+  refs:
+  - bn6f/asm/asm31.s:130776
+  - 0x080F48E8 sub_80F48E8
+  - 0x080F4B74 battle_aiLoadAttackDamage
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080F4B34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what attack this specifically is (attack id 2 in these tables) and what sub_80F55AC's panel-choose callback
+  does
+- what sub_80F4A54/A78/A8C compute (likely duration/step params from the same tables)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F4B34 -> battle_initAiAttack
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4B34

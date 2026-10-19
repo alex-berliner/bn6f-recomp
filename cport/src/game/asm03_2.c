@@ -813,10 +813,10 @@ static bool scrambled_counter_valid(u32 counter) {
     return ZERO_FLAG();  /* bne taken (Z=0) when the scramble check fails */
 }
 
-/* register form: calls sub_803D0B4 outside this file, which has no typed C interface yet */
+/* register form: calls bugfrags_syncProtectedCounters outside this file, which has no typed C interface yet */
 static void apply_counter_normal(u32 counter) {
     R0 = counter;
-    GUEST_CALL(sub_803D0B4);
+    GUEST_CALL(bugfrags_syncProtectedCounters);
 }
 
 /* register form: calls protectZenny_803D02C outside this file, which has no typed C interface yet */

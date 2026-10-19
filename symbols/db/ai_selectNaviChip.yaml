@@ -1,0 +1,53 @@
+name: ai_selectNaviChip
+address: '0x080EF87C'
+kind: function
+status: probable
+summary: AI routine that picks a chip ID for the opponent Navi's next attack (randomly or via panel choice),
+  loads its chip data, and sets up the attack state.
+interface: (no args; r5 = battle object, r7 = AI attack-vars struct) -> stores oAIAttackVars_ChipID, AiDifficultyTier,
+  AttackBoost2, PwrAtkState; may set oBattleObject_CurAction = 0x41
+details: Reads NaviStats byte 0x2C; if it is 0x17/0x18 (specific Navis) or the object is invincible, it
+  picks a chip purely at random (GetPositiveSignedRNG mod 4, svc 6, mapped through byte_80EF958 to IDs
+  0x176-0x178). Otherwise it decrements oAIAttackVars_ChargeCycles; when charged (or when the panel-choose
+  callback sub_8012792 with the 0x30-entry weight table at r7+0x30+0xC returns a valid index), it selects
+  a chip, plays SOUND_OK_8B on the manual path, and stores the ID at oAIAttackVars_ChipID. It then fetches
+  the 44-byte chip record via getChip8021DA8, copies byte 0xC to oAIAttackVars_AiDifficultyTier, word
+  0x10 to oAIAttackVars_AttackBoost2, and calls object_setAttack0 with chip byte 0xB (element/type). Chip
+  0x177 is special-cased (skips the charge-action branch), and when oAIAttackVars_ChargeReadyFlag is set
+  it sets oBattleObject_CurAction = 0x41 (charged attack action); for NaviStats 0x2C in range 0xB-0x18
+  (or while invincible) it also copies chip byte 0xF to oAIAttackVars_PwrAtkState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: GetPositiveSignedRNG + svc 6 + cmp r1,#3 maps a random 0-3 through byte_80EF958 to chip IDs
+    0x176-0x178 stored at oAIAttackVars_ChipID; getChip8021DA8 result fields 0xB/0xC/0x0F/0x10 are stored
+    into oAIAttackVars_* and passed to object_setAttack0; sub_8012792 called with r0=0xC and callback
+    at oAIAttackVars_PanelChooseCallback, returning 0xFF as 'no pick', with PlaySoundEffect(SOUND_OK_8B)
+    on success; ChargeCycles decrement and ChargeReadyFlag setting oBattleObject_CurAction=0x41 tie this
+    to the AI's attack/chip-use phase; NaviStats byte 0x2C compared to 0x17/0x18 and range 0xB-0x18 gates
+    randomness and PwrAtkState, matching Navi-ID style checks
+  refs:
+  - bn6f/asm/asm31.s:120192
+  - 0x080EF7FC sub_80EF7FC
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080EF87C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of NaviStats bytes 0x29 and 0x2C (Navi IDs vs. custom-window/difficulty fields)
+- what action 0x41 and oAIData_JoypadHeld bit 0 represent in the caller's state machine
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EF87C -> ai_selectNaviChip
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF87C

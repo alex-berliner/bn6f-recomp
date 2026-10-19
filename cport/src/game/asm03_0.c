@@ -2203,18 +2203,18 @@ static void active_kind_2(u32 rec, u8 kind) {
     GUEST_CALL(beastout_loadSelectionScreenChipUseGfx);
 }
 
-/* register form: calls sub_8028754 outside this file, which has no typed C interface yet */
+/* register form: calls beastout_loadCustomScreenGfx outside this file, which has no typed C interface yet */
 static void active_kind_3(u32 rec, u8 kind) {
     R0 = rec;
     R1 = kind;
-    GUEST_CALL(sub_8028754);
+    GUEST_CALL(beastout_loadCustomScreenGfx);
 }
 
-/* register form: calls sub_80287A4 outside this file, which has no typed C interface yet */
+/* register form: calls beastout_loadSelectionScreenGfx outside this file, which has no typed C interface yet */
 static void active_kind_4_or_5(u32 rec, u8 kind) {
     R0 = rec;
     R1 = kind;
-    GUEST_CALL(sub_80287A4);
+    GUEST_CALL(beastout_loadSelectionScreenGfx);
 }
 
 /* register form: calls sub_80285FE outside this file, which has no typed C interface yet */
@@ -2224,11 +2224,11 @@ static void active_kind_6_or_7(u32 raw_id, u8 kind) {
     GUEST_CALL(sub_80285FE);
 }
 
-/* register form: calls sub_802877C outside this file, which has no typed C interface yet */
+/* register form: calls beastout_loadChipUseGfx outside this file, which has no typed C interface yet */
 static void active_kind_8_or_9(u32 rec, u8 kind) {
     R0 = rec;
     R1 = kind;
-    GUEST_CALL(sub_802877C);
+    GUEST_CALL(beastout_loadChipUseGfx);
 }
 
 /* Dispatch on the active-chip record's kind byte.  Kind 0 is a plain chip: its

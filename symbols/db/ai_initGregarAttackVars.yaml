@@ -1,0 +1,47 @@
+name: ai_initGregarAttackVars
+address: '0x08103FB4'
+kind: function
+status: probable
+summary: Initializes the AI attack variable block (difficulty tier, duration, callback, target) and launches
+  attack 0x0B for the Gregar enemy AI.
+interface: (r0 = battle object r7 implied) -> r0 = destroyed; writes oAIAttackVars fields and starts attack
+  0xB
+details: Reads the enemy's AI data difficulty via battle_getAiDifficultyTier and stores it in oAIAttackVars_AiDifficultyTier,
+  sets InitFlag=3 to mark the attack step initialized, and calls sub_810407E with 2 (likely panel/row
+  selection mode). sub_8103EAC returns the attack duration, stored in AttackDuration with TimerOrCycles
+  and AttackBoost2 cleared from its r1. It queues sub_8104EF8+1 as PanelChooseCallback, resolves the opposite-alliance
+  player object via battle_findPlayer (alliance bit inverted) into TargetObjectPtr, and finally invokes
+  object_setAttack0 with id 0xB to begin the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 then strb to oAIAttackVars_AiDifficultyTier sets up attack
+    params; ldr off_8104184 (=sub_8104EF8+1) stored into oAIAttackVars_PanelChooseCallback; bl battle_findPlayer
+    with inverted oBattleObject_Alliance stores enemy-side target in oAIAttackVars_TargetObjectPtr; mov
+    r0,#0xb; bl object_setAttack0 ends the routine, starting attack 0xB; caller sub_8103CD0 (Gregar AI
+    step) gates entry with GetPositiveSignedRNG & 0xF < 8, i.e. random attack choice
+  refs:
+  - bn6f/asm/asm31.s:162749
+  - 0x08103CD0 sub_8103CD0
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08103FB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact semantics of sub_810407E(r0=2) and sub_8103EAC's return values (duration/boost meaning) not shown
+- What attack 0x0B actually performs depends on object_setAttack0 internals not visible here
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8103FB4 -> ai_initGregarAttackVars
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103FB4

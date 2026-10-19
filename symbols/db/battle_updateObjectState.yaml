@@ -1,0 +1,53 @@
+name: battle_updateObjectState
+address: '0x080E002C'
+kind: function
+status: probable
+summary: 'Per-frame state update for a battle object: rebuilds its collision presence, dispatches a handler
+  for the current action, then re-places its collision region and highlights its panel.'
+interface: (r5 = battle object pointer) -> void; no return value, flags clobbered by callees
+details: The routine treats r5 as a battle object. It saves the object's collision-data pointer in r7,
+  then removes the collision data; if the saved data had collision-originated flags, it clears the collision
+  region and increments a counter at ExtraVars+0x10 while (re)loading a delay of 8 into ExtraVars+0x14.
+  When CurAction is neither 0 nor 0xC and the object's collision region is 0, it counts ExtraVars+0x14
+  down and, on reaching zero, sets collision region 1. It then dispatches via a jump table indexed by
+  CurAction to one of four handlers (80E00B0/80E0118/80E01EE/80E0226). After the handler, if the collision
+  data's PanelXY changed, it resets the ExtraVars+0x10 counter and — unless CurAction is 0xC — sets region
+  1 again. It finishes by highlighting the panel at the collision data's X/Y and calling object_presentCollisionData
+  to run the shared per-frame collision processing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7,[r5,#oBattleObject_CollisionDataPtr]; bl object_removeCollisionData then object_clearCollisionRegion
+    — per-frame collision teardown/rebuild; ldr r1,[jump table off_80E00A0 indexed by oBattleObject_CurAction];
+    mov lr,pc; bx r1 — action state dispatch to 4 handlers; cmp r0,r4 (old vs new PanelXY); mov r0,#1;
+    bl object_setCollisionRegion — region 1 is re-set when the handler moved the object; sub r0,#1; str
+    [r5,ExtraVars+0x14]; bgt skip; bl object_setCollisionRegion — delayed region assignment via an 8-frame
+    counter; bl object_highlightPanel; bl object_presentCollisionData — standard per-frame panel highlight
+    + shared collision refresh ending the update
+  refs:
+  - bn6f/asm/asm31.s:86542
+  - 0x080DFFDC sub_80DFFDC
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080E002C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which object/boss this update routine belongs to (identity of the 4 action handlers at 80E00B0/80E0118/80E01EE/80E0226
+  would tell)
+- Exact meaning of ExtraVars+0x10/+0x14 (looks like a re-entry delay counter, but semantics unconfirmed)
+- Why actions 0 and 0xC are exempt from the region logic
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E002C -> battle_updateObjectState
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E002C

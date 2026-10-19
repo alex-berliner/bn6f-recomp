@@ -1,0 +1,48 @@
+name: battle_spawnAppearEffect
+address: '0x080E6AF0'
+kind: function
+status: probable
+summary: 'First-tick handler of a battle object''s phase: spawns a facing-dependent effect at a related
+  object''s panel, plays the ''log in'' sound, then waits 20 frames before advancing the phase.'
+interface: (r5 = battle object) -> void; no return value
+details: 'Runs while oBattleObject_PhaseInitialized is 0: it marks the phase as initialized with value
+  4, reads the object''s effective flip via object_getFlip, computes flip*0x100+3 (a variant/parameter
+  word for the effect, likely mirroring it for the facing), then converts the panelX/panelY of the object
+  in oBattleObject_RelatedObject1Ptr into screen coordinates and spawns a type-4 effect object (effect
+  type 0) at that position. It plays sound effect 77 (SOUND_LOG_IN_77), sets oBattleObject_Timer to 0x14
+  (20 frames), and on subsequent ticks decrements it; when it reaches zero it writes phase 4 into oBattleObject_CurPhaseAndPhaseInitialized
+  to move to the next state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: one-shot init guarded by the phase-initialized
+    byte; bl object_getFlip ... lsl r4,#8; add #3: flip*256+3 passed as the spawned effect''s parameter;
+    ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]; ldrb panelX/panelY; bl object_getCoordinatesForPanels:
+    effect is placed at the related object''s panel; bl spawn_t1_0x0_EffectObject then PlaySoundEffect(SOUND_LOG_IN_77):
+    spawn-in effect plus materialize sound; timer set to 0x14 and counted down, then phase 4 written to
+    CurPhaseAndPhaseInitialized: timed transition to the next phase'
+  refs:
+  - bn6f/asm/asm31.s:101493
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080E6AF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which object type uses this phase handler (the related-object pointer's role is inferred only from the
+  field name)
+- What the type-4 effect with type 0 and variant flip*0x100+3 actually looks like on screen
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6AF0 -> battle_spawnAppearEffect
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6AF0

@@ -1,0 +1,46 @@
+name: ai_fire3RandomOffsetShots
+address: '0x080DF41C'
+kind: function
+status: probable
+summary: Enemy AI attack step that fires three spaced shots at randomized offsets (8/16/24/32 from a table)
+  toward the player, then advances the object to action 12.
+interface: (r5 = battle object) -> void; clobbers r0-r4, r6; object fields updated in place
+details: 'On phase 0 it initializes: phase=4, anim=1, Timer2=3 (shot count), Timer=0. Each time Timer
+  (reloaded to 10) expires it draws GetPositiveSignedRNG, masks 3 bits to index dword_80DF484 (bytes 08,10,18,20
+  = 8/16/24/32), shifts the picked byte left 16 and pushes it as a stack argument, then calls spawn_t3_0x12_80C6ADA
+  with r0 = PanelX + object_getFrontDirection(), r1 = PanelY, r2 = the object''s Element, r4 = 0x12 and
+  r6 from DamageAndStaminaDamageCounterDisabler — spawning one projectile, followed by sound effect 0xB9.
+  After the third shot (Timer2) it sets CurAction=12 and clears CurPhaseAndPhaseInitialized so the AI
+  state machine moves on.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase-0 block sets CurPhase=4, CurAnim=1, Timer2=3, Timer=0 (asm lines 2-11); RNG &3 indexes
+    dword_80DF484 = 0x20181008 (bytes 8,16,24,32), pushed shifted <<16 as stack arg to the spawn call;
+    spawn call passes PanelX+frontDirection, PanelY, Element, r4=0x12; PlaySoundEffect(0xB9) right after;
+    Timer2 counts 3 iterations, then CurAction=0xC and phase cleared, ending the attack state
+  refs:
+  - bn6f/asm/asm31.s:84855
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DF41C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which enemy/object uses this handler (no caller known)
+- exact meaning of the pushed 8/16/24/32 argument and r4=0x12 in spawn_t3_0x12_80C6ADA (vertical offset?
+  spawn kind?)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF41C -> ai_fire3RandomOffsetShots
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF41C

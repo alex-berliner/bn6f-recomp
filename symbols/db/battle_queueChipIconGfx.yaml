@@ -1,0 +1,48 @@
+name: battle_queueChipIconGfx
+address: '0x080282E8'
+kind: function
+status: probable
+summary: Queues the icon graphics (and code-related tile) for the battle chip stored in a chip-slot struct,
+  given a destination/state pointer.
+interface: (r0 = unused/overwritten, r1 = gfx destination/state pointer, r4 = chip slot struct) -> r0
+  = result of last queue call; r1 advanced past queued chunks
+details: 'r4+7 is a type/status byte: when it equals 2 a fixed ID of 0x1FF is used instead of reading
+  a chip. Otherwise r4+8 points to a halfword holding a packed chip reference; getChipID_802A54E extracts
+  it. The ID (masked 0x1FF, i.e. 9 bits) selects an 0x80-byte chunked gfx transfer — the size of a 16x16
+  4bpp chip icon. The function then re-reads the same packed halfword and shifts right by 9, recovering
+  the top bits (chip code / letter index), and queues a further 0x40-byte chunk keyed on it. r1 is never
+  written here, so the transfer destination is supplied by the caller and advanced by the queue helpers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#2 / ldr r0,=0x1ff: fallback ID 0x1FF = 9-bit chip-ID mask, implying default/blank chip;
+    getChipID on [r4+8] halfword feeds gfx_QueueNextChunkedGfxTransfer; 0x80 bytes matches a 16x16 4bpp
+    chip icon; second getChipID then lsr r0,#9 extracts bits above the 0x1FF ID field, i.e. the chip code,
+    for the second 0x40-byte queue; r1 untouched in body, and gfx_QueueNext64ByteChunk_8028204 docs say
+    it advances r1, so destination comes from caller'
+  refs:
+  - bn6f/asm/asm03_0.s:4369
+  - 0x08028204 gfx_QueueNext64ByteChunk_8028204
+  - 0x080281C4 gfx_QueueNextChunkedGfxTransfer_80281C4
+  - 0x0802A54E getChipID_802A54E
+  reproduce: python3 tools/asmcat.py 0x080282E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no caller known, so which screen (custom/folder/battle chip-select) and what exact structure r4 is remain
+  unconfirmed
+- what the second 0x40-byte chunk keyed on the chip code renders (code-letter tile vs. palette) is inferred,
+  not shown
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80282E8 -> battle_queueChipIconGfx
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80282E8

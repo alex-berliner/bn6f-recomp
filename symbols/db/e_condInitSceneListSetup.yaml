@@ -1,0 +1,51 @@
+name: e_condInitSceneListSetup
+address: '0x0804A04E'
+kind: function
+status: probable
+summary: Script/event step that, when event-flag bit 0x80 is not yet set, sanitizes and counts a halfword
+  entry list and sets up scene state fields, then always resumes scene/script playback.
+interface: (r5 = scene/task context struct) -> r0 = passthrough of sub_8049F70; writes r5+0x00, r5+0x10,
+  r5+0x13; reads event flag bit 0x80
+details: 'It first tests event-flag bit 0x80 via chatbox_mask_eFlags2009F38; if the bit is clear it performs
+  one-time setup: clears byte r5+0x13, calls sub_803C0BE(0x10, 0x30) which compacts trailing free slots
+  (0x00 or 0xE5) of a 2-byte-per-entry list into 0xE5 0xE5 pairs up to a 0xE6 terminator, then counts
+  the valid entries with sub_803C132(0x10, 0x30) and stores the count at r5+0x10, and finally writes 0xC
+  to r5+0x01. The 0x10/0x30 arguments likely identify the buffer and its capacity (48 halfword entries).
+  Whether the flag bit was set or not, it always tail-calls sub_8049F70, which queues setup actions and
+  resumes script playback. The E5/E6 markers and cleanup pattern suggest the list is a persistent, save-relevant
+  table rather than scratch data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80 gates the setup block on an event flag bit (bne
+    skips it); bl sub_803C0BE (0x10,0x30) then bl sub_803C132 (0x10,0x30): list is normalized to E5 pairs,
+    counted, count stored at [r5,#0x10]; strb 0xC at [r5,#1] and strb 0 at [r5,#0x13] initialize context
+    fields only in the first-run branch; loc_804A072 is reached from both branches and always calls sub_8049F70,
+    which ''queues setup actions and resumes script playback''; callee semantics of sub_803C0BE/sub_803C132
+    (2-byte entries, 0xE5/0xE6 markers) identify the list format'
+  refs:
+  - bn6f/asm/asm03_2.s:6973
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803C0BE sub_803C0BE
+  - 0x0803C132 sub_803C132
+  reproduce: python3 tools/asmcat.py 0x0804A04E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What structure r5 points to and what fields +1, +0x10, +0x13 mean
+- Which in-memory buffer the 0x10/0x30 selector refers to and what its entries represent
+- What event flag bit 0x80 corresponds to in the game's flag layout, and what script command or event
+  invokes this handler
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A04E -> e_condInitSceneListSetup
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A04E

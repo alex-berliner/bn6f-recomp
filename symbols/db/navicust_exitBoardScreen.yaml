@@ -1,0 +1,46 @@
+name: navicust_exitBoardScreen
+address: '0x081360DC'
+kind: function
+status: probable
+summary: 'Exit routine for the Navi Customizer board screen: resets state, unhighlights the cursor cell,
+  redraws the board, and plays the exit sound.'
+interface: () -> void; r0 and r5 clobbered via calls
+details: Writes 0xC to byte [r5,#2], which is the screen/task state or mode field of the Navi Cust context
+  object, then calls sub_81362F8 (likely a state/fade handler). It calls navicust_getCellProgramId so
+  the handler for the currently hovered cell sees the cursor leaving, then calls sub_813660C with r0=0
+  (likely clearing a selection/position) and redraws the whole 49-cell board via navicust_drawBoardTilemap.
+  Finally it plays SOUND_EXIT_SUBMENU, matching a 'leaving the submenu' transition. The padding after
+  the epilogue shows it is a leaf-like state handler invoked from the Navi Cust input/state dispatcher
+  sub_8135FDC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0(=0xC), [r5,#2] sets a state byte before the transition sequence; final bl PlaySoundEffect
+    uses SOUND_EXIT_SUBMENU, the submenu-exit jingle; bl navicust_drawBoardTilemap fully redraws the Navi
+    Cust board buffer unk_30019E0; bl navicust_getCellProgramId runs the hovered-cell handler as part
+    of cleanup; caller sub_8135FDC is the Navi Cust input/state dispatcher around the board screen
+  refs:
+  - bn6f/asm/asm36.s:12620
+  - 0x08135FDC sub_8135FDC
+  - 0x080005CC PlaySoundEffect
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  - 0x08135F18 navicust_getCellProgramId
+  reproduce: python3 tools/asmcat.py 0x081360DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact meaning of state 0xC and what sub_81362F8/sub_813660C do (fade-out vs. cursor reset) would confirm
+  the transition target screen
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81360DC -> navicust_exitBoardScreen
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81360DC

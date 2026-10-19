@@ -1,0 +1,54 @@
+name: battle_packChipEntryRecord
+address: '0x0813068C'
+kind: function
+status: probable
+summary: 'Builds (or clears) a 0x60-byte record at unk_202708C: 0x20 bytes of text from the chatbox script
+  pool followed by a 0x3C-byte selected-chip entry plus a halfword checksum.'
+interface: () -> r0 = undefined; writes unk_202708C[0..0x60) and fields of the struct returned by sub_8130404;
+  no meaningful flags
+details: Calls sub_8130404 to fetch a state struct (r5). If byte [r5+0xC] is 0, it zero-fills all 0x60
+  bytes of unk_202708C by halfword. Otherwise it decrements the count, calls battle_getPlayerCurState(count-1),
+  shifts the result right by 4 to get a text-script index, and copies 0x20 bytes from the chatbox text
+  pool into unk_202708C+0. It then indexes the toolkit's S_Chip array (pointer at toolkit+0x2002178) at
+  (count-1)*0x3C and copies that 0x3C-byte entry as halfwords to unk_202708C+0x20..0x5C, accumulating
+  the halfword sum which it stores as a word at +0x5C (a checksum). Finally it sets [r5+0x34] = 0x60 (record
+  length) and clears [r5+0x3C] and [r5+0x40]. The layout (text name + fixed-size chip record + checksum)
+  resembles a self-contained chip record/packet, but the consumer is not visible from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne on ldrb [r5,#0xc] chooses ZeroFillByHalfword(unk_202708C, 0x60) vs record construction;
+    CopyBytes(chatbox_getTextScriptPointerByIndex(state>>4), unk_202708C, 0x20) fills the first 0x20 bytes
+    with pool text; mul r0,(count-1),0x3c indexes the oToolkit_S_Chip_2002178 array; the loop copies its
+    0x3C bytes to unk_202708C+0x20; sum of copied halfwords stored as a word at r7+0x5C acts as a record
+    checksum; epilogue writes 0x60 to [r5+0x34] and zeroes [r5+0x3C]/[r5+0x40], sizing the record in the
+    caller struct
+  refs:
+  - bn6f/asm/asm36.s:849
+  - 0x0812F7C8 sub_812F7C8
+  - 0x08000920 CopyBytes
+  - 0x08137884 battle_getPlayerCurState_8137884
+  - 0x0804A24C chatbox_getTextScriptPointerByIndex_804A24C
+  reproduce: python3 tools/asmcat.py 0x0813068C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_8130404 returns (the struct with count at +0xC and length/cursor fields at +0x34/+0x3C/+0x40)
+  and what subsystem it belongs to
+- What the oToolkit_S_Chip_2002178 array contains and why battle_getPlayerCurState(count-1)>>4 maps to
+  a text-script index
+- Who consumes the 0x60-byte record at unk_202708C (display, save, or a link/transfer packet) — caller
+  sub_812F7C8 would clarify
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813068C -> battle_packChipEntryRecord
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813068C

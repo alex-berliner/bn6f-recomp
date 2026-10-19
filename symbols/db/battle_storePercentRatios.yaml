@@ -1,0 +1,52 @@
+name: battle_storePercentRatios
+address: '0x0802D0C8'
+kind: function
+status: probable
+summary: Computes a rounded-up percentage (100*a/b) from the player's and a specific enemy's object fields
+  and stores the two bytes into a 0x20-byte IWRAM table record.
+interface: (r0 = record index into IWRAM table 0x203C4A0) -> r0 = last stored byte; writes entry+0xC (player
+  percent) and entry+0xE (enemy percent); flags from tst on enemy-search result
+details: Selects a 0x20-byte entry of the IWRAM array at 0x203C4A0 via getTableEntryPtr32_802D064 using
+  the caller's r0. It reads the player BattleObject (battle_findPlayer), computes r0 = 100*[0x24] + [0x26]
+  - 1 and divides by [0x26] with SWI 6 (Div), i.e. ceil(100*field0x24/field0x26), storing the quotient
+  byte at entry+0xC. It then reads battle-state byte 0x0D, XORs it with 1 to pick a side/variant, and
+  calls object_getEnemyByNameRange with min=max name 0x17F and an out-pointer on the stack; if such an
+  object exists, the same ceil-percentage of its fields 0x24/0x26 is stored at entry+0xE, otherwise 0
+  is stored. Both source fields are u16; the results are bytes, so the ratio is expected to fit 0-100
+  (or slightly above). Battle-state byte 0x0D is read twice but only used for the enemy-side lookup flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul by #0x64 then sub r2,r1,#1 before SWI 6 Div is the classic ceil(100*a/b) percentage idiom
+    (both for player and enemy); strb r0,[r7,#0xC] and strb r0,[r7,#0xE] write two byte results into the
+    0x20-byte record from getTableEntryPtr32_802D064; eor r3,r0,#1 with battle_getStateByte0d_800A7E2
+    flips a flag passed to object_getEnemyByNameRange(r1=r2=0x17F); tst r0,r0 / beq: when the 0x17F object
+    search fails, the stored value at +0xE is simply 0; battle_findPlayer supplies fields 0x24/0x26 used
+    as numerator/denominator for the player''s ratio'
+  refs:
+  - bn6f/asm/asm03_0.s:14919
+  - 0x0800A7E2 battle_getStateByte0d_800A7E2
+  - 0x0802D064 getTableEntryPtr32_802D064
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x0802D0C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What fields 0x24/0x26 of a BattleObject mean (current/total of HP or some gauge) — a known summary of
+  battle_findPlayer's struct would confirm
+- Which enemy/object type ID 0x17F is (why exactly this object is sampled on the opposite side)
+- Meaning of battle-state byte 0x0D used as the side selector
+- Purpose of the 0x20-byte records at 0x203C4A0 and what consumes bytes 0xC/0xE
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D0C8 -> battle_storePercentRatios
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D0C8

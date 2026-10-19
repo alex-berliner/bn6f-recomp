@@ -1,0 +1,48 @@
+name: ai_woodAttackHandler
+address: '0x080ED8E0'
+kind: function
+status: probable
+summary: 'Per-frame handler for an AI wood-element attack: sets up the windup animation once, then on
+  the attack-active frame switches to the strike animation and arms wood-element hit data.'
+interface: (r0 unused/passed through to callees, r7 = object with AI attack vars) -> void; flags clobbered
+details: r7 points at a battle object's oAIAttackVars block. First pass (AttackElement == 0) starts animation
+  0x12, resets the counter timer, ORs flag bit 22 plus OBJECT_FLAGS_CANNOT_SLIDE into the object's flags,
+  and writes 4 into oAIAttackVars_AttackElement. Later passes call sprite_getFrameParameters and, when
+  the frame attribute bit 0x80 is set, start animation 0x13, call sub_80ED94E (presumably spawning the
+  attack/hit object), store 0x5A into oAIAttackVars_StepTimer and 4 into oAIAttackVars_HitElement. Element
+  value 4 corresponds to wood, so both the attacker state and the damage element are wood.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits setup phase from active phase; mov
+    r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement] and strh ... HitElement mark element 4 (wood); bl
+    sprite_getFrameParameters; tst r0,#0x80 gates the strike phase on the attack-active frame attribute;
+    bl object_setAnimation twice with anims 0x12 (setup) and 0x13 (strike) plus object_setFlag1 with OBJECT_FLAGS_CANNOT_SLIDE;
+    callee sub_80ED94E fired only on the strike frame alongside StepTimer=0x5A, consistent with spawning
+    the attack/hit
+  refs:
+  - bn6f/asm/asm31.s:115957
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080ED8E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_80ED94E spawns (the actual attack object/effect) is unknown, so the attack's visual identity
+  is inferred only from element 4
+- Which boss/AI uses this handler and the meaning of flag bit 22 set during setup are unknown; a caller
+  context would confirm both
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED8E0 -> ai_woodAttackHandler
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED8E0

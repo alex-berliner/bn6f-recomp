@@ -1,0 +1,48 @@
+name: t4_waitChatboxThenFadeScene
+address: '0x08135AF8'
+kind: function
+status: probable
+summary: Cutscene-style step that waits for the chatbox to become inactive, then sets a scene state, triggers
+  a screen fade, and advances before pumping the chatbox handler.
+interface: (r0 = unused, r5 = per-scene state struct pointer) -> r0 = clobbered; sets [r5+1] = 8, [r5+2]
+  = 0 or 4; no return value
+details: 'First it requires two bits of the chatbox/event flag word eFlags2009F38 (0x80 and 0x20) to be
+  set, returning immediately otherwise, so it only acts during a specific scripted context. It then reads
+  the chatbox state selector: if there is no active text (state == 0) it writes state bytes [r5+1] = 8
+  and [r5+2] = 0, calls SetScreenFade(0xC, 0x10) to start a fade, and calls sub_813BAC4 to advance the
+  sequence. If text is still showing it instead writes [r5+2] = 4, marking ''wait for the chatbox to finish''.
+  In both paths it finishes by calling chatbox_8040818, presumably to run/update the chatbox for this
+  frame. The two trailing pool words (0x120, 0x100) are unreferenced in the shown body.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'twice calls chatbox_mask_eFlags2009F38 with 0x80 then 0x20 and returns early (beq) if either
+    bit is clear — gated to a scripted/chatbox context; chatbox_GetState_8045F4C result branches: state==0
+    path writes [r5+1]=8,[r5+2]=0, else [r5+2]=4 (wait flag); state==0 path calls SetScreenFade(0xC, 0x10)
+    and sub_813BAC4, i.e. fade the screen and advance the sequence; both paths end with chatbox_8040818,
+    consistent with a per-frame chatbox-driven scene step'
+  refs:
+  - bn6f/asm/asm36.s:11855
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08135AF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known caller, so the identity of the r5 struct (scene/task state) and which game sequence uses flag
+  bits 0x80|0x20 is unconfirmed
+- What sub_813BAC4 does (advance script vs. start next scene) is unknown
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8135AF8 -> t4_waitChatboxThenFadeScene
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135AF8

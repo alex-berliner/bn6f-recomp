@@ -1,0 +1,48 @@
+name: object_stepMoveX
+address: '0x080DD4E8'
+kind: function
+status: probable
+summary: 'Per-frame horizontal movement step for a battle object: advances X by its velocity, resyncs
+  panel/collision data, and detects arrival at the target X to trigger the next action state.'
+interface: (r5 = battle object) -> void; sets object fields on arrival
+details: Reads oBattleObject_XVelocity and adds it to oBattleObject_X, bracketed by calls to sub_80DD6F4
+  and sub_80DD738 (likely target/velocity setup and update). It then calls object_setPanelsFromCoordinates
+  and object_updateCollisionPanels to sync the object's panel position and facing. It converts the object's
+  PanelX/PanelY to pixel coordinates via object_getCoordinatesForPanels and uses IsR2BetweenR0AndR1 to
+  test whether that pixel x lies between the new X and X - XVelocity, i.e. whether the object crossed/reached
+  its destination this step. On arrival, if oBattleObject_Param4 is nonzero, it stores Param4 into oBattleObject_Timer,
+  sets oBattleObject_CurAction = 8 and zeroes CurPhaseAndPhaseInitialized, switching to a timed next action.
+  Otherwise it falls through to sub_80DD5C8 and sub_80DD5E2, presumably to continue the move animation
+  or advance intermediate step logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds oBattleObject_XVelocity into oBattleObject_X then calls object_setPanelsFromCoordinates/object_updateCollisionPanels;
+    IsR2BetweenR0AndR1(X, X-XVelocity, pixelX) after object_getCoordinatesForPanels is a crossing/arrival
+    test along X; on arrival stores Param4 into Timer and sets CurAction=8 with CurPhase=0, an action-state
+    transition; non-arrival path calls the two local helpers sub_80DD5C8/sub_80DD5E2, consistent with
+    continuing a multi-step move
+  refs:
+  - bn6f/asm/asm31.s:80788
+  - 0x0800E6E8 IsR2BetweenR0AndR1
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080DD4E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what sub_80DD6F4 and sub_80DD738 do (likely target-X computation and per-step velocity logic)
+- which object script/state invokes this step and what CurAction=8 means in that context
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD4E8 -> object_stepMoveX
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD4E8

@@ -1,0 +1,48 @@
+name: battle_moveAcrossPanelsThenDestroy
+address: '0x080CEA42'
+kind: function
+status: probable
+summary: Battle-object state handler that slides the object along X, updating its panel/collision region
+  as it crosses panels, repeating a fixed number of 8-frame bursts before destroying itself.
+interface: (r5 = battle object ptr, fields read/written in place) -> r0 = 0; destroys object when done
+details: 'Each frame it decrements oBattleObject_Timer; while the timer runs it advances X by XVelocity,
+  converts screen XY to panel coords, and when the panel column changes it writes the new PanelX into
+  both the object and its CollisionDataPtr and calls object_setCollisionRegion to reregister in the new
+  region. When the timer expires it snaps position via object_setCoordinatesFromPanels and decrements
+  ExtraVars, which acts as a repeat counter: >0 reloads Timer with 8, otherwise it sets state CUR_STATE_DESTROY
+  and clears the collision region. So the object moves in discrete 8-frame hops of constant XVelocity,
+  one per ExtraVars count.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0,#1 / strh oBattleObject_Timer with bne skipping to the X-move block shows a per-frame
+    timer driving motion; ldr XVelocity / add to X / str X then convertXYToPanelXY shows horizontal movement
+    converted to panel coords; cmp new panel vs oBattleObject_PanelX, then strb to PanelX and CollisionDataPtr
+    + object_setCollisionRegion(1) updates collision on panel change; ExtraVars decrement with ble loc_80CEA7E
+    and Timer reset to 8 shows a burst-repeat counter; mov r0,#CUR_STATE_DESTROY into state field + object_clearCollisionRegion
+    is the self-destroy path
+  refs:
+  - bn6f/asm/asm31.s:49276
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CEA42
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which attack/attack card or enemy spawns this state (no known callers), so the exact game context and
+  what ExtraVars originally held are unconfirmed
+- Whether the 8-frame Timer value is fixed by design or patched by a caller before entry
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CEA42 -> battle_moveAcrossPanelsThenDestroy
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEA42

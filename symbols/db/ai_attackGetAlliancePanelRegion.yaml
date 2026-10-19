@@ -1,0 +1,47 @@
+name: ai_attackGetAlliancePanelRegion
+address: '0x08111D28'
+kind: function
+status: probable
+summary: AI attack-variant helper that fetches the team-dependent panel-effect parameter and uses it to
+  obtain a panel region for the attack.
+interface: (r5 = battle object) -> r0 = region handle/result from object_getPanelRegion; r4/r6 clobbered
+  by convention
+details: Reads the battle object's alliance field (oBattleObject_Alliance) and builds an index alliance*5+1,
+  then calls GetAllianceDependentPanelParamArgs with table selector 2 to get the entry's param word and
+  args pointer. It stashes the returned args pointer in r7, re-loads the alliance into r6, sets r4 = 0x23
+  (a panel-region type id), and calls object_getPanelRegion to compute the affected panel region. As a
+  leaf of ai_attackSpawnVariant's per-variant dispatch, it is the setup step for one attack variant whose
+  target area depends on the user's team. The 0x23 region id and the table index arithmetic are hardcoded
+  for this variant.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#5; mul; add #1 — index derived from the object''s
+    team; bl GetAllianceDependentPanelParamArgs with r1=2 — reads team-indexed panel-effect parameter
+    table; mov r4,#0x23 then bl object_getPanelRegion — requests region type 0x23 for the attack; caller
+    ai_attackSpawnVariant dispatches per-variant attack handlers, so this is one variant''s setup'
+  refs:
+  - bn6f/asm/asm32.s:8283
+  - 0x08111BFE ai_attackSpawnVariant
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800D3FE object_getPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08111D28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of region id 0x23 and what the attack does with the returned region
+- semantics of the param word vs args pointer returned by GetAllianceDependentPanelParamArgs
+- full argument conventions of object_getPanelRegion (which of r4/r6 is type vs team)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111D28 -> ai_attackGetAlliancePanelRegion
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111D28

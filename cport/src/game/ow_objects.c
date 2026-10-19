@@ -206,14 +206,14 @@ Next checkLayerPriority_80318b0(void) {
             R6 = kind * 4;
             R7 = rec;
             switch (kind) {
-            case 1:  GUEST_CALL(sub_803199E); break;
+            case 1:  GUEST_CALL(battle_aiActorCountForTargetSide); break;
             case 2:  GUEST_CALL(sub_80319B6); break;
             case 3:  GUEST_CALL(sub_80319CE); break;
-            case 4:  GUEST_CALL(sub_80319E6); break;
+            case 4:  GUEST_CALL(battle_aiActorCountByTargetSide); break;
             case 9:  GUEST_CALL(battle_aiTargetInRangeActorCount); break;
             case 10: GUEST_CALL(sub_8031A16); break;
             case 11: GUEST_CALL(sub_8031A2E); break;
-            case 12: GUEST_CALL(sub_8031A46); break;
+            case 12: GUEST_CALL(battle_aiActorCountByFieldSide); break;
             case 17: GUEST_CALL(battleObject_getChipLockColourOne_8031A5E); break;
             default: break;         /* table slot is NULL; never taken */
             }

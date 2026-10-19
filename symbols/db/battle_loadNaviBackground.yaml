@@ -1,0 +1,56 @@
+name: battle_loadNaviBackground
+address: '0x08137ACC'
+kind: function
+status: probable
+summary: 'Loads a per-navi background scene: resolves an asset list by key (likely navi ID), decompresses
+  tiles/palettes into VRAM, loads the navi tile grid, and draws a full 30x20 tile block to background
+  block 1.'
+interface: () -> void; no arguments, no meaningful return, clobbers r0-r5 and flags via callees
+details: 'The function builds an asset-loading table at unk_20096E0 by iterating off_8137B6C in 4-word
+  strides (r7 to 0x30): the first two words of each entry are resolved through getKeyedTableEntry_811FB84
+  (keyed lists indexed by toolkit S2001c04 byte 6, evidently a navi/variant selector) and the next two
+  are copied verbatim, producing a NULL-terminated entry list. That list is fed to decompAndCopyData,
+  which decompresses assets into palette_3001960, unk_3001A40 and unk_3001A60. A second hardcoded list
+  (off_8137BA4) decompresses more assets to VRAM 0x6000020 and 0x6004000 (0x2800 bytes, a full tilemap)
+  plus comp_86D8E94. battle_loadTileGridByNavi_8123300 then picks the per-PET-navi tile grid from the
+  13-entry table at off_8137B2C (mostly dword_86D9068, one CompText86D8FA4) into eTextScript201BF00/eDecompBuffer2013A00.
+  Finally CopyBackgroundTiles copies a 30x20 tile-id block from eTextScript201BA00 into BG tile block
+  1 at (0,0), covering the whole screen. The navi-keyed lookups plus the per-navi tile grid indicate the
+  background artwork changes with the selected navi.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: off_8137B6C stride-4 loop calling getKeyedTableEntry_811FB84 builds the unk_20096E0 decompAndCopyData
+    entry list, terminated with a NULL store; Second decompAndCopyData list off_8137BA4 targets VRAM 0x6000020
+    and 0x6004000 with size 0x2800 (full BG tilemap); battle_loadTileGridByNavi_8123300 is called with
+    the 13-entry per-navi table off_8137B2C, matching its known per-PET-navi tile grid behavior; CopyBackgroundTiles(j=0,
+    i=0, block=1, eTextScript201BA00, 30, 20) blits a full-screen 30x20 tile block to BG block 1; Only
+    caller sub_81378D4 sits in the same battle-related asset-loading cluster around 0x8137xxx
+  refs:
+  - bn6f/asm/asm36.s:16164
+  - 0x081378D4 sub_81378D4
+  - 0x08123300 battle_loadTileGridByNavi_8123300
+  - 0x08000B30 decompAndCopyData
+  - 0x0811FB84 getKeyedTableEntry_811FB84
+  reproduce: python3 tools/asmcat.py 0x08137ACC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which exact screen this background is shown on (caller sub_81378D4 is unanalyzed)
+- What key value getKeyedTableEntry_811FB84 resolves (navi ID vs another toolkit selector) — confirmed
+  only indirectly by battle_loadTileGridByNavi
+- Why the tile-id source is eTextScript201BA00 while the decompressed grid lands in eDecompBuffer2013A00
+  (likely filled indirectly by a callee)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137ACC -> battle_loadNaviBackground
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137ACC

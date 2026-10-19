@@ -1,0 +1,52 @@
+name: battle_attackEndTimerStep
+address: '0x0802DC66'
+kind: function
+status: probable
+summary: Per-frame step that gives an attacking battle object a 4-frame lingering window (with collision
+  region 1 set on entry), then clears its AI condition flags and exits the attack state.
+interface: (r0 = unused at entry; r7 = battle object) -> r0 = result of object_exitAttackState; decrements
+  object timer, clears AI/battle flags when it expires
+details: On first invocation (state byte at [r7,#1] == 0) it stores collision region 1 into the object's
+  collision data, loads the halfword at [r7,#0x10] with 4, and sets the state byte to 4 so this init branch
+  runs only once. Each frame after that it decrements the halfword at [r7,#0x10]; while it is still positive
+  the function returns without doing anything else. When the countdown reaches 0, it calls sub_801E0D0
+  with r0=0, clears AI-data Unk_0x48 bits selected by mask 0x6800 and Unk_0x44 bits selected by mask 0xC008600,
+  clears battle-state flag bit 0x4 via battle_clearFlags, and finally calls object_exitAttackState. The
+  two large bit masks suggest several AI state/condition bits being released at once when the attack window
+  ends. The unused literal pool words (0x4000, 0x1800, 0x8600, pointers to eBattleNaviStats2034A60) hint
+  the same file uses related flag masks for other steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: ''bl object_setCollisionRegion'' with r0=1, ''strh r0,[r7,#0x10]'' =4 and ''strb
+    r0,[r7,#1]'' =4 only when state byte is 0; countdown: ''ldrh r0,[r7,#0x10]; sub r0,#1; strh r0,[r7,#0x10];
+    bgt locret'' gates all teardown work; teardown calls ClearAIDataUnk0x48Flag with mask 0x6800 and ClearAIData_Unk_44_Flag
+    with mask 0xC008600; ''bl battle_clearFlags'' with r0=4 and ''bl object_exitAttackState'' run only
+    after the timer expires; called callees (object_setCollisionRegion, object_exitAttackState, battle_clearFlags)
+    are all battle-object/battle-state primitives, confirming r7 is a battle object'
+  refs:
+  - bn6f/asm/asm03_0.s:16493
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0800A2E4 battle_clearFlags
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0802DC66
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No caller is known, so which object/attack uses this step and what the 4-frame delay represents (hit
+  lingering, invulnerability, etc.) is unconfirmed
+- Exact meaning of AI-data bits 0x6800 (Unk_0x48) and 0xC008600 (Unk_0x44) and battle flag 0x4
+- What sub_801E0D0(0) does at timer expiry
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802DC66 -> battle_attackEndTimerStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DC66

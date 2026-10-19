@@ -1,0 +1,45 @@
+name: ow_drawInternetHud
+address: '0x08033B0C'
+kind: function
+status: probable
+summary: 'Redraws the Internet overworld HUD: PET HP digits, battle-start overlay, and map name.'
+interface: '(r0 = self: *S2011E30) -> r0 = destroyed; no return value'
+details: 'A 9-instruction dispatcher that takes a single context pointer (r5 in the caller''s comment
+  notation) and calls three draw routines in sequence: internet_drawHpDigits_8033E0C to render the navi''s
+  HP as 4 OAM digits, battle_drawBattleStartOverlay_8033F80 with r0=1 to conditionally load/queue the
+  battle-start overlay frame, and RenderMapName_8033EE8 to draw the map-name text. It allocates no state
+  and only forwards the context implicitly via register conventions; r0 is reused for the constant 1 argument
+  before the last two calls. Likely called once per frame while in the Internet overworld to refresh layered
+  UI elements.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl internet_drawHpDigits_8033E0C, bl battle_drawBattleStartOverlay_8033F80, bl RenderMapName_8033EE8
+    — three consecutive HUD draw calls (asm lines 2-6); mov r0, #1 before battle_drawBattleStartOverlay
+    — passes an enable/mode flag to the overlay drawer; callee summaries: HP OAM digits, battle-start
+    overlay OAM entry, and map-name rendering all target the overworld/Internet UI; pop {pc} with no result
+    computation — pure side-effect wrapper, no return value'
+  refs:
+  - bn6f/asm/asm03_1_0.s:458
+  - 0x08033F80 battle_drawBattleStartOverlay_8033F80
+  - 0x08033E0C internet_drawHpDigits_8033E0C
+  - 0x08033EE8 RenderMapName_8033EE8
+  reproduce: python3 tools/asmcat.py 0x08033B0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known caller, so the exact trigger (per-frame tick vs. scene-init) and the meaning of the r0=1 argument
+  to the overlay drawer are unconfirmed; structure S2011E30 fields are not visible here
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8033B0C -> ow_drawInternetHud
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033B0C

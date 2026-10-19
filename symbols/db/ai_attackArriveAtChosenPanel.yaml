@@ -1,0 +1,51 @@
+name: ai_attackArriveAtChosenPanel
+address: '0x081041D6'
+kind: function
+status: probable
+summary: 'AI attack step: once its timer expires, asks the object''s panel-choose callback for a target
+  panel; on success teleports the object onto that panel (airborne, collision-cleared), otherwise aborts
+  the attack.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0/8; modifies object panel/coords fields
+  and attack state
+details: Decrements oAIAttackVars_StepTimer and returns until it hits zero. It then loads r2/r3 from an
+  8-byte-per-alliance table (byte_8104228, indexed by oBattleObject_Alliance<<3) and calls the stored
+  oAIAttackVars_PanelChooseCallback with them. If the callback returns nonzero, those r0/r1 values are
+  taken as panel X/Y, written to both FuturePanel and current PanelX/Y, pixel coordinates are recomputed,
+  collision panels synced, Z16 set to 0xFF (object placed high in the air, i.e. dropped/spawned from the
+  sky), the collision region byte is cleared so it is in no region yet, a record matching the object id
+  is cleared via sub_801DD34, and HitElement is set to 8. If the callback returns 0, HasMoved is cleared
+  and the attack is torn down via object_exitAttackState_801171C.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oAIAttackVars_StepTimer with bgt skip: step only fires when timer reaches 0; ldr
+    r2,[r0]/ldr r3,[r0,#4] from byte_8104228[alliance*8] then bx oAIAttackVars_PanelChooseCallback: per-alliance
+    args to panel chooser; tst r0 + strb to oBattleObject_FuturePanelX/Y and PanelX/Y: callback returns
+    target panel coords; mov r0,#0xff; strh [r5,#oBattleObject_Z16] then object_clearCollisionRegion:
+    object placed airborne off-collision before landing; beq loc_8104218: on callback returning 0, clears
+    oAIAttackVars_HasMoved and calls object_exitAttackState_801171C'
+  refs:
+  - bn6f/asm/asm31.s:162984
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081041D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which attack(s) use this step (no callers found) and what the per-alliance r2/r3 words mean to the callback
+- Whether Z=0xFF is a 'falling from sky' spawn or another airborne state
+- What sub_801DD34's record table (byte_203EB50) tracks for the object
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81041D6 -> ai_attackArriveAtChosenPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81041D6

@@ -1,0 +1,53 @@
+name: object_hopSidewaysAction
+address: '0x080D60BC'
+kind: function
+status: probable
+summary: Battle-object action handler that repeatedly hops the object sideways across panels (5 hops)
+  before destroying it.
+interface: (r5 = battle object, no args) -> mutates object fields (X, XVelocity, Timer, CurPhase, Param3,
+  CurAction, Z16, collision region); r0 undefined
+details: 'On phase 0 it sets phase 4, zeroes Z16, calls sub_80D61FC (likely a visual/animation setup),
+  then calls sub_80D61D2 with r0 = byte selected by Alliance from dword_80D6160 (0x7, presumably 0x8 for
+  the other alliance, i.e. direction/hop id) and r1 = a word picked by Param1 from byte_80D614C (0x00080000/0x90000/0xA0000/0xB0000,
+  a speed/power table); the results are stored as XVelocity and Timer. Each frame it advances X by XVelocity,
+  clears the collision region if a collision flag is set, recomputes PanelX/PanelY from coordinates, clears
+  the region if the new panel is invalid, and sets collision region 1 when the PanelX changed. When Timer
+  hits -1 it increments Param3: while Param3 < 5 it sets Z16 to -1, sets CurAction = 0xC and clears the
+  phase (restarting the hop action), otherwise it clears the region and transitions to CUR_STATE_DESTROY.
+  Net effect: a repeated horizontal hop move with collision tracking, ending in self-destruction.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80D60E6: X += XVelocity each frame, then object_setPanelsFromCoordinates/object_updateCollisionPanels/object_isCurrentPanelValid
+    keep collision synced with movement; byte_80D614C words 0x80000/0x90000/0xA0000/0xB0000 indexed by
+    Param1, and dword_80D6160 indexed by Alliance, feed sub_80D61D2 whose results become XVelocity and
+    Timer; loc_80D611E: Timer decrements; on expiry Param3++ and Param3 < 5 re-triggers CurAction 0xC
+    with phase cleared and Z16 = -1 (new hop), else falls through to CUR_STATE_DESTROY; entry code writes
+    phase 4 and Z16 = 0 only when CurPhase == 0, showing this is a phased action/state handler; sole callees
+    besides sub_80D61D2 are object_* collision/panel helpers, confirming this operates on a battle object
+    in the battle system'
+  refs:
+  - bn6f/asm/asm31.s:65259
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D60BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what sub_80D61D2 computes exactly (velocity/duration from hop power and alliance) and what sub_80D61FC
+  does (likely visual/effect setup), and which virus/action id 0xC this belongs to — caller data would
+  pin the exact behavior
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D60BC -> object_hopSidewaysAction
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D60BC

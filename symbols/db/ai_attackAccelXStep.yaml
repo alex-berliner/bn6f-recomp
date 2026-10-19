@@ -1,0 +1,46 @@
+name: ai_attackAccelXStep
+address: '0x080EC2A4'
+kind: function
+status: probable
+summary: 'AI attack step: moves the object along X with per-frame acceleration for a limited number of
+  frames, teleporting it offscreen if it leaves valid panels.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars ptr) -> r0 = panel-validity result (also final
+  return value via object_isCurrentPanelValid); flags clobbered
+details: Clears the object's collision region when oCollisionData_FlagsFromCollision is nonzero, then
+  advances oBattleObject_X by oBattleObject_XVelocity and syncs panels (object_setPanelsFromCoordinates,
+  object_updateCollisionPanels). While oAIAttackVars_StepTimer is nonzero it decrements it and adds oAIAttackVars_ScratchVar
+  to XVelocity each frame, so the object accelerates over its step count. When object_isCurrentPanelValid
+  fails, X is reset to 0xDC0000 (apparently an offscreen/parked coordinate) and both oAIAttackVars_StepTimer
+  and oAIAttackVars_HitElement are set to 8, ending the dash. No callers are known, so the intended attack
+  and the meaning of HitElement=8 remain inferred.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds oBattleObject_XVelocity into oBattleObject_X then calls object_setPanelsFromCoordinates/object_updateCollisionPanels;
+    decrements oAIAttackVars_StepTimer and adds oAIAttackVars_ScratchVar to XVelocity while timer nonzero
+    (acceleration phase); on object_isCurrentPanelValid==0 stores dword_80EC34C=0xdc0000 into oBattleObject_X
+    and writes 8 to StepTimer and HitElement
+  refs:
+  - bn6f/asm/asm31.s:112851
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080EC2A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no callers known, so which AI attack uses this step and what HitElement=8 or X=0xDC0000 mean is unconfirmed
+- sign/scale of X velocities and what panel spacing 0xDC0000 corresponds to
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC2A4 -> ai_attackAccelXStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC2A4

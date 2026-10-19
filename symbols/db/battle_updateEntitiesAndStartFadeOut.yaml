@@ -1,0 +1,46 @@
+name: battle_updateEntitiesAndStartFadeOut
+address: '0x0812952C'
+kind: function
+status: probable
+summary: 'Battle-frame tick: updates all entities and sprites, then when no screen fade is running kicks
+  off a fade-out and marks the battle state 0xC.'
+interface: (no args; r5 = battle state struct) -> r0 = SetScreenFade result/void; flags from IsScreenFadeActive
+  branch used internally
+details: Runs the per-frame entity update pass (entity_runAllUpdateHandlers over the 15-record eStruct
+  array) and the sprite pipeline (battle_updateEStructSprites), then polls IsScreenFadeActive. If no fade
+  is active, it stores state byte 0xC into r5+2 (a phase/state counter) and calls SetScreenFade(8, 0x10)
+  to begin a fade. The fade likely leads into some battle transition (e.g. fade-out to end/result); the
+  r5+2 state byte makes the surrounding state machine act on the next phase. Nothing is returned; the
+  only outputs are the state write and the fade request.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl entity_runAllUpdateHandlers_80465BC / bl battle_updateEStructSprites_80465F8: this runs
+    the standard per-frame entity+sprite step; bl IsScreenFadeActive; beq locret: fade-out only starts
+    once, when no fade is in progress; strb r0,[r5,#2] with 0xC: writes a phase byte into the battle state
+    struct before fading; mov r0,#8; mov r1,#0x10; bl SetScreenFade: starts a screen fade with parameters
+    8 and 16; Callee summaries (eStruct 15-record array, per-frame update) match a main battle loop tick'
+  refs:
+  - bn6f/asm/asm33.s:12722
+  - 0x080465F8 battle_updateEStructSprites_80465F8
+  - 0x080465BC entity_runAllUpdateHandlers_80465BC
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x0812952C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What battle state r5 is and what phase 0xC leads to (no caller known); what SetScreenFade(8,0x10) fades
+  to — battle end, cutscene, or boss sequence
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812952C -> battle_updateEntitiesAndStartFadeOut
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812952C

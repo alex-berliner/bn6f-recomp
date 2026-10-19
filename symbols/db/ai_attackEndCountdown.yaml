@@ -1,0 +1,46 @@
+name: ai_attackEndCountdown
+address: '0x080EF47A'
+kind: function
+status: probable
+summary: 'Per-frame tick that, once an AI attacker''s StepTimer expires, cleans up its attack: drop to
+  ground, release reserved panel, clear attack flags and leave attack state.'
+interface: (r7 = battle object, r5 = object's collision data base) -> void; sets Z=0, collision region
+  1, releases panel, clears ObjectFlags1 bit 0x40, calls object_exitAttackState when timer expires
+details: 'Decrements oAIAttackVars_StepTimer each call and returns immediately while it is still >= 0.
+  When it goes negative, the attack finishes: the object''s Z height (oBattleObject_Z) is zeroed, object_setCollisionRegion
+  is set to region 1 (normal/enemy side), the panel reserved at oBattleObject_FuturePanelX/FuturePanelY
+  is freed via object_removePanelReserve, ObjectFlags1 bit 0x40 is cleared (likely ''attack in progress''),
+  and object_exitAttackState returns the object to its normal AI state. Typical end-of-attack sequence
+  for an AI-controlled obstacle/attack object that occupied a panel during its attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/sub/strh on oAIAttackVars_StepTimer with bge skip gates the cleanup to a single frame when
+    the countdown expires; mov r0,#1; bl object_setCollisionRegion restores the object's collision to
+    region 1; ldrb FuturePanelX/Y then bl object_removePanelReserve frees the panel the attack had reserved;
+    mov r0,#0x40; bl object_clearFlag plus bl object_exitAttackState show it terminates an active attack
+    state; mov r0,#0; str r0,[r5,oBattleObject_Z] drops the object's Z height to 0 on completion
+  refs:
+  - bn6f/asm/asm31.s:119708
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080EF47A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known caller, so which AI attack uses this countdown (and the exact meaning of flag 0x40) is inferred
+  from the callees rather than confirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EF47A -> ai_attackEndCountdown
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF47A

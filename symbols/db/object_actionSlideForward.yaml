@@ -1,0 +1,48 @@
+name: object_actionSlideForward
+address: '0x080D6020'
+kind: function
+status: probable
+summary: Battle-object action handler that slides the object forward (toward the enemy side) a Param1
+  number of panels at a fixed velocity, then finishes into CurAction 4.
+interface: (r5 = battle object pointer) -> void; moves object X by XVelocity each frame until Timer expires,
+  then sets CurAction=4 and clears phase
+details: On phase 0 it sets phase=4, gets the facing multiplier from object_getFrontDirection, computes
+  a target PanelX = PanelX + 2*dir (so it slides two panels toward the front), and calls sub_80D61D2 with
+  that target and a table entry indexed by Param1*4 from byte_80D6088 (all entries 0x00020000); the call
+  returns an XVelocity and a frame Timer which are stored. Each later frame it adds XVelocity to X, clears
+  the collision region if the current one has flags, recomputes PanelX/PanelY via object_setPanelsFromCoordinates
+  and object_updateCollisionPanels, and re-enters collision region 1 whenever the panel actually changed.
+  When the Timer counts below zero it sets CurAction=4 and resets CurPhaseAndPhaseInitialized to 0, ending
+  the move.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase-0 block: front direction*2 added to PanelX builds the slide target before calling sub_80D61D2
+    for velocity+timer; byte_80D6088 is a 4-byte-stride table indexed by Param1<<2, all words 0x00020000,
+    consumed only by sub_80D61D2; per-frame loop adds XVelocity to X then calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels, entering region 1 when PanelX changed; timer countdown reaching
+    negative sets CurAction=4 and zeroes CurPhaseAndPhaseInitialized, the standard action-exit pattern'
+  refs:
+  - bn6f/asm/asm31.s:65178
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D6020
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what sub_80D61D2 computes from the table entry (velocity/duration split is inferred, not read)
+- what action id 4 is and which callers dispatch to this handler
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6020 -> object_actionSlideForward
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6020

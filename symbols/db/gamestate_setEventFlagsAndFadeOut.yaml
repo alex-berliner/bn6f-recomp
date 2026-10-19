@@ -1,0 +1,47 @@
+name: gamestate_setEventFlagsAndFadeOut
+address: '0x08005990'
+kind: function
+status: probable
+summary: A GameState handler that sets two story flags, starts a screen fade, ticks the countdown-timer
+  table, and advances to overworld subsystem 0x10.
+interface: (r0 = GameState* in r5, self) -> r0 = 0x10 stored to oGameState_SubsystemIndex; no return value
+details: The function is a state-handler callback taking the GameState pointer (kept in r5, per the comment).
+  It first sets two immediate story/event flags (EVENT_1703 and EVENT_1738) via SetEventFlagFromImmediate.
+  It then starts a screen fade with SetScreenFade(4, 0x10) — likely fade type 4 with a 0x10-step duration.
+  It ticks the table of 32 countdown timers (timer_tickCountdownTable_8035738), suggesting this state
+  runs across multiple frames while a timed sequence plays. Finally it writes 0x10 into GameState+oGameState_SubsystemIndex,
+  which the comment says dispatches to overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC,
+  i.e. it hands control to the next subsystem in the state chain.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'movflag EVENT_1703 / EVENT_1738 followed by bl SetEventFlagFromImmediate: sets two story flags
+    with immediates; mov r0,#4 / mov r1,#0x10 / bl SetScreenFade: begins a screen fade of type 4; bl timer_tickCountdownTable_8035738:
+    advances the shared countdown-timer table while the state runs; strb r0,[r5,#oGameState_SubsystemIndex]
+    with r0=#0x10 and the comment about cbGameState_80050EC: advances the state machine to the next subsystem'
+  refs:
+  - bn6f/asm/asm00_1.s:5398
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08035738 timer_tickCountdownTable_8035738
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08005990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which cutscene or story moment this state belongs to (no callers known, so the game context of EVENT_1703/1738
+  is unidentified)
+- Exact meaning of SetScreenFade's arguments (4 and 0x10) — fade direction/duration mapping is inferred,
+  not confirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005990 -> gamestate_setEventFlagsAndFadeOut
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005990

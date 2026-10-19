@@ -1,0 +1,52 @@
+name: battle_aiActorCountForTargetSide
+address: '0x0803199E'
+kind: function
+status: probable
+summary: Battle AI helper that picks an actor count (3 or 2) depending on which side of a fixed line the
+  target's relative position falls.
+interface: (r0 = entity/actor struct ptr, r1 = target ref) -> r0 = per-actor count (3 when the relative
+  position is on the clockwise side of the line, else 2); flags not meaningful
+details: 'First battle_calcRelPosToTarget_803172E fills the scratch buffer with the entity''s (and next-position''s)
+  coordinates relative to the doubled target reference point. The function then loads a fixed test configuration:
+  r2/r3 = (4,4) as a reference point and r4/r5 = (0,0x10) as the edge direction, and calls math_pointCrossHalfPlaneTest_8031594,
+  the inner test of the polygon/hit-area fill code, which returns 1 when the point lies on the clockwise
+  side. That 0/1 result is passed straight into battle_aiIndexToActorCount_8031980, which maps AI index
+  1 to 3 and anything else (0) to 2. So the routine is a side-of-line test whose outcome selects an AI
+  sub-state actor count. The magic constants 4,4/0,0x10 suggest a vertical boundary near x=4 in doubled
+  battlefield coordinates.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_calcRelPosToTarget_803172E first, providing the point tested (sub_803199E line 2);
+    mov r2,#4 / mov r3,#4 / mov r4,#0 / mov r5,#0x10 set a fixed reference point (4,4) and edge direction
+    (0,0x10) before the half-plane test; bl math_pointCrossHalfPlaneTest_8031594 returns 1 for the negative
+    (clockwise) side — a boolean side-of-line result; bl battle_aiIndexToActorCount_8031980 consumes that
+    0/1 directly, mapping 1→3 and 0→2, so the return value is the actor count; Function is only 12 instructions,
+    a pure composition of the three callees with no other state touched
+  refs:
+  - bn6f/asm/asm03_0.s:25468
+  - 0x08031980 battle_aiIndexToActorCount_8031980
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  - 0x08031594 math_pointCrossHalfPlaneTest_8031594
+  reproduce: python3 tools/asmcat.py 0x0803199E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact call signature of battle_calcRelPosToTarget_803172E (which args are entity vs target, and what
+  the scratch buffer layout is)
+- Which gameplay line the constants (4,4)/(0,0x10) correspond to (e.g. battlefield midline vs panel-column
+  boundary)
+- No known caller, so the meaning of the returned 3-vs-2 actor count in the AI state machine is unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803199E -> battle_aiActorCountForTargetSide
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803199E

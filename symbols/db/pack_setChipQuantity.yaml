@@ -1,0 +1,52 @@
+name: pack_setChipQuantity
+address: '0x08021B78'
+kind: function
+status: probable
+summary: Sets the stocked quantity byte for a given chip (id + code) in the pack, re-encrypting the pack
+  byte first when the new value is nonzero.
+interface: (r0 = chip id, r1 = code/search key, r2 = new quantity) -> r0 = address of the quantity byte
+  that was written; r2 preserved
+details: The function saves r0-r2 and, if the new value r2 is nonzero, calls encryption_applyPack(r0),
+  which commits the decrypted mirror byte (table at byte_20008A0, XOR 0x81) into the encrypted pack buffer
+  for this chip. It then restores r0-r2 and calls getOffsetToQuantityOfChipCodeMaybe(r0, r1, r2), which
+  returns the address of the pack-stock quantity byte for that chip id and code letter (falling back to
+  the first code slot when absent). The original r2 is finally stored as a byte into that returned address,
+  so r2 acts both as a lookup argument and as the value written. The tst/beq guard means zeroing a quantity
+  skips the pack re-encryption step, suggesting the deletion path keeps the pack/mirror state differently.
+  The pack buffer is stored encrypted (XOR 0x81 of the mirror), so this routine pairs a mirror write with
+  a pack re-encryption.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r2,r2 / beq: applyPack_8006e70 (pack re-encryption from byte_20008A0 mirror) runs only
+    when the new value r2 is nonzero; bl getOffsetToQuantityOfChipCodeMaybe_8021c7c returns the pack quantity-slot
+    address for chip id + code, used as strb destination; strb r2,[r0] after pop {r2} stores the original
+    third argument as the new quantity byte; sole caller chatbox_8041DF4 is itself unannotated, so no
+    higher-level context confirms the trigger'
+  refs:
+  - bn6f/asm/asm02.s:167
+  - 0x08041DF4 chatbox_8041DF4
+  - 0x08006E70 encryption_applyPack_8006e70
+  - 0x08021C7C getOffsetToQuantityOfChipCodeMaybe_8021c7c
+  reproduce: python3 tools/asmcat.py 0x08021B78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact roles of r1 and r2 inside getOffsetToQuantityOfChipCodeMaybe (which is the code letter vs. lookup
+  offset)
+- Why the re-encryption happens before the write rather than after — whether getOffset points into the
+  encrypted pack or the plaintext mirror
+- What chatbox_8041DF4 does and why a pack quantity write is triggered from it
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8021B78 -> pack_setChipQuantity
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8021B78

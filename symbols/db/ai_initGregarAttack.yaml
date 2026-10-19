@@ -1,0 +1,51 @@
+name: ai_initGregarAttack
+address: '0x08104050'
+kind: function
+status: probable
+summary: 'Initializes one of Gregar''s AI attacks: records the difficulty tier, fetches per-difficulty
+  attack boost/timer values, locks on to the opposing player, and switches the enemy object into attack
+  state 0xE.'
+interface: (r0 = unused/ignored, r7 = enemy AIAttackVars struct, r5 = enemy battle object) -> r0 = destroyed;
+  sets AiDifficultyTier, InitFlag=0, AttackBoost2, TimerOrCycles, TargetObjectPtr; starts attack id 0xE
+details: Reads the enemy's AI-data difficulty via battle_getAiDifficultyTier_800FE36 and stores it at
+  oAIAttackVars_AiDifficultyTier, then clears the InitFlag byte. Calls sub_810407E with argument 6 (likely
+  an attack/state selector for the shared AI attack helper) and sub_8103F30, whose two return values are
+  stored as AttackBoost2 and TimerOrCycles — the pair looks like a power multiplier and duration/cycle
+  count scaled by difficulty. It derives the player's object by battle_findPlayer on the inverted Alliance
+  bit and caches it in oAIAttackVars_TargetObjectPtr. Finally object_setAttack0(0xE) kicks the enemy object
+  into the attack, mirroring the caller's RNG-gated attack selection in the Gregar AI state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] right after battle_getAiDifficultyTier_800FE36
+    shows per-difficulty setup; strb r0,[r7,#oAIAttackVars_AttackBoost2] / strb r1,[r7,#oAIAttackVars_TimerOrCycles]
+    from sub_8103F30 look like power+duration parameters; eor with Alliance bit then battle_findPlayer
+    and str [r7,#oAIAttackVars_TargetObjectPtr] caches the player as target; mov r0,#0xe; bl object_setAttack0
+    switches the enemy object into an attack state; caller sub_8103CD0 is the Gregar AI step whose RNG<8
+    gate selects this attack branch
+  refs:
+  - bn6f/asm/asm31.s:162823
+  - 0x08103CD0 sub_8103CD0
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08104050
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which specific Gregar attack id 0xE corresponds to
+- what sub_810407E(6) and sub_8103F30 actually compute (their returns are just stored blind)
+- exact layout/meaning of the oAIAttackVars fields beyond the named offsets
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8104050 -> ai_initGregarAttack
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104050

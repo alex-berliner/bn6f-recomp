@@ -1,0 +1,52 @@
+name: object_destroyOnFrameDeleteFlag
+address: '0x080C9E88'
+kind: function
+status: probable
+summary: Checks the current animation frame's attribute for the delete bit and, if set, tears down and
+  destroys the battle object.
+interface: (r0 = battle object? passed through to sprite_getFrameParameters; r5 = battle object pointer)
+  -> r0 = clobbered; no meaningful return
+details: Calls sprite_getFrameParameters to read the current animation frame's attribute byte, then tests
+  bit 0x80 (the frame 'delete' flag in the object's sprite data table). If the flag is clear, the function
+  returns immediately without touching the object. If set, it releases the object's reserved panel via
+  object_removePanelReserve (using oBattleObject_FuturePanelX/Y as the panel coordinates), clears its
+  collision region via object_clearCollisionRegion so it no longer interacts with other objects, and finally
+  writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, ending the object.
+  This implements the standard MMBN animation convention where a frame marked with the delete attribute
+  terminates the object once reached; it operates on r5 as the implicit object, so it is likely an object-update
+  helper called with the object held in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, #0x80 after bl sprite_getFrameParameters tests the attribute byte''s high bit as a
+    condition; bl object_removePanelReserve with ldrb of oBattleObject_FuturePanelX/Y releases the object''s
+    reserved panel; bl object_clearCollisionRegion immediately before state change removes the object
+    from collision; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    sets the destroy state; callee summaries (sprite_getFrameParameters attribute byte, removePanelReserve,
+    clearCollisionRegion) all match a self-destruct teardown'
+  refs:
+  - bn6f/asm/asm31.s:39133
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801BB46 object_removePanelReserve
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C9E88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no known caller yet; a caller would confirm whether r0 is the object pointer passed to sprite_getFrameParameters
+  and at what point in the object update this runs
+- exact encoding of the delete flag vs other attribute bits (e.g. flip-disable) in the frame attribute
+  byte could shift the interpretation slightly
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9E88 -> object_destroyOnFrameDeleteFlag
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9E88

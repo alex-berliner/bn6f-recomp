@@ -1,0 +1,52 @@
+name: battle_bombImpactStep
+address: '0x080D9F2C'
+kind: function
+status: probable
+summary: 'Battle object update step: waits 60 frames, then makes the bomb explode on its panel (collision
+  update, explosion effect, camera shake, bomb hit sound) and moves to the next action.'
+interface: (r0 = unused on entry; r5 = battle object pointer) -> r0 = clobbered; sets Timer=60 on first
+  run, then on expiry updates collision, spawns explosion, shakes camera, plays sound, sets CurAction=8
+  and Phase=0
+details: On first call (PhaseInitialized==0) stores 60 into oBattleObject_Timer and writes 4 to PhaseInitialized.
+  Each call decrements Timer; while it is still >=0 the function just returns. When the timer expires
+  it calls object_setCollisionRegion(obj,0x10) and object_updateCollisionData(obj,4,5,0), then sub_801BD3C
+  with the object's PanelX/PanelY, effect id 0x4A, arg 0xF and the object's Alliance — presumably spawning
+  an explosion graphic on the panel. It then triggers a camera shake (magnitude 1, duration 15), plays
+  SOUND_HIT_BOMB_1, clears bit 1 of oObjectHeader_Flags (likely removing a no-hit/invulnerable state),
+  sets oBattleObject_CurAction=8 and zeroes CurPhaseAndPhaseInitialized so the object's state machine
+  advances past the explosion.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; mov r0,#0x3c; strh r0,[r5,#oBattleObject_Timer]
+    — 60-frame delay on init; bl sub_801BD3C with r2=0x4A, r3=0xF and PanelX/PanelY/Alliance from the
+    object — spawns effect 0x4A at the object's panel; mov r0,#SOUND_HIT_BOMB_1; bl PlaySoundEffect —
+    bomb impact sound identifies the object type; bl camera_initShakeEffect_80302a8 with r0=1, r1=0xF
+    — impact screen shake; mov r0,#8; strb r0,[r5,#oBattleObject_CurAction]; strh 0 into CurPhaseAndPhaseInitialized
+    — hands control to the next action step
+  refs:
+  - bn6f/asm/asm31.s:73519
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D9F2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which enemy/chip object uses this step (which caller wires it into the object's update table) is unknown
+  since no callers are listed
+- Exact meaning of sub_801BD3C's arguments (0x4A as effect/graphic id, 0xF as lifetime or variant) is
+  unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9F2C -> battle_bombImpactStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9F2C

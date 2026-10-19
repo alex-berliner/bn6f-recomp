@@ -1,0 +1,46 @@
+name: battle_isRareEventRollSuccess
+address: '0x0800A1AA'
+kind: function
+status: probable
+summary: Returns whether this frame's rare-event roll in battle state hit, gated on no time-stop and the
+  battle still running.
+interface: () -> r0 = 1 if battle state field 0x38 (rare-event roll) >= 0x2D0 and battle is active and
+  not time-stopped, else 0; flags clobbered by BLs
+details: 'Checks three conditions: time-stop (battle flags bit 2) must be off, the battle must not be
+  over, and the halfword at battle state field 0x38 — which battle_getRareEventRoll reads — must be >=
+  0x2D0 (720 of 0x1000, about 17.6%, so the roll is presumably a 12-bit random value stored each frame
+  or turn). Only when all three hold does it return 1. The time-stop and battle-over gates suggest the
+  caller evaluates this in the main battle loop rather than at battle setup. The roll value and threshold
+  semantics of field 0x38 come entirely from the getter''s known summary.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isTimeStop / bne loc_800A1C8: returns 0 while time-stop is active; bl battle_isBattleOver
+    / tst r0,r0 / bne loc_800A1C8: returns 0 once battle-over conditions are met; bl battle_getRareEventRoll;
+    cmp r0, #0x2D0; blt loc_800A1C8: success requires roll >= 720; success path is mov r0,#1 else mov
+    r0,#0: a plain boolean predicate'
+  refs:
+  - bn6f/asm/asm00_1.s:15903
+  - 0x0800A70C battle_getRareEventRoll
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x0800A1AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what in-game 'rare event' the caller triggers on this return (rare encounter, bonus, etc.) — no caller
+  is known
+- exact semantics/range of battle state field 0x38 (whether it is a fresh rand16 & 0xFFF each evaluation)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800A1AA -> battle_isRareEventRollSuccess
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800A1AA

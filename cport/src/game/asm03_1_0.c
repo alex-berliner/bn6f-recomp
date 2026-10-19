@@ -180,10 +180,10 @@ static void call_sub_8033ADC(u32 self) {
     GUEST_CALL(sub_8033ADC);
 }
 
-/* register form: calls sub_8033AF0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_queueBattleIntroOam outside this file, which has no typed C interface yet */
 static void call_sub_8033AF0(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033AF0);
+    GUEST_CALL(battle_queueBattleIntroOam);
 }
 
 /* register form: calls noop_8033B08 outside this file, which has no typed C interface yet */
@@ -192,10 +192,10 @@ static void call_noop_8033B08(u32 self) {
     GUEST_CALL(noop_8033B08);
 }
 
-/* register form: calls sub_8033B0C outside this file, which has no typed C interface yet */
+/* register form: calls ow_drawInternetHud outside this file, which has no typed C interface yet */
 static void call_sub_8033B0C(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033B0C);
+    GUEST_CALL(ow_drawInternetHud);
 }
 
 /* register form: calls onUpdateInInternet_8033B1E outside this file, which has no typed C interface yet */
@@ -204,10 +204,10 @@ static void call_onUpdateInInternet_8033B1E(u32 self) {
     GUEST_CALL(onUpdateInInternet_8033B1E);
 }
 
-/* register form: calls sub_8033B30 outside this file, which has no typed C interface yet */
+/* register form: calls internet_updateOverworldHud outside this file, which has no typed C interface yet */
 static void call_sub_8033B30(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033B30);
+    GUEST_CALL(internet_updateOverworldHud);
 }
 
 /* register form: calls internet_redrawOverworldUi outside this file, which has no typed C interface yet */
@@ -216,10 +216,10 @@ static void call_sub_8033B46(u32 self) {
     GUEST_CALL(internet_redrawOverworldUi);
 }
 
-/* register form: calls sub_8033B5C outside this file, which has no typed C interface yet */
+/* register form: calls ow_drawHudOverlays outside this file, which has no typed C interface yet */
 static void call_sub_8033B5C(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033B5C);
+    GUEST_CALL(ow_drawHudOverlays);
 }
 
 /* register form: calls sub_8033B6E outside this file, which has no typed C interface yet */

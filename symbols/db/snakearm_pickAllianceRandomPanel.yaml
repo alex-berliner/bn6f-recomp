@@ -1,0 +1,46 @@
+name: snakearm_pickAllianceRandomPanel
+address: '0x08114A64'
+kind: function
+status: probable
+summary: Fetches the alliance-dependent panel parameter for SnakeArm and uses it to pick a random panel,
+  returning that panel's coords.
+interface: (r0 = battle object ptr) -> r0 = panel word (x in low 3 bits / y in high bits, or current panel
+  on failure); clobbers r4-r7, lr
+details: Calls GetAllianceDependentPanelParamArgs with byte_8114C30 as the panel-effect parameter table;
+  that returns the entry's param word and args pointer based on the battle object's alliance/team field.
+  Those return values are then passed straight through to sub_8015C94, the random panel picker, which
+  draws GetPositiveSignedRNG % count over the filtered panel list (x = low 3 bits, y = high nibble of
+  the result) and falls back to the current panel if no candidates exist. So the alliance-dependent table
+  entry supplies the picker's count/filter arguments, meaning ally/enemy teams get different panel selections
+  for SnakeArm's effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3, off_8114A80 loads table base byte_8114C30 before bl GetAllianceDependentPanelParamArgs;
+    no register writes between the two bl''s: the param/args pair from the first call is consumed by sub_8015C94;
+    caller snakearmAI_81149E0 places this inside SnakeArm''s battle-object AI routine; callees'' known
+    summaries match: alliance-indexed panel param table + random panel picker over filtered list'
+  refs:
+  - bn6f/asm/asm32.s:13766
+  - 0x081149E0 snakearmAI_81149E0
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015C94 sub_8015C94
+  reproduce: python3 tools/asmcat.py 0x08114A64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact fields of the byte_8114C30 table entries (whether param is a panel count or a filter id)
+- which side effects (panel selection/cursor state) sub_8015C94 writes back to the battle object
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8114A64 -> snakearm_pickAllianceRandomPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114A64

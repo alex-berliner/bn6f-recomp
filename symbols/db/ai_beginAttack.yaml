@@ -1,0 +1,49 @@
+name: ai_beginAttack
+address: '0x080105F2'
+kind: function
+status: probable
+summary: Initializes an enemy AI's attack/chip-use parameters and kicks the battle object into one of
+  two attack states.
+interface: (r0 = flags (bit 0x200 selects state 0x48 vs 0x47), r1 = chipUseDelay, r2 = aiDifficultyTier,
+  r3 = damage) -> void; relies on caller-set r5 (battle object), clobbers r0-r3,r7,LR
+details: 'Stores the four args on the stack, then clears oBattleObject_RelatedObject1Ptr and oAIData_TempAttackObjectPtr
+  and calls ClearAIDataUnk0x48Flag plus dispatch_801DACC(0x40) and sub_800E9FA to reset prior attack state.
+  It then fills the AIAttackVars struct (at AIData+0xA0): Damage=r3, AttackBoost=0, ChipID=0, InitFlag=0,
+  ChipUseDelay=r1, AiDifficultyTier=r2. It XORs oBattleObject_Alliance via battle_networkInvert; if inverted
+  it would call sub_801EB18(damage, boost, chipID), but ChipID was just zeroed so that branch is effectively
+  dead. Finally, if arg0 has bit 0x200 it sets the object''s attack to 0x47, else 0x48, via object_setAttack0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str r0/r1/r2/r3 to stack then fields written to oAIAttackVars_Damage/AttackBoost/ChipID/InitFlag/ChipUseDelay/AiDifficultyTier
+    (0x8010618-0x8010632); ldrb Alliance; bl battle_networkInvert; tst gates call to sub_801EB18 with
+    damage/boost/chipID; mov r0,#0x47 / 0x48 then bl object_setAttack0 chosen by tst r1,#0x200 on the
+    saved first arg; add r7,#0xA0 after loading oBattleObject_AIDataPtr shows the oAIAttackVars struct
+    base; ldrh ChipID tst right after strh #0 makes the sub_801EB18 branch dead code'
+  refs:
+  - bn6f/asm/asm00_2.s:3747
+  - 0x080EFE7C sub_80EFE7C
+  - 0x0800A9EC battle_networkInvert
+  - 0x0801031C ClearAIDataUnk0x48Flag
+  - 0x0801DACC dispatch_801DACC
+  reproduce: python3 tools/asmcat.py 0x080105F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Only one caller (sub_80EFE7C) is known and undocumented — its context would confirm whether this is
+  specifically a chip-use vs plain attack start
+- Meaning of the arg0 flag bits other than 0x200 is unknown
+- What sub_801EB18 does when actually reached (only reachable if the sequence changes ChipID later)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80105F2 -> ai_beginAttack
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80105F2

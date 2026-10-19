@@ -1,0 +1,58 @@
+name: ai_pickPanelMatchingFlagsNearObject
+address: '0x080F6FEC'
+kind: function
+status: probable
+summary: Battle-side helper that finds a panel matching caller-supplied panel-flag masks near a given
+  row — checking the panel at a fixed column first, then its adjacent rows, else a random matching panel
+  in a full column — and returns its encoded coordinates.
+interface: (r0 = struct with byte 0x13 = row/coordinate, r2 = panel-flag set mask, r3 = panel-flag clear
+  mask; r5 = caller-provided context whose byte 0x16 picks variant) -> r0 = low nibble of chosen panel
+  (first arg value, adjusted by -facing in the direct-hit path), r1 = high nibble (row/coordinate); r6
+  = match count
+details: 'Reads object_getFlag on r0 and tests flag bit 0xA000; if set, it skips straight to the column-search
+  path. Otherwise it builds the first panel-query argument as 1, or 6 when byte [r5+0x16] is nonzero,
+  and calls object_checkPanelParameters(row, setMask, clearMask) on the input row; on a hit it returns
+  that value adjusted by -object_getFrontDirection(). If that fails, it loops with row offsets -1 and
+  +1, packing each matching panel as (row<<4)|typeParam into an sp+0xC buffer. If still nothing (or on
+  the 0xA000 path), it calls object_getPanelsInColumnFiltered to fill the same buffer with the three panels
+  of a column, and if any matched, picks one with GetPositiveSignedRNG modulo the count (svc 6 divide,
+  remainder in r1). The chosen byte is split: r0 = low bits (the 1/6 parameter), r1 = row (high nibble);
+  with no candidates it returns 0. r5 is used but never saved, so it must be established by the caller
+  (likely a shared object/context pointer).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlag / tst r0, 0xa000 gates between the direct/adjacent search and the column search;
+    r0 = 1 or 6 selected by ldrb [r5,#0x16], passed as first arg to object_checkPanelParameters and object_getPanelsInColumnFiltered;
+    loop with r4 = -1,+1 (cmp r4,#1; ble) checks rows adjacent to the input row and stores (coord<<4)|param
+    bytes at sp+0xC; GetPositiveSignedRNG + svc 6 with r1 = count picks a random buffer entry; return
+    splits it into r0 = low bits, r1 = >>4; fallback returns r0 = param - object_getFrontDirection(),
+    tying the result to the object's facing/alliance side
+  refs:
+  - bn6f/asm/asm31.s:135504
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x080F6FEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What r5 points to and what byte 0x16 means (it selects the 1 vs 6 first argument, but r5 is caller-established
+  and no caller is known)
+- Whether the 1/6 first argument is a panel-type flag value or a column index — this decides whether the
+  result is (type,row) or (X,Y)
+- Which behavior the 0xA000 object flag selects (it forces the column-search-only path)
+- Any caller, which would pin down the argument structures and the exact return convention
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6FEC -> ai_pickPanelMatchingFlagsNearObject
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6FEC

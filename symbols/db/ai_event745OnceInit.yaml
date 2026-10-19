@@ -1,0 +1,44 @@
+name: ai_event745OnceInit
+address: '0x08089BC0'
+kind: function
+status: probable
+summary: 'One-time AI trigger: if chatbox flag bit 0x80 is clear, sets event 745 and resets the entity''s
+  AI state, then returns 1.'
+interface: (r5 = AI/entity control struct) -> r0 = 1 always; sets EVENT_745 when flag bit 0x80 was clear
+details: Tests bit 0x80 of eFlags2009F38 via chatbox_mask_eFlags2009F38; if set, skips straight to the
+  return. Otherwise it sets event flag EVENT_745 through SetEventFlagFromImmediate, clears the byte at
+  r5+8 (likely a state/counter), stores 0x1e into AIData+0x18 of the AI struct in r5, and writes 0x1c
+  to r5+0 (likely the AI state/command selector). Always returns 1, so callers presumably just continue.
+  r4, r6, r7 are pushed but unused. The 0x1c written to r5+0 pairs with the 0x1e in AIData+0x18, suggesting
+  it selects a follow-up AI routine/behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80; bne skips the whole body when the bit is already
+    set; movflag EVENT_745; bl SetEventFlagFromImmediate plants a story flag on the first pass; strb r0(=0),[r5,#8]
+    and strb 0x1c,[r5] reset fields of the r5 control struct; bl ai_setAIDataUnk18_8089CB0 with r0=0x1e
+    writes AIData+0x18 via the known AI helper
+  refs:
+  - bn6f/asm/asm23.s:1631
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08089CB0 ai_setAIDataUnk18_8089CB0
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08089BC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which entity/AI script calls this (no callers known), and what the fields r5+0, r5+8 and AIData+0x18
+  mean, to pin down what behavior is being restarted
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089BC0 -> ai_event745OnceInit
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089BC0

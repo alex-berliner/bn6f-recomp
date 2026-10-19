@@ -1,0 +1,51 @@
+name: battle_setupNoCustomPlusObjectCollision
+address: '0x08014760'
+kind: function
+status: probable
+summary: Flags the current battle object with 0x30 in ObjectFlags1 and refreshes its collision with a
+  hit modifier of 3 when the NoCustomPlus battle effect is active, else 0.
+interface: () -> void; operates on the current battle object tracked outside this function
+details: First ORs flag bits 0x30 (bits 4 and 5) into the battle object's CollisionData ObjectFlags1 via
+  object_setFlag1, whose target object is not passed here and must be established by the caller. It then
+  calls battle_IsNoCustomPlusActive_80107C0, which tests bit 3 of the battle-effects bitmask and yields
+  3 only while Custom+ is disabled. That 0-or-3 result is passed as the hit-modifier argument to object_updateCollisionData,
+  together with r1 = 0x10 and r2 = 2, which refreshes the collision record and re-evaluates it (marking
+  bit 16 while time is stopped). The 0x30 flags likely make the object intangible/ignored by collision
+  until further setup. The exact in-game identity of the object depends on the unknown adjacent callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8014760+2: mov r0,#0x30 then bl object_setFlag1 — writes flags 0x30 to ObjectFlags1; sub_8014760+8:
+    bl battle_IsNoCustomPlusActive_80107C0, result (0 or 3) left in r0; sub_8014760+0xC..0x10: mov r1,#0x10;
+    mov r2,#2; bl object_updateCollisionData — modifier, 0x10, 2 arguments; callee summary of object_updateCollisionData:
+    refreshes hit modifier, pending damage, collision type flags and re-evaluates, marking bit 16 while
+    time stopped'
+  refs:
+  - bn6f/asm/asm00_2.s:13304
+  - 0x08014776 sub_8014776
+  - 0x0801478C sub_801478C
+  - 0x080107C0 battle_IsNoCustomPlusActive_80107C0
+  - 0x0801A152 object_setFlag1
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x08014760
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which battle object this initializes — the callers sub_8014776/sub_801478C (and whatever selects the
+  'current' object for object_setFlag1) must be identified
+- What ObjectFlags1 bits 4–5 (0x30) mean in this project's CollisionData map
+- What the r1=0x10 / r2=2 arguments to object_updateCollisionData select (collision-type flags vs. update
+  mode)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014760 -> battle_setupNoCustomPlusObjectCollision
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014760

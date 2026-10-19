@@ -1,0 +1,53 @@
+name: battle_setupObjectSpriteFromEntry
+address: '0x0811B814'
+kind: function
+status: probable
+summary: Looks up a sprite ID from the word_2023FA0 table for the entry selected by the caller and configures
+  the current battle object's sprite (shadow flag, animation, animation data).
+interface: (r5 = entry struct; byte [r5+4] = list index) -> void; sets up sprite state for the object
+  resolved via battleObject_getByIndex
+details: Computes an index as halfword [unk_2037780+0x24] + byte [r5+4] - 2, bounds-checked against halfword
+  [unk_2037780+0x1e] (early return if out of range), then reads a halfword sprite ID from word_2023FA0[index*4]
+  (4-byte-stride table). If the ID is 0x90 it calls sprite_setUnk0x2c(0x100000), otherwise sprite_setUnk0x2c(0);
+  note r0 for the following battleObject_getByIndex call comes from setUnk0x2c's return, so that call
+  likely returns the relevant object/handle. It then reads byte [obj+3] as the animation index, calls
+  sprite_setAnimation, sprite_loadAnimationData, and sprite_noShadow, so the object always renders without
+  a shadow. The 0x90 special case (0x100000 written to sprite field 0x2c) suggests one sprite ID needs
+  a non-default value in that field before the animation is applied.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Index math ldrh [r6,#0x24] + ldrb [r5,#4], -2, bounds check vs ldrh [r6,#0x1e] gates the whole
+    body; ldrh r4, [word_2023FA0 + index*4] loads a halfword sprite ID from a 4-byte-stride table; cmp
+    r4,#0x90 branch selects sprite_setUnk0x2c(0x100000) vs sprite_setUnk0x2c(0); tail sequence battleObject_getByIndex
+    -> ldrb [r0,#3] -> sprite_setAnimation -> sprite_loadAnimationData -> sprite_noShadow; All five callers
+    (sub_811B594/620/648/66C/6B8) sit in the same spawn-table-driven code block sharing off_811B878 data
+    pointers
+  refs:
+  - bn6f/asm/asm32.s:28134
+  - 0x0811B594 sub_811B594
+  - 0x0811B620 sub_811B620
+  - 0x0811B648 sub_811B648
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811B814
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sprite field 0x2c means and why ID 0x90 gets 0x100000
+- What table word_2023FA0 contains (sprite IDs per entry?) and what the r5 entry struct is
+- Caller summaries for sub_811B594/620/648/6B8 to confirm this is battle-object spawn setup
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B814 -> battle_setupObjectSpriteFromEntry
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B814

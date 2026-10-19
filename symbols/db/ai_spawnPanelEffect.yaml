@@ -1,0 +1,48 @@
+name: ai_spawnPanelEffect
+address: '0x0811109C'
+kind: function
+status: probable
+summary: Spawns a battle effect object at a given panel's screen position, oriented by the acting object's
+  team/facing.
+interface: (r0 = panel column, r1 = panel row; r5 = battle object) -> r0 = spawned effect object pointer
+details: Reads oBattleObject_Alliance and oBattleObject_DirectionFlip from the object in r5, XORs them
+  and shifts the result into the top byte of a flags word. It then converts the panel column/row passed
+  in r0/r1 via object_getCoordinatesForPanels into 16.16 pixel coordinates, clears r3, and calls the effect-spawn
+  wrapper with r4 = 0x15 OR'd with the alliance/flip flag byte, so the flag likely controls sprite mirroring
+  of the spawned type-4 effect object (effect type 0). The 0x15 constant is merged into the same flags
+  field, suggesting low bits are effect parameters and the high byte is orientation. Uses r5 as an implicit
+  object-pointer input, so callers must have the battle object loaded there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance] / eor r0,r1 / lsl r0,#8 builds the orientation flag from
+    the object; bl object_getCoordinatesForPanels converts the r0/r1 panel args to pixel coords; ldr r4,=0x15;
+    orr r4,r0 merges the flag with constant 0x15 before spawning; bl spawn_t1_0x0_EffectObject spawns
+    the type-4 effect and its pointer ends in r0; Callers 0x08110B70 (ai_lungeAttackUpdate) and 0x081109F6
+    (ai_updateDiveAttack) are panel-based AI attack steps
+  refs:
+  - bn6f/asm/asm32.s:6723
+  - 0x08110B70 ai_lungeAttackUpdate
+  - 0x081109F6 ai_updateDiveAttack
+  - 0x0811095E sub_811095E
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x0811109C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What effect type 0 renders visually (dust/splash/etc.) and what the 0x15 flag bits mean
+- Whether the high-byte flag is a horizontal flip or a team-tint selector
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811109C -> ai_spawnPanelEffect
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811109C

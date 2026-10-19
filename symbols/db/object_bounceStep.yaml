@@ -1,0 +1,48 @@
+name: object_bounceStep
+address: '0x080CA88E'
+kind: function
+status: probable
+summary: Battle-object script step that makes an enemy repeatedly bounce (reverse horizontally, or launch
+  upward) every 8 frames a fixed number of times, then switch to the next action.
+interface: (r0 = ignored, r5 = battle object pointer) -> void; sets CurAction=6 and clears phase when
+  finished
+details: Runs on a Timer that counts down each call; when it reaches 0 the step fires. It sets collision
+  region 1, decrements Param2 (a repeat counter); if bounces remain it reloads Timer=8 and waits again.
+  On each fired tick after the last counter check, if Param3 is nonzero it negates XVelocity and XORs
+  DirectionFlip (calling object_getFlip/sprite_setFlip to mirror the sprite) — a wall bounce; otherwise
+  it stores 0x40000 into ZVelocity — an upward hop. Each fired tick then refreshes collision data via
+  object_updateCollisionData(6,5,3), sets CurAction=6 and CurPhaseAndPhaseInitialized=0 to hand control
+  to the next action step. Param2 is the bounce count, Param3 selects bounce style (horizontal flip vs.
+  vertical jump).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub #1 ... bne return — step fires on timer expiry (asm
+    start); mov r0,#8; strh [Timer] after Param2 decrement — 8-frame interval between bounces; neg r0,r0
+    on XVelocity + eor DirectionFlip + object_getFlip/sprite_setFlip — horizontal bounce with sprite mirroring;
+    ldr r0,=0x40000; str [ZVelocity] — vertical-launch branch when Param3==0; object_updateCollisionData(6,5,3)
+    then CurAction=6, phase=0 — refresh collision and advance to next action'
+  refs:
+  - bn6f/asm/asm31.s:40414
+  - 0x0800E456 object_getFlip
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CA88E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which enemy uses this step and what CurAction 6 means in its action table
+- exact meaning of collision args (6,5,3) in object_updateCollisionData
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA88E -> object_bounceStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA88E

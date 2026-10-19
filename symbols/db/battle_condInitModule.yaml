@@ -1,0 +1,49 @@
+name: battle_condInitModule
+address: '0x0803AF70'
+kind: function
+status: probable
+summary: Conditionally resets some battle-state bytes/compacts a list when flag 0x80 of eFlags2009F38
+  is clear, then initializes the battle module.
+interface: (r0 = scratch for flag test; r5 = state struct pointer, set by caller) -> r0 = clobbered by
+  calls; flags set by the flag test only before the unconditional init call
+details: 'Reads bit 0x80 of the event-flag word eFlags2009F38 via chatbox_mask_eFlags2009F38. If the bit
+  is clear, it stores 0 into byte [r5+0x13] of a caller-provided struct, calls sub_803C0BE with r0=0x11
+  and r1=0x90 (which walks a 2-byte-per-entry list to its 0xE6 terminator and pads trailing free slots
+  with 0xE5 0xE5 pairs), then stores 0x28 (40) into byte [r5+1]. If the bit is set, all of that setup
+  is skipped. In both paths it ends by calling battle_moduleInit_803A820, the battle-module initializer.
+  This reads as a first-time-init guard: state fields and the list are only reset when the flag hasn''t
+  been consumed yet.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x80; bl chatbox_mask_eFlags2009F38; bne loc_803AF8A — skips setup when flag bit 0x80
+    is set; strb r0,[r5,#0x13] and strb r0(0x28),[r5,#1] — clears/sets two bytes of the caller''s struct
+    during the init path; mov r0,#0x11; mov r1,#0x90; bl sub_803C0BE — compacts/pads a 2-byte-entry list
+    to its 0xE6 terminator; loc_803AF8A: bl battle_moduleInit_803A820 — the battle-module init runs unconditionally
+    on both paths'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4779
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x0803AF70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the identity of r5's struct and what bytes 0x13 (cleared) and 0x1 (set to 0x28)
+  mean is unknown
+- What arguments 0x11/0x90 mean to sub_803C0BE (table id and length?) is not shown
+- Which game event sets flag bit 0x80 of eFlags2009F38 and why it suppresses the reset
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AF70 -> battle_condInitModule
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AF70

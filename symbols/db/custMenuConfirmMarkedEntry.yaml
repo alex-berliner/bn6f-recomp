@@ -1,0 +1,50 @@
+name: custMenuConfirmMarkedEntry
+address: '0x08028DBC'
+kind: function
+status: probable
+summary: 'Custom Screen action handler: flags the currently indexed 0x20-byte entry as chosen (byte+8
+  = 1), sets a global confirm flag, then runs the OK-confirm path.'
+interface: () -> r0 = 0; no meaningful flags; sets entry[+8] = 1 and byte_20349A4 = 1 as side effects
+details: It reads the byte at offset 0x0d of the battle state (via battle_getStateByte0d_800A7E2) and
+  passes it as the index to getTableEntryPtr32_802D064, which returns one 0x20-byte entry of the IWRAM
+  array at byte_203C4A0 — plausibly the folder/chip entry selected on the Custom Screen. It stores 1 into
+  that entry's byte at offset +8 (a 'used/confirmed' style flag), then stores 1 into byte_20349A4 of the
+  dword_20349A0 custom-menu struct. Finally it calls custMenuPressOK_8028D3A, which runs the chosen action
+  handler, switches state, and plays the select sound. The function always returns 0 and takes no arguments.
+  No callers are known, but the call structure matches the other Custom Screen button/action handlers
+  around it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getStateByte0d_800A7E2 then bl getTableEntryPtr32_802D064: index 0x0d of battle state
+    selects an entry in the 203C4A0 table; strb r1,[r0,#8] with r1=1: sets the selected entry''s +8 flag
+    byte; ldr r0,off_8028F80; strb r1,[r0,#0x4]: sets byte_20349A4 flag in the dword_20349A0 menu struct;
+    bl custMenuPressOK_8028D3A: known callee performs OK-confirm action, state switch and select sound;
+    mov r0,#0; pop {pc}: constant 0 return, typical of menu state handlers'
+  refs:
+  - bn6f/asm/asm03_0.s:5816
+  - 0x0800A7E2 battle_getStateByte0d_800A7E2
+  - 0x08028D3A custMenuPressOK_8028D3A
+  - 0x0802D064 getTableEntryPtr32_802D064
+  reproduce: python3 tools/asmcat.py 0x08028DBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers are known, so the trigger (which button/input maps to this handler) is unconfirmed
+- The exact meaning of entry+8 and byte_20349A4 (used vs. selected vs. queued) needs the code that reads
+  those flags
+- What the battle-state byte at 0x0d indexes in the 203C4A0 array needs confirmation from other readers
+  of that table
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8028DBC -> custMenuConfirmMarkedEntry
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8028DBC

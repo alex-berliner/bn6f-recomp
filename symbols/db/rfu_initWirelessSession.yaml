@@ -1,0 +1,56 @@
+name: rfu_initWirelessSession
+address: '0x08148D24'
+kind: function
+status: probable
+summary: Resets the wireless-link working buffers, registers the link callbacks, sets the recv buffer/slot
+  and starts a 14-byte periodic send, returning 0 with error code 0x31 on failure.
+interface: (r0 = unused) -> r0 = 1 on success, 0 on rfu_UNI_setSendData failure; writes error/state 0x31
+  to word_200BC58 on failure
+details: 'First it scans up to 5 halfword entries at byte_2010290+0x36 against [dword_2010CC0]+0x94, storing
+  the match index (or 5 if none) in byte_2010480. It then zero-fills byte_2010390 (32 bytes) and unk_20103A0
+  (128 bytes) with CpuSet fixed-source fills, calls sub_8146A70 on unk_200FFF0/unk_200FE90, and clears
+  four small arrays (byte_2010220, word_2010400/0x420/0x428, 4 entries each). It copies byte_2010292 into
+  byte_2010274, clears byte_20101B4 and byte_201039C, and registers sub_8148E74 and sub_8148FB4 via the
+  callback-registration helpers sub_81463E8/sub_81463D0. Finally, using qid from byte_20103E0: rfu_setRecvBuffer(0,
+  unk_20103A0, 0x10, 0x40), rfu_clearSlot(3, qid), sub_803ECFC, sub_803F030, then rfu_UNI_setSendData(qid,
+  byte_2010390, 0xE, 0x1000000<<qid>>24); a failed send stores 0x31 in word_200BC58 (a state/error field
+  of the eS200BC50 struct) and returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls rfu_setRecvBuffer/rfu_clearSlot/rfu_UNI_setSendData (asm near end) — wireless adapter
+    setup; zero-fills byte_2010390/unk_20103A0 via SWI_CpuSet 0x1000008/0x1000022-style fixed fills; registers
+    sub_8148E74+1 and sub_8148FB4+1 through sub_81463E8/sub_81463D0 as link callbacks; failure path stores
+    0x31 into eS200BC50+8 and returns 0; success returns 1; clears ~4-entry arrays and copies byte_2010292->byte_2010274
+    — session state reset
+  refs:
+  - bn6f/asm/libs.s:10289
+  - 0x08049416 sub_8049416
+  - 0x0812A5F8 sub_812A5F8
+  - 0x0812A6F8 sub_812A6F8
+  - 0x0814D8B8 SWI_CpuSet
+  - 0x0814AB7C rfu_UNI_setSendData
+  - 0x0814A934 rfu_clearSlot
+  reproduce: python3 tools/asmcat.py 0x08148D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What game feature (versus, trade, wonder trading?) these callers serve — need caller context to refine
+  the name
+- Purpose of the 5-entry ID scan against [dword_2010CC0]+0x94 and what the match index in byte_2010480
+  selects
+- Meaning of state/error code 0x31 in the eS200BC50 struct
+- What sub_8148E74/sub_8148FB4 callbacks handle (recv vs. state timer)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8148D24 -> rfu_initWirelessSession
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8148D24

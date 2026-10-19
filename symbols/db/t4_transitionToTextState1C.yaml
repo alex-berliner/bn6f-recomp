@@ -1,0 +1,50 @@
+name: t4_transitionToTextState1C
+address: '0x0812D880'
+kind: function
+status: probable
+summary: State-machine handler that saves the current state, switches the task to state 0x1C, and opens
+  a text script (0x30 or 0x40) in the chatbox, also fixing up an in-progress screen fade.
+interface: (r0 = unused, r1 = unused, r5 = task struct) -> void; flags clobbered
+details: Reads the screen fade controller; if the fade mode is 0xC it re-arms SetScreenFade with mode
+  8, level 0x10. It stores the current state byte [r5,#2] into [r5,#0x16] (previous-state slot), writes
+  0x1C as the new state, and clears [r5,#3] and [r5,#0xC]. If bit 0 of [r5,#0x1b] is clear, it fetches
+  eStruct200BC30, reads byte +0xE, and runs text script 0x30 if that byte equals 2, otherwise 0x40, from
+  archive eTextScript201BA20 via the chatbox wrapper. Finally, if the saved previous state was nonzero,
+  it calls sub_8120AB8 with that value, presumably a leave-old-state handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#2] / strb r0,[r5,#0x16] then mov r0,#0x1c / strb r0,[r5,#2] — save old state, enter
+    state 0x1C; bl screenFade_80062C8 / cmp r0,#0xc ... bl SetScreenFade(8,0x10) — repairs fade mode 0xC
+    before showing text; eStruct200BC30_getRef; ldrb r0,[r0,#0xe]; cmp r0,#2 picks script 0x30 vs 0x40;
+    bl chatbox_runScript_803FD9C_on_eTextScript201BA20 — the visible effect is a textbox from this archive;
+    ldrb r0,[r5,#0x16]; beq skip; bl sub_8120AB8 — old-state-dependent cleanup on exit
+  refs:
+  - bn6f/asm/asm34.s:720
+  - 0x0812C320 sub_812C320
+  - 0x0812C3BC sub_812C3BC
+  - 0x0812C50C sub_812C50C
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x080062C8 screenFade_80062C8
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0812D880
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which menu/task owns this r5 state machine (callers sub_812C3xx are all unnamed)
+- meaning of state 0x1C and of fields +0x3, +0xC, +0x1B
+- what eStruct200BC30 byte +0xE represents and why it selects script 0x30 vs 0x40
+- what sub_8120AB8 does with the previous state value
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812D880 -> t4_transitionToTextState1C
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D880

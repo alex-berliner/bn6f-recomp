@@ -1,0 +1,51 @@
+name: battle_waitForResultScreenSync
+address: '0x080098D8'
+kind: function
+status: probable
+summary: 'Link-battle state handler: initializes the result transition, waits until both players'' tracked
+  id equals 0x1f2f3f4f (or a 180-frame timeout), then restores result records and advances the battle
+  state.'
+interface: (r0-r4 = state work area in r5, no args) -> r0 = clobbered; sets oBattleState_StatePhaseAndInitFlag
+  = 4 on sync or oBattleState_Index_00 = 0xc on timeout
+details: Runs once per frame as a battle state-machine step using the oBattleState struct in r5. On first
+  entry (SubPhaseInitFlag clear) it calls sub_800B428, which reinitializes global work and issues a mode-4
+  request to the state manager at 0x80200A4 — almost certainly opening the result/result-screen mode —
+  then zeroes CountdownTimer and latches the init flag. Afterwards it compares the link-sync tracked id
+  against the constant 0x1f2f3f4f via battle_doBothTrackedIdsMatch_800B46C; only when both EWRAM slots
+  (0x203F4A0/0x203F5A0) hold that id does it clear the sync words, restore the 12-byte link battle-result
+  records into unk_2035260/unk_203526C (sub_800B444), and set the phase to 4. If the peer id does not
+  match, it increments CountdownTimer and, after 180 frames (0xb4), forces state index 0xc as a timeout
+  fallback, routed through battle_main_8007800.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_800B428 callee is documented as stamping global work and issuing a mode-4 request to the
+    state manager, consistent with entering a result screen; bl battle_doBothTrackedIdsMatch_800B46C with
+    dword_8009998 = 0x1f2f3f4f gates the transition on both link peers; bl battle_resetLinkSyncFlags_800B460
+    and bl sub_800B444 (restore result records) run only on successful sync; strh #4 into oBattleState_StatePhaseAndInitFlag
+    advances the battle state only after the payload restore; CountdownTimer compared with 0xb4 then str
+    #0xc into oBattleState_Index_00 provides a timeout exit'
+  refs:
+  - bn6f/asm/asm00_1.s:14500
+  - 0x0800B46C battle_doBothTrackedIdsMatch_800B46C
+  - 0x0800B460 battle_resetLinkSyncFlags_800B460
+  - 0x0800B428 sub_800B428
+  reproduce: python3 tools/asmcat.py 0x080098D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what state index 0xc (timeout target) and phase 4 exactly correspond to in the battle state table
+- what sets tracked id 0x1f2f3f4f on each GBA (presumably the result-screen mode id reported over link)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80098D8 -> battle_waitForResultScreenSync
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80098D8

@@ -1,0 +1,50 @@
+name: object_explodeAndFree
+address: '0x080CDEF8'
+kind: function
+status: probable
+summary: Plays a bomb-hit sound, spawns an explosion effect at the object's position, then frees the calling
+  battle object.
+interface: (r5 = battle object ptr, implicit) -> r0 = spawned effect object ptr; r5 object freed, its
+  collision slot released
+details: 'Treats r5 as a battle object: plays SOUND_HIT_BOMB_1, then ldmia from r5+0x34 loads three consecutive
+  fields (almost certainly the object''s x/y/z position words) into r1-r3 and sets r4=0x47 before calling
+  the effect spawner, which creates a type-4 effect object at those coordinates. Afterwards it reads oBattleObject_CollisionDataPtr
+  and calls object_freeCollisionData to release the collision slot, then object_freeMemory to clear flags,
+  free the bitmap slot, unlink from the active list and reset sprite scaling. r5 is not set inside the
+  function, so the caller must supply it in r5 (or it runs within a context where r5 already holds the
+  object). The 0x47 in r4 selects which effect to spawn; the callee wrapper reportedly forces effect type
+  0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#SOUND_HIT_BOMB_1; bl PlaySoundEffect — explosion/bomb hit sound on entry; add r0,r0,r5
+    with base 0x34 then ldmia {r1-r3} — copies the object's position words for the effect spawn; mov r4,#0x47;
+    bl spawn_t1_0x0_EffectObject — spawns an effect object parameterized by r4; ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    bl object_freeCollisionData — releases the object's collision slot; bl object_freeMemory as the final
+    action — the object destroys itself after spawning the effect
+  refs:
+  - bn6f/asm/asm31.s:47705
+  - 0x080005CC PlaySoundEffect
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CDEF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what effect 0x47 in r4 exactly maps to (the callee summary says effect type 0, suggesting r4 is a different
+  parameter)
+- which callers use this (none known) — bomb-type object death handlers would confirm the trigger context
+- exact meaning of the three words at +0x34 (assumed x/y/z position)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CDEF8 -> object_explodeAndFree
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDEF8

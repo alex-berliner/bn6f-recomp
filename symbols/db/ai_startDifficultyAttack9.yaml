@@ -1,0 +1,48 @@
+name: ai_startDifficultyAttack9
+address: '0x080F65A4'
+kind: function
+status: probable
+summary: AI script handler that reads the enemy AI difficulty tier, sets up an attack-9 state with handler
+  and target, and launches attack id 9 on the opposing player.
+interface: () -> r0 = result of object_setAttack4 (attack id 9); no meaningful flags
+details: This looks like an AI command/state initializer using r7 as an AI state struct. It first calls
+  battle_getAiDifficultyTier and stores the tier (0-2) at [r7,#3]. It loads a Thumb callback pointer into
+  [r7,#0x28], likely the per-state update handler. It then XORs the byte at [r5,#0x16] with 1 to get the
+  opposite alliance and calls battle_findPlayer, storing the enemy (or player, from the AI's perspective)
+  object pointer at [r7,#0x2c]. Finally it calls object_setAttack4 with r0=9 to trigger attack id 9. The
+  difficulty tier only being valid for AI data version 4 suggests this is one of the newer BN6 boss AI
+  commands.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 then strb r0,[r7,#3] stores the difficulty tier into the
+    AI state struct; ldr r0,=sub_80F6FD0+1; str r0,[r7,#0x28] installs a state handler callback; ldrb
+    r0,[r5,#0x16]; eor r0,#1; bl battle_findPlayer; str r0,[r7,#0x2c] resolves and stores the opposing-side
+    target; mov r0,#9; bl object_setAttack4 starts attack id 9 as the final action; no known callers,
+    consistent with being an AI opcode handler dispatched from a table
+  refs:
+  - bn6f/asm/asm31.s:134187
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011690 object_setAttack4
+  reproduce: python3 tools/asmcat.py 0x080F65A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known callers, so the AI opcode table entry and what r5/r7 structures are remain unconfirmed
+- Whether object_setAttack4's argument is an attack id or an object id, and the exact meaning of attack
+  9, is unknown
+- The role of the callback at sub_80F6FD0 (state update handler) is unverified
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F65A4 -> ai_startDifficultyAttack9
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F65A4

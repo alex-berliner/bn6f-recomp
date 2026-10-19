@@ -1,0 +1,50 @@
+name: battle_lungeUpdate
+address: '0x080BFA38'
+kind: function
+status: probable
+summary: Per-frame phase handler for a battle object that teleports 100px to the opposite side, then dashes
+  back to its panel over 10 frames leaving afterimages.
+interface: (r5 = battle object, no args) -> r0 = undefined; sets object's CurPhaseAndPhaseInitialized
+  = 4 when done
+details: On first entry (PhaseInitialized==0) it plays sound 0x3B, resets the timer, instantly offsets
+  X by facing*0x640000 (100px, 16.16 fixed point), sets Z=0x640000, sets XVelocity = -facing*0xa0000 and
+  ZVelocity = -0xa0000, and marks PhaseInitialized=4. Each subsequent frame it integrates X/Z by those
+  velocities and spawns an illusion/afterimage pair via battle_spawnIllusionPair on timer frames 5 and
+  7. When the timer reaches 10 (i.e. it has slid back ~100px), it snaps position to the panel grid with
+  object_setCoordinatesFromPanels, calls sprite_disableAlpha to clear any alpha blending, and writes phase
+  4 to CurPhaseAndPhaseInitialized to advance the state machine. The object pointer is passed in r5, matching
+  the project's phase-handler convention; the function takes no arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_80BFA74 — standard one-shot init guard
+    of a phase handler; ldr r1,=0x640000; mul r1,r0; add X — instant 100px teleport opposite facing, then
+    constant velocity 0xa0000/frame back for exactly 10 frames; cmp r0,#7 / #5; beq; bl battle_spawnIllusionPair
+    — afterimages spawned mid-dash; timer>=10: bl object_setCoordinatesFromPanels; bl sprite_disableAlpha;
+    mov r0,#4; strh CurPhaseAndPhaseInitialized — snaps home and exits to phase 4; callee PlaySoundEffect(0x3B)
+    on entry and callee battle_spawnIllusionPair summaries match a dash/teleport attack with afterimages'
+  refs:
+  - bn6f/asm/asm31.s:16506
+  - 0x080005CC PlaySoundEffect
+  - 0x080BFD90 battle_spawnIllusionPair
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BFA38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No caller is known, so the owning object (which enemy/Navi uses this lunge) is unidentified; a caller
+  or the phase table that dispatches r5 would confirm the entity and whether phase 4 leads into an attack
+  handler.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFA38 -> battle_lungeUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFA38

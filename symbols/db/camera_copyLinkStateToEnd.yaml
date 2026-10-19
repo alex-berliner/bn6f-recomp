@@ -1,0 +1,49 @@
+name: camera_copyLinkStateToEnd
+address: '0x081325CC'
+kind: function
+status: probable
+summary: Copies two fields of the eLinkState global (offsets 0x1C and 0x0A) into the eCamera end struct
+  at eCamera.unk_84+4 and +2.
+interface: () -> void; writes eCamera.unk_84+2 (halfword) and +4 (word), clobbers r0-r1, r4
+details: Fetches the eLinkState address via sub_803E8F8 and the eCamera.unk_84 pointer via sub_803EF7C,
+  then stores eLinkState+0x1C as a 32-bit value at end+4 and eLinkState+0x0A as a 16-bit value at end+2.
+  The destination is the camera's 'end' record per the known callee summary, so this syncs link-state
+  data into the camera's end-point fields, likely a position/scroll target. No flags are meaningful; the
+  routine is a pure two-field copy with no error paths. Called from five places in the 0x812xxxx block,
+  several within sub_812B9F8, suggesting repeated re-syncing during camera setup or updates.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_803E8F8 / mov r4,r0 — r4 = &eLinkState (callee summary); bl sub_803EF7C / mov r1,r0 —
+    r0 = &eCamera.unk_84, the camera 'end' value (callee summary); ldr r1,[r4,#0x1c]; str r1,[r0,#4] —
+    word copy eLinkState+0x1C -> end+4; ldrh r1,[r4,#0xa]; strh r1,[r0,#2] — halfword copy eLinkState+0x0A
+    -> end+2; callers sub_812A76C/sub_812AAC0/sub_812AD04/sub_812B9F8 cluster in one region, consistent
+    with camera-setup code
+  refs:
+  - bn6f/asm/asm36.s:4774
+  - 0x081311C8 dead_81311C8
+  - 0x0812A76C sub_812A76C
+  - 0x0812AAC0 sub_812AAC0
+  - 0x0803E8F8 sub_803E8F8
+  - 0x0803EF7C sub_803EF7C
+  reproduce: python3 tools/asmcat.py 0x081325CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What eLinkState+0x1C and +0x0A hold (coordinates? scroll bounds?) and what the layout of the eCamera
+  end struct is
+- Why the two callers inside sub_812B9F8 both invoke this — whether it re-syncs per frame or once per
+  transition
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81325CC -> camera_copyLinkStateToEnd
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81325CC

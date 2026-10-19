@@ -1,0 +1,49 @@
+name: object_runFrame
+address: '0x080DBFC0'
+kind: function
+status: probable
+summary: 'Per-frame tick for one battle object: tear down/refresh its collision data, spawn any hit effect,
+  dispatch its current action handler, and update its sprite.'
+interface: (r5 = battle object pointer; uses no argument registers) -> r0 = handler/last-call result;
+  flags clobbered
+details: 'Acts as the main update driver for a battle object: it first removes stale collision data, spawns
+  the hit-effect object for the object''s last collision, then indexes a 3-entry jump table (off_80DBFF4)
+  with oBattleObject_CurAction and tail-dispatches to that action handler using the mov lr,pc/bx r1 ARM-THUMB
+  interwork trick so the handler returns into the remaining steps. After the handler returns it advances
+  the object''s sprite animation and finally refreshes/present the object''s collision state for this
+  frame. The code after the first pop {pc} (clearing the collision region, storing 8 to [r5,#8], and clearing
+  bit 1 of the flags byte at [r5]) belongs to one of the action handlers (likely the shared tail of sub_80DC000/18/AC),
+  resetting the object''s collision region and a state flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sequence object_removeCollisionData / object_spawnCollisionEffect / object_updateSprite /
+    object_presentCollisionData matches a full per-object frame update; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; mov lr,pc; bx r1 dispatches one of 3 action handlers at off_80DBFF4; all callees are
+    battle-object subsystem routines documented as per-frame collision/sprite services
+  refs:
+  - bn6f/asm/asm31.s:77945
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  - 0x0801A0D4 object_spawnCollisionEffect
+  reproduce: python3 tools/asmcat.py 0x080DBFC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no caller is known, so the exact r5 object structure ownership and when this is called in the battle
+  loop is inferred only from callees
+- the identities/semantics of the three action handlers (sub_80DC000/18/AC) and which owns the tail code
+  after pop {pc} are not shown
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DBFC0 -> object_runFrame
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DBFC0

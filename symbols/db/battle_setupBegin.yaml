@@ -1,0 +1,47 @@
+name: battle_setupBegin
+address: '0x080499AE'
+kind: function
+status: probable
+summary: 'Battle-start state handler: if the 0x80 cutscene/event flag is clear it resets two state bytes
+  and runs a list-reset helper, then always launches the battle module init.'
+interface: (r5 = task/state struct) -> r0 = battle module init result; no meaningful flags
+details: r5 points to some battle/setup state struct. It first reads bit 0x80 of the chatbox/cutscene
+  event flag word eFlags2009F38; if that bit is set, the middle block is skipped entirely. Otherwise it
+  stores 0 to byte r5+0x13, calls sub_803C0BE(0x11, 0x90) — the helper that walks a 2-byte-per-entry list
+  to its 0xE6 terminator and normalizes trailing free slots to 0xE5 0xE5 pairs, so this likely re-initializes
+  a specific text/list buffer identified by (0x11, 0x90) — and finally stores 0x28 into byte r5+1, plausibly
+  a next-state or frame counter. In all cases it then tail-calls battle_moduleInit_803A820 to kick off
+  battle module setup (registering entries 10/0x26 and 11/0x27 and running the main init).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80 then bne skipping the reset block — gating on a cutscene/event
+    flag bit; strb r0,[r5,#0x13] (0) and strb r0,[r5,#1] (0x28) — writes into a per-task state struct;
+    mov r0,#0x11; mov r1,#0x90; bl sub_803C0BE — reuses the list/terminator normalizer on a specific buffer;
+    bl battle_moduleInit_803A820 unconditionally before the pop — always ends by starting battle module
+    init
+  refs:
+  - bn6f/asm/asm03_2.s:6094
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x080499AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What struct r5 points to and the meaning of the 0x28 written at +1 (state id vs counter)
+- What buffer (0x11, 0x90) refers to in the sub_803C0BE call
+- No known callers, so the runtime context and the meaning of flag 0x80 are unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80499AE -> battle_setupBegin
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80499AE

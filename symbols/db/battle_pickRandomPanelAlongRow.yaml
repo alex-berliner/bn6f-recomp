@@ -1,0 +1,59 @@
+name: battle_pickRandomPanelAlongRow
+address: '0x08015CC0'
+kind: function
+status: probable
+summary: Walks along a battle object's row in the direction opposite its alliance, collects panels matching
+  an alliance-specific area flag once a per-call limit is reached, and returns one of them chosen at random
+  plus the farthest matching panel.
+interface: (r0 = start column, r1 = start row, r2 = required panel-flag mask, r3 = forbidden panel-flag
+  mask, stack arg = panel count limit; r5 = battle object providing oBattleObject_Alliance/oBattleObject_DirectionFlip)
+  -> r0 = chosen column (low nibble), r1 = chosen row (high nibble), r2/r3 = column/row of last panel
+  matching the alliance mask; flags clobbered.
+details: It negates object_getAllianceDirection for the object's alliance to get a step (sp+0x10), then
+  loops from the start panel while object_isValidPanel holds. A table at byte_8015D78 indexed by alliance*4
+  gives a panel-flag mask (0x01800000 for alliance 1, 0x02800000 for alliance 2) which is tst'd against
+  object_getPanelParameters; each matching panel updates the saved 'last match' coords (sp+0x2c/0x30)
+  and increments a counter, aborting once the counter exceeds the stack limit. Whenever the counter equals
+  the limit, object_checkPanelParameters(r2=required, r3=forbidden) gates whether the panel's coords,
+  encoded as col | row<<4, are appended to a byte list on the stack. If the list is non-empty, GetPositiveSignedRNG
+  divided by the list length (BIOS Div, remainder in r1) picks a random entry, which is split into column
+  (3 bits) and row (high nibble) for the return; the last matching panel coords are always returned in
+  r2/r3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_8015D74/byte_8015D78: per-alliance word masks 0x01800000 and 0x02800000 tst''d against
+    object_getPanelParameters output — alliance-keyed panel area flags; loc_8015CF4..D40: x += -object_getAllianceDirection
+    each iteration, loop bounded by object_isValidPanel — a straight row scan; loc_8015D16: object_checkPanelParameters(r2,r3)
+    gate plus ''x | y<<4'' byte stored into the sp buffer when count == stack limit; loc_8015D52: GetPositiveSignedRNG
+    + svc 6 (BIOS Div) remainder indexes the buffer, then nibble split returns col/row — random pick among
+    collected panels; sp+0x2c/0x30 always hold the most recent mask-matching panel coords and are returned
+    in r2/r3'
+  refs:
+  - bn6f/asm/asm00_2.s:16136
+  - 0x0802D430 sub_802D430
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x08015CC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Caller sub_802D430 is undocumented, so the gameplay purpose (e.g. an attack/chip placing something on
+  a random panel N panels away) is unconfirmed
+- Exact meaning of panel flag bits 0x01800000/0x02800000 (likely player/enemy area ownership) and of the
+  stack-passed count limit
+- Why r5 (the battle object) is inherited from the caller rather than passed in a register
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8015CC0 -> battle_pickRandomPanelAlongRow
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015CC0

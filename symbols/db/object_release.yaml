@@ -1,0 +1,46 @@
+name: object_release
+address: '0x080CFC96'
+kind: function
+status: probable
+summary: 'Fully tears down a battle object: removes its collision data, frees its collision slot, and
+  releases its object memory slot.'
+interface: (r0 = battle object pointer, also in r5) -> r0 = object_freeMemory result; clobbers lr/scratch
+details: The routine is a one-shot destructor for a battle object. It first calls object_removeCollisionData
+  on the object (r0 already points to it on entry, since no register setup happens before the call), then
+  loads the object's CollisionDataPtr field from r5 and passes it to object_freeCollisionData to return
+  the collision slot to the engine-wide pool, and finally calls object_freeMemory to clear the object's
+  flags, free its bitmap slot, unlink it from the active-object list, and reset sprite scaling. r5 must
+  hold the same object pointer as r0; it is not reloaded in this function. No return value check is performed,
+  so it is safe to call unconditionally at cleanup/kill sites.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData immediately on entry with r0 untouched, so entry r0 is the object
+    pointer; ldr r0,[r5,#oBattleObject_CollisionDataPtr] then bl object_freeCollisionData frees the collision
+    slot for this object; tail call to object_freeMemory releases the object''s slot, list link, bitmap,
+    and scaling; sequence exactly mirrors the callee summaries: teardown collision -> free collision ->
+    free object'
+  refs:
+  - bn6f/asm/asm31.s:51669
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CFC96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers are known, so it is unconfirmed whether callers set r0==r5 or whether the trampoline's return
+  value is used; caller sites would confirm the exact contract and a kill-vs-cleanup distinction
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CFC96 -> object_release
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFC96

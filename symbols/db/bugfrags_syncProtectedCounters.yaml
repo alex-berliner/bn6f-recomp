@@ -1,0 +1,51 @@
+name: bugfrags_syncProtectedCounters
+address: '0x0803D0B4'
+kind: function
+status: probable
+summary: Refreshes the anti-tamper protected BugFrag counter in the game state and recomputes its obfuscated
+  checksum copies
+interface: () -> void; no arguments; r0 is scratch holding the count written to the state, flags consumed
+  from the integrity-check callee
+details: Calls encryption_bugfrags_8006fd0, which verifies the protected BugFrag counter and reports intact
+  vs tampered via the Z flag; only when the check passes (Z set, hence bne skips) does it proceed. It
+  then reads the GameState pointer from r10 via oToolkit_GameStatePtr and stores r0 — the current validated
+  BugFrag count — into oGameState_ProtectedBugfrags. Finally it calls encryption_bugfrags_8006fac to rebuild
+  the checksum complement and XOR-scrambled copy so the protected fields match the real count again. In
+  short it is a maintenance routine that re-syncs the tamper-protected BugFrag storage after the count
+  has changed. Called from the overworld dialogue-end handler (0x08046E48) and a chatbox routine (0x08042C18),
+  which fits BugFrag amounts changing during dialogues (trades, shops, pickups).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl encryption_bugfrags_8006fd0 followed by bne locret gates the whole body on the integrity
+    check's Z flag; ldr r1,[r1,#oToolkit_GameStatePtr]; str r0,[r1,#oGameState_ProtectedBugfrags] writes
+    the validated count into the protected field; bl encryption_bugfrags_8006fac recomputes the checksum-complement
+    and XOR-scrambled copies after the store; Caller 0x08046E48 is a dialogue-end handler that applies
+    a counter update, matching a post-dialogue BugFrag re-sync; Both callees are known BugFrag anti-tamper
+    routines (integrity check and checksum recompute) per project summaries
+  refs:
+  - bn6f/asm/asm03_1_1.s:8971
+  - 0x08046E48 dialogueEnd_unlockPlayer_8046E48
+  - 0x08042C18 chatbox_8042C18
+  - 0x08006FAC encryption_bugfrags_8006fac
+  - 0x08006FD0 encryption_bugfrags_8006fd0
+  reproduce: python3 tools/asmcat.py 0x0803D0B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact semantic of the Z flag in encryption_bugfrags_8006fd0 (which condition counts as 'intact') could
+  invert the gate branch interpretation
+- Whether r0 returned by the check is the raw count or already a derived value
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803D0B4 -> bugfrags_syncProtectedCounters
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803D0B4

@@ -1,0 +1,45 @@
+name: battle_updateObjectSpriteUnfrozen
+address: '0x080BCB34'
+kind: function
+status: probable
+summary: Updates one battle object's sprite only when the battle is neither paused nor time-stopped, returning
+  whether the update ran.
+interface: (r0 = battle object pointer) -> r0 = 1 if sprite updated, 0 if skipped; flags from battle_isPaused/battle_isTimeStop
+  byte reads
+details: Thin guard wrapper around UpdateBattleObjectSprite. It first checks the battle-paused flag and
+  then the time-stop flag (battle flags bit 2) via battle_isPaused and battle_isTimeStop, branching to
+  the exit with r4 = 0 if either is set. Otherwise it falls through to UpdateBattleObjectSprite with r0
+  (the battle object) still intact, sets r4 = 1, and returns r4 as the success/updated flag. The pause
+  and timestop checks mirror the conditions UpdateBattleObjectSprite itself uses, so this wrapper adds
+  a global freeze gate before per-object updates.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isPaused / bne loc_80BCB4A skips the update when paused; bl battle_isTimeStop / bne
+    loc_80BCB4A skips the update during timestop; bl UpdateBattleObjectSprite with r0 unchanged passes
+    the object through; mov r4,#0 / mov r4,#1 around the call builds the boolean return in r0
+  refs:
+  - bn6f/asm/asm31.s:10055
+  - 0x080BCAD4 sub_80BCAD4
+  - 0x0801BC64 UpdateBattleObjectSprite
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080BCB34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Caller sub_80BCAD4 is unrenamed, so the exact object structure passed in r0 and how the boolean return
+  is consumed are not confirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BCB34 -> battle_updateObjectSpriteUnfrozen
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCB34

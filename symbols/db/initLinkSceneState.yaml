@@ -1,0 +1,53 @@
+name: initLinkSceneState
+address: '0x0812A240'
+kind: function
+status: probable
+summary: 'One-shot initializer that sets up a scene/object: configures the camera with layout (12,3,2,0),
+  writes a fixed tag (0x42523545) into the global eLinkState, dispatches an object state, clears a 0x100-byte
+  work buffer, and puts the caller context (r5) into state 4.'
+interface: (no meaningful args; uses global r5 context pointer) -> sets [r5+3] = 4 (state/mode byte) and
+  [r5+0xC] = 0; clobbers r0-r3
+details: 'The routine runs a fixed setup sequence: sub_813D90C(1) and sub_8147350 (unknown setup steps),
+  then sub_803DCE8(12,3,2,0) which initializes the camera/screen block tied to eLinkState and zero-fills
+  two buffers, then sub_803DCD8(0x42523545, 0x2000, 0) which stores a constant ID (ASCII ''ER25'' little-endian)
+  plus 0x2000 into the global eLinkState struct. It then calls sub_81322E8 (object record lookup + per-state
+  dispatch via state+0xE) and sub_803EF60 which reinitializes state and returns a zero-filled 0x100-byte
+  buffer. Finally it writes 4 to byte [r5+3] and 0 to byte [r5+0xC]; since r5 is never set locally, it
+  is a fixed global context pointer (typical task/object control block), so this is likely an object/scene
+  state-4 entry point that performs the whole scene bootstrap.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_803DCE8 with r0=0xc,r1=3,r2=2,r3=0 — known camera/screen init with a layout record;
+    ldr r0, =0x42523545 (''ER25''); ldr r1, =0x2000; bl sub_803DCD8 — known writer of eLinkState fields;
+    bl sub_81322E8 — known object-record lookup + per-state thunk dispatch; bl sub_803EF60 — known reinit
+    + zero-fill of a 0x100-byte buffer; strb #4,[r5,#3]; strb #0,[r5,#0xc] — sets a state byte and clears
+    a counter/field on the global context'
+  refs:
+  - bn6f/asm/asm33.s:14641
+  - 0x0803DCD8 sub_803DCD8
+  - 0x0803DCE8 sub_803DCE8
+  - 0x0803EF60 sub_803EF60
+  reproduce: python3 tools/asmcat.py 0x0812A240
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_813D90C(1) and sub_8147350 do — they gate whether this is a link-battle, scenario, or cutscene
+  bootstrap
+- What structure r5 points to (which object/task control block owns the state byte at +3 and field at
+  +0xC)
+- Meaning of the constant 0x42523545 ('ER25') and 0x2000 in eLinkState
+- No callers known, so the trigger/entry context (scene load? state machine transition?) is unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A240 -> initLinkSceneState
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A240

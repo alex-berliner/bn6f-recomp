@@ -1,0 +1,52 @@
+name: battle_hudQueueGfxLoadAndStartTimer
+address: '0x0801EC44'
+kind: function
+status: probable
+summary: Loads two blocks of graphics (to VRAM and an IWRAM buffer) and kicks off a HUD request with a
+  60-frame timer in the battle HUD state.
+interface: () -> (); queues two GFX transfers, sets request bit 0x00200000 via eStruct2035280_SetRequestBits,
+  dispatches it, and writes 0x3C to eStruct2035280+0x1B
+details: With no arguments, it queues 0xC0 bytes from ROM dword_86E994C to VRAM 0x06016D00 and 0x20 bytes
+  from ROM dword_86E9A0C to the IWRAM buffer byte_30016F0, both via QueueEightWordAlignedGFXTransfer.
+  It then ORs request bit 0x200000 into eStruct2035280+0x40 and immediately calls dispatch_801DA48 with
+  the same bit, so the queued redraw/transfer request is processed right away. Finally it stores 0x3C
+  (60) into byte_203529B, which given the HUD struct layout is most plausibly a frame countdown/animation
+  timer for the element whose tiles were just loaded. The 0x200000 request bit and dispatch pattern suggest
+  it activates (or restarts) a specific HUD graphic, e.g. a gauge/indicator overlay, rather than a one-time
+  upload.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl QueueEightWordAlignedGFXTransfer twice: 0xC0 bytes to 0x6016D00 (VRAM) and 0x20 bytes to
+    byte_30016F0; mov r0,#1; lsl r0,#0x15 then bl eStruct2035280_SetRequestBits_801BECC sets request bit
+    0x200000 in the HUD request dword; same bit 0x200000 passed to dispatch_801DA48, so the request fires
+    immediately; mov r0,#0x3C; strb r0,[r1,#0x1B] writes 60 into eStruct2035280+0x1B, consistent with
+    a frame timer; caller pwrAtkRelated_readsFromJoypad_8012FC8 (joypad-reading battle code) plus callee
+    eStruct2035280 helpers place it in battle HUD updating'
+  refs:
+  - bn6f/asm/asm00_2.s:33448
+  - 0x08012FC8 pwrAtkRelated_readsFromJoypad_8012FC8
+  - 0x0802E2C4 sub_802E2C4
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801EC44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What HUD element the loaded tiles depict (contents of dword_86E994C/dword_86E9A0C not shown)
+- Exact meaning of eStruct2035280+0x1B and of the IWRAM copy at byte_30016F0
+- Which bit 0x200000 corresponds to in the HUD request/dispatch table
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801EC44 -> battle_hudQueueGfxLoadAndStartTimer
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801EC44

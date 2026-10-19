@@ -1,0 +1,47 @@
+name: battle_applyVelocityAndCullOffField
+address: '0x080CA8E2'
+kind: function
+status: probable
+summary: Moves a battle object by its X/Z velocity, then destroys it if its resulting panel is off the
+  valid battlefield.
+interface: (r5 = battle object) -> void; destroys the object (sets state CUR_STATE_DESTROY) when off-field
+details: Adds oBattleObject_XVelocity to oBattleObject_X and oBattleObject_ZVelocity to oBattleObject_Z,
+  then recomputes the object's PanelX/PanelY via object_setPanelsFromCoordinates and syncs its collision
+  record/facing via object_updateCollisionPanels. If object_isCurrentPanelValid reports the new panel
+  invalid, it clears the object's collision region (removing it from collision checks) and sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY so the object is destroyed. This is a per-frame movement step for objects that
+  fly/leave the field (no Y velocity handled here, so likely aerial or fixed-height movers). The use of
+  r5 as the object pointer suggests it is called with the object already in r5 by a shared object-update
+  dispatcher.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds XVelocity to X and ZVelocity to Z before object_setPanelsFromCoordinates (first 10 instructions);
+    object_isCurrentPanelValid result tested with tst/bne; failure path calls object_clearCollisionRegion;
+    failure path stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, the
+    standard destruction pattern; callees object_setPanelsFromCoordinates/object_updateCollisionPanels
+    confirm X/Z are world coordinates converted to panel space
+  refs:
+  - bn6f/asm/asm31.s:40460
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080CA8E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no caller is known, so it is unclear which object types use this handler (flying/falling objects?) and
+  whether Y velocity is handled elsewhere
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA8E2 -> battle_applyVelocityAndCullOffField
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA8E2

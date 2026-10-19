@@ -1,0 +1,54 @@
+name: ai_attackChooseTargetPanelStep
+address: '0x08105EB4'
+kind: function
+status: probable
+summary: 'Per-frame step of an enemy AI attack: picks a target panel via a callback, reserves it, pins
+  the object in place with a charge animation, then after a short timer hands off to the attack''s next
+  phase.'
+interface: (r0 = unused entry; r5 = battle object, r7 = oAIAttackVars) -> r0 = 0/void; sets oAIAttackVars_AttackElement,
+  HitElement, StepTimer and object panel/anim fields
+details: 'On entry it checks oAIAttackVars_AttackElement: if 0 it stores 4 there (marks this phase as
+  started) and, only if object_canMove says the object is free, calls the callback stored at oAIAttackVars_PanelChooseCallback.
+  The callback receives r1 = byte_8105F10 table base and r2/r3 = per-alliance dwords from that table indexed
+  by Alliance<<3 (alliances 1 and 2 get 0x20, alliance 0 gets 0 — likely an x-offset biasing the panel
+  toward the enemy side) and returns the target panel in r0=x, r1=y, which are written to oBattleObject_FuturePanelX/Y;
+  then object_reservePanel claims that panel, OBJECT_FLAGS_CANNOT_SLIDE (0x40-ish bit) is set via object_setFlag1,
+  CurAnim is set to 0x15 and StepTimer to 4. If the object could not move or the callback returned 0,
+  the attack aborts: CurAnim = 0x14 and object_exitAttackState_801171C tears down the attack state. Once
+  AttackElement is already set, the function just counts StepTimer down from 4; when it hits 0 it stores
+  8 into oAIAttackVars_HitElement, which presumably triggers the actual strike elsewhere in the AI driver.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#oBattleObject_FuturePanelX] / strb r1,...Y + bl object_reservePanel shows it chooses
+    and claims a target panel; ldr r0,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r0 with r1=table,
+    r2/r3=alliance-dword args, r0/r1 returned as x/y; byte_8105F10 gives per-alliance (Alliance<<3) values
+    0,0 / 0x20,0 / 0x20,0 — a side-dependent bias for the panel choice; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 pins the object while it charges; fallback path sets CurAnim 0x14 and calls object_exitAttackState_801171C;
+    success path waits StepTimer 4 frames then sets HitElement=8
+  refs:
+  - bn6f/asm/asm31.s:166752
+  - 0x0800E5E2 object_canMove
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x08105EB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which boss/attack this belongs to and what element id 4 (AttackElement) and 8 (HitElement) denote; no
+  callers known
+- Exact meaning of the callback's r2/r3 arguments (likely preferred x/y or dx/dy from byte_8105F10)
+- Where oAIAttackVars_HitElement = 8 is consumed to fire the attack
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105EB4 -> ai_attackChooseTargetPanelStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105EB4

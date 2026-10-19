@@ -1,0 +1,51 @@
+name: ai_attackMoveToPanel
+address: '0x080F8B74'
+kind: function
+status: probable
+summary: 'AI attack step: have the enemy''s panel-choose callback pick a target panel, move there, and
+  arm the attack parameters, or abort the attack state if it can''t.'
+interface: (r0 = battle object (in r5 afterwards via caller convention), r7 = oAIAttackVars) -> r0 = 1
+  if moved/attack armed, 0 otherwise; sets oBattleObject_FuturePanelX/Y, ObjectFlags1 CANNOT_SLIDE, CurAnim,
+  and AI step vars
+details: First calls object_canMove; if blocked it sets oAIAttackVars_HasMoved=0 and calls object_exitAttackState.
+  Otherwise it indexes byte_80F8BC8 by Alliance*8, loading two words passed as r2/r3 to the callback pointer
+  in oAIAttackVars_PanelChooseCallback, called with lr=pc and the target object in r0. If the callback
+  returns nonzero, r0/r1 are stored as FuturePanelX/Y, object_reservePanel claims the panel, object_setFlag1
+  ORs OBJECT_FLAGS_CANNOT_SLIDE, CurAnim is set to 4, AiAttackParam=0, StepTimer=3, HasMoved=1, and HitElement=4;
+  then returns 1. The byte_80F8BC8 table is 8 bytes per alliance, so different alliances/character types
+  pass different parameters to the chooser.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_canMove + beq failure path that only sets HasMoved=0 and bl object_exitAttackState;
+    ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r1 — invokes the chooser and tests r0
+    for success; strb r0,[r5,#oBattleObject_FuturePanelX]; strb r1,[r5,#oBattleObject_FuturePanelY]; bl
+    object_reservePanel — commits the chosen panel; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE; bl object_setFlag1
+    plus CurAnim=4 and StepTimer=3 — move/charge setup; strh r0,[r7,#oAIAttackVars_HitElement] with r0=4
+    and AiAttackParam=0 — arms the pending attack
+  refs:
+  - bn6f/asm/asm31.s:139040
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F8B74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which routine is stored in oAIAttackVars_PanelChooseCallback (what its r2/r3 arguments mean — offsets,
+  random ranges, or panel ids)
+- Which caller installs this as an AI step and with which character/alliance table entries
+- Whether HitElement=4 is a fixed element for this attack or a placeholder
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8B74 -> ai_attackMoveToPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8B74

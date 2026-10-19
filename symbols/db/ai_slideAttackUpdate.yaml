@@ -1,0 +1,53 @@
+name: ai_slideAttackUpdate
+address: '0x080F6994'
+kind: function
+status: probable
+summary: AI melee attack that slides the enemy object across the panel row toward the target and arms
+  a collision hit, resolving on contact or timer expiry.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = status (sub_80F71A8 result path); sets oAIAttackVars_HitElement
+  when done
+details: 'On first run (AttackElement==0) it initializes: sets AttackElement=4, gets a value via sub_80F7500(0xA),
+  sets up collision data (id 0x51, types 2/3) via object_updateCollisionData, stores oAIAttackVars_Damage
+  into oCollisionData_SelfDamage (low half) and the StaminaDamageCounterDisabler (high half), calls sub_80D4C0A
+  on object+9 with 0xFF, and computes an X velocity with battle_calcPanelSlideStep from the object''s
+  alliance (via dword_80F6A4C lookup) and AiDifficultyTier (byte_80F6A38: step values 0 or 2), storing
+  the step count in oAIAttackVars_StepTimer. Each frame it adds XVelocity to X and checks sub_80F71A8
+  (likely reached-target/wall check). When the slide completes it re-derives PanelX from coordinates,
+  syncs collision panels, enters a new collision region if the panel changed (object_setCollisionRegion
+  with 1), and counts down StepTimer; on expiry it sets HitElement=0x10, or 0x1c immediately if sub_80F71A8
+  returned nonzero (blocked/no target).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1, [byte_80F6A38 + AiDifficultyTier*4] + battle_calcPanelSlideStep -> XVelocity: per-difficulty
+    slide speed in px/panel; ldr r0, [XVelocity]; add X -> str X: applies the slide movement each frame;
+    strh r0, [SelfDamage] / strb [StaminaDamageCounterDisabler]: arms the contact damage from oAIAttackVars_Damage;
+    ldrh [StepTimer]; sub #1; bge: timer in steps until the attack ends with HitElement=0x10, else 0x1c;
+    object_setPanelsFromCoordinates + object_updateCollisionPanels + object_setCollisionRegion: keeps
+    collision/panel state synced while sliding'
+  refs:
+  - bn6f/asm/asm31.s:134692
+  - 0x080F70E0 battle_calcPanelSlideStep
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F6994
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Meaning of AttackElement value 4 and of the HitElement codes 0x10/0x1c (attack-finished state machine
+  values?)
+- What sub_80F7500(0xA) returns and what sub_80D4C0A(object+9, 0xFF) configures (animation or flicker?)
+- 'No callers known: which AI dispatches this attack and with which chip/enemy it is associated'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6994 -> ai_slideAttackUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6994

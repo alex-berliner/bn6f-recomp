@@ -1,0 +1,46 @@
+name: object_updateFreeOnFrameFlag
+address: '0x080AA1C8'
+kind: function
+status: probable
+summary: Sprite-update routine for an overworld map object that frees the object when the current animation
+  frame's attribute byte has bit 0x80 set, then updates the sprite.
+interface: (r0 = object pointer) -> void; flags set by tst/bit test only
+details: Calls sprite_getFrameParameters on the object and tests the returned attribute/parameter word
+  against 0x80; if the bit is set, calls FreeOverworldMapObject to release the object (clears its allocation
+  bit, frees its slot, unmarks it in the sprite system). In either case it then calls sprite_update to
+  advance/run the sprite's update handler. Effectively an update callback implementing 'despawn on flagged
+  animation frame' for overworld map objects. r4-r7 are preserved but unused. No callers are known, so
+  whether r0 is the object pointer as with sibling update callbacks is inferred from the callees' interfaces.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_getFrameParameters; mov r1,#0x80; tst r0,r1; beq skip — reads frame attribute and
+    tests bit 0x80 (0x080AA1CC-0x80AA1D4); bit set path: bl FreeOverworldMapObject — object is deallocated
+    when the flag is present (0x080AA1D6); unconditional bl sprite_update before pop — runs the sprite
+    update regardless of branch outcome (0x080AA1D8); callees'' known signatures take the object pointer
+    in r0, matching a per-object update callback'
+  refs:
+  - bn6f/asm/asm29.s:10416
+  - 0x080048B2 FreeOverworldMapObject
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080AA1C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known callers, so the exact object struct type and r0 meaning are inferred from the callees
+- Which frame-parameter byte bit 0x80 lives in (attribute vs. tile index word) and whether other objects
+  share this despawn-flag convention
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AA1C8 -> object_updateFreeOnFrameFlag
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA1C8

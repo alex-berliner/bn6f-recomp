@@ -1,0 +1,48 @@
+name: battle_transitionAnimUpdate
+address: '0x0812514C'
+kind: function
+status: probable
+summary: 'Per-frame update of the battle transition/intro animation: blits the progressive graphic, queues
+  its OAM sprite, pumps the transition, and once the screen fade finishes advances the state to 8.'
+interface: () -> r0 = result of last callee (unused); writes state byte [r5+1] = 8 when no screen fade
+  is active; uses global r5 context struct
+details: This is a state-handler tick for the battle transition scene, operating on the context in r5.
+  Each frame it advances the two-part tile reveal animation (sub_812674C), queues the corresponding OAM
+  entry (sprite_queueBattleOamEntry), runs the one-shot transition pump (battle_runTransition_8125444),
+  and performs two unknown update steps (sub_8125F5C, sub_812653C). It then polls IsScreenFadeActive;
+  while a fade is running the state byte stays untouched, and on the first frame with no fade active it
+  stores 8 into [r5+1], ending this state (the trailing padding suggests it's a dispatch-table handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_812674C + bl sprite_queueBattleOamEntry: drives the progressive tile-blit animation
+    and its OAM sprite each frame; bl battle_runTransition_8125444: callee summary says it ticks chip/eStruct/entities
+    and reloads tilemaps during battle transition; bl IsScreenFadeActive / beq locret: state byte [r5+1]
+    is only set to 8 once the screen fade has finished; strb r0,[r5,#1] with r0=8: writes a new state
+    id into the scene struct''s state field, typical of a state-machine handler'
+  refs:
+  - bn6f/asm/asm33.s:4064
+  - 0x08125444 battle_runTransition_8125444
+  - 0x081267A8 sprite_queueBattleOamEntry
+  - 0x0812674C sub_812674C
+  reproduce: python3 tools/asmcat.py 0x0812514C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_8125F5C and sub_812653C do (no known summaries), which would confirm exactly which transition
+  elements this state updates
+- Which dispatch table calls this handler and what state id [r5+1] held on entry (identifying the full
+  state machine and what state 8 means)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812514C -> battle_transitionAnimUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812514C

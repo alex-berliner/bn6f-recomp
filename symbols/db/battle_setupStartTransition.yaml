@@ -1,0 +1,46 @@
+name: battle_setupStartTransition
+address: '0x08049934'
+kind: function
+status: probable
+summary: Picks the battle-entry transition mode (fade vs skip) from chatbox/cutscene state, then initializes
+  the battle module.
+interface: (r5 = battle-transition state struct; byte [r5+3] = sub-state, byte [r5+1] = mode written)
+  -> void; sets mode byte then calls battle init
+details: If bit 0x80 of eFlags2009F38 is set, mode selection is skipped entirely. Otherwise, if [r5+3]
+  == 1 the mode byte [r5+1] is set to 0xC (no fade path). Else if chatbox_GetState_8045F4C returns nonzero,
+  [r5+1] = 0x28; otherwise SetScreenFade(0xC, 0x10) runs and [r5+1] = 0x30. In all cases battle_moduleInit_803A820
+  is called last, so this is a pre-battle handoff step. r5 is inherited from the caller and never set
+  here, implying a struct owned by the battle-start state machine. Mode values 0xC/0x28/0x30 presumably
+  select fade-in behaviour or skip inside the battle module.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: chatbox_mask_eFlags2009F38 with 0x80 then bne skips mode selection (sub_8049934 prologue); branch
+    on [r5+3]==1 stores 0xC to [r5+1] (loc_8049960); chatbox_GetState_8045F4C != 0 stores 0x28 to [r5+1];
+    else path calls SetScreenFade(0xC, 0x10) then stores 0x30; unconditional tail bl battle_moduleInit_803A820
+    before return
+  refs:
+  - bn6f/asm/asm03_2.s:6023
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08049934
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the struct at r5 (fields +1 and +3) and who consumes the mode byte are unidentified
+- Exact meaning of mode values 0xC/0x28/0x30 in the battle module
+- What bit 0x80 of eFlags2009F38 represents (which cutscene/event state)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049934 -> battle_setupStartTransition
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049934

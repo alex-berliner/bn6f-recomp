@@ -1,0 +1,50 @@
+name: beastout_loadChipUseGfx
+address: '0x0802877C'
+kind: function
+status: probable
+summary: As part of the custom-screen Beast Out chip effect, queues the chip's sprite tile graphics into
+  VRAM, its 16-color palette into the EWRAM palette buffer, then loads the Beast Out selection sprite
+  sheets.
+interface: '() -> r0 = undefined; queues GFX transfers: 0x540 bytes of tiles to VRAM 0x6009560 and 0x20
+  bytes of palette data to unk_3001AA0'
+details: First primes the sprite descriptor slot via loadOneSpriteTileRow_80287D2, which itself queues
+  a 0x20-byte tile row from a local descriptor table. Then it queues an eight-word-aligned transfer of
+  0x540 bytes (21 64-byte tiles) from ROM dword_8733E74 to VRAM tile area 0x6009560. Next it queues a
+  0x20-byte (16-color palette) transfer from ROM dword_87343D4 into unk_3001AA0, a palette-sized staging
+  buffer that presumably gets flushed to palette RAM later. Finally it calls beastout_LoadSelectionScreenSpriteSheets_802869E
+  to put the three Beast Out selection sheets into VRAM slots 1-3. It is invoked from the custom screen
+  chip-use dispatcher when the selected chip's kind calls for the Beast Out effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: QueueEightWordAlignedGFXTransfer(0x6009560, src dword_8733E74, 0x540) is a sprite-tile-sized
+    VRAM upload; second transfer copies exactly 0x20 bytes (16 colors) from ROM to unk_3001AA0, a palette-shaped
+    buffer; callee beastout_LoadSelectionScreenSpriteSheets_802869E loads the Beast Out selection screen
+    sheets, tying the gfx to Beast Out; caller battleObject_runCustomScreenChipPickerEffect_8028476 is
+    the custom-screen chip-kind dispatcher that invokes the matching effect routine
+  refs:
+  - bn6f/asm/asm03_0.s:5002
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x0802869E beastout_LoadSelectionScreenSpriteSheets_802869E
+  - 0x080287D2 loadOneSpriteTileRow_80287D2
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0802877C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of unk_3001AA0 (palette staging vs sprite descriptor buffer) and when it is flushed to
+  hardware
+- which chip kind byte in the dispatcher routes to this routine
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802877C -> beastout_loadChipUseGfx
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802877C

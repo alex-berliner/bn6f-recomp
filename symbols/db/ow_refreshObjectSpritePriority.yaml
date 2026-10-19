@@ -1,0 +1,51 @@
+name: ow_refreshObjectSpritePriority
+address: '0x080A8C98'
+kind: function
+status: probable
+summary: Recomputes an overworld object's sprite OAM priority from its z-coordinate modifiers and the
+  current map's layer effect table.
+interface: (r5 = overworld object pointer, fields 0x0C z and 0x14 z-value used) -> r0 = sprite_setPriority_8002E14
+  result; sets sprite priority bits 2-3 of sprite byte 0x15.
+details: Takes the object in r5 (never reloaded, so the calling convention is r5-based, not r0). It saves
+  [r5,#0x14], calls checkZCoordModifiers_8031612 on r5+0x0C, scales the result <<16 and temporarily writes
+  it into [r5,#0x14], then calls applyLayerEffectToOWObject_8035694 which resolves the draw layer (per-map
+  region table, else checkLayerPriority). The original [r5,#0x14] is restored, and the layer value returned
+  by applyLayerEffectToOWObject is passed straight into sprite_setPriority_8002E14 to program the sprite's
+  OAM priority (0-3). Effectively a one-shot refresh of the object's draw priority after its z or layer-affecting
+  state changed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: lsl r0,#0x10 / str r0,[r5,#0x14] stores the z-modifier result into the object's z field before
+    the layer call; str r4,[r5,#0x14] restores the saved field right after applyLayerEffectToOWObject_8035694;
+    bl sprite_setPriority_8002E14 immediately after, with r0 still holding applyLayerEffectToOWObject's
+    return value; callee applyLayerEffectToOWObject_8035694 is documented as deciding which layer an OW
+    object draws on
+  refs:
+  - bn6f/asm/asm29.s:7557
+  - 0x080A8B4C sub_80A8B4C
+  - 0x080A8BBC sub_80A8BBC
+  - 0x080A8C08 sub_80A8C08
+  - 0x08035694 applyLayerEffectToOWObject_8035694
+  - 0x08002E14 sprite_setPriority_8002E14
+  - 0x08031612 checkZCoordModifiers_8031612
+  reproduce: python3 tools/asmcat.py 0x080A8C98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- why the computed z is briefly planted into [r5,#0x14] instead of being passed directly — whether applyLayerEffectToOWObject
+  reads that field or something it calls does
+- whether callers at 0x080A8B4C/0x080A8BBC/0x080A8C08 invoke this only on z changes or every frame
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8C98 -> ow_refreshObjectSpritePriority
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8C98

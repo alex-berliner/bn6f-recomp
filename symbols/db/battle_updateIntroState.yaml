@@ -1,0 +1,56 @@
+name: battle_updateIntroState
+address: '0x08124F30'
+kind: function
+status: probable
+summary: 'Per-frame handler of a timed pre-battle/intro state: ticks a 2-step frame counter, pumps the
+  battle transition and arena tiles, and conditionally writes halfword pairs into pool structs.'
+interface: (r5 = battle-state struct, no register args) -> void; writes r5+0x70=0xff each frame, advances
+  r5+0x74 by 2 (clamped to 0x7c), and stores next state id 0x18 into r5+0x2 when the cap is hit
+details: 'Each call adds 2 to the counter at r5+0x74; once it reaches 0x7c the counter is clamped and
+  r5+0x2 is set to 0x18, i.e. the state machine moves to the next phase, so this runs for a fixed window
+  (~57 frames at step 2). r5+0x70 is forced to 0xff every frame, likely a ''keep running'' / frame-budget
+  marker the state loop consumes. It then calls the one-shot transition pump (player/enemy row sprites,
+  tilemap reload), the arena floor tile renderer, and sub_8125F5C. Finally it invokes sprite_setStructHalfwordPairOnThree
+  twice: for struct index [r5+0x64] with pair (0 normally; [r5+0x30] if [r5+0x64]==0xf; [r5+0x1c] once
+  counter>=0x72 and [r5+0x5c]==0x27, else 0) and value 7, and for struct index [r5+0x60] with pair ([r5+0x26]
+  if [r5+0x60]==5, else 0) and value 4. The [r5+0x60]==5 check mirrors the Dark-Chip-team (alliance==5)
+  selection in bg_drawArenaTiles, so the second write is team-conditional, and 0x27/0x0f look like special
+  battle/scenario ids gating extra sprite placement near the end of the window.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'counter: ''ldr r0,[r5,#0x74]; add r0,#2 ... cmp r0,#0x7c'' then ''mov r0,#0x18; strb r0,[r5,#2]''
+    — timed state ending in transition to state 0x18; ''mov r0,#0xff; str r0,[r5,#0x70]'' every frame,
+    followed by bl battle_runTransition_8125444 and bl bg_drawArenaTiles_8125E78; two calls to sprite_setStructHalfwordPairOnThree_8117084
+    with r2=7 and r2=4 and indices [r5+0x64]/[r5+0x60], values gated on 0xf, 0x27 and 5; bg_drawArenaTiles_8125E78''s
+    summary ties alliance==5 to the team field, matching this function''s ''ldr r0,[r5,#0x60]; cmp r0,#5''
+    branch; no callers known, but the callee set (transition pump + arena tiles) matches a battle-intro/scene-setup
+    phase'
+  refs:
+  - bn6f/asm/asm33.s:3790
+  - 0x08126818 battleObject_initChipSpriteSlotBuffer_8126818
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  reproduce: python3 tools/asmcat.py 0x08124F30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- which exact battle state this is (intro vs scene setup) — a caller or the state-table dispatch would
+  confirm where id 0x18 leads
+- what the 0x27 and 0xf comparisons test (battle id? object type? boss flag)
+- whether the 0x2008450 pool structs are panel/eStruct data or sprite objects, and the meaning of pair
+  values 7 and 4 at +0xC/+0xE
+- what sub_8125F5C does (undocumented, no summary)
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8124F30 -> battle_updateIntroState
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8124F30

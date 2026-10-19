@@ -1,0 +1,53 @@
+name: submenu_handleConfirmCancelCursorInput
+address: '0x081379A0'
+kind: function
+status: probable
+summary: 'Per-frame input handler for a submenu: A confirms a highlighted entry (buzzer if invalid), B
+  exits the submenu with a screen fade, and D-pad/shoulder moves the cursor, refreshing the display on
+  change.'
+interface: (r5 = menu state struct) -> void; writes state bytes [r5+1], [r5+2], advances cursor at [r5+0x1e]
+details: 'Reads the game''s per-frame input. If event flag EVENT_1710 is clear or A is newly pressed,
+  calls sub_8138170 to validate the selection: on failure it plays SOUND_CANT_JACK_IN, on success plays
+  SOUND_MENU_SELECT and stores 8 into [r5,#2] (advancing the state machine). B plays SOUND_EXIT_SUBMENU,
+  stores 8 into [r5,#1] and 0 into [r5,#2], and requests a screen fade via SetScreenFade(0xc, 0x10). Otherwise
+  it fetches the joypad''s low-sensitivity held mask from the toolkit (r10 + oToolkit_JoypadPtr) and calls
+  menu_adjustCursorOrValue with the cursor index from [r5,#0x1e] clamped to 7 (8 entries, 0-7); if the
+  index changed it calls sub_8137D20, sub_8137DB4, sub_8137E4C and sub_8137F5C, presumably to redraw/refresh
+  the menu display.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: IsButtonPressed(JOYPAD_A) + sub_8138170 validity check chooses SOUND_CANT_JACK_IN vs SOUND_MENU_SELECT
+    and stores 8 to [r5,#2] (confirm path); IsButtonPressed(JOYPAD_B) path stores 8 to [r5,#1], 0 to [r5,#2],
+    plays SOUND_EXIT_SUBMENU and calls SetScreenFade(0xc,0x10) (cancel/exit path); menu_adjustCursorOrValue
+    called with ldrb [r5,#0x1e] clamped to max 7 and held-joypad mask from oToolkit_JoypadPtr (cursor-move
+    path); Four consecutive refresh calls sub_8137D20/DB4/E4C/F5C fire only when menu_adjustCursorOrValue
+    reports a change; TestEventFlagFromImmediate(EVENT_1710) bypasses the A-button check when the flag
+    is set, gating selection by story progress
+  refs:
+  - bn6f/asm/asm36.s:16026
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x081379A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which menu this belongs to (unknown caller; the CANT_JACK_IN buzzer and 8-entry cursor suggest a cross/selection
+  screen but the callees sub_8137D20..F5C are unidentified)
+- Layout of the r5 state struct beyond offsets 1, 2 and 0x1e, and what state value 8 means in its state
+  machine
+- What EVENT_1710 represents and why setting it makes A always act as if unselected/invalid
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81379A0 -> submenu_handleConfirmCancelCursorInput
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81379A0

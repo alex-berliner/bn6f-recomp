@@ -3523,7 +3523,7 @@ static void dispatch_battle_state(void) {
     case 1: GUEST_CALL(battle_submenuInputUpdate_812933C); break;
     case 2: GUEST_CALL(scene_runFadePopTick_8129400); break;
     case 3: GUEST_CALL(sub_8129454); break;
-    case 4: GUEST_CALL(sub_812952C); break;
+    case 4: GUEST_CALL(battle_updateEntitiesAndStartFadeOut); break;
     case 5: GUEST_CALL(sub_812954C); break;
     case 6: GUEST_CALL(battle_frameUpdateAndStopRfuAfterFade); break;
     }

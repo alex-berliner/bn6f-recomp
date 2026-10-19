@@ -1,0 +1,49 @@
+name: pack_sortAndReinitChipAuxData
+address: '0x080AADA6'
+kind: function
+status: probable
+summary: Sorts the chip pack by removing and re-adding all chips, then reinitializes the 320-entry per-chip
+  auxiliary array from a template, zeroing excluded/special chips' entries.
+interface: (r10 = toolkit) -> r0 = none; destroys r4, r6, r7
+details: Reads oToolkit_S2001c04_Ptr byte 5 (multiplied by 30) to get the pack-entry count, and for each
+  2-byte pack entry (id = bits 0-8, count = bits 9-15) calls TakeChips to empty the pack, then pack_addChipByIdSetLibraryFlag_8021B2A
+  to re-add every chip, which repacks them into their code-ordered slots (a pack sort). It then CopyWords'es
+  0xF00 bytes from the template dword_2033000 into toolkit->oToolkit_Unk2002230_Ptr (320 chips × 12 bytes).
+  Finally it loops chip IDs 0..0x13F calling getChip8021DA8, and stores 0 into the corresponding 12-byte
+  aux entry for chips whose ChipData byte 7 == 2, whose byte 9 has flag 0x20, or whose ID is 0x137/0x138/0x139.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'TakeChips then pack_addChipByIdSetLibraryFlag over all pack entries = remove-and-re-add, repacking
+    the pack in canonical code order (loc_80AADB6..loc_80AADE4); CopyWords(dword_2033000, Unk2002230,
+    0xF00) = 320*12-byte template copy into a toolkit array; loop bound 0x140 and stride 0xC match the
+    0xF00 copy size (loc_80AADFC); exclusions ChipData[7]==2, ChipData[9]&0x20, IDs 0x137-0x139 gate the
+    zero-store at loc_80AAE24; pack entry decode lsr #9 / lsl #0x17 lsr #0x17 matches TakeChips'' (count,id)
+    packed halfword'
+  refs:
+  - bn6f/asm/asm29.s:12201
+  - 0x080AAC8C sub_80AAC8C
+  - 0x0800093C CopyWords
+  - 0x08021B92 TakeChips
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x080AADA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what caller sub_80AAC8C is (pack menu sort option?) to confirm the sort interpretation
+- meaning of the 12-byte per-chip entries at Unk2002230 and of the excluded chip classes (byte7==2, flag
+  0x20, IDs 0x137-0x139)
+- why the zeroing is done on the 2033000 template rather than only in the destination
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AADA6 -> pack_sortAndReinitChipAuxData
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AADA6

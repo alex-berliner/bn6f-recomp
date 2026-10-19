@@ -1,0 +1,53 @@
+name: object_tickChipCursorSprite
+address: '0x0812A8A4'
+kind: function
+status: probable
+summary: 'Per-frame update for a chip-cursor/custom-screen sprite object: runs its state handler, keeps
+  uploading cursor tiles while the subsystem is active, and either fires the 0xDA completion event or
+  draws the sprite once finished.'
+interface: (r0/r1 unused on entry; uses global object eS200A290 and state byte at 0x200BC30) -> no return
+  value; r0/r1 consumed by callees
+details: 'First reads the record byte at EWRAM 0x200BC30 via eStruct200BC30_getJumpOffset00; when it equals
+  8 it calls cb_8048FD4 on eS200A290, which fires completion event 0xDA arg 2 when the subsystem is no
+  longer in use. It then dispatches on the state byte [r5+2] of eS200A290 through a two-entry handler
+  table (sub_812A8EC, sub_812AAC0) using a lr=pc bx tailcall so handlers can return straight out. After
+  the handler, it re-checks the 0x200BC30 byte: nonzero means the chip cursor is still in use, so it calls
+  battleObject_setupCustomChipCursorState_803C59C with (0xDA, 2) to append the OAM entry and upload the
+  next cursor tile; zero means the subsystem is done, so it falls back to sprite_drawIfFlagSet_812B504,
+  which only renders via sub_811FAF4 when bit 4 (0x10) of [r5+0x1B] is set. The dual dispatch pattern
+  (state machine + active/done branch keyed on 0x200BC30) matches a sprite object that tracks the custom-screen
+  chip cursor.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: byte at 0x200BC30 == 8 triggers cb_8048FD4, which fires event 0xDA arg 2 when subsystem no longer
+    in use; [r5+2] indexes off_812A8E4, a two-entry handler table (sub_812A8EC/sub_812AAC0) invoked with
+    lr=pc bx; nonzero 0x200BC30 after dispatch calls 0x803C59C (0xDA,2), whose known behavior appends
+    a chip-cursor OAM entry and uploads the next cursor tile; zero 0x200BC30 instead calls sprite_drawIfFlagSet_812B504,
+    gated on bit 0x10 of [r5+0x1B]; object pointer eS200A290 is a fixed global literal, so this is a singleton
+    object's tick handler
+  refs:
+  - bn6f/asm/asm33.s:15453
+  - 0x0803C59C battleObject_setupCustomChipCursorState_803C59C
+  - 0x08048FD4 cb_8048FD4
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  reproduce: python3 tools/asmcat.py 0x0812A8A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what the two state handlers sub_812A8EC and sub_812AAC0 do (likely move/animate the cursor), to confirm
+  the cursor interpretation
+- exact meaning of the state byte [r5+2] and the values 0xDA/2 passed to 0x803C59C
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A8A4 -> object_tickChipCursorSprite
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A8A4

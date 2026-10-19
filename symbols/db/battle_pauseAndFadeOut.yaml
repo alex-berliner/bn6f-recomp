@@ -1,0 +1,45 @@
+name: battle_pauseAndFadeOut
+address: '0x08007FA4'
+kind: function
+status: probable
+summary: Battle state step that pauses the battle, runs two init sub-steps, starts a screen fade, and
+  advances the phase once the fade completes.
+interface: (r0 = battle state pointer (also in r5), no args) -> r0 = 4 when fade done, r0 = 0xC/0x10 clobbered;
+  sets phase 4 via strh to oBattleState_StatePhaseAndInitFlag
+details: 'A per-frame battle-state step using the standard SubPhaseInitFlag pattern: on the first frame
+  it calls PauseBattle, an unknown sub_801FE64, and the two-step sequencer sub_80062EC, then starts a
+  screen fade with parameters (12, 16) and latches subphase-init = 4. On every frame it polls IsScreenFadeActive;
+  once the fade is no longer active it writes phase 4 into the state''s StatePhaseAndInitFlag and returns.
+  r5 is the battle state struct, already known to the project via the oBattleState_ field offsets.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne loc_8007FC4 on ldrb r0,[r5,#oBattleState_SubPhaseInitFlag] guards one-time init block;
+    init block calls PauseBattle then SetScreenFade(0xC, 0x10); loc_8007FC4 polls IsScreenFadeActive and
+    only proceeds when it returns zero; exit path: mov r0,#4; strh r0,[r5,#oBattleState_StatePhaseAndInitFlag]
+    — advances to phase 4; strb r0,#4 into oBattleState_SubPhaseInitFlag marks the init step done'
+  refs:
+  - bn6f/asm/asm00_1.s:10922
+  - 0x0800A028 PauseBattle
+  - 0x080062EC sub_80062EC
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08007FA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What sub_801FE64 and the sub_80062EC sub-steps do (likely one-time setup for the paused state) is unknown
+- Which game situation enters this phase (e.g. pause menu vs. battle end) needs the caller, since no callers
+  are known
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8007FA4 -> battle_pauseAndFadeOut
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8007FA4

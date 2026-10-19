@@ -1,0 +1,48 @@
+name: object_stepDiveDescent
+address: '0x080CFFBC'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that swoops forward and descends until its timer runs out,
+  then lands with an impact sound and switches to a post-landing action.
+interface: (r5 = battle object pointer, self-object convention) -> void; no return value
+details: 'Highlights the panel under the object each frame. At Timer==7 it switches CurAnim to 0 (0xFF
+  copy), sets object flags bit1, and spawns a type-1 effect object copying {r1-r3} from offset 0x34 of
+  the object (likely its stored effect spawn data). It then decrements Timer; while positive it moves
+  the object each frame: Z -= 0xC0000 (descending) and X += 0xC0000 * object_getFrontDirection() (flying
+  forward in its facing). When the timer expires it sets CurAnim 1, sets collision region 1, plays sound
+  0x97 (played twice, a quirk), sets CurAction to 8 and Timer to 30 for the next phase. No callers are
+  known, so the exact entity is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX]/Y + bl object_highlightPanel marks its own panel; cmp r0,#7
+    / bne ... bl spawn_t1_0x0_EffectObject: effect spawn 7 frames before landing; sub r0,#1 ... bge: while
+    Timer>0, Z -= 0xC0000 and X += 0xC0000*object_getFrontDirection() = diagonal dive; bge fall-through:
+    object_setCollisionRegion(1), PlaySoundEffect(0x97) twice, CurAction=8, Timer=30; reads/writes only
+    oBattleObject/oObjectHeader fields of r5, the standard self-object update convention'
+  refs:
+  - bn6f/asm/asm31.s:52098
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080CFFBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which entity uses this update (boss attack, bird enemy, etc.) — needs the caller that assigns it as
+  an object's step handler
+- What CurAction 8 does and what the 30-frame timer leads to
+- Whether the effect spawned at offset 0x34 is a trail or the landing flash
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CFFBC -> object_stepDiveDescent
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFFBC

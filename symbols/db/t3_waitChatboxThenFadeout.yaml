@@ -1,0 +1,47 @@
+name: t3_waitChatboxThenFadeout
+address: '0x08049FE0'
+kind: function
+status: probable
+summary: Script/scene step handler that waits for the textbox to clear, then triggers a screen fade and
+  advances the state machine.
+interface: (r5 = scene/script state struct, byte [r5+1] = current step) -> void; flags from flag-mask
+  test used to branch
+details: 'Checks bit 0x80 of the chatbox/event flag word at eFlags2009F38; if set it skips straight to
+  the tail. Otherwise it reads the chatbox state selector: while the chatbox is still active (state !=
+  0) it stores step 0xC into [r5+1] to retry next frame; once clear it calls SetScreenFade(0xC, 0x10)
+  to start a fade and stores step 0x14 into [r5+1]. Either way it then calls sub_8049F70, which queues
+  setup actions and resumes script playback, so this is one step in a step-indexed scene handler chain
+  with r5 as the per-scene context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80 early-outs when the event flag bit is already set;
+    bl chatbox_GetState_8045F4C + cmp r0,#0 / beq shows it blocks on an open textbox (retry step 0xC);
+    bl SetScreenFade with (0xC, 0x10) fires the fade only once the textbox is gone; strb of 0xC vs 0x14
+    into [r5,#1] is a next-step field of a step-machine state struct; tail bl sub_8049F70 (known: queues
+    setup actions, resumes script playback) fits a script-driven scene step'
+  refs:
+  - bn6f/asm/asm03_2.s:6908
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08049F70 sub_8049F70
+  reproduce: python3 tools/asmcat.py 0x08049FE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact meaning of step values 0xC and 0x14 in the state struct, and which handler table dispatches to
+  this function (no callers known)
+- What fade mode 0xC / parameter 0x10 map to visually
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049FE0 -> t3_waitChatboxThenFadeout
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049FE0

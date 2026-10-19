@@ -1,0 +1,55 @@
+name: spawnGuardianObject
+address: '0x080D4FA6'
+kind: function
+status: probable
+summary: Spawns a battle object of kind 0x7d and configures/registers the object passed in r5 at a given
+  panel with a damage value and inherited alliance (used by the guardian spawn code).
+interface: (r0 = panel X / 5th spawn arg, r1 = panel Y, r2/r3 = spawn args, r5 = battle object to configure
+  or NULL, r6 = value for damage field) -> r0 clobbered; spawns object kind 0x7d and registers r5 object
+  via setFieldBattleObject
+details: 'Calls object_spawnType3 with r0=0x7d, forwarding r1-r3 and the pushed original r0 as the fifth
+  argument. If the caller''s r5 is non-NULL, it configures that object: PanelX/PanelY from the saved r0/r1,
+  the damage field from caller r6, and alliance taken from the object''s own AllianceAndDirectionFlip
+  when Param1==0, otherwise from oPanelData_Alliance at the object''s panel via object_getPanelDataOffset
+  (also clearing DirectionFlip). It then sets oObjectHeader_Flags bits 0x10, plus 0x04 when Param1!=0,
+  and calls setFieldBattleObject_800F614(obj, alliance, 1). r5==0 short-circuits everything after the
+  spawn. The push/pop idiom doubles as stack-argument setup and register shifting (orig r0->r1, r1->r2,
+  r2->r3).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x7d; bl object_spawnType3 — spawns kind 0x7d battle object with five forwarded args;
+    mov r0,r5; beq locret — all configuration is skipped when caller's r5 is NULL; strb r1,[r0,#PanelX]
+    / strb r2,[r0,#PanelY] / str r6,[r0,#DamageAndStamina] — position and damage from caller args; Param1==0
+    copies own AllianceAndDirectionFlip, else reads oPanelData_Alliance via object_getPanelDataOffset
+    and clears DirectionFlip; orr 0x10/0x14 into oObjectHeader_Flags then bl setFieldBattleObject_800F614(r1=alliance,
+    r2=1); caller is spawnGuardian_800751C
+  refs:
+  - bn6f/asm/asm31.s:62981
+  - 0x0800751C spawnGuardian_800751C
+  - 0x080E679C sub_80E679C
+  - 0x0800C90A object_getPanelDataOffset
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080D4FA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- whether r5 is the newly spawned object or a separate parent (e.g. the guardian) being configured — depends
+  on object_spawnType3's exact return convention
+- exact gameplay identity of object kind 0x7d (guardian statue vs. its attack/sub-entity)
+- meaning of the value passed in r6 stored to the DamageAndStamina field
+- what the second caller sub_80E679C passes and what setFieldBattleObject_800F614 does with r2=1
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4FA6 -> spawnGuardianObject
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4FA6

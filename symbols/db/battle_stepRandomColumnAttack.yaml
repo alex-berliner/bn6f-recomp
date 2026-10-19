@@ -1,0 +1,47 @@
+name: battle_stepRandomColumnAttack
+address: '0x080CEF90'
+kind: function
+status: probable
+summary: Battle-object attack state handler that spawns three attack objects on random columns in front
+  of the object (sound 0xB9), then moves to action 8.
+interface: (r5 = battle object) -> r0 = 0 from last PlaySoundEffect path; r4/r6 clobbered as spawner args;
+  flags from subs/cmp
+details: On first entry (CurPhase==0) it sets CurPhase=4, CurAnim=1, Timer2=3, Timer=0 — a state transition
+  for this attack. Every 10 frames (Timer reset to 0xA) it draws GetPositiveSignedRNG()&3 to index the
+  table dword_80CEFF8, whose bytes are 0x08,0x10,0x18,0x20 (four horizontal offsets, likely pixels or
+  tile sub-positions), and calls spawn_t3_0x12_80C6ADA with r0 = object_getFrontDirection() + PanelX,
+  r1 = PanelY, r2 = Element, and the table byte pushed on the stack (shifted left 16, so read as a halfword/parameter
+  by the spawner). Each spawn plays sound effect 0xB9. Timer2 counts the three spawns; when exhausted
+  it sets CurAction=8 and clears CurPhase/PhaseInitialized, ending the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase-0 entry block writes CurPhase=4, CurAnim=1, Timer2=3 (80CEF92-80CEFA0); Timer==0 path:
+    GetPositiveSignedRNG()&3 indexes dword_80CEFF8 = 0x20181008 (bytes 8,16,24,32); bl spawn_t3_0x12_80C6ADA
+    with FrontDirection+PanelX, PanelY, Element and table byte passed via stack; bl PlaySoundEffect with
+    0xB9 after each spawn; Timer2 counts down from 3, then CurAction=8 and phase cleared (80CEFE0-80CEFEC)'
+  refs:
+  - bn6f/asm/asm31.s:49986
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080CEF90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what object spawn_t3_0x12 creates and the meaning of the 8/16/24/32 table byte (pixel offset vs other
+  parameter)
+- which enemy/boss or attack uses this handler and what action 8 represents
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CEF90 -> battle_stepRandomColumnAttack
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEF90

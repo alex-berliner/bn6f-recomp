@@ -1,0 +1,50 @@
+name: object_runFrameUpdate
+address: '0x080CF488'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object: tear down/rebuild collision data, spawn its hit effect,
+  dispatch one of three action-state handlers, then update its sprite.'
+interface: (r5 = oBattleObject, no args in r0-r3) -> r0 = handler/last call result; uses r5 as the object
+  pointer throughout
+details: This is the per-frame update routine for a specific battle object held in r5. It first removes
+  the object's collision data (clearing one-shot hit state), then spawns the hit-effect object at the
+  object's jittered coordinates from its last collision. It then loads oBattleObject_CurAction and indexes
+  the 3-entry jump table at off_80CF4BC, calling sub_80CF4C8, sub_80CF4E6, or sub_80CF554 via 'mov lr,
+  pc; bx r1' so handlers return into the common tail. The tail runs object_updateSprite and object_presentCollisionData
+  to refresh the animation and re-present collision state for the frame. One fall-through handler clears
+  the collision region, writes 8 to [r5,#8], and clears bit 1 of the object's flag byte at [r5].
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry match the shared per-frame
+    collision teardown/effect pattern; ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc;
+    bx r1 — dispatch on CurAction via 3-entry table off_80CF4BC; tail calls object_updateSprite then object_presentCollisionData
+    before pop {pc}, the standard end-of-frame pair; fall-through after bx lr: bl object_clearCollisionRegion,
+    str 8 to [r5,#8], bic bit1 of [r5] — one action state''s body; all callees are object_* battle-object
+    helpers operating on r5, indicating a battle-object tick'
+  refs:
+  - bn6f/asm/asm31.s:50618
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  - 0x0801A0D4 object_spawnCollisionEffect
+  reproduce: python3 tools/asmcat.py 0x080CF488
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- no known callers, so which object (enemy/boss/custom) uses this tick is unknown
+- the three action handlers sub_80CF4C8/E6/554 were not shown, so the meaning of the three CurAction states
+  and which state takes the clear-region fall-through is unidentified
+- meaning of the value 8 stored to [r5,#8]
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF488 -> object_runFrameUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF488

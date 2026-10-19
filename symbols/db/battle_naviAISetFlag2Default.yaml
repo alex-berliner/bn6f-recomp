@@ -1,0 +1,48 @@
+name: battle_naviAISetFlag2Default
+address: '0x080143CE'
+kind: function
+status: probable
+summary: Conditionally sets flags-2 bit 0x200 on the battle object's AI data when two AI-state gate fields
+  are clear
+interface: (r0 = BattleObject ptr via callee convention) -> r0 = clobbered; flags from callees
+details: 'Called from the navi AI tick as one of its per-frame gating checks. It first calls battle_aiAIDataUnk32IsZero_801445C,
+  which returns with Z set iff the BattleObject''s AIData Unk_32 halfword is zero; if non-zero it returns
+  immediately. Next it calls battle_checkAIDataUnk36IsNonZero_8014490 and likewise bails if Unk_36 is
+  non-zero. Only when both fields are zero does it load 0x200 and call object_setFlag2, setting bit 0x200
+  in the object''s collision-data flags2 word. This looks like a ''fall back to a default flag when no
+  special AI condition is active'' behavior: Unk_32/Unk_36 act as inhibitors, and 0x200 is some default
+  or idle mode bit consumed elsewhere by the AI or collision logic.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80143CE: bl battle_aiAIDataUnk32IsZero_801445C; bne locret — bails out when Unk_32 != 0;
+    sub_80143CE: bl battle_checkAIDataUnk36IsNonZero_8014490; bne locret — bails out when Unk_36 != 0;
+    sub_80143CE: ldr r0, off_80144B4 (=0x200); bl object_setFlag2 — only path that does work sets flags2
+    bit 0x200; Caller battle_naviAI_tick_8013DA0 runs this among per-frame navi AI gating checks; Callee
+    summaries confirm Unk_32/Unk_36 are AIData u16 fields and object_setFlag2 ORs bits into collision
+    flags2'
+  refs:
+  - bn6f/asm/asm00_2.s:12688
+  - 0x08013DA0 battle_naviAI_tick_8013DA0
+  - 0x0801445C battle_aiAIDataUnk32IsZero_801445C
+  - 0x08014490 battle_checkAIDataUnk36IsNonZero_8014490
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x080143CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Semantic meaning of AIData Unk_32 and Unk_36 (what AI states they gate)
+- What bit 0x200 of flags2 controls — needs a reader of that bit to confirm the 'default/idle' interpretation
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80143CE -> battle_naviAISetFlag2Default
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80143CE

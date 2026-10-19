@@ -1,0 +1,47 @@
+name: ai_attackLiftIntoAir
+address: '0x080F3312'
+kind: function
+status: probable
+summary: AI attack step that raises the enemy into the air over 10 frames before striking the target panel
+interface: (r0/r5 = battle object, r7 = oAIAttackVars) -> void; updates AttackElement, TargetPanelX/Y,
+  StepTimer, HitElement
+details: 'First pass (AttackElement==0) sets it to 4, then validates the attack: object_canMove, a non-null
+  TargetObjectPtr, and object_isValidPanel on the target''s panel (offsets 0x12/0x13). If valid it stores
+  TargetPanelX/Y, sets OBJECT_FLAGS_CANNOT_SLIDE, clears the object''s collision region, and loads StepTimer
+  with 10. On later passes it adds 0x10<<16 to oBattleObject_Z each frame (lifts the object upward in
+  fixed-point Z) and counts StepTimer down; at zero it sets HitElement=8 (proceed with the strike). If
+  any check fails it sets HitElement=0x18 to abort the attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_80F334E — state-machine entry keyed
+    on AttackElement; bl object_isValidPanel with target's [0x12]/[0x13] stored into TargetPanelX/Y —
+    locks attack to target panel; OBJECT_FLAGS_CANNOT_SLIDE + object_clearCollisionRegion — removes object
+    from panel so it cannot be hit/moved; add r0,r0,r1 (0x10<<16) to oBattleObject_Z each frame with StepTimer=10
+    countdown — gradual rise into air; HitElement=8 after timer vs 0x18 on failure — success/abort codes
+    for the attack sequence
+  refs:
+  - bn6f/asm/asm31.s:127657
+  - 0x0800E5E2 object_canMove
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080F3312
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the containing attack script/state machine and what HitElement 8 vs 0x18 trigger
+  downstream is unconfirmed
+- Exact meaning of AttackElement values 4 and HitElement 8/0x18 in the AI attack table
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F3312 -> ai_attackLiftIntoAir
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3312

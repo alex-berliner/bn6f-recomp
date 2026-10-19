@@ -1,0 +1,47 @@
+name: ai_spawnAheadRandomHeightPhase
+address: '0x080C9E20'
+kind: function
+status: probable
+summary: Battle-object AI phase that repeatedly spawns an object inheriting the actor's element one panel
+  in front, at a randomly chosen height, then hands off to action 8.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurPhase/Timer/Timer2/CurAnim/CurAction
+details: On phase 0 it sets phase 1, a 10-frame Timer, rolls GetPositiveSignedRNG &3 to index the table
+  {8,16,24,32} (passed <<16 as the 4th arg to the spawn helper, likely a pixel Y/height field), and calls
+  spawn_t3_0x12_80C6ADA with target panel (panelX + getFrontDirection(), panelY) and the actor's Element,
+  then plays SFX 0xB9. In phase 1 it counts Timer down; on expiry it decrements Timer2 — if Timer2 is
+  still positive it resets to phase 0 to spawn again, otherwise it sets CurAnim=2, CurAction=8 and clears
+  the phase, moving the AI to its next behavior. So this is a looping 'spawn N things ahead of me, then
+  attack/act' state used by some enemy's AI.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'RNG &3 into dword_80C9E84 table {8,16,24,32} shifted <<16 as 4th spawn arg = random height
+    selection; object_getFrontDirection()+oBattleObject_PanelX/-Y and oBattleObject_Element passed to
+    spawn_t3_0x12_80C6ADA: spawn one panel ahead, inheriting element; phase-0 branch sets Timer=0xA and
+    PlaySoundEffect(0xB9) once per spawn; phase-1 loop: Timer countdown, then Timer2 countdown — resets
+    to phase 0 to respawn, or ends with CurAnim=2/CurAction=8'
+  refs:
+  - bn6f/asm/asm31.s:39077
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C9E20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What object type 0x12 actually spawns and what the table values (8/16/24/32) measure — needs spawn_t3_0x12_80C6ADA's
+  handler read
+- Which enemy's AI script calls this and where Timer2/CurAction=8 are initialized/consumed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9E20 -> ai_spawnAheadRandomHeightPhase
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9E20

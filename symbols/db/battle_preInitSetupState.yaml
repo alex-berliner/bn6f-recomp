@@ -1,0 +1,53 @@
+name: battle_preInitSetupState
+address: '0x080498AA'
+kind: function
+status: probable
+summary: Before initializing the battle module, resets/normalizes a 2-byte-strided table and stores its
+  entry count plus two mode bytes into a global state struct, unless cutscene flag bit 0x80 marks it as
+  already done.
+interface: () -> void; r5 = pointer to a global battle-state struct (byte fields at +0x01, +0x10, +0x13);
+  reads eFlags2009F38 bit 0x80; clobbers r0-r1
+details: On entry r0 is unused (immediately overwritten), so the function takes no arguments and works
+  through the global r5. It first tests bit 0x80 of the chatbox/cutscene flag word eFlags2009F38 via chatbox_mask_eFlags2009F38;
+  if that bit is set it skips straight to battle_moduleInit_803A820. Otherwise it clears byte r5+0x13,
+  calls sub_803C0BE(0x10, 0x30) to normalize the halfword table (rewriting trailing 0x00/0xE5 slots into
+  0xE5 0xE5 terminator pairs), then sub_803C132(0x10, 0x30) to count live entries up to the 0xE5/0xE6
+  marker, storing that count as a byte at r5+0x10. It then writes 0xC to byte r5+0x01, apparently a mode/phase
+  selector, and finally calls battle_moduleInit_803A820 unconditionally before returning. The flag-bit
+  guard suggests this one-time setup is skipped on repeats (e.g., re-entered battles or cutscene-controlled
+  boots).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: chatbox_mask_eFlags2009F38 with r0=0x80 and 'bne loc_80498CE' gates the setup block on flag
+    bit 0x80; sub_803C0BE(0x10,0x30) then sub_803C132(0x10,0x30) with the count stored to strb r0,[r5,#0x10]
+    shows table normalization + entry counting; strb r0,[r5,#0x13] (0) and 'mov r0,#0xC; strb r0,[r5,#1]'
+    write state-struct fields only when the flag bit is clear; bl battle_moduleInit_803A820 before 'pop
+    {r4-r7,pc}' runs on every path, tying the routine to battle boot
+  refs:
+  - bn6f/asm/asm03_2.s:5937
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x080498AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Which structure r5 points to (its fields +0x01/+0x10/+0x13 are only known by offset, not meaning)
+- What the table at the (0x10,0x30) argument pair represents — callers of sub_803C0BE/sub_803C132 or the
+  table's address would identify it
+- What gameplay condition sets eFlags2009F38 bit 0x80 (skip-vs-repeat semantics unknown)
+- No callers known, so the trigger point in the game flow is unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80498AA -> battle_preInitSetupState
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80498AA

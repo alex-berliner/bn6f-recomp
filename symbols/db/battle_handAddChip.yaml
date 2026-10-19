@@ -1,0 +1,52 @@
+name: battle_handAddChip
+address: '0x0802E588'
+kind: function
+status: probable
+summary: Adds a chip (by ID) to one of the battle hand structures, failing if that hand already holds
+  5 chips, and optionally records the chip ID in an event-flag block.
+interface: (r0 = hand/entry index into the 0x20349C0 hand array and the 0x2036120 record array, r1 = chip
+  ID, r2 = mode flag) -> r0 = 1 on success, 0 if hand count >= 5
+details: 'r7 = hand struct from getBattleHandAddr_8010018 (0x50-byte stride at 0x20349C0); r6 = a 0x1D0-byte
+  record at unk_2036120 for the same index; r4 = the chip''s 44-byte database record. The hand struct
+  stores a count at +1 (max 5) with parallel 2-byte arrays at +2, +0xC, +0x18 and +0x24, indexed as base+2+2*count:
+  it writes the chip ID into the +2 array, copies the chip record''s field at +0x1A into the +0xC slot,
+  and zeroes the +0x18 and +0x24 slots, then increments the count. On success it calls sub_802E674(record,
+  mode) — likely updating the display/record entry. If the original r0 was 0 and r2 is 0, it sets event
+  flag EVENT_2020+chipID (per-chip flag, plausibly the ''chip registered/obtained'' record) and calls
+  encryption_80070bc to re-obfuscate the flag save area. When the hand is full it returns 0 without doing
+  anything.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#1]; cmp #5; bge loc_802E5CA — count capped at 5, hand-full failure path; add r0,r0,r0;
+    add #2; add r5,r7,r0 — slot base 2+2*count with strh writes to +0, +0xC, +0x18, +0x24: parallel 2-byte
+    arrays; ldrh r1,[r4,#0x1a]; strh r1,[r5,#0xc] — copies a field from the chip database record; ldr
+    r0,off_802E5F8; add r0,r0,r1(chip ID); bl SetEventFlag — sets flag EVENT_2020+chip, gated on r0==0
+    && r2==0; bl encryption_80070bc right after SetEventFlag — flags area is checksummed/obfuscated after
+    modification'
+  refs:
+  - bn6f/asm/asm03_0.s:17758
+  - 0x0802F114 SetEventFlag
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x0802E588
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact meaning of the r0 index (which battle hand / why it also indexes the 0x1D0-byte records at 0x2036120)
+- Purpose of sub_802E674 and the meaning of the chip record field at +0x1A copied into the hand slot
+- What the r2 mode flag selects (flag-setting/record-update vs plain add)
+- Whether the EVENT_2020+chipID flags are the chip library registration bits or something battle-specific
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802E588 -> battle_handAddChip
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E588

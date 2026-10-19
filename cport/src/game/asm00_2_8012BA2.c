@@ -843,9 +843,9 @@ static void set_player_navi_field0e(u32 alliance, u32 value) {
     GUEST_CALL(battle_setPlayerNaviStatsField0E_8015BEC);
 }
 
-/* register form: calls sub_80143CE outside this file, which has no typed C interface yet */
+/* register form: calls battle_naviAISetFlag2Default outside this file, which has no typed C interface yet */
 static void ai_action_c(void) {
-    GUEST_CALL(sub_80143CE);
+    GUEST_CALL(battle_naviAISetFlag2Default);
 }
 
 /* register form: calls ai_clearCounterHitChainFlag outside this file, which has no typed C interface yet */

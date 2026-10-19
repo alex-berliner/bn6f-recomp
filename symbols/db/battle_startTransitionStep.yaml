@@ -1,0 +1,50 @@
+name: battle_startTransitionStep
+address: '0x0803AC02'
+kind: function
+status: probable
+summary: 'Battle-start transition step: fades the screen (or skips if a cutscene state is active), records
+  the next state, then initializes the battle module.'
+interface: (r0 = flag mask 0x80 passed to chatbox flag check; r5 = global state-machine context pointer)
+  -> r0 = battle_moduleInit result; [r5+1] set to next state byte
+details: 'The function first tests bit 0x80 of the chatbox/event flag word eFlags2009F38 via chatbox_mask_eFlags2009F38;
+  if that bit is set it skips the whole transition setup and only calls battle_moduleInit_803A820. Otherwise
+  it checks the chatbox state selector: if nonzero, it just stores state 0xC at [r5+1]; if zero, it calls
+  SetScreenFade(0xC, 0x10) to fade the screen and stores state 0x14 instead. In both paths it finishes
+  by invoking battle_moduleInit_803A820, which registers battle-related entries (IDs 10/0x26 and 11/0x27)
+  and kicks off the main battle init. r5 therefore points to a transition/state struct whose byte at offset
+  1 selects the following step, with 0xC likely a wait/branch state and 0x14 a post-fade state. The chatbox
+  checks tie the transition into cutscene/dialog state so the fade only runs when no event script is active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80 and bne loc_803AC26 skips transition setup when that
+    flag bit is set; bl chatbox_GetState_8045F4C then cmp r0,#0 picks between storing 0xC and doing the
+    fade path; bl SetScreenFade with (0xC, 0x10) followed by strb 0x14,[r5,#1] sets the post-fade state;
+    strb r0,[r5,#1] with 0xC in both branches shows r5+1 is a state-machine next-step byte; unconditional
+    bl battle_moduleInit_803A820 at the end runs the battle module registration regardless of path
+  refs:
+  - bn6f/asm/asm03_1_1.s:4289
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0803AC02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What structure r5 points to and the meaning of state values 0xC and 0x14 in its state machine
+- Why the chatbox-state nonzero path stores 0xC without any fade — whether 0xC resumes the fade later
+  or skips it entirely
+- Which caller (likely a transition state table) invokes this step
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AC02 -> battle_startTransitionStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AC02

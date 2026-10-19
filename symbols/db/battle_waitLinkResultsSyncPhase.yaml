@@ -1,0 +1,47 @@
+name: battle_waitLinkResultsSyncPhase
+address: '0x08009EFC'
+kind: function
+status: probable
+summary: Battle-state handler that waits for link sync of post-battle results, then restores result records
+  and advances to phase 4 (with a 180-frame timeout fallback).
+interface: (r5 = battle state struct) -> r0 = 0/unused; flags from tst/cmp
+details: Uses r5 as the battle state struct (no r0 args; caller presumably sets r5). On first entry (SubPhaseInitFlag==0)
+  calls sub_800B428 to reinit link work, clears the CountdownTimer halfword, and sets SubPhaseInitFlag=4.
+  On subsequent frames checks battle_doBothTrackedIdsMatch_800B46C against magic 0x1f2f3f4f; if both tracked
+  id slots match, resets link sync flags via battle_resetLinkSyncFlags_800B460, calls sub_800B444 to restore
+  the 12-byte battle result records from the received link payloads, and writes 4 into oBattleState_StatePhaseAndInitFlag
+  to advance the phase. Otherwise increments CountdownTimer, and after 180 frames writes 0xC into oBattleState_Index_00,
+  which the comment ties to battle_runFrame via battle_main_8007800.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_doBothTrackedIdsMatch_800B46C with dword 0x1f2f3f4f gates the phase advance (loc_8009F12);
+    bl sub_800B444 restores result records from link payloads before advancing (loc_8009F12 branch); strh
+    r4→ 'mov r0,#4; strh r0,[r5,#oBattleState_StatePhaseAndInitFlag]' advances the battle phase; CountdownTimer
+    compared to 0xb4 then writes 0xC to oBattleState_Index_00 — timeout fallback; bl sub_800B428 + SubPhaseInitFlag=4
+    on first entry matches other one-shot phase init patterns
+  refs:
+  - bn6f/asm/asm00_1.s:15393
+  - 0x0800B46C battle_doBothTrackedIdsMatch_800B46C
+  - 0x0800B460 battle_resetLinkSyncFlags_800B460
+  - 0x0800B428 sub_800B428
+  reproduce: python3 tools/asmcat.py 0x08009EFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What state 0xC (the timeout path) does exactly — likely skipping to results or an error screen
+- Which battle phase this handler belongs to in the state table (callers unknown), and the meaning of
+  magic 0x1f2f3f4f
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009EFC -> battle_waitLinkResultsSyncPhase
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009EFC

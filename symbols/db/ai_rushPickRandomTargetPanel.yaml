@@ -1,0 +1,47 @@
+name: ai_rushPickRandomTargetPanel
+address: '0x0810FA2C'
+kind: function
+status: probable
+summary: Picks a random battle panel (via the alliance-dependent panel filter) for the Rush attack to
+  charge at.
+interface: (r0 = attacker battle object) -> r0 = chosen panel (x = low bits, y = high nibble), or current
+  panel if list empty; flags from callee
+details: 'Loads the table pointer byte_810FA3C and calls GetAllianceDependentPanelParamArgs, which indexes
+  that 16-byte table (two 8-byte entries: param 0x00000000 and 0x00000020) by the battle object''s alliance
+  field, yielding a filter param word and args pointer. It then feeds those into sub_8015C94, the random
+  panel picker, which does GetPositiveSignedRNG % count over the filtered panel list (excluding the current
+  panel) and returns x (low 3 bits) / y (high nibble) of the chosen panel. The 0x20 param for one alliance
+  presumably restricts the pick to the opposing side''s panels. Only r0 is forwarded; the wrapper exists
+  solely to pair the alliance-dependent table with the random picker.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3, off_810FCD0 =byte_810FA3C feeds the 16-byte per-alliance param table into GetAllianceDependentPanelParamArgs;
+    byte_810FA3C holds two 8-byte entries with param words 0x00000000 and 0x00000020 (side filter); bl
+    sub_8015C94: random panel picker returns x/y of a randomly chosen filtered panel; sole caller ai_rushGetApproachColumn
+    computes the approach column for a telegraphed Rush attack, consistent with picking the panel Rush
+    charges toward'
+  refs:
+  - bn6f/asm/asm32.s:3918
+  - 0x0810F9F6 ai_rushGetApproachColumn
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015C94 sub_8015C94
+  reproduce: python3 tools/asmcat.py 0x0810FA2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of the 0x20 panel param bit (own side vs enemy side filter) not confirmed from this code
+  alone
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810FA2C -> ai_rushPickRandomTargetPanel
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FA2C

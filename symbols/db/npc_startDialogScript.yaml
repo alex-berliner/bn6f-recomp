@@ -1,0 +1,52 @@
+name: npc_startDialogScript
+address: '0x08130424'
+kind: function
+status: probable
+summary: Puts an NPC into its talking state (backing up its previous state) and starts a dialog from the
+  shared text-script archive, unless a flag suppresses it.
+interface: (r0 unused?, r5 = NPC object struct pointer) -> void; starts chatbox script eTextScript201BA20
+  at index from eStruct200BC30[0xE]
+details: 'First it reads the screen fade state and, if the fade mode is 0xC, re-triggers SetScreenFade(8,
+  0x10), likely restoring the fade after a transition so the dialog appears correctly. It saves the NPC''s
+  current field [r5,#2] into a backup slot at [r5,#0x49] and overwrites [r5,#2] with 0x1C (the ''talking/dialog''
+  state), also clearing [r5,#0xC] and [r5,#3]. It then checks bit 0 of [r5,#0x1B]; if set, the function
+  returns without talking. Otherwise it fetches eStruct200BC30 (r1=0x40 selector), reads byte 0xE (which
+  selects the script: 0x40 normally, 0x30 if that byte equals 2 — e.g. an alternate variant), and runs
+  that script from archive eTextScript201BA20 via the chatbox wrapper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl screenFade_80062C8 + cmp r0,#0xC + bl SetScreenFade(8,0x10) corrects an in-progress fade
+    before talking; ldrb r0,[r5,#2] / strb r0,[r5,#0x49] / mov r0,#0x1C; strb r0,[r5,#2] backs up and
+    switches the NPC state field; tst on bit 0 of [r5,#0x1B] skips the chatbox call entirely, a 'no dialog'
+    guard; eStruct200BC30_getRef(0x40) then cmp [r0,#0xE],#2 chooses script index 0x40 vs 0x30; tail call
+    chatbox_runScript_803FD9C_on_eTextScript201BA20 starts the dialog script; six similar NPC callers
+    use it
+  refs:
+  - bn6f/asm/asm36.s:524
+  - 0x0812F0F8 sub_812F0F8
+  - 0x0812F190 sub_812F190
+  - 0x0812F2D0 sub_812F2D0
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x080062C8 screenFade_80062C8
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08130424
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact meaning of NPC struct fields 0x02/0x49/0x1B (state vs animation) and what byte 0xE of eStruct200BC30
+  represents (probably a game-progress/variant selector); callers sub_812F0F8 etc. are themselves unnamed
+  so the trigger context is unconfirmed
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8130424 -> npc_startDialogScript
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130424

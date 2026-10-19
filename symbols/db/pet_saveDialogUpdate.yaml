@@ -1,0 +1,47 @@
+name: pet_saveDialogUpdate
+address: '0x08126FA8'
+kind: function
+status: probable
+summary: PET-menu task that, once the screen fade ends, raises the save prompt (dialog 0x35, or 0x39 when
+  saving is disabled) and clears its request flags.
+interface: (r0 = context object, r5 = related struct with byte fields at +1/+2/+3) -> void; sets r5[2]=0x14,
+  zeroes r5[1..3] during fades, branches on ZF from fade/flag tests
+details: While IsScreenFadeActive returns true it stores 0 to r5+1,+2,+3 and exits, keeping the task idle
+  during transitions. Otherwise it tests bit 8 of eFlags2009F38 via chatbox_mask_eFlags2009F38; if clear
+  it returns. When triggered it clears bit 0x40 of the same word (chatbox_clear_eFlags2009F38), stores
+  0x14 into r5+2 (likely a frame timer for the dialog), selects dialog id 0x35 normally or 0x39 if EVENT_PET_COMM_SAVE_DISABLED
+  is set, and calls sub_81278C8 with that id, presumably to enqueue the save message. The dual ids suggest
+  normal vs. disabled save wording.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret with strb #0 to [r5,#1..3] — idles during screen fades;
+    mov r0,#8; bl chatbox_mask_eFlags2009F38; beq — only acts when the per-dialogue request bit 8 is set;
+    mov r0,#0x40; bl chatbox_clear_eFlags2009F38 — consumes the one-shot request flag; movflag EVENT_PET_COMM_SAVE_DISABLED
+    / beq selecting r6=0x35 vs 0x39 — picks save vs save-disabled message; mov r0,r6; bl sub_81278C8 —
+    passes the chosen dialog id to the message-showing callee'
+  refs:
+  - bn6f/asm/asm33.s:7985
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x08045F2C chatbox_clear_eFlags2009F38
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08126FA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- purpose and layout of sub_81278C8 (is r6 a dialog/text id?)
+- what structure r5 belongs to and the meaning of fields +1/+2/+3 and the 0x14 value
+- which caller/task registers this function and what sets chatbox flag bit 8
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8126FA8 -> pet_saveDialogUpdate
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126FA8

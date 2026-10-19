@@ -1,0 +1,48 @@
+name: beastout_loadCustomScreenGfx
+address: '0x08028754'
+kind: function
+status: probable
+summary: 'Queues the Beast Out chip''s graphics for the custom screen: a 0x540-byte tile block into VRAM,
+  a 0x20-byte block into the IWRAM sprite buffer, then loads the Beast Out selection sprite sheets.'
+interface: () -> r0 = undefined; queues two GFX transfers and calls the sheet loader
+details: Called from the custom-screen chip-use dispatcher when the selected chip's kind triggers this
+  path. It first primes/queues a tile row via loadOneSpriteTileRow_80287D2, then queues 0x540 bytes from
+  ROM (dword_87225B4) to VRAM sprite-tile space 0x06009560, which is a full Beast Out sprite/tile upload.
+  It then queues 0x20 bytes from dword_87257D4 into the IWRAM buffer unk_3001AA0, matching the 0x20-byte
+  slot the tile-row helper uses, likely the sprite descriptor/OAM entry for the on-screen preview. Finally
+  it loads the three Beast Out selection-screen sprite sheets into VRAM slots 1-3. All transfers are eight-word-aligned
+  DMA/queue uploads.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: QueueEightWordAlignedGFXTransfer(dword_87225B4, 0x6009560, 0x540) uploads a large ROM block
+    to sprite VRAM; QueueEightWordAlignedGFXTransfer(dword_87257D4, unk_3001AA0, 0x20) fills the same
+    IWRAM slot touched by loadOneSpriteTileRow_80287D2; Tail call to beastout_LoadSelectionScreenSpriteSheets_802869E
+    loads Beast Out selection sheets into VRAM slots 1-3; Sole caller battleObject_runCustomScreenChipPickerEffect_8028476
+    is the custom-screen chip dispatcher
+  refs:
+  - bn6f/asm/asm03_0.s:4981
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x0802869E beastout_LoadSelectionScreenSpriteSheets_802869E
+  - 0x080287D2 loadOneSpriteTileRow_80287D2
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x08028754
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- Exact meaning of the 0x20-byte block written to unk_3001AA0 (palette vs sprite metadata) needs unk_3001AA0's
+  structure confirmed
+- Whether the 0x540-byte VRAM block is the chip icon+sprite or only part of it
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8028754 -> beastout_loadCustomScreenGfx
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8028754

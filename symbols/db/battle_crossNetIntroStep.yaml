@@ -1,0 +1,51 @@
+name: battle_crossNetIntroStep
+address: '0x08008864'
+kind: function
+status: probable
+summary: Battle-side update step that fires the cross-net battle intro once (effect kind 0x54) and then
+  waits until the linked partner reports battle-ready.
+interface: (r5 = battle sub-state struct ptr, no r0 args) -> r0 clobbered; writes [r5+2] (halfword), [r5+3]
+  (byte), [r5+8] (halfword)
+details: 'Called with r5 pointing at a small battle state struct. If the state byte [r5+3] is still 0,
+  it performs one-time intro setup: runs dispatch_801DACC on constant 0x824c43 (an id/handle, likely a
+  battle intro script or effect resource), clears the matching bits (0x824c43) in the flags word behind
+  dword_20352C0 (eStruct2035280), kicks battle effect kind 0x54 via battle_dispatchKindEffect, zeroes
+  halfword [r5+8], and sets [r5+3]=4 so the init branch never re-runs. On every call it then polls comm_checkCrossNetBattleReady;
+  if the partner session is ready (nonzero return) it returns immediately, otherwise it writes 4 into
+  halfword [r5+2], presumably a state/next-step selector or timer that keeps the intro waiting. Quirk:
+  [r5+3] is set to 4 rather than 1, so the value also encodes a state, and init is keyed on ''== 0''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#3]; tst/bne guards a one-time init block that ends with mov r0,#4; strb r0,[r5,#3];
+    bl battle_dispatchKindEffect_801E792 with r0=0x54 launches a fixed battle sub-effect (intro/effect
+    animation); ldr r0,=0x824c43 before dispatch_801DACC and flags_clearBits_eStruct2035280_801BED6 ties
+    the init to one flags entry in eStruct2035280; bl comm_checkCrossNetBattleReady_801E754; cmp r0,#0;
+    bne locret shows the loop exits only when the link partner is battle-ready; mov r0,#4; strh r0,[r5,#2]
+    stores 4 into the struct's state halfword when not ready, the only other side effect
+  refs:
+  - bn6f/asm/asm00_1.s:12127
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  - 0x0801BED6 flags_clearBits_eStruct2035280_801BED6
+  reproduce: python3 tools/asmcat.py 0x08008864
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- What dispatch_801DACC does with id 0x824c43 (script, animation, or task?) is unknown, so the exact nature
+  of the intro setup is inferred
+- The meaning of [r5+2]=4 depends on the owner of the r5 struct (a battle state-machine task?), which
+  no known caller reveals
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008864 -> battle_crossNetIntroStep
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008864

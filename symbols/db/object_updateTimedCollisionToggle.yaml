@@ -1,0 +1,48 @@
+name: object_updateTimedCollisionToggle
+address: '0x080DDCF4'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that runs the standard hit/collision pipeline, dispatches
+  on CurAction between two states, and in one state disables its collision region with an 8-frame timer.
+interface: (r5 = battle object) -> void
+details: 'Standard battle-object frame update: tears down the object''s collision data, spawns the hit
+  effect for its last collision (jittered), dispatches through a 2-entry jump table indexed by oBattleObject_CurAction,
+  advances the sprite animation, then re-presents collision data. State handler sub_80DDD30 calls object_clearCollisionRegion,
+  stores 8 into the object''s field at +8 (likely a frame timer), and clears bit 1 of the flags byte at
+  +0, effectively switching the object into a non-colliding phase. The other handler (sub_80DDDB8) is
+  not shown, so the exact two-state behavior and object identity are uncertain.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect / object_updateSprite / object_presentCollisionData
+    frame the dispatch (sub_80DDCF4 prologue/epilogue); ldr r1,[r1,r0] with r0 = ldrb [r5,#oBattleObject_CurAction]
+    and off_80DDD28 holding two thumb pointers shows a 2-state action dispatch; handler after pop{pc}:
+    bl object_clearCollisionRegion; str r0,#8 -> [r5,#8]; bic bit1 of [r5] disables collision for a timed
+    phase; callees object_removeCollisionData/object_presentCollisionData/object_spawnCollisionEffect
+    are the shared battle-object collision pipeline helpers'
+  refs:
+  - bn6f/asm/asm31.s:81843
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  - 0x0801A0D4 object_spawnCollisionEffect
+  reproduce: python3 tools/asmcat.py 0x080DDCF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers known, so the object's identity and context are unknown
+- Handler sub_80DDDB8 is not disassembled; it presumably re-enables collision or waits on the 8-frame
+  timer
+- Meaning of flags bit 1 and field +8 needs confirmation from the battle object struct
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DDCF4 -> object_updateTimedCollisionToggle
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDCF4

@@ -1,0 +1,49 @@
+name: battle_stepEndFadeWait
+address: '0x08008FF0'
+kind: function
+status: probable
+summary: Battle-loop state step that triggers the battle-end effect (kind 0x1C), waits out a 102-frame
+  timer (and linked-battle partner readiness), then advances the battle-end sequence.
+interface: (r5 = battle scene state struct, no register args) -> updates [r5]+3 phase byte, +8 timer,
+  +4 and [r5] next-state; writes oGameState_BattleEndSubState; r0 clobbered
+details: 'First pass (byte at r5+3 == 0) dispatches battle sub-effect kind 0x1C, clears flag 0x4C43 in
+  dword_20352C0, sets timer r5+8 = 0x66 and phase r5+3 = 4. On subsequent frames it decrements the timer,
+  and once comm_checkCrossNetBattleReady_801E754 reports ready (nonzero) it proceeds: if the current battle''s
+  effects bitmask has bit 0x400, sub_800AF50''s result (1 -> state 8, anything else nonzero -> state 0xC)
+  is stored into dword [r5]; otherwise it sets r5+4 = 3 and writes 3 to oToolkit_GameStatePtr->oGameState_BattleEndSubState,
+  handing control to the next battle-end phase. Negative timer (after underflow) aborts the frame without
+  action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_dispatchKindEffect_801E792 with r0=0x1C right after setting timer 0x66 and phase 4
+    (loc at start); bl comm_checkCrossNetBattleReady_801E754 then bne locret — waits for link-battle partner
+    before advancing; bl GetBattleEffects + tst with 0x400 gates which end path is taken; strb 3,[r1,#oGameState_BattleEndSubState]
+    — advances the battle-end substate to 3; timer at r5+8 decremented each frame; [r5] set to 8 or 0xC
+    via sub_800AF50 result
+  refs:
+  - bn6f/asm/asm00_1.s:13181
+  - 0x0802D246 GetBattleEffects
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x08008FF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No known callers, so the identity of the scene-state struct and what states 8/0xC mean is inferred from
+  the store targets
+- What battle sub-effect kind 0x1C and effect bit 0x400 specifically render (likely fade-out) is not shown
+  here
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008FF0 -> battle_stepEndFadeWait
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008FF0

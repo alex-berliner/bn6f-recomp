@@ -1,0 +1,48 @@
+name: battle_startInit
+address: '0x0803AC56'
+kind: function
+status: probable
+summary: Records a launch-context byte (chatbox/cutscene vs normal) into the battle struct and then initializes
+  the battle module.
+interface: (r0 = unused flag arg consumed by helper; r5 = battle work struct pointer set up by caller)
+  -> r0 = result of battle_moduleInit_803A820; writes mode byte to [r5+1]
+details: 'Tests bit 0x80 of the event/chatbox flag word eFlags2009F38 via chatbox_mask_eFlags2009F38;
+  if set it skips the mode selection. Otherwise it reads the low-3-bit state selector at eFlags2009F38
+  via chatbox_GetState_8045F4C: a nonzero state stores 0xC into byte [r5+1], zero stores 0x20. It then
+  calls battle_moduleInit_803A820 to run the battle module''s registration and main init sequence. r5
+  is not set inside this function, so the caller must supply the battle-related struct. The 0xC/0x20 values
+  are most plausibly battle launch-mode/type codes, 0xC being used when the chatbox/cutscene system is
+  active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mask 0x80 test on eFlags2009F38 followed by bne skipping the mode write (asm lines 3-5); chatbox_GetState_8045F4C
+    result compared to 0 to choose strb 0xC vs 0x20 at [r5+1] (loc_803AC6E); unconditional tail bl battle_moduleInit_803A820
+    before pop (loc_803AC72); callee battle_moduleInit_803A820''s known summary: registers battle entries
+    10/0x26 and 11/0x27 then starts main init with arg 0; chatbox helpers operate on eFlags2009F38, tying
+    the mode byte to cutscene/chatbox state'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4335
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0803AC56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what structure r5 points to and the meaning of the 0xC vs 0x20 byte
+- who calls this function and with what r5/r0 setup
+- whether 0xC/0x20 are battle modes, UI states, or something else
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AC56 -> battle_startInit
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AC56

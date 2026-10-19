@@ -1,0 +1,48 @@
+name: init_loadCutsceneSceneAssets
+address: '0x08131400'
+kind: function
+status: probable
+summary: Loads the three graphics asset archives (LZ77-compressed) used by the cutscene/battle-scene UI
+  into their RAM buffers.
+interface: () -> void; no meaningful return flags
+details: 'Wrapper that first builds the reference table used by the asset loader (decomp_buildInitRefTable_812AF3C,
+  filling unk_201D020) and loads the piece referenced by off_812B0E8 (loadDecompressedAsset_812AF78).
+  It then calls decompAndCopyData with a table at byte_8131418 containing three 12-byte entries: a compressed
+  source pointer (comp_86D91FC, comp_86D93E0, comp_86DD488 with COMPRESSED_PTR_FLAG), a destination (eGuiSprite2022AA0,
+  byte_20231A0, unk_2021DA0), and the shared decompression work buffer eDecompBuffer2013A00, terminated
+  by NULL. So each of the three assets is LZ77-decompressed through the shared scratch buffer into its
+  destination. Called only from init_cutsceneSceneState, right after VRAM/palette/tile buffers are wiped,
+  i.e. it populates the scene''s sprite/tile data before the fade and chatbox script 0x68 run.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'byte_8131418 table: 3 entries of (comp_* + COMPRESSED_PTR_FLAG, dest, eDecompBuffer2013A00)
+    then NULL, handed to decompAndCopyData; only caller 0x081312FC init_cutsceneSceneState is a scene-state
+    init that wipes buffers and starts the cutscene; starts with decomp_buildInitRefTable_812AF3C + loadDecompressedAsset_812AF78,
+    the asset-decompression setup pair'
+  refs:
+  - bn6f/asm/asm36.s:2573
+  - 0x081312FC init_cutsceneSceneState
+  - 0x08000B30 decompAndCopyData
+  - 0x0812AF3C decomp_buildInitRefTable_812AF3C
+  - 0x0812AF78 loadDecompressedAsset_812AF78
+  reproduce: python3 tools/asmcat.py 0x08131400
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- exact content/role of each destination buffer (eGuiSprite2022AA0 vs byte_20231A0 vs unk_2021DA0) not
+  verifiable from this function alone
+- which asset loadDecompressedAsset_812AF78 fetches via off_812B0E8
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8131400 -> init_loadCutsceneSceneAssets
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131400

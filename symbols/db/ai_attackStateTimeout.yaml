@@ -1,0 +1,45 @@
+name: ai_attackStateTimeout
+address: '0x080153B0'
+kind: function
+status: probable
+summary: Runs a per-frame countdown on a battle object; once the timer expires, clears AI-state flags
+  and exits the attack state.
+interface: (r7 = battle object with AI attack vars) -> r0 = scratch; sets/clears object AI flag bits and
+  battle flag 0x20
+details: If oAIAttackVars_AttackElement is 0, it initializes it to 4 and loads the delay counter (oAIAttackVars_StepTimer)
+  with 0x14 (20 frames). Every call it decrements StepTimer and returns while the result is >= 0. When
+  the counter goes negative, it clears bit 0x80 and 0x80000 in AI data Unk_0x48, clears battle flag 0x20,
+  clears mask 0x80008600 in AI data Unk_0x44, and calls object_exitAttackState to leave the attack state.
+  This is effectively the wind-down/cooldown frame of an AI attack action, with element 4 acting as a
+  default element when none was chosen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] with fallback init: StepTimer=0x14, AttackElement=4
+    (asm lines 2-8); ldrh StepTimer / sub 1 / strh / bge locret: per-frame countdown until negative (lines
+    10-13); on expiry: ClearAIDataUnk0x48Flag(0x80) then (0x80000), battle_clearFlags(0x20) (lines 14-19);
+    ClearAIData_Unk_44_Flag(0x80008600) then object_exitAttackState ends the attack (lines 20-24)'
+  refs:
+  - bn6f/asm/asm00_2.s:14881
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0800A2E4 battle_clearFlags
+  - 0x0801031C ClearAIDataUnk0x48Flag
+  reproduce: python3 tools/asmcat.py 0x080153B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- what AI state flags 0x80/0x80000 (Unk_0x48) and mask 0x80008600 (Unk_0x44) mean, and which attack behavior
+  sets AttackElement before calling this — needs a caller to confirm
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80153B0 -> ai_attackStateTimeout
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80153B0

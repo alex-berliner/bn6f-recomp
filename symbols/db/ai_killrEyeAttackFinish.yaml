@@ -1,0 +1,50 @@
+name: ai_killrEyeAttackFinish
+address: '0x0810BE8E'
+kind: function
+status: probable
+summary: KillrEye AI step that wraps up the current attack (clears hit flag, frees aux objects) and picks
+  the next attack via RNG.
+interface: (r5 = battle object pointer) -> r0 = 1 stored to object+0x7C; returns via pop {pc} with flags
+  from sub_810BD40 (BEQ skips the attack handling)
+details: Dispatches the object's state handler via battleObjectStateDispatcher_8016CE8, then calls sub_810BD40
+  and only proceeds when it flags non-equal. It calls sub_810BDF4, which uses GetRNG & 3 (guarded by a
+  0x63 counter) to choose an attack branch, then ai_attackHitClearState8 to clear the flag at the object's
+  +0x60 pointer and set +0x8 to state 8, and ai_attackFreeAuxObjects to release the up-to-five aux object
+  pointers in ExtraVars. Finally it writes 1 to byte at object+0x7C, likely a phase/attack-complete marker.
+  All operations act on the battle object in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_810BDF4 immediately follows the guard check, and that callee is annotated as KillrEye
+    RNG attack selection; bl ai_attackHitClearState8 clears +0x60 flag and sets +0x8=8, matching attack-resolve
+    cleanup; bl ai_attackFreeAuxObjects releases the ExtraVars aux pointers of the battle object; strb
+    r0=1 at [r5,#0x7C] sets a per-object flag at the end of the step; immediate callee battleObjectStateDispatcher_8016CE8
+    confirms this is a battle-object state handler; sub_810BD40 return value gates the whole body via
+    BEQ locret_810BEB0
+  refs:
+  - bn6f/asm/asm31.s:179228
+  - 0x0810BB64 ai_attackFreeAuxObjects
+  - 0x080D9284 ai_attackHitClearState8
+  - 0x08016CE8 battleObjectStateDispatcher_8016CE8
+  reproduce: python3 tools/asmcat.py 0x0810BE8E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610'
+open_questions:
+- No callers are known, so which AI state index reaches this handler is unconfirmed
+- The exact meaning of the +0x7C flag and the return condition of sub_810BD40 are unknown without reading
+  sub_810BD40
+- Which object ID this handler belongs to (assumed KillrEye from the callee summary) is not verifiable
+  from this listing alone
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 11f5d055
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810BE8E -> ai_killrEyeAttackFinish
+  where: bn6f a36004ee
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BE8E
