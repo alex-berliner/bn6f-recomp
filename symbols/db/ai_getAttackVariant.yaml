@@ -1,0 +1,53 @@
+name: ai_getAttackVariant
+address: '0x080EC934'
+kind: function
+status: probable
+summary: Returns a per-AI flag byte from a constant table indexed by the battle object's AIIndex, used
+  by the AI attack routine to vary behavior.
+interface: (r5 = battle object ptr) -> r0 = aiVariantTable[oAIData_AIIndex]; no flags used
+details: Loads the object's AIData pointer from oBattleObject_AIDataPtr, reads the AIIndex byte, and indexes
+  the table at off_80EC944 to return one byte in r0. The table is 0x100's low bytes making entries 0-2
+  = 0,1,1 and all later entries 0, so only AI indices 1 and 2 return 1. It is a pure lookup with no side
+  effects and returns via mov pc, lr. The caller, the AI attack routine (charge-then-spawn projectile
+  phases), presumably branches on the returned value to select an attack variant.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r0,#oAIData_AIIndex] then ldrb r0,[r1,r0] shows a table lookup keyed by AIIndex; table
+    at off_80EC944 contains 0,1,1,0,0,... so only AIIndex 1 and 2 yield nonzero; only known caller sub_80EC8A0
+    is the AI attack routine with charge/spawn phases
+  refs:
+  - bn6f/asm/asm31.s:113024
+  - 0x080EC8A0 sub_80EC8A0
+  reproduce: python3 tools/asmcat.py 0x080EC934
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- menus2
+- story2
+- story4
+- story5
+- story6
+- story7
+- story9
+open_questions:
+- what semantic the returned byte has (attack style vs. target preference etc.) — the caller's branch
+  on the result would disambiguate
+- what AI indices 1 and 2 correspond to among enemy AIs
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EC934 -> ai_getAttackVariant
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC934

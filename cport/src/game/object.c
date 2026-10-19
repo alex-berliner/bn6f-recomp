@@ -2003,7 +2003,7 @@ Next battle_dispatchObjectContactHandler_800E498(void) {
     switch (index) {
     case 0: GUEST_CALL(sub_800E4C0); break;
     case 1: GUEST_CALL(battle_getHitModifierOffsets_800E548); break;
-    case 2: GUEST_CALL(sub_800E4C8); break;
+    case 2: GUEST_CALL(object_getDirDelta); break;
     case 3: GUEST_CALL(sub_800E500); break;
     }
 

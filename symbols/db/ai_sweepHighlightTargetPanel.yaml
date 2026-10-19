@@ -1,0 +1,50 @@
+name: ai_sweepHighlightTargetPanel
+address: '0x0811590A'
+kind: function
+status: probable
+summary: Counts down an AI attack timer and, on every other tick, highlights the stored target panel for
+  the enemy's side of the grid
+interface: (r0 = unused on entry, r5 = battle object, r7 = oAIAttackVars) -> r0 = new AttackBoost2 count;
+  flags from tst
+details: Increments oAIAttackVars_AttackBoost2 in the AI attack variable block; when the new count has
+  bit 2 clear (i.e. on odd ticks) it loads oAIAttackVars_TargetPanelX/Y and calls highlightPanelIfSomeCondition_8109660
+  with sideSign = Alliances XOR DirectionFlip and mode 4, so the marked panel flips to the attacker's
+  column side. When the bit is set it skips the highlight and returns. It touches only the AI attack vars
+  struct and the battle object's alliance/flip fields; no rendering is done directly, the callee performs
+  the grid-clamped panel highlight.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/add/strb on [r7,#oAIAttackVars_AttackBoost2] is a simple tick counter; tst r0,#4 + bne
+    skips the body on alternating ticks only; eor r3,r2 builds sideSign from Alliance XOR DirectionFlip,
+    matching highlightPanelIfSomeCondition's dx*sideSign semantics; bl highlightPanelIfSomeCondition_8109660
+    with r2=4 marks a single target panel; all three callers are nearby sub_81158xx attack-step routines
+    on the battlesweep route
+  refs:
+  - bn6f/asm/asm32.s:15154
+  - 0x0811581C sub_811581C
+  - 0x08115876 sub_8115876
+  - 0x081158A4 sub_81158A4
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  reproduce: python3 tools/asmcat.py 0x0811590A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What the three sub_81158xx callers do (their step order would confirm whether this is a charge-up pulse
+  or an alternating sweep marker)
+- Which enemy/attack this AI var block belongs to, and what bit 2 == 0 vs != 0 means in the full pattern
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811590A -> ai_sweepHighlightTargetPanel
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811590A

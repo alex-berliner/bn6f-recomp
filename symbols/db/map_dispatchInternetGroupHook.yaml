@@ -1,0 +1,70 @@
+name: map_dispatchInternetGroupHook
+address: '0x08035028'
+kind: function
+status: probable
+summary: At map load, dispatches to a per-internet-map-group hook routine, passing the saved real-world
+  map id's two bytes as arguments.
+interface: () -> tail-calls jumptable handler with r0 = savedRealWorldMapId & 0xFF, r1 = savedRealWorldMapId
+  >> 8; no return value of its own
+details: Reads oToolkit_GameStatePtr->oGameState_SavedRealWorldMapId and splits it into low (r0) and high
+  (r1) bytes. If oGameState_MapGroup is below INTERNET_MAP_GROUP_START it returns immediately. Otherwise
+  it subtracts INTERNET_MAP_GROUP_START, multiplies by 4, and loads a pointer from UnkInternetMapGroupJumptable_8034784;
+  a null pointer also causes an immediate return. Non-null entries are invoked via the lr=pc thumb long-call
+  trick, so the handler is a tail call that receives the split id bytes — meaning the hook can behave
+  differently depending on the real-world map the player entered the internet area from. Only the map
+  loader is seen calling it, right after clearing per-map work and before/around spawning the player and
+  NPCs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oGameState_SavedRealWorldMapId]; lsr r1,r0,#8; and r0,0xff — splits saved real-world
+    map id into two argument bytes; cmp r7,#INTERNET_MAP_GROUP_START / blt locret — hook only applies
+    to internet map groups; lsl r7,#2; ldr r6,[off_8035050,r7]; tst/beq — 4-byte-per-group jumptable with
+    null = skip; mov lr,pc; bx r6 — thumb long-call tail call, so r0/r1 are arguments to the group handler;
+    Caller map_8034B4C (map loader, which installs on-init/on-update scripts) is the only observed call
+    site
+  refs:
+  - bn6f/asm/asm03_1_0.s:2636
+  - 0x08034B4C map_8034B4C
+  reproduce: python3 tools/asmcat.py 0x08035028
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What the individual jumptable handlers (UnkInternetMapGroupJumptable_8034784 entries) do with the two
+  id bytes — handler bodies not shown
+- Exact semantics of oGameState_SavedRealWorldMapId's high/low bytes (map id vs sub-area encoding)
+- Whether the hook runs at map init only or is also reachable from other unrecorded callers
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8035028 -> map_dispatchInternetGroupHook
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8035028

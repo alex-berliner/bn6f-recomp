@@ -1,0 +1,50 @@
+name: battle_collectMatchingPanels
+address: '0x08114CBC'
+kind: function
+status: probable
+summary: Scans the whole 6x3 battle field and packs the coordinates of every panel whose status flags
+  match a set/clear mask, excluding the given object's row, into a caller-provided list; returns the count.
+interface: (r0/r1 unused in, r2 = required flag mask, r3 = forbidden flag mask, r5 = battle object (r5+oBattleObject_PanelY
+  read), r7 = output byte buffer) -> r0 = number of packed coords (byte y<<4|x) written to [r7]; flags
+  clobbered.
+details: 'Outer loop runs y from 3 down to 1, inner loop x from 6 down to 1, i.e. every panel of the standard
+  battle field. For each panel it calls object_getPanelParameters(x, y) and tests the returned flag word:
+  the panel is skipped if any bit of r3 is set, and skipped unless all bits of r2 are set, so r2/r3 act
+  as a required/forbidden panel-type mask (hole, grass, ice, etc.). It then skips the entire row whose
+  y equals the battle object''s current PanelY field, so only rows other than the object''s own are collected.
+  Matching panels are stored as single bytes (y<<4 | x) sequentially at [r7+r6] and r6 counts them; the
+  final count is returned in r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8114CC2/loc_8114CC4: nested loops decrement r1 from 3 and r0 from 6 — full 6x3 panel sweep;
+    bl object_getPanelParameters with r0=x, r1=y and tst r4,r3 / and r4,r2 + cmp r4,r2 enforce the clear/set
+    flag masks; ldrb r4,[r5,#oBattleObject_PanelY]; cmp r1,r4; beq skip — excludes the object''s own row;
+    lsl r4,r1,#4; orr r4,r0; strb r4,[r7,r6] — packs y<<4|x and appends to the caller''s list; mov r0,r6
+    before pop — returns the number of entries written'
+  refs:
+  - bn6f/asm/asm32.s:13694
+  - 0x08114C90 sub_8114C90
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08114CBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Which flag masks r2/r3 the caller sub_8114C90 passes (which panel types are being sought)
+- What the output list at r7 is used for downstream and whether r5 is always the acting object
+- Why only the object's row (not its exact panel) is excluded
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8114CBC -> battle_collectMatchingPanels
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114CBC

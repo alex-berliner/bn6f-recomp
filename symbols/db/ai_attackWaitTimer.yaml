@@ -1,0 +1,46 @@
+name: ai_attackWaitTimer
+address: '0x080F5260'
+kind: function
+status: probable
+summary: AI attack-state step that initializes a wait timer from the attack duration, then exits the attack
+  state once it elapses
+interface: (r7 = AI attack object) -> r0 = leftover StepTimer value; flags set by the countdown compare
+details: 'Reads oAIAttackVars_AttackElement: if it is 0, the state is uninitialized, so it writes 4 into
+  AttackElement and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer as the wait length.
+  On subsequent calls it decrements StepTimer and, once it reaches zero, calls object_exitAttackState
+  to return the AI entity to its normal state. The value 4 written to AttackElement likely marks this
+  state as an elementless/generic attack so the same handler is not re-initialized. r7 is the object base
+  pointer, so the caller passes the entity in r7 rather than r0. It is invoked from recorded battle-sweep
+  routes, i.e. during regular enemy AI processing in battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — first-run initialization vs countdown;
+    strh r0,[r7,#oAIAttackVars_StepTimer] after loading AttackDuration — timer seeded from the attack's
+    duration; sub r0,#1 ... bgt — simple per-frame countdown of the step timer; bl object_exitAttackState
+    when the timer hits zero — returns AI to normal state; only 16 instructions and no other callees —
+    a pure state-step helper, no side effects beyond the AI vars
+  refs:
+  - bn6f/asm/asm31.s:130852
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F5260
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what element/state value 4 semantically means in oAIAttackVars_AttackElement
+- which AI behaviors set AttackDuration and how StepTimer ticks elsewhere (per-frame vs per-AI-tick)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5260 -> ai_attackWaitTimer
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5260

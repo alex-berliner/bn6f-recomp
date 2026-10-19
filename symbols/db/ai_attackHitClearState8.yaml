@@ -1,0 +1,50 @@
+name: ai_attackHitClearState8
+address: '0x080D9284'
+kind: function
+status: probable
+summary: Clears the flag pointed to by an AI attacker object's +0x60 pointer and sets its +8 state/timer
+  field to 8, used when an AI attack resolves.
+interface: (r0 = battle object/AI attacker struct, may be NULL) -> r0 = unchanged; no flags used (returns
+  via pop {pc})
+details: Null-guards r0 and does nothing if it is zero. Otherwise loads the pointer at [obj+0x60] and
+  stores 0 into the word it references, then stores the constant 8 into [obj+8]. The +0x60 target is likely
+  a hit-active flag or attack counter owned by the attack, and +8 looks like an attack-state or timer
+  field; all six known callers sit inside AI attack code (including ai_attackUpdateHitDispatch, which
+  calls it on the hit path), consistent with resetting the attack's active-hit marker and advancing the
+  attacker to state 8 when a hit is dispatched. No other registers or memory are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str r1,[r0] through ldr r0,[r5,#0x60]: writes 0 via the pointer at obj+0x60; str r0,[r5,#8]
+    with mov r0,#8: sets object field +8 to the constant 8; cmp r0,#0 / beq: whole body is skipped for
+    a NULL object pointer; caller 0x0810B878 ai_attackUpdateHitDispatch ''on hit ... dispatches to element-specific
+    handler'' — called on the hit path; other callers 0x080DA248/0x080DA424/0x810B8EC/0x810BBF6/0x810BC10
+    are all unnamed AI-side attack helpers'
+  refs:
+  - bn6f/asm/asm31.s:71412
+  - 0x0810B878 ai_attackUpdateHitDispatch
+  - 0x080DA248 sub_80DA248
+  - 0x080DA424 sub_80DA424
+  reproduce: python3 tools/asmcat.py 0x080D9284
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what structure [obj+0x60] points into (hit flag, counter, or referenced object field)
+- what state/timer value 8 in field +8 means in the AI attack state machine
+- whether r0 is the attacking object or the victim — callers' full context would settle it
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9284 -> ai_attackHitClearState8
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9284

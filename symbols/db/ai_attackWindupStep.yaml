@@ -1,0 +1,47 @@
+name: ai_attackWindupStep
+address: '0x08100968'
+kind: function
+status: probable
+summary: 'AI attack wind-up state: starts an enemy attack once (wind-up anim + counters), then when the
+  step timer expires switches to the strike anim and arms the hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars of the attacker) -> void; updates oBattleObject_CurAnim,
+  object counter time and AI attack timers
+details: On first entry (oAIAttackVars_AttackElement == 0) it marks the attack as started by storing element/type
+  4 into AttackElement, switches the object to anim 5, calls object_setCounterTime with 0x12, and loads
+  the step timer with 0x13. On later calls it decrements oAIAttackVars_StepTimer each frame; once it reaches
+  zero it switches CurAnim to 6 (the strike/recovery pose) and stores 4 into oAIAttackVars_HitElement,
+  which presumably drives the damage check of the actual attack. The function is stateless per-frame step
+  code driven entirely by the AI attack vars block in r7 and the object in r5, and it runs during battle
+  (battlesweep routes).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst of [r7,#oAIAttackVars_AttackElement] with 'set 4 if zero' is the classic once-per-attack
+    init guard; sets [r5,#oBattleObject_CurAnim]=5 then =6, a wind-up -> strike anim pair; bl object_setCounterTime
+    with r0=0x12 arms the standard counter/hit window; step timer 0x13 decremented with bgt gate is a
+    frame-countdown for the wind-up duration; stores 4 into [r7,#oAIAttackVars_HitElement] only when the
+    timer expires, arming the attack's element on the strike frame
+  refs:
+  - bn6f/asm/asm31.s:154321
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x08100968
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what element/type value 4 denotes (no caller or enum table seen), which enemy uses this routine, and
+  what anims 5/6 actually are
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100968 -> ai_attackWindupStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100968

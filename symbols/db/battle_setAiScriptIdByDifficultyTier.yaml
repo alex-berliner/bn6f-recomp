@@ -1,0 +1,46 @@
+name: battle_setAiScriptIdByDifficultyTier
+address: '0x08107C7C'
+kind: function
+status: probable
+summary: Sets the AI state's script ID based on the enemy's difficulty tier (tier 0/1 -> script 4, tier
+  2 -> script 0xC0).
+interface: (r0 = AI data pointer passed through to tier getter, r6 = AI state object) -> r0 = written
+  script ID; flags from strb
+details: Calls battle_getAiDifficultyTier_800FE36, which reads the enemy AI data's difficulty byte and
+  maps it to a tier 0-2 (only for AI data version 4; otherwise likely 0). The returned tier indexes the
+  3-byte table at dword_8107C90 (bytes 0x04, 0x04, 0xC0), and the selected byte is stored to [r6, oAIState_ScriptId],
+  so r6 points at an AI state/object struct with a ScriptId field. Effectively hard enemies (tier 2) get
+  a different AI script (0xC0) than normal ones (0x04). r0 is not set up by this function itself, so the
+  caller must already hold the AI data pointer in r0 and the state pointer in r6. Note the table's fourth
+  byte (0xC0) is never reached with a 0-2 tier.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getAiDifficultyTier_800FE36 maps AI difficulty byte to tier 0-2 (callee summary);
+    ldrb r0, [r1,r0] with r1=dword_8107C90 reads table[tier], table bytes are 04 04 C0; strb r0, [r6,#oAIState_ScriptId]
+    stores the byte as the AI state''s ScriptId; no other computation: the routine is purely tier->script-ID
+    selection'
+  refs:
+  - bn6f/asm/asm31.s:169395
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  reproduce: python3 tools/asmcat.py 0x08107C7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No caller known, so where r0 (AI data) and r6 (AI state) are set up is unconfirmed
+- What AI scripts 0x04 and 0xC0 actually do, and whether 0xC0 is a valid script ID or a flag-bearing value
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107C7C -> battle_setAiScriptIdByDifficultyTier
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107C7C

@@ -1,0 +1,49 @@
+name: battle_stepPreActionWait
+address: '0x080FB696'
+kind: function
+status: probable
+summary: Battle-object state step that plays pose 0x11 and counts down a per-instance timer, then advances
+  the object to state 0xC.
+interface: (r0 = scratch, r4/r5/r7 = object work structs from caller) -> r0 = 0 after object_setCounterTime;
+  writes state/animation/timer fields, no meaningful return
+details: This is a per-frame step of a battle entity's state machine using a work struct at r7. On first
+  entry ([r7+1] flag clear) it sets that flag to 4, stores pose/animation id 0x11 into [r5+0x10], calls
+  object_setCounterTime with 0x12 (18 frames), and latches the byte at [r7+0xC] into the halfword countdown
+  at [r7+0x10]. On subsequent frames it decrements [r7+0x10]; when the counter reaches 0 it writes state/action
+  id 0xC into the halfword at [r7+0], handing control to the next state. The [r7+1] byte thus acts as
+  a step-initialized latch, a common pattern in battle object routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#1] / bne skip: [r7+1] is a first-run latch, set to 4 on entry; mov r0,#0x11; strb
+    r0,[r5,#0x10]: selects pose/anim 0x11 on the entity at r5; mov r0,#0x12; bl object_setCounterTime:
+    registers an 18-frame counter with the battle timing system; ldrb r0,[r7,#0xc]; strh r0,[r7,#0x10]:
+    per-instance duration byte becomes the countdown value; sub r0,#1 ... strh r0,[r7]: on expiry writes
+    next state id 0xC into the state halfword'
+  refs:
+  - bn6f/asm/asm31.s:143546
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x080FB696
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- Which enemy/object owns this work struct (r7/r5 layout) — callers are unknown, so the in-game meaning
+  of pose 0x11 and state 0xC is unidentified
+- Whether [r5+0x10] is an animation id or a different mode field
+- Where the duration byte [r7+0xC] is written
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB696 -> battle_stepPreActionWait
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB696

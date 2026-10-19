@@ -1,0 +1,48 @@
+name: battle_setupBeastPwrAttackVars
+address: '0x080121F8'
+kind: function
+status: probable
+summary: Initializes an AI attack object's damage variables from the beast power-attack table before an
+  attack step runs.
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = 9 (next state); clobbers r0-r1, lr
+details: Loads the battle object's Alliance byte (r5+oBattleObject_Alliance) and passes it with a fixed
+  index of 0xA to battle_beastPwrAtk_addScaledBaseFromIndex_8010D04, which scales the beast power-Atk
+  base entry at byte_80212D4[0xA] by the attacker's side. The returned damage is written to oAIAttackVars_Damage;
+  a constant 0x8A (138) is stored to oAIAttackVars_ExtraDamage, and the InitFlag byte is set to 2. It
+  then returns 9, consistent with a state-machine step handler that yields its next state in r0. This
+  looks like the one-time setup step for a specific Beast Out power attack whose fixed bonus damage is
+  138.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0xa + bl battle_beastPwrAtk_addScaledBaseFromIndex_8010D04 selects beast power table
+    entry 10, scaled by alliance; strh r0, [r7,#oAIAttackVars_Damage] stores the scaled result as the
+    attack''s base damage; strh 0x8a into oAIAttackVars_ExtraDamage and strb 2 into oAIAttackVars_InitFlag
+    are fixed one-time init values; returning 9 in r0 matches a step-handler pattern (state machine advance
+    value); sole callee''s known summary (forwards idx + two table bytes to sub_8012642) confirms a scaled
+    base-attack lookup'
+  refs:
+  - bn6f/asm/asm00_2.s:7480
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  reproduce: python3 tools/asmcat.py 0x080121F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so which attack/state invokes this step and what state 9 leads to is unknown
+- Exact layout/meaning of oAIAttackVars_ExtraDamage and InitFlag values (2 vs other flags) not confirmed
+  from this snippet alone
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80121F8 -> battle_setupBeastPwrAttackVars
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80121F8

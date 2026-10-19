@@ -1,0 +1,53 @@
+name: battle_spawnObj1E
+address: '0x080C8070'
+kind: function
+status: probable
+summary: 'Spawns battle object #0x1E and fills in its panel position, element, related-object link, damage
+  word and alliance, marking it with header flag 0x10.'
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related battle object ptr, r6 = DamageAndStaminaDamageCounterDisabler
+  word) -> r0 = new object ptr (untouched/0 path if spawn failed); flags reflect the spawn result
+details: 'A thin spawn-and-configure wrapper: it calls object_spawnType3 with id 0x1E (30), and a push
+  {r0-r2,r5}/pop {r1-r3,r5} register shuffle keeps the caller''s arguments available afterwards (old r0/r1/r2
+  reappear in r1/r2/r3). If the spawn returned 0 it returns immediately without touching anything. On
+  success it stores the arguments into the new object''s oBattleObject_PanelX, PanelY and Element, links
+  the caller''s r5 pointer into oBattleObject_RelatedObject1Ptr, copies the related object''s oBattleObject_AllianceAndDirectionFlip
+  into the new object (so it inherits team/facing), and writes r6 into the DamageAndStaminaDamageCounterDisabler
+  field. Finally it sets bit 0x10 of the new object''s oObjectHeader_Flags. The exact register handoff
+  is unusual (r5/r6 used as argument registers), so the caller''s register setup is what pins the argument
+  roles.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x1e; bl object_spawnType3 — spawns battle object id 0x1E of type 3; push {r0-r2,r5}
+    / pop {r1-r3,r5} — arg-preservation shuffle so caller's r0-r2 are in r1-r3 for the field stores; strb
+    r1/r2,[r0,#oBattleObject_PanelX/PanelY] and strb r3,[r0,#oBattleObject_Element] — position and element
+    come from the caller; str r5,[r0,#oBattleObject_RelatedObject1Ptr]; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh r3,[r0,...] — inherits alliance/flip from the related object; beq locret_80C8096 right after
+    the spawn call — all setup is skipped when the spawn fails
+  refs:
+  - bn6f/asm/asm31.s:34729
+  - 0x080F404E sub_80F404E
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C8070
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What battle object id 0x1E actually is in-game (sprite/behaviour) — need its type-3 initializer
+- Why r5/r6 carry arguments (custom ABI from caller sub_80F404E, or spawn returning/using r5) — caller
+  0x080F404E and object_spawnType3's exact return convention would confirm
+- Meaning of header flag bit 0x10 set on the new object
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8070 -> battle_spawnObj1E
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8070

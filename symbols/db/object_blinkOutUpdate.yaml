@@ -1,0 +1,44 @@
+name: object_blinkOutUpdate
+address: '0x080D1E7E'
+kind: function
+status: probable
+summary: Object update that blinks the object's render flag every other frame for 10 frames, then destroys
+  the object.
+interface: (r5 = battle object) -> void; on entry phase 0 it clears the collision region and sets Timer=10,
+  on timer expiry sets state to CUR_STATE_DESTROY
+details: 'Standard r5-based battle object update. First run: sets oBattleObject_CurPhase=1, calls object_clearCollisionRegion
+  so the object leaves its collision region, and sets oBattleObject_Timer=0xA. Each frame it ORs bit 1
+  into oObjectHeader_Flags, then clears bit 1 whenever bit 1 of the timer is clear, making the object
+  flash with a 2-frame period. Decrements Timer each frame and, when it reaches 0, writes CUR_STATE_DESTROY
+  to oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object engine deletes it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_CurPhase] / strb #1: one-time init on first update; bl object_clearCollisionRegion
+    in init: object becomes non-collidable immediately; tst Timer,#2 / bic Flags,#2: blink flag toggled
+    on odd/even frames; sub Timer,#1 / str CUR_STATE_DESTROY to state field: self-terminates after 10
+    frames; no other state or pointer fields touched: pure timed-visibility/teardown handler'
+  refs:
+  - bn6f/asm/asm31.s:55979
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D1E7E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- which game object uses this update (no captured caller); the flag bit 1's exact rendering meaning (hide
+  vs. draw flag) is inferred from blink behavior, not confirmed from a renderer
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1E7E -> object_blinkOutUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1E7E

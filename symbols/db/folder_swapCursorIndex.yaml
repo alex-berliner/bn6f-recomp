@@ -1,0 +1,46 @@
+name: folder_swapCursorIndex
+address: '0x08135054'
+kind: function
+status: probable
+summary: Swaps a list-cursor/selected-index between old and new values after a chip entry is moved in
+  the folder editor.
+interface: (r0 = list selector 0/1 picking field 0x5C/0x60, r2 = old index, r3 = new index, r5 = UI state
+  struct base) -> void; no return value
+details: r0 indexes a two-word table (0x5C, 0x60) to pick an offset into the struct at r5, i.e. the selected-index
+  field of one of the two chip lists in the folder/pack editor. It loads that word; if it equals r2 it
+  stores r3, if it equals r3 it stores r2, and for any other value it leaves the field untouched (r4 is
+  a flag distinguishing the two cases). This keeps the cursor or selection valid when an entry changes
+  position via folder_moveChipEntry. No flags are meaningfully returned and no other state is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r6, [r6,r0] / off_8135078 words 0x5C,0x60: r0 selects one of two struct fields; cmp r1,r2
+    / cmp r1,r3 with str r2 / str r3 branches: field is rewritten to the opposite of the value it matches;
+    mov r4,#0 / #1 + tst r4,r4 distinguishes which match fired so the correct replacement is stored; sole
+    caller 0x08134CF0 folder_moveChipEntry moves a 0x20-byte chip entry between lists, matching an old-index
+    -> new-index fixup'
+  refs:
+  - bn6f/asm/asm36.s:10394
+  - 0x08134CF0 folder_moveChipEntry
+  reproduce: python3 tools/asmcat.py 0x08135054
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of struct fields at +0x5C/+0x60 (cursor vs some other index) needs the struct layout or
+  folder_moveChipEntry's argument setup
+- Whether r5 is the folder-editor work struct or a broader menu state struct
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8135054 -> folder_swapCursorIndex
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135054

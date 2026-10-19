@@ -1,0 +1,48 @@
+name: ai_scriptDispatch
+address: '0x08110E90'
+kind: function
+status: probable
+summary: 'AI think step: bails out if the object''s collision flags have bits 0xa000 set, otherwise dispatches
+  on the object''s AI script id into a 3-entry handler table (including ai_attackGuardStrike).'
+interface: (r6 = battle object) -> r0 = handler return value; flags from tst of flag word vs 0xa000
+details: 'Calls object_getFlag on the object and tests the result against 0xa000; if either bit (0x8000
+  or 0x2000) is set the function returns immediately without acting. Otherwise it indexes off_8110EAC
+  with [r6,#oAIState_ScriptId] and tail-jumps to the selected Thumb handler via a bl-style ''mov lr, pc;
+  bx r1'', so handlers return to this function''s caller. The table has three entries: sub_8110EB8, ai_attackGuardStrike,
+  and sub_8110F36, so it is the shared per-script-id dispatcher for a family of enemy AI states. The 0xa000
+  mask likely marks flags such as ''invulnerable/frozen'' or ''action already queued'' that suppress AI
+  actions this frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0, r1 with dword_81110F4 =0xa000 followed by bne locret gates the dispatch; ldrb r0,[r6,#oAIState_ScriptId];
+    ldr r1,[r1,r0] indexes off_8110EAC by the object's AI script id; table contains ai_attackGuardStrike,
+    confirming the AI-handler dispatch role; mov lr, pc; bx r1 makes the chosen handler return to this
+    function's caller, i.e. a dispatch not a plain jump; callee object_getFlag reads the object's collision-flag
+    word, matching the flag mask test
+  refs:
+  - bn6f/asm/asm32.s:6295
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x08110E90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- meaning of flag bits 0x8000/0x2000 in the object flag word
+- what sub_8110EB8 and sub_8110F36 do to name the other two script states
+- which enemy/AI family uses this dispatcher (routes battlesweep/beastsp only pin it roughly)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110E90 -> ai_scriptDispatch
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110E90

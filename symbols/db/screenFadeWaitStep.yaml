@@ -1,0 +1,43 @@
+name: screenFadeWaitStep
+address: '0x08027A90'
+kind: function
+status: probable
+summary: Per-frame tick that counts 16 frames, then starts a screen fade and advances a cutscene state.
+interface: () -> void; reads/writes state at [r5+0x40] (frame counter) and [r5+2] (next state)
+details: Called once per frame for some scene/cutscene object in r5. It increments the 32-bit counter
+  at [r5+0x40]; until it reaches 0x10 it does nothing else. On the 16th frame it clears the counter, calls
+  SetScreenFade(4, 0x20) (fade mode 4, parameter 0x20, presumably a fade-out), and stores 8 into the halfword
+  at [r5+2], which is very likely the object's state/mode field, moving the scene to its next step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr/str [r5,#0x40] with cmp #0x10: 16-frame wait counter, reset on expiry (0x08027A94-0x08027AA0);
+    bl SetScreenFade with r0=4, r1=0x20 only after the wait expires (0x08027AA4); strh 8 into [r5,#2]
+    right after the fade call, consistent with a state-field advance (0x08027AA8); recorded execution
+    in beastsp routes: used during a scripted scenario cutscene'
+  refs:
+  - bn6f/asm/asm03_0.s:3140
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08027A90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Which state machine owns r5 (structure layout unconfirmed, so field semantics at +2/+0x40 are inferred)
+- Exact meaning of SetScreenFade(4, 0x20) arguments (fade direction/speed)
+- Direct caller not captured, so trigger context within the beastsp script is inferred only from route
+  logs
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8027A90 -> screenFadeWaitStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027A90

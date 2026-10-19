@@ -359,10 +359,10 @@ Next entity_runAllUpdateHandlers_80465BC(void) {
 
 /* ── battle_resetEStructRecords_8046664 ── */
 /* battle_resetEStructRecords_8046664: run both halves of the (unspecified) update routine:
- * first sub_80466AA, then battle_initEStructArr_804657C. All registers other than the
+ * first e_clearAllEntitySpriteScales, then battle_initEStructArr_804657C. All registers other than the
  * flags are preserved; r4-r7 are untouched here and by both callees. */
 Next battle_resetEStructRecords_8046664(void) {
-    GUEST_CALL(sub_80466AA);
+    GUEST_CALL(e_clearAllEntitySpriteScales);
     GUEST_CALL(battle_initEStructArr_804657C);
     RETURN_TO_CALLER();
 }

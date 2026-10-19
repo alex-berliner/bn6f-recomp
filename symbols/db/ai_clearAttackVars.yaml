@@ -1,0 +1,46 @@
+name: ai_clearAttackVars
+address: '0x08011ADA'
+kind: function
+status: probable
+summary: Zeroes all fields of the AI attack-vars block pointed to by r7 and returns a constant 0x33 status
+  value.
+interface: (r7 = pointer to oAIAttackVars struct) -> r0 = 0x33; flags not meaningful
+details: 'The routine stores 0 into every known field of the oAIAttackVars structure at [r7]: InitFlag,
+  AiDifficultyTier, ChargeReadyFlag, ChipUseDelay (bytes), AttackBoost, ExtraDamage, Damage (halfwords),
+  and AttackBoost2 (word) — a full reset of the AI''s per-entity attack bookkeeping. It takes no register
+  arguments; the struct pointer comes in r7, consistent with the caller-side convention where r7 holds
+  the entity''s AI variable base. It ends by loading 0x33 into r0 and returning, which looks like a fixed
+  success/constant return rather than a computed value. Called from MegaMan''s charge-shot init, it clears
+  the AI attack state before setting up a new attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0 + strb/strh/str into every oAIAttackVars_* field of [r7] — bulk zeroing of one struct;
+    fields span bytes, halfwords and a word (InitFlag..AttackBoost2), so it resets the whole record, not
+    one flag; final mov r0,#0x33; mov pc,lr — constant return value, no computed result; only known caller
+    megamanChargeShotBPwrAtk_init runs it during charge-shot attack setup, fitting 'reset attack vars
+    before use'
+  refs:
+  - bn6f/asm/asm00_2.s:6399
+  - 0x08011A26 megamanChargeShotBPwrAtk_init_8011A26
+  reproduce: python3 tools/asmcat.py 0x08011ADA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- meaning of the constant 0x33 return (status code? attack ID? size?)
+- whether other callers exist that would confirm r7 is always an entity's oAIAttackVars base
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8011ADA -> ai_clearAttackVars
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011ADA

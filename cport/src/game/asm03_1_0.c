@@ -1330,9 +1330,9 @@ static inline call_playCertainMapMusicBasedOnEventByte_8036e44_result call_playC
 }
 
 typedef struct { u32 r5, r6, r7, r10, r11; } call_sub_8035028_result;
-/* register form: generated wrapper: sub_8035028 has no typed C interface yet */
+/* register form: generated wrapper: map_dispatchInternetGroupHook has no typed C interface yet */
 static inline call_sub_8035028_result call_sub_8035028(void) {
-    GUEST_CALL(sub_8035028);
+    GUEST_CALL(map_dispatchInternetGroupHook);
     return (call_sub_8035028_result){ R5, R6, R7, R10, R11 };
 }
 
@@ -1406,7 +1406,7 @@ static void load_map(u32 map_group, u32 map_number) {
     /* Clear the 0x40-byte per-map work block at unk_2011EA0. */
     call_ZeroFillByWord(A_unk_2011EA0, 0x40);
 
-    /* Bring the music (event-driven), the gamestate module (sub_8035028),
+    /* Bring the music (event-driven), the gamestate module (map_dispatchInternetGroupHook),
      * the overworld player (owPlayer_80350a8) and the map's NPCs online. */
     call_playCertainMapMusicBasedOnEventByte_8036e44();
     call_sub_8035028();

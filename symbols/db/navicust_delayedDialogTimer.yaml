@@ -1,0 +1,44 @@
+name: navicust_delayedDialogTimer
+address: '0x08137244'
+kind: function
+status: probable
+summary: Counts 20 frames, then runs NaviCust dialog script 0x19 and advances the state machine to 0x4c.
+interface: (r5 = state object; counter halfword at +0xe, state byte at +0x0) -> none; after 20 ticks runs
+  dialog script 0x19 and sets [r5+0x0] = 0x4c
+details: Each call increments the halfword counter at [r5+0xe] and returns until it reaches 0x14 (20 frames).
+  On the 20th tick it invokes RunTextScriptNaviCustDialog(0x19) to display Navi Customizer text script
+  19, then writes state byte 0x4c into [r5+0x0], transitioning the owning state machine to its next phase.
+  It reads/writes no other fields, so r5 must be the per-instance object/state struct of whatever task
+  schedules it. The script id 0x19 and target state 0x4c are fixed constants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/add/strh on [r5,#0xe] with cmp #0x14 / blt: frame counter that gates the action at 20
+    ticks; mov r0,#0x19; bl RunTextScriptNaviCustDialog: fires NaviCust dialog script 0x19 once the counter
+    expires; mov r0,#0x4c; strb r0,[r5]: advances the state byte of the owning state machine to 0x4c;
+    single callee RunTextScriptNaviCustDialog and the beastsp recorded route tie it to the NaviCust tutorial/dialog
+    flow'
+  refs:
+  - bn6f/asm/asm36.s:14850
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  reproduce: python3 tools/asmcat.py 0x08137244
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Which task/state machine owns the r5 struct (callers unknown), and what state 0x4c leads to, are not
+  visible from this function alone
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8137244 -> navicust_delayedDialogTimer
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137244

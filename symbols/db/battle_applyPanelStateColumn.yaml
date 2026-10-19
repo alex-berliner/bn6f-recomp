@@ -1,0 +1,52 @@
+name: battle_applyPanelStateColumn
+address: '0x080B8844'
+kind: function
+status: probable
+summary: 'Landing effect of a lobbed projectile: writes a panel-state code (from a small table indexed
+  by the object''s Param1) to the landed panel and to the panels above and below it, via sub_80B8870.'
+interface: (r5 = battle object) -> none; reads oBattleObject_Param1, PanelX, PanelY; writes oBattleObject_ExtraVars+4;
+  calls sub_80B8870(x, y), (x, y-1), (x, y+1)
+details: Clamps oBattleObject_Param1 to 0..4 and uses it to index a 5-entry table at byte_80B88B4, storing
+  the entry into oBattleObject_ExtraVars+4, then calls sub_80B8870 with (PanelX, PanelY). It then overwrites
+  ExtraVars+4 with the constant 1 and calls sub_80B8870 again at (PanelX, PanelY-1) and (PanelX, PanelY+1),
+  after adjusting r1 by -1 then +2. So the same panel-mutation helper runs on a vertical 3-panel column,
+  with the center panel getting the table-selected state and the two flanking panels getting state 1.
+  This matches the caller battle_lobbedProjectileLandPhase's alternate landing behavior of cracking the
+  target panel and its neighbors. ExtraVars+4 evidently carries the panel-state/terrain code consumed
+  by sub_80B8870.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller battle_lobbedProjectileLandPhase 'lands it — spawning an explosion hitbox ... or cracking
+    that panel and its neighbors' — this is the crack branch; cmp r2,#4 / mov r1,#4 clamps Param1 to index
+    table off_80B88B0 -> byte_80B88B4, stored to oBattleObject_ExtraVars+4; three bl sub_80B8870 calls
+    with r1 = PanelY, PanelY-1, PanelY+1 (sub r1,#1 then add r1,#2) around the same PanelX; ExtraVars+4
+    is set to table[Param1] for the center call and to literal 1 (byte_80B88B4 = 0x1) for both side calls;
+    r0/r1 to sub_80B8870 are loaded from oBattleObject_PanelX/PanelY, panel coordinates of the object
+  refs:
+  - bn6f/asm/asm31.s:909
+  - 0x080B86F8 battle_lobbedProjectileLandPhase
+  - 0x080B8870 sub_80B8870
+  reproduce: python3 tools/asmcat.py 0x080B8844
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of sub_80B8870 (assumed 'set panel state at x,y to ExtraVars+4') not verified from its
+  body
+- contents of the 5-entry table at byte_80B88B4 — which panel states Param1 values 0..4 map to
+- whether the literal 1 for the side panels means 'cracked' specifically
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80B8844 -> battle_applyPanelStateColumn
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8844

@@ -1,0 +1,51 @@
+name: sprite_queueOamPair
+address: '0x0801C9E4'
+kind: function
+status: probable
+summary: Queues two hardcoded sprite OAM entries (one normal, one hidden/alternate-attrs) into consecutive
+  OAM slots, likely a battle-screen sprite pair.
+interface: () -> void; no return value, calls sprite_queueOamEntry twice
+details: 'The function is a pure data-pusher: it makes two back-to-back calls to sprite_queueOamEntry
+  (via the 0x802FE28 thunk that forwards r0-r3). The first call passes the 32-bit attribute word 0x8064403F
+  with slot/index 0xE370 and constants r2=0, r3=6; the second passes 0x84803F with slot 0xE378, i.e. exactly
+  one OAM entry (8 bytes) after the first, with identical r2/r3. The attribute words look like packed
+  attr0/attr1 pairs (low half 0x403F vs 0x803F differ only in attr0 bit15, high halves 0x8064 vs 0x0084
+  give the X/flip bits), so the two entries render the same tile pair with a small attribute difference.
+  No locals, no state, no other side effects; it just enqueues this fixed pair.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Both calls go to sprite_queueOamEntryThunk_802FE28, the known trampoline into sprite_queueOamEntry;
+    First call args: ldr r0,=0x8064403F; ldr r1,=0xE370; mov r2,#0; mov r3,#6 (sub_801C9E4 instrs 3-8);
+    Second call args: ldr r0,=0x84803F; ldr r1,=0xE378 with the same r2/r3 — slot 0xE378 is one 8-byte
+    OAM entry past 0xE370; The two 32-bit constants differ only in bits consistent with attr0/attr1 of
+    one sprite, suggesting the same visual shown in two states; Function body is only the two queueing
+    calls plus pop {pc}; no other work'
+  refs:
+  - bn6f/asm/asm00_2.s:28461
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x0801C9E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+- fuzz
+open_questions:
+- What sprite/hud element OAM slots 0xE370/0xE378 correspond to (needs the OAM shadow-buffer layout or
+  a caller context)
+- Meaning of the r3=6 argument to sprite_queueOamEntry (priority? tile count? queue id)
+- Which recorded route (battlesweep/beastsp/fuzz) actually reaches it, to pin down the visual
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801C9E4 -> sprite_queueOamPair
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801C9E4

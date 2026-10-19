@@ -1,0 +1,45 @@
+name: navicust_counterThenShowDialog
+address: '0x081374AC'
+kind: function
+status: probable
+summary: Counts 20 frames on an object, then once fires NaviCust dialog text 0x23 and switches the object's
+  state byte to 0x70.
+interface: (r5 = state object, no args) -> r0 = text script id to callee; writes halfword [r5+0xE] counter
+  and byte [r5] = 0x70 on completion
+details: No arguments are passed; the function works on the object/state pointed to by r5. Each call increments
+  the halfword counter at r5+0xE; while it is below 0x14 (20) the function just returns. When the counter
+  reaches 20, it calls RunTextScriptNaviCustDialog with script id 0x23 and then stores 0x70 into the byte
+  at r5+0, which is almost certainly that object's state/mode field (a value like 0x70 typically routes
+  to another step of the same state machine). The dialog is therefore triggered exactly once, at the end
+  of a ~20-frame delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh [r5,#0xe] with cmp #0x14 / blt: frame counter until 20 before acting; bl RunTextScriptNaviCustDialog
+    with r0=0x23: fires a fixed NaviCust dialog; mov r0,#0x70 / strb r0,[r5]: sets state byte at struct
+    base after the dialog; callee name RunTextScriptNaviCustDialog ties the struct to the NaviCust subsystem'
+  refs:
+  - bn6f/asm/asm36.s:15166
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  reproduce: python3 tools/asmcat.py 0x081374AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- which object/state machine owns the r5 struct (what state 0x70 means and where it is dispatched)
+- what NaviCust dialog text 0x23 says, to pin the in-game trigger (bug part? chip effect?)
+- no known callers, so the entry condition into this counter state is unverified
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81374AC -> navicust_counterThenShowDialog
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81374AC

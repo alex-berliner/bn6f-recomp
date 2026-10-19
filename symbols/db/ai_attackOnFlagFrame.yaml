@@ -1,0 +1,49 @@
+name: ai_attackOnFlagFrame
+address: '0x08115D58'
+kind: function
+status: probable
+summary: On the flagged frame (bit 0x80 of the frame attribute) of an AI attack animation, restarts the
+  attack step timer, switches the object's animation to 4, and records hit element 8.
+interface: (r0 = battle object (sprite data for getFrameParameters), r5/r7 = same object's battle/AI-attack
+  var structs) -> r0 = destroyed; no meaningful return, flags from tst
+details: 'Calls sprite_getFrameParameters to fetch the current frame''s tile index/flip/attribute byte;
+  only bit 0x80 of the attribute matters. If set: writes 0 to oBattleObject_ExtraVars+4, copies oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer (restarting the step countdown), stores 4 into oBattleObject_CurAnim (byte),
+  and stores 8 into oAIAttackVars_HitElement (halfword). The r4/r6 pushes are unused vestigial saves.
+  Acts as a conditional per-frame hook inside an AI attack state, keyed off a marker frame in the sprite
+  animation data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_getFrameParameters then tst r0,#0x80 with beq to the epilogue gates the entire body
+    on the frame-attribute flag (asm lines 2-4); strh r0,[r7,#oAIAttackVars_StepTimer] after ldrh from
+    oAIAttackVars_AttackDuration shows the attack step timer being reset to the attack's duration; strb
+    r0,#4 into oBattleObject_CurAnim changes the object's current animation once the flag frame is reached;
+    strh r0,#8 into oAIAttackVars_HitElement and str 0 to oBattleObject_ExtraVars+4 only occur inside
+    the flagged branch, tying the function to the AI attack state structs
+  refs:
+  - bn6f/asm/asm32.s:15629
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x08115D58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which attack/animation invokes this hook and the meaning of anim id 4 and hit element
+  8 are unconfirmed
+- Exact semantics of bit 0x80 in the frame attribute byte (attack trigger vs. other event marker) would
+  be settled by finding sibling functions testing other attribute bits
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115D58 -> ai_attackOnFlagFrame
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115D58

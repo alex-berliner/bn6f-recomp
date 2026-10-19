@@ -1,0 +1,53 @@
+name: battle_checkFacingOffsets
+address: '0x080265D0'
+kind: function
+status: probable
+summary: Walks a 0x7F-terminated table of signed tile offsets, mirrors each by the object's facing direction,
+  and returns nonzero as soon as a checker on the resulting relative tile succeeds.
+interface: (r0 = arg pushed to stack; r6 = base object/pointer, r7 = checker arg, custom ABI) -> r0 =
+  first nonzero checker result, else 0
+details: 'The function is a scan loop over the byte table byte_8026735: each signed byte is multiplied
+  (mul r0, r1) by object_getFrontDirection()''s +1/-1 facing multiplier and added to r6, forming a relative
+  address/offset, then sub_8026450(r0, r7, stackArg) is called. If the checker returns nonzero the loop
+  exits immediately with that value; reaching the 0x7F terminator byte returns 0. The original r0 is pushed
+  and read back as the third checker argument, and r6/r7 are expected to be preset by the caller (non-standard
+  ABI), so the six tiny callers at 0x8026650-0x802668A are wrappers that fix up r6/r7/arg before jumping
+  here. Semantics beyond ''some per-relative-offset predicate'' depend on sub_8026450, which is unrenamed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrsb r1,[r4,r1] / cmp r1,#0x7f / beq — table walk terminated by 0x7F sentinel at byte_8026735;
+    bl object_getFrontDirection + mul r0,r1 — each offset is mirrored by the battle object's facing side;
+    bl sub_8026450 / cmp r0,#0 / bne — early-out on first successful per-offset check; push {r0} ... ldr
+    r2,[sp] — original r0 is passed through on the stack as third argument; six 0xA-byte wrapper callers
+    (0x8026650..0x802668A) fit the preset-r6/r7 custom ABI
+  refs:
+  - bn6f/asm/asm03_0.s:196
+  - 0x08026650 sub_8026650
+  - 0x0802665A sub_802665A
+  - 0x08026668 sub_8026668
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08026450 sub_8026450
+  reproduce: python3 tools/asmcat.py 0x080265D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- what sub_8026450 tests on the relative target (object presence, panel type, hole?) — that would fix
+  the in-game meaning
+- what structure r6 points to (battle object vs panel array) and what r7 selects
+- the exact contents of byte_8026735 to know which relative tiles are probed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80265D0 -> battle_checkFacingOffsets
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80265D0

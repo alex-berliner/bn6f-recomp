@@ -1,0 +1,55 @@
+name: battle_spawnObject3COnPanel
+address: '0x080CB8DE'
+kind: function
+status: probable
+summary: Spawns battle object kind 0x3C via object_spawnType3 and fills in its panel position, element,
+  damage field, and the source object's alliance/direction.
+interface: (r0 = panel X / 5th spawn arg, r1 = panel Y, r2 = element, r5 = source object whose AllianceAndDirectionFlip
+  is copied, r6 = value for DamageAndStaminaDamageCounterDisabler) -> r0 = new battle object or 0; flags
+  set by null check on r5 after spawn.
+details: The routine saves the caller's r0-r2 plus r5, then calls object_spawnType3 with r0 = 0x3C (a
+  fixed object kind) and the caller's r1-r3 plus the original r0 as the stack argument. On success (spawn
+  leaves the new object pointer in r5, moved to r0 and null-checked), it stores the original r0/r1 into
+  oBattleObject_PanelX/PanelY, r2 into oBattleObject_Element, r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and halfword-copies oBattleObject_AllianceAndDirectionFlip from the object pointer the caller had in
+  r5. It returns the new object pointer, or leaves the spawn failure value if the spawn failed. So it
+  is a specialized one-kind object spawner parameterized by placement and damage rather than a generic
+  spawn helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType3 with r0 = 0x3C hard-coded as the object kind (sub_80CB8DE); strb r1/r2
+    to oBattleObject_PanelX/PanelY and strb r3 to oBattleObject_Element right after the null check; str
+    r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler and ldrh/strh copy of oBattleObject_AllianceAndDirectionFlip
+    from the r5 source object; mov r0, r5 immediately after the spawn call, then beq locret — spawn returns
+    the object in r5 and the branch handles failure; all three known callers (0x080ECB28, 0x081025DA,
+    0x0810C4B4) are battle-code routines, and the sole callee is the documented type-3 spawn
+  refs:
+  - bn6f/asm/asm31.s:42415
+  - 0x080ECB28 sub_80ECB28
+  - 0x081025DA sub_81025DA
+  - 0x0810C4B4 sub_810C4B4
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CB8DE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what battle object kind 0x3C actually is in-game (which chip/attack entity uses id 60)
+- whether the r5 source object is always the acting/attacking object
+- what the fifth (stack) argument to object_spawnType3 means, since this caller passes the original r0
+  there
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CB8DE -> battle_spawnObject3COnPanel
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB8DE

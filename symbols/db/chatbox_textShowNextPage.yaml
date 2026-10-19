@@ -1,0 +1,51 @@
+name: chatbox_textShowNextPage
+address: '0x08124624'
+kind: function
+status: probable
+summary: Advances the chatbox multi-page text display to the next page, or ends the text (script 6) when
+  the last page is reached
+interface: (r0 = byte flag, 0x80 means use fixed page 0x32; r5 = text display object) -> r0 = chatbox_runScript201C100
+  result; r5+0x02 state updated
+details: 'r5 is a text-display state object: byte 0x02 is its state, 0x18/0x1a hold current and last page
+  indices, 0x16 a page value, 0x10 a per-object byte set from r0. If current page (0x18) equals the final
+  page (0x1a), it sets state 8 and runs text script 6 to finish/close the message. Otherwise it sets state
+  0xC, resets byte 0x03 to 0, computes the next page value (0x32 if the stored byte equals 0x80, else
+  the current index from 0x1a), writes it to 0x16, copies the byte to chatbox+0x4C, and runs script 7
+  to render the next page. Script 7 vs 6 selection is the whole branch; the 0x80 special case likely marks
+  an auto/forced page.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,r7 / beq: compares [r5+0x18] with [r5+0x1a] to detect last text page; script 6 branch
+    also sets state byte [r5+0x02]=8, i.e. an end state; script 7 branch stores page value into [r5+0x16]
+    and state 0xC before chatbox_runScript201C100; cmp r0,#0x80 beq picks constant 0x32 over the [r5+0x1a]
+    page index; callee chatbox_runScript201C100 runs text archive script 6 or 7, matching paging/close
+    semantics'
+  refs:
+  - bn6f/asm/asm33.s:2836
+  - 0x0812474C chatbox_runScript201C100_812474C
+  reproduce: python3 tools/asmcat.py 0x08124624
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battles1
+- beastsp
+- fuzz
+- menus3
+open_questions:
+- which caller sets r5 and what the full text-display object layout is
+- exact meaning of the r0 flag value 0x80 and page constant 0x32
+- what scripts 6 and 7 render exactly (close vs next page) is inferred, not read
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8124624 -> chatbox_textShowNextPage
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8124624

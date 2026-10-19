@@ -1,0 +1,48 @@
+name: ai_runStateDispatch
+address: '0x08112278'
+kind: function
+status: probable
+summary: 'Per-frame AI update: tries to start a chip attack, otherwise dispatches to the AI state handler
+  selected by the object''s ScriptId field.'
+interface: (r6 = AI battle object ptr) -> r0 = tryStartChipAttack result (1 if chip attack started, else
+  handler's return); flags clobbered
+details: 'Takes the AI object in r6 (no arguments in r0-r3). First calls battleObject_tryStartChipAttack_8112600;
+  if it returns nonzero the chip-attack startup was performed and the function returns immediately. Otherwise
+  it reads the object''s oAIState_ScriptId byte, indexes the jump table at off_8112294, and tail-calls
+  that handler with lr set via ''mov lr, pc'' (ARM/Thumb interwork dispatch, handlers are Thumb+1). The
+  table has three states: battleObject_aiSetupCombatInit_81122A0 (combat init), ai_prepareTargetedAttack,
+  and sub_811239A. r4 is preserved but never used inside, suggesting it was live in the original caller
+  or a leftover.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_tryStartChipAttack_8112600; cmp r0,#0; bne locret — chip attack preempts normal
+    AI state; ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — state-indexed tail dispatch;
+    off_8112294 table: aiSetupCombatInit, ai_prepareTargetedAttack, sub_811239A — exactly three AI states;
+    Called from recorded battle routes (battlesweep, beastsp) with no known direct callers, consistent
+    with a per-frame battle AI tick invoked indirectly'
+  refs:
+  - bn6f/asm/asm32.s:8636
+  - 0x08112600 battleObject_tryStartChipAttack_8112600
+  reproduce: python3 tools/asmcat.py 0x08112278
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_811239A (third state) does
+- Which AI archetype uses this dispatch — the object layout of r6 and who sets oAIState_ScriptId to 0..2
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112278 -> ai_runStateDispatch
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112278

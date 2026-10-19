@@ -1,0 +1,47 @@
+name: beastOutDialogDelayStep
+address: '0x081370AC'
+kind: function
+status: probable
+summary: Waits ~20 frames, then shows NaviCust dialog script 0xF and advances the Beast-related state
+  machine to state 0x2C.
+interface: (r5 = task/object state struct, frame counter at +0xe, state byte at +0x0) -> r0 = 0; flags
+  from cmp/blt
+details: Each call increments the halfword counter at [r5,#0xe]. While the counter is below 0x14 it returns
+  immediately, so the step must be called once per frame. On the 20th tick it calls RunTextScriptNaviCustDialog
+  with text-script id 0xF, then stores 0x2C into the state byte at [r5], handing control to the next state
+  handler. No other fields are touched. r5 is caller-supplied (this is an r5-based step function, not
+  r0-based), which is why no direct callers were captured.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/add/strh on [r5,#0xe] with cmp #0x14/blt: per-frame counter gated on 20 ticks; mov r0,#0xf;
+    bl RunTextScriptNaviCustDialog: fires NaviCust dialog script 15 once the delay elapses; mov r0,#0x2c;
+    strb r0,[r5]: transitions the object''s state byte to 0x2C after the dialog; build-snapshots route
+    ''beastsp'' shows it runs in the Beast spirit/Beast Over flow; no other callee and early return keeps
+    the step side-effect-free until the 20th tick'
+  refs:
+  - bn6f/asm/asm36.s:14631
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  reproduce: python3 tools/asmcat.py 0x081370AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Which state machine owns r5 (what structure has the state byte at +0 and a frame counter at +0xe) and
+  what state 0x2C does next
+- What text NaviCust dialog script 0xF displays, to pin down the exact in-game trigger (Beast Over warning
+  vs. equip/upgrade dialog)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81370AC -> beastOutDialogDelayStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81370AC

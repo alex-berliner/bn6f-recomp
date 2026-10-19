@@ -1,0 +1,48 @@
+name: ai_negateExtraVars
+address: '0x08115668'
+kind: function
+status: probable
+summary: Boss AI helper that, on a failed check, flips the sign of the battle object's ExtraVars field
+  (e.g. toggling a direction/offset for the next attack).
+interface: (r0 = battle object, r5 = battle object) -> r0 clobbered by calls; no meaningful return
+details: Calls sub_811567E and returns immediately if it yields nonzero (a success/probability check,
+  given the pattern of an immediate retake). Otherwise it loads the signed 32-bit value at oBattleObject_ExtraVars,
+  stores its negation back into the same field, and calls sub_811567E a second time whose result is discarded
+  — suggesting that callee has side effects (e.g. consuming/advancing a random or timer state). The sole
+  visible effect is sign-flipping ExtraVars, consistent with toggling left/right or mirror positioning
+  between boss actions. r0 is passed unchanged into the first callee call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8115668: bl sub_811567E; cmp r0,#0; bne locret — early exit on nonzero check; ldr r0,[r5,#oBattleObject_ExtraVars];
+    neg r0,r0; str r0,[r5,#oBattleObject_ExtraVars] — negates the known ExtraVars field in place; second
+    bl sub_811567E before locret with r0 unused afterwards — call made only for side effects; called from
+    0x08115598 ai_selectAttack (boss AI attack selection), fitting a per-turn setup tweak'
+  refs:
+  - bn6f/asm/asm32.s:14880
+  - 0x08115598 ai_selectAttack
+  - 0x0811567E sub_811567E
+  reproduce: python3 tools/asmcat.py 0x08115668
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_811567E actually checks (probability vs. timer/state), which would pin down the in-game meaning
+  of the negated ExtraVars value
+- what ExtraVars holds for this boss (direction offset? charge accumulator?) — needs cross-referencing
+  other users of the field
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115668 -> ai_negateExtraVars
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115668

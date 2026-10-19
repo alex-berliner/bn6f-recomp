@@ -1,0 +1,46 @@
+name: ai_stepAttackUpdate
+address: '0x0810082A'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI enemy''s step-style attack: on first run it sets element 4, resets
+  the animation and loads the duration timer, then counts down and exits the attack state when it expires.'
+interface: (r7 = battle object AI vars, r5 = battle object) -> r0 = destroyed; sets oAIAttackVars_AttackElement,
+  oBattleObject_CurAnim, oAIAttackVars_StepTimer
+details: 'The routine checks oAIAttackVars_AttackElement in the object''s AI vars (r7). If it is zero,
+  the attack has not been initialized: it writes element = 4 (a step/melee-style attack id), clears oBattleObject_CurAnim
+  to 0, and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer. On subsequent frames it
+  decrements StepTimer each tick, and when the timer reaches 0 it calls object_exitAttackState to leave
+  the attack state. The actual step movement must be driven elsewhere (anim 0 plus the element id), as
+  none happens here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between init and countdown paths;
+    strb #4 into oAIAttackVars_AttackElement and mov #0 into oBattleObject_CurAnim on the init path; ldrh
+    oAIAttackVars_AttackDuration -> strh oAIAttackVars_StepTimer arms the per-frame countdown; bl object_exitAttackState
+    fires only when StepTimer decrements to 0'
+  refs:
+  - bn6f/asm/asm31.s:154136
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x0810082A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of attack element id 4 and whether this is the enemy's standard step-forward attack
+- where the step movement itself is performed (no movement code in this routine)
+- which AI table/pointer invokes this handler, since no caller is recorded
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810082A -> ai_stepAttackUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810082A

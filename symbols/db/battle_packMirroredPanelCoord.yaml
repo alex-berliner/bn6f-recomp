@@ -1,0 +1,50 @@
+name: battle_packMirroredPanelCoord
+address: '0x080D9CC2'
+kind: function
+status: probable
+summary: Packs a panel coordinate offset to the opposite arena side (x+3*facing, y) into the r4 request
+  word before delegating to the next chip-use handler.
+interface: (r0-r3 = chip-use args preserved; r4 = accumulator word) -> r4 |= (panelX + 3*frontDir) <<
+  16 | panelY << 24; tail-calls sub_80D9CA4(r0-r3, r4)
+details: Calls object_getFrontDirection to get the +1/-1 side multiplier for the battle object in r5,
+  multiplies by 3, and adds oBattleObject_PanelX, producing a coordinate shifted into the opposing half
+  of the 6-column arena. That value is placed at bits 16-23 and oBattleObject_PanelY at bits 24-31 of
+  a packed word, which is OR-merged into r4 (r4 is an in/out accumulator, not saved). r0-r3 are pushed
+  on entry and restored right before the tail-call to sub_80D9CA4, so the original arguments reach the
+  callee alongside the enriched r4 word. The 17-instruction body is pure coordinate-packing; all real
+  work happens in the callee.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,#3 after bl object_getFrontDirection shows the facing-scaled 3-column offset (asm lines
+    4-6); ldrb from oBattleObject_PanelX/oBattleObject_PanelY with lsl 16 / lsl 24 packing shows a (x,y)
+    panel word being built; orr r4, r0 merges into a pre-existing r4 rather than returning, so r4 is a
+    request word consumed downstream; pop {r0-r3} before bl sub_80D9CA4 shows original call arguments
+    are forwarded with the modified r4; executed on recorded chip routes, consistent with chip targeting
+    across the arena
+  refs:
+  - bn6f/asm/asm31.s:72747
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D9CA4 sub_80D9CA4
+  reproduce: python3 tools/asmcat.py 0x080D9CC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- What sub_80D9CA4 does with the packed word in r4 (placement, move, or area-steal style grab?)
+- Which chips' scripts route here, to confirm the 'opposite side' interpretation of the +3*facing offset
+- Whether bits 16-23/24-31 of the r4 word match a known request-packet layout elsewhere in the codebase
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9CC2 -> battle_packMirroredPanelCoord
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9CC2

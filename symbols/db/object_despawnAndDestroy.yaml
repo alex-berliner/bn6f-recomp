@@ -1,0 +1,46 @@
+name: object_despawnAndDestroy
+address: '0x080D83CC'
+kind: function
+status: probable
+summary: Battle-object update handler that plays a brief non-hittable despawn animation, then frees the
+  object's ExtraVars and destroys it.
+interface: (r5 = battle object pointer, r0 = scratch) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when done
+details: 'On phase 0 it starts the despawn: sets CurPhase to 4, CurAnim to 2, clears the object''s collision
+  region via object_clearCollisionRegion (making it unhittable), and sets Timer to 2. On subsequent calls
+  it decrements Timer; when it hits 0, if ExtraVars points to an allocation it zeroes the first word and
+  nulls the pointer (leaked/one-word free pattern), then writes CUR_STATE_DESTROY into the combined state
+  field so the object loop tears it down. The 2-frame window suggests a short flash/pop before removal,
+  with collision disabled so it can''t be hit again.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase 0 branch sets oBattleObject_CurPhase=4, oBattleObject_CurAnim=2, timer=2 — one-shot despawn
+    init; bl object_clearCollisionRegion during init removes the object from collision while it despawns;
+    Timer decrement with 'bgt locret' makes phase 4 a 2-frame wait before teardown; zeroes [ExtraVars],
+    nulls ExtraVars, then mov r0,#CUR_STATE_DESTROY into the state word — standard self-destruct
+  refs:
+  - bn6f/asm/asm31.s:69363
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D83CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- which object types use this handler (no callers known; battlesweep only shows it runs)
+- what anim 2 depicts (hit spark, dissolve, etc.) and whether ExtraVars is a malloc'd block or just a
+  scratch field
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D83CC -> object_despawnAndDestroy
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D83CC

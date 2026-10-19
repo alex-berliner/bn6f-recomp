@@ -1,0 +1,46 @@
+name: battle_selfDestructAfterDelay
+address: '0x080CCF88'
+kind: function
+status: probable
+summary: Battle-object per-tick routine that makes the object linger 30 frames then remove itself (clears
+  collision region, sets destroy state).
+interface: (r5 = battle object ptr, r0 = tick/arg ignored on entry) -> void; no return value
+details: A no-op-argument per-tick handler for a battle object (r5 is the object struct, as callers of
+  such phase/timer handlers pass). On the first tick (CurPhase == 0) it advances the phase to 4, sets
+  the 16-bit Timer to 0x1E (30 frames), and returns. On subsequent ticks it decrements the Timer each
+  frame until it goes negative; then it calls object_clearCollisionRegion to unlink the object's collision
+  region and writes CUR_STATE_DESTROY into CurState, ending the object. This is the generic 'despawn after
+  a short delay' behavior used for transient battle entities.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] / phase==0 sets phase=4 and Timer=0x1E — one-shot delay
+    setup on first tick; timer decrement `sub r0,#1; strh; bge` — counts 30 frames before acting; bl object_clearCollisionRegion
+    before destruction — removes the object from collision processing; mov r0,#CUR_STATE_DESTROY; strb
+    into CurState — standard battle-object teardown path; callee object_clearCollisionRegion is the known
+    battle-object collision-unlink routine, confirming r5 is a battle object
+  refs:
+  - bn6f/asm/asm31.s:45473
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CCF88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so which battle entities use this handler is unknown; a caller assigning it as an object's
+  tick handler would confirm the entity type
+- The meaning of phase value 4 (vs other phase codes) in this object's state machine is not confirmed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CCF88 -> battle_selfDestructAfterDelay
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCF88

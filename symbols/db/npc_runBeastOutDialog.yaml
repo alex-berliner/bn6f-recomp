@@ -1,0 +1,47 @@
+name: npc_runBeastOutDialog
+address: '0x08124660'
+kind: function
+status: probable
+summary: Displays one of two chatbox texts (script 7 or 11) depending on a Beast-out scenario flag, storing
+  the chosen text id in a state object and the chatbox.
+interface: (r0 = text/dialog id byte, r5 = dialog state object) -> r0 = chatbox_runScript result; sets
+  [r5+0x10]=id, [r5+2]/[r5+3] state bytes, chatbox+0x4C=id
+details: The byte in r0 is saved to [r5+0x10] and later copied into chatbox+0x4C, which the chatbox script
+  runner presumably uses as the current text id. It reads oToolkit_S2001c04_Ptr (Beast-out scenario state);
+  a nonzero word at +0x24 selects the second branch ([r5+2]=8, script 0xB) over the first ([r5+2]=0xC,
+  [r5+3]=8, script 7). Both branches then fetch oToolkit_ChatboxPtr, store the id at +0x4C, and call chatbox_runScript201C100
+  with index 7 or 0xB. r5 is not set up here, so it must be an object/NPC struct supplied by an unseen
+  caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#0x10] then ldrb r0,[r5,#0x10] reloaded for both chatbox stores — r0 is an id kept
+    in the state object; ldr r0,[r4,#0x24]; tst r0,r0; bne — selects between the two script variants;
+    mov r0,#7 / mov r0,#0xb followed by bl chatbox_runScript201C100_812474C — the two chatbox texts; ldr
+    r4,[r10,#oToolkit_S2001c04_Ptr] and oToolkit_ChatboxPtr — beast-out scenario flag and chatbox are
+    the touched subsystems
+  refs:
+  - bn6f/asm/asm33.s:2871
+  - 0x0812474C chatbox_runScript201C100_812474C
+  reproduce: python3 tools/asmcat.py 0x08124660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- No known caller, so what r5 is (NPC or dialog-state struct) and who passes it is unconfirmed
+- What chatbox+0x4C is named and what text ids 7 and 0xB in the 201C100 archive actually say
+- The meaning of the flag at S2001c04+0x24 and the state bytes [r5+2]/[r5+3]
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8124660 -> npc_runBeastOutDialog
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8124660

@@ -1,0 +1,44 @@
+name: sprite_queueTileGfx
+address: '0x08029EAC'
+kind: function
+status: probable
+summary: Queues a 32-byte GFX transfer copying one tile (index r0) from a ROM sprite-sheet table into
+  the fixed buffer unk_3001AA0.
+interface: (r0 = tile/frame index) -> r0 = preserved?; queues transfer via QueueEightWordAlignedGFXTransfer
+details: Computes src = dword_86E944C + r0*0x20, i.e. entry r0 of a table of 32-byte blocks at 0x86E944C
+  in ROM, then calls QueueEightWordAlignedGFXTransfer with dest unk_3001AA0 (a fixed RAM staging buffer)
+  and size 0x20. 32 bytes is exactly one 8x8 4bpp tile, so this loads a single tile of a sprite sheet
+  for later upload to VRAM. The destination is always the same buffer, so successive calls overwrite the
+  previous tile. No return value is produced beyond the callee's.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0,#0x20 + add off_8029EC0(dword_86E944C): r0 indexes 32-byte entries of a ROM table; bl
+    QueueEightWordAlignedGFXTransfer with r2=0x20: a single 32-byte queued transfer; fixed dest unk_3001AA0
+    (off_8029EC4): one shared staging buffer, not per-object VRAM; sole caller sub_802794A; only route
+    captured is beastsp'
+  refs:
+  - bn6f/asm/asm03_0.s:8342
+  - 0x0802794A sub_802794A
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x08029EAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- What dword_86E944C contains (sprite sheet vs other tile table) and what unk_3001AA0 feeds (which VRAM
+  consumer) — caller sub_802794A would confirm whether r0 is a frame/tile id
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8029EAC -> sprite_queueTileGfx
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029EAC

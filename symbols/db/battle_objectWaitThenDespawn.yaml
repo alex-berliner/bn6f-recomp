@@ -1,0 +1,46 @@
+name: battle_objectWaitThenDespawn
+address: '0x080D83A0'
+kind: function
+status: probable
+summary: Battle-object handler that waits Param2 frames with anim 1, then clears its collision region
+  and switches to action 8.
+interface: (r5 = battle object) -> void; flags preserved by timer branch
+details: On phase 0 the handler stores 4 into oBattleObject_CurPhase, sets oBattleObject_CurAnim to 1,
+  and copies oBattleObject_Param2 into oBattleObject_Timer as a frame countdown. In phase 4 it decrements
+  Timer each tick and returns while it is still positive. When the timer hits zero it calls object_clearCollisionRegion
+  to detach the object from its collision region, sets oBattleObject_CurAction to 8, and zeroes oBattleObject_CurPhaseAndPhaseInitialized
+  to restart the state machine for the next action. This matches the pattern of a temporary effect object
+  that plays one anim for a fixed duration before handing control to another action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] / mov r1,#4 / strb r1,[r5,#oBattleObject_CurPhase] — phase
+    0 initializes phase 4; strh r0,[r5,#oBattleObject_Timer] with r0 = Param2 — timer duration comes from
+    Param2; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bgt — frame countdown loop; bl object_clearCollisionRegion
+    when Timer reaches 0 — removes object from collision region; mov r0,#8; strb r0,[r5,#oBattleObject_CurAction]
+    plus phase reset — transitions to next action
+  refs:
+  - bn6f/asm/asm31.s:69336
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D83A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What object type and which battle action this handler belongs to (no callers known; only route 'battlesweep'
+  runs it)
+- What CurAction 8 means in the enclosing object's action table
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D83A0 -> battle_objectWaitThenDespawn
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D83A0

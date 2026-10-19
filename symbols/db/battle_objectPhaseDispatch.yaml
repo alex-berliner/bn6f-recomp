@@ -1,0 +1,48 @@
+name: battle_objectPhaseDispatch
+address: '0x080DA172'
+kind: function
+status: probable
+summary: Runs one step of a battle object's phase state machine (five handlers), skipping entirely while
+  time-stop is active.
+interface: (r5 = battle object) -> r0 = handler return value; flags preserved per handler
+details: First checks battle_isTimeStop; if the battle is frozen (flags bit 2) it returns immediately
+  without doing anything. Otherwise it calls sub_80DA448 (per-step setup, details unknown), then loads
+  the object's current phase from oBattleObject_CurPhase and uses it as an index into a five-entry jump
+  table at off_80DA190, dispatching via `mov lr, pc; bx r1` so each handler returns straight back to the
+  caller of this function. The five handlers (0x80DA1A4, 0x80DA1AE, 0x80DA1C6, 0x80DA1F8, 0x80DA248) form
+  the phases of this object's behaviour; the phase field is not advanced here, so handlers are responsible
+  for their own transitions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isTimeStop; tst r0,r0; bne locret: whole update suppressed during time-stop; ldrb
+    r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0]: phase indexes a 5-entry table; off_80DA190 holds
+    five thumb handlers sub_80DA1A4..sub_80DA248 dispatched via mov lr,pc; bx r1; bl sub_80DA448 runs
+    before the dispatch, suggesting per-frame pre-step for the phase; recorded route ''chips'' places
+    this in the chip-execution flow of battle'
+  refs:
+  - bn6f/asm/asm31.s:73340
+  - 0x0800A098 battle_isTimeStop
+  - 0x080DA448 sub_80DA448
+  reproduce: python3 tools/asmcat.py 0x080DA172
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- Which battle object uses this (r5 set by unknown caller) and why it is on the chip route
+- What sub_80DA448 prepares before dispatch
+- The semantics of each of the five phase handlers and of oBattleObject_CurPhase values for this object
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA172 -> battle_objectPhaseDispatch
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA172

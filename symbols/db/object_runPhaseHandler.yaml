@@ -1,0 +1,48 @@
+name: object_runPhaseHandler
+address: '0x080D7928'
+kind: function
+status: probable
+summary: Runs the current-phase handler of a battle object, or just marks its timer 'frozen' while time-stop
+  is active.
+interface: (r5 = battle object ptr, no register args) -> r0 = phase handler's return; when time-stop is
+  active, sets Timer bit 0x20 and returns without dispatching
+details: 'Reads oBattleObject_CurPhase from the object at r5 and indexes a 4-entry jump table (off_80D794C:
+  battle_objectVanishFromField, sub_80D7996, sub_80D79AC, sub_80D7A0E), then tail-calls that handler via
+  blx-style ''mov lr,pc; bx r1''. If battle_isTimeStop says the battle is frozen, it skips the dispatch
+  and instead sets bit 0x20 in oBattleObject_Timer, deferring the phase step until unfreeze. Phase 0 routes
+  to battle_objectVanishFromField, so the phase enum starts with the object leaving the field. The routine
+  is a plain dispatcher: it holds no state of its own, everything lives in the object struct and handlers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isTimeStop + tst r0,r0 / bne loc_80D793C gates dispatch on the battle freeze flag;
+    ldr r1,[r1,r0] with r0 = [r5,#oBattleObject_CurPhase] is a phase-indexed handler table call (off_80D794C);
+    loc_80D793C: ldrh/strh on [r5,#oBattleObject_Timer] ORRs 0x20 when time-stopped instead of advancing
+    the phase; first table entry is battle_objectVanishFromField+1, tying phase 0 to the vanish/despawn
+    step; caller sub_80D787C is the only known caller, invoked from recorded chip routes'
+  refs:
+  - bn6f/asm/asm31.s:68061
+  - 0x080D787C sub_80D787C
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D7928
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- what sub_80D7996/sub_80D79AC/sub_80D7A0E (phases 1-3) do exactly
+- full meaning of Timer bit 0x20 (frozen/delay marker assumed from context)
+- whether r0 returned by handlers is consumed by caller sub_80D787C
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D7928 -> object_runPhaseHandler
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7928

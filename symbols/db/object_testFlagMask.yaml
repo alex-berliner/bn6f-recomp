@@ -1,0 +1,46 @@
+name: object_testFlagMask
+address: '0x080D4C6C'
+kind: function
+status: probable
+summary: Returns 1 if (object's extra flags & mask) != expected value, else 0 — the projectile collision
+  handler uses this to decide destroy vs. continue.
+interface: (r5 = battle object) -> r0 = 1 if (extra->flags & mask) != expected, else 0; flags clobbered
+details: Loads the pointer in the object's ExtraVars field, reads the first word through it as a flags
+  value, ANDs it with the mask word at ExtraVars+4, and compares the result to the word at ExtraVars+8.
+  Sets r3=1 when the masked value differs from the expected value, 0 when equal, and returns it in r0.
+  The three operands (value, mask, expected) form a small condition record attached to the object; no
+  other state is touched. Only object_updateProjectileFrame calls it, choosing between destroying the
+  collided projectile and stepping it forward.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80D4C6C: ''ldr r0,[r5,#oBattleObject_ExtraVars]; ldr r0,[r0]'' reads flags through the
+    extra-vars pointer; ''and r0,r1'' then ''cmp r0,[ExtraVars+8]'' with r3=0/1 implements a masked-equality
+    test; only caller object_updateProjectileFrame ''destroys it or advances it one step'' matches a boolean
+    branch decision; 12-instruction pure function with no callees fits a simple predicate helper'
+  refs:
+  - bn6f/asm/asm31.s:62207
+  - 0x080D4BC0 object_updateProjectileFrame
+  reproduce: python3 tools/asmcat.py 0x080D4C6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of the ExtraVars condition record (which word is mask vs expected is inferred from operand
+  order)
+- which return value the caller maps to destroy vs advance, and what gameplay behavior (pierce? delayed
+  removal?) the flag condition encodes
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D4C6C -> object_testFlagMask
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4C6C

@@ -1,0 +1,48 @@
+name: t1_checkCustomChipMsg
+address: '0x08029A36'
+kind: function
+status: probable
+summary: 'Tutorial-state check for the first battle tutorial custMenu: decides whether to fire a hint
+  message (returns message id 4) based on battle state and the tutorial''s tracked selection.'
+interface: (r5 = tutorial state struct, r10 = toolkit) -> r0 = message id (4 = show message, 0 = none);
+  flags clobbered
+details: Reads the current battle state via [r10+oToolkit_BattleStatePtr] and tests its byte at offset
+  7 for value 1 (likely the custom-screen/chip-select phase). It then requires the tutorial struct's byte
+  at +0x19 to be 0 (a once-flag so the message only fires once) and the byte at +1 to be anything except
+  0x54 (the tracked selection, probably a chip ID, not yet being 0x54). Only when all three hold does
+  it return 4, the chatbox message index the caller plays; otherwise it returns 0. It has no side effects
+  — purely a predicate for custMenu_80298F4's per-frame poll.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r10,#oToolkit_BattleStatePtr]; ldrb r0,[r0,#7]; cmp r0,#1 gates on a battle-state phase;
+    ldrb r0,[r5,#0x19]; tst r0,r0; bne exit0 — once-only flag in the tutorial struct; ldrb r0,[r5,#1];
+    cmp r0,#0x54; beq exit0 — suppresses message once the tracked value hits 0x54; mov r0,#4 on the all-conditions
+    path vs mov r0,#0 — returns a message id, matching caller's 'polls check routine, plays message if
+    nonzero'; called only from custMenu_80298F4, the first battle tutorial custMenu frame handler
+  refs:
+  - bn6f/asm/asm03_0.s:7734
+  - 0x080298F4 custMenu_80298F4
+  reproduce: python3 tools/asmcat.py 0x08029A36
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of battleState byte 7 (custom screen open vs another phase)
+- whether struct+1 is a chip ID, cursor, or other selection value and what 0x54 denotes
+- what message id 4 says in the tutorial script table
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8029A36 -> t1_checkCustomChipMsg
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029A36

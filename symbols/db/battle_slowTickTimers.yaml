@@ -1,0 +1,49 @@
+name: battle_slowTickTimers
+address: '0x0800EA90'
+kind: function
+status: probable
+summary: Halves five halfword timers in the object's AI/collision work area and decrements a master counter
+  at +0x80 by their sum, returning whether the master did not change.
+interface: (r0 = unused/scratch, r5 = battle object) -> r0 = 1 if master timer at [collisionData+0x80]
+  was unchanged (all timers empty), else 0; flags clobbered
+details: 'Loads the object''s CollisionDataPtr (oBattleObject_CollisionDataPtr, +0x5C) and saves the halfword
+  at +0x80. For each of the five halfwords at +0x82, +0x84, +0x86, +0x88, +0x8A it computes (value+1)>>1
+  — a ceil(x/2) — writes it back, and subtracts it from the saved value, which is then stored back to
+  +0x80. It returns 0 when the master changed (at least one timer was nonzero) and 1 when nothing changed.
+  This is a decay/tick step: all timers shrink geometrically each call while the master drains by the
+  total amount removed, so the master only advances while some sub-timer is still running.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r2,[r5,#oBattleObject_CollisionDataPtr] then ldrh r1,[r2,#0x80] — works on the object''s
+    battle data block; loop loc_800EA9C: ldrh r0,[r2,r3]; add r0,#1; lsr r0,#1; strh r0 — ceil-halve of
+    fields 0x82..0x8A; sub r1,r1,r0 accumulating, then strh r1,[r2,#0x80] — master counter drained by
+    the halved amounts; cmp r1,r4; mov r0,#1 when equal — returns 1 only if the master timer did not tick;
+    called from battle_8108F74''s AI hook dispatch (hooks off_81091D0 indexed by AIData.AIIndex*4), so
+    it runs as an enemy AI per-frame hook'
+  refs:
+  - bn6f/asm/object.s:6048
+  - 0x08108F74 battle_8108F74
+  reproduce: python3 tools/asmcat.py 0x0800EA90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Which gameplay system owns the master counter at +0x80 and the five sub-timers at +0x82..0x8A — likely
+  a slow/exponential-decay status or an AI charge/countdown, but no known caller summary or field names
+  pin it down
+- What the boolean return (1 = master unchanged) is used for by the AI hook dispatcher at battle_8108F74
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800EA90 -> battle_slowTickTimers
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EA90

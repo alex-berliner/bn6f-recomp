@@ -1,0 +1,55 @@
+name: battle_spawnLinkedType3Object
+address: '0x080D6B78'
+kind: function
+status: probable
+summary: Spawns a battle object (kind 0x8c) and initializes its panel position, element, damage, alliance
+  and owner links from caller-supplied values.
+interface: (r0 = PanelX, r1 = PanelY, r2 = Element, r3/r5 = passed to object_spawnType3 with r5 also source
+  object, r6 = damage/stamina value, r7 = ptr to owner slot) -> r0 = new oBattleObject or 0 on failure
+details: Saves r0-r2 and r5 with an odd push {r0-r2,r5} / pop {r1-r3,r5} pairing so the original arguments
+  survive the spawn call. Calls object_spawnType3 with r0=0x8c; success is tested by `mov r0,r5` (Thumb
+  low-reg MOV = LSLS r0,r5,#0, so it sets flags) followed by beq, implying the spawn returns the new object
+  pointer (or NULL) in r5. On success it writes oBattleObject_PanelX/PanelY/Element from the saved r0-r2,
+  stores r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler, copies the halfword oBattleObject_AllianceAndDirectionFlip
+  from the r5 source object and sets that source as oBattleObject_RelatedObject1Ptr. Finally it stores
+  the new object into [r7] and r7 into oBattleObject_ExtraVars, a two-way link between the object and
+  its owner/handle. The original r3 is consumed only by object_spawnType3, not stored into the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnType3 with r0=0x8c spawns the battle object (callee doc: five caller-supplied
+    args); mov r0,r5 (flags-setting LSLS encoding) + beq locret_80D6B9A skips all stores when spawn failed;
+    pop {r1-r2,r3,r5} then strb r1/r2/r3 to PanelX/PanelY/Element shows saved args become the init fields;
+    str r6,[DamageAndStaminaDamageCounterDisabler] and ldrh/strh of AllianceAndDirectionFlip from r5 initialize
+    combat fields; str r0,[r7] and str r7,[oBattleObject_ExtraVars] form a mutual link between the new
+    object and the r7 holder'
+  refs:
+  - bn6f/asm/asm31.s:66275
+  - 0x080D6B9C sub_80D6B9C
+  - 0x080EE5A8 sub_80EE5A8
+  - 0x08110AE4 sub_8110AE4
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D6B78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What object kind 0x8c actually is in game terms (which chip/effect the callers spawn)
+- Role of r3 and the exact five-argument layout object_spawnType3 expects
+- What structure r7 points to (owner slot / object list head) and how the ExtraVars backlink is consumed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D6B78 -> battle_spawnLinkedType3Object
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6B78

@@ -1,0 +1,50 @@
+name: battle_applyStatusEffectFamily1
+address: '0x0801A58E'
+kind: function
+status: probable
+summary: Applies a status effect of family 1 to a battle object, writing a value into its collision data
+  and setting flags2 bits from a per-subtype table.
+interface: (r5 = battle object) -> r0 = flags2 bits passed to object_setFlag2; modifies object's collision
+  data
+details: 'Reads the object''s StatusEffectFinal byte from its collision data; if zero or if the high nibble
+  (effect family) is not 1, it returns immediately. The low nibble is decomposed: bits 4-6 of the byte
+  (nibble>>1) select one of four pointer entries in the table at off_80209EC, and (low nibble & 0xF) *
+  8 selects an 8-byte entry within that table. Each entry holds a word (flags2 OR mask at +0), a halfword
+  value (+4), and a byte offset (+6); the halfword is stored into the collision data at that offset and
+  the word is ORed into the object''s flags2 via object_setFlag2. This looks like one family handler of
+  a larger status-effect dispatcher keyed by the high nibble, with the other families handled elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsrb/lsr r1,r0,#4 + cmp #1 gates on high nibble of oCollisionData_StatusEffectFinal being 1;
+    ldr r2,off_801A7B4 then ldr r2,[r2,r1] with r1=(variant-1)*4 picks a per-subtype table from off_80209EC;
+    (status&0xF)<<3 (lsl #0x1c / lsr #0x19) selects an 8-byte entry: halfword at +4 stored to collision[offset
+    byte at +6]; word at entry+0 is passed as r0 to object_setFlag2, matching ''sets given bits in flags
+    2''; only callee is object_setFlag2 and only read is the caller''s own collision data, so it is a
+    battle-object status applier'
+  refs:
+  - bn6f/asm/asm00_2.s:23339
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x0801A58E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Which gameplay status family 1 corresponds to (needs the sibling handlers for other high-nibble values
+  or the caller that writes StatusEffectFinal)
+- Meaning of the halfword/offset pair written into collision data (which collision-data field each table
+  entry targets)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801A58E -> battle_applyStatusEffectFamily1
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A58E

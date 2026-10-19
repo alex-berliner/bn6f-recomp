@@ -1,0 +1,54 @@
+name: ai_finishAttackByElement
+address: '0x0810DE00'
+kind: function
+status: probable
+summary: 'Ends a custom AI attack: switches the object to a reset animation and AI script state, then
+  runs the attack-state exit, or dispatches an element-specific exit path when the anim is invalid.'
+interface: (r0-r3 unused; r5 = battle object, r6 = AI state struct, r7 = AI attack vars) -> r0 = return
+  value of dispatched handler; no meaningful flags
+details: 'sub_810E2EC returns an animation id; if it is not 0xFF the function stores it into the object''s
+  CurAnim field, sets the AI state''s ScriptId to 8 (a post-attack script), then calls sub_810DEC4, sub_810E0D4
+  and object_exitAttackState to tear down the attack (scratch vars, chip lockout, power-atk state). If
+  the anim id is 0xFF, it instead reads oAIAttackVars_HitElement and tail-dispatches through a 3-entry
+  table: two element-specific handlers (sub_810DE3C, sub_810DE96) and the generic genericAI_exitAttackStateAfterDelay.
+  The 0xFF path implies the attack finished without reaching its normal anim transition, so cleanup depends
+  on what element hit. Base registers r5/r6/r7 are assumed from the object/AI-state field offsets since
+  no caller is recorded.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#oBattleObject_CurAnim]; mov r0,#8; strb r0,[r6,#oAIState_ScriptId] — resets anim
+    and enters AI script 8 after the attack; bl object_exitAttackState_801171C — known attack-state teardown
+    confirms this is attack-end cleanup; ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1
+    — per-element dispatch of the exit handler; table entry genericAI_exitAttackStateAfterDelay_81097BA
+    shows the fallback is a standard attack-exit routine; cmp r0,#0xff; beq loc_810DE1E — anim id 0xFF
+    selects the element-dispatch path instead
+  refs:
+  - bn6f/asm/asm32.s:561
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0810DEC4 sub_810DEC4
+  - 0x0810E0D4 sub_810E0D4
+  reproduce: python3 tools/asmcat.py 0x0810DE00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- 'No known callers: r5/r6/r7 base pointers and the exact AI/object structs are inferred from field offsets
+  only'
+- What sub_810DEC4 and sub_810E0D4 do (likely per-attack variable resets) is unverified
+- Which attack/element set the 3-entry table corresponds to, and what sub_810E2EC measures to return the
+  anim id
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810DE00 -> ai_finishAttackByElement
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DE00

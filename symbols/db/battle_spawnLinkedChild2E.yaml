@@ -1,0 +1,47 @@
+name: battle_spawnLinkedChild2E
+address: '0x080C10C8'
+kind: function
+status: probable
+summary: Spawns battle object type 0x2E and links it to the calling object, copying its alliance/flip
+  and marking it with flag bit 4.
+interface: (r0..r3 passed through as spawn args for type 0x2E, r5 = parent BattleObject) -> r0 = spawned
+  object ptr (null on failure); flags set by mov r0,r5
+details: Thin wrapper over object_spawnType1 with the object index hardcoded to 0x2E; the x/y/z/params
+  arguments are forwarded unchanged from the caller. The parent object is passed in the nonstandard register
+  r5, which the wrapper saves/restores around the call. On success it stores the parent pointer into the
+  new object's oBattleObject_RelatedObject1Ptr, copies oBattleObject_AllianceAndDirectionFlip from the
+  parent so the child shares its side and sprite-flip state, and sets bit 0x4 in the new object's oObjectHeader_Flags
+  — likely a 'linked/attached, follow parent' marker. On spawn failure it just returns the null pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x2e then bl object_spawnType1: hardcoded type 0x2E spawn with forwarded args; str
+    r5,[r0,#oBattleObject_RelatedObject1Ptr]: new object is linked back to the caller''s object in r5;
+    ldrh/strh oBattleObject_AllianceAndDirectionFlip: child inherits parent''s alliance and flip bits;
+    orr r1,#4 on oObjectHeader_Flags: extra flag bit set only on the spawned child; push/pop of {r2,r5}
+    around the call shows the parent is smuggled in r5, not a standard argument register'
+  refs:
+  - bn6f/asm/asm31.s:19774
+  - 0x081100B0 sub_81100B0
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080C10C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What object type 0x2E is in game terms (caller sub_81100B0's context would tell)
+- Exactly what flag bit 4 on oObjectHeader_Flags drives downstream
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C10C8 -> battle_spawnLinkedChild2E
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C10C8

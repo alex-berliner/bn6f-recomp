@@ -1,0 +1,48 @@
+name: battle_repeatActionPhase
+address: '0x080D8ADC'
+kind: function
+status: probable
+summary: Battle-object phase handler that repeats a per-timer action (with sound 0xC7) Param2 times, then
+  advances the object to CurAction 0x0C.
+interface: (r5 = battle object) -> void; r0 scratched, flags from timer decrement
+details: On first entry (PhaseInitialized==0) it sets CurAnim=1, clears Timer, and marks the phase initialized
+  (value 4). Every tick it decrements oBattleObject_Timer; when it reaches 0 it reloads Timer from ExtraVars+4
+  (the repeat interval), calls sub_80D8BD4 (the repeated action) and plays sound effect 0xC7. It also
+  decrements oBattleObject_Param2 as a repeat counter; once it hits 0, it sets CurAction=0x0C and zeroes
+  CurPhaseAndPhaseInitialized so the object's state machine moves to the next action. r5 is the battle
+  object throughout, using the standard oBattleObject fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] / strb 1..4 init block: one-shot setup of anim, timer
+    and phase state; Timer reload from [r5,#oBattleObject_ExtraVars+4] then bl sub_80D8BD4 + PlaySoundEffect(0xC7):
+    periodic repeat step; ldrb [r5,#oBattleObject_Param2]; sub 1; bgt: Param2 used as repeat count; mov
+    r0,#0xC; strb [r5,#oBattleObject_CurAction] and clearing CurPhaseAndPhaseInitialized: end of phase
+    hands control back to the action machine'
+  refs:
+  - bn6f/asm/asm31.s:70339
+  - 0x080005CC PlaySoundEffect
+  - 0x080D8BD4 sub_80D8BD4
+  reproduce: python3 tools/asmcat.py 0x080D8ADC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- what sub_80D8BD4 actually performs (the repeated action/attack) and thus which enemy or object uses
+  this handler
+- which action id 0x0C represents in this object's action table
+- exact meaning of ExtraVars+4 vs Timer semantics for the interval
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8ADC -> battle_repeatActionPhase
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8ADC

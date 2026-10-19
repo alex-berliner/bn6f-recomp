@@ -1,0 +1,53 @@
+name: battle_spawnType53Object
+address: '0x080CED58'
+kind: function
+status: probable
+summary: Spawns battle object type 0x53 and initializes its panel position, element, damage word, extra
+  vars, and copies the alliance/direction-flip from a source object.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3 = forwarded spawn arg, r5 = source object, r6
+  = damage/counter-disabler word, r7 = extra vars) -> r0 = spawned object (0 on failure)
+details: 'The function is a thin wrapper around object_spawnType3: it pushes its incoming r0-r2 and r5
+  onto the stack so the spawner can pick them up as extra arguments, loads r0 with object type 0x53, and
+  calls the spawner. If the spawn failed (r0 == 0, tested by the beq after the pop, which does not alter
+  flags) it returns immediately. On success the newly spawned object pointer is in r5 (mov r0,r5 before
+  the pop restores the caller''s r5), and the wrapper fills oBattleObject_PanelX/PanelY from the incoming
+  r0/r1, oBattleObject_Element from incoming r2, oBattleObject_DamageAndStaminaDamageCounterDisabler from
+  r6 and oBattleObject_ExtraVars from r7 (both callee-saved and thus preserved through the spawner). Finally
+  it copies oBattleObject_AllianceAndDirectionFlip from the object passed in r5 to the new object, so
+  the spawn inherits the source object''s team/facing. r6/r7 are not saved by this function, so it relies
+  on the spawner preserving them.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x53 + bl object_spawnType3 with push {r0-r2,r5} forwarding caller args on the stack;
+    pop {r1-r3,r5} shifts incoming r0-r2 into r1-r3 for the strb to PanelX/PanelY/Element; str r6/r7 into
+    oBattleObject_DamageAndStaminaDamageCounterDisabler and oBattleObject_ExtraVars fields; ldrh/strh
+    pair copies oBattleObject_AllianceAndDirectionFlip from the r5 object to the new object; beq locret
+    after the non-flag-setting pop skips all field writes when the spawner returned 0
+  refs:
+  - bn6f/asm/asm31.s:49428
+  - 0x08103A08 sub_8103A08
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CED58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what battle object type 0x53 actually is (a specific enemy/attack?) — needs the spawner or more callers
+- the role of incoming r3, which is only forwarded to the spawner
+- confirmation that object_spawnType3 returns the new object in r5 (inferred from mov r0,r5 before the
+  pop) and what sub_8103A08 uses this spawn for in the battlesweep route
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CED58 -> battle_spawnType53Object
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CED58

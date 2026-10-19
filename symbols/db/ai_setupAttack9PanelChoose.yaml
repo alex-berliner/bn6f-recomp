@@ -1,0 +1,53 @@
+name: ai_setupAttack9PanelChoose
+address: '0x08101F08'
+kind: function
+status: probable
+summary: 'AI attack-setup callback: saves the chosen-panel result and target object, loads duration/scratch
+  value from tables, and starts attack 9'
+interface: (r0 = panel-choose callback result/index, r5 = current battle object) -> r0 = 9 (attack id
+  passed to object_setAttack4); no flags carried
+details: Stores r0 into oAIAttackVars_PanelChooseCallback of the AI attack-vars block at r7, then resolves
+  the target by reading oAIData_BattleObjectPtr from the object's AIDataPtr and storing it in oAIAttackVars_TargetObjectPtr.
+  It calls sub_800FE28 twice with table pointers (dword_8101978, dword_810197C), storing the first result
+  as the byte oAIAttackVars_AttackDuration and the second into oAIAttackVars_ScratchVar. It ends by invoking
+  object_setAttack4(9), i.e. attack family 4 / id 9, so the duration and scratch value parameterize that
+  attack's step logic (the PanelChooseCallback is presumably consulted when the attack executes). Called
+  six times from the dispatcher sub_8101CC0, matching the pattern of per-attack-id setup handlers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0,[r7,#oAIAttackVars_PanelChooseCallback] + ldr via oAIData_BattleObjectPtr -> stores callback
+    result and target object; bl sub_800FE28 on =dword_8101978, strb r0,[r7,#oAIAttackVars_AttackDuration]
+    — table-driven attack duration; second sub_800FE28 on =dword_810197C stored to oAIAttackVars_ScratchVar;
+    mov r0,#9; bl object_setAttack4 — launches attack 9 at the end; six call sites inside sub_8101CC0
+    show it is one of a family of per-attack setup handlers
+  refs:
+  - bn6f/asm/asm31.s:157122
+  - 0x08101CC0 sub_8101CC0
+  - 0x08101D64 sub_8101CC0
+  - 0x08101D6C sub_8101CC0
+  - 0x08011690 object_setAttack4
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08101F08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_800FE28 indexes on (probably an attack-ID/data lookup) and the contents of dword_8101978/810197C
+  tables
+- Exactly how PanelChooseCallback is consumed by attack 9's step logic — would need the attack-4/9 handler
+  to confirm the panel choice is where the attack lands
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101F08 -> ai_setupAttack9PanelChoose
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101F08

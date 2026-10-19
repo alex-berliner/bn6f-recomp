@@ -1,0 +1,49 @@
+name: submenu_positionOptionSpriteByIndex
+address: '0x0812B288'
+kind: function
+status: probable
+summary: Moves the sub-menu's option sprite (ID 0x78) to the slot of an option index looked up from the
+  submenu work area, unless the disable flag is set.
+interface: (r0 = index into submenu work struct r5) -> r0 = result of submenu_positionOptionSprite; r5
+  = submenu struct (not saved by callee), flags from callee
+details: 'Reads the flag byte at [r5,#0x1b]; if bit 0 is set it returns immediately without moving the
+  sprite. Otherwise it loads a byte from the submenu struct at offset given by r0 (r1 = [r5+r0]) and halves
+  it with lsr #1 to form an option index, tail-calling submenu_positionOptionSprite with sprite ID 0x78
+  in r0. So the struct holds a table of raw values whose upper bits (value/2) select the option slot.
+  The caller must have set r5 to the submenu work area beforehand, since this function neither receives
+  nor preserves it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#1 / bne: early-out when the [r5,#0x1b] disable flag is set (sub_812B288+4..8); ldr
+    r0, off_812B2BC loads the fixed sprite ID 0x78 passed to the callee; ldrb r1,[r5,r6] then lsr r1,#1
+    builds the option index from a caller-chosen entry of struct r5; b loc_812B2AC is a tail jump into
+    submenu_positionOptionSprite (0x812B2AC), reusing its call/flag logic; only caller sub_8129454 runs
+    on recorded menus3 routes, consistent with sub-menu cursor/sprite positioning'
+  refs:
+  - bn6f/asm/asm33.s:16717
+  - 0x08129454 sub_8129454
+  - 0x0812B2AC submenu_positionOptionSprite
+  - 0x0812B2FC sub_812B2C4
+  reproduce: python3 tools/asmcat.py 0x0812B288
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- menus3
+open_questions:
+- what field of the submenu struct r5 is being indexed (i.e., what r0 means at the call site in sub_8129454)
+- why the index is halved — whether two struct entries map to one option slot or the stored value already
+  encodes x2 coordinates
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812B288 -> submenu_positionOptionSpriteByIndex
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B288

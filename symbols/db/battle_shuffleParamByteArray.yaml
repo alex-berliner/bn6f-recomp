@@ -1,0 +1,47 @@
+name: battle_shuffleParamByteArray
+address: '0x080E2F74'
+kind: function
+status: probable
+summary: Shuffles a byte array stored inside a battle object via the RNG, switches the object to its UPDATE
+  state, and continues to the next handler.
+interface: (r0 = unused on entry; r5 = battle object pointer) -> r0 = return of sub_80E2F8C; sets oBattleObject_CurState
+  = CUR_STATE_UPDATE
+details: Builds r0 = r5+0x60, a byte array embedded in the battle object, and takes the count from the
+  byte at oBattleObject_Param2. It calls ShuffleByteList_PrimaryRNG to randomly permute that many bytes
+  in place, then writes CUR_STATE_UPDATE to oBattleObject_CurState so the object advances to its normal
+  update handler, and tail-continues into sub_80E2F8C. Note it relies on r5 being the object pointer rather
+  than r0, so it is not a standard (this) entry. What the shuffled array represents (panel contents, draw
+  order, etc.) is not visible from this body.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x60; add r0,r0,r5; ldrb r1,[r5,#oBattleObject_Param2]; bl ShuffleByteList_PrimaryRNG
+    — shuffles r5+0x60 for Param2 entries with the RNG; strb CUR_STATE_UPDATE,[r5,#oBattleObject_CurState]
+    — advances the object's state machine after shuffling; bl sub_80E2F8C — immediately continues into
+    the next routine for this object; recorded route 'battlesweep' — runs during battle gameplay, consistent
+    with a battle object state handler
+  refs:
+  - bn6f/asm/asm31.s:92389
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x080E2F8C sub_80E2F8C
+  reproduce: python3 tools/asmcat.py 0x080E2F74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What the byte array at r5+0x60 represents (panel data, selection order, etc.) and what sub_80E2F8C does
+  — a caller or the sibling handler would disambiguate
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E2F74 -> battle_shuffleParamByteArray
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2F74

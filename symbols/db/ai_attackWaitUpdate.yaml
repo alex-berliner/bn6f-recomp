@@ -1,0 +1,44 @@
+name: ai_attackWaitUpdate
+address: '0x080FDA3E'
+kind: function
+status: probable
+summary: 'AI attack-state countdown: latch attack element and duration once, then when the timer runs
+  out reset the animation and exit the attack state.'
+interface: (r5 = battle object, r7 = oAIAttackVars of same object) -> r0 = 0 written to oBattleObject_CurAnim
+  on expiry; calls object_exitAttackState
+details: 'On entry it checks oAIAttackVars_AttackElement: if 0, it stores 4 there (a default/neutral element
+  marker), copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer, and returns. On later calls
+  it decrements StepTimer each frame; when it reaches 0 it sets oBattleObject_CurAnim to 0 (idle animation)
+  and calls object_exitAttackState to hand control back to the AI''s normal state machine. So it implements
+  the fixed-length tail end of an enemy attack action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst on [r7,#oAIAttackVars_AttackElement] with fallback store of #4 — element latch/default
+    setup; ldrh AttackDuration -> strh StepTimer — arms the countdown once; decrement StepTimer, bgt exit
+    — per-frame wait loop; mov r0,#0; strb [r5,#oBattleObject_CurAnim] — reset animation when timer expires;
+    bl object_exitAttackState — returns object to normal AI state'
+  refs:
+  - bn6f/asm/asm31.s:148234
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FDA3E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of AttackElement value 4 (default element vs. flag) — needs the oAIAttackVars field docs
+- which AI state routes into this handler (no caller recorded beyond the battlesweep route)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FDA3E -> ai_attackWaitUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FDA3E

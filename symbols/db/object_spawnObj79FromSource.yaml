@@ -1,0 +1,51 @@
+name: object_spawnObj79FromSource
+address: '0x080D464A'
+kind: function
+status: probable
+summary: Spawns battle object 0x79 (type 3) and initializes it as a copy/linked entity of a source battle
+  object, marking it with header flag 0x10.
+interface: (r0,r1,r2 = spawn/init args, r5 = source battle object, r6 = damage value, r7 = extra vars)
+  -> r0 = new object pointer or failure value; Z flag from spawn success
+details: 'Saves r0-r2/r5, calls object_spawnType3 with object ID 0x79, and on success (beq skips) fills
+  the returned object: popped r1-r3 go into oBattleObject_PanelX, PanelY and Element; r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler;
+  r7 into oBattleObject_ExtraVars; old r5 (the source object) into oBattleObject_RelatedObject1Ptr; and
+  oBattleObject_AllianceAndDirectionFlip is copied from the source object. It then sets oObjectHeader_Flags
+  bit 0x10 on the new object. The new object is thus a clone/linked copy of the source sharing panel position,
+  element, damage counter, alliance and flip. Returns the new object pointer in r0 (kept across the pop
+  via mov r0,r5).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType3 with r0=0x79; beq locret skips init on spawn failure (flags set by callee);
+    pop {r1-r3,r5} recovers pushed args, then strb r1/r2/r3 into oBattleObject_PanelX/PanelY/Element of
+    new object in r0; str r6/r7 into oBattleObject_DamageAndStaminaDamageCounterDisabler and oBattleObject_ExtraVars;
+    str r5 into oBattleObject_RelatedObject1Ptr; ldrh from [r5,#oBattleObject_AllianceAndDirectionFlip]
+    copied into the new object, then oObjectHeader_Flags |= 0x10; callee object_spawnType3 is the known
+    type-3 battle object spawner matching the push-args call convention
+  refs:
+  - bn6f/asm/asm31.s:61397
+  - 0x0811677A sub_811677A
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D464A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What entity object ID 0x79 is (boss part? helper?) — needs context from caller sub_811677A
+- Exact meaning of oObjectHeader_Flags bit 0x10 set here
+- Whether r0-r2 pushed args are consumed by object_spawnType3 itself or only by the field stores
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D464A -> object_spawnObj79FromSource
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D464A

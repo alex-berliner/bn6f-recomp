@@ -1,0 +1,48 @@
+name: ai_dispatchBeastSpHandler
+address: '0x08115A02'
+kind: function
+status: probable
+summary: 'Per-frame AI dispatcher for a battle object: skips work when the object''s flag word has bit
+  0x8000 set, otherwise tail-calls one of three handlers selected by the object''s AIState script-id.'
+interface: (r6 = current battle object) -> r0 = handler return value; flags set by tst of flag word
+details: Calls object_getFlag on the current object (r6) to fetch its first collision-data flag word;
+  if bit 0x8000 is set (likely an inactive/hidden marker) it returns immediately. Otherwise it loads the
+  object's oAIState_ScriptId byte, indexes the 3-entry thumb handler table at 0x8115A20 with it, and does
+  a 'mov lr,pc; bx r1' tail-call into that handler, so each entry runs as a per-object step routine. r6
+  is left holding the object for the handlers, and r4 is preserved across the call. The dispatcher itself
+  holds no state; all behavior lives in the three callee routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFlag then tst r0,0x8000 / bne return: object runs only when flag bit clear; ldrb
+    r0,[r6,#oAIState_ScriptId] + ldr r1,[table,r0]: handler chosen by per-object script id; off_8115A20
+    holds exactly three thumb pointers (sub_8115A2C, sub_8115A5C, sub_8115A96): three script states; mov
+    lr,pc; bx r1 is a thumb tail-call, so this is a dispatch step, not a data lookup; runs only on battlesweep/beastsp
+    recorded routes, consistent with a scenario/boss-specific AI driver'
+  refs:
+  - bn6f/asm/asm32.s:15267
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x08115A02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what the three handler routines (sub_8115A2C, sub_8115A5C, sub_8115A96) do, to confirm the scenario
+  context
+- exact meaning of collision flag bit 0x8000 (inactive vs. disabled vs. invulnerable)
+- which object(s) set oAIState_ScriptId to 0..2 and when
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115A02 -> ai_dispatchBeastSpHandler
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115A02

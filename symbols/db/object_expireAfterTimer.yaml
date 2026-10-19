@@ -1,0 +1,47 @@
+name: object_expireAfterTimer
+address: '0x080D9498'
+kind: function
+status: probable
+summary: Object routine that clears the object's collision region, counts a timer down, and marks the
+  object for deletion when it expires
+interface: (r5 = battle object ptr) -> r0 = 0 while timer still counting; updates oBattleObject_Timer,
+  oObjectHeader_Flags, oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: Called with the battle object in r5 (same convention as the callee object_clearCollisionRegion).
+  It unconditionally calls object_clearCollisionRegion to remove the object from its current collision
+  region, then decrements oBattleObject_Timer and returns while it is still positive. Once the timer reaches
+  zero, it sets bit 1 (value 2) of oObjectHeader_Flags, sets oBattleObject_CurAction to 4, and resets
+  oBattleObject_CurPhaseAndPhaseInitialized to 0 — the flag/action pair that appears to signal object
+  removal, leaving the deletion itself to the normal object-update flow. The behavior reads as a generic
+  'lingering object that becomes intangible and then despawns after a delay'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_clearCollisionRegion with object in r5 clears hitbox every invocation; ldrh/sub/strh
+    on oBattleObject_Timer with bgt keeps the object alive until the timer runs out; expiry sets oObjectHeader_Flags
+    bit 1 and oBattleObject_CurAction = 4 with phase reset, matching a despawn marker
+  refs:
+  - bn6f/asm/asm31.s:71668
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D9498
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so which kinds of objects use this (and what CurAction 4 is named in the project) is
+  unconfirmed
+- Exact meaning of oObjectHeader_Flags bit 1 (delete flag?) is inferred, not verified from the update
+  loop
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9498 -> object_expireAfterTimer
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9498

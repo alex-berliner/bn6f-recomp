@@ -1,0 +1,46 @@
+name: ai_attackStepElem4
+address: '0x08103774'
+kind: function
+status: probable
+summary: 'AI attack step for an element-4 attack: arms the element, pins the object so it cannot slide,
+  plays anim 4, and after 3 frames sets hit element 0x20.'
+interface: () -> void; uses r7 = AI attack vars, r5 = battle object; no return value
+details: This is a per-frame step of an enemy AI attack state machine operating on the AIAttackVars block
+  in r7. On the first entry (AttackElement == 0) it latches AttackElement = 4, ORs OBJECT_FLAGS_CANNOT_SLIDE
+  into the object's CollisionData ObjectFlags1 via object_setFlag1, sets the object's CurAnim to 4, and
+  loads StepTimer with 3. On later frames it just decrements StepTimer; when it reaches 0 it writes HitElement
+  = 0x20, which presumably triggers the actual hit/damage application downstream. The cannot-slide flag
+  and fixed 3-frame delay suggest a stationary wind-up before the hit.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne = first-entry latch of AttackElement = 4;
+    bl object_setFlag1 with r0 = OBJECT_FLAGS_CANNOT_SLIDE marks the object unslideable during the attack;
+    strb r0(4),[r5,#oBattleObject_CurAnim] and strh r0(3),[r7,#oAIAttackVars_StepTimer] set anim and 3-frame
+    delay; timer countdown to 0 then strh 0x20 into HitElement fires the hit element at the end; operates
+    purely on oAIAttackVars/oBattleObject fields, matching the AI attack step-handler pattern
+  refs:
+  - bn6f/asm/asm31.s:160486
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08103774
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack table references this step (no callers known), so what element 4 and hit element
+  0x20 mean in game terms
+- whether HitElement = 0x20 selects the next attack phase or is consumed by a shared hit routine
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103774 -> ai_attackStepElem4
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103774

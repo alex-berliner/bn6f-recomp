@@ -1,0 +1,48 @@
+name: ai_attackStateWaitUpdate
+address: '0x081083A2'
+kind: function
+status: probable
+summary: 'Per-frame update for an enemy AI attack state: sets element/anim/duration on entry, counts the
+  attack timer down, and leaves attack state when it expires.'
+interface: (r7 = battle object AI vars, r5 = battle object; no args) -> r0 = scratch only; updates oAIAttackVars
+  fields and object anim
+details: On the entry frame (oAIAttackVars_AttackElement == 0) it stamps element 4 into AttackElement,
+  copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer as the countdown, and resets oBattleObject_CurAnim
+  to 0. On later frames it decrements StepTimer each call; while the timer is still positive it returns
+  without doing anything. Once the timer reaches 0 it calls object_exitAttackState to hand control back.
+  Element 4 written here is a fixed placeholder element for this attack, suggesting an attack whose behaviour
+  is purely a timed pose/anim. The r5/r7 base registers are the standard battle-object struct and its
+  AI attack-vars block.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / bne loc_81083B8: entry-frame check on zero element;
+    strb #4 -> AttackElement and strh AttackDuration -> StepTimer: one-time state initialization; strb
+    #0 -> [r5,#oBattleObject_CurAnim]: resets the object''s current animation on entry; ldrh StepTimer
+    / sub #1 / bgt exit: per-frame countdown while attack lasts; bl object_exitAttackState when timer
+    hits 0: attack state ends here'
+  refs:
+  - bn6f/asm/asm31.s:170368
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x081083A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which enemy/AI state invokes this and what element 4 denotes in the game's element
+  enum is unconfirmed
+- Whether AttackElement==0 is truly an 'uninitialized' sentinel or a valid element that gets overridden
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81083A2 -> ai_attackStateWaitUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81083A2

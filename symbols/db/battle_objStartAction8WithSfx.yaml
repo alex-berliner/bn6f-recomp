@@ -1,0 +1,46 @@
+name: battle_objStartAction8WithSfx
+address: '0x080DA15C'
+kind: function
+status: probable
+summary: Plays SFX 0x94 and switches the current battle object into action state 8 (phase 0) with a 10-frame
+  Timer2 delay, as part of the chip-use flow.
+interface: (r0 unused on entry) -> r0 = 0 on return; uses r5 = battle object pointer; no flags of interest
+details: 'Writes 10 into the object''s Timer2 field (oBattleObject_Timer2) via r5, calls PlaySoundEffect
+  with ID 0x94, then stores 8 into oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized
+  to 0. This is the standard pattern for handing the object to the battle action dispatcher: the next
+  state machine step will run action 8 after the timer elapses. It appears to be the tail end of a chip-use
+  sequence (routes record it under chips), likely the transition into the post-chip/finished action accompanied
+  by a sound. The function is trivially a state-transition thunk; all behavior follows from what action
+  8 does elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0(10),[r5,#oBattleObject_Timer2] sets a short countdown on the caller's battle object;
+    mov r0,#0x94; bl PlaySoundEffect plays a fixed M4A sound effect; strb r0(8),[r5,#oBattleObject_CurAction]
+    + clearing CurPhaseAndPhaseInitialized is the usual 'enter new action' idiom; recorded route context
+    is 'chips', so it fires during chip usage, not free movement
+  refs:
+  - bn6f/asm/asm31.s:73326
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080DA15C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- what SFX 0x94 is (name/meaning in the sound table)
+- what action 8 does — that state handler would confirm whether this is chip completion, a chip-hit reaction,
+  or another transition
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA15C -> battle_objStartAction8WithSfx
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA15C

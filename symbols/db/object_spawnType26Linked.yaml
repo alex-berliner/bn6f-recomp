@@ -1,0 +1,56 @@
+name: object_spawnType26Linked
+address: '0x080C7544'
+kind: function
+status: probable
+summary: Wrapper that spawns battle object type 0x1a and initializes it as a child linked to a parent
+  object, copying the parent's element and alliance/flip.
+interface: (r0 = ptr to caller var P, r2 = element byte, r5 = parent battle object, r6 = damage-field
+  value, r7 = ptr to caller slot) -> r0 = new object or 0 on failure; *P = new object, [r7] = new object
+  + 0x64
+details: 'Calls object_spawnType3 with type 0x1a and passes the caller''s r1-r3 through as spawn arguments;
+  if the spawn fails (returns 0) it returns immediately. On success it fills the new battle object: Element
+  is taken from an argument, RelatedObject1Ptr is set to the caller''s r5 object, and AllianceAndDirectionFlip
+  is copied from that parent object so the child faces the same side. DamageAndStaminaDamageCounterDisabler
+  is set from caller r6, and ExtraVars is set to the caller''s pointer P while *P is written back with
+  the new object, cross-linking the two. The caller''s r7 (callee-saved, so it survives the spawn call)
+  receives newObject+0x64, linking some parent-side struct to a sub-struct of the child. Finally oObjectHeader_Flags
+  of the new object gets bit 0x10 ORed in, likely marking it as a linked/attached effect. The exact identity
+  of object type 0x1a is not determinable from this wrapper alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x1a; bl object_spawnType3 — spawns battle object type 0x1a, bailing out via beq locret
+    when it returns 0; strb r3,[r0,#oBattleObject_Element] — child's element comes from a caller argument;
+    ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r3,[r0,#...] plus str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    — child copies alliance/flip from and points to the r5 parent object; str r1,[r0,#oBattleObject_ExtraVars];
+    str r0,[r1] — ExtraVars and the caller's struct point at each other; str r1(=obj+0x64),[r7] links
+    the child into caller r7 state; ldrb/orr/strb on oObjectHeader_Flags sets bit 0x10 on the new object
+    before returning
+  refs:
+  - bn6f/asm/asm31.s:33230
+  - 0x080F3B24 sub_80F3B24
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C7544
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What battle object type 0x1a actually is (its initializer/name) — needs the type table or sub_80F3B24's
+  context
+- Exact meaning of the 0x10 object flag and of the +0x64 sub-struct stored into [r7]
+- Why the caller's original r1 appears unused after the spawn (possible extra stack argument to object_spawnType3
+  via the pushed r0-r2/r5 block)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7544 -> object_spawnType26Linked
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7544

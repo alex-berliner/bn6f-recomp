@@ -1,0 +1,45 @@
+name: battle_objectUpdateClearExtraVarsThenDispatch
+address: '0x0810A5C2'
+kind: function
+status: probable
+summary: Battle object update wrapper that zeroes the object's 8-byte extra-vars block on phase 0, then
+  runs the normal per-frame phase dispatcher.
+interface: (r0 = battle object (also r5 = same object) ) -> r0 = whatever battle_objectUpdateDispatchPhase
+  returns; flags clobbered by callee
+details: Reads oBattleObject_CurPhase; if it is 0 (i.e. the object is on its first phase/first tick),
+  it stores 0 into both oBattleObject_ExtraVars and oBattleObject_ExtraVars+4, clearing an 8-byte scratch/state
+  area. It then tail-calls battle_objectUpdateDispatchPhase_80165C2, which runs the object's current-phase
+  handler from its 2-entry table (or skips while paused). So this is a variant update handler for an object
+  type whose per-phase state must start clean each time phase 0 begins. No other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_810A5D0 — clear only on phase 0; str
+    r0 (=0) into oBattleObject_ExtraVars and +4 — zeroes 8 bytes of per-object state; bl battle_objectUpdateDispatchPhase_80165C2
+    then pop {pc} — plain tail dispatch to the phase handler; Same object pointer pattern (r5 = object
+    struct) as the dispatcher's documented per-frame update role
+  refs:
+  - bn6f/asm/asm31.s:174699
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  reproduce: python3 tools/asmcat.py 0x0810A5C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Which object type(s) use this update handler (no callers recorded), so whether 'extra vars' are AI/attack
+  scratch state or something more specific
+- Whether phase 0 is a one-shot init phase or recurs each cycle
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A5C2 -> battle_objectUpdateClearExtraVarsThenDispatch
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A5C2

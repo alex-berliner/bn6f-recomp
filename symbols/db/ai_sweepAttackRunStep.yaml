@@ -1,0 +1,51 @@
+name: ai_sweepAttackRunStep
+address: '0x08109974'
+kind: function
+status: probable
+summary: Runs one step of the sweep-attack (attack 0xB) AI state machine, dispatching to the step handler
+  selected by the attack's state field.
+interface: (r7 = AI attack vars struct) -> r0 = handler return value; flags from handler
+details: 'Reads the byte at [r7, oAIAttackVars_HitElement] and uses it as an index into a 4-entry table
+  at off_8109988, then jumps to the selected handler via the mov lr,pc / bx r1 thumb-interwork thunk and
+  returns with pop {pc}, so the handler''s return value in r0 passes through. The table entries form a
+  step sequence: ai_attackStepMoveToTargetPanel+1, ai_stepFinishMoveToPanel+1, sub_8109A50+1, and genericAI_exitAttackStateAffterDelay_81097B4+1
+  — i.e. move to target panel, finish the move, an unexamined attack step, then exit the attack state.
+  The index field is labeled HitElement in the struct but here acts as the current step/state selector
+  for this attack, so it is either reused or mislabeled for this attack type. The only known caller, ai_sweepAttackInit,
+  sets up attack 0xB with per-version parameters, so this routine is that attack''s per-frame driver.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_8109988 lists exactly the sweep sequence: moveToTargetPanel, finishMoveToPanel, sub_8109A50,
+    exitAttackStateAfterDelay; caller ai_sweepAttackInit ''queues attack 0xB with per-version parameters'',
+    matching a state-machine driver for that attack; ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0];
+    bx r1 is a state-index dispatch table; mov lr,pc / bx r1 / pop {pc} makes this a pass-through call,
+    so handlers return to this function''s caller'
+  refs:
+  - bn6f/asm/asm31.s:173180
+  - 0x08111438 ai_sweepAttackInit
+  - 0x0810AB40 sub_810AB40
+  - 0x08115F74 sub_8115F74
+  reproduce: python3 tools/asmcat.py 0x08109974
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8109A50 (step 2) does — presumably the actual sweep attack execution
+- whether the indexed field is really HitElement or a step counter stored at that offset in this attack's
+  context
+- what sub_810AB40 and sub_8115F74, the other callers, do
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8109974 -> ai_sweepAttackRunStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8109974

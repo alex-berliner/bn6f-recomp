@@ -1,0 +1,45 @@
+name: ai_attackStepUpdate
+address: '0x080FF504'
+kind: function
+status: probable
+summary: 'Per-frame tick for an AI enemy''s attack: arms the attack on its first run, counts down the
+  attack timer, and exits the attack state when it expires.'
+interface: (r0,r1 unused/passed through; r7 = AI attack vars struct, r5 = battle object) -> r0 clobbered;
+  updates AttackElement/StepTimer, calls object_exitAttackState when timer ends
+details: 'Uses r7 as an AI attack-variables record and r5 as the battle object. On the first invocation
+  (AttackElement == 0) it initializes the attack: sets AttackElement to 4 (likely a default/none element),
+  resets the object''s CurAnim to 0, and copies AttackDuration into StepTimer as the countdown. On subsequent
+  frames it decrements StepTimer; once the timer reaches 0 it calls object_exitAttackState to return the
+  enemy to its normal state. This looks like a shared per-frame state handler dispatched during recorded
+  battle sweep routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0 gates one-time init vs per-frame countdown;
+    strh r0,[r5,#oBattleObject_CurAnim]=0 and strh AttackDuration into StepTimer on init; ldrh StepTimer
+    / sub r0,#1 / bgt ret implements the frame countdown; bl object_exitAttackState only fires when the
+    timer hits zero, confirming attack-state semantics
+  refs:
+  - bn6f/asm/asm31.s:151760
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FF504
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What element value 4 means in oAIAttackVars_AttackElement (default vs a specific element)
+- Which AI state machine dispatches this handler and what the AttackDuration source is
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FF504 -> ai_attackStepUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF504

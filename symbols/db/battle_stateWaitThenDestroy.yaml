@@ -1,0 +1,48 @@
+name: battle_stateWaitThenDestroy
+address: '0x080C87B8'
+kind: function
+status: probable
+summary: Battle-object state handler that waits 30 frames, then removes the object's collision region
+  and destroys it.
+interface: (r0 = unused/discard, r5 = battle object pointer) -> void; flags from tst/subs not meaningful
+  to callers
+details: This is a per-object state/phase update routine reading r5 as a battle object. On entry with
+  CurPhase == 0 it sets CurPhase = 4 and loads the Timer with 0x1E (30 frames), so it acts as a one-shot
+  initialization of a timed wait. On subsequent calls it decrements Timer each frame; while Timer > 0
+  it returns. When the timer expires it calls object_clearCollisionRegion to drop the object out of its
+  collision region (so it stops interacting/hittable), then writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  moving the object into the destroy state. The odd calling convention (object in r5, r0 ignored) suggests
+  it's part of a jump-table of state handlers where r5 is the shared object pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst; strb #4 -> phase 4 setup on first call; mov r0,#0x1e;
+    strh [r5,#oBattleObject_Timer] -> 30-frame delay; sub r0,#1; strh; bgt -> frame-by-frame timer countdown;
+    bl object_clearCollisionRegion -> stops collision before destruction; mov r0,#CUR_STATE_DESTROY; str
+    [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] -> transitions to destroy state'
+  refs:
+  - bn6f/asm/asm31.s:35770
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C87B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- No caller captured, so which objects use this state and how they enter it is unknown; a caller or state-table
+  reference would confirm the state ID this handler serves
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C87B8 -> battle_stateWaitThenDestroy
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C87B8

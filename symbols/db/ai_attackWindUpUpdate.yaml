@@ -1,0 +1,49 @@
+name: ai_attackWindUpUpdate
+address: '0x08100CFE'
+kind: function
+status: probable
+summary: 'Per-frame update for one enemy AI attack: on first call it assigns the attack element and starts
+  the wind-up animation, then after a frame countdown it switches to the strike animation and arms the
+  hit element.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars ptr, no args in r0-r3) -> r0 = scratch only; no
+  return value, flags clobbered by bl
+details: 'Reads oAIAttackVars_AttackElement at r7; if still 0, this is the attack''s first tick: it stores
+  element 4 into AttackElement, sets oBattleObject_CurAnim to 5 (wind-up pose), calls object_setCounterTime
+  with 0x12, and loads StepTimer with 0x13 frames. On later ticks it decrements StepTimer and returns
+  while it is still positive; when it reaches 0 it advances oBattleObject_CurAnim to 6 (strike) and stores
+  0xC into oAIAttackVars_HitElement, presumably making the attack active/dealing that element. The two-phase
+  ''init once, then count down'' pattern keyed off AttackElement==0 is a common battle AI attack-step
+  idiom.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first tick from countdown ticks;
+    stores element 4, anim 5, and bl object_setCounterTime(0x12) only on the element==0 path (start-up);
+    ldrh StepTimer / sub #1 / bgt loop implements the frame countdown after start-up; on expiry stores
+    anim 6 and HitElement 0xC, the strike/hit handoff to later attack logic; both fields belong to oAIAttackVars
+    and oBattleObject_CurAnim, so r5/r7 are the battle object and its AI attack state'
+  refs:
+  - bn6f/asm/asm31.s:154831
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x08100CFE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/boss this attack belongs to and what element 4 / HitElement 0xC map to in this battle context
+- no known caller, so the convention for r5 and r7 (who loads them) is inferred from field names, not
+  proven
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100CFE -> ai_attackWindUpUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100CFE

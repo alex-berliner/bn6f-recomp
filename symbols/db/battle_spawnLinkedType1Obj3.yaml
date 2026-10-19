@@ -1,0 +1,51 @@
+name: battle_spawnLinkedType1Obj3
+address: '0x080B89DC'
+kind: function
+status: probable
+summary: Spawns battle object type 1 with index 3, copies the caller's source object position/alliance
+  onto it, stores an extra var and links it back to the source object.
+interface: (r1 = spawn arg, r2 = spawn arg, r3 = extra var value, r5 = source BattleObject) -> r0 = new
+  BattleObject or 0 on spawn failure; flags Z from callee's null check
+details: Calls object_spawnType1 with r0=3 and the caller's r1-r3 as the remaining spawn arguments; on
+  failure (r5==0) it returns immediately. On success the callee returns the new object pointer in r5,
+  which is moved to r0 before pop restores the caller's source object into r5. The function then writes
+  the caller's r3 into the new object's oBattleObject_ExtraVars, copies oBattleObject_X/Y/Z and oBattleObject_AllianceAndDirectionFlip
+  from the source object, and stores the source pointer in oBattleObject_RelatedObject1Ptr. Finally it
+  sets object header flag bits 0x14 (bits 2 and 4) on the new object. The new object is thus a position-locked
+  follower/marker of the source object with one u32 of extra data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType1 with r0=3 spawns the fixed index-3 type-1 object (asm line 5-6); mov r0,r5
+    before pop {r3,r5} swaps the spawned pointer into r0 and the caller's source object back into r5;
+    str r3,[r0,#oBattleObject_ExtraVars] stores a caller argument as the new object's extra var; ldr/str
+    of oBattleObject_X/Y/Z and AllianceAndDirectionFlip from r5 to r0 copies the source's placement; str
+    r5,[r0,#oBattleObject_RelatedObject1Ptr] and flags |= 0x14 tie the clone to its source
+  refs:
+  - bn6f/asm/asm31.s:1106
+  - 0x080D3500 sub_80D3500
+  - 0x08113626 sub_8113626
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B89DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what battle object index 3 actually is (needs the type-1 spawn table / its initialiser)
+- what the ExtraVars value (r3) means to that object's update routine
+- the meaning of header flag bits 0x14
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80B89DC -> battle_spawnLinkedType1Obj3
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B89DC

@@ -1,0 +1,44 @@
+name: object_freeClearingOwnerRef
+address: '0x080E1E0C'
+kind: function
+status: probable
+summary: Destructor that clears a self/back-reference stored in the object's extra-vars list, then frees
+  the battle object slot.
+interface: (r5 = battle object ptr, r0 unused) -> r0 = clobbered by call; object slot freed
+details: Loads the object's oBattleObject_ExtraVars list pointer and reads its first entry. If that entry
+  points back at the object itself (r5), it writes 0 there, removing the circular reference (likely so
+  a variable pointing to the owner doesn't dangle). It then tail-ends into object_freeMemory, which clears
+  flags, frees the sprite/bitmap slot, unlinks from the active list and resets scaling. Note the object
+  pointer arrives in r5 rather than r0, so callers must set r5 up (typical of this codebase's object-destroy
+  convention).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r5,#oBattleObject_ExtraVars]; ldr r0,[r1]; cmp r0,r5; str 0 — clears first extra var
+    only when it references the object itself; bl object_freeMemory immediately after — known summary
+    says it releases the battle object slot; no other field touched and only 10 instructions — pure destroy/cleanup
+    path; executed on battlesweep routes — mid-battle object teardown
+  refs:
+  - bn6f/asm/asm31.s:90127
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E1E0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- no callers known, so who sets r5 and which extra-var list entry conventionally holds the owner pointer
+  is unconfirmed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E1E0C -> object_freeClearingOwnerRef
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1E0C

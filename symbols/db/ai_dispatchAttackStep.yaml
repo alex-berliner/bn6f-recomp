@@ -1,0 +1,46 @@
+name: ai_dispatchAttackStep
+address: '0x08111A00'
+kind: function
+status: probable
+summary: Dispatches the per-enemy AI attack state machine to one of five handlers based on the current
+  attack-step byte in the AI attack vars.
+interface: (r7 = AI attack vars struct) -> jumps to handler from off_8111A14[state]; no return value of
+  its own
+details: 'Loads the byte at oAIAttackVars_HitElement from the r7 AI attack vars struct and uses it as
+  a table index (bounds implicitly limited to 0-4 by the writers). It then tail-calls the matching handler:
+  0 = ai_commitMoveAttack, 1 = sub_8111A72, 2 = battleObject_performMovementStep, 3 = sub_8111AEC, 4 =
+  aiAttack_tickAiAttackVarsTimer. It is a pure trampoline with no other state manipulation. The reused
+  HitElement field here evidently serves as the attack sequence''s state/step counter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0] with table off_8111A14: index-driven
+    dispatch on the AI attack vars struct; jump table entries are all AI attack handlers (ai_commitMoveAttack,
+    battleObject_performMovementStep, aiAttack_tickAiAttackVarsTimer); only caller ai_setupAttackPlan
+    runs it each AI turn after filling the AI attack variables, consistent with kicking/ticking the attack
+    sequence'
+  refs:
+  - bn6f/asm/asm32.s:7618
+  - 0x08111E14 ai_setupAttackPlan
+  reproduce: python3 tools/asmcat.py 0x08111A00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of each of the five states (sub_8111A72 and sub_8111AEC are unanalyzed)
+- who writes the state byte and with what values/range
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111A00 -> ai_dispatchAttackStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111A00

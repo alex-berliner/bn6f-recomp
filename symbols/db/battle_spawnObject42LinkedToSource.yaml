@@ -1,0 +1,51 @@
+name: battle_spawnObject42LinkedToSource
+address: '0x080E558A'
+kind: function
+status: probable
+summary: Spawns battle object 0x42 at a given panel, inheriting the source object's alliance, linking
+  back to it, and passing two extra params.
+interface: (r0 = panel X, r1 = panel Y, r2 = extra param 1, r5 = source battle object, r7 = extra param
+  2) -> r0 = new object pointer, or 0 if spawn failed; flags from spawn call
+details: 'Saves r0-r2 and r5, calls object_spawnType4 with object ID 0x42, then repopulates r1-r3/r5 from
+  the stack (r5 still holds the caller''s source object) while r0 keeps the spawned pointer. It writes
+  panel X/Y bytes, copies the source object''s AllianceAndDirectionFlip halfword into the new object,
+  stores r2 into ExtraVars, stores the source pointer into RelatedObject1Ptr, and stores caller''s r7
+  into ExtraVars+0xC. It then clears bit 0x10 of oObjectHeader_Flags on the new object. If the spawn returned
+  null the stores are skipped. Quirk: two of the five parameters travel in r5 and r7 rather than the normal
+  argument registers, so this is a specialized internal helper, not a general spawner.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: push {r0-r2,r5}; mov r0,#0x42; bl object_spawnType4 — spawns type-4 object 0x42 with saved args;
+    strb r1,[r0,#oBattleObject_PanelX] / strb r2,[r0,#oBattleObject_PanelY] — saved r0/r1 are panel coords;
+    ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r1,[r0,...] — alliance inherited from source
+    object in r5; str r5,[r0,#oBattleObject_RelatedObject1Ptr] — new object linked back to source; str
+    r3/[r7] into ExtraVars fields; bic r1, 0x10 on oObjectHeader_Flags then beq locret — clears flag 0x10,
+    exits early if spawn returned null
+  refs:
+  - bn6f/asm/asm31.s:97806
+  - 0x0810A3DC sub_810A3DC
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E558A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What battle object ID 0x42 is and what its initializer does with ExtraVars/ExtraVars+0xC
+- What caller sub_810A3DC is (needed to confirm the meaning of r2/r7 params and the source object)
+- What flag bit 0x10 in oObjectHeader_Flags means
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E558A -> battle_spawnObject42LinkedToSource
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E558A

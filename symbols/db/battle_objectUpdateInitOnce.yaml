@@ -1,0 +1,52 @@
+name: battle_objectUpdateInitOnce
+address: '0x0810BE74'
+kind: function
+status: probable
+summary: Per-frame battle-object update handler that runs a one-time init on the first frame (phase 0),
+  then dispatches the current phase handler.
+interface: (r5 = battle object ptr; no stack args) -> r0 = result of battle_objectUpdateDispatchPhase_80165C2;
+  no meaningful flags
+details: This is an object 'this'-in-r5 update routine, matching the BN6 battle-object calling style.
+  It reads oBattleObject_CurPhase from [r5] and, only when the phase is 0 (first invocation / init phase),
+  loads the pointer-sized field at r5+0x64 into r0 and calls sub_80D9284 with it, then calls sub_810BB64
+  before falling through. Control then tail-calls battle_objectUpdateDispatchPhase_80165C2, which runs
+  the object's flagged-handler/current-phase dispatch, so the phase-0 work acts as a first-frame setup
+  hook ahead of normal phase processing. The 0x64 field is an argument, likely a data/sub-object pointer
+  or handle for the init call. Recorded execution on the 'beastsp' route suggests it belongs to a Beast
+  Out-related battle object, but the assembly alone doesn't identify which.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_810BE88 - init body only runs when
+    CurPhase==0 (first update); mov r0,#0x64; ldr r0,[r5,r0]; bl sub_80D9284 - passes object field +0x64
+    to the init helper; bl sub_810BB64 before the dispatch - second init/setup step, same r5 object context;
+    tail call battle_objectUpdateDispatchPhase_80165C2 - standard per-frame object phase dispatcher, so
+    this is an object update handler; recorded route 'beastsp' is the only observed caller context; no
+    direct callers in the snapshot
+  refs:
+  - bn6f/asm/asm31.s:177795
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  - 0x080D9284 sub_80D9284
+  - 0x0810BB64 sub_810BB64
+  reproduce: python3 tools/asmcat.py 0x0810BE74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- What sub_80D9284 and sub_810BB64 do (init of what resource/field 0x64 holds) is unknown
+- Which battle object template registers this handler (beast-out sprite/effect object?) is not shown
+- Whether sub_810BB64 also runs every frame or only during the phase-0 branch
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BE74 -> battle_objectUpdateInitOnce
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BE74

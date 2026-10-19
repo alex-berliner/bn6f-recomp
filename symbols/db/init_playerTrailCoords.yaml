@@ -1,0 +1,48 @@
+name: init_playerTrailCoords
+address: '0x08087150'
+kind: function
+status: probable
+summary: Initializes a 10-entry overworld player position trail, stamping the player's current X/Y/Z into
+  every 12-byte record.
+interface: (r5 = base of struct, from caller) -> writes player X at r5+0x10+0xC*i, Y at +0x14+0xC*i, Z
+  at +0x18+0xC*i for i in 0..9; r0-r3, r6 clobbered
+details: Fetches the overworld player object's X/Y/Z via ReadOWPlayerObjectCoords, then runs three identical
+  10-iteration loops storing r0, r1, r2 respectively at stride 0xC starting at offsets 0x10, 0x14, 0x18.
+  The target buffer pointer lives in r5 and is not set inside this function, so the caller (sub_8086DF8)
+  must pre-load it. All ten records end up identical, so this is an init/fill of a position-history-like
+  array, not a per-frame shift. Fields beyond offsets 0x00-0x0F and 0x38+ of the struct are untouched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ReadOWPlayerObjectCoords at sub_8087150+4 supplies r0/r1/r2 = player X/Y/Z; three loops store
+    r0 at [r5,0x10+0xC*i], r1 at [r5,0x14+0xC*i], r2 at [r5,0x18+0xC*i] with cmp r6,#0xa bounds; r5 is
+    never set inside the function, so the destination struct comes from the caller; all entries are written
+    from the same coordinates, indicating buffer fill/init rather than movement of data
+  refs:
+  - bn6f/asm/asm22.s:306
+  - 0x08086DF8 sub_8086DF8
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  reproduce: python3 tools/asmcat.py 0x08087150
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- maps
+open_questions:
+- what structure r5 points to (only sub_8086DF8 can show it) and what the 10 identical records are used
+  for downstream
+- whether this is a trail/afterimage buffer or something else; no known-callee summary confirms the trail
+  interpretation
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8087150 -> init_playerTrailCoords
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8087150

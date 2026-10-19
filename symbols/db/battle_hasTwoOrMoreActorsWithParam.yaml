@@ -1,0 +1,51 @@
+name: battle_hasTwoOrMoreActorsWithParam
+address: '0x08111F94'
+kind: function
+status: probable
+summary: 'Battle-side gate: returns 1 if at least two battle actors have a nonzero value in the field
+  at offset 0x73, else 0, and on success triggers the sub_8111F70 effect.'
+interface: () -> r0 = 1 if count of matching actors >= 2 (and sub_8111F70 is invoked), else 0; flags clobbered
+  by callees
+details: It calls the known helper FindBattleActorsWithNonzeroParam_ReturnCountAndSum with fixed arguments
+  r0=0x60, r1=0x73, r2=0x78, which scans battle actors and returns a count of those with a nonzero value
+  (fields 0x73/0x78 presumably a status byte and its paired value, with 0x60 selecting the actor list/bank).
+  If the returned count is >= 2 (cmp r0,#2; bge), it calls sub_8111F70 and otherwise passes through; it
+  then returns 0 when below the threshold, and r0 after the sub_8111F70 branch comes from that callee,
+  which likely returns success. Recorded execution in the battlesweep and beastsp routes shows it runs
+  during real battles, so this is a per-battle condition check that fires some effect once two or more
+  qualifying actors exist. The exact gameplay meaning depends on what field 0x73 holds, which the callee
+  name does not reveal.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x60 / r1,#0x73 / r2,#0x78 then bl FindBattleActorsWithNonzeroParam — fixed actor-field
+    arguments; cmp r0,#2; bge loc_8111FA8 — threshold of two qualifying actors; bl sub_8111F70 only on
+    the >=2 branch — side effect gated on the count; mov r0,#0 on the <2 path — boolean-style return;
+    recorded routes battlesweep/beastsp — used in live battle flow
+  refs:
+  - bn6f/asm/asm32.s:8368
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  - 0x08111F70 sub_8111F70
+  reproduce: python3 tools/asmcat.py 0x08111F94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8111F70 does (the actual effect fired when two actors qualify)
+- what battle actor structure offsets 0x73 and 0x78 contain (status flag vs. counter)
+- which callers in the battle engine invoke this and for what mechanic
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111F94 -> battle_hasTwoOrMoreActorsWithParam
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111F94

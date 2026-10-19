@@ -1,0 +1,47 @@
+name: ow_freeMapObjectTrio
+address: '0x08089D0E'
+kind: function
+status: probable
+summary: Frees up to three overworld map objects whose pointers are stored consecutively in a caller-provided
+  array.
+interface: (r7 = base of array of 3 object pointers) -> r0 = last FreeOverworldMapObject result; frees
+  each non-null entry, leaving the array contents unchanged
+details: Iterates i = 0..2 over 4-byte slots at [r7], [r7+4], [r7+8]; for each nonzero pointer it calls
+  FreeOverworldMapObject, which clears the object's active bit in the global allocation bitfield, marks
+  its slot free, and unmarks it in the sprite system. r7 is used as an implicit argument rather than r0,
+  and r4/r5 are scratch counters/holders; the pointer slots themselves are not nulled after freeing, so
+  the caller must clear them to avoid double frees. The fixed count of 3 suggests the owner struct embeds
+  exactly three sub-object pointers (e.g. an object with up to three attached map entities).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop runs exactly 3 times (cmp r4,#3 / blt loc_8089D12) over 4-byte strides from r7; each nonzero
+    slot (tst r5,r5 / beq) is passed to bl FreeOverworldMapObject; callee summary: releases an overworld
+    map object, clearing its allocation bit and sprite-system mark; only caller sub_8089CDC can be expected
+    to set r7 to the owning struct''s object-pointer array'
+  refs:
+  - bn6f/asm/asm23.s:1838
+  - 0x08089CDC sub_8089CDC
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x08089D0E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- loaded pointer sits in r5 with no visible mov to r0 before the bl — confirm argument register convention
+  or a missing instruction in the snippet
+- which owner structure sub_8089CDC passes via r7 and whether the three slots are zeroed after this call
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8089D0E -> ow_freeMapObjectTrio
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089D0E

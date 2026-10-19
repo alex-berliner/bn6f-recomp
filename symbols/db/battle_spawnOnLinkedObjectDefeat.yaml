@@ -1,0 +1,50 @@
+name: battle_spawnOnLinkedObjectDefeat
+address: '0x080C1492'
+kind: function
+status: probable
+summary: 'AI handler step: if the object''s linked partner object is dead, spawn a follow-up battle object
+  and put this object into a new timed action state.'
+interface: (r5 = this battle object) -> r0 = 0 (or untouched value if partner alive); modifies this object's
+  Timer and CurAction; uses r4 = 0x10000 and r7 = AIData+0x74 as spawn inputs
+details: Loads the object's RelatedObject1Ptr and tests its HP field; if the partner is still alive the
+  function returns immediately with r0 = 0. When the partner's HP has reached 0, it sets r7 = this object's
+  AIDataPtr + 0x74 and r4 = 0x10000 and calls battle_spawnLinkedObject_80E1A6A to spawn a type-0x11 object
+  cross-linked with this object. It then writes Timer = 0x20 and CurAction = 0x10 on the parent object,
+  apparently entering a post-spawn/death-reaction state. Returns 0 in both paths. The AIData+0x74 slot
+  likely holds the spawn descriptor for the follow-up object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r0,#oBattleObject_HP]; cmp r0,#0; bne locret — early-out unless the linked object is
+    dead; ldr r7,[r5,#oBattleObject_AIDataPtr]; add r7,#0x74; bl battle_spawnLinkedObject_80E1A6A — spawn
+    descriptor taken from AI data; strh 0x20,[r5,#oBattleObject_Timer]; strb 0x10,[r5,#oBattleObject_CurAction]
+    — state transition after spawning; Called from four sibling handlers (sub_80C1268/80C12A6/80C1320/80C138E),
+    consistent with per-variant enemy AI action steps run in battlesweep
+  refs:
+  - bn6f/asm/asm31.s:20296
+  - 0x080C1268 sub_80C1268
+  - 0x080C12A6 sub_80C12A6
+  - 0x080C1320 sub_80C1320
+  - 0x080E1A6A battle_spawnLinkedObject_80E1A6A
+  reproduce: python3 tools/asmcat.py 0x080C1492
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of CurAction 0x10 and Timer 0x20 (which state/animation they trigger)
+- What the spawned type-0x11 object is per enemy variant (depends on AIData+0x74 contents)
+- Role of the r4 = 0x10000 argument to the spawn callee
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C1492 -> battle_spawnOnLinkedObjectDefeat
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1492

@@ -1,0 +1,50 @@
+name: ai_sweepTargetSelect
+address: '0x081114C8'
+kind: function
+status: probable
+summary: 'Enemy-AI sweep-attack helper: picks or refreshes a target and writes its result (r0/r1, likely
+  target coordinates) into the AI work area at +0x65/+0x66.'
+interface: (r4-r5 = AI/enemy work area) -> stores r0 byte at [r5+0x65] and r1 byte at [r5+0x66] when either
+  early check passes; no return value used
+details: Runs two predicate calls (sub_81114EE, sub_811152C) and, if either returns nonzero, calls sub_81117DA
+  whose r0/r1 results are stored as bytes at offsets 0x65 and 0x66 of the struct in r5 — a shape typical
+  of writing target x/y into an enemy-AI work area. If neither predicate fires, it falls through to sub_8111650
+  instead and stores nothing. Called from ai_sweepAttackInit, which counts ticks, chooses a move target
+  and closest enemy, and queues attack 0xB, so this is a sub-step of that routine's target/parameter selection.
+  The predicates likely test conditions such as whether a target row/column is already known or occupied.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'caller 0x08111438 ai_sweepAttackInit picks a move target and queues attack 0xB, so this is
+    part of its targeting logic; asm: bl sub_81117DA; strb r0,[r5,0x65]; strb r1,[r5,0x66] stores a two-byte
+    (x,y) pair into the AI struct; asm: tst r0,r0 / bne after sub_81114EE and sub_811152C gates the store
+    path on either predicate; asm: else-branch bl sub_8111650 leaves +0x65/+0x66 untouched when checks
+    fail'
+  refs:
+  - bn6f/asm/asm32.s:7029
+  - 0x08111438 ai_sweepAttackInit
+  - 0x081114EE sub_81114EE
+  - 0x0811152C sub_811152C
+  - 0x08111650 sub_8111650
+  reproduce: python3 tools/asmcat.py 0x081114C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of +0x65/+0x66 (x/y tile vs other pair) not confirmed without sub_81117DA's body
+- conditions tested by sub_81114EE and sub_811152C unknown
+- what sub_8111650 does on the fall-through path
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81114C8 -> ai_sweepTargetSelect
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81114C8

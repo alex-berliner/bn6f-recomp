@@ -1,0 +1,48 @@
+name: object_attackStateTimerTick
+address: '0x080FB700'
+kind: function
+status: probable
+summary: Per-frame handler that starts an entity's attack state with a countdown and exits the attack
+  when the timer runs out.
+interface: (r0-r3 unused; r7 = entity struct, r5 = related entity/work struct) -> updates state byte [r7+1],
+  countdown halfword [r7+0x10] (init from [r7+0x18]), counter byte [r5+0x10]; no return value
+details: On first invocation (state byte r7+1 == 0) it writes state 4 to r7+1, clears a byte at r5+0x10,
+  and copies the halfword at r7+0x18 (the attack duration set elsewhere) into the countdown halfword at
+  r7+0x10, then returns. On later frames it decrements r7+0x10 each tick; while it is still positive it
+  does nothing else. When the countdown reaches zero it calls object_exitAttackState, ending the attack.
+  r5 and r7 most likely point to the same entity (or its work area) as passed by a common object-update
+  dispatcher, which would explain the odd mixed use. The state value 4 matches the 'attacking' phase of
+  the object state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: state byte [r7,#1]==0 -> store #4, copy [r7,#0x18] to [r7,#0x10] (duration ->
+    countdown); tick branch: ldrh [r7,#0x10]; sub #1; strh; bgt exit (frame countdown); countdown expiry:
+    bl object_exitAttackState — known callee ends the attack state; state write #4 to [r7,#1] matches
+    the entity state machine used by other object routines; routes ''battlesweep, chips'' fit per-frame
+    object update context (battle entity scripts)'
+  refs:
+  - bn6f/asm/asm31.s:143609
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FB700
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No direct caller known, so r5 vs r7 relationship (same entity? work struct?) is inferred, not proven
+- Exact meaning of state value 4 and field 0x18's setter not confirmed without the entity struct definition
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB700 -> object_attackStateTimerTick
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB700

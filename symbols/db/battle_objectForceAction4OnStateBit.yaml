@@ -1,0 +1,53 @@
+name: battle_objectForceAction4OnStateBit
+address: '0x080DA8EC'
+kind: function
+status: probable
+summary: When battle state Unk_5c bit 2 is set, clears the object's flag bit 2 and forces its action to
+  4 with a fresh phase.
+interface: (r0 = unused, r5 = battle object header) -> r0 = clobbered; flags set by lsr/bcc test of state
+  Unk_5c bit 2
+details: 'Reads battle state field Unk_5c via the known getter and tests bit 2 (lsr #2 + bcc); if clear
+  it returns without touching anything. When the bit is set, it clears bit 2 (mask 4) of the object header''s
+  Flags byte at [r5,#oObjectHeader_Flags], stores 4 into oBattleObject_CurAction, and zero-writes oBattleObject_CurPhaseAndPhaseInitialized
+  to restart the phase state. This looks like an object-level AI/state handler that forces the object
+  into action 4 (an idle/finished-style action) while a global battle-state condition holds, resetting
+  its phase bookkeeping so the action runs from step 0. Uses r5 as the object pointer rather than a passed
+  argument, so it is likely called as part of an object routine table. No callers are captured, so the
+  exact trigger for the Unk_5c bit is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getStateUnk5c_800139A; lsr r0,#2; bcc locret: gate everything on state Unk_5c bit
+    2; ldrb r0,[r5,#oObjectHeader_Flags]; bic r0,#4; strb: clears flag bit 2 of the object header; strb
+    r0(4),[r5,#oBattleObject_CurAction]; strh r0(0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized]: sets
+    action 4 and resets phase'
+  refs:
+  - bn6f/asm/asm31.s:74374
+  - 0x0800139A battle_getStateUnk5c_800139A
+  reproduce: python3 tools/asmcat.py 0x080DA8EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- fuzz
+- menus3
+- story2
+- story6
+- story9
+open_questions:
+- No captured callers, so the caller context (object routine table index, which objects run this) and
+  the meaning of battle state Unk_5c bit 2 are unknown
+- What action ID 4 denotes in the battle object action enum
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA8EC -> battle_objectForceAction4OnStateBit
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA8EC

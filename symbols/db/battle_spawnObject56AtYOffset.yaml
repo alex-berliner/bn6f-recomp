@@ -1,0 +1,51 @@
+name: battle_spawnObject56AtYOffset
+address: '0x08010FC2'
+kind: function
+status: probable
+summary: Spawns battle object type 0x56 linked to the calling object at a y-offset position and stores
+  the new object's pointer into the owner's RelatedObject2Ptr field.
+interface: (r0 = ? unused/scratch, r1 = ?, r2 = y-offset value, r5 = owner battle object) -> r0 = spawned
+  object pointer, also written to [r5+oBattleObject_RelatedObject2Ptr]; flags clobbered by call
+details: Builds a packed position argument r4 = (r2 << 16) + 0x14000010, i.e. low halfword fixed at 0x10
+  (x coordinate or slot 0x10) and high halfword 0x1400 + r2, which looks like a vertical pixel offset
+  added to a base of 0x1400. It then calls the known spawner battle_spawnObject56LinkedToOwner_80C44A8,
+  which creates object type 0x56 inheriting the owner's alliance/direction and header flags 0x04|0x10.
+  The returned object pointer is saved into the owner object's RelatedObject2Ptr field, so the spawned
+  entity is kept referenced as a secondary attached object. r5 (the owner) is set by the caller, which
+  is not yet identified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: add r4,r4,r2 / add r4,r4,r2<<24 builds packed coord 0x14000010 | (r2<<16) before the spawn call;
+    bl battle_spawnObject56LinkedToOwner_80C44A8 shows it creates object type 0x56 tied to the owner's
+    alliance/direction; str r0,[r5,#oBattleObject_RelatedObject2Ptr] stores the spawned object into the
+    owner's second related-object slot; function is a thin wrapper (11 instructions) with no branches
+    of its own, so its meaning comes entirely from the known callee and the store
+  refs:
+  - bn6f/asm/asm00_2.s:4998
+  - 0x080C44A8 battle_spawnObject56LinkedToOwner_80C44A8
+  reproduce: python3 tools/asmcat.py 0x08010FC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what battle object type 0x56 actually is (its behavior would pin down the game purpose, e.g. an aura/barrier/effect
+  entity)
+- exact meaning of the packed argument fields 0x1400+r2 and 0x10 (pixels? subpixels? panel coords?) and
+  what r2 represents from the caller
+- which owner objects invoke this wrapper and when (no caller recorded yet, only the battlesweep route
+  touched it)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8010FC2 -> battle_spawnObject56AtYOffset
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010FC2

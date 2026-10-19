@@ -1,0 +1,48 @@
+name: npc_lotteryTalkStep
+address: '0x0809AC88'
+kind: function
+status: probable
+summary: Runs the lottery NPC's current dialogue script and resets (or, for script 15, sets to 28) the
+  byte at r5+8, likely a re-talk cooldown/state field.
+interface: (r0 = TextScriptArchive (TextScriptLottery86C67E4), r1 = script_idx from [r5+0x74]) -> r0 =
+  0; [r5+8] = 0 (or 0x1C if idx == 15)
+details: Loads the fixed lottery text archive and invokes chatbox_runScript with the script index already
+  stored at [r5+0x74], so the caller (or a prior step) picks which line of the lottery exchange is spoken.
+  Afterwards it clears the object's byte at offset 8, except when the script index is exactly 0xF, in
+  which case it writes 0x1C (28) instead — plausibly a frame-count cooldown before the next interaction
+  or a state id. The function always returns 0 in r0. r5 is the NPC/object context whose fields 0x74 (script
+  selector) and 0x8 (post-talk counter/state) are manipulated. The special-casing of script 15 suggests
+  it is the final/different branch of the lottery dialogue that needs the 28-unit delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_809AD7C / ldr r1,[r5,#0x74] / bl chatbox_runScript: archive is fixed, index comes
+    from r5+0x74; cmp r0,#0xf / beq loc_809AC9C / mov r1,#0: script 15 skips the zeroing; strb r1,[r5,#8]:
+    result stored as a single byte in the object struct, 0 or 0x1C; archive symbol TextScriptLottery86C67E4
+    identifies the subsystem as the lottery NPC; always ''mov r0,#0'' return, consistent with an NPC step/action
+    callback'
+  refs:
+  - bn6f/asm/asm28_0.s:2581
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x0809AC88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- 'No callers known: unclear whether r5 is an NPC object, and what offsets 0x74 and 0x8 mean in that struct
+  (cooldown frames vs. state id)'
+- Which in-game lottery interaction routes to script index 15 and why it alone gets the 0x1C value
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809AC88 -> npc_lotteryTalkStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809AC88

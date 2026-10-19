@@ -1,0 +1,52 @@
+name: object_stepUpdateByVelocity
+address: '0x080D1EF2'
+kind: function
+status: probable
+summary: 'Per-frame update for a moving battle object: runs a common step, then dispatches to one of two
+  handlers based on the object''s XVelocity, then a final step.'
+interface: (r0/r5 = battle object) -> r0 = ?; flags set by oBattleObject_XVelocity compare
+details: 'Takes the current battle object (r5 holds it across the calls, matching the caller object_updateMoveStep).
+  First calls sub_80D1F0E unconditionally. It then loads oBattleObject_XVelocity and compares to 0: if
+  zero it calls sub_80D1F68, otherwise sub_80D1FA0, so the XVelocity field selects between two alternative
+  per-frame behaviors (plausibly vertical vs. horizontal movement handling). Finally it always calls sub_80D1FD8
+  before returning, a common tail step (likely collision/animation/cleanup). The function itself allocates
+  nothing and touches no fields directly besides reading XVelocity; all work is delegated. It is a dispatcher
+  layer of the object''s update chain, one frame of the slide-toward-target-panel behavior driven by Timer2
+  in the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r2,[r5,#oBattleObject_XVelocity]; cmp r2,#0; bne loc_80D1F04 — velocity field selects the
+    branch; bl sub_80D1F0E before the branch — common per-frame preamble for the object; bne picks sub_80D1FA0
+    else sub_80D1F68 — two mutually exclusive per-frame handlers; bl sub_80D1FD8 after both paths — unconditional
+    common tail step; caller object_updateMoveStep 'slides a battle object toward a target panel over
+    Timer2 frames' confirms per-frame object update context
+  refs:
+  - bn6f/asm/asm31.s:56051
+  - 0x080D1D90 object_updateMoveStep
+  - 0x080D1F0E sub_80D1F0E
+  - 0x080D1F68 sub_80D1F68
+  - 0x080D1FA0 sub_80D1FA0
+  reproduce: python3 tools/asmcat.py 0x080D1EF2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80D1F0E, sub_80D1F68, sub_80D1FA0 and sub_80D1FD8 each do (needed to say what the two branches
+  mean, e.g. vertical vs horizontal motion)
+- Which object type/spawner assigns this update pointer (needed for a more specific name)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1EF2 -> object_stepUpdateByVelocity
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1EF2

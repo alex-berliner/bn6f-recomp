@@ -1,0 +1,46 @@
+name: ai_attackStateStepTimer
+address: '0x080FE42E'
+kind: function
+status: probable
+summary: 'AI attack-state countdown: arms a timer from AttackDuration on first call, ticks it down each
+  frame, and ends the object''s attack state when it expires.'
+interface: (r5 = battle object, r7 = battle object base with oAIAttackVars) -> r0 clobbered; updates oAIAttackVars_AttackElement/StepTimer
+  and oBattleObject_CurAnim
+details: On first invocation (oAIAttackVars_AttackElement == 0) it writes 4 to AttackElement and copies
+  oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer, arming the countdown. On subsequent frames
+  it decrements StepTimer and returns while it is still positive. When the timer reaches 0 it clears oBattleObject_CurAnim
+  to 0 and calls object_exitAttackState to leave the attack state. Element value 4 here acts as an 'attack
+  sequence active' marker rather than a real element.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips the arming branch, storing #4 and
+    copying AttackDuration to StepTimer (asm lines 3-8); StepTimer is decremented each frame and ''bgt
+    locret'' keeps the state alive until zero (lines 10-13); on expiry, ''mov r0,#0; strb r0,[r5,#oBattleObject_CurAnim]''
+    resets the animation (lines 14-15); tail call to the known object_exitAttackState confirms it finalizes
+    an attack state; run on battlesweep/beastsp routes, i.e. during battle enemy AI turns'
+  refs:
+  - bn6f/asm/asm31.s:149535
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FE42E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is known, so what sets oAIAttackVars_AttackElement back to 0 to re-arm this, and what attack
+  states use duration value 4 vs other elements, is unseen
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FE42E -> ai_attackStateStepTimer
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE42E

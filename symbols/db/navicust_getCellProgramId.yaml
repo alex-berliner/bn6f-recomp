@@ -1,0 +1,51 @@
+name: navicust_getCellProgramId
+address: '0x08135F18'
+kind: function
+status: probable
+summary: Reads the Navi Cust board cell under the cursor/work position, converts its table value to a
+  program/index ID, and dispatches it to a handler.
+interface: (r5 = navicust work struct; r0/r1 clobbered) -> r0 = id passed to sub_8135F34; returns that
+  callee's result
+details: The function combines two halfword coordinates from the work struct at r5+0x20 and r5+0x24, scaling
+  the sum by 4 to form a byte offset into the per-cell array word_201DA80. It loads the halfword entry
+  for that cell, subtracts a base value of 0x90, and divides by 4 (value>>2), yielding a small id that
+  is passed to sub_8135F34. The 0x90 base suggests the board table stores tile/sprite IDs for occupied
+  cells, with 4 IDs per program block. Being called from the board input handler and several neighbours
+  of the navicust code, it likely runs whenever the selected cell changes or an action is confirmed, acting
+  on the program occupying that cell.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#0x20]/ldrh r1,[r5,#0x24]; add; lsl r0,#2 builds a word index from two coordinates
+    of the board work struct; ldr r1, off_8135F70 (=word_201DA80); ldrh r1,[r1,r0] reads a halfword from
+    the cell table; sub r1,#0x90; lsr r1,#2 normalizes the cell value into a small id before use; bl sub_8135F34
+    passes that id as the sole argument; called by navicust_handleBoardInput and several subs in the 0x8135xxx-0x8136xxx
+    navicust range
+  refs:
+  - bn6f/asm/asm36.s:12354
+  - 0x08135830 navicust_handleBoardInput
+  - 0x0813581C sub_813581C
+  - 0x081360B4 sub_81360B4
+  - 0x08135F34 sub_8135F34
+  reproduce: python3 tools/asmcat.py 0x08135F18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- what sub_8135F34 does with the id (returns it? plays a sound? starts compression?)
+- layout of the work struct at r5 (are 0x20/0x24 cursor x/y or precomputed offsets?)
+- exact meaning of entries in word_201DA80 and why the base is 0x90 with a /4 scale
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8135F18 -> navicust_getCellProgramId
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135F18

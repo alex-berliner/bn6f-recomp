@@ -1,0 +1,46 @@
+name: ai_setAttackElementAndDelay
+address: '0x080F96A0'
+kind: function
+status: probable
+summary: 'AI attack step: assigns element 4 (wood) to the attacker on entry and waits a variable delay
+  before leaving the attack state'
+interface: (r0 = unused/garbage, reads r7 object) -> r0 = object_exitAttackState result; no flags used
+  by callers
+details: Runs per-frame as an AI attack-state handler for the object in r7. On the first invocation, when
+  oAIAttackVars_AttackElement is 0, it writes element 4 (wood) into AttackElement and sets StepTimer to
+  oAIAttackVars_SubStepIndex + 0x78, so the SubStepIndex field acts as a duration offset on top of a 120-frame
+  base. On later invocations it simply decrements StepTimer each frame. Once the timer reaches 0 it calls
+  object_exitAttackState to leave the attack state. The element write persisting across frames is what
+  distinguishes entry from wait.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_80F96B4 — one-shot entry branch keyed
+    on element being unset; mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement] — writes element id 4
+    (wood in BN6); add r0,#0x78; strh r0,[r7,#oAIAttackVars_StepTimer] — SubStepIndex used as duration
+    added to 120-frame base; sub r0,#1; strh; bgt — frame-countdown wait on subsequent calls; bl object_exitAttackState
+    — returns to normal state when the delay expires
+  refs:
+  - bn6f/asm/asm31.s:139516
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F96A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which enemy/attack uses this and why it forces wood element is unconfirmed
+- What SubStepIndex is set to before entry (the actual wait length) is not shown here
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F96A0 -> ai_setAttackElementAndDelay
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F96A0

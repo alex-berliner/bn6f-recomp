@@ -1,0 +1,49 @@
+name: ai_attackChargeHandler
+address: '0x080FF174'
+kind: function
+status: probable
+summary: 'AI attack sub-step: if no attack element is charged, start a charge (element 4, anim 0xA, timer
+  from AttackBoost2); otherwise count it down and fire the attack when the charge expires'
+interface: (r7 = battle object AI attack vars struct, r5 = battle object) -> r0 = object id passed to
+  object_setCounterTime; no return value
+details: Reads oAIAttackVars_AttackElement in the r7 AI-attack struct; when it is 0, stores element 4
+  into AttackElement, plays animation 0xA on the object at r5 (oBattleObject_CurAnim), and seeds oAIAttackVars_StepTimer
+  from AttackBoost2 (the charge duration). On subsequent calls it decrements StepTimer each frame and
+  returns while it is still positive. Once the timer hits zero it resets AttackStepIndex to 0, calls object_setCounterTime
+  with 0x12 (18 counter ticks, presumably invuln/wind-up time), and sets oAIAttackVars_HitElement to 0xC,
+  which selects the attack's hit element for the follow-up step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits idle-start vs countdown phases (sub_80FF174+4);
+    strb #4 into AttackElement and strh AttackBoost2 into StepTimer on first entry = starting a charge
+    of configured length; ldrh StepTimer, sub #1, strh, bgt exit = per-frame countdown until charge completes;
+    bl object_setCounterTime with r0=0x12 and strh #0xC to HitElement after the timer expires = firing/resolving
+    the attack; r7 fields all oAIAttackVars_* and r5 gets oBattleObject_CurAnim, matching AI attack-step
+    handlers called from the object AI step dispatch'
+  refs:
+  - bn6f/asm/asm31.s:151245
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x080FF174
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No direct caller was captured, so it is unclear which boss/AI attack table invokes this or which attack
+  (element 4 charge) it belongs to
+- Meaning of the 0x12 counter time and HitElement value 0xC for the subsequent attack step not confirmed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FF174 -> ai_attackChargeHandler
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF174

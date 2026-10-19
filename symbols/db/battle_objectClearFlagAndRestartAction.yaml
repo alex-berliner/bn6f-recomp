@@ -1,0 +1,46 @@
+name: battle_objectClearFlagAndRestartAction
+address: '0x08116470'
+kind: function
+status: probable
+summary: Clears an object's flag bit 1 and, when battle-state Unk_5c bit 2 is set, forces the object to
+  action 1 with phase reset.
+interface: (r5 = battle object header) -> flags from bit2 of battle_getStateUnk5c; r0 clobbered
+details: 'Uses r5 as the object pointer (no argument in r0). It reads oObjectHeader_Flags, bic''s out
+  bit 1 (0x2), and stores it back. It then calls battle_getStateUnk5c_800139A and tests bit 2 of the result
+  via lsr #2/bcc. If that bit is set, it writes CurAction = 1 and clears the CurPhaseAndPhaseInitialized
+  halfword, restarting the object''s current action from its first phase. If the bit is clear, it does
+  nothing further. The meaning of flags bit 1 and of state Unk_5c bit 2 is not identifiable without a
+  caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/bic #2/strb on [r5,#oObjectHeader_Flags] clears flag bit 1 of the object; bl battle_getStateUnk5c_800139A
+    + lsr r0,#2 / bcc reads state Unk_5c and tests its bit 2; strb #1 to oBattleObject_CurAction and strh
+    #0 to CurPhaseAndPhaseInitialized restart the object''s action; r5-only addressing with no r0 input
+    shows it operates on a fixed/current object, not a passed one'
+  refs:
+  - bn6f/asm/asm32.s:16396
+  - 0x0800139A battle_getStateUnk5c_800139A
+  reproduce: python3 tools/asmcat.py 0x08116470
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so the meaning of flags bit 1 and state Unk_5c bit 2 (and thus the gameplay trigger)
+  is unknown
+- Whether 'action 1' has a shared meaning across battle objects needs cross-referencing other CurAction
+  writers
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116470 -> battle_objectClearFlagAndRestartAction
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116470

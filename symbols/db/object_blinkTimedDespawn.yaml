@@ -1,0 +1,48 @@
+name: object_blinkTimedDespawn
+address: '0x080C59B6'
+kind: function
+status: probable
+summary: Battle-object state handler that removes the object from collision, blinks it invisible for its
+  final frames, then destroys it when its timer runs out.
+interface: (r5 = battle object pointer, r0 unused on entry) -> writes oBattleObject_CurPhase/Timer, oObjectHeader_Flags;
+  sets state to CUR_STATE_DESTROY when timer expires
+details: Runs as a per-frame state handler for a battle object whose current phase is held in oBattleObject_CurPhase.
+  On the first invocation (phase 0) it advances to phase 1, calls object_clearCollisionRegion so the object
+  stops colliding immediately, and starts a 26-frame (0x1A) countdown in oBattleObject_Timer. During the
+  last 9 ticks (timer <= 8) it clears the flag bit 0x2 in oObjectHeader_Flags (apparently the visible/enabled
+  bit) and re-sets it only on frames where the timer has bit 1 set, producing a 2-frame blink. Each frame
+  it decrements the timer; when the decrement underflows (timer becomes negative) it writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, tearing the object down.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: phase-0 branch sets CurPhase=1, calls object_clearCollisionRegion, stores 0x1A into oBattleObject_Timer;
+    asm: timer<=8 block clears oObjectHeader_Flags bit 0x2 then re-sets it when (Timer & 2), a 2-frame
+    blink pattern; asm: timer decrements each frame and underflow writes CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    callee object_clearCollisionRegion confirms the intent to remove the object from play at start; recorded
+    routes battlesweep/beastsp are battle gameplay, consistent with a battle-object despawn handler'
+  refs:
+  - bn6f/asm/asm31.s:29527
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C59B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of ObjectHeader_Flags bit 0x2 (visibility vs active) and which objects use this handler
+  (no known callers to confirm, e.g. a treasure/explosion despawn)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C59B6 -> object_blinkTimedDespawn
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C59B6

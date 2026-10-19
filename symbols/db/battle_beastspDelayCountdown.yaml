@@ -1,0 +1,53 @@
+name: battle_beastspDelayCountdown
+address: '0x080A7AA4'
+kind: function
+status: probable
+summary: Runs a one-shot countdown from a delay value in a config struct and, once it expires, triggers
+  sub_80A7BA2 with mode 2 (beast-SP related action), returning 1 only on the tick it fires.
+interface: '(r6 = state struct: +3 active flag byte, +4 remaining-ticks halfword; r7 = config struct:
+  +1 delay halfword) -> r0 = 1 when the countdown expired and the action fired this call, else 0; no meaningful
+  flags'
+details: 'First gates on battle_isInputAllowedOrBattleBusy_80A7C58: while the battle is busy/locked-out
+  the timer is untouched and 0 is returned. Otherwise, if the state flag at r6+3 is clear, it loads the
+  delay from r7+1 into the counter at r6+4 and sets the flag (arming the timer once). Every call then
+  decrements r6+4; as long as the result stays >= 0 it returns 0, and when the counter goes negative it
+  clears the flag, calls sub_80A7BA2(2), and returns 1 — so the action fires exactly once, one tick after
+  the counter reaches 0. The use of callee-saved r6/r7 without setting them implies the caller provides
+  both struct pointers (likely the per-entity battle object and its parameter block, as in other battle-object
+  helpers).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isInputAllowedOrBattleBusy_80A7C58 + bne loc_80A7AD0: early-out returning 0 while
+    battle is busy; ldrb r0,[r6,#3] / tst / bne: one-shot latch at state+3 prevents re-arming; ldrb r0,[r7,#1];
+    strh r0,[r6,#4]: delay value copied from config+1 into the counter; ldrh/sub #1/bge: returns 0 while
+    counter >= 0, falls through on underflow; mov r0,#2; bl sub_80A7BA2 followed by mov r0,#1: fires mode-2
+    action and reports success once'
+  refs:
+  - bn6f/asm/asm29.s:5186
+  - 0x080A7C58 battle_isInputAllowedOrBattleBusy_80A7C58
+  - 0x080A7BA2 sub_80A7BA2
+  reproduce: python3 tools/asmcat.py 0x080A7AA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- No callers are captured, so which structures r6 and r7 point to (battle object vs parameter block) and
+  where the delay value originates are unconfirmed
+- What sub_80A7BA2 with arg 2 actually does (the action fired on expiry) is unknown
+- The 30-frame/one-tick-per-call tick rate and the meaning of the beast-sp gating in the callee's busy
+  check would need route context to confirm
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7AA4 -> battle_beastspDelayCountdown
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7AA4

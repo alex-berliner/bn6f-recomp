@@ -1,0 +1,63 @@
+name: camera_callModeHandler
+address: '0x080302D0'
+kind: function
+status: probable
+summary: Dispatches the camera's per-mode update routine based on the camera struct's mode field.
+interface: (r5 = camera struct, mode at oCamera_Mode selects handler) -> calls handler with r5 intact;
+  r0/r1 clobbered by the dispatch; returns handler's result
+details: 'Loads a handler table address (off_80302E4), reads the byte oCamera_Mode from the camera struct
+  in r5, indexes the table, and tail-calls the selected routine via the mov lr,pc/bx trick so the callee''s
+  return reaches the pop {pc}. The five entries are: copy scroll to render layers, snap scroll to camera
+  position, clear scroll offsets, sub_803035E, and a nullsub — one per camera mode. r5 is deliberately
+  kept as the callee''s argument; this function itself takes no register arguments.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#oCamera_Mode]; ldr r0,[r0,r1]; bx r0 — mode-indexed dispatch on camera struct;
+    table entries camera_CopyScrollToRenderLayers_80302F8, renderInfo_SnapScrollToCamera_8030316, render_ClearScrollOffsets_8030336
+    — all scroll/camera-mode behaviors; caller camera_init_802FF4C ('run the …' — truncated, but initializes
+    camera) invokes it after setting up the camera; mov lr,pc/bx r0 + pop {pc} — long-call trampoline
+    preserving lr as return address
+  refs:
+  - bn6f/asm/asm03_0.s:21856
+  - 0x0802FF4C camera_init_802FF4C
+  reproduce: python3 tools/asmcat.py 0x080302D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact semantics of modes 3 (sub_803035E) and 4 (nullsub_60)
+- whether any mode is set outside camera_init
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80302D0 -> camera_callModeHandler
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80302D0

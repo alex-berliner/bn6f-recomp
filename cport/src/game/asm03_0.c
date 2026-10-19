@@ -3264,10 +3264,10 @@ static u32 tutorial_script_4(u32 state) { /* tutorial states 4 and 5 share this 
     return R0;
 }
 
-/* register form: calls sub_8029A36 outside this file, which has no typed C interface yet */
+/* register form: calls t1_checkCustomChipMsg outside this file, which has no typed C interface yet */
 static u32 tutorial_script_6(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_8029A36);
+    GUEST_CALL(t1_checkCustomChipMsg);
     return R0;
 }
 

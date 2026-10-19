@@ -1,0 +1,48 @@
+name: ai_chipAttackWaitStep
+address: '0x080EE604'
+kind: function
+status: probable
+summary: 'AI chip-attack state step: on first run decrements a counter on the temp attack object and starts
+  a 6-frame wait timer, then clears the attack links and exits the attack state when the timer expires.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> updates StepTimer, AttackElement, TempAttackObjectPtr->0x10;
+  on expiry clears RelatedObject1Ptr and AIData TempAttackObjectPtr and calls object_exitAttackState;
+  no return value
+details: 'Uses oAIAttackVars_AttackElement as a phase flag: when it is 0, the function reads AIData_TempAttackObjectPtr
+  from the battle object, decrements byte 0x10 of that temp attack object (likely remaining shots/uses),
+  sets StepTimer to 6, and sets AttackElement to 4 so the init runs only once. Every call then decrements
+  StepTimer; while it stays >= 0 the function just returns. Once the timer goes negative, it nulls oBattleObject_RelatedObject1Ptr
+  and AIData_TempAttackObjectPtr and calls object_exitAttackState to end the attack. This matches an AI-driven
+  chip attack that fires (count tracked in the temp object) then waits briefly before releasing the spawned
+  attack object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards one-time init with strb #4 back to
+    AttackElement; ldr r0,[r5,#oBattleObject_AIDataPtr]; ldr TempAttackObjectPtr; dec r0,#0x10 — modifies
+    the spawned attack object''s counter; mov r0,#6; strh StepTimer, then sub/bge loop implements the
+    frame-wait; str #0 to RelatedObject1Ptr and AIData TempAttackObjectPtr plus bl object_exitAttackState
+    shows teardown on expiry; Recorded route is ''chips'', consistent with a chip-driven AI attack sequence'
+  refs:
+  - bn6f/asm/asm31.s:117015
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EE604
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- Exact meaning of TempAttackObjectPtr field 0x10 (shot count vs. other counter) and what sets it
+- Which parent AI routine dispatches to this step and what step id 4 in AttackElement denotes elsewhere
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EE604 -> ai_chipAttackWaitStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE604

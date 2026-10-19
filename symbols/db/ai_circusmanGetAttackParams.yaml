@@ -1,0 +1,49 @@
+name: ai_circusmanGetAttackParams
+address: '0x080FEAD8'
+kind: function
+status: probable
+summary: Returns two difficulty-scaled attack parameter values for CircusMan's attack setup, read from
+  a per-difficulty byte table.
+interface: () -> r0 = table[difficulty] of byte_80FEAF4[0..3], r1 = table[difficulty] of byte_80FEAF4[4..7];
+  flags from sub_800FE28's last call
+details: The function calls sub_800FE28 twice with pointers into byte_80FEAF4 (base and base+4) and returns
+  the two results in r0/r1. byte_80FEAF4 holds two 4-entry tables {1,3,3,3} and {0x10,0xC,8,8}, matching
+  the game's four difficulty tiers; sub_800FE28 evidently selects an entry from such a table by the current
+  difficulty. The sole caller ai_circusmanInitAttackState uses these as attack parameters when launching
+  attack id 0xC — the second value (0x10/0xC/8/8) shrinks at higher difficulty, consistent with an interval
+  or timer. The first value (1/3/3/3) grows with difficulty, e.g. a count or amount. Both values are plain
+  bytes read straight out of ROM data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'body: two bl sub_800FE28 calls with off_80FEAF0 and off_80FEAF0+4, results returned in r0/r1;
+    byte_80FEAF4: two 4-byte groups (1,3,3,3 / 0x10,0xC,8,8) sized to the four difficulty tiers; caller
+    ai_circusmanInitAttackState ''fills attack parameters from helpers ... launches attack id 0xC'' immediately
+    consumes the pair; second table monotonically decreases with difficulty (0x10,0xC,8,8), typical of
+    a difficulty-scaled delay'
+  refs:
+  - bn6f/asm/asm31.s:150378
+  - 0x080FEB9E ai_circusmanInitAttackState
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080FEAD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact behavior of sub_800FE28 (presumably table[difficulty], unverified)
+- which attack fields the caller stores r0/r1 into (count vs timer roles are inferred from value trends
+  only)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FEAD8 -> ai_circusmanGetAttackParams
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FEAD8

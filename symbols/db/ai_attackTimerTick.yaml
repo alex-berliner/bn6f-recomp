@@ -1,0 +1,47 @@
+name: ai_attackTimerTick
+address: '0x080FFEE4'
+kind: function
+status: probable
+summary: 'AI attack-state tick: on entry initializes a duration timer for attack element 4, then counts
+  it down and leaves the attack state when it expires.'
+interface: (r7 = battle object with oAIAttackVars fields) -> updates oAIAttackVars_AttackElement/StepTimer
+  and oBattleObject_CurAnim; may call object_exitAttackState
+details: 'On the first invocation (oAIAttackVars_AttackElement == 0) it sets AttackElement to 4, resets
+  the object''s current animation (oBattleObject_CurAnim) to 0, and copies oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer to start a countdown. On subsequent invocations it decrements StepTimer;
+  once it reaches zero it calls object_exitAttackState to return the object to its normal state. It is
+  a two-phase helper: initialize-once, then wait out a fixed timer. The magic element value 4 likely selects
+  a specific (possibly neutral/default) attack behavior within the AI attack-vars struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between init phase and countdown
+    phase; strb #4 into AttackElement and strh AttackDuration into StepTimer only when element was 0 (one-time
+    init); sub r0,#1 / strh then bgt skip implements a per-frame countdown of StepTimer; bl object_exitAttackState
+    when the timer hits 0 shows it governs an AI attack substate; mov r0,#0; strb [r5,#oBattleObject_CurAnim]
+    resets the object''s animation on entry'
+  refs:
+  - bn6f/asm/asm31.s:152994
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FFEE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which enemies/AI states invoke it and what element value 4 corresponds to in game
+  terms is unknown
+- Exact meaning of oAIAttackVars_AttackDuration units (frames?) not confirmed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FFEE4 -> ai_attackTimerTick
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFEE4

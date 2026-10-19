@@ -1,0 +1,50 @@
+name: spawnOverworldMapObjects1aLoop
+address: '0x0808FED8'
+kind: function
+status: probable
+summary: Spawns N copies of overworld-map object 0x1A with fixed parameters, N taken from sub_808FF00's
+  return value.
+interface: (no args) -> r0 = 0 always; r4-r7 clobbered/restored, SpawnOverworldMapObject called N times
+  with r0=0x1A, r1=0, r2=0, r3=0x400000, r4=loop index
+details: First calls sub_808FF00 and treats its return as a count (r7). It then loops from 0 to count-1,
+  setting r4 to the iteration index before each call, and invokes SpawnOverworldMapObject with object/type
+  id 0x1A in r0 and zeros in r1/r2, r3 = 0x40<<16 (likely a fixed-point coordinate or param 0x400000).
+  The push/pop of r5 inside the loop is only for 8-byte stack alignment around the call. Always returns
+  0, so its result value is unused. The meaning of the count and of r3 depends on sub_808FF00 and SpawnOverworldMapObject,
+  which are not documented here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_808FED8+4: ''bl sub_808FF00; mov r7, r0'' — return value used as loop bound; loc_808FEE2
+    loop: r0=0x1A, r1=0, r2=0, r3=0x40<<16 loaded fresh each iteration before ''bl SpawnOverworldMapObject'';
+    ''mov r4, r6; bl SpawnOverworldMapObject'' — iteration index placed in r4, suggesting SpawnOverworldMapObject
+    reads it as a 5th register input; tail: ''mov r0, #0'' — function always returns 0; callee list: only
+    SpawnOverworldMapObject (0x080047E0) and sub_808FF00 (0x0808FF00)'
+  refs:
+  - bn6f/asm/asm25.s:900
+  - 0x080047E0 SpawnOverworldMapObject
+  - 0x0808FF00 sub_808FF00
+  reproduce: python3 tools/asmcat.py 0x0808FED8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- What sub_808FF00 returns (the count source) and which structure/counter it reads
+- SpawnOverworldMapObject's real signature — whether r4 (loop index) is a genuine 5th argument
+- What object id 0x1A is in the overworld object table and what r3=0x400000 encodes (coordinate? flag
+  word?)
+- No callers captured, so the gameplay context (route 'beastsp') only weakly hints at purpose
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808FED8 -> spawnOverworldMapObjects1aLoop
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FED8

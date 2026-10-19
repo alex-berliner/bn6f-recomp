@@ -1,0 +1,51 @@
+name: battle_spawnChipObject
+address: '0x080E3128'
+kind: function
+status: probable
+summary: Spawns battle object type 0x25 for a chip effect and fills in its panel position, element, owner
+  link, alliance, damage state and chip ID.
+interface: (r0 = related/source object ptr, r1 = panel X, r2 = panel Y, r3 = element; extra args via stacked
+  r0-r2,r5; r6 = damage field, r7 = chip ID) -> r0 = spawned object ptr or NULL; flags set by callee's
+  NULL check
+details: 'The push {r0-r2,r5} before the call parks the caller''s arguments on the stack so object_spawnType4
+  can read them as extra spawn parameters alongside r0=#0x25 (the object type). After the spawn, the values
+  are popped shifted by one slot (r0->r1, r1->r2, r2->r3), and r0 is reloaded with the new object pointer
+  (kept via mov r0,r5 before r5 is clobbered by the pop). On success it writes oBattleObject_PanelX/Y,
+  Element, RelatedObject1Ptr (caller''s r5), copies AllianceAndDirectionFlip from the related object,
+  and sets DamageAndStaminaDamageCounterDisabler and ChipID from the caller''s r6/r7. The beq after the
+  pop skips all field writes when the spawn failed, so the flags must come from the callee''s null-check
+  on the returned pointer. This is a chip-context spawner: it clones the owner''s alliance and damage-disabler
+  state into the new entity.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x25 then bl object_spawnType4: spawns battle object type 0x25 with stack-passed args;
+    pop {r1-r3,r5} lands pushed args in r1-r3 for the field stores (push/pop register shift); strb r1/r2
+    to oBattleObject_PanelX/Y and strb r3 to oBattleObject_Element set position and element; ldrh from
+    RelatedObject''s AllianceAndDirectionFlip copied into the new object ties it to the owner; beq locret
+    skips the stores, so spawn failure (NULL) is handled via callee-set flags'
+  refs:
+  - bn6f/asm/asm31.s:92633
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E3128
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- chips
+open_questions:
+- exact meaning of object type 0x25 (which chip effect/entity uses it)
+- how callers set up r5/r6/r7 before the call, since r6 and r7 are consumed unsaved
+- which argument the callee reads from the stacked r5 word
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3128 -> battle_spawnChipObject
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3128

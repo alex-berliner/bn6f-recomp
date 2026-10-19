@@ -1,0 +1,54 @@
+name: battle_beastOutGetMapEntry
+address: '0x080A5D0C'
+kind: function
+status: probable
+summary: Picks a per-map 8-byte Beast Out data entry for the object in r5, using the current map (group
+  0x81 uses its map number, everything else table slot 3).
+interface: (implicit r5 = BattleObject/transform record, implicit r10 = toolkit) -> r0 = pointer to an
+  8-byte entry in a map-selected table; no flags used
+details: Reads GameState via toolkit->gameState; if MapGroup == 0x81 it uses MapNumber as the table selector,
+  otherwise forces selector 3. The selector indexes a 4-entry pointer table (off_80A5D38) whose entries
+  are three small arrays (byte_80A5A6C/84/9C/ABC, spaced 0x18 = 3 entries apart). It then indexes the
+  chosen array by the byte at [r5,#4] with stride 8 and returns that 8-byte record. The trailing 'mov
+  r0,#0' after the unconditional branch is dead code, so the null-return path is never taken. Given the
+  caller battle_beastOutInit builds the Beast Out BattleObject (sprite, anim, OAM layer), the returned
+  record is most likely a per-map/per-form sprite or animation descriptor pair (two words).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r4,[r10,#oToolkit_GameStatePtr] then tests oGameState_MapGroup==0x81 else uses constant
+    3 as table index; ldr r0,[r4,r2] with r2=selector*4 picks one of off_80A5D38's four pointers to byte_80A5A6C/84/9C/ABC;
+    r3 = ldrb [r5,#4] * 8 then add r0,r0,r3 selects an 8-byte stride entry, and each byte_ table is only
+    0x18 bytes (3 entries); caller 0x080A5AF8 battle_beastOutInit_80A5AF8 initializes the Beast Out transformation
+    BattleObject, so r5 is that object/record; tables sit 0x18 apart at byte_80A5A6C..ABC, confirming
+    3 usable indices for [r5,#4]
+  refs:
+  - bn6f/asm/asm29.s:2039
+  - 0x080A5AF8 battle_beastOutInit_80A5AF8
+  - 0x080A5EC8 sub_80A5EC8
+  reproduce: python3 tools/asmcat.py 0x080A5D0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- maps
+open_questions:
+- What the 8 bytes of each entry mean (sprite pointer + animation pointer, palette, or something else)
+  — needs the consumer code in battle_beastOutInit_80A5AF8
+- Semantics of the byte at [r5,#4] (form/index selector) and why exactly 3 entries
+- Which in-game area map group 0x81 is, and why those maps get their own table entries
+- Why the tables are version/area-specific at all — presumably a special Beast Out appearance or forced
+  form in those maps
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A5D0C -> battle_beastOutGetMapEntry
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5D0C

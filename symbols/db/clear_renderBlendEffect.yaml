@@ -1,0 +1,46 @@
+name: clear_renderBlendEffect
+address: '0x0804CBC0'
+kind: function
+status: probable
+summary: 'Tears down an active render/blend effect: clears the render-info flag and resets its state fields,
+  then zeroes the effect scratch struct.'
+interface: () -> r0 = zeroFill return; flags from zeroFill_e2009740
+details: Reads the toolkit RenderInfo pointer and clears bit 0x800 in its flags halfword (likely an 'effect/blending
+  active' marker). It then stores the constant 0x3F0B into the halfword at RenderInfo+0xA, which looks
+  like a reset/default value for the effect's parameters (blend or fade state kept inside RenderInfo).
+  Finally it calls the known helper zeroFill_e2009740, which zero-fills the 8-byte scratch struct at toolkit->Unk2009740,
+  presumably the per-frame effect working state. No arguments are taken and no return value is produced.
+  With no callers captured, the exact trigger context (which effect is being ended) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bic r0, 0x800 on [RenderInfoPtr] then store-back: clears one render-info flag word; strh 0x3F0B,
+    [RenderInfoPtr,#0xa]: writes a fixed reset value into a RenderInfo state halfword; bl zeroFill_e2009740:
+    reuses the known ''zero 8-byte Unk2009740 scratch'' helper, tying this to render scratch cleanup;
+    no other register reads: takes no arguments, acts purely on global render state; executed on the beastsp
+    route, consistent with cleanup after a transformation/overlay effect'
+  refs:
+  - bn6f/asm/asm03_2.s:11205
+  - 0x08001820 zeroFill_e2009740
+  reproduce: python3 tools/asmcat.py 0x0804CBC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- No callers are captured, so which effect sets flag 0x800 and writes RenderInfo+0xA is unknown
+- The meaning of the constant 0x3F0B (blend coefficients vs fade counter) is not confirmed
+- Exact layout of the RenderInfo struct fields at +0 and +0xA
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_804CBC0 -> clear_renderBlendEffect
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804CBC0

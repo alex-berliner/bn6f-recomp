@@ -1,0 +1,54 @@
+name: battle_spawnParentLinkedObj6
+address: '0x080E09EE'
+kind: function
+status: probable
+summary: 'Spawns a type-4 battle object with id 6 and links the fresh object to its spawner: inherits
+  the parent''s alliance/flip field, stores the parent pointer and a caller pointer in it, and records
+  the new object at *r7.'
+interface: (r0 unused by caller - set to 6 here; r1-r3 = pass-through params for object_spawnType4, r5
+  = parent battle object, r7 = ptr to slot receiving new object) -> r0 = new battle object or unchanged/0
+  on failure; flags from spawn result (beq skips linking on failure)
+details: 'Thin spawn wrapper: sets the first spawn parameter to 6 and calls object_spawnType4, letting
+  the caller''s r1-r3 supply the rest. On success it copies oBattleObject_AllianceAndDirectionFlip from
+  the parent (caller''s r5) into the new object, since the type-4 initializer already ran before this
+  fixup. It writes the parent into the new object''s oBattleObject_RelatedObject1Ptr and the caller''s
+  r7 into oBattleObject_ExtraVars+4, then stores the new object pointer to *r7 so the caller keeps a handle.
+  The child thus acts as an attachment/companion of the spawning battle object, sharing its alliance and
+  flip state. Note the listed ''mov r0, r5'' is inconsistent with the stores (which use r0 as destination
+  object, r5 as source parent); the coherent reading is mov r5, r0 followed by pop {r5} restoring the
+  parent, with beq testing the spawn''s NULL/success result. r7 is used without being saved, so it relies
+  on a caller-provided context pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#6 + bl object_spawnType4: only the first spawn parameter is fixed here, rest pass through
+    from the caller; ldrh/strh on oBattleObject_AllianceAndDirectionFlip copies parent r5''s alliance/flip
+    word into the spawned object; str r5,[r0,#oBattleObject_RelatedObject1Ptr] links the new object back
+    to the spawning object; str r0,[r7] hands the new object pointer back to the caller through its r7
+    slot; beq over the whole linking block shows it only runs when the spawn returned a valid object'
+  refs:
+  - bn6f/asm/asm31.s:87179
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E09EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What entity battle-object id 6 (type 4) actually is - no known caller or route data names it
+- What r7 points to at call sites (which structure field receives the new object pointer)
+- Meaning of the pass-through r1-r3 spawn parameters and the exact param layout of object_spawnType4
+- Whether 'mov r0, r5' in the listing is a transcription slip for mov r5, r0, as the store pattern implies
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E09EE -> battle_spawnParentLinkedObj6
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E09EE

@@ -1,0 +1,49 @@
+name: ai_chargeTargetPanelAttack
+address: '0x080FB4FE'
+kind: function
+status: probable
+summary: 'AI attack state handler: enemy aims at a target panel, blinks that panel''s highlight while
+  charging, and signals the hit when the charge timer runs out'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; r0/r1 hold sub_80FB886's target panel X/Y
+  on the init path; sets HitElement=0x10 when finished
+details: 'On first entry (AttackElement==0) the attack initializes: element is set to 4, the object plays
+  animation 0x11, sub_80FB886 supplies the target panel coordinates (TargetPanelX/Y), StepTimer is loaded
+  from AttackBoost2, and ChargeCycles is cleared. Each subsequent tick increments ChargeCycles; every
+  8th cycle (lsr r0,#3 carry) it calls object_highlightPanel on the stored target panel, producing a blinking
+  aim marker on the panel. StepTimer counts down; when it reaches 0 the routine writes 0x10 to HitElement,
+  which presumably triggers the attack''s damage phase elsewhere. This is a per-frame update called from
+  the object''s AI state machine, not a one-shot routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb from oAIAttackVars_AttackElement with bne split: init path vs. tick path; init path: anim
+    0x11, bl sub_80FB886 storing r0/r1 to TargetPanelX/Y, StepTimer=AttackBoost2, ChargeCycles=0; tick
+    path: lsr r0,#3 + bcs then bl object_highlightPanel(r0=X,r1=Y) — periodic blink of target panel; StepTimer
+    countdown (sub #1, bgt) ending in mov r0,#0x10; strh [HitElement] — completion signal; callee object_highlightPanel
+    ''marks the panel an object stands on as highlighted'' matches the aiming-blink reading'
+  refs:
+  - bn6f/asm/asm31.s:143326
+  - 0x0800CBD8 object_highlightPanel
+  - 0x080FB886 sub_80FB886
+  reproduce: python3 tools/asmcat.py 0x080FB4FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What sub_80FB886 computes (how the target panel is chosen) and what element 4 / HitElement 0x10 mean
+- Which enemy/attack uses this state and what happens after HitElement=0x10
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB4FE -> ai_chargeTargetPanelAttack
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB4FE

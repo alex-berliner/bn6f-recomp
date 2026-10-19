@@ -1,0 +1,50 @@
+name: ai_updateAttackHoldState
+address: '0x080F8B20'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI object''s held attack state: initializes element/anim/timer on first
+  run, then counts the timer down and leaves the attack state when it expires.'
+interface: (r0 = unused, r7 = AI attack vars of the acting object, r5 = battle object) -> r0 = clobbered;
+  no meaningful return
+details: 'Reads oAIAttackVars_AttackElement in r7; if zero, the state has not been started, so it writes
+  element 4, sets the object''s current animation (r5, oBattleObject_CurAnim) to 7, and copies oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer as the hold length. On subsequent frames it decrements StepTimer each call;
+  once it reaches zero it calls object_exitAttackState to return the AI to normal behavior. It is a two-phase
+  tick: one-time setup plus countdown, typical of AI attack scripts that hold a pose for a fixed duration.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — zero element marks the unstarted
+    state, which is then set to 4; strb #4,[r7,#oAIAttackVars_AttackElement]; mov #7,strb [r5,#oBattleObject_CurAnim]
+    — pose 7 identifies the held-attack animation; ldrh [r7,#oAIAttackVars_AttackDuration]; strh [r7,#oAIAttackVars_StepTimer]
+    — hold length copied into the per-frame countdown; decrement branch: sub r0,#1; strh; bgt — timer
+    ticks only after setup frame; bl object_exitAttackState when timer hits zero — leaving the attack
+    state is this function''s endpoint'
+  refs:
+  - bn6f/asm/asm31.s:138044
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F8B20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which attack/animation 7 is (needs an anim table or other attack scripts using anim 7) to confirm it
+  is a hold/charge pose
+- Which AI users call this — no caller is known, so the exact attack context (battlesweep/beastsp/chips
+  routes only) is inferred
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F8B20 -> ai_updateAttackHoldState
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8B20

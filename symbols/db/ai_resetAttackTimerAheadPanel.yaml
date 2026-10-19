@@ -1,0 +1,48 @@
+name: ai_resetAttackTimerAheadPanel
+address: '0x0811170C'
+kind: function
+status: probable
+summary: 'AI helper: computes the panel three columns ahead of the object''s facing and resets the AI
+  attack-cycle timer when that x coordinate is nonzero.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars ptr) -> r0 = target panel x (PanelX + 3*facingDir),
+  r1 = PanelY; resets oAIAttackVars_TimerOrCycles to 0 if x != 0
+details: Calls object_getFrontDirection to get the +1/-1 facing multiplier, multiplies it by 3 and adds
+  it to the object's oBattleObject_PanelX, producing a target column three panels in front; oBattleObject_PanelY
+  is loaded into r1 but never used, leaving a coordinate pair in r0/r1. If the computed x is nonzero,
+  oAIAttackVars_TimerOrCycles (offset in the AI attack state at r7) is cleared to 0, restarting the attack
+  cycle countdown; if x == 0 (boundary case), the timer is left untouched. No other state is modified;
+  r4-r6 are preserved but unused in this fragment.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection supplies the +1/-1 facing multiplier, so the +3 offset is ''three
+    panels toward the opponent''; ldrb r0,[r5,#oBattleObject_PanelX] / add r0,r0,r1 builds the target
+    column from the object''s panel position; tst r0,r0; beq skip: the timer reset is gated on the computed
+    x being nonzero; strb r2(=0),[r7,#oAIAttackVars_TimerOrCycles] writes into the AI attack-vars struct,
+    tying this to AI attack scheduling; ldrb r1,[r5,#oBattleObject_PanelY] is loaded but unused, suggesting
+    the intended (x,y) target pair'
+  refs:
+  - bn6f/asm/asm32.s:7305
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x0811170C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the meaning of the x==0 gate (off-field boundary vs. some coordinate convention)
+  is unconfirmed
+- What consumes the timer value in oAIAttackVars and what the loaded-but-unused PanelY was meant for
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811170C -> ai_resetAttackTimerAheadPanel
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811170C

@@ -1,0 +1,46 @@
+name: ai_waitAttackDuration
+address: '0x080FA18A'
+kind: function
+status: probable
+summary: 'AI attack state: runs the current attack for AttackDuration frames, then exits the attack state'
+interface: (uses r7 = oAIAttackVars, r5 = battle object) -> void; no meaningful return value
+details: 'Entry-phase handler keyed on oAIAttackVars_AttackElement: if it is 0, the attack hasn''t started,
+  so it stores 4 into AttackElement (likely a neutral/none element marker), zeroes oBattleObject_CurAnim
+  (switch to idle/attack anim 0), and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer.
+  On every later call it decrements StepTimer; when it reaches 0 it calls object_exitAttackState to return
+  the object to normal AI control. Quirk: the decrement happens before the bgt, so the attack lasts exactly
+  AttackDuration ticks; an AttackDuration of 0 underflows harmlessly only on that path because bgt exits
+  for positives but a pre-existing 0 would fall through — callers presumably always set a positive duration.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on [r7,#oAIAttackVars_AttackElement] branches between one-time init and per-frame
+    tick; init stores #4 into AttackElement and #0 into [r5,#oBattleObject_CurAnim]; ldrh AttackDuration
+    -> strh StepTimer copies the configured length into the countdown; decrement + bgt loop on StepTimer,
+    then bl object_exitAttackState ends the attack'
+  refs:
+  - bn6f/asm/asm31.s:140834
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FA18A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- what element 4 means in oAIAttackVars_AttackElement and which enemies/attacks route through this handler
+- whether anim 0 is a specific attack pose or a shared idle
+- no callers known, so the state-machine entry that selects this handler is unidentified
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FA18A -> ai_waitAttackDuration
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA18A

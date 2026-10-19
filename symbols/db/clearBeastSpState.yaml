@@ -1,0 +1,48 @@
+name: clearBeastSpState
+address: '0x081375D8'
+kind: function
+status: probable
+summary: Resets a small beastsp state record (zeroes two bytes) and clears the two event flags EVENT_EE/EVENT_EF.
+interface: (r5 = pointer to state struct, set by caller) -> r0 = 0 (from last mov, clobbered by calls);
+  flags from ClearEventFlagFromImmediate
+details: Writes 0 to byte offsets +2 and +3 of the struct in r5, then calls ClearEventFlagFromImmediate
+  twice to clear story/event flags EVENT_EE and EVENT_EF. No other state is touched and no values are
+  returned. The function is a plain reset/cleanup routine; r5 must already point at the caller's state
+  object since nothing sets it here. All six callers are in the same 0x08136xxx-0x08137xxx beastsp code
+  region, so it is likely the shared 'end/reset' path for whatever state those functions manage. What
+  EE/EF gate in game terms is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0,[r5,#2] / strb r0,[r5,#3] with r0=0: zeroes two consecutive state bytes; movflag EVENT_EE
+    / movflag EVENT_EF followed by bl ClearEventFlagFromImmediate: clears exactly these two event flags;
+    all six callers (0x08136EF8..0x081372F4) sit in the same beastsp route region, consistent with a shared
+    reset helper; no other callee besides the flag-clear helper: the routine has no side effects beyond
+    the two stores and two flag clears'
+  refs:
+  - bn6f/asm/asm36.s:15352
+  - 0x08136EF8 sub_8136EF8
+  - 0x08136F0C sub_8136F0C
+  - 0x08136F40 sub_8136F40
+  - 0x0802F12C ClearEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x081375D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- what structure r5 points to and what its +2/+3 bytes count or track
+- what EVENT_EE and EVENT_EF control in the game (a caller or flag consumer would show this)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81375D8 -> clearBeastSpState
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81375D8

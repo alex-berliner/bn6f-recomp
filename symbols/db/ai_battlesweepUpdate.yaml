@@ -1,0 +1,46 @@
+name: ai_battlesweepUpdate
+address: '0x08111384'
+kind: function
+status: probable
+summary: 'Per-frame think routine for the battlesweep enemy AI: periodically triggers its attack, otherwise
+  runs the AI script handler for its current state.'
+interface: (r5 = battle object, r6 = AI state, r7 = AI attack vars) -> r0 = passthrough of dispatched
+  handler; flags clobbered
+details: If the object's byte at +0x69 is set (some condition flag) and the byte at +0x68 (attack cooldown/done
+  latch) is clear, it latches +0x68 = 1, reloads the step timer (oAIAttackVars_StepTimer) to 0x78, and
+  invokes object_setAttack0 with 9 as the attack id. Otherwise it indexes a table at off_81113B8 with
+  oAIState_ScriptId and tail-dispatches to that handler via lr=pc/bx, passing r0 through. The table's
+  known entries (ai_beginAnchoredAttack, ai_sweepAttackInit) confirm this is the battlesweep AI's state
+  dispatcher; the first entry sub_81113C4 is still unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x69]/[r5,#0x68] gate: only fires the attack once while flag 0x69 is set; strh
+    0x78 into oAIAttackVars_StepTimer then bl object_setAttack0 with r0=9 (attack id); dispatch table
+    indexed by oAIState_ScriptId contains ai_beginAnedAttack and ai_sweepAttackInit, both battlesweep-specific;
+    lr=pc; bx r1 pattern is the standard per-state AI handler call, so this is the AI''s tick entry'
+  refs:
+  - bn6f/asm/asm32.s:6844
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08111384
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- identity of table entry 0 (sub_81113C4)
+- exact meaning of the +0x68/+0x69 object bytes and of attack id 9
+- no known caller, so the r5/r6/r7 register contract is inferred from battle-AI conventions
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111384 -> ai_battlesweepUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111384

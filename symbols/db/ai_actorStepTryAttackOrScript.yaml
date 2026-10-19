@@ -1,0 +1,51 @@
+name: ai_actorStepTryAttackOrScript
+address: '0x0810A5EA'
+kind: function
+status: probable
+summary: 'Per-frame AI actor step: fire the actor''s selected chip if ready, otherwise dispatch a scripted
+  behavior from a jump table indexed by the actor''s script id.'
+interface: (r6 = actor/object struct with oAIState_ScriptId) -> r0 = nonzero if the chip fired (returned
+  from callee); otherwise jumps to a per-script handler and does not return to the caller here
+details: 'Calls battle_useSelectedChipIfReady_810A6F4; if it returns nonzero the chip fired and the routine
+  returns immediately. If the chip was not ready/fired, it reads the actor''s script id from oAIState_ScriptId
+  at [r6+...] and uses it as an index into a three-entry jump table (off_810A604) of thumb handlers (sub_810A610,
+  sub_810A648, sub_810A6C0), tail-called via ''mov lr, pc; bx r1'' so the handler returns straight to
+  this function''s caller. The actor pointer lives in r6, preserved across the callee call by push {r4,r6,lr}.
+  Quirk: r0 is the callee''s boolean on the early-return path but is repurposed as the script id for the
+  table lookup.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_useSelectedChipIfReady_810A6F4 + bne locret: chip-fired gate controls whether scripted
+    behavior runs; ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0]: table dispatch indexed by the AI state''s
+    script id field; off_810A604 holds exactly three code pointers, so only three scripted variants exist;
+    mov lr,pc / bx r1 pattern: tail-call into the per-script handler, sharing this function''s return
+    path; callee''s known summary (triggers selected battle-chip attack when ready, turn counter gate)
+    matches the early-exit semantics'
+  refs:
+  - bn6f/asm/asm31.s:174727
+  - 0x0810A6F4 battle_useSelectedChipIfReady_810A6F4
+  reproduce: python3 tools/asmcat.py 0x0810A5EA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what the three handlers at sub_810A610/810A648/810A6C0 do (movement patterns?) would confirm which boss/AI
+  script set uses this
+- which callers register this as an actor step (call tables) is unknown, so the exact actor struct layout
+  beyond oAIState_ScriptId is unverified
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A5EA -> ai_actorStepTryAttackOrScript
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A5EA

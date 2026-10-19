@@ -1,0 +1,50 @@
+name: battle_spawnSelfPanelCollisionRegion
+address: '0x080D020E'
+kind: function
+status: probable
+summary: Wrapper that spawns a collision region on the battle object's own panel using its element, presumably
+  so the object itself can hit/interact with players.
+interface: (r0 unused on entry; r5 = battle object) -> calls object_spawnCollisionRegion(panelX, panelY,
+  element, size=0x100000, flags=0x4050604, damageStamina=object field, kind=3)
+details: Loads oBattleObject_PanelX, PanelY and Element from the battle object in r5 and forwards them
+  as the new region's position and element. The constant 0x10 shifted left 16 is passed in r3, likely
+  a fixed-point size/radius for the region. r4 gets 0x4050604 (probably flags or a callback pointer for
+  the region) and r6 passes through the object's DamageAndStaminaDamageCounterDisabler field, so hits
+  by this region likely register with the object's damage stats. r7 = 3 is likely a region type or lifetime
+  selector consumed by object_spawnCollisionRegion. The function preserves only r4/r6/r7, so it is a thin
+  parameterized spawn helper for this object's behavior step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0/r1/r2 from oBattleObject_PanelX/PanelY/Element feed the spawn call's coordinates and
+    element; bl object_spawnCollisionRegion is the sole callee, the known collision-spawn helper; constant
+    0x4050604 and 3 loaded from literal pool are fixed region parameters; r6 passes oBattleObject_DamageAndStaminaDamageCounterDisabler
+    straight into the region spawn; caller sub_80D0168 is the only user, reached on battlesweep/beastsp
+    routes
+  refs:
+  - bn6f/asm/asm31.s:52163
+  - 0x080D0168 sub_80D0168
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D020E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of r4=0x4050604 and r7=3 in object_spawnCollisionRegion's signature
+- which object behavior (caller sub_80D0168's identity) uses this, to confirm whether it is a hazard,
+  obstacle, or attack hitbox
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D020E -> battle_spawnSelfPanelCollisionRegion
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D020E

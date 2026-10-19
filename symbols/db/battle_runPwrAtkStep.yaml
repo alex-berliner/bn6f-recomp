@@ -1,0 +1,47 @@
+name: battle_runPwrAtkStep
+address: '0x080EAD9C'
+kind: function
+status: probable
+summary: 'Per-frame step runner for the enemy''s scripted power attack: dispatches a sub-step (panel move,
+  beast wave slash, end action) and waits for an A press before finishing.'
+interface: (r7 = AI attack state struct, r4 = AIData) -> r0 = handler's return; writes state+0x1E (step
+  idx consumed by handler), state+5 (wait counter), state+4 (done/A-press flag)
+details: 'Called from RunAIAttack, it tail-dispatches through off_80EADD0 using the byte at state+0x1E
+  to one of three handlers: battle_commitPanelMove, battleObject_slashBeastWaveUpdate_80EAE28, object_endPwrAtkAction.
+  After the handler returns, it decrements the byte at state+5 while nonzero (a hold/delay counter). Once
+  that counter reaches 0, it tests AIData_JoypadPressed for bit 0 (A button) and, if pressed, stores 1
+  to state+4, signaling the attack sequence is finished. The sequence move-to-panel, slash beast wave,
+  end action identifies this as the enemy power-attack (PwrAtk) routine shared by the beast-out AI attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1, off_80EADCC; ldrb r0, [r3]; ldr r1, [r1,r0]; bx r1 dispatches on state+0x1E into a 3-entry
+    handler table; off_80EADD0 entries battle_commitPanelMove / slashBeastWaveUpdate / endPwrAtkAction
+    form a move-attack-end power attack sequence; ldrb r0, [r7,#5]; sub r0,#1; strb decrements a wait
+    counter each call until it hits 0; ldrh r0, [r4,#oAIData_JoypadPressed]; tst r0,#1 polls the A button
+    before setting [r7,#4]=1 (done flag); Called by RunAIAttack, the dispatcher for extra enemy AI attack
+    scripts
+  refs:
+  - bn6f/asm/asm31.s:109375
+  - 0x0801B9E6 RunAIAttack
+  reproduce: python3 tools/asmcat.py 0x080EAD9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning/layout of the state struct fields 0x4, 0x5 and 0x1E (only inferred from usage)
+- Which enemy/boss uses this specific script (build-snapshot route only says 'beastsp')
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EAD9C -> battle_runPwrAtkStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EAD9C

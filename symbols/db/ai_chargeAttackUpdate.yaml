@@ -1,0 +1,52 @@
+name: ai_chargeAttackUpdate
+address: '0x080F2142'
+kind: function
+status: probable
+summary: 'Battle attack state handler: counts down a charge timer while spawning charge-effect particles
+  at the object''s position, then after the timer expires waits for the A button to be released before
+  advancing the attack to its next phase.'
+interface: (r5 = battle object, r7 = AI attack vars, r10 = toolkit) -> r0 = destroyed; sets oAIAttackVars_HitElement
+  to 8 (charging) or 0x10 (phase complete)
+details: 'Reads a countdown byte at [r5+0x74]; while nonzero it decrements it into [r5+0x75], sets the
+  object''s current animation to 0x1d, and spawns a type-0 effect object (via spawn_t1_0x0_EffectObject)
+  at the object''s X/Y/Z, marking the attack state as 8 in oAIAttackVars_HitElement. When the countdown
+  hits 0, it instead calls sub_80DFE1C with [r5+oBattleObject_ExtraVars+0x10] (likely a sound or one-shot
+  trigger), then polls the toolkit joypad: if A is still held it returns leaving the state unchanged,
+  otherwise it writes 0x10 into oAIAttackVars_HitElement to signal the next phase. The A-button hold check
+  suggests the player (or scripted attacker) must release A before the charged attack fires or the state
+  machine advances.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#0x74] / sub #1 / strb [r5,#0x75] is a countdown copied from 0x74 to 0x75 each tick;
+    spawn_t1_0x0_EffectObject is called with the object''s oBattleObject_X/Y/Z and effect type 0 (particle
+    at the object''s position); strh #8 / strh #0x10 into [r7,#oAIAttackVars_HitElement] are the two phase
+    values written; ldrh [r0,#oJoypad_Held] and JOYPAD_A test gates the transition to state 0x10 on A
+    release; mov r0,#0x1d; strb [r5,#oBattleObject_CurAnim] switches to a dedicated animation while the
+    timer runs'
+  refs:
+  - bn6f/asm/asm31.s:124933
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  - 0x080DFE1C sub_80DFE1C
+  reproduce: python3 tools/asmcat.py 0x080F2142
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80DFE1C does with [ExtraVars+0x10] (sound cue vs other trigger)
+- Which attack/animation id 0x1d and hit-element values 8/0x10 correspond to in the AI attack script tables
+- Where [r5+0x74] is initialized (an earlier phase of the same attack script would confirm 'charge timer')
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F2142 -> ai_chargeAttackUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2142

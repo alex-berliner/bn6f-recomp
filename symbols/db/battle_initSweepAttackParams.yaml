@@ -1,0 +1,49 @@
+name: battle_initSweepAttackParams
+address: '0x081131A2'
+kind: function
+status: probable
+summary: Fills a battle-object's parameter struct from per-index lookup tables and then spawns attack
+  0xB via object_setAttack0.
+interface: (r4 = source battle entity, r7 = target param struct) -> sets struct fields 0xc,0xe,0xf,0x8,0xa,0x18,0x30;
+  calls object_setAttack0(0xb)
+details: Reads an index from [r4,#0x16] and uses it to look up bytes from five tables (byte_81130DE, 81130D8,
+  81130C6, 81130D2, 81130C0), storing each into a different field of the struct at r7 (0xf, 0xe, 0xc,
+  0x18). The same index*4 selects a word from byte_81130A8 stored at r7+0x30, and field 0xa is hard-set
+  to 0xa. Finally it invokes object_setAttack0 with r0=0xb, i.e. it is one step of a multi-part attack
+  (likely the sweep/second wave of the Beast attack executed by the battlesweep and beastsp routes), where
+  r7 is the new attack's parameter block.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r4,#0x16] followed by five table loads indexed by r1 shows per-variant attack parameters
+    keyed off the attacker; strh r0,[r7,#0xa] with mov r0,#0xa shows a constant parameter (0xa) written
+    into the target struct; ldr r0,[r0,r1] after lsl r1,r1,#2 shows a word-table (byte_81130A8) entry
+    stored to r7+0x30, a per-index pointer/word parameter; mov r0,#0xb; bl object_setAttack0 shows it
+    finishes by spawning attack kind 0xB on the prepared object; executed only by the recorded battlesweep
+    and beastsp routes, consistent with a sweep-style Beast attack setup
+  refs:
+  - bn6f/asm/asm32.s:10551
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x081131A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of each parameter field (0xc/0xe/0xf/0x18/0x30) in the r7 attack struct
+- what the 0xb attack kind does in object_setAttack0 and how this step relates to the other setup steps
+  of the same Beast attack
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81131A2 -> battle_initSweepAttackParams
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81131A2

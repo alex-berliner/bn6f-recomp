@@ -1,0 +1,50 @@
+name: storeFirstFreeSlotOf3
+address: '0x080E5B88'
+kind: function
+status: probable
+summary: Stores the value in r5 into the first null entry of the 3-entry pointer array at r6, if any slot
+  is free
+interface: (r5 = value to store, r6 = pointer to 3-entry array) -> r0 = scratch (loop temp); no meaningful
+  return
+details: Calls sub_80E5B7A first, then loops up to 3 times over DWORDs at [r6], advancing r6 by 4. On
+  the first entry that reads 0 it stores r5 there and returns; if all 3 entries are non-zero it returns
+  without writing. r5 and r6 are never set inside the function, so the caller must load them before the
+  bl — the caller is presumably a wrapper that sets up these registers. Likely a 'add to fixed 3-slot
+  queue/list' helper, e.g. queueing an effect or object pointer in the BeastSpOut battle object path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80E5B90–loc_80E5B9E: ldr r0,[r6]; cmp r0,#0; beq store — scans entries for a null slot;
+    add r6,#4 / sub r3,#1 / bne — exactly 3 entries iterated (mov r3,#3); str r5,[r6] — writes caller-supplied
+    r5 only into the free slot; push/pop of {r4,r6} but no write to r5/r6 in body — inputs arrive via
+    caller-set registers; Only caller battleObject_beastSpOut_init spawns effects, consistent with queueing
+    an object/effect pointer'
+  refs:
+  - bn6f/asm/asm31.s:98670
+  - 0x080CB964 battleObject_beastSpOut_init_80CB964
+  - 0x080E5B7A sub_80E5B7A
+  reproduce: python3 tools/asmcat.py 0x080E5B88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What r5 holds (object pointer, effect id, or something else) and which structure the array at r6 belongs
+  to
+- What callee sub_80E5B7A does and why it must run before the store
+- How the caller sets r5/r6 — the captured call site would confirm the argument convention and the list's
+  meaning
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5B88 -> storeFirstFreeSlotOf3
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5B88

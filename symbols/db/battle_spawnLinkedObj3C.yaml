@@ -1,0 +1,53 @@
+name: battle_spawnLinkedObj3C
+address: '0x080E4B34'
+kind: function
+status: probable
+summary: Spawns battle object 0x3C of spawn-type 4 and links it to the requesting object, recording the
+  new object's handle for the caller.
+interface: (r0 = object id 0x3C for object_spawnType4, r1-r4 = other spawn params passed through unmodified
+  from this fn's caller, r5 = parent battle object, r7 = ptr to handle slot) -> r0 = spawned object ptr;
+  Z from spawn result gates the linking
+details: Calls object_spawnType4 with id 0x3C; only r0 is set inside this function, so r1-r4 must already
+  hold position/params prepared by the caller. On success (non-null spawn), it copies the parent's oBattleObject_AllianceAndDirectionFlip
+  from r5 into the new object so they share alliance/flip, and stores r5 into the new object's oBattleObject_RelatedObject1Ptr,
+  making the parent the related-object link. It writes r7 into the new object's oBattleObject_ExtraVars
+  and writes the new object pointer back through r7 (*r7 = new obj), i.e. ExtraVars points at the caller's
+  handle slot holding the object itself - the usual self-erasing handle so the parent can null the link
+  when the object despawns. Finally it ORs flag bits 0x14 into the new object's oObjectHeader_Flags, likely
+  marking it as linked/related. The `mov r0, r5`/`pop {r5}` pair around the null-check looks like a decode
+  artifact of keeping the spawn result in r0 while restoring the parent pointer in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x3c; bl object_spawnType4 — spawns type-4 battle object with id 0x3C; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh r1,[r0,...] — child inherits parent''s alliance/flip; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    — new object''s related-object link is the parent r5; str r7,[r0,#oBattleObject_ExtraVars]; str r0,[r7]
+    — ExtraVars points at caller''s handle slot which now holds the new object; ldrb r1,[r0,#oObjectHeader_Flags];
+    orr r1,#0x14 — sets flags 0x14 on the spawned object'
+  refs:
+  - bn6f/asm/asm31.s:96331
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E4B34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What gameplay entity object id 0x3C is (needs object_spawnType4's id table or the object's initializer)
+- What r1-r4 mean at entry (spawn params set by unknown callers) and which callers set up r5/r7
+- Exact meaning of object flags 0x14
+- Whether the r0/r5 register shuffle after the bl is a disassembly decode artifact
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E4B34 -> battle_spawnLinkedObj3C
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4B34

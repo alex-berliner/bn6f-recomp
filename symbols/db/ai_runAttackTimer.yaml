@@ -1,0 +1,48 @@
+name: ai_runAttackTimer
+address: '0x080FF220'
+kind: function
+status: probable
+summary: 'AI attack-state step: on first entry it latches the attack''s element and attack animation and
+  arms a duration timer; while active it counts the timer down and, on expiry, restores the idle animation
+  and leaves the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars block) -> r0 = clobbered; updates oAIAttackVars_AttackElement,
+  StepTimer, and oBattleObject_CurAnim
+details: If oAIAttackVars_AttackElement is still 0 (not yet started), the function sets it to 4, switches
+  the object's current animation to 10 (the attack anim), and copies oAIAttackVars_AttackDuration into
+  oAIAttackVars_StepTimer to start the countdown. On subsequent calls it decrements StepTimer; once it
+  reaches 0 it sets oBattleObject_CurAnim back to 0 (idle/default anim) and calls object_exitAttackState
+  to end the attack. Element value 4 is presumably a specific attack type this handler represents; the
+  same struct fields are shared by other AI attack routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne loc_80FF236 — element==0 means the
+    attack hasn''t started yet; strb #4,[r7,#oAIAttackVars_AttackElement] and strb #0xa,[r5,#oBattleObject_CurAnim]
+    — latch element and switch to attack animation 10; ldrh/strh between oAIAttackVars_AttackDuration
+    and oAIAttackVars_StepTimer — arm the countdown from the configured attack duration; decrement StepTimer,
+    bgt exit — wait until the attack duration elapses; mov r0,#0; strb [r5,#oBattleObject_CurAnim]; bl
+    object_exitAttackState — restore idle anim and leave attack state on expiry'
+  refs:
+  - bn6f/asm/asm31.s:151340
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FF220
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What attack/element the magic value 4 corresponds to (needs an enemy AI table or callers)
+- Which enemies' AI state machines call this handler, to confirm the exact attack behavior
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FF220 -> ai_runAttackTimer
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF220

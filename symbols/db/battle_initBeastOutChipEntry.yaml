@@ -1,0 +1,65 @@
+name: battle_initBeastOutChipEntry
+address: '0x08027F10'
+kind: function
+status: probable
+summary: Initializes the beast-out pseudo-chip entry of the chip-select turn state, skipping entirely
+  when beast-out is unavailable.
+interface: (r4 = base of a chip-select record block, r5 = chip-select turn state struct, r7 = beast-out
+  chip id (0xA or 0x16)) -> r0 = clobbered; no return value
+details: 'Reads the flag at [r5,#0x10]; if it is nonzero (beast-out unavailable/already handled) the function
+  does nothing. When r7 is chip id 0xA or 0x16 (the two beast-out forms), it fills fields of the record
+  at r4+0x60: byte+0x00 = 8, byte+0x0C = 9, byte+0x04 = 1 - [r5,#0x30] (inverting the beast-form selection
+  flag, so the record mirrors which form is active), and byte+0x07 = 1. It then unconditionally (after
+  those checks, still guarded by the +0x10 flag) writes byte+0x03 = 0xB and byte+0x0E = 0x7, which look
+  like state/display codes for the entry. It is called exactly once from battle_initChipSelectTurn_8027E2C,
+  which also updates the beast-out counter, supporting the beast-out interpretation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x10]; bne locret — whole body skipped when the beast-out availability flag is
+    set; cmp r7,#0xA / #0x16 — only the two beast-out chip ids receive the +0x00/+0x0C/+0x04/+0x07 fields;
+    sub r0,#1,r2 with r2=[r5,#0x30] stored at +0x04 — mirrors the Gregar/Falzar form-selection flag; caller
+    battle_initChipSelectTurn_8027E2C ''initializes chip-select active-state, updates beast-out counter''
+    — matches scope; record written at r4+0x60 with fixed offsets 0,3,4,7,0xC,0xE, like one entry of the
+    12 active-chip records'
+  refs:
+  - bn6f/asm/asm03_0.s:3669
+  - 0x08027E2C battle_initChipSelectTurn_8027E2C
+  reproduce: python3 tools/asmcat.py 0x08027F10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the written constants (8, 9, 0xB, 7) — need the layout of the chip-select record struct
+  at r4+0x60
+- Whether r7 is a chip id or another state selector; more callers would disambiguate
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8027F10 -> battle_initBeastOutChipEntry
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027F10

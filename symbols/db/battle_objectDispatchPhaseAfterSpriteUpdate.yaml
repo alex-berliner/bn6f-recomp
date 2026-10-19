@@ -1,0 +1,47 @@
+name: battle_objectDispatchPhaseAfterSpriteUpdate
+address: '0x080BC29C'
+kind: function
+status: probable
+summary: 'Per battle object: if some condition holds and the object''s sprite advanced this frame, dispatch
+  to the phase handler for its current phase.'
+interface: (r5 = battle object, r0 unused) -> r0 = whatever the phase handler returns; flags from phase
+  handler
+details: First calls sub_80BC494 on the object in r5 and bails if it returns 0 (likely an activity/validity
+  gate). Then calls battle_tryUpdateObjectSprite, which advances the object's sprite and returns 1 only
+  when the update actually ran; it returns early otherwise. When the sprite did update, it reads oBattleObject_CurPhase
+  from r5 and uses it to index a 2-entry jump table at off_80BC2C0, invoking the handler as a Thumb call
+  (mov lr, pc; bx r1). Only phases 0 and 1 are covered (sub_80BC2C8, sub_80BC30E); higher phase values
+  would jump through garbage, so this object type only ever has two phases.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 after bl sub_80BC494 gates the whole routine on that check; bl battle_tryUpdateObjectSprite;
+    cmp r0,#0; beq exit — phase dispatch only happens on a sprite update; ldrb r0,[r5,#oBattleObject_CurPhase];
+    ldr r1,[r1,r0]; mov lr,pc; bx r1 — indexed call into off_80BC2C0; off_80BC2C0 has exactly two entries
+    (sub_80BC2C8, sub_80BC30E), matching two phases; caller context: executed by recorded route ''battlesweep'',
+    i.e. per-frame battle object processing'
+  refs:
+  - bn6f/asm/asm31.s:8886
+  - 0x080BC434 battle_tryUpdateObjectSprite
+  - 0x080BC494 sub_80BC494
+  reproduce: python3 tools/asmcat.py 0x080BC29C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80BC494 tests (active flag? animation state?) to gate the update
+- what sub_80BC2C8/sub_80BC30E do per phase, to confirm the phase semantics
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BC29C -> battle_objectDispatchPhaseAfterSpriteUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC29C

@@ -1,0 +1,47 @@
+name: object_freeClearingSelfRef
+address: '0x080E3962'
+kind: function
+status: probable
+summary: 'Destructor for a battle object: nulls an external back-pointer to itself (if any) and then frees
+  the object''s slot.'
+interface: (r5 = battle object pointer, r0/r1 scratch) -> r0 = 0 written to *ExtraVars[0] when it pointed
+  back to the object; object slot freed via object_freeMemory
+details: Loads the object's oBattleObject_ExtraVars pointer, dereferences it, and if the first field holds
+  the object's own address (r5), stores 0 there — clearing a reference some other structure kept to this
+  object so it isn't left dangling. It then tail-calls object_freeMemory, which clears the object's flags,
+  frees its bitmap slot, unlinks it from the active-object list, and resets sprite scaling. This is the
+  standard 'delete this object, but first null any pointer-to-me' cleanup pattern; the back-pointer is
+  likely a cursor/current-selection or owner field in another struct that ExtraVars[0] aliases. r5 (not
+  r0) carries the object pointer, so it is likely called from code that keeps the object in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_ExtraVars]; ldr r0,[r1]; cmp r0,r5 — compares stored value against
+    the object itself; mov r0,#0; str r0,[r1] — zeroes the field only when it was a self-reference; bl
+    object_freeMemory — known callee summary: releases the battle object slot and unlinks it from the
+    active list'
+  refs:
+  - bn6f/asm/asm31.s:93806
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E3962
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No callers recorded, so it is unknown which object type uses this destructor and which external structure
+  the back-pointer in ExtraVars[0] belongs to (owner, target, or UI cursor)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3962 -> object_freeClearingSelfRef
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3962

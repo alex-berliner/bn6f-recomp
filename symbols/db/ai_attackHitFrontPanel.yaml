@@ -1,0 +1,50 @@
+name: ai_attackHitFrontPanel
+address: '0x0810BA58'
+kind: function
+status: probable
+summary: AI enemy attack handler that strikes the battle panel directly in front of the attacker with
+  the attack's damage, element and boost values.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = result of sub_80D924E; no flags kept
+details: Reads a packed damage value (oAIAttackVars_Damage | ExtraDamage<<16) from the AI attack-var struct
+  in r7 and computes the target panel as PanelX + object_getFrontDirection()'s ±1 facing offset. A 4-byte
+  table (dword_810BA90, signed bytes -1/0/1/0) indexed by oAIAttackVars_AttackBoost2 supplies the Y offset
+  added to PanelY, so the boost field here doubles as a row selector. It then calls sub_80D924E with r0
+  = target X, r1 = target Y, r2 = oBattleObject_Element, r3 = object+0x64, r4 = AttackBoost2, r5 = object,
+  r6 = packed damage — i.e. extra args beyond the four registers. dword_810BA88 (0xFF050002) sits in the
+  trailing literal/data pool and likely belongs to a neighboring attack-definition table rather than this
+  routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_Damage]/ExtraDamage loads the attack's packed damage from the AI
+    attack vars; bl object_getFrontDirection then add r0,r0,r1 targets the panel one step in the object's
+    facing direction; ldrsb r1,[r1,r2] on dword_810BA90 indexed by oAIAttackVars_AttackBoost2 yields a
+    Y offset of -1/0/1 added to PanelY; r2 = oBattleObject_Element and r3 = object+0x64 plus r6 = damage
+    are passed to sub_80D924E as the hit parameters
+  refs:
+  - bn6f/asm/asm31.s:177231
+  - 0x0810B8EC sub_810B8EC
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D924E sub_80D924E
+  reproduce: python3 tools/asmcat.py 0x0810BA58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact effect of callee sub_80D924E (panel-hit resolution?) and meaning of the field at object+0x64
+- whether AttackBoost2 is genuinely a row selector here or a reused field
+- where the AI attack-var struct in r7 is populated and how this handler is dispatched
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BA58 -> ai_attackHitFrontPanel
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BA58

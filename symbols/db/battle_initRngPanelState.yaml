@@ -1,0 +1,50 @@
+name: battle_initRngPanelState
+address: '0x08111816'
+kind: function
+status: probable
+summary: Battle-object routine that picks a random 0-3 value and snapshots the object's panel position
+  into its extra vars.
+interface: (r5 = battle object) -> writes oBattleObject_ExtraVars=0, [0x64]=RNG&3, [0x65]=PanelX, [0x66]=PanelY,
+  [0x67..0x69]=0; no return value
+details: 'Treats r5 as a battle object: it first zeroes the object''s ExtraVars pointer field, then calls
+  GetRNG and stores (rng & 3) at byte offset 0x64, likely a random choice among four options (direction,
+  mode, or element). It copies the object''s current PanelX/PanelY (offsets oBattleObject_PanelX/oBattleObject_PanelY)
+  into bytes 0x65/0x66, effectively remembering a home/current panel, and clears three more byte fields
+  at 0x67-0x69 (counters or timers). The function takes no arguments in registers, so the object pointer
+  arrives in r5 from the caller''s frame (battle-update convention). It is purely a state-setter, no sprite
+  or sound side effects. No callers are recorded, so the meaning of the random value and the 0x67-0x69
+  fields is inferred only from the store pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0,[r5,#oBattleObject_ExtraVars] with r0=0 clears the object's extra-vars pointer first;
+    bl GetRNG followed by and r0,#3 / strb r0,[r5,#0x64] stores a random 0-3 choice; ldrb from oBattleObject_PanelX/PanelY
+    re-stored at 0x65/0x66 copies the object's panel coordinates; three strb zero stores at 0x67-0x69
+    clear adjacent state bytes, typical of an init/reset block
+  refs:
+  - bn6f/asm/asm32.s:7456
+  - 0x0800151C GetRNG
+  reproduce: python3 tools/asmcat.py 0x08111816
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- maps
+open_questions:
+- No callers are known, so it is unconfirmed whether this is an enemy AI init or a mid-battle state reset
+- The meaning of the rand&3 byte at 0x64 (direction? element? behavior variant?) needs a caller or AI
+  read of that field
+- What fields 0x67-0x69 count is unknown without cross-references
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111816 -> battle_initRngPanelState
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111816

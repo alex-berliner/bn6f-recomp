@@ -1,0 +1,47 @@
+name: battle_aiTurnHandler
+address: '0x080F64B0'
+kind: function
+status: probable
+summary: 'Per-turn enemy AI handler: advances the turn/attack counters, picks an attack-init or pattern
+  branch, then queues the next AI script step (4).'
+interface: (r6 = enemy object with oAIState_* fields) -> sets oAIState_ScriptId = 4; no r0 return used
+details: 'Reads oAIState_TurnCounter: while below 5 it increments the counter and toggles oAIState_AttackCounter
+  between 0/1 via EOR with 1. On the even path (attackCounter was 0) it calls battle_initAiAttackVars,
+  which stores the difficulty tier, sets the panel-choose callback and starts attack0 id 0xB; on the odd
+  path it calls sub_80F661E (second attack pattern). Once the turn counter reaches 5 it is reset to 0
+  and sub_80F65EE runs (a different long-term phase). All branches end by writing ScriptId = 4, so this
+  is one state in the object''s AI script dispatch, reached during battles (battlesweep routes).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'uses oAIState_TurnCounter/oAIState_AttackCounter/oAIState_ScriptId fields of the battle object
+    AI state; eor r1, r0 with r1=1 alternates attackCounter, selecting between two branches at loc_80F64D0;
+    callee battle_initAiAttackVars is the known ''init AI attack state'' routine, confirming the attack-init
+    role; turn counter compared to #5 and reset to 0 implies a 6-turn cycle before sub_80F65EE branch;
+    final strb r0(=4),[r6,#oAIState_ScriptId] chains to the next AI script step'
+  refs:
+  - bn6f/asm/asm31.s:133143
+  - 0x080F65C4 battle_initAiAttackVars
+  - 0x080F65EE sub_80F65EE
+  - 0x080F661E sub_80F661E
+  reproduce: python3 tools/asmcat.py 0x080F64B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80F65EE and sub_80F661E do (the other AI phases/patterns), and which enemy object(s) use this
+  handler
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F64B0 -> battle_aiTurnHandler
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F64B0

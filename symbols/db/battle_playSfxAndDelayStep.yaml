@@ -1,0 +1,44 @@
+name: battle_playSfxAndDelayStep
+address: '0x080D715C'
+kind: function
+status: probable
+summary: 'One phase step of a battle object''s action state machine: plays sound effect 0xB8, waits 10
+  frames, then ends the action.'
+interface: (r5 = battle object) -> r0 = clobbered; touches oBattleObject_CurPhase, oBattleObject_Timer,
+  oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: r5 holds a battle object, not r0 (the routine is a thunk-style state handler). On phase 0 it
+  stores phase 4, plays M4A sound effect 0xB8, and sets oBattleObject_Timer to 10. Each later call decrements
+  the timer; once it goes negative, it writes CurAction = 4 and clears CurPhaseAndPhaseInitialized to
+  0, signalling the object's action (action id 4) is finished. The phase is never explicitly re-zeroed
+  on entry, so the decrement branch relies on CurPhase being nonzero from a previous step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne splits first-entry (phase 0) vs waiting branches;
+    bl PlaySoundEffect with r0=0xb8 plays a specific SFX on entry; timer strh 10 then sub/strh/bge implements
+    a fixed 10-frame delay; strb #4 to oBattleObject_CurAction and clearing CurPhaseAndPhaseInitialized
+    ends the object''s current action'
+  refs:
+  - bn6f/asm/asm31.s:67066
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080D715C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- which battle object/action uses this step (no known caller) and what SFX 0xB8 is in game terms
+- why phase is set to 4 rather than left/advanced per the object's phase table
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D715C -> battle_playSfxAndDelayStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D715C

@@ -1,0 +1,50 @@
+name: ai_spawnAttackCollision
+address: '0x080FCE40'
+kind: function
+status: probable
+summary: Wrapper that spawns the hit/collision region for an AI character's attack, using damage and state
+  from its AI attack variable block.
+interface: (r0 = attack params/pos ptr, r1 = secondary param, r2 = type/flag bits ORed into 0x705FF00)
+  -> calls object_spawnCollisionRegion; r6 = damage, r7 = 3, r3 = 0 passed through to callee
+details: 'Loads the constant 0x705FF00 and ORs the caller''s r2 into it, producing the region''s attribute/flags
+  word (r4 for object_spawnCollisionRegion). It reads the owning entity''s AI attack block at r7: InitFlag
+  (byte) goes to r2 and Damage (word) goes to r6, while r3 is cleared and r7 is set to the constant 3
+  (likely hit lifetime or target class). r0 and r1 are passed through untouched, so the caller supplies
+  position/parent data directly. It is a thin adapter so each AI attack routine only needs to pick a type
+  bit and point r7 at its attack vars.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: orr r4, r2 on 0x705FF00 builds the flags argument to object_spawnCollisionRegion (sub_80FCE40);
+    ldrb r2,[r7,#oAIAttackVars_InitFlag] and ldr r6,[r7,#oAIAttackVars_Damage] pull params from the AI
+    attack struct; ldr r7,=3 with r3=0 supplies fixed constants to the collision-region spawn; bl object_spawnCollisionRegion
+    is the only call, confirming the function is a spawn wrapper; four callers at 0x80FC26A-0x80FC8FE
+    sit in the AI attack code range reached by battlesweep routes
+  refs:
+  - bn6f/asm/asm31.s:146631
+  - 0x080FC26A sub_80FC26A
+  - 0x080FC51C sub_80FC51C
+  - 0x080FC700 sub_80FC700
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080FCE40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 0x705FF00 flag bits and the constant 3 (lifetime vs. class) depends on object_spawnCollisionRegion's
+  signature
+- what r0 and r1 hold (position struct vs. parent object pointer) is not visible from this wrapper alone
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FCE40 -> ai_spawnAttackCollision
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCE40

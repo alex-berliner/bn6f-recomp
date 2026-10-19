@@ -1,0 +1,48 @@
+name: battle_stepMainState
+address: '0x08008D60'
+kind: function
+status: probable
+summary: 'Runs one step of the battle''s main state machine: dispatches the current phase handler, then
+  advances AI script steps.'
+interface: () -> r0 = byte at dword_203CA74 (updated battle state/next-phase byte); flags from battleObject_runAIScript_802DE5C
+details: Reads the battle state index from byte [dword_203CA70] and calls the matching handler from a
+  7-entry table at off_8008D7C (battle_startIntro, sub_8008DDC, sub_8008E7C, battle_stepLoseSequence,
+  sub_8008FF0, sub_8009058, sub_8009118). After the handler returns, it unconditionally calls battleObject_runAIScript_802DE5C,
+  which runs two consecutive AI-script sub-steps when battle flag 0x40 is clear, so the AI step is part
+  of every state tick. Finally it loads byte [dword_203CA74] into r0 as the return value; the handlers
+  presumably write the next state there (the tail-branch trick with mov lr,pc lets handlers return directly
+  to this code).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r5, =dword_203CA70; ldrb r0,[r5]; ldr r1,[r1,r0]; bx r1 — indexed dispatch on battle state;
+    table off_8008D7C contains battle_startIntro and battle_stepLoseSequence — battle-flow phase handlers;
+    bl battleObject_runAIScript_802DE5C — AI script stepping runs after every phase handler; ldrb r0,[r5,#4]
+    before pop — returns the state-machine's updated byte at dword_203CA74; single caller sub_8009E56
+    at 0x08009E56 fits a battle main-loop stepper
+  refs:
+  - bn6f/asm/asm00_1.s:12800
+  - 0x08009E56 sub_8009E56
+  - 0x0802DE5C battleObject_runAIScript_802DE5C
+  reproduce: python3 tools/asmcat.py 0x08008D60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of each state index and of the returned dword_203CA74 byte (next state vs. status flag)
+  — need sub_8009E56 and the unrenamed handlers (sub_8008DDC etc.) to confirm
+- Whether sub_8009E56 loops on this return value or only calls it once per frame
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8008D60 -> battle_stepMainState
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008D60

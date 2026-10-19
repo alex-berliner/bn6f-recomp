@@ -148,9 +148,9 @@ static void camera_dispatch_update(void) {
     GUEST_CALL(camera_dispatchUpdate_8030054);
 }
 
-/* register form: calls sub_80302D0 outside this file, which has no typed C interface yet */
+/* register form: calls camera_callModeHandler outside this file, which has no typed C interface yet */
 static void run_camera_post_update(void) {
-    GUEST_CALL(sub_80302D0);
+    GUEST_CALL(camera_callModeHandler);
 }
 
 /* register form: calls camera_SavePosition_803011A outside this file, which has no typed C interface yet */

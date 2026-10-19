@@ -1,0 +1,50 @@
+name: ai_attackHoldTimeoutUpdate
+address: '0x080ECC60'
+kind: function
+status: probable
+summary: 'AI attack-state update: once armed, waits ~20 frames then clears the attack object pointers
+  and exits the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = clobbered; clears oBattleObject_RelatedObject1Ptr
+  and oAIData_TempAttackObjectPtr, may call object_exitAttackState
+details: 'This is one of the AI''s per-attack update routines, operating on the AI attack vars at r7.
+  On the first call (AttackElement == 0) it arms the attack: StepTimer = 0x14 (20 frames) and AttackElement
+  = 4, a state marker so the arming branch is skipped afterwards. Each call then decrements StepTimer;
+  while the timer is still >= 0 it returns without doing anything. When the counter runs out, it nulls
+  the object''s RelatedObject1Ptr and the AIData''s TempAttackObjectPtr (dropping the reference to the
+  spawned attack object) and calls object_exitAttackState to return the AI to normal behavior. Note the
+  timer check uses bge after decrement, so the cleanup fires one frame after the counter reaches -1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement with bne skips arming: element 0 = not yet started;
+    strh #0x14 to oAIAttackVars_StepTimer and strb #4 to AttackElement arm a 20-frame hold; ldrh/sub/strh/bge
+    loop decrements StepTimer each call until negative; str #0 into oBattleObject_RelatedObject1Ptr and
+    [oAIDataPtr + oAIData_TempAttackObjectPtr] releases the attack object; bl object_exitAttackState then
+    pop {pc} — returns AI to non-attack state when the hold ends'
+  refs:
+  - bn6f/asm/asm31.s:113488
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080ECC60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- chips
+open_questions:
+- No caller is known, so which enemy/attack selects this routine (what AttackElement 4 labels) is not
+  confirmed
+- The meaning of RelatedObject1Ptr/TempAttackObjectPtr (probably the spawned hitbox/attack object) is
+  inferred from naming, not from a confirmed cross-reference
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80ECC60 -> ai_attackHoldTimeoutUpdate
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECC60

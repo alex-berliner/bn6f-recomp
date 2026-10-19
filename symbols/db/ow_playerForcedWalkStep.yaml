@@ -1,0 +1,45 @@
+name: ow_playerForcedWalkStep
+address: '0x0809D964'
+kind: function
+status: probable
+summary: 'Per-frame step of a scripted forced player walk: moves the overworld player by a velocity, plays
+  a footstep sound every 6 frames, and ends the action when the target coordinate is reached.'
+interface: (r5 = oOWPlayerObject) -> r0 = undefined; updates player X/Y, byte 0x5C counter, byte ActionSubState
+details: Decrements the byte at oOWPlayerObject+0x5C; when it wraps below 0 it is reloaded with 6 and
+  sound effect 0x98 (a footstep/step noise) is played. Then it advances the player along both axes by
+  the deltas at Unk_38/Unk_3c added to X/Y. It compares the halfword at 0x64 against the one at 0x66 (current
+  vs. target tile/position counter); when they match it stores 8 into ActionSubState, signalling the move
+  is finished. Byte 0x5C thus paces the step sound to every 6 frames while the position update runs every
+  frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: ldrb r0,[r5,#0x5C]; sub r0,#1; strb; bne -> periodic timer reloaded to 6; asm: mov r0,#0x98;
+    bl PlaySoundEffect only when the timer expires -> looping step sound; asm: ldr r0,[r5,#oOWPlayerObject_Unk_38];
+    add to oOWPlayerObject_X (and 0x3c to Y) -> per-frame movement deltas; asm: ldrh 0x64 vs ldrh 0x66;
+    equal -> strb #8 to oOWPlayerObject_ActionSubState -> arrival condition switches action substate'
+  refs:
+  - bn6f/asm/ow_player.s:1094
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0809D964
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- maps
+open_questions:
+- No caller is known, so which overworld action/state selects this handler is unconfirmed
+- Whether 0x98 is specifically a footstep sound and what states 8 transitions into need caller/route context
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809D964 -> ow_playerForcedWalkStep
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D964

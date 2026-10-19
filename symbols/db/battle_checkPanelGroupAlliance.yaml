@@ -1,0 +1,52 @@
+name: battle_checkPanelGroupAlliance
+address: '0x0800D6CC'
+kind: function
+status: probable
+summary: Verifies that all three panels of a battlefield panel-group still carry the alliance value recorded
+  in the unk_2034010 entry for that group, returning 1 if they all match.
+interface: (r0 = group/panel-area index into unk_2034010 (8-byte records), r1 = alliance value to confirm)
+  -> r0 = 1 if group state byte equals r1 and all 3 panels' alliance byte equals it, else r0 = 0
+details: Indexes unk_2034010 by r0*8 and loads the record's first byte as the group's current alliance
+  value (r6). If that byte differs from the caller-supplied r1, it fails immediately. Otherwise it loops
+  slots 1..3, calling object_getPanelDataOffset(group, slot) to get each panel's data pointer, and checks
+  the oPanelData_Alliance byte against r6; any mismatch or null pointer fails. Only if all three panels
+  match does it return 1. Neighboring callers sub_800D636/sub_800D668 in the same blob use the same table,
+  suggesting a set of panel-state helpers (likely per-column panel conversion state used by battle effects).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r2,#8 / ldr r3,=unk_2034010 / ldrb r6,[r3] reads the group's stored state byte from an 8-byte
+    record; cmp r6, r1 / bne loc_800D6FC returns 0 when the stored alliance differs from the expected
+    r1; loop slots 1..3 calls object_getPanelDataOffset and compares ldrb [r0,#oPanelData_Alliance] with
+    r6; returns 1 only after all three slots pass, else 0 at loc_800D6FC
+  refs:
+  - bn6f/asm/object.s:4413
+  - 0x0800D636 sub_800D636
+  - 0x0800D668 sub_800D668
+  - 0x0800D6C2 sub_800D668
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x0800D6CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+- menus2
+- menus3
+- story2
+open_questions:
+- Exact meaning of the unk_2034010 record layout beyond byte 0 (what the other 7 bytes hold)
+- Whether the group index r0 is a column, row, or another panel partition, and what battle feature drives
+  these checks (the callers sub_800D636/sub_800D668 are themselves unnamed)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800D6CC -> battle_checkPanelGroupAlliance
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D6CC

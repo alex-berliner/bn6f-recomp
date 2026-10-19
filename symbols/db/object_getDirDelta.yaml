@@ -1,0 +1,46 @@
+name: object_getDirDelta
+address: '0x0800E4C8'
+kind: function
+status: probable
+summary: Returns a battle object's per-facing movement/delta triple looked up from a 2-entry table indexed
+  by its alliance-based direction.
+interface: (r0 = battle object ptr) -> r0 = dir * table[0], r1 = table[1], r2 = table[2]; r3 clobbered
+details: 'Calls object_getEnemyDirection to get the object''s ±1 facing step (player side +1, enemy side
+  -1), then uses it as a 4-byte-stride index into byte_800E4E8 (two entries, one per direction). From
+  the selected entry it loads a signed byte at offset 0, multiplies the raw direction by it to produce
+  r0 (effectively a signed X delta), a signed byte at offset 1 into r1 (likely Y delta), and an unsigned
+  byte at offset 2 into r2. So it converts an object''s facing into a concrete (dx, dy, extra) triple
+  without touching the object itself beyond the direction query. The multiply makes the table direction-agnostic:
+  entry bytes can be written for +1 facing and mirrored automatically for -1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getEnemyDirection supplies the ±1 facing used as the table selector; lsl r4,#2 plus
+    ldr r3,=byte_800E4E8 shows a 4-byte-per-direction lookup table; mul r0,r1 with ldrsb [r3] signs the
+    offset 0 byte by direction, mirroring it for the enemy side; three loads (offsets 0,1,2) with results
+    in r0-r2 indicate a small (dx,dy,extra) struct return; no writes to r0-object; the object pointer
+    is only consumed by the direction callee
+  refs:
+  - bn6f/asm/object.s:5237
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x0800E4C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- contents of byte_800E4E8 (what dx, dy, and the third byte actually are — e.g. walk step vs knockback)
+- which callers consume r2, and whether the third byte is an animation/frame index
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800E4C8 -> object_getDirDelta
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800E4C8

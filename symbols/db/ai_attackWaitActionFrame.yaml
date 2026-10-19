@@ -1,0 +1,47 @@
+name: ai_attackWaitActionFrame
+address: '0x081158C2'
+kind: function
+status: probable
+summary: 'AI attack-script step: when the object''s current animation frame has the 0x80 attribute flag
+  set, switch to anim 4 and set the attack''s step timer (3) and hit element (0x10).'
+interface: (r0 = battle object for sprite_getFrameParameters) -> r0 = preserved? flags from tst; writes
+  oBattleObject_CurAnim via r5 and oAIAttackVars_StepTimer/oAIAttackVars_HitElement via r7
+details: Calls sprite_getFrameParameters on the object in r0 and tests bit 0x80 of the returned attribute
+  byte — the 'action/special frame' marker used by sprite animation tables. If clear, it just returns
+  (the step keeps waiting on this frame). If set, it stores 4 into r5's oBattleObject_CurAnim, 3 into
+  r7's oAIAttackVars_StepTimer, and 0x10 into r7's oAIAttackVars_HitElement, advancing the AI attack routine
+  to its next phase. r5 and r7 are set up by an outer AI dispatcher and are not touched here beyond these
+  writes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_getFrameParameters then tst r0,#0x80 gates everything else — the 0x80 attribute bit
+    is the trigger condition; strb r0,#4,[r5,oBattleObject_CurAnim] plus strh 3/0x10 into oAIAttackVars_StepTimer/oAIAttackVars_HitElement
+    shows an attack-state transition, not rendering; uses oAIAttackVars_* struct via r7, matching the
+    ai_* subsystem's per-attack scratch data; executed on the battlesweep route, consistent with an in-battle
+    AI attack behavior
+  refs:
+  - bn6f/asm/asm32.s:15110
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x081158C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so it is unclear which AI attack scripts dispatch here and what state 4 / step 3 leads
+  to
+- What element 0x10 denotes in oAIAttackVars_HitElement (element id vs. hit-type code) is not shown
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81158C2 -> ai_attackWaitActionFrame
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81158C2

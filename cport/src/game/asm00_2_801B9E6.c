@@ -17,7 +17,7 @@
  *     R0 (the caller's own attack table), indexed by CurAction.
  *   - CurAction >= 0x10: dispatch through the shared AIAttackJumptable,
  *     indexed by CurAction - 0x10 — unless attack variable 0x1d is 1,
- *     in which case sub_80EAD9C runs instead of a table handler (it is
+ *     in which case battle_runPwrAtkStep runs instead of a table handler (it is
  *     still given the table address in r0 and the index in r1).
  *
  * The selected handler is entered with r0 = its own address,
@@ -54,7 +54,7 @@ Next RunAIAttack(void) {
             R4 = aiData;
             R6 = aiState;
             R7 = attackVars;
-            GUEST_CALL(sub_80EAD9C);
+            GUEST_CALL(battle_runPwrAtkStep);
             R4 = callerR4;
             R6 = callerR6;
             R7 = callerR7;

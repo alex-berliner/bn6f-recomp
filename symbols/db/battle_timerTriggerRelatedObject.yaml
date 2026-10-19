@@ -1,0 +1,54 @@
+name: battle_timerTriggerRelatedObject
+address: '0x080E3CC4'
+kind: function
+status: probable
+summary: Battle object that plays a sound/animation, waits Param1 frames, then activates its related object
+  and destroys itself.
+interface: (r4 = battle object pointer in r5, r5 = this) -> r0 = CUR_STATE_DESTROY written to this; sets
+  RelatedObject1Ptr->ObjectHeader = 1
+details: Standard per-frame battle object update using r5 as the object pointer. On the first call (CurPhase
+  == 0) it latches CurPhase = 1, sets CurAnim = 1, plays sound effect 0xBD, and copies Param1 into Timer
+  as a frame countdown. Each subsequent frame decrements Timer; when it reaches zero, it stores 1 into
+  the ObjectHeader field of the object at RelatedObject1Ptr (activating it) and sets its own state to
+  CUR_STATE_DESTROY. Effectively a delayed one-shot trigger that animates for Param1 frames, then flags
+  a linked object before dying.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; cmp #0 gate runs init only once (sub_80E3CC4 head); mov
+    r0,#0xbd; bl PlaySoundEffect plays fixed SE on first frame; ldrb r0,[r5,#oBattleObject_Param1]; strh
+    r0,[r5,#oBattleObject_Timer] copies Param1 as countdown; ldr r1,[r5,#oBattleObject_RelatedObject1Ptr];
+    str r0,[r1,#oBattleObject_ObjectHeader] with r0=1 activates related object; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] self-destructs after trigger'
+  refs:
+  - bn6f/asm/asm31.s:94296
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080E3CC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus3
+- story2
+- story8
+- story9
+open_questions:
+- Which gameplay entity uses this (which chip/object has this update) and what object type the RelatedObject1Ptr
+  points to — callers or the object spawn table would identify it
+- What sound effect 0xBD is and what setting ObjectHeader = 1 means for the target object
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3CC4 -> battle_timerTriggerRelatedObject
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3CC4

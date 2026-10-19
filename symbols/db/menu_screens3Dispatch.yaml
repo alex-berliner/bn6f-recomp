@@ -1,0 +1,47 @@
+name: menu_screens3Dispatch
+address: '0x08129598'
+kind: function
+status: probable
+summary: 'Dispatches the menus3 screen state machine: calls the conditional sprite draw for nonzero states,
+  then jumps to the step handler selected by the state byte.'
+interface: (no args; context in r5, state byte at [r5+2]) -> tail-calls handler for state; never returns
+  to caller normally
+details: Reads the state byte at [r5+2]; if nonzero, first calls sprite_drawIfFlagSet_812B504, which draws
+  the screen's sprites only when bit 4 of [r5+0x1B] is set. It then indexes off_81295B4 with the same
+  byte and does a thumb call (lr=pc; bx r0) to one of 9 handlers, so it effectively tail-jumps and never
+  returns here. State 0 maps to menu_runScreens3Step_81295D8; states 5, 6 and 7 all map to the same sub_8129C28,
+  so those states are equivalent or unused. The context struct (r5) thus has a state field at +2 and a
+  sprite flag byte at +0x1B.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#2]; tst/beq gates the draw call on state != 0 (asm lines 2-5); ldr r0,[r0,r1] with
+    r1=[r5,#2] then lr=pc; bx r0 is an indexed thumb dispatch over off_81295B4; off_81295B4 lists 9 handler
+    words, first is known menu_runScreens3Step_81295D8, three entries repeat sub_8129C28; callee sprite_drawIfFlagSet_812B504
+    is documented as the conditional sprite render for this screen object; recorded execution only in
+    menus3 routes, matching the menu_runScreens3Step sibling handler
+  refs:
+  - bn6f/asm/asm33.s:12760
+  - 0x0812B504 sprite_drawIfFlagSet_812B504
+  reproduce: python3 tools/asmcat.py 0x08129598
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- menus3
+open_questions:
+- exact meaning of each state value (needs the handlers sub_8129658..sub_8129EE4 read)
+- full layout of the r5 context struct beyond +2 (state) and +0x1B (draw flag)
+- whether states 5-7 are intentionally identical or sub_8129C28 is a shared stub
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8129598 -> menu_screens3Dispatch
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129598

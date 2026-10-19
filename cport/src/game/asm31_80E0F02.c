@@ -866,7 +866,7 @@ Next battle_objectUpdatePosAndRunAction_80E3BEA(void) {
     if (action == 0)
         GUEST_CALL(sub_80E3C14);
     else
-        GUEST_CALL(sub_80E3CC4);
+        GUEST_CALL(battle_timerTriggerRelatedObject);
 
     RETURN_TO_CALLER();
 }

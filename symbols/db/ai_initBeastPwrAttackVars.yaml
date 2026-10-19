@@ -1,0 +1,45 @@
+name: ai_initBeastPwrAttackVars
+address: '0x08011D38'
+kind: function
+status: probable
+summary: 'Initializes an AI attack''s variables for a Beast-Power-style strike: resets charge/delay/boost,
+  sets fixed extra damage, and computes the attack damage via the scaled-base helper.'
+interface: (r0-r3 unused) -> r0 = 0x4a; touches AIAttackVars fields via r7, clobbers r0-r1, lr
+details: Zeroes oAIAttackVars_ChargeReadyFlag, oAIAttackVars_ChipUseDelay, and oAIAttackVars_AttackBoost,
+  then writes a constant 0x9e into oAIAttackVars_ExtraDamage. It calls battle_beastPwrAtk_addScaledBase_8012642
+  with baseDamage=0x28 (40) and multiplier=0x14 (20, below the clamp of 5? no — 0x14=20, so the clamp
+  to 5 applies), storing the returned total into oAIAttackVars_Damage. It finally returns the constant
+  0x4a, which looks like an attack/action ID consumed by the AI dispatcher. r7 is assumed to point at
+  the AI's attack-variable struct, so a caller must set it up before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb/strh #0 to ChargeReadyFlag, ChipUseDelay, AttackBoost clears leftover attack state; mov
+    r0,#0x9e; strh into oAIAttackVars_ExtraDamage sets a fixed bonus-damage constant; bl battle_beastPwrAtk_addScaledBase_8012642
+    with r0=0x28, r1=0x14, result stored to oAIAttackVars_Damage; final mov r0,#0x4a; pop {pc} returns
+    a constant, consistent with an attack ID for an AI dispatcher'
+  refs:
+  - bn6f/asm/asm00_2.s:6757
+  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
+  reproduce: python3 tools/asmcat.py 0x08011D38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- No caller is known, so what dispatches on the returned 0x4a and how r7's AIAttackVars struct is selected
+  is unconfirmed
+- Exact meaning of ExtraDamage=0x9e vs Damage in the attack-resolution code
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8011D38 -> ai_initBeastPwrAttackVars
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011D38

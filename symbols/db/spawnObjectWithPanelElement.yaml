@@ -1,0 +1,56 @@
+name: spawnObjectWithPanelElement
+address: '0x080D703A'
+kind: function
+status: probable
+summary: Battle-mode thunk that spawns battle object type 0x8F via object_spawnType3 and then customizes
+  the new object's panel position, element, source-object link and flags.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = extra arg to spawn, r5 = source battle object,
+  r6 = value for damage field) -> r0 = new object or null; flags set for success check
+details: The wrapper stashes the caller's r0-r2 and r5 with push, loads r0 = 0x8F and calls object_spawnType3,
+  passing the caller's r1-r3 straight through (the pushed words also carry the caller's original r0/r5
+  on the stack for the spawn's fifth argument). After the spawn it pops the saved values back shifted
+  by one (r1 = old r0, r2 = old r1, r3 = old r2, r5 = old r5) so they can be written into the new object.
+  It stores PanelX, PanelY and Element bytes, stores r5 into oBattleObject_RelatedObject1Ptr and r6 (untouched
+  callee-saved value from the caller) into the DamageAndStaminaDamageCounterDisabler field. It copies
+  the AllianceAndDirectionFlip halfword from the r5 source object into the new object, linking the two.
+  Finally it ORs 0x10 into oObjectHeader_Flags, apparently marking the object as specially initialized.
+  All field setup is skipped when the spawn fails (beq to the return).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: push {r0-r2,r5} / mov r0,#0x8f / bl object_spawnType3 — spawns type-0x8F battle object, keeping
+    caller args alive on the stack; pop {r1-r3,r5} then strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    — remapped caller args fill the new object's position and element; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    and ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] / strh — new object is linked to and inherits
+    team/flip from the caller's r5 object; ldrb r2,[r0,#oObjectHeader_Flags]; orr 0x10; strb — sets header
+    flag 0x10 on the spawned object; beq locret_80D7060 before the stores — initialization only happens
+    when the spawn succeeded
+  refs:
+  - bn6f/asm/asm31.s:66919
+  - 0x08101204 sub_8101204
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D703A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Which battle object ID 0x8F actually is (object table lookup needed) to name it in game terms
+- What caller sub_8101204 passes in r5 (source object) and r6 (damage/counter field) — needed to confirm
+  the semantics of those two stores
+- Meaning of oObjectHeader_Flags bit 0x10 set here
+- Exact success/return convention of object_spawnType3 (the mov r0,r5 before the pop is ambiguous about
+  which register carries the result)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D703A -> spawnObjectWithPanelElement
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D703A

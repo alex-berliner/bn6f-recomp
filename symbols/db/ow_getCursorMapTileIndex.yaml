@@ -1,0 +1,49 @@
+name: ow_getCursorMapTileIndex
+address: '0x08142816'
+kind: function
+status: probable
+summary: Computes an index into the 256x256 map tile array (byte_2006670) for the tile under the cursor
+  (camera position plus a caller-supplied 16.16 offset).
+interface: (r0 = 16.16 x-offset added to camera cursor x, r1 = 16.16 y-offset) -> r0 = tile index (x +
+  y*256) into byte_2006670; flags clobbered
+details: 'Calls GetSoulWeaponCursorCameraOffsetForMap to get the cursor''s camera position in 16.16 fixed
+  point, adds the caller''s pushed r0/r1 offsets (also 16.16), then converts to tile units with two ASR
+  #5 (32px tiles). Adds 0x80 to each tile coordinate so the grid is centered/unsigned (256x256 tiles),
+  multiplies y by 0x100 and adds x to form a linear index. The load of byte_2006670 into r5 is a dead
+  remnant: r5 is overwritten before use, so the function only returns the index; callers apply it to byte_2006670
+  themselves.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetSoulWeaponCursorCameraOffsetForMap supplies the base camera/cursor position (asm line
+    4); push {r0,r1}/pop {r3,r4} + asr #16 shows caller args are 16.16 offsets merged into the camera
+    coords; asr #5 twice = divide by 32, the standard tile pixel size; add #0x80 / mov r5,#0x80 lsl #2
+    ... mul r1,r5 builds index x + y*256 over a 256-wide grid; ldr r5,=byte_2006670 is dead code (r5 immediately
+    reassigned), identifying the target array'
+  refs:
+  - bn6f/asm/asm37_1.s:1558
+  - 0x080A7F78 sub_80A7F78
+  - 0x08142990 sub_8142990
+  - 0x0814283C GetSoulWeaponCursorCameraOffsetForMap
+  reproduce: python3 tools/asmcat.py 0x08142816
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of byte_2006670 entries (collision vs. tile attribute) — need to see how callers sub_80A7F78/sub_8142990
+  use the returned index
+- Whether the +0x80 bias means the grid is world-centered; confirm world tile range
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142816 -> ow_getCursorMapTileIndex
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142816

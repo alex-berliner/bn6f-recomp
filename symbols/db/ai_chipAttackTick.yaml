@@ -1,0 +1,51 @@
+name: ai_chipAttackTick
+address: '0x080FFDF8'
+kind: function
+status: probable
+summary: 'Per-frame tick of the AI''s chip/element-4 attack state: sets up the attack on the first frame,
+  counts a 40-frame timer, then exits the attack state.'
+interface: (r7 = battle object AI attack vars, r5 = same object base) -> r0 = leftover; sets attack element/anim/timer
+  fields, flags from tst/sub
+details: Runs as the AI attack-state update for one battle object. On the initial frame (oAIAttackVars_AttackElement
+  == 0) it stamps element 4 into oAIAttackVars_AttackElement, sets oBattleObject_CurAnim to 0, and loads
+  oAIAttackVars_StepTimer with 0x28 (40 frames). If oAIAttackVars_ScratchVar is nonzero it also calls
+  sub_80E71B8 once (likely firing the attack's projectile/effect). On later frames it just decrements
+  StepTimer, and when it hits zero calls object_exitAttackState to return to the normal AI state. Timer-based
+  one-shot attack pattern with an optional first-frame action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry path: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; writes 4 into AttackElement and
+    0 into oBattleObject_CurAnim (80FFDFC-80FFE08); scratch-var gate calls sub_80E71B8 only on the setup
+    frame (80FFE10-80FFE16); countdown path decrements oAIAttackVars_StepTimer and bl object_exitAttackState
+    when it reaches 0 (80FFE18-80FFE1E); callees are object_exitAttackState (known AI-state helper) and
+    sub_80E71B8, both battle-object routines; run in recorded routes battlesweep/beastsp/chips, consistent
+    with an AI-controlled attack state during battles'
+  refs:
+  - bn6f/asm/asm31.s:152857
+  - 0x08011714 object_exitAttackState
+  - 0x080E71B8 sub_80E71B8
+  reproduce: python3 tools/asmcat.py 0x080FFDF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what element code 4 denotes (chip attack vs. a specific element) and what sub_80E71B8 spawns — its body
+  is unknown, and no caller of sub_80FFDF8 itself was captured to confirm which AI attack selects this
+  handler
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FFDF8 -> ai_chipAttackTick
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFDF8

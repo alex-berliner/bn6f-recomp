@@ -1,0 +1,52 @@
+name: battle_objectIsOffscreenLeft
+address: '0x080DFB2C'
+kind: function
+status: probable
+summary: Returns whether a battle object's X coordinate has reached the far-offscreen sentinel position,
+  playing a sound and calling a helper for object types 3/4.
+interface: (r5 = battle object pointer, r0 unused on entry) -> r0 = 1 if obj->X <= 0xFF740000 (offscreen
+  sentinel), else 0; no flags meaningful
+details: 'Reads the object''s X field at offset 0x00 of the battle object struct pointed to by r5 and
+  compares it (signed) against constant 0xFF740000, which looks like a fixed-point ''removed/offscreen
+  far left'' position. If X is greater than the sentinel it returns 0 immediately. Otherwise it reads
+  the byte at object offset 0x60 (an object type/kind field): if it is 3 or 4 it calls sub_80DFB56 and
+  plays sound effect 0xC3 (PlaySoundEffect); either way it then returns 1. Note r5 is not set up in this
+  function, so the caller sub_80DFAA8 must hold the object pointer in r5 across the call. The asymmetric
+  handling of types 3/4 suggests those objects trigger an extra effect (in sub_80DFB56) when they leave
+  the field.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#oBattleObject_X]; cmp against dword_80DFC2C = 0xFF740000 sentinel, returning 0
+    when X exceeds it (loc_80DFB3A entry path); ldrb r0,[r5,#0x60] with cmp #3 / cmp #4 gating the bl
+    sub_80DFB56 + PlaySoundEffect(0xC3) branch; both surviving paths fall through to mov r0,#1, so the
+    return value is a boolean condition; sole caller sub_80DFAA8 (undocumented) supplies r5; callee PlaySoundEffect
+    is the known M4A wrapper'
+  refs:
+  - bn6f/asm/asm31.s:85286
+  - 0x080DFAA8 sub_80DFAA8
+  - 0x080005CC PlaySoundEffect
+  - 0x080DFB56 sub_80DFB56
+  reproduce: python3 tools/asmcat.py 0x080DFB2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of byte 0x60 (object type/class) and what values 3 and 4 are
+- what sub_80DFB56 does for types 3/4
+- what sound effect 0xC3 is in game terms
+- whether 0xFF740000 is specifically the left-edge despawn X or a generic removed-object marker
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFB2C -> battle_objectIsOffscreenLeft
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFB2C

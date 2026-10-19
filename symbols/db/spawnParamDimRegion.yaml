@@ -1,0 +1,50 @@
+name: spawnParamDimRegion
+address: '0x080E9F64'
+kind: function
+status: probable
+summary: Spawns a dimming collision-region object configured from the calling battle object's Param1/Param2/Element
+  fields, with a per-Param3 variant word from a small lookup table.
+interface: (r5 = battle object ptr, r4 = obj ptr base) -> r0 = spawned object; no flags of note
+details: Reads oBattleObject_Param3, multiplies by 4, and indexes byte_80E9F8C to get a 32-bit word (values
+  0x1, 0x1001, 0x2001, 0x3001 — byte-pairs 1 / 0,0x10..0x30) into r7. It then packs r0=Param1, r1=Param2,
+  r2=Element, r3=0, and pushes r4=0xB05FF01, r6=(oBattleObject_StaminaDamageCounterDisabler<<16), r7=table
+  word as stack arguments to object_spawnDimmingCollisionRegion, returning its result. The table is a
+  4-entry array of {u8, u8, u16} records selected by Param3, whose second byte steps by 0x10 — likely
+  a size or offset in half-panels/pixels per variant. The 0xB05FF01 word looks like a packed template/ID
+  pair for the spawned region object. Effectively a thin parametrized wrapper over the dim-region spawner
+  for an attack or trap whose variant comes from Param3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param3]; lsl r0,#2; ldr r7,[r1,r0] selects one of 4 words in byte_80E9F8C;
+    r0/r1/r2 loaded from oBattleObject_Param1/Param2/Element, i.e. attack-object parameter fields; push
+    {r4,r6,r7} with r4=0xB05FF01, r6=StaminaDamageCounterDisabler<<16 forms stack args to the callee;
+    only callee is object_spawnDimmingCollisionRegion, whose summary says it spawns a timestop-resistant
+    collision-region object; table entries 0x1,0x1001,0x2001,0x3001 step by 0x10 in one byte, consistent
+    with per-variant geometry
+  refs:
+  - bn6f/asm/asm31.s:108060
+  - 0x080E9EA0 sub_80E9EA0
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080E9F64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What the table word (r7) means inside object_spawnDimmingCollisionRegion (position? size? duration?)
+- What 0xB05FF01 encodes — template ID, palette, or flag pack
+- Which attack/trap object uses this wrapper and what Param3 values 0-3 correspond to in-game
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E9F64 -> spawnParamDimRegion
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9F64

@@ -1,0 +1,45 @@
+name: battle_aiSetScriptByDifficulty
+address: '0x080FBA0C'
+kind: function
+status: probable
+summary: Picks an AI behavior script ID based on the enemy's AI difficulty and stores it in the AI state.
+interface: (r0 = enemy AI data pointer?, r6 = AI state struct) -> r0 = script ID written to oAIState_ScriptId;
+  flags clobbered by BL
+details: Calls battle_getAiDifficultyTier_800FE36, which maps the enemy AI data's difficulty byte to a
+  tier 0-2 (only for AI data version 4). The returned tier indexes the byte table dword_80FBA20 (04, 0C,
+  C0, C0), yielding 0x04 for tier 0, 0x0C for tier 1, and 0xC0 for tier 2. The selected byte is written
+  to field oAIState_ScriptId of the struct at r6, i.e. the AI state's current behavior script ID. Tier
+  0 (weakest) gets script 4, tier 1 gets script 0xC, and tier 2 (hardest) gets 0xC0, which may be a special/default
+  script ID. The function assumes the callee returns 0-2 and does not clamp, so a higher tier would read
+  out of bounds of the 4-byte table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getAiDifficultyTier_800FE36: difficulty byte mapped to tier 0-2 for AI data v4; ldrb
+    r0,[r1,r0] with dword_80FBA20 = 0x0C0C0C04: tier-indexed byte table 04/0C/C0; strb r0,[r6,#oAIState_ScriptId]:
+    result stored as AI state script ID; route tag ''battlesweep'': runs during battle AI setup/sweep'
+  refs:
+  - bn6f/asm/asm31.s:143914
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  reproduce: python3 tools/asmcat.py 0x080FBA0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- 'No caller known: which enemy/routine invokes this and what r0 and r6 actually point to is unconfirmed'
+- Meaning of script IDs 0x04, 0x0C and especially 0xC0 (default? custom?) needs the AI script table
+- Whether r0 must already hold the AI data pointer for the callee, or the callee reads it from elsewhere
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FBA0C -> battle_aiSetScriptByDifficulty
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBA0C

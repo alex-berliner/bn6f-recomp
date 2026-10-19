@@ -1,0 +1,48 @@
+name: object_savePanelPosAndRefreshCollision
+address: '0x080F64F4'
+kind: function
+status: probable
+summary: Snapshots the battle object's panel X/Y into its ExtraVars, then re-runs the collision refresh
+  with fixed hit parameters (0x35, 2, 3).
+interface: (r5 = battle object) -> r0 = object_updateCollisionData result; stores panel X/Y into oBattleObject_ExtraVars[0..7]
+details: 'A tiny ''this''-in-r5 leaf wrapper: it reads oBattleObject_PanelX and oBattleObject_PanelY and
+  writes them as two words into oBattleObject_ExtraVars, remembering where the object currently stands
+  (or last activated). It then calls object_updateCollisionData with r0 = panel X, r1 = 0x35, r2 = 2,
+  r3 = 3 — per that callee''s known behavior, these feed the object''s collision record (hit modifier,
+  pending damage and both sides'' collision type flags), so the call re-evaluates the object''s hit state
+  at its current panel with those constants. The saved coordinates are presumably read back by other code
+  for this object later. Note the r5-based ''this'' calling convention, unlike r0-based helpers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY] then str to ExtraVars/+4:
+    saves current panel position; mov r1,#0x35; mov r2,#2; mov r3,#3; bl object_updateCollisionData: fixed
+    hit-modifier/damage/collision-flag args to the known callee; callee summary ''Refreshes a battle object''s
+    collision record ... re-evaluates it'' matches the single call made; r5 is never set inside the 11-instruction
+    body, so it is a ''this'' pointer passed by the (unknown) caller'
+  refs:
+  - bn6f/asm/asm31.s:133184
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080F64F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so what kind of object uses this (trap, obstacle, attack entity) and why it snapshots
+  the panel position is unconfirmed
+- Exact meaning of the constants 0x35, 2, 3 in object_updateCollisionData's signature (hit modifier vs
+  damage vs flag encoding) is inferred, not proven
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F64F4 -> object_savePanelPosAndRefreshCollision
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F64F4

@@ -1,0 +1,46 @@
+name: battle_objectUpdateFlight
+address: '0x080D595C'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object in a timed moving state: integrates X/Y velocity each tick
+  and transitions the action when the timer expires.'
+interface: (r0 = ??? clobbered, r5 = battle object pointer) -> mutates object fields; r0 = callee return
+details: Standard battle-object state-step handler. On phase 0 it sets CurPhase=4 and calls sub_80D5A0A
+  (unknown, likely init of velocity/timer). Each subsequent frame it decrements oBattleObject_Timer; while
+  positive it adds XVelocity to X and YVelocity to Y and refreshes PanelX/PanelY via object_setPanelsFromCoordinates.
+  When the timer reaches 0 it writes CurAction=4 and resets CurPhase=0, ending the movement step. The
+  object is passed in r5 (not r0), so callers must load it into r5; only flags/registers from callees
+  leak out.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase-0 branch sets CurPhase=4 then calls unknown sub_80D5A0A as a one-time init; loop body
+    adds XVelocity/YVelocity into X/Y each frame (ldr/add/str pairs); object_setPanelsFromCoordinates
+    call after position update re-derives panel coords from world position; timer<=0 path writes CurAction=4
+    and CurPhase=0, a step-finished transition pattern
+  refs:
+  - bn6f/asm/asm31.s:63870
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080D5A0A sub_80D5A0A
+  reproduce: python3 tools/asmcat.py 0x080D595C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What sub_80D5A0A initializes (velocity/timer sources) and which action id 4 means
+- No known caller, so the battle state machine context (which action uses this handler) is unconfirmed
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D595C -> battle_objectUpdateFlight
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D595C

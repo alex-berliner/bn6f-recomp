@@ -1,0 +1,69 @@
+name: sprite_checkTileIndexInRange
+address: '0x03006404'
+kind: function
+status: probable
+summary: 'Boolean range check used by sprite_ensureGfxResident: tests whether a tile/gfx index taken from
+  a struct is below a limit kept in the sprite settings block.'
+interface: (r0 = pointer to struct with a halfword index/offset field) -> r0 = 1 if (halfword - 0x30 +
+  r4) >= limit, else 0; destroys r2-r3
+details: 'Reads a halfword at [r0], subtracts the constant 0x30 and adds r4 (r4 is never set inside the
+  function, so it must carry a value from the caller or a preserved global), then compares the result
+  against the halfword at byte_20098A8+2 (a field of the sprite placement/settings struct; note the known
+  camera-projection byte is at offset 1, so +2 is a different, unnamed field). If the computed value is
+  >= that halfword it returns 1 in r0, otherwise 0. The function is a pure predicate: no writes, no calls.
+  Its only known caller is sprite_ensureGfxResident, which deals with getting object sprite tiles into
+  OBJ VRAM, so the check most plausibly bounds a tile index or VRAM slot before/after loading graphics.
+  The sense of the comparison (>= returns 1) means it returns ''true'' when the value is out of range
+  or past the limit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r3,[r0]; sub r3,#0x30; add r3,r4 — computes an adjusted index from the caller's struct;
+    ldr r2,=byte_20098A8; ldrh r2,[r2,#2]; cmp r3,r2 — limit comes from the sprite settings struct, offset
+    +2; bge returns 1, fallthrough returns 0 — pure boolean predicate, no side effects; only caller is
+    sprite_ensureGfxResident (OBJ VRAM tile/palette residency), so the value is gfx/tile related
+  refs:
+  - bn6f/asm/asm38.s:1264
+  - 0x03006028 sprite_ensureGfxResident
+  reproduce: python3 tools/asmcat.py 0x03006404
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- where r4 comes from (caller must set it before the call) — it may be a VRAM base or slot offset
+- exact meaning of the halfword at byte_20098A8+2 (limit/count field, distinct from the projection byte
+  at +1)
+- what the halfword at [r0] indexes (tile id, VRAM offset, or animation frame)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3006404 -> sprite_checkTileIndexInRange
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006404

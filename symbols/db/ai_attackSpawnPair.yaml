@@ -1,0 +1,50 @@
+name: ai_attackSpawnPair
+address: '0x08102F38'
+kind: function
+status: probable
+summary: AI attack handler step that spawns two type-3 objects (variants 1 and 3) on the attacker's side,
+  forwarding the attack's init flag, damage and sub-step index.
+interface: (r5 = attacker battle object, r7 = oAIAttackVars {InitFlag, Damage, SubStepIndex}) -> spawns
+  two battle objects via battle_spawnObjectBBAndInit; r0-r3 clobbered
+details: Reads oBattleObject_Alliance from the attacking object and computes a spawn coordinate as alliance*5+1
+  (own side vs enemy side). It calls battle_spawnObjectBBAndInit twice with the same coordinate, first
+  with variant 1 then variant 3, so the attack manifests as a pair of related 0xBB objects. Arguments
+  forwarded to the spawner are r2 = oAIAttackVars_InitFlag, r6 = oAIAttackVars_Damage and r4 = oAIAttackVars_SubStepIndex;
+  r0/r2 are pushed and popped around the first call because the callee clobbers them. The oAIAttackVars
+  field names and the caller chain within an AI attack route indicate this is one step of an AI-driven
+  attack routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; mul r0,#5; add r0,#1 builds a side-dependent spawn coordinate;
+    r2/r6/r4 loaded from oAIAttackVars_InitFlag/Damage/SubStepIndex and kept live across both spawn calls;
+    two consecutive ''bl battle_spawnObjectBBAndInit'' with r1=1 then r1=3 spawns a variant pair; callee
+    summary: spawns battle object #0xBB through the type-3 spawner with forwarded arguments; only caller
+    sub_8102510 and route ''battlesweep'' place it inside AI attack processing'
+  refs:
+  - bn6f/asm/asm31.s:159349
+  - 0x08102510 sub_8102510
+  - 0x080DC986 battle_spawnObjectBBAndInit
+  reproduce: python3 tools/asmcat.py 0x08102F38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- What object 0xBB variants 1 and 3 actually render as (which attack visual/behavior) to name it more
+  precisely
+- What sub_8102510 does to reach this step (attack state machine context)
+- Exact meaning of the alliance*5+1 coordinate (panel column vs pixel position)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8102F38 -> ai_attackSpawnPair
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102F38

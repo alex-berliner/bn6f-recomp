@@ -1,0 +1,49 @@
+name: battle_spawnObject56AsOwnerRelated2
+address: '0x08010FAC'
+kind: function
+status: probable
+summary: Spawns battle object type 0x56 tied to a owner object and stores the new object as the owner's
+  RelatedObject2 pointer.
+interface: (r0 = arg passed to spawner, r1 = arg passed to spawner, r2 = halfword param, r5 = owner battle
+  object) -> r0 = spawned object ptr, also written to r5->oBattleObject_RelatedObject2Ptr
+details: 'A thin wrapper around battle_spawnObject56LinkedToOwner_80C44A8: it widens r2 to a halfword,
+  then builds r4 = (r2 << 16) + 0x0D000000, a packed word apparently consumed by the spawner (r4 is not
+  a standard arg register, so the callee must read it directly or the low byte 0x0D is a fixed sub-parameter).
+  It passes r0/r1 through unchanged, calls the type-0x56 spawner that links the new object to the owner
+  (inheriting alliance/direction, setting header flags 0x04|0x10), then saves the returned object pointer
+  into the owner''s oBattleObject_RelatedObject2Ptr field. r5 holding the owner is set by the caller before
+  the call. The packed 0x0D000000 constant suggests a fixed mode/variant for this spawn site.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: lsl r2,r2,#0x10 / add r4,r4,r2 / mov r2,#0xd lsl r2,#0x18 builds packed word (r2<<16)|0x0D000000
+    before the spawn call (asm lines 2-8); bl battle_spawnObject56LinkedToOwner_80C44A8 — callee summary
+    says it spawns type 0x56 linked to the owner object; str r0,[r5,#oBattleObject_RelatedObject2Ptr]
+    — result is recorded as the owner's RelatedObject2 pointer; only one callee and one store; the function
+    is otherwise a pass-through of r0/r1
+  refs:
+  - bn6f/asm/asm00_2.s:4984
+  - 0x080C44A8 battle_spawnObject56LinkedToOwner_80C44A8
+  reproduce: python3 tools/asmcat.py 0x08010FAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No callers are recorded, so the meaning of r0, r1 and the r2 halfword param (object id? timer? variant?)
+  is unconfirmed
+- How the spawner consumes the packed r4 value ((r2<<16)|0x0D000000) and what field of the type-0x56 object
+  it configures
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8010FAC -> battle_spawnObject56AsOwnerRelated2
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010FAC

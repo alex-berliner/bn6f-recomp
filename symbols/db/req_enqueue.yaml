@@ -1,0 +1,50 @@
+name: req_enqueue
+address: '0x080356F8'
+kind: function
+status: probable
+summary: Appends a (r1, r0) entry to the first free slot of a 32-entry queue at dword_2000DC0, used by
+  a cutscene script command.
+interface: (r0 = entry word stored at +4, r1 = entry word stored at +0) -> r0 = clobbered; no flags meaningful
+details: 'Walks an array of 32 eight-byte slots at dword_2000DC0; a slot is free when its first word is
+  0. On the first free slot it stores r1 at offset 0 and r0 at offset 4, so the pair acts as (id/state,
+  param) with the first word doubling as the occupied flag. If all 32 slots are occupied the entry is
+  silently dropped — there is no overflow error return. Callees: none; it only writes to the queue structure,
+  leaving other slot fields untouched. Note argument order is swapped relative to memory layout (r1 goes
+  to the first field), suggesting the caller passes (value, key) or the first field is a type/flag word.
+  The queue is global (fixed address dword_2000DC0) and is consumed elsewhere by whatever clears slot
+  word 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r5, =dword_2000DC0 then loop over 8-byte strides with cmp r4, #0x20 — a fixed 32-slot queue
+    table; tst r3, r3 / bne skip + str r1,[r5], str r0,[r5,#4] — free slot is word0==0, entry stored as
+    (r1, r0); no return value set and loop falls through to pop on full table — enqueue with silent failure;
+    caller 0x08038346 MapScriptCutsceneCmd_cmd_8038346 — invoked from a cutscene script command handler,
+    consistent with queueing a pending action'
+  refs:
+  - bn6f/asm/asm03_1_0.s:3494
+  - 0x08038346 MapScriptCutsceneCmd_cmd_8038346
+  reproduce: python3 tools/asmcat.py 0x080356F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- beastsp
+open_questions:
+- What the two stored words mean (id vs parameter, and which is which) — need the consumer code that reads/clears
+  slots in dword_2000DC0
+- 'Whether ''req'' is the right subsystem prefix: other readers/writers of dword_2000DC0 would confirm
+  this is the request/task queue'
+- What the cutscene command at 0x08038346 passes in r0/r1 and when the queue is drained
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80356F8 -> req_enqueue
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80356F8

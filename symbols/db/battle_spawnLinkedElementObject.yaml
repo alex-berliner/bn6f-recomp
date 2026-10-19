@@ -1,0 +1,48 @@
+name: battle_spawnLinkedElementObject
+address: '0x080C7A6C'
+kind: function
+status: probable
+summary: Spawns battle object type 3 id 0x1B and links it two-way to a parent object, copying element,
+  alliance and damage fields from the caller's arguments.
+interface: (r0-r2 = spawnType3 args for object 0x1B; r5, r6, r7 = parent/related object pointers) -> r0
+  = new battle object or 0; flags carry spawn success
+details: Calls object_spawnType3 with type 3 and object id 0x1B; on failure (spawn returns 0) it returns
+  immediately. On success it fills the new object's oBattleObject_Element byte, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler,
+  the AllianceAndDirectionFlip halfword, and RelatedObject2Ptr from caller registers, then stores the
+  new object's pointer back into [r7], creating a mutual parent/child link between the two objects. Finally
+  it ORs 0x10 into the new object's oObjectHeader_Flags, likely marking it as linked/attached. The register-shuffling
+  push/pop ({r0-r2,r5} -> {r1-r3,r5}) shifts the caller's saved arguments into r1-r3 for the field stores.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType3 with mov r0,#0x1b fixes the spawned entity to type 3, id 0x1B; beq locret_80C7A92
+    skips all field writes when the spawn failed; stores to oBattleObject_Element, RelatedObject1Ptr/2Ptr,
+    DamageAndStaminaDamageCounterDisabler, AllianceAndDirectionFlip show it configures a battle object
+    from caller data; str r0,[r7] writes the new object pointer into another object, i.e. a two-way link;
+    orr with 0x10 into oObjectHeader_Flags sets a 'linked/attached' style header flag
+  refs:
+  - bn6f/asm/asm31.s:33948
+  - 0x080F4108 sub_80F4108
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C7A6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- what battle object id 0x1B actually is (attack helper, summon, decoy?)
+- which caller sub_80F4108 context invokes it and what r5/r6/r7 point to at call time
+- the exact meaning of header flag 0x10
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7A6C -> battle_spawnLinkedElementObject
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7A6C

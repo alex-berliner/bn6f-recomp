@@ -1,0 +1,45 @@
+name: battle_objectMoveLinearAndCheckDestroyFlag
+address: '0x080DD22E'
+kind: function
+status: probable
+summary: Per-frame update that moves an object by its velocity and destroys it when the current anim frame
+  carries the 0x80 attribute flag.
+interface: (r5 = battle object pointer) -> r0 = frame attribute byte; sets oBattleObject_X/Y, oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: Uses r5 as the object pointer without ever setting it, so the caller passes the object in r5
+  (a common BN6 convention). On the first call it sets oBattleObject_CurPhase and oBattleObject_CurAnim
+  to 1, then every call adds oBattleObject_XVelocity to oBattleObject_X and oBattleObject_YVelocity to
+  oBattleObject_Y. It calls sprite_getFrameParameters for the current frame and tests bit 0x80 of the
+  returned attribute byte; if set it writes CUR_STATE_DESTROY into the state field, ending the object.
+  Suitable for one-shot flying projectiles/effects that fly straight and despawn on their last frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,[r5,#oBattleObject_CurAnim] with 1 on first tick (80DD232-80DD23C) initializes phase/anim;
+    add r0,r0,r1 pairs on X/XVelocity and Y/YVelocity integrate motion; bl sprite_getFrameParameters then
+    tst r0,#0x80 reads frame attribute for destroy condition; mov r0,#CUR_STATE_DESTROY; str into state
+    field is the standard object kill path; callee sprite_getFrameParameters documented as returning tile
+    index, flip flag and attribute byte
+  refs:
+  - bn6f/asm/asm31.s:79899
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080DD22E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so the r5 object setup and which entity uses this update are unconfirmed
+- Exact meaning of the 0x80 attribute bit (despawn flag) could be confirmed by other users of sprite_getFrameParameters
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DD22E -> battle_objectMoveLinearAndCheckDestroyFlag
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD22E

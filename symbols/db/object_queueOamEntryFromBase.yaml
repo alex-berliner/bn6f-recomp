@@ -1,0 +1,54 @@
+name: object_queueOamEntryFromBase
+address: '0x0802B270'
+kind: function
+status: probable
+summary: Thin wrapper that queues one OAM entry for the object in r5 using a fixed tile base (0xB370)
+  and fixed attribute constants, with the sub-index/position read from the object's fields.
+interface: (implicit r5 = object ptr; r2 = [r5+0x1E], r3 = [r5+0x24]) -> queues one OAM entry via object_computeAndQueueOamEntry_811FA98;
+  no return value used
+details: The function is a 20-instruction stub that loads constants and tail-calls the known OAM helper
+  object_computeAndQueueOamEntry_811FA98. It passes r0 = 0x0062000C (0x62 shifted into the upper half,
+  OR'd with 0xC — likely packed palette/shape/size attributes), r1 = 0x10002 (attribute flags), r4 = 7,
+  r6 = 0xB370 (base tile index) and r7 = 0x48. The only per-object data comes from r5, which is not set
+  inside the function, so callers must place the object pointer in r5 before the call; fields +0x1E and
+  +0x24 (halfwords, likely frame/sub-index and x/y or flip data) feed the tile computation. Everything
+  else is hardcoded, so this draws one specific sprite whose appearance varies only through those two
+  object fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, dword_802B28C / lsl r0, r0, #0x10 / orr r0, r1 packs fixed value 0x62<<16|0xC as first
+    argument; ldrh r2, [r5,#0x1e] / ldrh r3, [r5,#0x24] are the only reads from the object struct, using
+    r5 never written here; ldr r6, dword_802B294 = 0xB370 is a tile-index-like constant passed to the
+    OAM helper; bl object_computeAndQueueOamEntry_811FA98 — callee is documented as computing a packed
+    (tile,attribute) OAM piece and queueing it; route note ''battlesweep'' and callers sub_802A9D0/sub_802AE5C/sub_802AE84/sub_802AEB8
+    place it in the battle sprite-drawing cluster'
+  refs:
+  - bn6f/asm/asm03_0.s:10853
+  - 0x0802A9D0 sub_802A9D0
+  - 0x0802AE5C sub_802AE5C
+  - 0x0802AE84 sub_802AE84
+  - 0x0811FA98 object_computeAndQueueOamEntry_811FA98
+  reproduce: python3 tools/asmcat.py 0x0802B270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- Which object/sprite this draws (identity of tile base 0xB370 and meaning of r0=0x62) — needs the callers'
+  context or a sprite-sheet mapping
+- Exact meaning of object fields +0x1E and +0x24 (frame index vs coordinates vs flip flags) and why the
+  object pointer arrives in r5 rather than r0
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802B270 -> object_queueOamEntryFromBase
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B270

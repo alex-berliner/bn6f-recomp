@@ -1,0 +1,48 @@
+name: battle_objWaitThenSetAction4
+address: '0x080D0310'
+kind: function
+status: probable
+summary: Battle object state-machine step that plays a sound effect, waits ~11 frames, then switches the
+  object to action 4.
+interface: (r0 = unused) -> r0 = undefined; uses r5 = battle object; sets CurPhase, Timer, CurAction,
+  CurPhaseAndPhaseInitialized
+details: Reads oBattleObject_CurPhase from the object in r5. If it is 0, it stores phase 4, plays sound
+  effect 0x46 (0x47-1 via PlaySoundEffect), and loads the 16-bit Timer with 11. On subsequent calls (phase
+  nonzero) it decrements Timer; while it stays positive it just returns. When the countdown hits zero
+  it writes CurAction = 4 and clears CurPhaseAndPhaseInitialized to 0, handing control back to the battle
+  object's action dispatcher. The single shared r5-based object pointer suggests it is called from an
+  object-update table with the object already loaded into a register.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / bne splits first-call (phase 0) from countdown behavior (asm lines 2-4); bl PlaySoundEffect
+    with r0 = 0x47-1 = 0x46 on the phase-0 path; strh 0xb,[r5,#oBattleObject_Timer] then decrement-and-bgt
+    loop is an 11-frame wait; on timeout: mov r0,#4; strb [r5,#oBattleObject_CurAction] and strh 0 to
+    CurPhaseAndPhaseInitialized; callee list contains only PlaySoundEffect, so the function''s whole effect
+    is one sfx plus object-state writes'
+  refs:
+  - bn6f/asm/asm31.s:52301
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080D0310
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which battle object type uses this (no caller identified, so the r5 owner and triggering context are
+  unknown)
+- what action 4 means for that object and what sound 0x46 is, to name it more precisely
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0310 -> battle_objWaitThenSetAction4
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0310

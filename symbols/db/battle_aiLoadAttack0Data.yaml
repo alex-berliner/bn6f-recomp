@@ -1,0 +1,47 @@
+name: battle_aiLoadAttack0Data
+address: '0x08107EFC'
+kind: function
+status: probable
+summary: Wrapper called from battle_aiInitAttack0 that hands a fixed ROM data pointer (0x080C1010) to
+  sub_800FE28, presumably to load attack 0's data/script for the enemy AI.
+interface: (none) -> r0 = pointer 0x080C1010 passed to sub_800FE28; returns its result in r0
+details: 'The routine is a two-call thunk: it pushes lr, loads the address of the literal dword_8107F0C
+  (which contains 0x0C0C1010, i.e. mirror-space address 0x080C1010 in ROM) and calls sub_800FE28 with
+  that pointer in r0, then returns with the callee''s r0. The constant is likely a pointer to an attack-pattern/script
+  blob in ROM rather than a computed value, since it is stored in the thunk''s own data area. Its only
+  known caller is battle_aiInitAttack0, which sets up an enemy AI attack, so the data passed is most plausibly
+  attack 0''s definition or script. What sub_800FE28 does with the pointer (copy, register as callback,
+  run a script VM) is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_8107F08 / bl sub_800FE28: r0 receives the address of the single data word dword_8107F0C
+    before the call; dword_8107F0C = 0x0C0C1010, a mirror-space ROM address (≈0x080C1010), typical of
+    a fixed data/script pointer; sole caller 0x08108014 battle_aiInitAttack0 ties the function to enemy
+    AI attack 0 initialization; 10-instruction body with no other state touched: pure forwarding wrapper'
+  refs:
+  - bn6f/asm/asm31.s:169752
+  - 0x08108014 battle_aiInitAttack0
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08107EFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battlesweep
+open_questions:
+- purpose and behavior of sub_800FE28 (does it copy the blob, register a callback, or run a script?)
+- contents of the data at ROM 0x080C1010 (attack pattern table vs. script bytecode)
+- whether other similar thunks pass sibling attack blobs, which would confirm the 'attack N data' reading
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107EFC -> battle_aiLoadAttack0Data
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107EFC

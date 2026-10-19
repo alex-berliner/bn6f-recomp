@@ -1,0 +1,58 @@
+name: battle_spawnLinkedObject
+address: '0x080C5DBC'
+kind: function
+status: probable
+summary: Spawns a battle object of spawn-kind 8 and initializes it as an elementless, damage-carrying
+  companion tied to a source object.
+interface: (r5 = source battle object ptr, r6 = damage/counter value, passed non-standardly) -> r0 = new
+  object ptr or 0 on failure; flags from spawn result drive the beq
+details: 'The routine calls object_spawnType3 with r0 = 8 (the spawn-kind argument) and, if the spawn
+  returned a non-null object pointer in r0, fills in its fields: oBattleObject_Element is cleared to 0
+  (no element), oBattleObject_AllianceAndDirectionFlip is copied verbatim from the source object at r5
+  (keeping side/flip), oBattleObject_DamageAndStaminaDamageCounterDisabler is set to r6, and oBattleObject_RelatedObject1Ptr
+  is pointed back at the source object, linking the new object to its origin. On spawn failure it returns
+  immediately with r5 restored. Note r5 and r6 are never loaded inside the shown body, so this fragment
+  relies on values set up before entry (likely a tail-shared prologue/continuation the disassembly flattened),
+  which is why the argument convention looks non-standard.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #8; bl object_spawnType3 — spawns a battle object using spawn kind 8 from object_spawnType3;
+    strb r1, [r0,#oBattleObject_Element] with r1=0 — new object is explicitly elementless; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh r1,[r0,...] — allegiance/flip inherited from the source object in r5; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    — damage-related field taken from r6; str r5,[r0,#oBattleObject_RelatedObject1Ptr] — new object is
+    linked back to the source object'
+  refs:
+  - bn6f/asm/asm31.s:30067
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C5DBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615'
+coverage:
+- battles1
+- beastsp
+- fuzz
+- story2
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- No callers are known, so where r5 (source object) and r6 (damage value) come from at entry is unexplained
+  — the prologue appears truncated/merged in the listing
+- Which spawn kind 8 object this produces in game terms (attack, counter, status effect, etc.) is unknown
+  without identifying other kind-8 spawns
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a625223e
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C5DBC -> battle_spawnLinkedObject
+  where: bn6f 4619f7d4
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5DBC
