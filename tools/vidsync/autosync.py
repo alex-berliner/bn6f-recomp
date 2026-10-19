@@ -1196,8 +1196,11 @@ def try_hp(D):
     deletes ours must meet the video's HP); the enemies' HP is the kill handler's at the next loss. (HP carries
     over after the battle: later battles start from it.)"""
     a = T1_OBJS
-    for back in range(30, 631, 30):
+    # (first 20 frames after the loss: a hit ours took and the video's MegaMan did not lands right at a loss in a
+    # strict window, run9n 1049138, where any write before it is undone by the hit)
+    for back in [-20] + list(range(30, 631, 30)):
         W = D - back
+        if W > b.g: continue
         if W < ring[0][0]: return None
         w = state_at(W)
         if w is None: return None
