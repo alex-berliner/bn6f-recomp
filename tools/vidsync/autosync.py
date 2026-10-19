@@ -646,6 +646,33 @@ def try_relocate(D):
     if r[0] >= D0 + 150 or (best[0] <= 0.5 * e0 and r[0] >= D0 + 60): KEEP_NEXT[0] = True; return w, [poke]
     return None
 
+def try_nudge(D):
+    """On the map the video's MegaMan reaches what ours walks past by a few pixels (run9b 951854: the video's
+    accesses a mystery data, ours turns away on the same keys): a place the picture cannot tell apart, so each
+    small move (+-12 px, 2 px steps) is written some frames before the loss and the path's keys judge it."""
+    s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
+    for back in (30, 60, 120):
+        W = D - back
+        w = state_at(W)
+        if w is None: continue
+        b.e.load(w[1])
+        if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: continue
+        po = b.e.u32(OW_PLAYER_PTR)
+        if not 0x02000000 <= po < 0x02040000: continue
+        x0, y0 = s32(b.e.u32(po + 0x1C)), s32(b.e.u32(po + 0x20))
+        def spec(dx, dy):
+            x, y = (x0 + (dx << 16)) & 0xFFFFFFFF, (y0 + (dy << 16)) & 0xFFFFFFFF
+            return ','.join(f'{po + o:#x}={v:#x}/4' for o, v in ((0x1C, x), (0x20, y), (0x28, x), (0x2C, y)))
+        pts = [(dx, dy) for dx in range(-12, 13, 2) for dy in range(-12, 13, 2) if (dx, dy) != (0, 0)]
+        res = reach_many(w, {f'{dx}:{dy}': [[W, spec(dx, dy)]] for dx, dy in pts}, D + 400, D)
+        k = max(res, key=lambda t: (res[t][0], -res[t][1]))
+        log(f'  nudge: MegaMan +({k.replace(":", ", ")}) px at {W} reaches {res[k][0]} (mean cost {res[k][1]:.3f})')
+        if res[k][0] >= D + 150:
+            dx, dy = map(int, k.split(':'))
+            KEEP_NEXT[0] = True
+            return w, [[W, spec(dx, dy)]]
+    return None
+
 MAPOBJS, MAPOBJ_SIZE = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE     # eOverworldMapObjects (56): X +0xC, Y +0x10 (s16.16)
 def obj_errs(w, a, x0, y0, pts, keys, vT):
     """For each (dx, dy) px: the map object at a moved there from (x0, y0) at w, keys stepped, the picture
@@ -1686,7 +1713,7 @@ def repair(D):
         if r: LAST_FIX[:] = [D, name]; return r
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
-             ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
+             ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
              ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
