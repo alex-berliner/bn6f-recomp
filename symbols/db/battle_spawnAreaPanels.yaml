@@ -1,0 +1,69 @@
+name: battle_spawnAreaPanels
+address: '0x080CA104'
+kind: function
+status: probable
+summary: Spawns one sub_80CA0E2 sprite per panel of a battle-field area shape (clamped r7=0–3), iterating
+  a signed-byte offset list (0x7F-terminated) and flipping horizontal offsets via object_getFrontDirection().
+interface: (r0 = base x, r1 = base y, r2 = arg, r3 = arg, r7 = shape index 0–3, clamped) -> r0 = result
+  of last sub_80CA0E2 call; r4, r7 preserved
+details: 'Clamps the caller-passed r7 to 3 and uses it to index two tables: byte_80CA170 entries (all
+  0x00200002, passed unchanged as r4 to the callee, likely packed sprite/OAM size+attribute) and off_80CA160,
+  which points to signed-byte offset-pair lists terminated by 0x7F. Each list is a panel shape: 1 panel
+  (0,0); 2 panels (0,0),(1,0); 4 panels plus up/down; 6 panels (2x3 forward block). For each (dx,dy) pair
+  it computes x = base_x + dx*object_getFrontDirection() (flipping the shape left/right by alliance side)
+  and y = base_y + dy, then calls sub_80CA0E2(x, y, r2, r3, 0x00200002, r6) with the saved r6 from the
+  caller. The 0x7F byte acts as an end-of-list sentinel; r6 is passed through untouched, another implicit
+  caller-owned argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection; result multiplied into each dx at loc_80CA12A (mul r0, r2) — horizontal
+    offsets flip with facing; ldr r4, off_80CA158 / ldr r4, [r7,r4] and off_80CA15C table select shape
+    by the pre-set r7, clamped with cmp r7,#3 / ble; Terminators 0x7F in byte_80CA180..0x191 end the (dx,dy)
+    pair loop (cmp r0,#0x7f; beq loc_80CA152); Shape tables list 1, 2, 4, then 6 panel offsets including
+    (1,1)/(1,-1), i.e. growing field areas; Constant 0x00200002 from byte_80CA170 is loaded once and passed
+    as r4 on every sub_80CA0E2 call, with r2/r3/r6 forwarded unchanged
+  refs:
+  - bn6f/asm/asm31.s:39870
+  - 0x080ED470 sub_80ED470
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CA0E2 sub_80CA0E2
+  reproduce: python3 tools/asmcat.py 0x080CA104
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does iterate over a panel-shape offset list and call sub_80CA0E2 for each panel, matching
+    the proposal. However, the proposal claims byte_80CA170 entries are ''all 0x00200002''—the data is
+    0x02, 0x00, 0x20, 0x00 little-endian = 0x00200002 as a packed word (correct), but the proposed_name
+    ''battle_queuePanelAreaSprites'' is fine semantically yet the prefix ''battle'' is acceptable. More
+    importantly, the proposal says shape 3 is a ''2x3 forward block'' but byte_80CA191 is offset 0,0 with
+    only .byte directives showing partial data; the actual content (2x3 block) is plausible but unverified
+    from the snippet. The summary and name are essentially correct; a tighter summary reflecting that
+    it spawns one sub_80CA0E2 per panel offset in the area shape is reasonable.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80CA0E2 does with (x, y, r2, r3, 0x00200002, r6) — likely queues an OAM/effect sprite per panel,
+  but it is unnamed
+- Meaning of r2, r3 and r6 (sprite resource pointer, animation, entity pointer?)
+- What sub_80ED470 is — would confirm which in-battle effect/attack uses these area shapes and how r7
+  is chosen
+- The code does iterate over a panel-shape offset list and call sub_80CA0E2 for each panel, matching the
+  proposal. However, the proposal claims byte_80CA170 entries are 'all 0x00200002'—the data is 0x02, 0x00,
+  0x20, 0x00 little-endian = 0x00200002 as a packed word (correct), but the proposed_name 'battle_queuePanelAreaSprites'
+  is fine semantically yet the prefix 'battle' is acceptable. More importantly, the proposal says shape
+  3 is a '2x3 forward block' but byte_80CA191 is offset 0,0 with only .byte directives showing partial
+  data; the actual content (2x3 block) is plausible but unverified from the snippet. The summary and name
+  are essentially correct; a tighter summary reflecting that it spawns one sub_80CA0E2 per panel offset
+  in the area shape is reasonable.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CA104 -> battle_spawnAreaPanels
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA104

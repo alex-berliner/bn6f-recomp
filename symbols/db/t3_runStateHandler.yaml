@@ -1,0 +1,66 @@
+name: t3_runStateHandler
+address: '0x0803A558'
+kind: function
+status: probable
+summary: If dispatch_803C620 returns nonzero index and zero busy flag, loads a table entry (stride 8)
+  from dword_803A5C4, copies its low byte into [r5+1], and long-calls its second word as a state handler,
+  returning 1; otherwise returns 0 (sub_8148214 runs in both paths).
+interface: (r0/r1 set by dispatch_803C620; r5 = work struct ptr supplied by caller) -> r0 = 1 if a state
+  handler ran, 0 if finished/blocked; flags clobbered
+details: 'dispatch_803C620 returns (r0 = state index, r1 = busy/error flag). If r1 is nonzero or r0 is
+  0, the function calls sub_8148214 and returns 0 without doing anything. Otherwise it calls sub_813D978,
+  then reads a table at dword_803A5C4: entry size 8 bytes, indexed by index*8. Word 0 of the entry is
+  stored as a single byte at [r5+1] (a state id/param in the caller''s work struct, since r5 is not set
+  here), and word 4 is a function pointer invoked via the classic mov lr,pc / bx r0 long call. After the
+  handler returns, sub_8148214 runs and the function returns 1, so callers can poll this until it returns
+  0. The dispatch-then-table pattern makes this a generic ''step to next state and run its callback''
+  helper shared by the six nearby callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r1,r1 / bne + tst r0,r0 / beq: return 0 path when dispatch signals busy or index 0 (loc_803A584);
+    lsl r4,r4,#3 + add r3,r3,r4: 8-byte table stride indexed by dispatch''s r0; strb r0,[r5,#1]: only
+    the low byte of table word 0 is written to the caller''s work struct at +1; ldr r0,[r3,#4] / mov lr,pc
+    / bx r0: per-entry function pointer called as a long call; six callers at 0x08039BC0-0x08039DB4 in
+    the same module all reuse this stepper'
+  refs:
+  - bn6f/asm/asm03_1_1.s:3387
+  - 0x08039BC0 sub_8039BC0
+  - 0x08039C32 sub_8039C32
+  - 0x08039D08 sub_8039D08
+  - 0x0803C620 dispatch_803C620
+  - 0x0813D978 sub_813D978
+  - 0x08148214 sub_8148214
+  reproduce: python3 tools/asmcat.py 0x0803A558
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: dispatch returns (r0=state index, r1=busy); if either bit is set,
+    sub_8148214 runs and r0=0; otherwise a table entry at dword_803A5C4 (stride 8) is fetched, [r5+1]
+    gets the low byte, and [r3+4] is long-called, then sub_8148214 runs and r0=1. The name t3_stateStepHandler
+    is reasonable but the summary''s ''a transition is pending'' / ''advances a state-machine-driven task''
+    slightly overstates it; this is simply a dispatch/long-call table runner that returns 1 when a handler
+    ran, 0 when blocked.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What dispatch_803C620 and sub_813D978/sub_8148214 actually do (no known summaries) — needed to confirm
+  whether this is a dialogue/menu/cutscene state machine
+- What structure r5 points to and what the byte at +1 means (state id? counter?)
+- Contents of the table dword_803A5C4 (entry handlers) to identify the owning subsystem and give a confident
+  prefix
+- 'The summary is largely correct: dispatch returns (r0=state index, r1=busy); if either bit is set, sub_8148214
+  runs and r0=0; otherwise a table entry at dword_803A5C4 (stride 8) is fetched, [r5+1] gets the low byte,
+  and [r3+4] is long-called, then sub_8148214 runs and r0=1. The name t3_stateStepHandler is reasonable
+  but the summary''s ''a transition is pending'' / ''advances a state-machine-driven task'' slightly overstates
+  it; this is simply a dispatch/long-call table runner that returns 1 when a handler ran, 0 when blocked.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803A558 -> t3_runStateHandler
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A558

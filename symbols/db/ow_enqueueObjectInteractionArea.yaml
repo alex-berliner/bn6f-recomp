@@ -1,0 +1,63 @@
+name: ow_enqueueObjectInteractionArea
+address: '0x080A8D7C'
+kind: function
+status: probable
+summary: Appends an overworld interaction area for an OW object using its stored x/y with z lowered by
+  0x140000 and kind 0x808, then writes 0 to the address formed from the 0x10000 flag constant.
+interface: (r5 = OW object struct pointer, carried in) -> r0 = 0; flags from createOWObjectInteractionArea_80037ac
+details: Reads the object's stored position fields at struct+0xc, +0x10 and +0x14, subtracting 0x140000
+  (20 << 16, i.e. 20 units in fixed point) from the z field, and passes them with interaction kind 0x808
+  and payload flags 0x40000/0x10000 to createOWObjectInteractionArea_80037ac, which appends the area to
+  the overworld interaction-area array. Afterwards it stores 0 to struct+0x24, evidently the flag/counter
+  that caused this enqueue, making the request one-shot. The wrapper performs no logic of its own beyond
+  the z adjustment and the flag clear, so it is the standard 'object wants a talk/check area spawned'
+  helper. r5 is used without being set inside the body, so the struct pointer must be established by the
+  caller (or the listing omits a prologue move); the callers sub_80A8B4C/sub_80A8BBC are undocumented
+  and would confirm which struct type (OW object) and when the +0x24 flag is set.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0/r1/r2,[r5,#0xc/0x10/0x14] + sub r2,0x140000: passes object x,y,z(z-20) as the area position;
+    ldr r3,=0x808 and ldr r4/r5 flags 0x40000/0x10000 before bl createOWObjectInteractionArea_80037ac:
+    kind and payload of the queued area; str r0(=0),[r5,#0x24] after the call: clears the one-shot pending
+    flag in the object struct; callee summary (createOWObjectInteractionArea_80037ac: append interaction
+    area to OW array) matches the argument shape exactly'
+  refs:
+  - bn6f/asm/asm29.s:7750
+  - 0x080A8B4C sub_80A8B4C
+  - 0x080A8BBC sub_80A8BBC
+  - 0x080037AC createOWObjectInteractionArea_80037ac
+  reproduce: python3 tools/asmcat.py 0x080A8D7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the code (reads +0xc/+0x10/+0x14, subtracts 0x140000 from z, calls
+    createOWObjectInteractionArea_80037ac with kind 0x808 and two flag words, then clears +0x24). However,
+    r5 is overwritten by `ldr r5, =OW_OBJECT_INTERACTION_AREA_FLAG_0x10000` before the final str to [r5,#0x24],
+    so it is NOT the original OW object struct pointer at the write — it clobbers r5 to write the zero.
+    So the ''clears the object''s pending-interaction flag'' detail is wrong; [r5,#0x24] here is just
+    an absolute address derived from the 0x10000 flag constant (likely a global), not the object''s struct
+    field. The name''s direction is fine but the summary needs correcting.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- meaning of interaction kind 0x808 and the 0x40000/0x10000 payload flags
+- which structure +0xc/+0x10/+0x14/+0x24 belong to and what sets +0x24
+- why r5 is never initialized in the body (caller-provided or listing artifact)
+- The summary's mechanics match the code (reads +0xc/+0x10/+0x14, subtracts 0x140000 from z, calls createOWObjectInteractionArea_80037ac
+  with kind 0x808 and two flag words, then clears +0x24). However, r5 is overwritten by `ldr r5, =OW_OBJECT_INTERACTION_AREA_FLAG_0x10000`
+  before the final str to [r5,#0x24], so it is NOT the original OW object struct pointer at the write
+  — it clobbers r5 to write the zero. So the 'clears the object's pending-interaction flag' detail is
+  wrong; [r5,#0x24] here is just an absolute address derived from the 0x10000 flag constant (likely a
+  global), not the object's struct field. The name's direction is fine but the summary needs correcting.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8D7C -> ow_enqueueObjectInteractionArea
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8D7C

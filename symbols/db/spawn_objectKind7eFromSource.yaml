@@ -1,0 +1,66 @@
+name: spawn_objectKind7eFromSource
+address: '0x080E92EE'
+kind: function
+status: probable
+summary: Spawns a kind-0x7E battle object via object_spawnType4, then if a source object was given copies
+  its panel/element source pointer, alliance/flip flags, and stores a damage value and chip ID into the
+  new object.
+interface: r0 = panelX, r1 = panelY, r2 = element, r4 = 4th spawn-wrapper arg, r5 = source battle object
+  (NULL skips init), r6 = damage/stamina-disabler value, r7 = chip ID -> r0 = spawned object pointer (probable);
+  Z flag tested after the call to skip field writes
+details: 'Pushes r0-r2/r5, calls object_spawnType4 with r0=0x7E (the object kind) and r1-r4 as its remaining
+  args, then pops the three argument registers shifted into r1-r3 to refill them after the call clobbered
+  them. It stores the three args into the new object''s oBattleObject_PanelX, PanelY and Element, stores
+  r5 (a pointer to another battle object) into oBattleObject_RelatedObject1Ptr, and copies that source
+  object''s AllianceAndDirectionFlip halfword so the new entity inherits its side and sprite flip. Finally
+  it writes r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler and r7 into oBattleObject_ChipID,
+  suggesting a chip-driven attack/support entity derived from an existing object. Quirk: the flags tested
+  by beq come from movs r0,r5 (r5==0), i.e. a missing source object aborts initialization after the object
+  has already been spawned.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x7e + bl object_spawnType4: spawns battle object kind 0x7E through the known type-4
+    wrapper; push {r0-r2,r5}/pop {r1-r3,r5}: shifts orig r0-r2 into r1-r3 so the panel/element args survive
+    the bl; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element: positions and types the new object;
+    str r5,[r0,#oBattleObject_RelatedObject1Ptr] plus ldrh/strh of AllianceAndDirectionFlip from [r5]:
+    links to and clones side/flip of a source object; str r6/r7 to oBattleObject_DamageAndStaminaDamageCounterDisabler
+    and oBattleObject_ChipID: carries chip-ID and damage context into the new object'
+  refs:
+  - bn6f/asm/asm31.s:108153
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E92EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary describe the function accurately: kind 0x7E is spawned via object_spawnType4,
+    panel coords/element/source-pointer/damage/chipID are stored, and r5==0 is tested (mov r0,r5 then
+    beq) so a NULL source skips the field writes. The summary''s ''type-4 spawn wrapper'' wording is slightly
+    off though — object_spawnType4 spawns objects of type 4 (i.e. kind 4 from a kind table), but the kind
+    being spawned here is 0x7E, not type 4. A cleaner name would also drop the speculative ''Battle''
+    since ''object'' is already the conventional prefix.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which pointer the beq actually guards (spawn failure vs NULL source object), given the flags come from
+  movs r0,r5 after the call
+- What gameplay feature uses battle-object kind 0x7E — no callers are known, so the chip/context behind
+  r6/r7 is unidentified
+- Whether r0 on return is the spawned object pointer or the source pointer
+- 'The name and summary describe the function accurately: kind 0x7E is spawned via object_spawnType4,
+  panel coords/element/source-pointer/damage/chipID are stored, and r5==0 is tested (mov r0,r5 then beq)
+  so a NULL source skips the field writes. The summary''s ''type-4 spawn wrapper'' wording is slightly
+  off though — object_spawnType4 spawns objects of type 4 (i.e. kind 4 from a kind table), but the kind
+  being spawned here is 0x7E, not type 4. A cleaner name would also drop the speculative ''Battle'' since
+  ''object'' is already the conventional prefix.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E92EE -> spawn_objectKind7eFromSource
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E92EE

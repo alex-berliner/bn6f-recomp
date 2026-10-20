@@ -1,0 +1,62 @@
+name: battle_spawnObjectBDFromTemplate
+address: '0x080DCDD4'
+kind: function
+status: probable
+summary: Spawns battle object 0xBD via object_spawnType3 and, on success, copies PanelX, PanelY, Element,
+  DamageAndStaminaDamageCounterDisabler, and AllianceAndDirectionFlip from a caller-supplied template
+  object (r5), then sets flag 0x10 on the spawned object's header.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, further args in r3/r5/r6 passed through to the spawner
+  and field writes) -> r0 = spawned object pointer; Z flag from spawn success, fields untouched on failure
+details: The wrapper invokes object_spawnType3 with object id 0xBD, forwarding the remaining caller arguments.
+  If the spawn succeeds, it writes the caller's r0/r1/r2 into oBattleObject_PanelX, PanelY and Element,
+  copies a value into oBattleObject_DamageAndStaminaDamageCounterDisabler, and copies oBattleObject_AllianceAndDirectionFlip
+  into the new object. It then sets bit 0x10 of oObjectHeader_Flags on the spawned object, likely marking
+  it as a custom-positioned/spawned entry. On spawn failure it branches straight to the return, leaving
+  the (null) result. The push/pop of r0-r2,r5 is register juggling to keep the argument values available
+  across the spawn call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xbd followed by bl object_spawnType3 spawns battle object id 0xBD; strb r1/r2/r3
+    to oBattleObject_PanelX/PanelY/Element right after the spawn writes caller arguments into the new
+    object; str r6 (damage field) and the AllianceAndDirectionFlip halfword copy fill the remaining overridden
+    fields; beq locret_80DCDF8 skips every field write, so the writes only happen on successful spawn;
+    orr with #0x10 into oObjectHeader_Flags marks the spawned object with a special header flag'
+  refs:
+  - bn6f/asm/asm31.s:80674
+  - 0x08106660 sub_8106660
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DCDD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: it spawns object 0xBD via object_spawnType3, overwrites PanelX/PanelY/Element/Damage/Alliance
+    from saved r5/r1-r3/r6, and sets flag 0x10. However, AllianceAndDirectionFlip is copied from [r5+offset],
+    meaning r5 is expected to be a source object pointer (a ''template'' object), not just a random register.
+    The proposal''s ''r0/r1/r2'' phrasing for the spawner call and ''passed through to the spawner'' is
+    inaccurate since only r0=0xBD goes to the spawner; r1-r3,r5 are consumed by the wrapper. A name like
+    battle_spawnObjectBDFromTemplate better captures the template-copying behavior.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which game object id 0xBD is (caller sub_8106660 is also undocumented)
+- Exact meaning of header flag bit 0x10 on battle objects
+- Which caller argument lands in DamageAndStaminaDamageCounterDisabler vs the alliance copy, since the
+  register juggling obscures the original argument order
+- 'The code matches the summary: it spawns object 0xBD via object_spawnType3, overwrites PanelX/PanelY/Element/Damage/Alliance
+  from saved r5/r1-r3/r6, and sets flag 0x10. However, AllianceAndDirectionFlip is copied from [r5+offset],
+  meaning r5 is expected to be a source object pointer (a ''template'' object), not just a random register.
+  The proposal''s ''r0/r1/r2'' phrasing for the spawner call and ''passed through to the spawner'' is
+  inaccurate since only r0=0xBD goes to the spawner; r1-r3,r5 are consumed by the wrapper. A name like
+  battle_spawnObjectBDFromTemplate better captures the template-copying behavior.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DCDD4 -> battle_spawnObjectBDFromTemplate
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCDD4

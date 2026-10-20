@@ -1,0 +1,66 @@
+name: ai_spawnPanelDamageObject
+address: '0x080D05C4'
+kind: function
+status: probable
+summary: Spawns a type-0x60 panel-damage battle object at (r0,r1) of element r2, parented to the object
+  in r5 with damage-disabler r6, inheriting the parent's side.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3?/stack = parent object + damage-disabler value)
+  -> r0 = spawned battle object or unchanged on failure; flags set by spawn callee (EQ = failed)
+details: The function saves its arguments across the spawn call, requests object kind 0x60 from object_spawnType3,
+  and if the spawn succeeds writes the caller's panel X, panel Y, and element into oBattleObject_PanelX/PanelY/Element
+  of the new object. It stores the parent object pointer into oBattleObject_RelatedObject1Ptr and a value
+  into oBattleObject_DamageAndStaminaDamageCounterDisabler, then copies the parent's oBattleObject_AllianceAndDirectionFlip
+  halfword so the spawned object fights for the same side. Finally it sets bit 0x10 in oObjectHeader_Flags,
+  likely marking the object as a hidden/panel-attached entity. The sole caller, ai_damageFlaggedPanelsInFront,
+  uses this to materialize damage on matching panels in front of an AI object. The printed Thumb listing
+  is register-inconsistent (r0 clobbered before the conditional, r6 stored though never saved), so the
+  exact argument-to-field mapping may be off by one register.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_spawnType3 with r0=0x60 requests the spawned object kind; beq right after skips all
+    setup when the spawn failed; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element fills the new object''s
+    position and element from caller args; str r5,[r0,#oBattleObject_RelatedObject1Ptr] plus ldrh/strh
+    of oBattleObject_AllianceAndDirectionFlip links the new object to the parent and copies its side;
+    orr with #0x10 into oObjectHeader_Flags sets a special header flag on the spawned object; only caller
+    0x080F1B24 ai_damageFlaggedPanelsInFront deals attack damage on flagged panels, matching a per-panel
+    attack object'
+  refs:
+  - bn6f/asm/asm31.s:53514
+  - 0x080F1B24 ai_damageFlaggedPanelsInFront
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D05C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code agrees with the proposal''s overall picture: it pushes r0-r2/r5, spawns type 0x60 via object_spawnType3,
+    then writes PanelX/Y/Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler, copies AllianceAndDirectionFlip,
+    and sets flag 0x10. However, the proposal''s parameter mapping is wrong: r5 holds r0 (the parent object)
+    on entry, and r6 holds the damage-disabler value, but r6 was never pushed, so it''s whatever the caller
+    placed there. The actual arguments are r0=panel X, r1=panel Y, r2=element, r5=parent, r6=disabler
+    — not ''r3?/stack''. Also the name omits that r6 (not r3) carries the disabler.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- the Thumb listing's register mapping (mov r0,r5 before pop, store of unsaved r6) is inconsistent, so
+  which argument lands in DamageAndStaminaDamageCounterDisabler is unconfirmed
+- what object kind 0x60's initializer does (inside object_spawnType3) — whether it deals damage over time
+  or once
+- the meaning of object-header flag 0x10 on the spawned object
+- 'The code agrees with the proposal''s overall picture: it pushes r0-r2/r5, spawns type 0x60 via object_spawnType3,
+  then writes PanelX/Y/Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler, copies AllianceAndDirectionFlip,
+  and sets flag 0x10. However, the proposal''s parameter mapping is wrong: r5 holds r0 (the parent object)
+  on entry, and r6 holds the damage-disabler value, but r6 was never pushed, so it''s whatever the caller
+  placed there. The actual arguments are r0=panel X, r1=panel Y, r2=element, r5=parent, r6=disabler —
+  not ''r3?/stack''. Also the name omits that r6 (not r3) carries the disabler.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D05C4 -> ai_spawnPanelDamageObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D05C4

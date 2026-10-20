@@ -1,0 +1,59 @@
+name: object_attackEndAfterDelay
+address: '0x080EEBE2'
+kind: function
+status: probable
+summary: Attack-state tick that, on first call, marks AttackElement=4 and loads StepTimer=5, then each
+  frame decrements the timer; when it underflows, clears the attack's object pointers and exits the attack
+  state.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = 0; no meaningful return
+details: 'Each call it reads oAIAttackVars_AttackElement from r7; if it is still 0 it initializes the
+  attack, storing 5 into oAIAttackVars_StepTimer (a frame countdown) and 4 into oAIAttackVars_AttackElement,
+  so element 4 marks this attack''s active phase. It then decrements StepTimer each frame; once it underflows
+  below zero, cleanup runs: 0 is written to oBattleObject_RelatedObject1Ptr (r5) and to oAIData_TempAttackObjectPtr
+  (via the object''s AIData pointer), and object_exitAttackState is called to return the battle object
+  to its normal state. This is the wind-down/despawn tail of attack element 4, letting a spawned attack
+  object persist ~5 frames before being unlinked.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; init branch stores StepTimer=5 and AttackElement=4
+    once (80EEBE4-80EEBF0); StepTimer is decremented every frame and 'bge locret' keeps the object alive
+    until it underflows (80EEBF2-80EEBFC); on expiry 0 is stored to oBattleObject_RelatedObject1Ptr and
+    oAIData_TempAttackObjectPtr, clearing the attack object refs (80EEBFE-80EEC02); tail calls object_exitAttackState,
+    confirming this is one of the per-frame attack-state handlers (80EEC04); no callers are known, so
+    it is likely dispatched via the attack-element handler table rather than a direct bl
+  refs:
+  - bn6f/asm/asm31.s:119736
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EEBE2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: on entry with AttackElement==0, it stores 5 to StepTimer and 4 to AttackElement,
+    then decrements StepTimer each frame until underflow, then zeroes the two pointers and calls object_exitAttackState.
+    However, the proposed name ''object_attackEndAfterDelay4'' encodes the magic 4 from the AttackElement
+    init, which is a placeholder artifact; the function is really the wind-down tail of an attack state
+    (it just sets AttackElement=4 once as a self-identifier), so a behavior-based name is preferable.
+    The interface summary is fine but the name should not contain ''4''.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which attack/element id 4 corresponds to (what object is spawned during these 5 frames)
+- the dispatch site that calls this routine, to confirm it runs as the active-attack tick
+- 'The code matches: on entry with AttackElement==0, it stores 5 to StepTimer and 4 to AttackElement,
+  then decrements StepTimer each frame until underflow, then zeroes the two pointers and calls object_exitAttackState.
+  However, the proposed name ''object_attackEndAfterDelay4'' encodes the magic 4 from the AttackElement
+  init, which is a placeholder artifact; the function is really the wind-down tail of an attack state
+  (it just sets AttackElement=4 once as a self-identifier), so a behavior-based name is preferable. The
+  interface summary is fine but the name should not contain ''4''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EEBE2 -> object_attackEndAfterDelay
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EEBE2

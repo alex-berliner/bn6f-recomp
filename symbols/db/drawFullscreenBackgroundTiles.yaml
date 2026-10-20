@@ -1,0 +1,65 @@
+name: drawFullscreenBackgroundTiles
+address: '0x0804C5C0'
+kind: function
+status: probable
+summary: Sets the 0x800 bit in RenderInfo, calls a hook from a 2-entry table indexed by state byte +0xC,
+  then a second hook from a 3-entry table indexed by +0xD, then copies a 32x32 tilemap (from a 2-entry
+  table also indexed by +0xC) into BG block 3.
+interface: (r0 = object/state pointer, fields +0xC and +0xD select variants) -> r0 = clobbered; sets 0x800
+  bit in toolkit RenderInfo word
+details: 'Sets the 0x800 bit in the toolkit''s RenderInfo flags (likely ''background block 3 dirty/visible'').
+  It then indirectly calls one of two hook routines (sub_804C624/sub_804C658) selected by byte [r5+0xC],
+  and one of three hooks (sub_804C668/658/694...) selected by [r5+0xD]. Finally it calls CopyBackgroundTiles(0,
+  0, 3, tilemap, 32, 32), copying a complete 32x32-tile screen into BG block 3, where the tilemap pointer
+  comes from a two-entry table (byte_86A1B20, byte_86A23E0) also indexed by [r5+0xC]. So the +0xC byte
+  picks one of two full-screen background layouts and the +0xD byte a per-layout rendering variant; r5
+  is the same pointer as r0 (caller passes the object in r0 and it ends up in r5). Quirk: the tile tables
+  are ~0x8C0 bytes apart, larger than a single 32x32 u16 map, so they may hold extra per-variant data
+  the hooks read.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: orr r0,0x800 / strh into [toolkit->RenderInfo] sets a background-related render flag (asm lines
+    5-8); ldr r0,[table + ldrb [r5,#0xC]]; bx r0 — indirect per-state hook call (two entries, off_804C608);
+    ldr r0,[table + ldrb [r5,#0xD]]; bx r0 — second hook dispatch with three entries (off_804C614); bl
+    CopyBackgroundTiles with which_tile_block=3 and j_size=i_size=0x20 — copies a whole 32x32 screen of
+    tiles; tile_ids = off_804C5FC[[r5,#0xC]] = byte_86A1B20 or byte_86A23E0 — two selectable fullscreen
+    tilemaps
+  refs:
+  - bn6f/asm/asm03_2.s:10726
+  - 0x0804C53C sub_804C53C
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0804C5C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: it sets the 0x800 flag, dispatches two hook tables indexed by [r5+0xC]
+    and [r5+0xD], and calls CopyBackgroundTiles(0, 0, 3, tilemap, 32, 32). However, [r5+0xC] indexes a
+    2-entry tilemap table while [r5+0xD] indexes a 3-entry hook table, the opposite of what the proposal
+    claims (''+0xC byte picks layout, +0xD rendering variant'' - it should be +0xC picks tilemap layout
+    and first hook, +0xD picks second hook variant). The second hook table has 3 entries not ''.../658/694...'',
+    and the proposal''s name is fine but could be more precise.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which game screen this belongs to (caller sub_804C53C's context and what sets [r5+0xC]/[r5+0xD] is unknown)
+- Meaning of the 0x800 RenderInfo flag
+- What the two/three hook routines actually draw or update
+- Whether byte_86A1B20/byte_86A23E0 hold more than one 32x32 tilemap each
+- 'The proposal is largely correct: it sets the 0x800 flag, dispatches two hook tables indexed by [r5+0xC]
+  and [r5+0xD], and calls CopyBackgroundTiles(0, 0, 3, tilemap, 32, 32). However, [r5+0xC] indexes a 2-entry
+  tilemap table while [r5+0xD] indexes a 3-entry hook table, the opposite of what the proposal claims
+  (''+0xC byte picks layout, +0xD rendering variant'' - it should be +0xC picks tilemap layout and first
+  hook, +0xD picks second hook variant). The second hook table has 3 entries not ''.../658/694...'', and
+  the proposal''s name is fine but could be more precise.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804C5C0 -> drawFullscreenBackgroundTiles
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C5C0

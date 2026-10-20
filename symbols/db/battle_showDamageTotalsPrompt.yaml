@@ -1,0 +1,63 @@
+name: battle_showDamageTotalsPrompt
+address: '0x0800838A'
+kind: function
+status: probable
+summary: 'State object: on first entry it fetches both players'' total damage taken and forwards both
+  values to sub_802CB38, then waits; on subsequent frames sub_802CB78''s return picks between advancing
+  the battle phase step (result 1 -> state 0xc), incrementing the custom-gauge charge (result 2 -> state
+  0x10), or defaulting to state 0x14.'
+interface: '(r5 = state/controller object: +0 next-state word, +3 substate byte; r10 = toolkit) -> none;
+  advances oBattleState_PhaseStepIndex or oBattleState_CustGaugeChargeLevel and picks next state via [r5].'
+details: 'r5 is a small state-machine object: byte [r5,#3] distinguishes first entry (0) from waiting
+  (4), and word [r5] receives the next state id. On first entry it reads battle_getPlayerTotalDamageTaken(1)
+  and (0) and passes both totals to sub_802CB38 — likely displaying/processing the damage-taken figures
+  — then latches substate 4. On later frames it calls sub_802CB78, whose r1 return acts as a result code:
+  1 increments oBattleState_PhaseStepIndex and moves to state 0xc, 2 increments oBattleState_CustGaugeChargeLevel
+  and moves to state 0x10, otherwise it falls to state 0x14. The involvement of damage totals, PhaseStepIndex
+  and CustGaugeChargeLevel suggests a tutorial-style or scripted battle sequence rather than normal battle
+  flow.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#3] / bne loc_80083AE: one-shot init vs per-frame wait, typical state-object pattern;
+    two battle_getPlayerTotalDamageTaken calls (r0=1 then 0) feeding sub_802CB38: it consumes both players''
+    damage-taken totals; bl sub_802CB78 then cmp r1,#1 / cmp r1,#2: wait routine returns a choice/result
+    code driving the branch; branches increment oToolkit_BattleStatePtr->oBattleState_PhaseStepIndex or
+    ->oBattleState_CustGaugeChargeLevel and store 0xc/0x10/0x14 into [r5]'
+  refs:
+  - bn6f/asm/asm00_1.s:11487
+  - 0x0801055E battle_getPlayerTotalDamageTaken
+  - 0x0802CB38 sub_802CB38
+  - 0x0802CB78 sub_802CB78
+  reproduce: python3 tools/asmcat.py 0x0800838A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The state-machine behavior, callee usage, and field writes (PhaseStepIndex, CustGaugeChargeLevel,
+    next-state word) match the proposal. However, the proposed name `battle_stepDamageInfoPrompt` and
+    summary describe a generic ''step'' function, but the actual work on entry is reading both sides''
+    damage totals and handing them to sub_802CB38, suggesting this is specifically about the post-battle
+    damage/results display prompt, not a generic phase step. A name reflecting the damage-totals display
+    is more accurate.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_802CB38 and sub_802CB78 are unrenamed; their behavior (does CB38 open a dialog/banner about damage
+  taken? does CB78 poll a message or button?) is what pins the exact purpose
+- no known caller, so the identity of the r5 state object (tutorial controller? boss script? battle-mode
+  state machine) and the meaning of next-state ids 0xc/0x10/0x14 are unconfirmed
+- The state-machine behavior, callee usage, and field writes (PhaseStepIndex, CustGaugeChargeLevel, next-state
+  word) match the proposal. However, the proposed name `battle_stepDamageInfoPrompt` and summary describe
+  a generic 'step' function, but the actual work on entry is reading both sides' damage totals and handing
+  them to sub_802CB38, suggesting this is specifically about the post-battle damage/results display prompt,
+  not a generic phase step. A name reflecting the damage-totals display is more accurate.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800838A -> battle_showDamageTotalsPrompt
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800838A

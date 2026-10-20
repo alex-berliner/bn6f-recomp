@@ -1,0 +1,68 @@
+name: object_spawnType115
+address: '0x080D30A4'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x73 (115) via object_spawnType3 and, on success, writes the four
+  caller-supplied register arguments into PanelX/PanelY/ExtraVars/ExtraVars+4, r6 into DamageAndStaminaDamageCounterDisabler,
+  r7 into ExtraVars+8, and copies the AllianceAndDirectionFlip halfword from the object at r5 into the
+  new one.
+interface: (r0-r3 = values for PanelX, PanelY, ExtraVars, ExtraVars+4; r5 = source object ptr; r6 = source
+  Damage field; r7 = source ExtraVars+8) -> r0 = new object or invalid on failure; flags Z from spawn
+  success
+details: 'The helper saves its four register arguments plus r5 with push {r0-r3,r5} (the stacked r5 also
+  serving as object_spawnType3''s fifth argument) and calls the spawner with type id 0x73. If the spawn
+  fails (beq taken, flags preserved through the flagless mov/pop) it returns immediately. On success it
+  stores r1/r2 into oBattleObject_PanelX/PanelY, r3/r4 into ExtraVars and ExtraVars+4, r6 into DamageAndStaminaDamageCounterDisabler,
+  r7 into ExtraVars+8, and copies oBattleObject_AllianceAndDirectionFlip as a halfword from the source
+  struct at r5 to the new object. r5/r6/r7 are never saved or set here, so the caller must load them (apparently
+  from a source battle object) before the call, making this a non-AAPCS internal helper. Net effect: a
+  clone-style spawn that inherits another object''s position, alliance, and state words but with a fixed
+  new type id 0x73.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x73; bl object_spawnType3 — spawns battle object type 0x73 with the saved arguments;
+    beq locret_80D30C4 right after the call — all field writes are skipped when the spawn failed; strb
+    r1,[r0,#oBattleObject_PanelX] / strb r2,...PanelY / str r3,r4...ExtraVars — first four arguments initialize
+    the new object's state; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r1,[r0,#...] —
+    alliance/flip is read from the source struct at r5, not from an argument; str r6,[...Damage...] /
+    str r7,[...ExtraVars+8] with r6/r7 never saved — caller-supplied source-object fields copied into
+    the new object
+  refs:
+  - bn6f/asm/asm31.s:59420
+  - 0x080D2C40 sub_80D2C40
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D30A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior (spawn type 0x73 via object_spawnType3 and copy panel/alliance/damage/extra
+    fields), but the proposed name is awkward — the spawned type is 0x73 in hex (decimal 115), and ''Copy''
+    is redundant since it''s a spawn rather than a copy. A better name follows the ''object_spawnType''
+    pattern using the type number. Hex 0x73 = decimal 115, so ''object_spawnType115'' fits. Also the summary
+    should clarify the input args are caller-supplied values rather than fields copied from a ''source
+    object'' — only AllianceAndDirectionFlip is actually copied from r5.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What object type 0x73 is in game terms (its initializer/behavior is not shown)
+- What sub_80D2C40 loads into r5/r6/r7 — whether r5 is a full battle object being cloned or a smaller
+  template struct
+- Whether the r0-r3 arguments are also read from the source object by the caller
+- The code matches the proposal's behavior (spawn type 0x73 via object_spawnType3 and copy panel/alliance/damage/extra
+  fields), but the proposed name is awkward — the spawned type is 0x73 in hex (decimal 115), and 'Copy'
+  is redundant since it's a spawn rather than a copy. A better name follows the 'object_spawnType' pattern
+  using the type number. Hex 0x73 = decimal 115, so 'object_spawnType115' fits. Also the summary should
+  clarify the input args are caller-supplied values rather than fields copied from a 'source object' —
+  only AllianceAndDirectionFlip is actually copied from r5.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D30A4 -> object_spawnType115
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D30A4

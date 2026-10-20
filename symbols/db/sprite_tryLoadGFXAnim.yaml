@@ -1,0 +1,58 @@
+name: sprite_tryLoadGFXAnim
+address: '0x0803C530'
+kind: function
+status: probable
+summary: Calls sub_803CB18(0x200) as a gate; if it returns nonzero, calls LoadGFXAnim with the GFXAnimScript
+  at off_8039370 and returns 1, otherwise returns 0.
+interface: () -> r0 = 1 if LoadGFXAnim ran, else 0; uses r5 = eS200A290 as implicit state pointer for
+  callees
+details: 'Loads the address of the EWRAM struct eS200A290 into r5 and keeps it live across both calls,
+  so it is passed implicitly to sub_803CB18/LoadGFXAnim rather than in r0-r3. It first calls sub_803CB18
+  with r0=0x200 and branches on the returned flags: if equal, it skips everything and returns 0. Otherwise
+  it calls LoadGFXAnim with r0 = the GFXAnimScript at off_8039370 (which presumably writes into the r5
+  struct) and returns 1. The 0x200 argument to the gate is unknown — likely a resource/slot id or capacity
+  check.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, off_803C54C (=eS200A290) with no later use in this function: r5 is an implicit argument
+    to the callees; bl sub_803CB18 with r0=0x200 followed by beq: a gate that skips the load when the
+    check fails; bl LoadGFXAnim with r0=off_8039370 only on the pass path, then mov r4,#1: success returns
+    1; mov r0,r4 / tst r0,r0: boolean success/failure return value'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7312
+  - 0x080399CE sub_80399CE
+  - 0x08001B1C LoadGFXAnim
+  - 0x0803CB18 sub_803CB18
+  reproduce: python3 tools/asmcat.py 0x0803C530
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s call flow matches: it gates on sub_803CB18(0x200) and only calls LoadGFXAnim(off_8039370)
+    when that returns non-zero, then returns 1/0 in r0. However, ''tryLoadAnimState'' is vague about what
+    is being tried; the function specifically requests loading GFX animation script off_8039370 after
+    the gate, so a name like sprite_tryLoadGFXAnim better reflects what is loaded. The r0=tst/pop epilogue
+    just normalizes the return into the Z flag, which the summary already captures.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_803CB18(0x200) checks (free slot, loaded resource, capacity) — its body or the caller sub_80399CE
+  would clarify
+- what GFXAnimScript off_8039370 draws and how it uses the eS200A290 struct
+- why the state pointer is passed in r5 rather than a standard argument register
+- 'The summary''s call flow matches: it gates on sub_803CB18(0x200) and only calls LoadGFXAnim(off_8039370)
+  when that returns non-zero, then returns 1/0 in r0. However, ''tryLoadAnimState'' is vague about what
+  is being tried; the function specifically requests loading GFX animation script off_8039370 after the
+  gate, so a name like sprite_tryLoadGFXAnim better reflects what is loaded. The r0=tst/pop epilogue just
+  normalizes the return into the Z flag, which the summary already captures.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C530 -> sprite_tryLoadGFXAnim
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C530

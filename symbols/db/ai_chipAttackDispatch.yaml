@@ -1,0 +1,52 @@
+name: ai_chipAttackDispatch
+address: '0x080EE90C'
+kind: function
+status: probable
+summary: 'Per-frame step for the player-AI''s chip attack: dispatches to an element-specific attack routine
+  or to ai_attackRecoveryStep via a three-entry jump table keyed by HitElement.'
+interface: (r7 = pointer to AI attack vars; reads oAIAttackVars_HitElement) -> tail-dispatched callee's
+  return in r0; no direct return value of its own
+details: 'Loads the HitElement byte from the AI attack-vars struct at r7 and indexes off_80EE920, a jump
+  table with two entries: element 0 calls sub_80EE92C, element 1 calls sub_80EE996; any other element
+  value falls through to ai_attackRecoveryStep, so only two elements have dedicated attack behavior and
+  the rest just run the recovery/step. Uses the ''mov lr, pc; bx r1'' long-call idiom to reach Thumb callees,
+  then pops pc, i.e. it purely forwards the step. Its only caller is ai_useChipAttack, which sets up these
+  attack vars, confirming r7 points at the shared AI attack state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] + ldr r1,[r1,r0]; bx r1 — dispatch indexed by the chip's
+    hit element field; table off_80EE920 has exactly 2 entries (sub_80EE92C, sub_80EE996) with default
+    path ai_attackRecoveryStep; sole caller 0x0801056A ai_useChipAttack 'loads the chip's stats into the
+    AI attack vars and dispatches attack behaviors'
+  refs:
+  - bn6f/asm/asm31.s:119356
+  - 0x0801056A ai_useChipAttack
+  reproduce: python3 tools/asmcat.py 0x080EE90C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The off_80EE920 jump table has three entries: element 0 → sub_80EE92C, element 1 → sub_80EE996,
+    element 2 → ai_attackRecoveryStep. The proposal incorrectly says element 2 ''falls through'' to recovery;
+    it''s actually a third jump table slot selected by the ldr, r1, [r1, r0]. So exactly three elements
+    (0,1,2) are dispatched, not ''two dedicated + fallthrough''.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80EE92C and sub_80EE996 do (likely element-specific attack behaviors) and which two elements
+  map to indices 0 and 1
+- 'The off_80EE920 jump table has three entries: element 0 → sub_80EE92C, element 1 → sub_80EE996, element
+  2 → ai_attackRecoveryStep. The proposal incorrectly says element 2 ''falls through'' to recovery; it''s
+  actually a third jump table slot selected by the ldr, r1, [r1, r0]. So exactly three elements (0,1,2)
+  are dispatched, not ''two dedicated + fallthrough''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EE90C -> ai_chipAttackDispatch
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE90C

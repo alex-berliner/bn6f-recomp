@@ -1,0 +1,58 @@
+name: battle_hitFlashPhaseHandler
+address: '0x080C27B4'
+kind: function
+status: probable
+summary: Battle-object phase handler that plays sound 0x94 once, then alternates oObjectHeader_Flags bit
+  2 each frame for ~16 ticks before advancing CurPhase to 4.
+interface: (r5 = battle object) -> void; sets object flags, Timer, WobbleOrEffectTimer, and advances CurPhase
+  to 4
+details: On first entry (PhaseInitialized == 0) it stores 0x1F into oBattleObject_WobbleOrEffectTimer,
+  plays sound effect 0x94, clears oBattleObject_Timer, and marks the phase initialized. On subsequent
+  frames it increments oBattleObject_Timer, setting oObjectHeader_Flags bit 0x2 (blink/invisible flag)
+  on odd frames and clearing it on even frames (Timer>>1 bcc), producing a visible flicker. It decrements
+  WobbleOrEffectTimer by 2 per frame (31 -> 0, ~16 frames); when it reaches 0 it sets flag bit 0x2 once
+  more, clears the timer, and writes 4 to oBattleObject_CurPhaseAndPhaseInitialized (ending the phase
+  and starting phase 4 with initialized reset).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl PlaySoundEffect with r0=0x94 fires only on the uninitialized first entry (loc_80C27B4 before
+    loc_80C27D0); oBattleObject_Timer>>1 with bcc toggles oObjectHeader_Flags bit 0x2 every other frame
+    = blinking pattern; WobbleOrEffectTimer starts at 0x1F and is decremented by 2, bgt keeps the loop
+    alive, so the flash lasts ~16 frames; strh 4 to oBattleObject_CurPhaseAndPhaseInitialized at the end
+    moves the object to the next phase, the standard phase-handler exit pattern
+  refs:
+  - bn6f/asm/asm31.s:23169
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080C27B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The first-entry path writes 4 to oBattleObject_PhaseInitialized (not CurPhase), and 0 to Timer,
+    then the loc_80C27D0 path incorrectly reads PhaseInitialized as always set. Wait — actually PhaseInitialized
+    is set to 4 on first entry, then rechecked at the top: 4 is non-zero so it falls through to the loc
+    path each frame, advancing CurPhase to 4 at the end. Also the blink flag logic is reversed in the
+    proposal: it sets bit 2 first, then clears it when Timer>>1 carry (not bcc). The name fits but summary
+    has the blink polarity wrong.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object(s) use this phase and what phase 4 does next — no callers known, so whether this is a post-hit
+  invincibility flash or another blink effect is unconfirmed
+- What sound effect 0x94 is in game terms
+- 'The first-entry path writes 4 to oBattleObject_PhaseInitialized (not CurPhase), and 0 to Timer, then
+  the loc_80C27D0 path incorrectly reads PhaseInitialized as always set. Wait — actually PhaseInitialized
+  is set to 4 on first entry, then rechecked at the top: 4 is non-zero so it falls through to the loc
+  path each frame, advancing CurPhase to 4 at the end. Also the blink flag logic is reversed in the proposal:
+  it sets bit 2 first, then clears it when Timer>>1 carry (not bcc). The name fits but summary has the
+  blink polarity wrong.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C27B4 -> battle_hitFlashPhaseHandler
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C27B4

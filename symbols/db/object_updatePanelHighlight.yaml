@@ -1,0 +1,51 @@
+name: object_updatePanelHighlight
+address: '0x080D5448'
+kind: function
+status: probable
+summary: Battle-object update that repeatedly re-asserts the panel highlight flag (refreshing via object_highlightPanel
+  roughly every 16 frames) for a duration of Param1 frames, then ends the action.
+interface: (r0 = ? unused; r5 = battle object) -> updates CurPhase/Timer/Timer2/CurAction fields; no return
+  value
+details: 'Phase 0 entry: writes phase 4, copies oBattleObject_Param1 into oBattleObject_Timer as a duration,
+  and zeroes Timer2. Phase 4 body: increments Timer2 each frame; every 8th frame (Timer2 bit 3 set) it
+  calls object_highlightPanel with PanelX/PanelY, refreshing the panel-data highlight flag. Timer counts
+  down each frame and the action finishes (CurAction = 4, phase cleared) when it reaches zero. The 8-frame
+  refresh suggests the highlight flag is consumed/cleared elsewhere and needs periodic re-assertion.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'phase 0 stores Param1 into Timer and phase 4 — duration setup; loc_80D545E: lsr bit 3 gate
+    then ''bl object_highlightPanel'' with PanelX/PanelY; Timer countdown with ''bgt'' then CurAction
+    = 4 and phase clear at end'
+  refs:
+  - bn6f/asm/asm31.s:64354
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080D5448
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The `lsr r0, #3` / `bcs` skips the highlight when bit 3 is set (Timer2 % 16 in [8..15]), not ''every
+    8th frame'' as claimed; the highlight runs 7 frames then is skipped 9 frames per cycle. Also CurAction=4
+    is the standard ''finished'' sentinel, not an action to execute. The overall flow (phase init, periodic
+    highlight, countdown, finish) is correct.; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which object/spell uses this handler is unknown
+- What action/phase 4 means in the caller's state machine and whether the highlight flag persists between
+  the 8-frame refreshes
+- 'The `lsr r0, #3` / `bcs` skips the highlight when bit 3 is set (Timer2 % 16 in [8..15]), not ''every
+  8th frame'' as claimed; the highlight runs 7 frames then is skipped 9 frames per cycle. Also CurAction=4
+  is the standard ''finished'' sentinel, not an action to execute. The overall flow (phase init, periodic
+  highlight, countdown, finish) is correct.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D5448 -> object_updatePanelHighlight
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5448

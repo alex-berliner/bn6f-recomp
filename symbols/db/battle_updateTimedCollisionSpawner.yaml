@@ -1,0 +1,59 @@
+name: battle_updateTimedCollisionSpawner
+address: '0x080C6854'
+kind: function
+status: probable
+summary: Per-frame handler that spawns a collision region on its own panel every 7 frames up to three
+  times, then waits 20 frames before destroying the battle object.
+interface: (r5 = battle object) -> void; r0-r3/r4 arguments to object_spawnCollisionRegion
+details: This is a per-frame state handler for a battle object. In phase 0 it sets PhaseInitialized=4,
+  decrements oBattleObject_Timer and reloads it with 7 on expiry; each time it fires, it reads a byte
+  from the table dword_80C68AC indexed by Timer2 (values 1, 1, 3 for spawns 0-2) and calls object_spawnCollisionRegion
+  with r0=PanelX, r1=PanelY, r2=Element, r3=0, r4=0xa05ff01 (extra arg passed in r4, Thumb calling convention).
+  Timer2 counts the spawns; after the third, it writes phase 4 (also clearing PhaseInitialized via the
+  combined halfword store) and sets Timer=20 (0x14). Phase != 0 skips straight to the wait, and when that
+  Timer expires it writes CUR_STATE_DESTROY into CurState/Action/Phase. The r7 load from the table is
+  dead code — r7 is never consumed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh r0 [Timer] / mov r0,#7 ... strh: 7-frame interval between spawns (sub_80C6854); ldrb r7,[r1,r0]
+    with off_80C68AC->dword_80C68AC (bytes 01 01 03) indexed by Timer2, three spawns then cmp r0,#3 blt;
+    bl object_spawnCollisionRegion with PanelX/PanelY/Element args and r4=0xa05ff01; mov r0,#4 strh [CurPhaseAndPhaseInitialized];
+    mov r0,#0x14 strh [Timer]: post-spawn 20-frame wait before destroy; mov r0,#CUR_STATE_DESTROY str
+    [oBattleObject_CurStateActionPhaseAndPhaseInitialized]: self-destructs when done'
+  refs:
+  - bn6f/asm/asm31.s:31960
+  - 0x080C681C sub_80C681C
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C6854
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the description: phase 0 sets PhaseInitialized=4, reloads Timer with 7, reads from
+    dword_80C68AC (0x30101 = {1,1,3}) into r7, spawns collision region with r4=0xa05ff01, increments Timer2,
+    and after 3 spawns transitions to phase 4 with Timer=0x14, then waits and destroys. However, the name
+    ''battle_updateTripleHitboxSpawner'' is misleading since only 3 spawns occur but not necessarily all
+    are ''hits''; a simpler name like ''battle_updateTimedCollisionSpawner'' or ''battle_updateCollisionRegionSpawner''
+    fits better.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which attack/trap this belongs to — the sole caller sub_80C681C and the spawner-table owner are undocumented
+- Meaning of the r4=0xa05ff01 argument and the per-spawn table bytes (1,1,3) to object_spawnCollisionRegion
+- Whether the dead r7 load hints at a parameter that was intended to vary per spawn
+- 'The code matches the description: phase 0 sets PhaseInitialized=4, reloads Timer with 7, reads from
+  dword_80C68AC (0x30101 = {1,1,3}) into r7, spawns collision region with r4=0xa05ff01, increments Timer2,
+  and after 3 spawns transitions to phase 4 with Timer=0x14, then waits and destroys. However, the name
+  ''battle_updateTripleHitboxSpawner'' is misleading since only 3 spawns occur but not necessarily all
+  are ''hits''; a simpler name like ''battle_updateTimedCollisionSpawner'' or ''battle_updateCollisionRegionSpawner''
+  fits better.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C6854 -> battle_updateTimedCollisionSpawner
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6854

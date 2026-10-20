@@ -1,0 +1,64 @@
+name: object_spawnKind8Attached
+address: '0x080B9432'
+kind: function
+status: probable
+summary: Spawns a battle object of kind 8 via object_spawnType1, copies the caller's panel X/Y/Element
+  into it, links it to a parent pointer, inherits parent's alliance/facing, and stores damage value and
+  collision data pointer (with collision byte 0 set to 1).
+interface: (r0 = panel X, r1 = panel Y, r2 = element/attribute, r3 = spawn z-arg, r5 = parent BattleObject
+  ptr, r6 = damage value, r7 = collision data ptr) -> r0 = new BattleObject ptr or NULL; flags from spawn's
+  return drive the failure branch
+details: This is a thin spawn helper around object_spawnType1 with the object kind hardcoded to 8. It
+  pushes r0-r2 (plus r5) purely to preserve its arguments across the spawn call; the pop deliberately
+  lands old r0-r2 in r1-r3 so they can be stored as oBattleObject_PanelX, PanelY and Element of the new
+  object while r0 holds the object pointer. r5 is stored as oBattleObject_RelatedObject1Ptr and the parent's
+  oBattleObject_AllianceAndDirectionFlip halfword is copied into the child, so the spawned object inherits
+  its parent's team and facing flip. r6 becomes oBattleObject_DamageAndStaminaDamageCounterDisabler and
+  r7 becomes oBattleObject_CollisionDataPtr, after which byte 0 of the collision data is set to 1 (likely
+  enabling/sizing the hitbox). Passing extra arguments in r5-r7 suggests callers are battle effect/chip
+  sequences that set these registers by convention. If the spawn returns NULL the field initialisation
+  is skipped entirely.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#8; bl object_spawnType1 — spawns object kind 8 with x=r1, y=r2, z=r3 from the wrapper''s
+    own args; push {r0-r2,r5} / pop {r1-r3,r5}: old r0-r2 are re-read as r1-r3 and stored to PanelX/PanelY/Element;
+    str r5,[r0,#RelatedObject1Ptr] then ldrh/strh of AllianceAndDirectionFlip via r5: copies parent''s
+    alliance and flip to the child; str r6,[DamageAndStaminaDamageCounterDisabler]; str r7,[CollisionDataPtr];
+    mov r1,#1; strb r1,[r7] — damage and collision-data wiring, hitbox byte set to 1; beq locret after
+    the spawn (flags untouched by mov/pop): all initialisation is skipped when the spawn fails'
+  refs:
+  - bn6f/asm/asm31.s:2485
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B9432
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function pushes r0-r2 and r5 but does not push r3, r6, or r7 — contradicting the claim that
+    it preserves r0-r2 ''plus r5'' as a general register save; r3 is clearly not preserved across the
+    spawn call. The popped values are old r0-r2 (now in r1-r3), with r5 restored as the parent''s AllianceAndDirectionFlip
+    source. The spawn kind is 8 and the summary otherwise fits. The proposed name should follow the ''object_''
+    prefix convention, and ''spawn'' is also a valid prefix — a tighter name would be ''object_spawnKind8Attached''.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which battle object kind 8 actually is (visual/behaviour), since no callers are known
+- Meaning of collision-data byte 0 = 1 (hitbox size, enable flag, or hit count)
+- Whether object_spawnType1 reads a 5th stack argument — if so the pushed old r0 is also passed as params
+- How real callers set up r5/r6/r7, which would confirm the parent/damage/collision-data convention
+- The function pushes r0-r2 and r5 but does not push r3, r6, or r7 — contradicting the claim that it preserves
+  r0-r2 'plus r5' as a general register save; r3 is clearly not preserved across the spawn call. The popped
+  values are old r0-r2 (now in r1-r3), with r5 restored as the parent's AllianceAndDirectionFlip source.
+  The spawn kind is 8 and the summary otherwise fits. The proposed name should follow the 'object_' prefix
+  convention, and 'spawn' is also a valid prefix — a tighter name would be 'object_spawnKind8Attached'.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B9432 -> object_spawnKind8Attached
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9432

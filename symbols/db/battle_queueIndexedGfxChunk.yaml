@@ -1,0 +1,57 @@
+name: battle_queueIndexedGfxChunk
+address: '0x08028340'
+kind: function
+status: probable
+summary: Queues a 0x180-byte graphics transfer from an indexed buffer into the battle gfx queue, advancing
+  the destination cursor by 0x180.
+interface: (r0 = dest cursor (*mut, set up by caller), r1 = cursor copy, r4 = object whose byte at +7
+  selects the chunk) -> r0 = source pointer; r1 advanced by 0x180
+details: Reads the byte at [r4+7] (likely a gfx id/variant field of a battle object), multiplies it by
+  0x180 and adds it to the base pointer dword_86E4D9C, giving the source of a 0x180-byte chunk. It then
+  calls QueueEightWordAlignedGFXTransfer with (source r0, destination r1 prepared before entry, size r2
+  = 0x180), i.e. queues a 4bpp-tile-sized DMA/queue transfer. Afterwards it adds 0x180 to r1 twice (0xc0+0xc0),
+  advancing the destination cursor so the caller can queue the next chunk. The function sits in the dispatch
+  table off_8028370 alongside battle_queueGfxVariant, battle_queueChipIconGfx and battle_loadGfxChunkBySelector_8028320,
+  so it is one selectable chunk-loader of the battle graphics streaming system. No known caller, so how
+  r0/r1 are initialized (probably from a queue-descriptor struct) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r3,[r4,#7]; mul r3,r2(=0x180); add r0,base — source chunk selected by an id byte at +7
+    of the object in r4; bl QueueEightWordAlignedGFXTransfer with r2 = 0x180 — queues a fixed 0x180-byte
+    graphics transfer; add r1,#0xc0 twice after the call — destination cursor advanced by exactly one
+    chunk size; listed at off_8028370+0x20 among battle gfx-queue helpers (battle_queueGfxVariant, battle_queueChipIconGfx);
+    callee is the known QueueEightWordAlignedGFXTransfer(src,dst,size) queued-GFX helper
+  refs:
+  - bn6f/asm/asm03_0.s:4454
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x08028340
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r3 = [r4+7]*0x180 + dword_86E4D9C is loaded into r0 as source; r1 is untouched
+    and used as dest; size r2=0x180; QueueEightWordAlignedGFXTransfer is called; r1 is advanced by 0x180
+    (0xc0+0xc0). However, r0 is the source pointer (read into QueueEightWordAlignedGFXTransfer as queued_src),
+    not the ''dest cursor'' the proposal claims. r1 is the dest cursor, advanced after the call. The proposal''s
+    interface reverses r0/r1 roles.; run wf investigate investigate-20261019-030611; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no caller found, so the exact meaning of [r4+7] (gfx id? palette? object field layout) and how r0/r1
+  are initialized is unconfirmed
+- contents/layout of the 0x180-stride table at dword_86E4D9C (which battle graphics it holds) is unknown
+- 'The code matches: r3 = [r4+7]*0x180 + dword_86E4D9C is loaded into r0 as source; r1 is untouched and
+  used as dest; size r2=0x180; QueueEightWordAlignedGFXTransfer is called; r1 is advanced by 0x180 (0xc0+0xc0).
+  However, r0 is the source pointer (read into QueueEightWordAlignedGFXTransfer as queued_src), not the
+  ''dest cursor'' the proposal claims. r1 is the dest cursor, advanced after the call. The proposal''s
+  interface reverses r0/r1 roles.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8028340 -> battle_queueIndexedGfxChunk
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8028340

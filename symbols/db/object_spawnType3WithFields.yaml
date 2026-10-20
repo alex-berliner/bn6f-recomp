@@ -1,0 +1,64 @@
+name: object_spawnType3WithFields
+address: '0x080DA710'
+kind: function
+status: probable
+summary: Spawns a 0xA8-byte type-3 battle object, filling panel coords, element, damage word, and inheriting
+  owner's alliance/flip, then sets flag 0x10 before returning.
+interface: (r0 = panelX, r1 = panelY, r2 = element; r3-r4 forwarded to object_spawnType3; r6 = damage/stamina
+  word; r5 = struct to copy AllianceAndDirectionFlip from) -> r0 = new object pointer or 0; flags from
+  object_spawnType3 drive the beq.
+details: Saves the caller's r0-r2 on the stack, sets r0=0xA8 and calls object_spawnType3 with all five
+  arguments. If the spawn succeeded (Z clear, pointer in r0/r5), it restores the saved r0-r2 into r1-r3
+  and stores them as oBattleObject_PanelX, PanelY, and Element on the new object, plus the caller's r6
+  into oBattleObject_DamageAndStaminaDamageCounterDisabler. It then copies oBattleObject_AllianceAndDirectionFlip
+  from the caller's r5 structure (offset matches the battle-object layout, likely the owning entity) into
+  the new object, so the spawn inherits its owner's side and mirror flag. Finally it ORs 0x10 into the
+  new object's oObjectHeader_Flags and returns the pointer; on spawn failure it returns immediately with
+  the pointer still in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xA8 + bl object_spawnType3: spawns a 0xA8-byte type-3 battle object with five args
+    (sub_80DA710+4..+8); pop {r1-r3,r5} then strb r1/r2/r3 to PanelX/PanelY/Element: caller''s original
+    r0-r2 become the new object''s position and element; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]:
+    caller supplies the attack''s damage word in r6; ldrh r3,[r5,#AllianceAndDirectionFlip] / strh to
+    new object: alliance+flip inherited from the caller''s r5 structure, then flag 0x10 set in oObjectHeader_Flags;
+    beq locret after the spawn call: all field stores are skipped when object_spawnType3 reports failure'
+  refs:
+  - bn6f/asm/asm31.s:75361
+  - 0x0810515A sub_810515A
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DA710
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code well: r0-r2 are pushed, r0=0xA8 is passed to object_spawnType3 with
+    r1-r4 forwarded, the beq branches on its return, panel/element are stored, r6 goes to the damage word,
+    and AllianceAndDirectionFlip is copied from r5. However, the name should not embed ''PanelAndElement''
+    since those are just two of several fields filled; a more accurate prefix is ''object_spawn'' to match
+    the callee. Also summary claims ''returns 0 on failure'' but code returns whatever r0 holds after
+    spawn (likely 0 since object_spawnType3 returns 0 on failure, but the code doesn''t explicitly zero
+    it).; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of header flag 0x10 set on the spawned object
+- What r3 and r4 mean to object_spawnType3 (its arg layout beyond the size in r0)
+- What structure the caller at 0x0810515A passes in r5 (presumably the owning battle object) and which
+  in-game content uses this spawn
+- 'The proposal matches the code well: r0-r2 are pushed, r0=0xA8 is passed to object_spawnType3 with r1-r4
+  forwarded, the beq branches on its return, panel/element are stored, r6 goes to the damage word, and
+  AllianceAndDirectionFlip is copied from r5. However, the name should not embed ''PanelAndElement'' since
+  those are just two of several fields filled; a more accurate prefix is ''object_spawn'' to match the
+  callee. Also summary claims ''returns 0 on failure'' but code returns whatever r0 holds after spawn
+  (likely 0 since object_spawnType3 returns 0 on failure, but the code doesn''t explicitly zero it).'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DA710 -> object_spawnType3WithFields
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA710

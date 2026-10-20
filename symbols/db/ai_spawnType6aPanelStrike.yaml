@@ -1,0 +1,60 @@
+name: ai_spawnType6aPanelStrike
+address: '0x080D1B22'
+kind: function
+status: probable
+summary: Spawns battle object type 0x6A and fills in its panel X/Y, element, damage word from r6, and
+  alliance/direction from the caller's own battle object (r5), setting bit 0x10 in oObjectHeader_Flags.
+interface: (r0 = 0x6A object id, r1 = panel X, r2 = panel Y, r3 = element, r6 = damage word; r5 saved/restored)
+  -> r0 = spawned battle object or 0; sets Z from spawn result
+details: 'Wrapper around object_spawnType3 with the object type hard-coded to 0x6A. On failure (r0 ==
+  0) it just returns. On success it writes the caller''s arguments into the new battle object: PanelX,
+  PanelY, Element, the DamageAndStaminaDamageCounterDisabler word from r6, and copies the object''s own
+  AllianceAndDirectionFlip halfword back onto itself. It then sets bit 0x10 in oObjectHeader_Flags, which
+  likely marks the object as an attack/hit-related effect. The ai_attackSweepFrontRow caller invokes it
+  once per panel in front of the AI, staggering hits by 5 frames, consistent with this spawning one strike
+  object per panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x6a; bl object_spawnType3 - spawns a fixed battle object type; strb r1/r2/r3 into oBattleObject_PanelX/PanelY/Element
+    - caller args become panel position and element; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    - caller supplies the damage; orr with 0x10 stored to oObjectHeader_Flags - sets a status/attack flag
+    on the new object; caller 0x080F197A ai_attackSweepFrontRow loops over 6 front panels, one call per
+    panel
+  refs:
+  - bn6f/asm/asm31.s:56437
+  - 0x080F197A ai_attackSweepFrontRow
+  - 0x080F8E48 sub_80F8E48
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D1B22
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does spawn type 0x6A via object_spawnType3, writes PanelX/Y, Element, damage from r6, copies
+    AllianceAndDirectionFlip from r5 (not from itself), and sets bit 0x10 in oObjectHeader_Flags — so
+    the summary''s mechanics match. However, the summary incorrectly states the caller copies the object''s
+    own alliance back onto itself; r5 is an input argument (the caller''s own battle object), not the
+    spawned one. Also the interface has r0 hard-coded to 0x6A and r5 as the source object, not r0=r6A
+    as an input.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object type 0x6A actually is (visual/effect identity) - needs the type-3 spawn table or
+  the object's initializer
+- Exact meaning of flag 0x10 in oObjectHeader_Flags
+- What the saved/restored r5 holds in the real (possibly mis-dumped) prologue
+- The code does spawn type 0x6A via object_spawnType3, writes PanelX/Y, Element, damage from r6, copies
+  AllianceAndDirectionFlip from r5 (not from itself), and sets bit 0x10 in oObjectHeader_Flags — so the
+  summary's mechanics match. However, the summary incorrectly states the caller copies the object's own
+  alliance back onto itself; r5 is an input argument (the caller's own battle object), not the spawned
+  one. Also the interface has r0 hard-coded to 0x6A and r5 as the source object, not r0=r6A as an input.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D1B22 -> ai_spawnType6aPanelStrike
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1B22

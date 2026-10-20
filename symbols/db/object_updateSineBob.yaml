@@ -1,0 +1,53 @@
+name: object_updateSineBob
+address: '0x080DE350'
+kind: function
+status: probable
+summary: Adds a sine-wave bob offset (direction-scaled) to a battle object's position each frame, called
+  from object_updateCountedMovement.
+interface: (r5 = battle object ptr) -> void; writes object+0x38 (position), advances object+0x65 (phase)
+details: 'Increments the phase byte at r5+0x65 by the step at r5+0x64, reads a halfword from math_sinTable
+  at phase*2, multiplies it by 0xC then shifts left 8 (amplitude 0xC00 in fixed point), and multiplies
+  by a signed word from byte_80DE384 selected by r5+0x62<<2 (0 -> +1, 1 -> -1, i.e. a direction sign).
+  The result is added to the base coordinate at r5+0x68 and stored into the position field r5+0x38. So
+  it computes obj.x/y = base + dir * 0xC00 * sinTable[phase], a wobble superimposed on the object''s motion.
+  Fields used: 0x38 position, 0x62 direction/sign, 0x64 phase step, 0x65 phase accumulator, 0x68 base
+  coordinate.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#0x64]; ldrb r3,[r5,#0x65]; add/strb to 0x65: phase accumulator advanced by a per-frame
+    step; ldr r2,off_80DE3D8 (math_sinTable); ldrh r0,[r2,r3] with r3=phase*2: sine lookup, then *0xC
+    << 8 amplitude; byte_80DE384 words {1, -1} indexed by [r5+0x62]<<2: sign flip from a direction field;
+    ldr r1,[r5,#0x68]; add r1,r1,r0; str r1,[r5,#0x38]: result added to base coordinate and stored to
+    position; Called from object_updateCountedMovement, a per-frame movement step for a battle object'
+  refs:
+  - bn6f/asm/asm31.s:83725
+  - 0x080DE266 object_updateCountedMovement
+  reproduce: python3 tools/asmcat.py 0x080DE350
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it advances phase at 0x65, reads sinTable[phase], applies amplitude
+    0xC << 8, loads a signed word from byte_80DE384 indexed by r5+0x62*4 (+1 or -1), and adds it to base
+    at r5+0x68 into r5+0x38. The summary is accurate, but the name should match the ''object_'' prefix
+    used by the caller (object_updateCountedMovement) rather than ''object_updateSineBob''.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which coordinate (X or Y) field 0x38/0x68 hold, and the fixed-point format of the position fields
+- Why the caller (a snap-back-and-reverse mover) needs this wobble — exact object/behavior identity
+- 'The code matches the proposal: it advances phase at 0x65, reads sinTable[phase], applies amplitude
+  0xC << 8, loads a signed word from byte_80DE384 indexed by r5+0x62*4 (+1 or -1), and adds it to base
+  at r5+0x68 into r5+0x38. The summary is accurate, but the name should match the ''object_'' prefix used
+  by the caller (object_updateCountedMovement) rather than ''object_updateSineBob''.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE350 -> object_updateSineBob
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE350

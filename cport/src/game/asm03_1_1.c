@@ -2454,7 +2454,7 @@ Next sub_803EAE4(void) {
 
 /* ── sub_803EB04 ── */
 /* sub_803EB04(r3 r4 r5 r6 r8 r9 r10 r11 r12 lr):
- * Calls battle_updateLinkState_803DEB4; if its return value equals 2, also calls sub_803ED1C
+ * Calls battle_updateLinkState_803DEB4; if its return value equals 2, also calls e_dispatchStateHandler
  * before returning to the caller. */
 Next sub_803EB04(void) {
     /* push {lr} */
@@ -2471,8 +2471,8 @@ Next sub_803EB04(void) {
         RETURN_TO_CALLER();
     }
 
-    /* bl sub_803ED1C */
-    GUEST_CALL(sub_803ED1C);
+    /* bl e_dispatchStateHandler */
+    GUEST_CALL(e_dispatchStateHandler);
 
     /* pop {pc} */
     LR = LD32(SP);
@@ -2709,13 +2709,13 @@ static u32 poll_link_partner(u32 *r2_out) {
     return R0;
 }
 
-/* register form: calls sub_8144D04 outside this file, which has no typed C interface yet */
+/* register form: calls battle_getTimerEnableFlag outside this file, which has no typed C interface yet */
 static u32 link_player_state(u32 slot, u32 running_result, u32 entry_r4) {
     R0 = slot;
     R7 = slot;                     /* r7 is the loop counter here */
     R4 = entry_r4 + slot;          /* the original bumps r4 once per earlier iteration */
     R6 = running_result;           /* the running 0xFF/0 result is live in r6 */
-    GUEST_CALL(sub_8144D04);
+    GUEST_CALL(battle_getTimerEnableFlag);
     return R0;
 }
 

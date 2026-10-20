@@ -1,0 +1,67 @@
+name: setRelatedObject1FromR5
+address: '0x080E8770'
+kind: function
+status: probable
+summary: Spawns a battle object with type 0x71 as a side effect, then copies the caller's preserved r5
+  battle-object pointer into its own oBattleObject_RelatedObject1Ptr and copies its AllianceAndDirectionFlip
+  halfword, effectively storing r5 into [r5] due to the mov r0,r5 before the conditional.
+interface: (caller's preserved r5 = source battle object; no register args) -> r0 = spawned object or
+  the source object after the final mov; no meaningful return
+details: 'The function calls object_spawnType4 with type 0x71, so a new battle object of that kind is
+  created and its initializer runs. It then copies the source object (passed via the caller''s preserved
+  r5, since r5 is only pushed/popped, never loaded) into the new object''s oBattleObject_RelatedObject1Ptr,
+  and copies the oBattleObject_AllianceAndDirectionFlip halfword from source to new object, so the spawned
+  object inherits the source''s team/flip state and back-reference. Quirk: as disassembled, ''mov r0,
+  r5'' both sets the flags for the null-check (beq skips the copies when r5 is null) and clobbers the
+  spawned-object pointer, so the store would hit the source object itself; this is likely a disassembly
+  artifact of a flag-testing mov and the intended target is the freshly spawned object. The two callers
+  (0x080F2004, 0x080FB366) are themselves unnamed, so what gameplay entity type 0x71 represents is not
+  visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x71; bl object_spawnType4 — spawns battle object type 0x71 via the known wrapper;
+    str r5, [r0,#oBattleObject_RelatedObject1Ptr] — links the new object to the source object in r5; ldrh/strh
+    around oBattleObject_AllianceAndDirectionFlip — copies team/flip halfword from source to spawn; beq
+    locret after the mov — the copies are skipped when the source object pointer is null; push/pop {r5}
+    with no load — the source object comes from the caller''s preserved r5, not from arguments'
+  refs:
+  - bn6f/asm/asm31.s:106307
+  - 0x080F2004 sub_80F2004
+  - 0x080FB366 sub_80FB366
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E8770
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s summary is correct: type 0x71 is spawned, and r5 (the caller''s preserved battle
+    object) is linked via oBattleObject_RelatedObject1Ptr with its alliance/flip halfword copied. However,
+    the proposed interface is wrong: r0 is set to r5 before the null check, so str instructions target
+    the source object (r5) rather than the spawned object. The callee object_spawnType4 spawns type 4
+    (not type 0x71), so the r0=0x71 is just a spawn parameter; the spawned object pointer is lost. The
+    name should reflect that r5 is stored into itself, not that a new object is linked.; run wf investigate
+    investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what battle object type 0x71 is in game terms (sprite/behavior), which its initializer or the callers
+  at 0x080F2004/0x080FB366 would reveal
+- whether 'mov r0, r5' is a disassembly artifact (e.g. a flag-setting mov on the spawn result) and the
+  store really targets the new object
+- whether the null-check tests r5 or the spawned pointer
+- 'The proposal''s summary is correct: type 0x71 is spawned, and r5 (the caller''s preserved battle object)
+  is linked via oBattleObject_RelatedObject1Ptr with its alliance/flip halfword copied. However, the proposed
+  interface is wrong: r0 is set to r5 before the null check, so str instructions target the source object
+  (r5) rather than the spawned object. The callee object_spawnType4 spawns type 4 (not type 0x71), so
+  the r0=0x71 is just a spawn parameter; the spawned object pointer is lost. The name should reflect that
+  r5 is stored into itself, not that a new object is linked.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E8770 -> setRelatedObject1FromR5
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8770

@@ -1,0 +1,55 @@
+name: object_spawnAIAttackHitbox
+address: '0x080F1E7E'
+kind: function
+status: probable
+summary: Spawns a collision region for an AI attack, passing the AI's attack-var init flag, damage, and
+  constants 0x6050A01 and 0x63 to object_spawnCollisionRegion.
+interface: (r0 = parent/object ptr, r1 = ? from caller) -> r0 = spawned region handle from object_spawnCollisionRegion;
+  r2-r4, r6 used as args
+details: Loads the byte oAIAttackVars_InitFlag into r2 and the word oAIAttackVars_Damage into r6 from
+  the oAIAttackVars struct in r7, zeroes r3, and sets r4 to constant 0x6050A01 (packed geometry/resource
+  constant). r0 and r1 are left as set by the caller and passed through. It then tail-calls object_spawnCollisionRegion,
+  which creates a collision region for the attack; the damage field of the attack-var struct becomes the
+  hitbox damage. r4/r6/r7 are saved/restored because they are args or the struct pointer. The init flag
+  in r2 likely tells the callee whether to (re)initialize the region.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r7,#oAIAttackVars_InitFlag] and ldr r6,[r7,#oAIAttackVars_Damage] feed attack-var fields
+    as callee args; ldr r4,=0x6050A01 immediate constant, r3=0 — remaining arguments to the spawn call;
+    bl object_spawnCollisionRegion as sole call, then immediate pop {pc} (tail-style helper); only caller
+    sub_80F1C78 works on the same oAIAttackVars struct in r7
+  refs:
+  - bn6f/asm/asm31.s:126346
+  - 0x080F1C78 sub_80F1C78
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F1E7E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: the function loads oAIAttackVars_InitFlag (r2), 0 (r3), a geometry
+    constant 0x6050A01 (r4), oAIAttackVars_Damage (r6), and 0x63 (r7) before tail-calling object_spawnCollisionRegion.
+    However, it misses that r7 is overwritten to 0x63 (not preserved as the struct pointer), so the struct
+    pointer is consumed to extract its fields. A clearer name reflecting that this spawns a collision
+    region for an AI attack hitbox is fine, but the summary should mention the additional 0x63 constant.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of r0, r1 and the constant 0x6050A01 requires the signature of object_spawnCollisionRegion
+- whether r2 is an init/enable flag or an element index needs object_spawnCollisionRegion's body
+- 'The proposal is largely correct: the function loads oAIAttackVars_InitFlag (r2), 0 (r3), a geometry
+  constant 0x6050A01 (r4), oAIAttackVars_Damage (r6), and 0x63 (r7) before tail-calling object_spawnCollisionRegion.
+  However, it misses that r7 is overwritten to 0x63 (not preserved as the struct pointer), so the struct
+  pointer is consumed to extract its fields. A clearer name reflecting that this spawns a collision region
+  for an AI attack hitbox is fine, but the summary should mention the additional 0x63 constant.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F1E7E -> object_spawnAIAttackHitbox
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1E7E

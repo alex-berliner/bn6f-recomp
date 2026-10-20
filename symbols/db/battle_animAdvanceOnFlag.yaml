@@ -1,0 +1,56 @@
+name: battle_animAdvanceOnFlag
+address: '0x080D884C'
+kind: function
+status: probable
+summary: If the current frame's attribute byte (from sprite_getFrameParameters) has bit 0x80 set, increments
+  the object's current animation ID, sets its current action to 4, and resets CurPhaseAndPhaseInitialized
+  to 0.
+interface: (r5 = battle object) -> r0 = frame attribute byte from sprite_getFrameParameters; updates object
+  fields, no meaningful return
+details: 'Calls sprite_getFrameParameters to fetch the current frame''s attribute byte, and tests bit
+  0x80. If the flag is clear, the function returns without touching the object. If set, it increments
+  oBattleObject_CurAnim (the object''s current animation ID), stores 4 into oBattleObject_CurAction, and
+  zeroes oBattleObject_CurPhaseAndPhaseInitialized, restarting the new action/animation from phase 0.
+  This looks like a scripted transition hook: a frame flagged 0x80 ends the current animation and advances
+  the object into a follow-up animation/action. r5 is the object pointer, so the caller must set it up
+  (it is not passed in r0).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_getFrameParameters then tst r0,#0x80 gates all writes — the flag lives in the frame
+    attribute byte; ldrb r0,[r5,#oBattleObject_CurAnim]; add #1; strb — animation ID is incremented only
+    when the flag is set; strb #4 to oBattleObject_CurAction and strh #0 to CurPhaseAndPhaseInitialized
+    start the next action from its first phase; no callers known; r5-object access pattern matches other
+    battle-object routines'
+  refs:
+  - bn6f/asm/asm31.s:71024
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080D884C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the code: tst r0, #0x80, beq skip, then ldrb/add r0 for oBattleObject_CurAnim,
+    mov #4 into oBattleObject_CurAction, and strh #0 into oBattleObject_CurPhaseAndPhaseInitialized. However,
+    the proposed name ''battle_advanceAnimOnFrameFlag'' is too specific (''OnFrameFlag'' is awkward);
+    a cleaner prefix-based name would be ''battle_advanceAnimOnFlag'' or ''battle_animAdvanceOnFlag''.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so the meaning of action 4 and which objects use flagged 0x80 frames is unconfirmed
+- exact semantics of the 0x80 attribute bit (animation end vs one-shot frame) need cross-checking against
+  other users of sprite_getFrameParameters
+- 'The summary''s mechanics match the code: tst r0, #0x80, beq skip, then ldrb/add r0 for oBattleObject_CurAnim,
+  mov #4 into oBattleObject_CurAction, and strh #0 into oBattleObject_CurPhaseAndPhaseInitialized. However,
+  the proposed name ''battle_advanceAnimOnFrameFlag'' is too specific (''OnFrameFlag'' is awkward); a
+  cleaner prefix-based name would be ''battle_advanceAnimOnFlag'' or ''battle_animAdvanceOnFlag''.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D884C -> battle_animAdvanceOnFlag
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D884C

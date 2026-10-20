@@ -1,0 +1,71 @@
+name: ai_spawnRandomPatternAttacks
+address: '0x080FAB48'
+kind: function
+status: probable
+summary: Picks one of four random panel-coordinate patterns and spawns attack entities at the first two
+  pattern panels, then spawns a third at the caster's own panel.
+interface: (r0 = unused, r5 = battle object, r7 = AI attack-vars struct) -> r0 = X coordinate of the third
+  spawned point (or its 7-x mirror); no meaningful flags
+details: GetPositiveSignedRNG is masked with 3 and multiplied by 6 to index a 4-entry, 6-byte table at
+  byte_80FABD4, so one of four coordinate sets is chosen at random. Each set holds three (x,y) panel pairs
+  at offsets +2, +4 and +0, which are fed one at a time to spawners sub_80D52C4 (first two) and sub_80D50FC
+  (third). For the first two calls r4 = oAIAttackVars_AiDifficultyTier | (oAIAttackVars_AttackBoost2 <<
+  8) and r6 = oAIAttackVars_Damage; the spawn slot used is oAIAttackVars_ScratchVar + 0/+4/+8, so three
+  entities are queued into an array in the AI attack-vars struct. r2 = 0x10 is passed as a constant to
+  both spawners, and r3 = r7+0x34 is a pointer into the same struct. When oBattleObject_Alliance is nonzero
+  (enemy-owned attack), each X coordinate is mirrored as 7-x so the pattern lands on the opposite field
+  side. The final return value is the third point's X after mirroring, suggesting the caller may use it
+  for further setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl GetPositiveSignedRNG; and r0,#3; mul r0,#6; ldr r6,off_80FABD4 -> random 1-of-4 selection
+    from a 24-byte, 6-byte-per-entry table; three load/branch blocks reading table bytes [2,3], [4,5],
+    [0,1] with tst r2,#oBattleObject_Alliance and sub r0,#7 mirroring X for enemy attacks; two bl sub_80D52C4
+    and one bl sub_80D50FC calls with r7 = ScratchVar + 0/+4/+8, i.e. three consecutive spawn slots; r4
+    built from oAIAttackVars_AiDifficultyTier | AttackBoost2<<8 and r6 = oAIAttackVars_Damage, parameters
+    typical of AI attack spawning; sole caller sub_80FA4FE and AI attack-vars field names place this inside
+    boss/EN AI attack dispatch
+  refs:
+  - bn6f/asm/asm31.s:144652
+  - 0x080FA4FE sub_80FA4FE
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080D50FC sub_80D50FC
+  - 0x080D52C4 sub_80D52C4
+  reproduce: python3 tools/asmcat.py 0x080FAB48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The first two spawn calls read offsets +2/+3 and +4/+5 from the table entry, and sub_80D52C4 is
+    called with r7 = oAIAttackVars_ScratchVar +0 and +4, matching the proposal. However the third spawn
+    is different: it uses r0/r1 from oBattleObject_PanelX/PanelY (the caster''s own panel) and r2 from
+    oAIAttackVars_InitFlag, and calls sub_80D50FC rather than reading another table pair — the final mirrored
+    load at the end is the third point''s table entry shown but never used as a return; r0 holds whatever
+    sub_80D50FC left in r0. The return description (third X) is wrong; r0 is not explicitly set after
+    the last spawn in a meaningful way, and the third spawn doesn''t come from the table.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D52C4 and sub_80D50FC actually spawn (entity type/element) is unknown, so the specific attack
+  (e.g. which boss) is unidentified
+- The caller sub_80FA4FE is undocumented, so it is not confirmed which enemy or condition triggers this
+  pattern
+- Meaning of the r2=0x10 constant and the r7+0x34 field passed to the spawners
+- 'The first two spawn calls read offsets +2/+3 and +4/+5 from the table entry, and sub_80D52C4 is called
+  with r7 = oAIAttackVars_ScratchVar +0 and +4, matching the proposal. However the third spawn is different:
+  it uses r0/r1 from oBattleObject_PanelX/PanelY (the caster''s own panel) and r2 from oAIAttackVars_InitFlag,
+  and calls sub_80D50FC rather than reading another table pair — the final mirrored load at the end is
+  the third point''s table entry shown but never used as a return; r0 holds whatever sub_80D50FC left
+  in r0. The return description (third X) is wrong; r0 is not explicitly set after the last spawn in a
+  meaningful way, and the third spawn doesn''t come from the table.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FAB48 -> ai_spawnRandomPatternAttacks
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FAB48

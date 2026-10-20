@@ -1,0 +1,53 @@
+name: battle_updateTimedObject
+address: '0x080D881C'
+kind: function
+status: probable
+summary: Per-frame battle-object update shim that tail-dispatches into a CurAction-indexed handler table
+  and, on return, increments Param4 each tick, playing sound 0x149 every 16 frames.
+interface: (r5 = battle object) -> void; plays sound 0x149 when (Param4 & 0xF) == 1
+details: 'Standard battle-object update shim: it indexes a two-entry handler table (off_80D8844) with
+  the object''s CurAction field and tail-dispatches to it via bx, so action 0 runs sub_80D884C and action
+  1 runs object_updateTimedPanelCollisionSpawner. After the handler returns, it increments the object''s
+  Param4 byte, masks it with 0xF, and when the masked value equals 1 it plays sound 0x149 (built as 0x4A
+  + 0xFF). r1 is loaded as a pointer to the table base, then reused as the handler address. The 16-frame-modulo
+  sound tick suggests a looping effect accompanying the repeated panel-spawning behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — dispatch on the battle object''s
+    current action via table off_80D8844; table entry .word object_updateTimedPanelCollisionSpawner+1
+    names the known second action handler; ldrb/strb on oBattleObject_Param4 with add #1 and and r0,#0xF
+    — 16-frame cycle counter; cmp r0,#1; bne skip; mov r0,#0x4A; add r0,#0xFF; bl PlaySoundEffect — plays
+    sound 0x149 once per 16-frame cycle; only caller sub_80D87C0 fits the object-update pattern (r5 held
+    object, lr set via mov lr,pc)'
+  refs:
+  - bn6f/asm/asm31.s:71220
+  - 0x080D87C0 sub_80D87C0
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080D881C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does tail-dispatch via off_80D8844 on CurAction, ticks Param4 modulo 16, and plays 0x149
+    when the masked value equals 1, matching the proposal. The proposed name ''battle_updateTimedPanelObject''
+    overstates the panel part; one of the two handlers is just sub_80D884C (unidentified). Better to keep
+    this more neutral.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80D884C (action 0 handler) does — likely spawn/init of the panel attack
+- which specific object/entity in the game uses this update (which boss or trap spawns the panels)
+- The code does tail-dispatch via off_80D8844 on CurAction, ticks Param4 modulo 16, and plays 0x149 when
+  the masked value equals 1, matching the proposal. The proposed name 'battle_updateTimedPanelObject'
+  overstates the panel part; one of the two handlers is just sub_80D884C (unidentified). Better to keep
+  this more neutral.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D881C -> battle_updateTimedObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D881C

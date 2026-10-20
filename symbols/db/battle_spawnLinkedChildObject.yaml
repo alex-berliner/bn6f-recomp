@@ -1,0 +1,61 @@
+name: battle_spawnLinkedChildObject
+address: '0x080DB014'
+kind: function
+status: probable
+summary: Spawns a type-0xAC battle object initialized with the caller's PanelX/PanelY/Element, linked
+  to a source object via RelatedObject1Ptr with that source's AllianceAndDirectionFlip copied over, and
+  has bit 0x10 of oObjectHeader_Flags set.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = ? , r5 = source battle object ptr, r6 = DamageAndStaminaDamageCounterDisabler
+  value, r7 = ExtraVars value) -> r0 = new object ptr or fail; spawn's Z flag propagates
+details: Calls object_spawnType3 with r0=0xAC as the object type and passes the remaining caller registers
+  through as its five arguments. On success it writes the first argument to oBattleObject_PanelX, second
+  to PanelY, third to Element, and stores r5/r6/r7 into RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler
+  and ExtraVars of the new object. It then copies oBattleObject_AllianceAndDirectionFlip from the source
+  object at r5, so the spawned object fights on the same side facing the same way. Finally it sets bit
+  0x10 in oObjectHeader_Flags of the new object. If the spawn fails the stores are skipped via the beq.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xac before bl object_spawnType3: hardcoded type-3 spawn id 0xAC; strb r1/[r0,#oBattleObject_PanelX],
+    r2->PanelY, r3->Element: positional args become panel pos + element; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    then ldrh from [r5,#oBattleObject_AllianceAndDirectionFlip]: link + inherit alliance/flip from source
+    object; ldrb oObjectHeader_Flags; orr #0x10; strb: marks the new object with flag 0x10; beq locret
+    after spawn: stores conditional on spawn success'
+  refs:
+  - bn6f/asm/asm31.s:76633
+  - 0x080BBB38 sub_80BBB38
+  - 0x080F14BC sub_80F14BC
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DB014
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code well: r0 is the spawned object (moved from r5 after spawn, not the
+    first arg), and r5 is written to RelatedObject1Ptr while r6/r7 go to DamageAndStaminaDamageCounterDisabler/ExtraVars.
+    The AllianceAndDirectionFlip copy from [r5] (the RelatedObject1Ptr/source) and the 0x10 flag set are
+    also correct. However, the interface description is wrong: r0 is not panelX (it''s clobbered by object_spawnType3),
+    and the beq actually skips initialization when spawn returns Z=1 (failure), so Z flag propagation
+    is opposite. A name like battle_spawnLinkedChildObject better reflects that r5 is linked as RelatedObject1Ptr.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which object id 0xAC is in gameplay terms (callers sub_80BBB38 / sub_80F14BC unknown)
+- meaning of oObjectHeader_Flags bit 0x10
+- role of the third/fourth args and the ExtraVars/DamageAndStamina values passed in r6/r7
+- 'The proposal matches the code well: r0 is the spawned object (moved from r5 after spawn, not the first
+  arg), and r5 is written to RelatedObject1Ptr while r6/r7 go to DamageAndStaminaDamageCounterDisabler/ExtraVars.
+  The AllianceAndDirectionFlip copy from [r5] (the RelatedObject1Ptr/source) and the 0x10 flag set are
+  also correct. However, the interface description is wrong: r0 is not panelX (it''s clobbered by object_spawnType3),
+  and the beq actually skips initialization when spawn returns Z=1 (failure), so Z flag propagation is
+  opposite. A name like battle_spawnLinkedChildObject better reflects that r5 is linked as RelatedObject1Ptr.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB014 -> battle_spawnLinkedChildObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB014

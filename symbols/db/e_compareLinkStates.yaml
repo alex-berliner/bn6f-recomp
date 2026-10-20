@@ -1,0 +1,61 @@
+name: e_compareLinkStates
+address: '0x08132430'
+kind: function
+status: probable
+summary: Compares two eLinkState records' state halfwords at offset +8; returns 0xFF if neither exceeds
+  2, else uses sub_803DD60's result to pick priority and returns 1-4 ranking (8 on priority side = 1,
+  8 on other = 2, 4 on other = 3, 4 on both = 4).
+interface: (r0 = pointer to two consecutive 16-byte state records, state halfword at +8 in each) -> r0
+  = 0xFF if both states <= 2, else 1..4 ranking the two states (8 beats 4); calls sub_803DD60 to pick
+  which record is checked first
+details: 'Scans exactly two 16-byte entries (r0 and r0+0x10), counting entries whose halfword at +8 exceeds
+  2; if the count is 0 it returns 0xFF immediately. Otherwise it calls sub_803DD60 and, depending on its
+  nonzero/zero result, evaluates the first record''s state before or after the second''s — so sub_803DD60
+  decides priority when both sides qualify. The ranking is: state 8 on a side yields 1 or 2 (that side
+  first), state 4 on the second yields 3, and 4 on both yields 4. Values other than 4/8 (but >2) fall
+  through to 0xFF. The struct layout matches eLinkState records used by the link-comm callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r1,[r0,#8]; cmp r1,#2; ble loop: only entries with state >2 matter, none -> mov r7,#0xFF
+    return; bl sub_803DD60; tst r0,r0; beq loc_813247E: nonzero path checks record r4 first, zero path
+    checks r0+0x10 first (mirrored branches); cmp r6,#8 -> r7=1; cmp r0,#8 -> r7=2; cmp r0,#4 -> r7=3;
+    both ==4 -> r7=4: hierarchical outcome codes; Caller 0x0812B9F8 link_verifyChecksumAndMatchPartner
+    matches link partner eLinkState fields against a table, consistent with comparing two eLinkState records'
+  refs:
+  - bn6f/asm/asm36.s:4606
+  - 0x08130A04 e_linkMatchObjectUpdate
+  - 0x0812B9F8 link_verifyChecksumAndMatchPartner
+  - 0x0812BA1C link_verifyChecksumAndMatchPartner
+  - 0x0803DD60 sub_803DD60
+  reproduce: python3 tools/asmcat.py 0x08132430
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and ranking logic match the code: scan two 16-byte records at r0/r0+0x10, count those
+    with halfword at +8 > 2, return 0xFF if count==0, else call sub_803DD60 and branch on its result to
+    evaluate first/second record''s state with rankings 1/2/3/4 for state-8/8/4/4 cases. The name ''link_compareElinkStates''
+    is reasonable but uses a non-standard prefix; a more conventional name following the allowed prefix
+    list would use the ''e'' prefix (e.g., e_compareLinkStates). The core function name and summary are
+    accurate.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of sub_803DD60's return value (why it swaps evaluation order)
+- What states 2/4/8 mean in the eLinkState state machine and what codes 1-4 map to in the callers
+- 'The summary and ranking logic match the code: scan two 16-byte records at r0/r0+0x10, count those with
+  halfword at +8 > 2, return 0xFF if count==0, else call sub_803DD60 and branch on its result to evaluate
+  first/second record''s state with rankings 1/2/3/4 for state-8/8/4/4 cases. The name ''link_compareElinkStates''
+  is reasonable but uses a non-standard prefix; a more conventional name following the allowed prefix
+  list would use the ''e'' prefix (e.g., e_compareLinkStates). The core function name and summary are
+  accurate.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8132430 -> e_compareLinkStates
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132430

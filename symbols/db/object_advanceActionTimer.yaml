@@ -1,0 +1,60 @@
+name: object_advanceActionTimer
+address: '0x080D0026'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object''s scripted action: while Timer > 28 it just decrements;
+  at 28 it clears the object''s collision region early so it stops being hittable; when Timer hits 0 it
+  reloads TimerAndTimer2 with 20 and sets CurAction = 0xC to move to the next scripted action.'
+interface: (r5 = battle object) -> void; flags from final strb are not meaningful (returned via pop {pc}
+  after bne path)
+details: This is a per-frame state tick for a battle object whose oBattleObject_Timer counts a scripted
+  phase. While the timer is above 28 it just decrements each call. When it reaches 0x1C (28 frames left)
+  it calls object_clearCollisionRegion, so the object stops occupying its collision region ~28 frames
+  before expiry (it can no longer be touched/targeted). When the countdown hits 0 it reloads the timer
+  word with 0x14 (20 frames) and sets oBattleObject_CurAction = 0xC, handing control to the next scripted
+  action of the object. The combined write to oBattleObject_TimerAndTimer2 sets both timer fields at once.
+  No other state is touched, and r0 is clobbered.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r0,#0x1c / bl object_clearCollisionRegion: collision removed exactly 28 frames before the
+    countdown ends; sub r0,#1 / strh back to oBattleObject_Timer: classic per-frame decrement of an object
+    timer; timer==0 branch sets TimerAndTimer2=0x14 and CurAction=0xC: transition to a next phase with
+    a fresh 20-frame timer; uses oBattleObject_* fields and object_clearCollisionRegion, so r5 is a battle
+    object struct (not passed in r0)'
+  refs:
+  - bn6f/asm/asm31.s:52576
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D0026
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''combined write sets both timer fields'' claim matches the `str r0, [r5,#oBattleObject_TimerAndTimer2]`
+    writing 0x14 (20) as a full word, but this isn''t a ''countdown to despawn'' — it loops: each tick
+    decrements, and at 0 reloads TimerAndTimer2 with 20 and advances CurAction to 0xC, so the object continues
+    into its next scripted action rather than being removed. The name `object_tickDespawnCountdown` misrepresents
+    this as despawn-specific when it''s a generic per-action timer advance.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so which object uses this tick and what action 0xC means for it is unconfirmed
+- The callee at 0x0801A074 was passed no argument in the listing; presumably r5 is implicit there too,
+  which should be verified
+- Whether other actions of the same object share the 0xC transition target (i.e. what state machine this
+  belongs to)
+- 'The summary''s ''combined write sets both timer fields'' claim matches the `str r0, [r5,#oBattleObject_TimerAndTimer2]`
+  writing 0x14 (20) as a full word, but this isn''t a ''countdown to despawn'' — it loops: each tick decrements,
+  and at 0 reloads TimerAndTimer2 with 20 and advances CurAction to 0xC, so the object continues into
+  its next scripted action rather than being removed. The name `object_tickDespawnCountdown` misrepresents
+  this as despawn-specific when it''s a generic per-action timer advance.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D0026 -> object_advanceActionTimer
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0026

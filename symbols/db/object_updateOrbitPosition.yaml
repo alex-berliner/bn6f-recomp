@@ -1,0 +1,57 @@
+name: object_updateOrbitPosition
+address: '0x080CB45C'
+kind: function
+status: probable
+summary: 'Updates a battle object''s X/Y to orbit a pivot: X = ExtraVars[0xC] + neg(facing)*ExtraVars[4]*sin(timer),
+  Y = ExtraVars[0x10] + ExtraVars[4]*cos(timer).'
+interface: (r5 = battle object) -> r0 = undefined; writes oBattleObject_X and oBattleObject_Y
+details: Takes the low byte of oBattleObject_Timer2 as an angle index (doubled to a halfword index), looks
+  it up in math_sinTable/math_cosTable. Multiplies sin by oBattleObject_ExtraVars+4 (a radius/speed value)
+  and by neg(object_getEnemyDirection()) — so enemy-side objects orbit the opposite way — then adds ExtraVars+0xC
+  as the base X and stores to oBattleObject_X; the same with cos and ExtraVars+0x10 gives oBattleObject_Y.
+  r4 is loaded from oBattleObject_PanelXY but never used (dead code). This makes X/Y = center + radius*sin/cos(angle),
+  i.e. the object circling a pivot whose X/Y are kept in ExtraVars+0xC/+0x10 and updated elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r2,[r5,#oBattleObject_Timer2]; and 0xFF; lsls 1 then ldrsh from math_sinTable/math_cosTable
+    — timer byte is the rotation angle; neg r4, r0 after object_getEnemyDirection, then mul into the sin
+    term — orbit direction flips with alliance; add r1,[r5,#oBattleObject_ExtraVars+0xc]; str r1,[r5,#oBattleObject_X]
+    — X = ExtraVars+0xC + sin*radius; same pattern with cosTable and ExtraVars+0x10 stored to oBattleObject_Y
+    — Y = ExtraVars+0x10 + cos*radius; single caller sub_80CB3A0 runs it as part of an object's per-frame
+    update
+  refs:
+  - bn6f/asm/asm31.s:42506
+  - 0x080CB3A0 sub_80CB3A0
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080CB45C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct, but the description of the negation is wrong: the code negates the
+    result of object_getEnemyDirection and stores it in r4, then multiplies sin*radius by r4 (the negation)
+    before adding center+0xC to X. Cos*radius is added to center+0x10 for Y without negation, not mirrored.
+    Also r4 is loaded from PanelXY but the comment misattributes the negation; it is the direction result,
+    not PanelXY. A tighter summary would be ''orbit position update: X = centerX + radius*sin(angle)*neg(facing),
+    Y = centerY + radius*cos(angle).''; run wf investigate investigate-20261019-030611; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which specific attack/object uses this (needs the caller's object ID context); whether ExtraVars+4 is
+  a fixed radius or changes over time
+- 'The summary is mostly correct, but the description of the negation is wrong: the code negates the result
+  of object_getEnemyDirection and stores it in r4, then multiplies sin*radius by r4 (the negation) before
+  adding center+0xC to X. Cos*radius is added to center+0x10 for Y without negation, not mirrored. Also
+  r4 is loaded from PanelXY but the comment misattributes the negation; it is the direction result, not
+  PanelXY. A tighter summary would be ''orbit position update: X = centerX + radius*sin(angle)*neg(facing),
+  Y = centerY + radius*cos(angle).'''
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CB45C -> object_updateOrbitPosition
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB45C

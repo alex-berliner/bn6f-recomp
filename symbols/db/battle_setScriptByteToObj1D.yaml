@@ -1,0 +1,54 @@
+name: battle_setScriptByteToObj1D
+address: '0x0814E15C'
+kind: function
+status: probable
+summary: Thunk that fetches the next script opcode byte via battleObject_runUpdateRoutineAndAdvancePC_814E0D0
+  and stores it as a single byte into the battle object at offset 0x1D, returning through its own saved
+  lr.
+interface: (r0 = battle object ptr?, r1 = battle object ptr) -> r0 = script byte written; no meaningful
+  return
+details: 'This is a tiny thunk wrapping the per-update script interpreter: it calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0,
+  which reads the next command byte from the object''s script pointer at [r1+0x40] and advances it. Whatever
+  the callee leaves in r3 (the byte fetched from the script stream) is stored with strb into the object
+  at [r1+0x1d]. It then returns to its own saved lr (saved in r12) rather than the callee-modified path,
+  so it acts as a standalone script opcode implementation. The meaning of field 0x1D is not shown here;
+  it is some single-byte per-object state the script can set.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0: only work is advancing/reading the script
+    PC at [r1+0x40]; strb r3, [r1,#0x1d]: sole effect is writing the byte returned by the script reader
+    to object+0x1D; mov r12, lr / bx r12: plain wrapper return, typical of script opcode dispatch handlers;
+    no callers known: consistent with an entry in an opcode table invoked indirectly'
+  refs:
+  - bn6f/asm/libs.s:21668
+  - 0x0814E0D0 battleObject_runUpdateRoutineAndAdvancePC_814E0D0
+  reproduce: python3 tools/asmcat.py 0x0814E15C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r12 is saved as lr, the callee is invoked, r3 (the byte fetched by the callee)
+    is stored at [r1+0x1d] via strb, and bx r12 returns via the saved lr. The summary and interface are
+    accurate. The name ''battleObject_setByte1d'' is acceptable but the prefix ''battleObject_'' is not
+    in the allowed naming prefixes; ''battle'' is. A cleaner name reflecting the script-byte-write behavior
+    is preferable.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which script opcode maps here and what object field 0x1D means (counter, element, flag?) — needs the
+  opcode dispatch table or a caller
+- Whether r3 from the callee is the raw script byte or an already-decoded operand
+- 'The code matches: r12 is saved as lr, the callee is invoked, r3 (the byte fetched by the callee) is
+  stored at [r1+0x1d] via strb, and bx r12 returns via the saved lr. The summary and interface are accurate.
+  The name ''battleObject_setByte1d'' is acceptable but the prefix ''battleObject_'' is not in the allowed
+  naming prefixes; ''battle'' is. A cleaner name reflecting the script-byte-write behavior is preferable.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814E15C -> battle_setScriptByteToObj1D
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814E15C

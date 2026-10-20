@@ -1,0 +1,65 @@
+name: req_takeOrderedChips
+address: '0x0804A970'
+kind: function
+status: probable
+summary: 'Drains a player''s chip pack by iterating over a request table: for each entry it takes the
+  chip id from the low 7 bits of word at entry+0x1c, derives the amount via arithmetic shift of the upper
+  halfword, calls TakeChips to remove that many, then logs the surrendered chip id via sub_8048D60 with
+  code 9.'
+interface: (r5 = request record with count at +0x1e) -> r0 = last TakeChips/sub_8048D60 result; loops
+  [r5+0x1e] times over table at word_202A020
+details: 'Iterates r6 = halfword [r5+0x1e] times over 0x20-byte entries starting at word_202A020. For
+  each entry it reads the word at entry+0x1c: the low 7 bits are the chip index, and the upper halfword
+  sign-extended then arithmetic-shifted right by 1 (lsl 16/lsr 17 pattern) is the count passed as the
+  second argument to TakeChips, which deletes that many copies of that chip from the pack and reports
+  the remaining count. After each removal it calls sub_8048D60 with r0=9 and the entry''s first halfword,
+  likely logging or registering the surrendered chip. The +0x1c packed word (index | count<<16) and the
+  fixed 0x20 stride suggest a request/job board structure whose entries also carry other fields the loop
+  ignores.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bound is ldrh r6,[r5,#0x1e] with add r7,#0x20 stride (asm loc_804A978 loop); r1 = word&0x7f
+    and r0 = (word<<16)>>17 are passed to TakeChips, whose summary is removing N copies of a chip from
+    the pack; sub_8048D60 is called with r0=9 and r1=entry[0] after each TakeChips; table base off_804A99C
+    = word_202A020, a fixed RAM table, consistent with a quest/request structure
+  refs:
+  - bn6f/asm/asm03_2.s:8181
+  - 0x0804A460 sub_804A460
+  - 0x08021B92 TakeChips
+  - 0x08048D60 sub_8048D60
+  reproduce: python3 tools/asmcat.py 0x0804A970
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal captures the structure correctly: it loops [r5+0x1e] times over 0x20-byte entries at
+    word_202A020, extracts index from the low 7 bits of entry+0x1c, derives count via lsl #16 / lsr #0x17,
+    calls TakeChips, then sub_8048D60 with r0=9 and the entry''s first halfword. However the call order
+    is reversed: sub_8048D60 takes r0=9 as a constant code (not ''the entry''s first halfword''; that''s
+    the second arg) and r1 = entry[0] halfword as the chip id. The count argument to TakeChips is r0 from
+    the shifted word, not r1 — TakeChips is called with (idx=r1, count=r0, off=r2=1). The summary''s phrasing
+    ''removing each requested chip'' is fine but the details mislabel the arguments; the name req_takeOrderedChips
+    is reasonable.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose of sub_8048D60(9, entryWord0) — recording, removal from a queue, or something else
+- exact layout of the 0x20-byte request entries and who populates word_202A020
+- meaning of the (int16)>>1 encoding of the count (flag bit in bit15?)
+- 'The proposal captures the structure correctly: it loops [r5+0x1e] times over 0x20-byte entries at word_202A020,
+  extracts index from the low 7 bits of entry+0x1c, derives count via lsl #16 / lsr #0x17, calls TakeChips,
+  then sub_8048D60 with r0=9 and the entry''s first halfword. However the call order is reversed: sub_8048D60
+  takes r0=9 as a constant code (not ''the entry''s first halfword''; that''s the second arg) and r1 =
+  entry[0] halfword as the chip id. The count argument to TakeChips is r0 from the shifted word, not r1
+  — TakeChips is called with (idx=r1, count=r0, off=r2=1). The summary''s phrasing ''removing each requested
+  chip'' is fine but the details mislabel the arguments; the name req_takeOrderedChips is reasonable.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A970 -> req_takeOrderedChips
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A970

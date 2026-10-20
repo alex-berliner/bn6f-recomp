@@ -1,0 +1,53 @@
+name: battle_recoverToPanelSetAnim
+address: '0x08105630'
+kind: function
+status: probable
+summary: Thin wrapper that calls battle_recoverToPanelPhase to reset/snap the battle object onto its panel,
+  then stores 0x14 into oBattleObject_CurAnim as the post-recovery animation ID.
+interface: (r5 = battle object pointer, r0-r3 = args passed through to battle_recoverToPanelPhase) ->
+  r0 = result of battle_recoverToPanelPhase; flags from callee
+details: 'The function is a thin wrapper: it tail-into-calls battle_recoverToPanelPhase, which resets
+  a battle object (stunned/pulled state), snaps it onto its reserved panel, and waits for the object to
+  be freed. After that returns, it stores 0x14 into the object''s current-animation byte at oBattleObject_CurAnim
+  (r5 base, offset CurAnim) and returns. r5 is not set up inside this function, so the caller must have
+  the battle object pointer in r5 before invoking it. The animation ID 0x14 likely represents a post-recovery
+  pose, but no caller or anim-table reference is visible to confirm what pose it is.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_recoverToPanelPhase delegates the whole recover logic to the known callee (line 2);
+    mov r0,#0x14; strb r0,[r5,#oBattleObject_CurAnim] writes animation id 0x14 into the battle object's
+    current animation field (lines 3-4); no locals touched besides the anim byte, so the function's only
+    added behavior over the callee is the animation change
+  refs:
+  - bn6f/asm/asm31.s:166854
+  - 0x08017688 battle_recoverToPanelPhase
+  reproduce: python3 tools/asmcat.py 0x08105630
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the code: it pushes r4/lr, tail-calls battle_recoverToPanelPhase,
+    writes 0x14 into [r5,#oBattleObject_CurAnim], and returns. However, the proposed name battle_recoverToPanelPlayAnim
+    misorders operations; 0x14 is set AFTER recoverToPanelPhase returns, and it is just one byte stored
+    as the CurAnim field, not a play-animation trigger. A more accurate name reflects post-recovery animation
+    setup rather than ''play''.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so it is unclear which battle states or enemy behaviors invoke this wrapper
+- What animation 0x14 represents (needs the battle object animation table or the callers' context)
+- 'The proposal correctly captures the code: it pushes r4/lr, tail-calls battle_recoverToPanelPhase, writes
+  0x14 into [r5,#oBattleObject_CurAnim], and returns. However, the proposed name battle_recoverToPanelPlayAnim
+  misorders operations; 0x14 is set AFTER recoverToPanelPhase returns, and it is just one byte stored
+  as the CurAnim field, not a play-animation trigger. A more accurate name reflects post-recovery animation
+  setup rather than ''play''.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8105630 -> battle_recoverToPanelSetAnim
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105630

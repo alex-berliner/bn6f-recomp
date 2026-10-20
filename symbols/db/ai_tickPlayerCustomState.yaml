@@ -1,0 +1,57 @@
+name: ai_tickPlayerCustomState
+address: '0x0802D322'
+kind: function
+status: probable
+summary: 'Per-frame tick for the player battle object''s custom AI state: lazily initializes AIDataPtr+0xF0
+  (sets flag, halfword=8), reads state id, jumps via a 3-entry Thumb table (sub_802D358/sub_802D3A8/sub_802D3CA)
+  with r6 holding the state block; r7 is computed as AIDataPtr+0xA0 and preserved across the call.'
+interface: (r5 = battle object, reads oBattleObject_AIDataPtr) -> r0 = state id passed to handler; r1
+  = pointer to state block (AIDataPtr+0xF0) for handlers
+details: Computes a state-block pointer as AIDataPtr+0xF0 (sub 0xF then add 0xFF, i.e. +0xF0) and keeps
+  it in r6. If the flag byte at +8 is 0 it sets it to 1 (one-time init) and stores 8 into the halfword
+  at +0, which looks like a timer/counter. It then reads the state id byte at +0, indexes a 3-entry Thumb
+  jump table (sub_802D358, sub_802D3A8, sub_802D3CA) and calls the selected handler with lr=pc; the state
+  block pointer is left in r6 for the handlers. Called every frame from the player AI routine, so it drives
+  whatever multi-phase behavior (e.g. charge, attack, movement phase) those handlers implement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r6,#8]/bne skip plus strb 1 and strh 8 is a classic once-only init guard with a counter;
+    ldrb r0,[r6] then ldr r1,[r1,r0] over off_802D34C selects among exactly 3 Thumb handlers; r6 = AIDataPtr
+    - 0xF + 0xFF = AIDataPtr + 0xF0, a private scratch block past the normal AI data; caller playerAI_sub_80F0354
+    shows this runs each frame as part of the player's battle AI update; mov lr,pc/bx r1 is the standard
+    Thumb indirect call into sub_802D358/sub_802D3A8/sub_802D3CA
+  refs:
+  - bn6f/asm/asm03_0.s:15466
+  - 0x080F0354 playerAI_sub_80F0354
+  reproduce: python3 tools/asmcat.py 0x0802D322
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the lazy init, state-id indexing, and jump table dispatch. However,
+    it says r1 = state block for handlers, but the code passes r6 to the handlers via bx r1 with lr=pc
+    only returning to the pop; r6 is preserved through the push/pop but r1 is loaded from the jump table
+    target, not the state block. Also r7 is computed (AIDataPtr+0xA0) but never used in this snippet,
+    so it''s likely scratch saved across the call. Name is fine but summary should not overstate the r1
+    argument.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the three handlers (sub_802D358/802D3A8/802D3CA) actually do, to name the states and the overall
+  behavior
+- Exact field layout of the +0xF0 block beyond byte+0 (state id), halfword+0 (timer?), byte+8 (init flag)
+- The proposal correctly identifies the lazy init, state-id indexing, and jump table dispatch. However,
+  it says r1 = state block for handlers, but the code passes r6 to the handlers via bx r1 with lr=pc only
+  returning to the pop; r6 is preserved through the push/pop but r1 is loaded from the jump table target,
+  not the state block. Also r7 is computed (AIDataPtr+0xA0) but never used in this snippet, so it's likely
+  scratch saved across the call. Name is fine but summary should not overstate the r1 argument.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802D322 -> ai_tickPlayerCustomState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D322

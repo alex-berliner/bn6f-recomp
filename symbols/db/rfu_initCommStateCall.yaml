@@ -1,0 +1,53 @@
+name: rfu_initCommStateCall
+address: '0x08147B24'
+kind: function
+status: probable
+summary: Parameter-less wrapper that loads byte_2010390 and unk_20103A0 as r0/r1, sets r2=0xC, and tail-calls
+  rfu_initCommState, returning its result.
+interface: (no args) -> r0 = return value of rfu_initCommState; no flags used
+details: 'The function is only a parameter-less shim: it loads the two fixed addresses byte_2010390 and
+  unk_20103A0 into r0/r1, sets r2 = 0xC, and tail-calls rfu_initCommState (after a push/pop lr dance).
+  It therefore resets the wireless link state using the game''s statically allocated comm-state block
+  and a 12-byte buffer, most likely invoked when entering or re-entering wireless comm menus. Its five
+  callers (0x08039DB4, 0x08039F78, 0x0812A5F8, 0x0812A6F8, 0x08132104) presumably call it before attempting
+  a wireless connection.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'body is only two ldr + mov #0xC + bl rfu_initCommState, then return; fixed operands byte_2010390
+    and unk_20103A0 match rfu_initCommState''s (state, buffer, size) signature'
+  refs:
+  - bn6f/asm/libs.s:8070
+  - 0x08039DB4 sub_8039DB4
+  - 0x08039F78 sub_8039F78
+  - 0x0812A5F8 sub_812A5F8
+  - 0x08147B54 rfu_initCommState
+  reproduce: python3 tools/asmcat.py 0x08147B24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms it is a parameter-less shim that loads two static buffers and r2=0xC, then
+    tail-calls rfu_initCommState. The name and summary are accurate, but `rfu_beginCommInit` is slightly
+    misleading since it calls an init function and returns its result, not ''begins'' an init in a distinct
+    way. The summary''s phrasing about ''push/pop lr dance'' is correct but a better fit is just calling
+    it the RFU comm-state init shim.; run wf investigate investigate-20261019-015108; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the 0xC-sized buffer unk_20103A0 and of byte_2010390's full structure
+- which game flow each of the five callers represents (e.g. trade vs. versus vs. wireless club)
+- The assembly confirms it is a parameter-less shim that loads two static buffers and r2=0xC, then tail-calls
+  rfu_initCommState. The name and summary are accurate, but `rfu_beginCommInit` is slightly misleading
+  since it calls an init function and returns its result, not 'begins' an init in a distinct way. The
+  summary's phrasing about 'push/pop lr dance' is correct but a better fit is just calling it the RFU
+  comm-state init shim.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8147B24 -> rfu_initCommStateCall
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8147B24

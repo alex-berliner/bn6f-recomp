@@ -1,0 +1,64 @@
+name: spawn_objectAtParentPanel
+address: '0x080D8F66'
+kind: function
+status: probable
+summary: Spawns a battle object via sub_80D69E2 at the caller's panel position and element, then propagates
+  the parent header flag bit 0x10 and battle timer to the new object.
+interface: (r0 = panel X (or parent obj ptr), r1 = panel Y, r2 = element, r3 = spawn descriptor passed
+  via r7) -> r0 = new object ptr or 0; corrupts r2-r7 per callee
+details: Loads PanelY and Element from the parent object in r5 and calls sub_80D69E2 with r3 = 0x100000,
+  evidently a spawn/create-object helper taking panel coordinates, element and a type word. On return
+  it reads the new object's header flags, clears bit 0x10 then copies that bit from the parent's flags,
+  and writes it back — propagating some state (e.g. 'is player/enemy side' or invisibility) to the child.
+  If the spawn succeeded (nonzero r0), it copies the parent's oBattleObject_Timer into the child so both
+  are time-synchronized. The r7 register is used to smuggle an argument (pushed/restored around the call)
+  in addition to the r0-r3 ABI, suggesting a fourth/th parameter convention with the spawn helper. Returns
+  the new object pointer (or 0 on failure) to the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#oBattleObject_PanelY] / ldrb r2,[r5,#oBattleObject_Element]: parent''s panel Y
+    and element are passed to sub_80D69E2; mov r3,#0x10; lsl r3,#16: constant 0x100000 passed as 4th arg
+    to sub_80D69E2, a spawn-type/tag word; flag merge: r1&=~0x10 | r2&0x10 then strb to [r0,#oObjectHeader_Flags]:
+    copies parent flag bit 0x10 onto the returned object; ldrh r1,[r5,#oBattleObject_Timer]; strh r1,[r0,#oBattleObject_Timer]:
+    initializes child''s timer from parent only when r0 != 0; caller battle_scanAttackPanels (hit-frame
+    panel walk) invokes it per panel, consistent with spawning an attack effect/entity on each scanned
+    panel'
+  refs:
+  - bn6f/asm/asm31.s:72234
+  - 0x080D8EE4 battle_scanAttackPanels
+  - 0x080D69E2 sub_80D69E2
+  reproduce: python3 tools/asmcat.py 0x080D8F66
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: it reads PanelY and Element from the parent in r5 (ldrb r1,[r5,oBattleObject_PanelY];
+    ldrb r2,[r5,oBattleObject_Element]), calls sub_80D69E2 with r3=0x100000 (mov r3,#0x10; lsl r3,r3,#0x10),
+    copies bit 0x10 of parent flags to child, and on success copies oBattleObject_Timer. However r0/r1
+    are pushed at entry, suggesting they come in as args (panel coords), and r3 holds the descriptor (not
+    r7); r7 is just saved/restored. Also DamageAndStamina... counter is loaded into r6 but never used
+    in this snippet. The summary is mostly accurate but the ''smuggling via r7'' and ''descriptor passed
+    via r7'' are wrong.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What r0 actually encodes (panel X vs parent pointer) needs sub_80D69E2's signature confirmed
+- Meaning of flag bit 0x10 and the 0x100000 spawn-type word unknown
+- Whether the child is a hit/effect object or a persistent entity depends on sub_80D69E2's behavior
+- 'The code matches the proposal well: it reads PanelY and Element from the parent in r5 (ldrb r1,[r5,oBattleObject_PanelY];
+  ldrb r2,[r5,oBattleObject_Element]), calls sub_80D69E2 with r3=0x100000 (mov r3,#0x10; lsl r3,r3,#0x10),
+  copies bit 0x10 of parent flags to child, and on success copies oBattleObject_Timer. However r0/r1 are
+  pushed at entry, suggesting they come in as args (panel coords), and r3 holds the descriptor (not r7);
+  r7 is just saved/restored. Also DamageAndStamina... counter is loaded into r6 but never used in this
+  snippet. The summary is mostly accurate but the ''smuggling via r7'' and ''descriptor passed via r7''
+  are wrong.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D8F66 -> spawn_objectAtParentPanel
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8F66

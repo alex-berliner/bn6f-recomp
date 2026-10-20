@@ -1,0 +1,60 @@
+name: ai_chargeAttackInitOrTick
+address: '0x08104474'
+kind: function
+status: probable
+summary: 'One-shot init then per-frame ticker for an AI charge attack: on first call sets AttackElement=4,
+  anim 0x44, StepTimer=AttackBoost2, ChargeCycles=0; on later calls increments cycles, every 8th frame
+  highlights two panels ahead, decrements StepTimer, and on expiry writes 0x18 to HitElement to advance
+  the attack.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0; updates AttackElement, CurAnim, StepTimer,
+  ChargeCycles, HitElement
+details: 'On first invocation (AttackElement == 0) it initializes the attack: sets AttackElement to 4,
+  plays anim 0x44 on the battle object, copies AttackBoost2 into StepTimer as the charge duration, and
+  zeroes ChargeCycles. On subsequent frames it increments ChargeCycles and every 8th frame (lsr by 3 carry)
+  calls battle_highlightTwoPanelsAhead to telegraph the target area. It decrements StepTimer each frame;
+  when it reaches zero it writes 0x18 into HitElement, presumably triggering the attack''s damage step.
+  Element 4 and anim 0x44 suggest a specific boss/enemy charge-style attack rather than a generic routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement]; tst; bne skip-init shows one-shot initialization keyed
+    on element; strb #4 [r7,#oAIAttackVars_AttackElement] and strb #0x44 [r5,#oBattleObject_CurAnim] set
+    element and charging anim; strh AttackBoost2 -> StepTimer, then sub r0,#1 / bgt loop makes StepTimer
+    a frame countdown; lsr r0,#3 / bcs guard around bl battle_highlightTwoPanelsAhead highlights the target
+    panels every 8 frames during charge; locret path writes #0x18 to oAIAttackVars_HitElement only when
+    StepTimer hits 0, ending the charge phase'
+  refs:
+  - bn6f/asm/asm31.s:165005
+  - 0x08105050 battle_highlightTwoPanelsAhead
+  reproduce: python3 tools/asmcat.py 0x08104474
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior are accurate: first-call init (AttackElement=4, anim 0x44, StepTimer=AttackBoost2,
+    ChargeCycles=0), increment cycle, conditional highlight via `bcs`/`bl battle_highlightTwoPanelsAhead`,
+    decrement StepTimer, and on expiry write 0x18 to HitElement. However, HitElement is written with `strh`
+    (halfword), matching the field''s halfword type, not a byte as the proposal suggests. More importantly,
+    no callers are known and it returns nothing (r0 not set, falls into pop {pc}), so framing it as ''r0
+    = 0'' and a per-frame state handler is inference, not proven by the code.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which boss/enemy or attack state invokes this is unidentified
+- Meaning of AttackElement value 4 and HitElement value 0x18 (trigger tag vs actual element) not confirmed
+- 'The summary and behavior are accurate: first-call init (AttackElement=4, anim 0x44, StepTimer=AttackBoost2,
+  ChargeCycles=0), increment cycle, conditional highlight via `bcs`/`bl battle_highlightTwoPanelsAhead`,
+  decrement StepTimer, and on expiry write 0x18 to HitElement. However, HitElement is written with `strh`
+  (halfword), matching the field''s halfword type, not a byte as the proposal suggests. More importantly,
+  no callers are known and it returns nothing (r0 not set, falls into pop {pc}), so framing it as ''r0
+  = 0'' and a per-frame state handler is inference, not proven by the code.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8104474 -> ai_chargeAttackInitOrTick
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104474

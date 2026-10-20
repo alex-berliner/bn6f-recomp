@@ -1,0 +1,73 @@
+name: battle_countAdjacentPanels
+address: '0x080E63D0'
+kind: function
+status: probable
+summary: Walks a hardcoded (dx,dy) table around a battle object's panel (mirroring dx by facing via object_getEnemyDirection),
+  tests each absolute panel with sub_80E6458, and stores the hit count into oBattleObject_ExtraVars+8.
+interface: (r5 = battle object, nonstandard) -> r0 = 0; writes count to oBattleObject_ExtraVars+8
+details: Note this routine takes its object in r5, never set inside, so the caller must pre-load it. It
+  zeroes ExtraVars+8, then walks the byte table at byte_80E642C in (dx,dy) pairs — (1,0), (0,0), (-1,0),
+  (1,-1) — until a pair whose first byte is 0x7F. For each pair it multiplies dx by object_getEnemyDirection()
+  (facing-dependent sign), adds oBattleObject_PanelX/PanelY to get absolute panel coords, and calls sub_80E6458(x,y);
+  a nonzero return marks a hit. On a hit it bumps ExtraVars+8 and also loads oBattleObject_Element and
+  computes DamageAndStaminaDamageCounterDisabler + oBattleObject_Z16Save, though no store with these values
+  appears in this body — they look like leftover work from a sibling routine, as do the r4/r7 increments
+  (r4 from 0x28 step 4, r7 = r5+0x60 step 1) whose results are unused here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'str r0,[r5,#oBattleObject_ExtraVars+8] with r0=0 initializes a counter, incremented again on
+    each hit (loc_80E6420 path); mul r0,r1 after object_getEnemyDirection, then add PanelX/PanelY: offsets
+    are relative and facing-mirrored; byte_80E642C pairs (1,0),(0,0),(-1,0),(1,-1) with 0x7F as terminator
+    (ldrsb/cmp #0x7f/beq locret); bl sub_80E6458 with (x,y); tst r0,r0 / beq skip gates the counter increment
+    on the panel check; Element/Z16Save/DamageCounter loads on the hit path have no corresponding store
+    — dead or caller-visible-only side state'
+  refs:
+  - bn6f/asm/asm31.s:101660
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080E6458 sub_80E6458
+  reproduce: python3 tools/asmcat.py 0x080E63D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core mechanics are accurate: it walks byte_80E642C in (dx,dy) pairs until 0x7F, mirrors
+    dx via object_getEnemyDirection, calls sub_80E6458, and increments oBattleObject_ExtraVars+8 on hits.
+    However, the proposal wrongly labels the table as ''(1,0), (0,0), (-1,0), (1,-1)'' — byte_80E642C
+    is +1,0 then 0,0 then -1,0 then +1,-1, matching the code, so that''s fine. The ''r4/r7 leftover work''
+    claim and the claim that oBattleObject_Element / DamageAndStaminaDamageCounterDisabler+ Z16Save are
+    unused here are demonstrably wrong: add r4,#4 and add r7,#1 execute each hit and r4/r7 are simply
+    not read before return — that''s plausible scratch, but the loaded values r2/r3/damage are also unused
+    here, contradicting the claim they ''look like leftover work from a sibling routine'' — actually consistent
+    with being scratch. The name battle_scanNearbyPanels is reasonable but ''scan'' usually implies observation;
+    this function actually increments a counter on hit, which is more like counting adjacent attackable
+    panels. A name like battle_countAdjacentPanels fits better.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80E6458(x,y) tests about a panel (occupancy, panel type, hole, etc.) — its body or a named
+  caller would settle this
+- Who calls this function and pre-sets r5; the caller would reveal the purpose of the count in ExtraVars+8
+- Whether the Element/DamageCounter arithmetic and r4/r7 stepping are meaningful (e.g. writes done elsewhere)
+  or vestigial
+- 'The summary''s core mechanics are accurate: it walks byte_80E642C in (dx,dy) pairs until 0x7F, mirrors
+  dx via object_getEnemyDirection, calls sub_80E6458, and increments oBattleObject_ExtraVars+8 on hits.
+  However, the proposal wrongly labels the table as ''(1,0), (0,0), (-1,0), (1,-1)'' — byte_80E642C is
+  +1,0 then 0,0 then -1,0 then +1,-1, matching the code, so that''s fine. The ''r4/r7 leftover work''
+  claim and the claim that oBattleObject_Element / DamageAndStaminaDamageCounterDisabler+ Z16Save are
+  unused here are demonstrably wrong: add r4,#4 and add r7,#1 execute each hit and r4/r7 are simply not
+  read before return — that''s plausible scratch, but the loaded values r2/r3/damage are also unused here,
+  contradicting the claim they ''look like leftover work from a sibling routine'' — actually consistent
+  with being scratch. The name battle_scanNearbyPanels is reasonable but ''scan'' usually implies observation;
+  this function actually increments a counter on hit, which is more like counting adjacent attackable
+  panels. A name like battle_countAdjacentPanels fits better.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E63D0 -> battle_countAdjacentPanels
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E63D0

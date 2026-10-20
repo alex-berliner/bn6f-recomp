@@ -1,0 +1,64 @@
+name: battle_spawnCollisionRegionAndExpire
+address: '0x080CFDB0'
+kind: function
+status: probable
+summary: 'One-shot: on first call, spawns a collision region on the object''s own panel via object_spawnCollisionRegion,
+  hides the object (flags|=2) and disables its animation, sets a 0x25-frame countdown (PhaseInitialized=4),
+  and self-destructs when the timer underflows.'
+interface: (r0 = ??? (clobbered by early-exit check), r5 = battle object) -> sets object PhaseInitialized=4,
+  flags |= 2, timer = 0x25; destroys object when timer expires
+details: On the first invocation (PhaseInitialized == 0) it reads its own PanelX/PanelY/Element and calls
+  object_spawnCollisionRegion with r3 = 0x100000 and the constant 0x4050101 (dword_80CFEC0) loaded into
+  r4, placing a region at the object's own tile. It then sets oObjectHeader_Flags bit 1 (likely 'invisible/no
+  render'), zeroes CurAnim and sets CurAnimCopy = 0xFF (no animation), stores timer = 0x25 (37 frames)
+  and PhaseInitialized = 4 so the spawn never repeats. Each later frame it decrements oBattleObject_Timer
+  and, once it underflows below 0, writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized
+  so the object deletes itself. This is the classic 'spawn attack region, linger, self-destruct' pattern
+  used by boss/trap AI states; r4 = 0x4050101 is presumably handed to the callee (or a register-based
+  extra argument not visible without the callee's signature).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bne loc_80CFDE4 after tst on PhaseInitialized: spawn block runs only once; ldrb PanelX/PanelY/Element
+    then bl object_spawnCollisionRegion: region spawned at object''s own tile with its element; orr Flags,#2
+    and CurAnim=0/CurAnimCopy=0xFF: object hidden and unanimated after spawning; timer init 0x25 then
+    sub #1 / bge: fixed ~37-frame delay before state change; mov r0,#CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized:
+    self-destruct on timeout'
+  refs:
+  - bn6f/asm/asm31.s:52413
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CFDB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: first-call spawns a collision region via object_spawnCollisionRegion with r3=0x100000
+    and the constant 0x4050101 in r4, sets PhaseInitialized=4, hides rendering (flags|=2) and clears anim,
+    sets timer=0x25, then self-destructs on timer underflow. However, the proposal''s ''sets oObjectHeader_Flags
+    bit 1'' is wrong; the code does ''orr r0, #2'' which sets bit 1 (value 2), so that''s consistent —
+    but the timer underflow branch uses signed bge, and the initial PhaseInitialized value is 0 so the
+    test tst r0,r0 / bne correctly skips on subsequent calls. The name ''battle_spawnPanelRegionAndCountdown''
+    is reasonable but a more descriptive battle_-prefixed verb pairing would be ''battle_spawnCollisionRegionAndExpire''.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the object this belongs to (which boss/attack uses it) is unidentified
+- object_spawnCollisionRegion's parameter meaning for r3 = 0x100000 and r4 = 0x4050101 (lifetime? damage?
+  hit flags?) needs the callee's analysis
+- 'The flow matches: first-call spawns a collision region via object_spawnCollisionRegion with r3=0x100000
+  and the constant 0x4050101 in r4, sets PhaseInitialized=4, hides rendering (flags|=2) and clears anim,
+  sets timer=0x25, then self-destructs on timer underflow. However, the proposal''s ''sets oObjectHeader_Flags
+  bit 1'' is wrong; the code does ''orr r0, #2'' which sets bit 1 (value 2), so that''s consistent — but
+  the timer underflow branch uses signed bge, and the initial PhaseInitialized value is 0 so the test
+  tst r0,r0 / bne correctly skips on subsequent calls. The name ''battle_spawnPanelRegionAndCountdown''
+  is reasonable but a more descriptive battle_-prefixed verb pairing would be ''battle_spawnCollisionRegionAndExpire''.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CFDB0 -> battle_spawnCollisionRegionAndExpire
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFDB0

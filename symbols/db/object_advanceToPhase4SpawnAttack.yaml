@@ -1,0 +1,56 @@
+name: object_advanceToPhase4SpawnAttack
+address: '0x080B8390'
+kind: function
+status: probable
+summary: 'Battle-object per-frame phase handler: plays anim 6 for 40 frames, then on expiry switches to
+  anim 5, advances to phase 4, and spawns a type-1 subtype-5 attack object with id 0x11C1F.'
+interface: (r5 = battle object) -> void; sets oBattleObject_CurAnim/Timer/CurPhaseAndPhaseInitialized,
+  spawns attack object 0x11C1F
+details: Standard scripted phase handler for a battle object. On first entry it sets PhaseInitialized,
+  arms Timer to 0x28 (40 frames), and plays animation 6 (wind-up/charge). Each frame it decrements Timer;
+  once it hits zero it switches to animation 5, writes phase 4 into CurPhaseAndPhaseInitialized, loads
+  r4 with 0x11C1F (attack/element id) and r7 with the object's field at +0x4C (pointer slot for the spawned
+  object), then calls the type-1 subtype-5 temp-attack-object spawner which links the new object to the
+  related battle object and inherits panel XY/alliance. The spawn happens on the same frame the timer
+  expires; the phase-4 write lets the object's next phase take over afterwards.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#PhaseInitialized]; sets it, Timer=0x28, CurAnim=6 on first run (wind-up init);
+    timer decrement with bgt locret keeps the object in anim 6 for 40 frames; on expiry writes CurAnim=5
+    and CurPhaseAndPhaseInitialized=4 before spawning; ldr r4,=0x11C1F and r7=r5+0x4C feed the spawn call,
+    matching spawn_t1_0x5's 'related object pointer stored' behavior; only callee is spawn_t1_0x5_tempAttackObject_80B8E30,
+    whose summary matches the spawn
+  refs:
+  - bn6f/asm/asm31.s:233
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x080B8390
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details match the code: first entry sets PhaseInitialized=1 and Timer=0x28, anim
+    6 plays while Timer>0, then anim 5, phase 4, and the 0x11C1F attack spawn via the t1 subtype-5 spawner.
+    The name ''windUpThenSpawnAttack'' fits, but a more conventional battle_/object prefix naming would
+    be ''battle_spawnPhase4Attack'' or ''object_runPhase4AndSpawnAttack''. Since ''object'' is an allowed
+    prefix and the function is a per-frame phase step (not strictly a ''spawn''), ''object_advanceToPhase4SpawnAttack''
+    is more accurate.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/boss or attack 0x11C1F corresponds to, and what phase 4 does next in this object's script
+- 'The summary and details match the code: first entry sets PhaseInitialized=1 and Timer=0x28, anim 6
+  plays while Timer>0, then anim 5, phase 4, and the 0x11C1F attack spawn via the t1 subtype-5 spawner.
+  The name ''windUpThenSpawnAttack'' fits, but a more conventional battle_/object prefix naming would
+  be ''battle_spawnPhase4Attack'' or ''object_runPhase4AndSpawnAttack''. Since ''object'' is an allowed
+  prefix and the function is a per-frame phase step (not strictly a ''spawn''), ''object_advanceToPhase4SpawnAttack''
+  is more accurate.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B8390 -> object_advanceToPhase4SpawnAttack
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8390

@@ -1,0 +1,66 @@
+name: object_spawnType9WithProps
+address: '0x080B9750'
+kind: function
+status: probable
+summary: Spawns a battle object of type 9 via object_spawnType1 and on success initialises its PanelX/PanelY,
+  Element, RelatedObject1Ptr, AllianceAndDirectionFlip, damage-counter field and collision data from caller-provided
+  values.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related BattleObject*, r6 = damage-counter field,
+  r7 = collision data ptr) -> r0 = new BattleObject* or 0; r1-r3, r5 clobbered
+details: 'It saves the caller''s r0-r2 and r5 on the stack, loads object id 9 and calls object_spawnType1;
+  on success it restores the saved values into r1-r3/r5 and writes them into the new object: caller r0->PanelX,
+  r1->PanelY, r2->Element, r5->RelatedObject1Ptr. It then reads AllianceAndDirectionFlip from the related
+  object pointer and copies it into the new object, stores r6 into DamageAndStaminaDamageCounterDisabler
+  and r7 into CollisionDataPtr, and sets the first byte of the collision data to 1 (mark it active). Oddly
+  r6 and r7 are never saved, so the caller must load them and not rely on their survival, or this block
+  is a tail of a larger spawn routine split off by the disassembler. With no caller known, the exact gameplay
+  role of object type 9 is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #9 / bl object_spawnType1 — spawns battle object id 9 via the generic type-1 spawner;
+    push {r0-r2,r5} before the call and pop {r1-r3,r5} after — args kept across the spawn; strb r1,[r0,#oBattleObject_PanelX];
+    strb r2,[r0,#oBattleObject_PanelY]; strb r3,[r0,#oBattleObject_Element] — panel pos and element come
+    from the saved args; str r5,[r0,#oBattleObject_RelatedObject1Ptr]; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh — links a related object and clones its alliance/flip field; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler];
+    str r7,[r0,#oBattleObject_CollisionDataPtr]; mov r1,#1; strb r1,[r7] — collision data block received
+    in r7 with first byte enabled'
+  refs:
+  - bn6f/asm/asm31.s:2918
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B9750
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does match the proposal: it pushes {r0-r2,r5}, spawns type 9 via object_spawnType1, restores
+    r1-r3/r5 and writes PanelX, PanelY, Element, RelatedObject1Ptr, copies AllianceAndDirectionFlip from
+    the related object, stores r6 into DamageAndStaminaDamageCounterDisabler, stores r7 into CollisionDataPtr
+    and sets byte [r7]=1. The branch on `beq` after `pop {r1-r3,r5}` uses the EQ flag from the spawn return
+    in r0..r5 (pop doesn''t change flags), so the skip-on-null is correct. However the proposed name''s
+    ''WithProps'' suffix and ''object_spawnType1'' reference are misleading since the callee name is the
+    prefix; a cleaner name reflecting the type-9 spawn role is better.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the gameplay identity of object type 9 and the meaning of the r6/r7 arguments
+  are unconfirmed
+- r6/r7 are used but never saved, suggesting this may be a mis-split tail of a larger routine or a caller
+  that pre-loads r5-r7; finding the caller would resolve the true signature
+- 'The code does match the proposal: it pushes {r0-r2,r5}, spawns type 9 via object_spawnType1, restores
+  r1-r3/r5 and writes PanelX, PanelY, Element, RelatedObject1Ptr, copies AllianceAndDirectionFlip from
+  the related object, stores r6 into DamageAndStaminaDamageCounterDisabler, stores r7 into CollisionDataPtr
+  and sets byte [r7]=1. The branch on `beq` after `pop {r1-r3,r5}` uses the EQ flag from the spawn return
+  in r0..r5 (pop doesn''t change flags), so the skip-on-null is correct. However the proposed name''s
+  ''WithProps'' suffix and ''object_spawnType1'' reference are misleading since the callee name is the
+  prefix; a cleaner name reflecting the type-9 spawn role is better.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B9750 -> object_spawnType9WithProps
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9750

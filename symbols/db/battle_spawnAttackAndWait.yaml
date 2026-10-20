@@ -1,0 +1,61 @@
+name: battle_spawnAttackAndWait
+address: '0x080EA05C'
+kind: function
+status: probable
+summary: Battle-object phase handler that spawns an attack via sub_80DE960 (choosing its X from facing
+  or far column by Param1), then waits 20 frames before advancing to phase 4.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized, oBattleObject_Timer, oBattleObject_CurPhaseAndPhaseInitialized
+details: 'On first entry (PhaseInitialized == 0) it decides the attack''s origin X: if Param1 (low byte)
+  is 0 it uses object_getFrontDirection() + PanelX, otherwise it uses 4 - Alliance (the far/opponent side
+  column). It then calls sub_80DE960 passing the computed X, constant 4, Element, Param1<<8 (likely power/size)
+  and the DamageAndStaminaDamageCounterDisabler field, i.e. spawning the actual attack entity/effect.
+  It then sets Timer to 0x14 (20 frames) and marks the phase initialized. On subsequent frames it decrements
+  Timer once per call, and when it reaches 0 writes phase 4 into CurPhaseAndPhaseInitialized, ending the
+  step. Struct fields used: PhaseInitialized, Param1, PanelX, Alliance, Element, DamageAndStaminaDamageCounterDisabler,
+  Timer, CurPhaseAndPhaseInitialized.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized + bne loc_80EA092 / strb #4 PhaseInitialized: init-once phase gate, timer
+    logic only runs after init; cmp Param1,#0 then bl object_getFrontDirection + add PanelX, else 4-Alliance:
+    picks attack column from facing or opposite side; ldrh Param1; lsl r4,#8 then bl sub_80DE960 with
+    Element in r2 and DamageAndStamina... in r6: passes attack power and element to a spawn call; mov
+    r0,#0x14; strh Timer, then sub r0,#1 ... bgt / strh #4 CurPhaseAndPhaseInitialized: 20-frame wait
+    then advance to phase 4'
+  refs:
+  - bn6f/asm/asm31.s:110165
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080DE960 sub_80DE960
+  reproduce: python3 tools/asmcat.py 0x080EA05C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary says phase 4 is written to CurPhaseAndPhaseInitialized when timer hits 0; the asm confirms
+    this with `mov r0, #4; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]` at the bottom of
+    the function. On first entry it stores `#0x14` into Timer and `#4` into PhaseInitialized, not 1 —
+    so ''marks phase initialized'' is correct but the value 4 is noteworthy; in BN phases often double
+    as the initialized flag (bit). The function name ''battle_attackWaitPhase'' is reasonable but the
+    function also handles attack creation, so something like ''battle_spawnAttackAndWait'' fits better.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80DE960 actually spawns (attack entity vs effect) and its argument layout
+- which enemy/attack uses this phase handler (no caller known) and what Param1's low byte selects vs its
+  high byte
+- 'The summary says phase 4 is written to CurPhaseAndPhaseInitialized when timer hits 0; the asm confirms
+  this with `mov r0, #4; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]` at the bottom of the
+  function. On first entry it stores `#0x14` into Timer and `#4` into PhaseInitialized, not 1 — so ''marks
+  phase initialized'' is correct but the value 4 is noteworthy; in BN phases often double as the initialized
+  flag (bit). The function name ''battle_attackWaitPhase'' is reasonable but the function also handles
+  attack creation, so something like ''battle_spawnAttackAndWait'' fits better.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EA05C -> battle_spawnAttackAndWait
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EA05C

@@ -1,0 +1,58 @@
+name: battle_spawnObjectC1
+address: '0x080DD594'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0xC1 via object_spawnType3 and, on success, copies the caller's
+  panel position, element, damage/stamina word, and alliance/flip (inherited from a related object passed
+  in r5) into the new object.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3/r4 = spawn args, r5 = related object ptr, r6 =
+  damage/stamina word) -> r0 = spawned object ptr or 0 on failure; flags from spawn success
+details: 'Thin wrapper around object_spawnType3: it pushes the caller''s r0-r2 and r5, sets r0 = 0xC1
+  as the spawn type (leaving the other spawn arguments as passed in), and calls the spawner. If the spawn
+  failed (EQ, r0 = 0) it returns immediately. On success it writes the caller''s original r0/r1/r2 to
+  oBattleObject_PanelX/PanelY/Element, r6 to oBattleObject_DamageAndStaminaDamageCounterDisabler, copies
+  oBattleObject_AllianceAndDirectionFlip from the object pointer passed in r5, and stores that same pointer
+  into oBattleObject_RelatedObject1Ptr. The new object thus inherits alignment/flip from a related existing
+  object, which is typical for projectiles or clones spawned alongside an attacker.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xc1 immediately before bl object_spawnType3 — fixed spawn type for this wrapper;
+    beq locret_80DD5B2 after the call — returns the spawner''s failure status unchanged; strb r1/r2/r3
+    to oBattleObject_PanelX/PanelY/Element map the caller''s original r0-r2 onto spawn placement; str
+    r5,[r0,#oBattleObject_RelatedObject1Ptr] + ldrh from r5''s AllianceAndDirectionFlip — inheritance
+    from a source object; sole caller sub_80DD5B4 directly follows, consistent with a local spawn helper'
+  refs:
+  - bn6f/asm/asm31.s:81724
+  - 0x080DD5B4 sub_80DD5B4
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DD594
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly pushes r0-r2,r5, calls object_spawnType3 with r0=0xC1, and on success writes PanelX/PanelY/Element,
+    copies AllianceAndDirectionFlip from r5 to the new object, and stores r5 as RelatedObject1Ptr — matching
+    the proposal. However r6 is not pushed, so it is the caller''s own r6 (not preserved across the call),
+    and the written field is oBattleObject_DamageAndStaminaDamageCounterDisabler, not merely ''damage'';
+    the summary overstates r3/r4 since they aren''t involved here. The name ''battle_spawnObjectC1'' is
+    fine.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what gameplay entity type 0xC1 is (needs the type-3 initializer or a spawn site in context)
+- meaning of the caller's r3/r4 arguments passed straight through to object_spawnType3
+- The assembly pushes r0-r2,r5, calls object_spawnType3 with r0=0xC1, and on success writes PanelX/PanelY/Element,
+  copies AllianceAndDirectionFlip from r5 to the new object, and stores r5 as RelatedObject1Ptr — matching
+  the proposal. However r6 is not pushed, so it is the caller's own r6 (not preserved across the call),
+  and the written field is oBattleObject_DamageAndStaminaDamageCounterDisabler, not merely 'damage'; the
+  summary overstates r3/r4 since they aren't involved here. The name 'battle_spawnObjectC1' is fine.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DD594 -> battle_spawnObjectC1
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD594

@@ -1,0 +1,61 @@
+name: battle_hopToNextPanelBouncing
+address: '0x080D6694'
+kind: function
+status: probable
+summary: Battle phase that hops the object one panel along its Y velocity each Timer tick; on expiry it
+  tries the next panel via object_isValidPanel and object_snapToPanelRaised, and if off-grid it negates
+  YVelocity and advances CurPhase to 4.
+interface: (r0 = unused, r4-r5 = oBattleObject*) -> r0 = clobbered; sets PhaseInitialized/Timer/CurPhase
+  on r5's object
+details: 'On first run it loads the hop interval from oBattleObject_Param1 into Timer and marks the phase
+  initialized. Each call decrements Timer; while it is still >= 0 it returns. When the timer expires it
+  computes PanelY + YVelocity and, together with PanelX, calls object_isValidPanel: if the target panel
+  is inside the grid it stores the new coordinates, calls object_snapToPanelRaised (placing the object
+  on the panel raised 8 px, height 8), and clears PhaseInitialized so the hop repeats until the next timer
+  expiry. If the target panel is off-grid it negates YVelocity, resets Timer to 0, sets CurPhase to 4
+  and PhaseInitialized to 1, ending the phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; strh r0,[r5,#oBattleObject_Timer] — Param1 is the frames-per-hop
+    delay; add r1,r1,r0 where r1=PanelY, r0=YVelocity, then object_isValidPanel — one-panel step validated
+    against the battle grid; bl object_snapToPanelRaised after storing PanelX/PanelY — object visually
+    relocates to the new panel raised 8 px; neg r0,r0 on YVelocity plus strh #4 to CurPhaseAndPhaseInitialized
+    — bounce off grid edge terminates phase 4'
+  refs:
+  - bn6f/asm/asm31.s:66786
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D67D2 object_snapToPanelRaised
+  reproduce: python3 tools/asmcat.py 0x080D6694
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary''s behavior: it loads Param1 into Timer on first run, decrements Timer
+    until it goes negative, hops PanelY by YVelocity each tick, snaps via object_snapToPanelRaised, and
+    on an invalid target negates YVelocity and sets CurPhase to 4. However, at loc_80D66CE it uses a combined
+    store (strh #4 into CurPhaseAndPhaseInitialized) plus a separate strb #1 to PhaseInitialized, and
+    it does not ''clear PhaseInitialized so the hop repeats'' as stated — it leaves it at the value 4
+    already written. The name itself is fine but could be tighter.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which battle objects/attacks use this phase (phase 4) and what Param1 values are
+  typical is unknown; a caller or spawn site would confirm the object type and hop semantics (e.g. whether
+  YVelocity is normally negative, moving toward the player).
+- 'The code matches the summary''s behavior: it loads Param1 into Timer on first run, decrements Timer
+  until it goes negative, hops PanelY by YVelocity each tick, snaps via object_snapToPanelRaised, and
+  on an invalid target negates YVelocity and sets CurPhase to 4. However, at loc_80D66CE it uses a combined
+  store (strh #4 into CurPhaseAndPhaseInitialized) plus a separate strb #1 to PhaseInitialized, and it
+  does not ''clear PhaseInitialized so the hop repeats'' as stated — it leaves it at the value 4 already
+  written. The name itself is fine but could be tighter.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D6694 -> battle_hopToNextPanelBouncing
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6694

@@ -1,0 +1,62 @@
+name: stampRecordCounts
+address: '0x0804ACC8'
+kind: function
+status: probable
+summary: Tallies how many 0x20-byte records at word_202A020 share each halfword ID into a 30-slot {id,count}
+  table, then writes the duplicate count into each record's upper halfword at +0x16, keyed by the halfword
+  already present at +0x14.
+interface: (r0 = record count) -> r0 = number of records with a nonzero ID field; no flags defined
+details: Clears a 0x78-byte scratch table at unk_20343E0 (30 slots of {u16 id, u16 count}) with ZeroFillByEightWords.
+  First pass walks r0 records of stride 0x20 at word_202A020; for each record whose halfword at +0 is
+  nonzero, it either finds the id in the tally table and increments its count, or appends a new {id, 1}
+  entry. Second pass revisits every record, takes the halfword at +0x14 as a key, looks it up in the tally,
+  and stores back to the word at +0x14 as (count << 16) | original_value — so the duplicate count lands
+  in the upper halfword at +0x16. Returns the number of records that had a nonzero id at +0. This is the
+  classic pattern for counting duplicate chip copies (e.g. folder/pack stacking), but neither array is
+  identified in the project yet.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ZeroFillByEightWords with (unk_20343E0, 0x78) zeroes a 30-entry {id,count} tally each call;
+    loc_804ACF2: scans tally for ldrh [r7] (record id), strh count+1 on match, strh id/strb 1 on miss;
+    loc_804AD36: ldrh [r7,#0x14] used as tally key, then str (count<<16 | value) back to [r7,#0x14]; Both
+    loops step r7 by 0x20 up to base + r0*0x20, so r0 is the record count; [sp] increments once per nonzero-id
+    record and is the return value'
+  refs:
+  - bn6f/asm/asm03_2.s:8656
+  - 0x0804AB6C sub_804AB6C
+  - 0x08000900 ZeroFillByEightWords
+  reproduce: python3 tools/asmcat.py 0x0804ACC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately matches the two-pass logic: first pass tallies halfword IDs at offset +0
+    of each 0x20-byte record into a 0x78-byte (30-slot) scratch table, second pass reads the count from
+    offset +0x14 and writes (count<<16)|original_value back. Caller sub_804AB6C and callee ZeroFillByEightWords
+    match. However, ''countDuplicateIds'' is misleading: pass 1 counts records per ID, but the value written
+    at +0x14 is keyed on the +0x14 field, not the +0 field — so a single tally can be read by many records.
+    A name like ''tallyAndStampCounts'' or ''stampRecordCounts'' is more accurate.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What structure word_202A020 holds (folder, chip pack, or other 0x20-byte records) — the caller sub_804AB6C
+  is unnamed
+- Which code later reads the duplicate count in the upper halfword at +0x14 and what it does with it (e.g.
+  folder editor stack display)
+- 'The summary accurately matches the two-pass logic: first pass tallies halfword IDs at offset +0 of
+  each 0x20-byte record into a 0x78-byte (30-slot) scratch table, second pass reads the count from offset
+  +0x14 and writes (count<<16)|original_value back. Caller sub_804AB6C and callee ZeroFillByEightWords
+  match. However, ''countDuplicateIds'' is misleading: pass 1 counts records per ID, but the value written
+  at +0x14 is keyed on the +0x14 field, not the +0 field — so a single tally can be read by many records.
+  A name like ''tallyAndStampCounts'' or ''stampRecordCounts'' is more accurate.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804ACC8 -> stampRecordCounts
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804ACC8

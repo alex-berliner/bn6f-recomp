@@ -1,0 +1,57 @@
+name: object_highlightPanelForAllianceColor
+address: '0x080D4004'
+kind: function
+status: probable
+summary: Reads the battle object's alliance and indexes a 4-byte table (0x82 for alliance 0, 0x81 for
+  alliance 1) to pick a panel-highlight color code, then calls object_highlightPanelRegionBlue.
+interface: (r5 = battle object whose oBattleObject_Alliance is read; r0 = alliance<<2 passed on, r2 =
+  word from byte_80D4018[alliance]) -> returns via callee; no meaningful return value
+details: Reads the object's alliance byte (r5+oBattleObject_Alliance), scales it by 4 to index a table
+  of words at byte_80D4018 whose entries are 0x82 (alliance 0) and 0x81 (alliance 1), then tail-calls
+  object_highlightPanelRegionBlue with r0 still = alliance*2, r1 = table base pointer, r2 = selected 0x81/0x82
+  value. The 0x81/0x82 values look like panel-highlight style/color ids (e.g. enemy-side vs player-side
+  highlight). Note it clobbers r0 with the shifted alliance instead of a panel index, so either the callee
+  ignores r0 or uses it in an unexpected way.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl r0,r0,#2 indexes word table by alliance; byte_80D4018
+    holds exactly two words: 0x82 and 0x81, one per alliance; tail call bl object_highlightPanelRegionBlue
+    does the actual highlighting; sole caller sub_80D3BC2 sets up r5 (battle object) before the call'
+  refs:
+  - bn6f/asm/asm31.s:61387
+  - 0x080D3BC2 sub_80D3BC2
+  - 0x0800CD20 object_highlightPanelRegionBlue
+  reproduce: python3 tools/asmcat.py 0x080D4004
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it reads oBattleObject_Alliance, shifts left by 2 to index a 4-entry
+    table at byte_80D4018 holding {0x82, 0x81} for alliances 0 and 1, and tail-calls object_highlightPanelRegionBlue
+    with r0=alliance<<2, r1=table base, r2=loaded word. However, r0 is shifted left by 2 (not 1 as the
+    proposal claims ''alliance*2''), so ''alliance<<2'' is the correct expression. The name is acceptable
+    but ''PanelForAlliance'' implies panel selection by alliance, while the function actually selects
+    a highlight color code, so a slightly clearer name is preferable.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of r0 = alliance<<2 passed to object_highlightPanelRegionBlue (panel index? ignored?)
+- what panel/region the callee highlights without an explicit coordinate argument — need sub_80D3BC2's
+  context or the callee's signature
+- 'The code matches the proposal: it reads oBattleObject_Alliance, shifts left by 2 to index a 4-entry
+  table at byte_80D4018 holding {0x82, 0x81} for alliances 0 and 1, and tail-calls object_highlightPanelRegionBlue
+  with r0=alliance<<2, r1=table base, r2=loaded word. However, r0 is shifted left by 2 (not 1 as the proposal
+  claims ''alliance*2''), so ''alliance<<2'' is the correct expression. The name is acceptable but ''PanelForAlliance''
+  implies panel selection by alliance, while the function actually selects a highlight color code, so
+  a slightly clearer name is preferable.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D4004 -> object_highlightPanelForAllianceColor
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4004

@@ -1,0 +1,65 @@
+name: sprite_runFrameAlternatingLists
+address: '0x08089280'
+kind: function
+status: probable
+summary: Selects one of two structurally identical script command tables based on (frame & 0x1F) < 8,
+  runs it via scriptListRun_8001158, then always runs a fixed third table — driving a frame-gated, blink-like
+  sprite animation.
+interface: () -> void; r0-r2 scratch, no meaningful return value
+details: 'Loads the toolkit''s current frame pointer (r10 = toolkit), takes frame & 0x1F, and if the result
+  is < 8 selects the command table at byte_80892F4, otherwise the one at byte_80892A4; it then runs the
+  chosen table with scriptListRun_8001158, and afterwards unconditionally runs the table at byte_8089344.
+  The two variant tables are structurally identical: same data arguments (8, 4/0x74, 8/0xE0, 0x4D/0xE4,
+  ...) but each entry''s second command word differs, cycling through a contiguous block 0xD240-0xD24F
+  (table A uses one set, table B the others), ending with a shared 0xD254 entry — i.e., the two variants
+  dispatch to different handlers for the same data. The fixed table''s entries use commands 0x4078/0x4088
+  with data args 0x8014/0x8034/0x8054/0x4014/0x4034 (which read like offsets or resource indices). The
+  frame-gated alternation suggests a timed blinking/animating effect driven through the generic script
+  dispatcher rather than dedicated code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r1,[r10,#oToolkit_CurFramePtr]; and r1,#0x1f; cmp r1,#8; bge — frame-gated table selection
+    (asm lines 3-9); two off_ loads pick byte_80892A4 vs byte_80892F4, both passed to scriptListRun_8001158;
+    byte_80892A4/F4 differ only in the 0xD2xx command words (D240-D247 vs D248-D24F), args identical;
+    byte_8089344 is run unconditionally after the variant table, with cmds 0x4078/0x4088; scriptListRun_8001158
+    is the known {cmd,arg}-pair dispatcher terminating on zero cmd, matching the 00 00 00 00 tails of
+    all three tables
+  refs:
+  - bn6f/asm/asm23.s:590
+  - 0x0808917C sub_808917C
+  - 0x0808C948 sub_808C948
+  - 0x08001158 scriptListRun_8001158
+  reproduce: python3 tools/asmcat.py 0x08089280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: frame & 0x1F compared to 8, branch chooses byte_80892F4 vs default byte_80892A4,
+    then both branches call scriptListRun_8001158 and finally the fixed byte_8089344 table. The two tables
+    share identical data args but different 0xD24x command codes, supporting an alternating animation/timed
+    effect. However ''scriptListRun_8001158'' as a name prefix doesn''t fit any allowed prefix list; a
+    better name would use an existing prefix like ''sprite'' or ''object''.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the 0xD2xx and 0x40xx script commands do (need sub_802FE28's dispatch table) to know what effect
+  is being alternated
+- What systems the callers sub_808917C and sub_808C948 belong to (menu, dialog, cutscene?) to name the
+  feature precisely
+- Whether the args 0x8014/0x8034/0x8054 are offsets into a sprite/OAM structure or resource IDs
+- 'The code matches: frame & 0x1F compared to 8, branch chooses byte_80892F4 vs default byte_80892A4,
+  then both branches call scriptListRun_8001158 and finally the fixed byte_8089344 table. The two tables
+  share identical data args but different 0xD24x command codes, supporting an alternating animation/timed
+  effect. However ''scriptListRun_8001158'' as a name prefix doesn''t fit any allowed prefix list; a better
+  name would use an existing prefix like ''sprite'' or ''object''.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8089280 -> sprite_runFrameAlternatingLists
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089280

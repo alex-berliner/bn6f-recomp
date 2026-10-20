@@ -1,0 +1,55 @@
+name: battle_shakeCameraUpdate
+address: '0x080E88C0'
+kind: function
+status: probable
+summary: Battle object state that fires a camera shake (mag 2, dur 12 frames), sets Param2=3 and CurState=CUR_STATE_UPDATE,
+  then tail-calls battle_repeatTimerState for its countdown behavior.
+interface: (r5 = battle object) -> r0 = 0 (via battle_repeatTimerState); updates object state/Param2
+details: 'Stores 3 into oBattleObject_Param2 on the battle object in r5, then calls camera_initShakeEffect_80302a8
+  with magnitude 2 and duration 0xC to start a camera shake. It sets the object''s CurState/ActionPhase
+  word to CUR_STATE_UPDATE and tail-calls battle_repeatTimerState, which per its known summary delays
+  8 frames Param2 times (here 3 times) before self-destructing. So the effect is: shake the screen for
+  12 frames while the object counts down, then move to the update state. With no known callers it is presumably
+  referenced through a state-handler function-pointer table for some battle event.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#3; strb r0,[r5,#oBattleObject_Param2] sets the repeat count to 3 for battle_repeatTimerState;
+    bl camera_initShakeEffect_80302a8 with r0=2, r1=0xC programs shake magnitude/duration in the camera
+    struct; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized advances the
+    object's state machine; tail call to battle_repeatTimerState, known to delay 8 frames Param2 times
+    and self-destruct
+  refs:
+  - bn6f/asm/asm31.s:106485
+  - 0x080E88D8 battle_repeatTimerState
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080E88C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: strb #3 into Param2, then camera_initShakeEffect with mag=2 dur=0xC, sets CurStateActionPhase
+    to CUR_STATE_UPDATE, and tail-calls battle_repeatTimerState. However the summary''s ''wait 3 frames''
+    is misleading: battle_repeatTimerState spawns a helper and runs an 8-frame delay Param2 times (i.e.,
+    ~24 frames), not 3, and the camera shake itself runs for 0xC (12) frames, not ''while the object counts
+    down then 12 frames''. The proposed name is also overly long and speculative.; run wf investigate
+    investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle event/attack installs this as a state handler (no callers known)
+- what the CUR_STATE_UPDATE successor handler does, to confirm the intended sequence
+- 'The code matches: strb #3 into Param2, then camera_initShakeEffect with mag=2 dur=0xC, sets CurStateActionPhase
+  to CUR_STATE_UPDATE, and tail-calls battle_repeatTimerState. However the summary''s ''wait 3 frames''
+  is misleading: battle_repeatTimerState spawns a helper and runs an 8-frame delay Param2 times (i.e.,
+  ~24 frames), not 3, and the camera shake itself runs for 0xC (12) frames, not ''while the object counts
+  down then 12 frames''. The proposed name is also overly long and speculative.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E88C0 -> battle_shakeCameraUpdate
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E88C0

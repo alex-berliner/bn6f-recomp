@@ -1,0 +1,53 @@
+name: object_waitFramesActionEnd
+address: '0x080D7382'
+kind: function
+status: probable
+summary: 'Battle-object action step: on first entry sets CurAnim=1 with shadow, loads Param2 as a frame
+  countdown into Timer, then on expiry sets CurAction=8 and clears CurPhaseAndPhaseInitialized to end
+  the action.'
+interface: (r5 = battle object) -> updates oBattleObject_Timer/CurAction/CurPhase; returns void
+details: On first entry (PhaseInitialized == 0) it sets CurAnim to 1, calls sprite_hasShadow to enable
+  the object's shadow, copies Param2 into Timer as a frame countdown, and sets PhaseInitialized = 4. On
+  every call it decrements Timer; while it is still >= 0 it just returns. Once the countdown expires it
+  sets CurAction = 8 and clears CurPhaseAndPhaseInitialized, handing control back to the object's action
+  dispatcher, so this is the 'linger for N frames then finish' step of some battle object's script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: one-time init block writes CurAnim=1, Param2->Timer,
+    PhaseInitialized=4; bl sprite_hasShadow in the init block turns on the object''s shadow for the wait;
+    ldrh/sub #1/strh on oBattleObject_Timer with bge: plain frame countdown; mov r0,#8; strb [r5,#oBattleObject_CurAction]
+    plus zeroing CurPhase: countdown end terminates the action; Uses only oBattleObject_* fields, no other
+    state: it is a per-object state-machine step'
+  refs:
+  - bn6f/asm/asm31.s:68455
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080D7382
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the control flow (init sets CurAnim=1, calls sprite_hasShadow,
+    copies Param2 to Timer, PhaseInitialized=4; then decrements Timer; on expiry sets CurAction=8 and
+    clears CurPhaseAndPhaseInitialized). However, the name ''object_waitTimerPhase'' is misleading — there
+    is no need for an ''Timer'' prefix; a more idiomatic name reflecting ''wait some frames then finish
+    this action'' is better.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which battle object type uses this handler (unknown caller/handler table) and what CurAction 8 means
+  for it
+- Whether Param2 has a specific gameplay meaning (lifetime?) for this object
+- The proposal correctly describes the control flow (init sets CurAnim=1, calls sprite_hasShadow, copies
+  Param2 to Timer, PhaseInitialized=4; then decrements Timer; on expiry sets CurAction=8 and clears CurPhaseAndPhaseInitialized).
+  However, the name 'object_waitTimerPhase' is misleading — there is no need for an 'Timer' prefix; a
+  more idiomatic name reflecting 'wait some frames then finish this action' is better.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D7382 -> object_waitFramesActionEnd
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7382

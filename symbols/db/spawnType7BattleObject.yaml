@@ -1,0 +1,59 @@
+name: spawnType7BattleObject
+address: '0x080B921A'
+kind: function
+status: probable
+summary: Spawns a battle object of type 7 via object_spawnType1, then fills in its panel position, element,
+  related object pointer, alliance/flip, damage and collision data fields, and marks the collision data
+  entry as active.
+interface: '(args pushed: obj fields incl. x, y, element, related object ptr, alliance/flip, damage ptr,
+  collision ptr) -> r0 = new BattleObject* or 0 on failure; flags from spawn success test'
+details: The routine saves the caller's arguments, calls object_spawnType1 with object index 7, and aborts
+  if spawning failed (beq to return). On success it stores the caller-supplied panel X and Y bytes, the
+  element byte, a pointer to a related/owning object, copies the AllianceAndDirectionFlip halfword, the
+  DamageAndStaminaDamageCounterDisabler word and the CollisionDataPtr into the new object. Finally it
+  writes 1 to the first byte of the collision data, which most likely marks the object's collision entry
+  as active. It is essentially a parameterised spawn-and-customise helper for this one object type; no
+  callers are known, so the gameplay meaning of type 7 is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #7; bl object_spawnType1 — spawns object type 7 via the known type-1 spawn helper;
+    beq locret_80B923E — returns the null pointer unchanged when the spawn failed; strb r1/r2 to oBattleObject_PanelX/PanelY
+    and strb r3 to oBattleObject_Element — panel position and element set from caller args; str r5, [r0,#oBattleObject_RelatedObject1Ptr]
+    and str r7, [r0,#oBattleObject_CollisionDataPtr] — links parent object and collision data; mov r1,
+    #1; strb r1, [r7] — first byte of collision data set to 1, likely enabling collision'
+  refs:
+  - bn6f/asm/asm31.s:2185
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B921A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and field list match the code accurately (PanelX, PanelY, Element, RelatedObject1Ptr,
+    AllianceAndDirectionFlip, DamageAndStaminaDamageCounterDisabler, CollisionDataPtr, plus writing 1
+    to collision byte). However the interface is wrong: object_spawnType1 is assumed never-null, so there''s
+    no 0-on-failure path in the asm; r0 is returned unconditionally and is always the new object''s pointer.
+    The name is acceptable but ''spawn'' alone is a more standard prefix for spawn helpers than ''battle''.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What game object type 7 actually is (no callers known to give context)
+- Which structure the CollisionDataPtr points into and what the initial byte value 1 enables
+- Whether the pushed-argument layout in the listing is exact (push/pop register set looks garbled) and
+  how the 5th spawn argument is passed
+- 'The summary and field list match the code accurately (PanelX, PanelY, Element, RelatedObject1Ptr, AllianceAndDirectionFlip,
+  DamageAndStaminaDamageCounterDisabler, CollisionDataPtr, plus writing 1 to collision byte). However
+  the interface is wrong: object_spawnType1 is assumed never-null, so there''s no 0-on-failure path in
+  the asm; r0 is returned unconditionally and is always the new object''s pointer. The name is acceptable
+  but ''spawn'' alone is a more standard prefix for spawn helpers than ''battle''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B921A -> spawnType7BattleObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B921A

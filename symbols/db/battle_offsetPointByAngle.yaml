@@ -1,0 +1,66 @@
+name: battle_offsetPointByAngle
+address: '0x080E58D2'
+kind: function
+status: probable
+summary: Returns (x+r·cos(θ), y+r·sin(θ)) using sin/cos tables; the cos term has one extra multiply by
+  the saved r4, making it slightly heavier than the sin path.
+interface: (r0 = distance, r1 = angle index, r2 = base x, r3 = base y) -> r0 = x + cos(angle)*r0<<8*scale,
+  r1 = y + sin(angle)*r0<<8; flags clobbered
+details: Indexes math_cosTable and math_sinTable at byte offset 2*r1 (halfword angle index), loads s16
+  entries, multiplies each by r0 and shifts left 8 (fixed-point distance scaling). The x term is additionally
+  multiplied by the value found in r4 on entry (mov r7,r4 before r4 is initialized from r2), so the caller
+  apparently passes a horizontal scale factor in r4 in addition to the standard r0-r3 arguments — a nonstandard
+  convention worth verifying against the call sites. The y term gets no such extra multiply, making the
+  two axes asymmetric. Results are added to the incoming x (r2->r4) and y (r3->r5) and returned in r0/r1.
+  This matches an arc-flight trajectory step for tossed battle objects, where horizontal and vertical
+  motion are computed from an angle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r2, off_80E5934 (=math_cosTable) / ldrsh r6,[r2,r3] with r3=2*r1: angle-indexed cos lookup;
+    ldr r2, off_80E5938 (=math_sinTable) / ldrsh r7,[r2,r3]: matching sin lookup for the y term; mul r6,r0
+    / lsl r6,#8 and mul r7,r0 / lsl r7,#8: distance scaled into fixed point for both axes; add r0,r4,r6
+    / add r1,r5,r7 with r4=old x, r5=old y: returns displaced point in r0/r1; caller 0x080E57BC battle_updateTossedBouncingObject
+    (arc-flying tossed object) fits a per-frame polar movement step'
+  refs:
+  - bn6f/asm/asm31.s:99920
+  - 0x080E57BC battle_updateTossedBouncingObject
+  - 0x080BEACE sub_80BEACE
+  - 0x080BEBD8 sub_80BEBD8
+  reproduce: python3 tools/asmcat.py 0x080E58D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the angle-table indexing, fixed-point shift, and return in r0/r1,
+    but the claim that r4 is a *nonstandard* extra horizontal scale is wrong: `mov r7, r4` at the prologue
+    saves the CALLER''s r4 (an unmodified argument register scratch), and `mov r4, r2` overwrites it,
+    so r7 here is just whatever r4 held on entry — typically a preserved register, not an X-scale. The
+    horizontal-vs-vertical asymmetry is real (cos term gets an extra mul r6,r7 vs. sin''s plain mul),
+    but the proposal''s interpretation of that extra multiply is unconvincing. Suggested name `offsetPointByAngle`
+    is fine; a more accurate summary is needed.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Why the x term is multiplied by the caller's incoming r4 (nonstandard 5th-argument-in-r4 convention
+  or a dump artifact) — the call sites in battle_updateTossedBouncingObject and sub_80BEACE/sub_80BEBD8
+  would confirm what value r4 holds
+- Exact fixed-point scaling of the sine/cosine tables and of the returned coordinates (pixels vs subpixel
+  units)
+- 'The proposal correctly identifies the angle-table indexing, fixed-point shift, and return in r0/r1,
+  but the claim that r4 is a *nonstandard* extra horizontal scale is wrong: `mov r7, r4` at the prologue
+  saves the CALLER''s r4 (an unmodified argument register scratch), and `mov r4, r2` overwrites it, so
+  r7 here is just whatever r4 held on entry — typically a preserved register, not an X-scale. The horizontal-vs-vertical
+  asymmetry is real (cos term gets an extra mul r6,r7 vs. sin''s plain mul), but the proposal''s interpretation
+  of that extra multiply is unconvincing. Suggested name `offsetPointByAngle` is fine; a more accurate
+  summary is needed.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E58D2 -> battle_offsetPointByAngle
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E58D2

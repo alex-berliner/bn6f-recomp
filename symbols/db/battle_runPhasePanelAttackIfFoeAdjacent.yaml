@@ -1,0 +1,66 @@
+name: battle_runPhasePanelAttackIfFoeAdjacent
+address: '0x080E75AC'
+kind: function
+status: probable
+summary: 'Battle phase handler: on first run uses Alliance^DirectionFlip to index dword_80E75FC and tests
+  battle_countAdjacentPanelsOfOtherAlliance; if foes exist, calls sub_80D67A6 with Element, Damage+Z16Save
+  and Params, sets PhaseInitialized=4; otherwise (or after) ends the action by writing CurAction=0x0C
+  and clearing CurPhaseAndPhaseInitialized.'
+interface: (r5 = battle object) -> r0 = 0/flag; writes object fields PhaseInitialized, CurAction, CurPhaseAndPhaseInitialized
+details: A per-phase handler for a battle object. On first run (PhaseInitialized==0) it computes an index
+  from Alliance EOR DirectionFlip (mirroring by side) into the 4-byte table dword_80E75FC = {06,01,01,01},
+  giving a pair of scan parameters; with those and the object's Alliance it calls battle_countAdjacentPanelsOfOtherAlliance
+  to test for enemy panels in that direction. If any are found, it calls sub_80D67A6 with the table bytes,
+  the object's Element, Damage+Z16Save as power, Params in r4 and object+0xC in r7 (extra hidden args),
+  i.e. an attack/damage application, and stores 4 to PhaseInitialized. Afterwards (or immediately if no
+  target), if DirectionAngle is nonzero it returns, otherwise it terminates the action by writing CurAction=0x0C
+  and CurPhase=0. The Alliance^DirectionFlip index shows the scan direction is relative to the object's
+  facing side.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'eor of oBattleObject_Alliance with oBattleObject_DirectionFlip, doubled, indexes dword_80E75FC
+    (bytes 06,01,01,01) — side-mirrored scan parameters; bl battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+    gates the attack on enemy-side panels being present; bl sub_80D67A6 passes Element, Damage+Z16Save
+    and Params — looks like an elemental damage routine; strb #4 to PhaseInitialized then CurAction=0x0C
+    / CurPhase=0 when DirectionAngle==0 — standard phase-handler exit pattern'
+  refs:
+  - bn6f/asm/asm31.s:104149
+  - 0x0800D5F0 battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+  - 0x080D67A6 sub_80D67A6
+  reproduce: python3 tools/asmcat.py 0x080E75AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the first-run PhaseInitialized gate, the Alliance^DirectionFlip
+    index into dword_80E75FC (load via off_80E75F8 at lines 10-13), the battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+    call, and the sub_80D67A6 damage-application with Element/Damage+Z16Save/Params (lines 19-31). The
+    ''phaseStrike'' name, however, over-interprets: this is a per-phase handler (not specifically ''strike''),
+    and on no-foe it sets CurAction=0x0C and CurPhaseAndPhaseInitialized=0 (lines 36-39), matching standard
+    battle phase end-of-action conventions. The proposed interface r0>0 is wrong—r0 holds the count from
+    battle_countAdjacentPanelsOfOtherAlliance, not a 0/flag—so the name is speculative.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'Exact meaning of the table bytes (6 vs 1): range/offset of panels scanned per side'
+- Semantics of sub_80D67A6's arguments (r4=Params, r7=object+0xC appear to be hidden args) and what effect
+  it applies
+- Which enemy/action uses this handler (no callers known) and what CurAction 0x0C denotes
+- 'The proposal correctly identifies the first-run PhaseInitialized gate, the Alliance^DirectionFlip index
+  into dword_80E75FC (load via off_80E75F8 at lines 10-13), the battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+  call, and the sub_80D67A6 damage-application with Element/Damage+Z16Save/Params (lines 19-31). The ''phaseStrike''
+  name, however, over-interprets: this is a per-phase handler (not specifically ''strike''), and on no-foe
+  it sets CurAction=0x0C and CurPhaseAndPhaseInitialized=0 (lines 36-39), matching standard battle phase
+  end-of-action conventions. The proposed interface r0>0 is wrong—r0 holds the count from battle_countAdjacentPanelsOfOtherAlliance,
+  not a 0/flag—so the name is speculative.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E75AC -> battle_runPhasePanelAttackIfFoeAdjacent
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E75AC

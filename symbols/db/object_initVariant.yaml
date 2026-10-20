@@ -1,0 +1,60 @@
+name: object_initVariant
+address: '0x0811CC94'
+kind: function
+status: probable
+summary: Initializes an object struct (pointer in r5) by setting active/flags, positioning its sprite
+  at (-8,128), clearing fields, and dispatching to a per-variant setup routine selected by a struct field,
+  then calls sub_811CD08.
+interface: (r5 = object struct pointer; r0/r1 unused) -> r0 = return of sub_811CD08; no meaningful flags
+details: 'Uses a non-standard convention: the object struct pointer is expected in r5, not r0. It stores
+  1 at +0 (active flag), 4 at +8, calls sprite_setCoordinates with x=-8 (0xF8 sign-extended from byte_811CCC4)
+  and y=128, zeroes +0xc and +0x12, then reads byte [r5,#4], multiplies by 4, and indexes off_811CCD0
+  (14 entries) to branch-link to a per-variant initializer, which includes known routines object_setupVariantSprite
+  and gui_initIndexedSprite. After the dispatch it calls sub_811CD08 before returning. The position (-8,128)
+  suggests something anchored near the bottom-left of the 240x160 screen.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r4,[r5] / strb r0,[r5,#8] set active flag and mode field 4 (asm lines 2-6); ldr r0,byte_811CCC4
+    (=0xFFFFFFF8) + mov r1,#0x80 + bl sprite_setCoordinates positions sprite at (-8,128); ldrb r0,[r5,#4];
+    lsl r0,#2; ldr r0,[r1,r0]; mov lr,pc; bx r0 dispatches through off_811CCD0 keyed by variant byte;
+    table entries include object_setupVariantSprite+1 and gui_initIndexedSprite+1, tying it to sprite/GUI
+    object setup; trailing bl sub_811CD08 runs a common post-init step for every variant
+  refs:
+  - bn6f/asm/asm32.s:30618
+  - 0x0800307C sprite_setCoordinates
+  - 0x0811CD08 sub_811CD08
+  reproduce: python3 tools/asmcat.py 0x0811CC94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate: r5 holds the struct, active flag 1 is set at `[r5]`, 4 at
+    `[r5,#8]`, sprite positioned at (-8,128) via sprite_setCoordinates, zeros at +0xc/+0x12, and a 14-entry
+    off_811CCD0 dispatches by `[r5,#4]*4` via bx. Since the dispatch table contains gui_initIndexedSprite
+    and object_setupVariantSprite, and the function lives in GUI code, ''gui_initVariantObject'' is fine
+    but ''object_initVariant'' better reflects that it''s a generic variant dispatcher (not strictly GUI
+    — object_setupVariantSprite is also there).; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the calling convention (r5 as struct pointer) and when each variant byte value
+  occurs are unconfirmed
+- What sub_811CD08 and the 12 unnamed table entries (sub_811D2F8 etc.) do
+- Semantics of fields +0, +4, +8, +0xc, +0x12 in the object struct
+- 'The summary and interface are accurate: r5 holds the struct, active flag 1 is set at `[r5]`, 4 at `[r5,#8]`,
+  sprite positioned at (-8,128) via sprite_setCoordinates, zeros at +0xc/+0x12, and a 14-entry off_811CCD0
+  dispatches by `[r5,#4]*4` via bx. Since the dispatch table contains gui_initIndexedSprite and object_setupVariantSprite,
+  and the function lives in GUI code, ''gui_initVariantObject'' is fine but ''object_initVariant'' better
+  reflects that it''s a generic variant dispatcher (not strictly GUI — object_setupVariantSprite is also
+  there).'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811CC94 -> object_initVariant
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CC94

@@ -1,0 +1,63 @@
+name: battle_processChipRangeInHand
+address: '0x080108FC'
+kind: function
+status: probable
+summary: Scans a battle hand slot's halfword card list from its starting index, and for every card whose
+  ID is in 0x190..0x19A calls sub_801092C with the slot index; terminates on 0xFFFF, advancing the list
+  cursor by 1 on non-matching entries and relying on the callee to mutate the entry otherwise.
+interface: (r0 = hand slot index for getBattleHandAddr) -> r0 = clobbered; no meaningful return
+details: Fetches a hand record from 0x20349C0 (0x50-byte stride) via getBattleHandAddr, loads a byte from
+  offset 0 as the starting index, then scans the halfword array at offset +2 indexed by that value. Each
+  entry equal to 0xFFFF (dword_801099C) ends the function. Entries in the inclusive range 0x190-0x19A
+  (after subtracting off_80109A0=0x190 and comparing <= 0xA) trigger a call to sub_801092C with the card's
+  index. Notably the loop does NOT advance the index after calling sub_801092C, only on non-matching entries,
+  so sub_801092C must modify the list entry (e.g. remove/compact it) for the loop to make progress; the
+  index is also reloaded from byte 0 only once at entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getBattleHandAddr_8010018 then ldrb r4,[r7]: start index comes from byte 0 of the 0x20349C0
+    hand record; ldrh r1,[r7,r0] with r0=r4*2+2: scans a halfword card-ID list based at offset +2; cmp
+    r1, 0xffff (dword_801099C) / beq locret: 0xFFFF is the list terminator; sub r1,#0x190 (off_80109A0);
+    cmp r1,#0xa; bhi skip: only IDs 0x190-0x19A are acted on; bl sub_801092C with r0=card index, then
+    loop back without incrementing r4: handler mutates the entry in place'
+  refs:
+  - bn6f/asm/asm00_2.s:4203
+  - 0x0802D9B0 sub_802D9B0
+  - 0x0802DB80 sub_802DB80
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x0801092C sub_801092C
+  reproduce: python3 tools/asmcat.py 0x080108FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claim that ''the loop does NOT advance the index after calling sub_801092C'' is wrong.
+    Asm shows the non-matching branch loc_8010926 does `add r4,#1` then `b loc_801090A`, which is what
+    advances the index; the call branch falls through to `b loc_801090A` without adding 1, so sub_801092C
+    must mutate the list. Otherwise the loop structure (load r4 from byte 0 once, halfword scan of offset+2,
+    0xFFFF terminator, 0x190-0x19A range dispatch) matches the code. Suggested rename: battle_processChipRangeInHand,
+    indicating it processes chips in a numeric range rather than just locating them.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_801092C does to the matched entry (delete, transform, compact?) and why the loop rechecks the
+  same index
+- What card IDs 0x190-0x19A represent (a specific chip family/rarity band in BN6)
+- What the two callers sub_802D9B0/sub_802DB80 pass as the hand slot index and when they run
+- 'The summary''s claim that ''the loop does NOT advance the index after calling sub_801092C'' is wrong.
+  Asm shows the non-matching branch loc_8010926 does `add r4,#1` then `b loc_801090A`, which is what advances
+  the index; the call branch falls through to `b loc_801090A` without adding 1, so sub_801092C must mutate
+  the list. Otherwise the loop structure (load r4 from byte 0 once, halfword scan of offset+2, 0xFFFF
+  terminator, 0x190-0x19A range dispatch) matches the code. Suggested rename: battle_processChipRangeInHand,
+  indicating it processes chips in a numeric range rather than just locating them.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80108FC -> battle_processChipRangeInHand
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80108FC

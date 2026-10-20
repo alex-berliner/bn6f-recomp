@@ -1,0 +1,61 @@
+name: battle_setupSpawnedType17Object
+address: '0x080BBDE8'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x17, then copies the source object's PanelX/PanelY/Element/AllianceAndDirectionFlip
+  and its RelatedObject1Ptr into the new object, stores the passed damage/stamina-disabler and collision-data
+  pointers, and flags the collision data as active (byte=1).
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = source BattleObject ptr, r6 = damage/staminaDisabler,
+  r7 = collisionDataPtr) -> r0 = new BattleObject ptr, or 0/null if spawn failed; flags from null check
+details: Calls object_spawnType1 with index 0x17 and the caller's r1/r2 (and further args) intact, receiving
+  the new object pointer in r5. It copies the result to r0 before popping, since the pop reloads the caller's
+  original r0-r2/r5 into r1-r3/r5. It then stores original r0->PanelX, r1->PanelY, r2->Element, original
+  r5->RelatedObject1Ptr, copies AllianceAndDirectionFlip halfword from the source object r5 into the new
+  object, and stores original r6 into DamageAndStaminaDamageCounterDisabler and original r7 into CollisionDataPtr.
+  Finally it writes 1 to the first byte of the collision-data buffer. The extended-argument passing (values
+  in r5-r7 never saved before use) and the field-by-field copy from the source object show this is a helper
+  that clones a battle object's identity onto a newly spawned type-0x17 entity, likely a chip/trap effect
+  tied to its owner.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x17 + bl object_spawnType1: fixed object type 23 spawn; mov r0,r5 before pop {r1-r3,r5}:
+    result pointer kept in r0 while caller args are recovered into r1-r3/r5; strb r1,[r0,#PanelX] / strb
+    r2,[r0,#PanelY] / strb r3,[r0,#Element]: args become panel pos and element; ldrh r1,[r5,#AllianceAndDirectionFlip]
+    / strh into r0: alliance+flip copied from source object r5; str r7,[CollisionDataPtr]; mov r1,#1;
+    strb r1,[r7]: caller-supplied collision buffer, first byte set to 1'
+  refs:
+  - bn6f/asm/asm31.s:8363
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BBDE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary match the code well (type 0x17 spawn, copying panel coords, element,
+    AllianceAndDirectionFlip, RelatedObject1Ptr, damage/stamina, collision, and writing 1 to collision
+    byte). However, calling it a ''MirroringObject'' is speculative since no caller is known and the object''s
+    purpose isn''t clarified by the callee (object_spawnType1 just spawns a generic type). A more neutral
+    name reflecting the observed behavior is preferable.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What object type 0x17 is (which chip/effect spawns it) — no caller found
+- Whether the five arguments to object_spawnType1 are exactly r0-r3+stack or include r5, to pin the parameter
+  layout
+- Semantics of DamageAndStaminaDamageCounterDisabler and the collision byte =1
+- The proposed name and summary match the code well (type 0x17 spawn, copying panel coords, element, AllianceAndDirectionFlip,
+  RelatedObject1Ptr, damage/stamina, collision, and writing 1 to collision byte). However, calling it
+  a 'MirroringObject' is speculative since no caller is known and the object's purpose isn't clarified
+  by the callee (object_spawnType1 just spawns a generic type). A more neutral name reflecting the observed
+  behavior is preferable.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BBDE8 -> battle_setupSpawnedType17Object
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBDE8

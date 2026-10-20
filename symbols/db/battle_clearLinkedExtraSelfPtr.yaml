@@ -1,0 +1,56 @@
+name: battle_clearLinkedExtraSelfPtr
+address: '0x080D2A58'
+kind: function
+status: probable
+summary: If the extra-vars pointer at [r5, oBattleObject_ExtraVars+4] points to a struct whose first word
+  equals r5, zero out that first word to sever the self-link; otherwise leave it untouched.
+interface: (r5 = battle object, set by caller; no args read) -> r0 = 0 on clear; no flags used by caller
+details: Loads the pointer at [r5, oBattleObject_ExtraVars+4] and compares it to r5 itself. If it is a
+  self-pointer (the object pointing to itself), it stores 0 there, severing the link; otherwise it leaves
+  the field untouched, preserving a pointer to another object. This suits the extra-vars structure of
+  parent-linked enemies, where the field may hold either the object itself (no link yet) or a partner/parent.
+  Called from battle_initParentLinkedEnemy, presumably to reset the link field before/while assigning
+  the real parent linkage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r0, r5 / str r0(0),[r1] at 80D2A5E-80D2A62: only clears when field equals the object itself;
+    ldr r1,[r5,#oBattleObject_ExtraVars+4]: operates on the extra-vars link field of a battle object;
+    caller battle_initParentLinkedEnemy: only known real caller, consistent with parent/child link maintenance;
+    field left unchanged when not self (bne locret): preserves links to other objects'
+  refs:
+  - bn6f/asm/asm31.s:58406
+  - 0x080D25F8 battle_initParentLinkedEnemy
+  - 0x080D2A68 sub_80D2A68
+  reproduce: python3 tools/asmcat.py 0x080D2A58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s idea (clear self-link) matches: r1 = [r5, offset+4] is a pointer to an extra-vars
+    struct, r0 = *r1, cmp r0,r5, and on equality str 0 into [r1] (lines 2–7). However, the proposed name
+    and summary say ''stores 0 there [in the field]'', but the code writes through r1 (into the linked
+    struct), not into r5''s own field. The function clears the link field inside the pointed-to extra-vars
+    struct when it self-references r5, which fits ''clear a self-linked extra pointer'' more precisely.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of oBattleObject_ExtraVars+4 (next-pointer? partner handle? damage-disable list link?)
+- why the caller never passes arguments and relies on r5 — whether this is a callback convention for this
+  object type
+- what the companion type-4 object spawned by the caller does with this field
+- 'The summary''s idea (clear self-link) matches: r1 = [r5, offset+4] is a pointer to an extra-vars struct,
+  r0 = *r1, cmp r0,r5, and on equality str 0 into [r1] (lines 2–7). However, the proposed name and summary
+  say ''stores 0 there [in the field]'', but the code writes through r1 (into the linked struct), not
+  into r5''s own field. The function clears the link field inside the pointed-to extra-vars struct when
+  it self-references r5, which fits ''clear a self-linked extra pointer'' more precisely.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2A58 -> battle_clearLinkedExtraSelfPtr
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2A58

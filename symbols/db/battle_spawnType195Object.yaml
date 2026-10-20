@@ -1,0 +1,67 @@
+name: battle_spawnType195Object
+address: '0x080DDA5A'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0xC3 (195) via object_spawnType3, then initializes its panel coords,
+  element, related-object link, alliance copy from the source object, damage value, and flag 0x10.
+interface: (r0 = panel X, r1 = panel Y, r2 = element; r1-r3 + stack also passed through as spawn args;
+  r5 = related/source battle object, r6 = damage value) -> r0 = spawned object (0 on failure); flags set
+  by object_spawnType3
+details: 'The function saves the caller''s r0-r2 (plus r5 for stack alignment), invokes object_spawnType3
+  with type 0xC3 (195) while passing the caller''s remaining arguments through, and on failure (Z set
+  from the spawn call) returns immediately. On success the caller''s saved arguments are popped back into
+  r1-r3 and stored into the new object: PanelX, PanelY and Element. The caller''s r5 object is linked
+  via oBattleObject_RelatedObject1Ptr, its AllianceAndDirectionFlip halfword is copied into the new object,
+  and caller''s r6 becomes DamageAndStaminaDamageCounterDisabler. Finally bit 0x10 is ORed into the new
+  object''s oObjectHeader_Flags. The ''mov r0,r5'' before the pop is odd — the stores use r0 as the new
+  object''s base, so r0 must hold the spawn result; either the spawn convention involves r5 or the listing
+  order is a decoding quirk worth re-checking.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xC3 + bl object_spawnType3: spawns battle object type 0xC3 with caller-passed args;
+    strb r1/r2,[r0,#oBattleObject_PanelX/PanelY]: new object is placed at caller-supplied panel coordinates;
+    str r5,[r0,#oBattleObject_RelatedObject1Ptr] and ldrh r3,[r5,#AllianceAndDirectionFlip]: links the
+    caller''s r5 object and copies its alliance/flip to the new object; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]:
+    caller''s r6 becomes the new object''s damage value; beq locret_80DDA80 after the spawn call: all
+    initialization stores are skipped when the spawn failed'
+  refs:
+  - bn6f/asm/asm31.s:82369
+  - 0x080BB8B0 sub_80BB8B0
+  - 0x080F1148 sub_80F1148
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DDA5A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code spawns type 0xC3 (195), copies PanelX/PanelY/Element from saved caller args, links r5 via
+    RelatedObject1Ptr, copies AllianceAndDirectionFlip from r5, sets DamageAndStaminaDamageCounterDisabler
+    from r6, and sets flag 0x10 — all as described. The `mov r0, r5` is just moving the saved r5 into
+    r0 because the pop restores r1-r3 (but also r5), so r0 holds the spawn result; the comment about convention
+    is correct. Name and summary are fine, but ''battle_spawnTypeC3Object'' is slightly inconsistent with
+    the ''object_spawnType3'' callee prefix; better to mirror it.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of oObjectHeader_Flags bit 0x10 set on the new object
+- What gameplay object type 0xC3 is (needs caller context or the type-3 spawn table)
+- Exact resolution of the mov r0,r5 / pop ordering — whether object_spawnType3 returns the object pointer
+  in r5 or the disassembly order is misleading
+- What sub_80BB8B0 and sub_80F1148 pass in r5/r6 to confirm the 'owner object + damage' interpretation
+- The code spawns type 0xC3 (195), copies PanelX/PanelY/Element from saved caller args, links r5 via RelatedObject1Ptr,
+  copies AllianceAndDirectionFlip from r5, sets DamageAndStaminaDamageCounterDisabler from r6, and sets
+  flag 0x10 — all as described. The `mov r0, r5` is just moving the saved r5 into r0 because the pop restores
+  r1-r3 (but also r5), so r0 holds the spawn result; the comment about convention is correct. Name and
+  summary are fine, but 'battle_spawnTypeC3Object' is slightly inconsistent with the 'object_spawnType3'
+  callee prefix; better to mirror it.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DDA5A -> battle_spawnType195Object
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDA5A

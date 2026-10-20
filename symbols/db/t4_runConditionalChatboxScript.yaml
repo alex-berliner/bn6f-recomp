@@ -1,0 +1,58 @@
+name: t4_runConditionalChatboxScript
+address: '0x081246D8'
+kind: function
+status: probable
+summary: Stores r0 into [r5,#0x10] and (in some branches) into chatbox+0x4C, then picks a chatbox script
+  (7, 0xB, or 0xD) from archive 201C100 based on the S2001c04 gamestate fields at offsets 0x28 and 0x1C,
+  updating [r5,#2]/[r5,#3] state bytes as it advances a small state machine.
+interface: (r0 = byte value (text param/speaker id), r5 = state struct, r10 = toolkit) -> void; runs a
+  chatbox script and updates [r5,#2]/[r5,#3] state bytes
+details: 'Saves r0 into the state struct at [r5,#0x10] and also writes it to chatbox+0x4C, likely a text-variable
+  or speaker slot used by the script. It then branches on the toolkit''s 2001C100-era gamestate struct:
+  if field 0x28 is nonzero it runs text script 0xB (alternate line, e.g. busy/already-progressed state);
+  otherwise, if field 0x1C is nonzero it sets state bytes [r5,#2]=0xC and [r5,#3]=0x10 and runs script
+  7 (the main dialogue that advances the state); if 0x1C is zero it runs script 0xD and falls through
+  to [r5,#2]=8. In all paths it calls chatbox_runScript201C100 with the chosen script index. The [r5,#2]/[r5,#3]
+  writes show r5 is a task/object state struct whose byte fields are a state machine (current state +
+  substate).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb r0,[r5,#0x10] then str r0,[r4+0x4C] into oToolkit_ChatboxPtr struct: parameter stored
+    as chatbox text slot; ldr r0,[r4,#0x28] / tst r0,r0 / bne picks script 0xB vs scripts 7/0xD: gamestate
+    field chooses dialogue branch; tst r1,r1 on field 0x1C splits script 7 (with state bytes 0xC/0x10)
+    from script 0xD; strb #0xC/[r5,#2] and strb #0x10/[r5,#3] vs strb #8/[r5,#2]: state machine bytes
+    advanced only in the script-7 path; all three paths tail into bl chatbox_runScript201C100_812474C
+    with r0 = 7, 0xB, or 0xD'
+  refs:
+  - bn6f/asm/asm33.s:2948
+  - 0x0812474C chatbox_runScript201C100_812474C
+  reproduce: python3 tools/asmcat.py 0x081246D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The 0x4C chatbox write and the [r5,#2]=0xC/[r5,#3]=0x10 writes only occur in the script-7 branch
+    (0x1C nonzero), not in the script-0xD branch which only sets [r5,#2]=8; the proposal overstates universality.
+    The gamestate struct comes from oToolkit_S2001c04_Ptr, not the 201C100 archive (that''s the script
+    source). No callers or NPC evidence exist, so ''ow''/''npc'' in the name is unjustified. A neutral
+    name better fits.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so what object/task r5 belongs to and what the state values 8/0xC/0x10 mean is unconfirmed
+- The meaning of gamestate fields 0x28 and 0x1C (flag vs counter vs quest progress) and of the byte written
+  to chatbox+0x4C is unknown
+- The 0x4C chatbox write and the [r5,#2]=0xC/[r5,#3]=0x10 writes only occur in the script-7 branch (0x1C
+  nonzero), not in the script-0xD branch which only sets [r5,#2]=8; the proposal overstates universality.
+  The gamestate struct comes from oToolkit_S2001c04_Ptr, not the 201C100 archive (that's the script source).
+  No callers or NPC evidence exist, so 'ow'/'npc' in the name is unjustified. A neutral name better fits.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81246D8 -> t4_runConditionalChatboxScript
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81246D8

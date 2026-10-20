@@ -1,0 +1,60 @@
+name: battle_spawn1A
+address: '0x080BC610'
+kind: function
+status: probable
+summary: Spawns battle object index 0x1A via object_spawnType1 and stores PanelX/PanelY, an object pointer
+  (from arg3) and zeroed damage counter, then sets header flags 0x14.
+interface: (r0 = panelX, r1 = panelY, r2 = related object ptr, r3 = z/extra, [sp] = params) -> r0 = new
+  BattleObject* or NULL
+details: Saves the incoming args, calls object_spawnType1 with object index 0x1A (the new object pointer
+  comes back in r5), then bails if spawning failed. It stores arg0 as oBattleObject_PanelX and arg1 as
+  oBattleObject_PanelY, and arg2 as oBattleObject_RelatedObject1Ptr, linking the new object to another
+  battle object. It zeroes oBattleObject_DamageAndStaminaDamageCounterDisabler, re-copies oBattleObject_AllianceAndDirectionFlip
+  from the fresh object, and sets oObjectHeader_Flags bits 0x04 and 0x10. The arg-to-field mapping (r0->PanelX
+  but spawn's x=r1) suggests object_spawnType1's positional args are reinterpreted by this object type's
+  own initialiser.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x1a; bl object_spawnType1 — spawns fixed battle object 0x1A; strb r1,[r0,#PanelX]/strb
+    r2,[r0,#PanelY]/str r3,[r0,#RelatedObject1Ptr] — panel coords + object link from saved args; str r1(0),[DamageAndStaminaDamageCounterDisabler]
+    and flags |= 0x14 finish the init; beq locret after mov r0,r5 — returns the spawn pointer in r5, NULL-checked
+  refs:
+  - bn6f/asm/asm31.s:9505
+  - 0x080E7CEC sub_80E7CEC
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BC610
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function spawns an object with index 0x1A and stores PanelX/PanelY from the original incoming
+    args (r0/r1), but object_spawnType1 is called with r0=#0x1A, so the actual x passed to the spawn is
+    r1, not r0. The summary''s note about re-interpretation is correct, but the proposed name ''battle_spawnObject1A_onPanel''
+    is fine yet could be tighter. The interface says r2 is ''related object ptr'' but the str at oBattleObject_RelatedObject1Ptr
+    is conditional on spawn success using r3, not the original r2 — actually it stores r3 (the preserved
+    original arg3) at RelatedObject1Ptr. Flag bits set are 0x04|0x10 = 0x14 via ''mov r2,#0x14; orr''.
+    Naming/prefix ''battle'' is appropriate but ''spawn'' prefix also fits the spawn-pref list.; run wf
+    investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what battle object 0x1A actually is (name/behaviour) — needs the type-1 initialiser or caller sub_80E7CEC
+  context
+- exact meaning of flags bits 0x04/0x10 and of the z/params arguments
+- The function spawns an object with index 0x1A and stores PanelX/PanelY from the original incoming args
+  (r0/r1), but object_spawnType1 is called with r0=#0x1A, so the actual x passed to the spawn is r1, not
+  r0. The summary's note about re-interpretation is correct, but the proposed name 'battle_spawnObject1A_onPanel'
+  is fine yet could be tighter. The interface says r2 is 'related object ptr' but the str at oBattleObject_RelatedObject1Ptr
+  is conditional on spawn success using r3, not the original r2 — actually it stores r3 (the preserved
+  original arg3) at RelatedObject1Ptr. Flag bits set are 0x04|0x10 = 0x14 via 'mov r2,#0x14; orr'. Naming/prefix
+  'battle' is appropriate but 'spawn' prefix also fits the spawn-pref list.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BC610 -> battle_spawn1A
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC610

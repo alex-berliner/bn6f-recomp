@@ -1,0 +1,60 @@
+name: battle_spawnLinkedType3
+address: '0x080D7ED4'
+kind: function
+status: probable
+summary: Spawns battle object id 0x95, copies PanelX/PanelY/Element from caller-saved args and Alliance
+  halfword from the source object (r5), links the new object to the source via RelatedObject1Ptr, and
+  stores the new object pointer at [r7] with r7 saved into ExtraVars.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = source battle object, stack/r5 = ?, r7 = owner/container
+  ptr) -> r0 = new object ptr or 0 on failure; flags Z from spawn
+details: Saves the caller's r0-r2 and r5, calls object_spawnType3 with object id 0x95, then early-returns
+  if the spawn failed. On success (new object pointer now in r0/r5), it writes the saved r0-r2 into oBattleObject_PanelX,
+  PanelY, and Element of the new object, copies the source object's oBattleObject_AllianceAndDirectionFlip
+  halfword from r5, and stores r5 into oBattleObject_RelatedObject1Ptr, tying the new object to the source.
+  It then writes the new object pointer to [r7] and r7 into oBattleObject_ExtraVars, linking it into a
+  caller-managed structure. r5 is both a spawn argument and the field-copy source, so the new object mirrors
+  the source's alignment while taking its own position/element from arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x95; bl object_spawnType3 — hardcodes spawned object id 0x95; pop {r1-r3,r5}; beq
+    locret — saved caller args become the field values; aborts if spawn failed; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    on the new object; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    — copies alignment and links to source object; str r0,[r7]; str r7,[r0,#oBattleObject_ExtraVars] —
+    registers new object with caller''s structure'
+  refs:
+  - bn6f/asm/asm31.s:69975
+  - 0x080EE748 sub_80EE748
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D7ED4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely, but the interface description has a significant error: the
+    proposal says r5 is both input and output, but the asm shows r5 is saved on the stack and popped at
+    `pop {r1-r3,r5}`, meaning the original r5 (source object ptr) becomes r5 again post-spawn while r0
+    holds the new object. Then `[r5]` reads from the original source object, and `str r0,[r7]; str r7,[r0,...]`
+    shows the new object goes into [r7] and r7 into ExtraVars of the new object. The summary''s field-copy
+    semantics are correct.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What object type 0x95 is in game terms (needs the type-3 initializer or more callers like sub_80EE748)
+- What structure r7 points to and what the [r7] = newPtr / ExtraVars = r7 pairing is used for
+- The exact spawn argument layout of object_spawnType3 to confirm the restored r0-r2 semantics
+- 'The code matches the proposal closely, but the interface description has a significant error: the proposal
+  says r5 is both input and output, but the asm shows r5 is saved on the stack and popped at `pop {r1-r3,r5}`,
+  meaning the original r5 (source object ptr) becomes r5 again post-spawn while r0 holds the new object.
+  Then `[r5]` reads from the original source object, and `str r0,[r7]; str r7,[r0,...]` shows the new
+  object goes into [r7] and r7 into ExtraVars of the new object. The summary''s field-copy semantics are
+  correct.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D7ED4 -> battle_spawnLinkedType3
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7ED4

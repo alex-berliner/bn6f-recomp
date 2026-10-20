@@ -1,0 +1,54 @@
+name: object_highlightBattlePanelByAlliance
+address: '0x081051CC'
+kind: function
+status: probable
+summary: Selects two color bytes from byte_2030204 indexed by the object's Alliance, then calls object_highlightPanelRegion
+  with the object's AllianceAndDirectionFlip halfword and constant 0xF.
+interface: (r5 = battle object) -> r0 = result of object_highlightPanelRegion; no other side effects
+details: Reads the object's Alliance byte, doubles it to index byte_2030204, and loads two consecutive
+  bytes (r0, r1) — a color/palette pair selected by which side (player/enemy) the object belongs to. It
+  then loads the halfword at oBattleObject_AllianceAndDirectionFlip (which packs the panel X/Y coordinates)
+  and passes a constant 0xF in r2 to object_highlightPanelRegion, which flashes/highlights that panel
+  with the chosen colors. r5 must already point to the calling object; nothing else is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r5,#oBattleObject_Alliance]; lsl #1 indexes byte_2030204 to pick two bytes by alliance;
+    ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] passes the object''s panel position to the callee;
+    mov r2,#0xf fixed argument (likely flash frames or color count) to object_highlightPanelRegion; sole
+    callee object_highlightPanelRegion takes panel coords + two color bytes, matching a panel flash effect'
+  refs:
+  - bn6f/asm/asm31.s:166649
+  - 0x08104832 sub_8104832
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x081051CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate but the summary says ''standing on'' and ''flashes/highlights that
+    panel'', whereas the code simply calls object_highlightPanelRegion with no indication of flashing
+    or ''standing on''. Also the interface claims r0 is returned from object_highlightPanelRegion, which
+    is correct, but says no other side effects — yet r5 itself is not preserved (push only saves lr),
+    and r0-r3 are clobbered as inputs. These are minor. The name and summary fit the basic flow.; run
+    wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the constant 0xF and of the two table bytes (colors vs. duration) depends on object_highlightPanelRegion's
+  signature
+- which caller sub_8104832 triggers this (e.g., an attack or panel-change effect) is unknown
+- The proposal is mostly accurate but the summary says 'standing on' and 'flashes/highlights that panel',
+  whereas the code simply calls object_highlightPanelRegion with no indication of flashing or 'standing
+  on'. Also the interface claims r0 is returned from object_highlightPanelRegion, which is correct, but
+  says no other side effects — yet r5 itself is not preserved (push only saves lr), and r0-r3 are clobbered
+  as inputs. These are minor. The name and summary fit the basic flow.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81051CC -> object_highlightBattlePanelByAlliance
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81051CC

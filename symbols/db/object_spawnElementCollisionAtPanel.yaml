@@ -1,0 +1,54 @@
+name: object_spawnElementCollisionAtPanel
+address: '0x080D29F4'
+kind: function
+status: probable
+summary: Spawns a collision region at the object's panel using its element via object_spawnCollisionRegion
+  with fixed shape/flag literals 0x605FF01 and 0x0.
+interface: (r5 = battle object) -> r0 = result of object_spawnCollisionRegion; no flags meaningful
+details: 'Reads oBattleObject_PanelX, oBattleObject_PanelY, and oBattleObject_Element from the object
+  pointer in r5, loads them into r0-r2, sets r3=0, and calls object_spawnCollisionRegion with two additional
+  stack arguments taken from literals: 0x605FF01 and 0x0. The 0x605FF01 constant (likely packed byte parameters
+  such as size/flags) and the zero are fixed, so every call from here uses identical region shape. r4,
+  r6, r7 are preserved only for the call. r5 must be set by the caller; the function itself has no other
+  state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0/[r5,#PanelX], r1/[PanelY], r2/[Element] feeds object_spawnCollisionRegion's first three
+    args; ldr r4, dword_80D2A0C (=0x605FF01) and r7=0 are the only non-object parameters, both constant;
+    sole callee object_spawnCollisionRegion (0x080C536A) indicates hitbox/collision spawning; single caller
+    sub_80D2714 at 0x080D2714 calls it with r5 presumably pointing at its own object
+  refs:
+  - bn6f/asm/asm31.s:58466
+  - 0x080D2714 sub_80D2714
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D29F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads PanelX, PanelY, Element from r5 and calls object_spawnCollisionRegion with r3=0 plus
+    two stack args 0x605FF01 and 0x0, matching the proposal. However, the panel coordinates are sourced
+    from the passed object, so ''current panel'' is correct, but the function does more than ''spawn at
+    panel'' — it also bakes in the object''s element. A tighter name reflects that it spawns a region
+    tied to both panel and element.; run wf investigate investigate-20261019-022109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the 0x605FF01 stack argument's byte fields (size, lifetime, hit flags of the collision
+  region)
+- Which object type(s) call this via sub_80D2714 and what the spawned region represents in gameplay
+- The code reads PanelX, PanelY, Element from r5 and calls object_spawnCollisionRegion with r3=0 plus
+  two stack args 0x605FF01 and 0x0, matching the proposal. However, the panel coordinates are sourced
+  from the passed object, so 'current panel' is correct, but the function does more than 'spawn at panel'
+  — it also bakes in the object's element. A tighter name reflects that it spawns a region tied to both
+  panel and element.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D29F4 -> object_spawnElementCollisionAtPanel
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D29F4

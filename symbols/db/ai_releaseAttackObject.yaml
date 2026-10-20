@@ -1,0 +1,58 @@
+name: ai_releaseAttackObject
+address: '0x080EFC8E'
+kind: function
+status: probable
+summary: 'AI attack helper: on first call seeds a 30-frame timer in oAIAttackVars; once it expires, it
+  nulls the battle object''s RelatedObject1Ptr and AIData''s TempAttackObjectPtr, then calls object_exitAttackState
+  to leave the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars; no args in r0-r3) -> r0 = 0 result of stores; no
+  return value, flags from bl object_exitAttackState
+details: Reads oAIAttackVars_AttackElement from the object's AI vars; if it is zero (attack not yet initialized),
+  stores 0x1E (30 frames) into oAIAttackVars_StepTimer and sets AttackElement to 4 so the init block runs
+  only once. Each call then decrements StepTimer; while the result is still >= 0 it returns immediately.
+  When the counter goes negative, it nulls oBattleObject_RelatedObject1Ptr in the battle object and oAIData_TempAttackObjectPtr
+  in its AIData, then calls object_exitAttackState to leave the attack state. The RelatedObject1/TempAttackObject
+  pointers presumably refer to a spawned attack object that is removed elsewhere; this function only releases
+  the references after a fixed delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst/bne around oAIAttackVars_AttackElement makes the timer=0x1E and element=4 stores a one-time
+    init; ldrh/sub/strh on oAIAttackVars_StepTimer with bge locret_80EFCB2 is a per-frame countdown; on
+    expiry it stores 0 to oBattleObject_RelatedObject1Ptr and [r1,#oAIData_TempAttackObjectPtr]; tail
+    call to object_exitAttackState confirms this runs inside an AI attack state routine
+  refs:
+  - bn6f/asm/asm31.s:121927
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EFC8E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches the proposal: at 0x080EFC8E ldrb r0,[r7,#oAIAttackVars_AttackElement] is tested;
+    on zero it stores 0x1E to StepTimer and sets AttackElement=4, then decrements and returns while bge
+    locret_80EFCB2; only on going negative does it null RelatedObject1Ptr, TempAttackObjectPtr, and bl
+    object_exitAttackState. The core semantics fit, but ''TimerCleanup'' understates that it actively
+    exits the attack state and releases attack-object pointers; ''ai_releaseAttackObject'' / ''ai_clearAttackObject''
+    better reflects that. Also no callers known, so the ''first run'' init behavior is reasonable but
+    speculative.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so which enemy/attack state invokes this is unclear
+- what object RelatedObject1Ptr/TempAttackObjectPtr point to (who frees or despawns it) is not shown
+- 'The asm matches the proposal: at 0x080EFC8E ldrb r0,[r7,#oAIAttackVars_AttackElement] is tested; on
+  zero it stores 0x1E to StepTimer and sets AttackElement=4, then decrements and returns while bge locret_80EFCB2;
+  only on going negative does it null RelatedObject1Ptr, TempAttackObjectPtr, and bl object_exitAttackState.
+  The core semantics fit, but ''TimerCleanup'' understates that it actively exits the attack state and
+  releases attack-object pointers; ''ai_releaseAttackObject'' / ''ai_clearAttackObject'' better reflects
+  that. Also no callers known, so the ''first run'' init behavior is reasonable but speculative.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EFC8E -> ai_releaseAttackObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFC8E

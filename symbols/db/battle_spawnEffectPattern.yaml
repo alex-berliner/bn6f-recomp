@@ -1,0 +1,61 @@
+name: battle_spawnEffectPattern
+address: '0x080CA19E'
+kind: function
+status: probable
+summary: Spawns one of four effect patterns (1-5 points) around a battle position, mirroring X by the
+  object's facing direction and selecting the pattern index in r7.
+interface: (r0 = base X, r1 = base Y, r2 = arg, r3 = arg, r7 = pattern index 0-3, r6 = passthrough) ->
+  r0 = result of sub_80CA0E2 for last point; r4/r6 preserved
+details: 'Clamps r7 to 0-3 and indexes two parallel tables: a word table (all entries 0x00200003, likely
+  a packed type/palette param) and a table of point lists. Each list is a series of 2-byte signed (dx,
+  dy) pairs terminated by 0x7F. For each point it computes x = dx * object_getFrontDirection() + baseX
+  (flipping the pattern horizontally per alliance/DirectionFlip) and y = dy + baseY, then calls sub_80CA0E2
+  with (x, y, arg2, arg3, 0x00200003, r6). The four patterns contain 1, 2, 3, and 5 points respectively
+  — e.g. (0,0), (0,0)(-1,0), (0,0)(-1,0)(0,-1), and a five-point plus shape — suggesting small crackle/spark
+  shapes of growing size.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r4, off_80CA1F0 / ldr r4,[r7,r4] and off_80CA1F4 table: two parallel per-index lookups
+    after clamping r7 to 3; ldrsb r0,[r7] then mul r0, frontDirection and add r0, [sp] : X offset is mirrored
+    by facing direction; loop terminator cmp r0,#0x7F with add r7,#2 : 2-byte signed point pairs ending
+    at 0x7F; byte_80CA218/21B/220/229 lists of 1,2,3,5 (dx,dy) points — growing spark-like shapes; calls
+    object_getFrontDirection, the battle facing helper, so the base object is a battle entity'
+  refs:
+  - bn6f/asm/asm31.s:39939
+  - 0x080ED470 sub_80ED470
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CA0E2 sub_80CA0E2
+  reproduce: python3 tools/asmcat.py 0x080CA19E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Patterns match: 1, 2, 3, 5 points with 0x7F terminator; r7 clamped to 0-3; sub_80CA0E2 takes (x,y,r2,r3,palette/type,r6).
+    However, the table at byte_80CA208 is not 32-bit words but 4×{0x03,0x00,0x20,0x00}, i.e. one shared
+    0x00200003 param per pattern (since ldr r4,[r7+r4] with r7<<=2 loads 4 bytes per entry), so summary
+    wording is fine but r6 is preserved/passed-through to sub_80CA0E2 as a 6th arg, not just preserved.
+    Pattern 4 (index 3) is a five-point asymmetric shape, not a ''+''. A tighter name reflecting effect-grid
+    spawning fits.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80CA0E2 does with (x, y, arg2, arg3, 0x00200003, r6) — spawn an effect object, draw a pixel,
+  or queue a sprite
+- meaning of the constant 0x00200003 (packed fields?)
+- what sub_80ED470 passes and which attack/effect this belongs to
+- 'Patterns match: 1, 2, 3, 5 points with 0x7F terminator; r7 clamped to 0-3; sub_80CA0E2 takes (x,y,r2,r3,palette/type,r6).
+  However, the table at byte_80CA208 is not 32-bit words but 4×{0x03,0x00,0x20,0x00}, i.e. one shared
+  0x00200003 param per pattern (since ldr r4,[r7+r4] with r7<<=2 loads 4 bytes per entry), so summary
+  wording is fine but r6 is preserved/passed-through to sub_80CA0E2 as a 6th arg, not just preserved.
+  Pattern 4 (index 3) is a five-point asymmetric shape, not a ''+''. A tighter name reflecting effect-grid
+  spawning fits.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CA19E -> battle_spawnEffectPattern
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA19E

@@ -1,0 +1,59 @@
+name: battle_actionPanelElementSpawnTick
+address: '0x080BA56C'
+kind: function
+status: probable
+summary: 'Per-frame action handler for a battle object: initializes CurPhase/CurAnim/Timer/Timer2 on first
+  call, then every ~12 frames calls battle_spawnPanelElementCollisionRegion (element-based collision region
+  over own panel) and spawn_effectAtObjectPanelWithRandomOffset (effect 0x21 near the panel) until Timer
+  (0x48) expires, at which point CurAction=0x18 and CurPhase is cleared.'
+interface: (r0 = unused/scratch, r5 = battle object pointer) -> r0 = 0; updates object CurPhase, CurAnim,
+  Timer, Timer2, CurAction
+details: Runs as a per-frame state handler using r5 as the battle object. On phase 0 it sets CurPhase=4,
+  CurAnim=0x10, Timer=0x48 (72 frames), Timer2=0. Afterwards it decrements Timer2; when it expires it
+  calls battle_spawnPanelElementCollisionRegion (element-based collision object over the object's own
+  panel) and spawn_effectAtObjectPanelWithRandomOffset (effect 0x21 near the panel), then reloads Timer2=0xc,
+  so a spawn happens every 12 frames. Meanwhile the main Timer counts down; on expiry it sets CurAction=0x18
+  and clears CurPhaseAndPhaseInitialized, handing control back to the object's action dispatcher.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc start: phase 0 sets CurPhase=4, CurAnim=0x10, Timer=0x48, Timer2=0; Timer2 expiry calls
+    battle_spawnPanelElementCollisionRegion then spawn_effectAtObjectPanelWithRandomOffset and reloads
+    Timer2=0xc; Timer expiry sets CurAction=0x18 and zeroes CurPhaseAndPhaseInitialized; callee summaries:
+    element collision region over own panel + effect 0x21 at random offset around panel'
+  refs:
+  - bn6f/asm/asm31.s:4865
+  - 0x080BA686 battle_spawnPanelElementCollisionRegion
+  - 0x080BA6B6 spawn_effectAtObjectPanelWithRandomOffset
+  reproduce: python3 tools/asmcat.py 0x080BA56C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: phase 0 init sets CurPhase=4, CurAnim=0x10, Timer=0x48, Timer2=0;
+    Timer2 is decremented and when <=0 calls battle_spawnPanelElementCollisionRegion then reloads Timer2=0xc,
+    then spawn_effectAtObjectPanelWithRandomOffset; on Timer expiry it sets CurAction=0x18 and clears
+    CurPhaseAndPhaseInitialized. However, the proposed name ''battle_panelElementEffectTick'' describes
+    the side effect (spawning effect 0x21) more than the function itself, which is a per-tick action/state
+    handler for an object whose payload is the element-panel spawn. A name reflecting the action-handler
+    role fits better.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which specific game object/attack uses this handler (callers unknown)
+- what element values battle_spawnPanelElementCollisionRegion accepts and which effect 0x21 is visually
+- 'The code matches the proposal well: phase 0 init sets CurPhase=4, CurAnim=0x10, Timer=0x48, Timer2=0;
+  Timer2 is decremented and when <=0 calls battle_spawnPanelElementCollisionRegion then reloads Timer2=0xc,
+  then spawn_effectAtObjectPanelWithRandomOffset; on Timer expiry it sets CurAction=0x18 and clears CurPhaseAndPhaseInitialized.
+  However, the proposed name ''battle_panelElementEffectTick'' describes the side effect (spawning effect
+  0x21) more than the function itself, which is a per-tick action/state handler for an object whose payload
+  is the element-panel spawn. A name reflecting the action-handler role fits better.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA56C -> battle_actionPanelElementSpawnTick
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA56C

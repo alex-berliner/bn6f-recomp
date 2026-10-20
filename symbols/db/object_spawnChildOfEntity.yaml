@@ -1,0 +1,62 @@
+name: object_spawnChildOfEntity
+address: '0x080E4D8A'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x3E linked to a parent entity, copying the parent's byte at +0x16
+  into the child and storing the parent pointer in child +0x4c; returns the parent entity pointer.
+interface: (r0 = unused/overwritten with type id 0x3E; r5 = parent/source entity, preserved by callee)
+  -> r0 = parent entity pointer on success (NULL-spawn path returns early); flags from object_spawnType4
+  (Z) decide whether the linkage fields are written
+details: 'Thin wrapper over object_spawnType4: it requests object type 0x3E (62) with the other spawn
+  parameters left in place from the caller, then if the spawn succeeded (Z clear from the callee''s failure
+  check) copies the byte at offset 0x16 of the parent (r5) into the new object''s +0x16 — likely a team/element
+  or similar per-entity byte — and stores the parent entity pointer into the child''s field +0x4c, linking
+  the child to its owner. r5 is only pushed/popped, never written, so the parent entity is entirely caller-supplied;
+  r0 is returned as that same parent pointer, not the new child. The child''s identity/behavior therefore
+  lives entirely in the type-4 initializer for 0x3E.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x3e; bl object_spawnType4 — fixed object type passed to the known spawn wrapper;
+    ldrb r1,[r5,#0x16]; strb r1,[r0,#0x16] — copies a byte field from the r5 entity into the spawned object;
+    str r5,[r0,#0x4c] — stores the r5 entity pointer into the new object, a parent/owner link; beq locret_80E4DA0
+    right after the call — skips the linkage on spawn failure, so r0 is the spawn wrapper''s success/NULL
+    path; push {r5}/pop {r5} with no write to r5 — the source entity is a caller-provided input, and it
+    is also returned in r0'
+  refs:
+  - bn6f/asm/asm31.s:98113
+  - 0x0801012C sub_801012C
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E4D8A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee is named object_spawnType4, but the wrapper requests type 0x3E, not type 4. The proposed
+    name and summary incorrectly tie it to ''type 4''. The code does mov r0, #0x3e before bl, then on
+    success copies parent''s byte at +0x16 to child +0x16 and stores parent ptr at child +0x4c, returning
+    r0=r5. The spawn prefix is more accurately ''object_spawnChildOfEntity'' but the summary should not
+    reference ''type 4'' for the object type.; run wf investigate investigate-20261019-015108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what battle object type 0x3E actually is (its initializer and in-game role) — the caller sub_801012C's
+  context or the type-4 initializer for 0x3E would show it
+- the exact meaning of byte +0x16 (team/element/parameter copied to the child)
+- whether field +0x4c is a generic parent pointer or something more specific
+- why the parent pointer in r5 is returned in r0 rather than the new child
+- 'The callee is named object_spawnType4, but the wrapper requests type 0x3E, not type 4. The proposed
+  name and summary incorrectly tie it to ''type 4''. The code does mov r0, #0x3e before bl, then on success
+  copies parent''s byte at +0x16 to child +0x16 and stores parent ptr at child +0x4c, returning r0=r5.
+  The spawn prefix is more accurately ''object_spawnChildOfEntity'' but the summary should not reference
+  ''type 4'' for the object type.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4D8A -> object_spawnChildOfEntity
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4D8A

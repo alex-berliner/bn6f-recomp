@@ -1,0 +1,58 @@
+name: battle_spawnObject45WithState
+address: '0x080C31F0'
+kind: function
+status: probable
+summary: Spawns battle object type 0x45, then writes PanelX, PanelY, Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler,
+  and ExtraVars from caller-provided registers, copies AllianceAndDirectionFlip from the related object,
+  and sets ExtraVars[0] to 1.
+interface: (r0 = params word, r1 = panelX, r2 = panelY, r3 = element; r5 = relatedObjectPtr, r6 = damageWord,
+  r7 = extraVarsPtr) -> r0 = BattleObject* or 0 on spawn failure
+details: 'A thin wrapper around object_spawnType1 for one fixed object id, 0x45. It pushes r0-r2 (which
+  serve as the fifth, stack-passed ''params'' argument to the spawner) and then loads r0 with 0x45 as
+  the object index. After the spawn, r0 is tested for null and all field initialisation is skipped on
+  failure. On success it stores the popped original r1/r2/r3 into PanelX/PanelY/Element and copies AllianceAndDirectionFlip
+  from the freshly created object''s own fields. Unusually, the caller must pre-load r5/r6/r7, which this
+  callee neither saves nor sets: they are stored verbatim into RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler,
+  and ExtraVars, and ExtraVars[0] is set to 1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x45 followed by bl object_spawnType1: fixed spawn of object id 0x45; push {r0-r2,r5}
+    before the call places the original r0-r2 on the stack as spawnType1''s params argument; strb r1/r2/r3
+    to oBattleObject_PanelX/PanelY/Element initialises position and element from arguments; str r5/r6/r7
+    to RelatedObject1Ptr/Damage/ExtraVars plus strb #1,[r7] copies caller-held state and sets a flag byte;
+    mov r0,r5 + beq locret: the pointer is checked and all field stores are skipped when spawn fails'
+  refs:
+  - bn6f/asm/asm31.s:24562
+  - 0x080E7F80 sub_80E7F80
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080C31F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are largely correct, but the summary says it copies AllianceAndDirectionFlip
+    from the ''freshly created object''s own fields,'' whereas the asm actually reads it from the related
+    object (r5), which was the caller''s r5. Also, r6 and r7 are indeed used directly from caller registers
+    without save/restore, and ExtraVars[0] is set to 1. The object id 0x45 is loaded as the spawner argument,
+    but the panel x/y are stored as bytes, and element as byte — this matches the summary.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle object id 0x45 actually is in BN6 Falzar (would give a meaningful name)
+- what caller 0x080E7F80 does and what it passes in r5/r6/r7
+- The name and summary are largely correct, but the summary says it copies AllianceAndDirectionFlip from
+  the 'freshly created object's own fields,' whereas the asm actually reads it from the related object
+  (r5), which was the caller's r5. Also, r6 and r7 are indeed used directly from caller registers without
+  save/restore, and ExtraVars[0] is set to 1. The object id 0x45 is loaded as the spawner argument, but
+  the panel x/y are stored as bytes, and element as byte — this matches the summary.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C31F0 -> battle_spawnObject45WithState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C31F0

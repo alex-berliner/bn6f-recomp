@@ -1,0 +1,63 @@
+name: battle_spawnObject59
+address: '0x080E70A6'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x59 via object_spawnType4, then configures its PanelX/PanelY/Element,
+  copies Alliance from a parent object, and stores DamageAndStaminaDamageCounterDisabler and ChipID.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3/r4 = extra spawn args, r5 = related/parent object,
+  r6 = damageAndStaminaDamageCounterDisabler value, r7 = chip ID) -> r0 = spawn result; flags from object_spawnType4's
+  success test (init stores skipped on failure)
+details: 'Saves the caller''s r0-r2, sets r0 = 0x59 and calls object_spawnType4, passing the caller''s
+  r1-r3 through as the remaining spawn arguments. If the spawn succeeded (flags from the callee''s zero
+  test), it writes the saved registers into the new oBattleObject: PanelX = old r0, PanelY = old r1, Element
+  = old r2. It stores the caller''s r5 as RelatedObject1Ptr, reads that parent''s oBattleObject_Alliance
+  and copies it into the new object''s Alliance, then stores caller r6 into DamageAndStaminaDamageCounterDisabler
+  and caller r7 into ChipID. On spawn failure it returns immediately without touching anything. This is
+  a specialized one-object spawn-and-configure helper for whoever owns r5-r7 setup.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x59 / bl object_spawnType4: hardcodes the spawned object kind and uses the known type-4
+    spawn wrapper; pop {r1-r3,r5} followed by strb r1/r2/r3 to PanelX/PanelY/Element: caller''s original
+    r0-r2 become the new object''s panel coords and element; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    + ldrb/strb of oBattleObject_Alliance: links the parent object and copies its alliance to the spawn;
+    str r6/r7 into DamageAndStaminaDamageCounterDisabler and ChipID: the remaining caller registers are
+    per-object config, not scratch; beq locret right after the spawn call: all field initialization is
+    skipped when the spawn failed'
+  refs:
+  - bn6f/asm/asm31.s:103265
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E70A6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary misstates the prologue: `push {r0-r2,r5}` saves the caller''s r0, r1, r2 AND r5, but
+    r5 is overwritten (mov r0,r5) before being popped, so only r1-r3 (panel X/Y/element) and r5 (parent)
+    are restored — the extra spawn args are r1-r3, not passed through to object_spawnType4 (which takes
+    r0=0x59 as type, then caller''s r1-r3 as remaining spawn args). The sequence and field writes (PanelX/Y,
+    Element, RelatedObject1Ptr, Alliance copy, DamageAndStaminaDamageCounterDisabler, ChipID) are correct,
+    and the proposed name fits.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object kind 0x59 actually is (its initializer/behavior) would identify the chip or attack
+  this helper serves
+- No known callers, so the meaning of r6 (disabler value) and r7 (chip ID) at the call site is unconfirmed
+- The mov r0,r5 before the pop makes the store base ambiguous versus the spawn's returned pointer; a caller
+  or the exact callee return convention would resolve it
+- 'The summary misstates the prologue: `push {r0-r2,r5}` saves the caller''s r0, r1, r2 AND r5, but r5
+  is overwritten (mov r0,r5) before being popped, so only r1-r3 (panel X/Y/element) and r5 (parent) are
+  restored — the extra spawn args are r1-r3, not passed through to object_spawnType4 (which takes r0=0x59
+  as type, then caller''s r1-r3 as remaining spawn args). The sequence and field writes (PanelX/Y, Element,
+  RelatedObject1Ptr, Alliance copy, DamageAndStaminaDamageCounterDisabler, ChipID) are correct, and the
+  proposed name fits.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E70A6 -> battle_spawnObject59
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E70A6

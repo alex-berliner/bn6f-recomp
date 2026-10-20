@@ -1,0 +1,75 @@
+name: battle_blinkOutPhase
+address: '0x080B82E0'
+kind: function
+status: probable
+summary: 'Per-frame object phase handler: on first call sets oObjectHeader_Flags bit 2 (invisible), loads
+  0x1F into oBattleObject_WobbleOrEffectTimer, zeros oBattleObject_Timer, plays sound 0x94, marks phase
+  initialized (4). On subsequent frames increments Timer and clears bit 2 on odd frames for a flicker,
+  counting WobbleOrEffectTimer down by 2; when it reaches ≤0 it re-sets bit 2, zeroes the timer, and writes
+  phase 4 to CurPhaseAndPhaseInitialized, ending the sequence.'
+interface: (r5 = battle object pointer) -> void; sets/clears oObjectHeader_Flags bit 2, advances object
+  phase
+details: This is a per-frame update routine for a battle object whose state pointer is in r5. On the first
+  run (PhaseInitialized == 0) it sets oObjectHeader_Flags bit 2 (apparently 'blink/invisible'), loads
+  the blink countdown WobbleOrEffectTimer with 0x1F, plays sound effect 0x94, zeroes oBattleObject_Timer,
+  and marks the phase initialized (sets phase byte to 4). On subsequent frames it increments Timer, toggling
+  flag bit 2 off on odd frames and back on via the periodic re-set, so the sprite flickers every other
+  frame. Meanwhile WobbleOrEffectTimer counts down by 2 per frame; once it reaches 0 the routine sets
+  flag bit 2 permanently, clears the timer, and writes phase 4 into the CurPhaseAndPhaseInitialized halfword,
+  ending the blink sequence. The blink duration is 0x1F/2 ≈ 16 frames. Likely a vanish/defeat or post-hit
+  flicker animation for an enemy or object entity.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init branch: PlaySoundEffect(0x94), WobbleOrEffectTimer=0x1F, Timer=0, phase=4 (asm near 80B8304);
+    flag bit 2 (oObjectHeader_Flags) is orr''d/bic''d around ''lsr r0,#1; bcc'', i.e. toggled every other
+    frame; WobbleOrEffectTimer decremented by 2 each frame; ''bgt'' keeps blinking until it hits 0; on
+    expiry: flag bit 2 set again and ''mov r0,#4; strh [r5,#CurPhaseAndPhaseInitialized]'' transitions
+    to the next phase'
+  refs:
+  - bn6f/asm/asm31.s:130
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080B82E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The first-run branch correctly sets bit 2, loads 0x1F into the timer, plays sound 0x94, zeros oBattleObject_Timer,
+    and sets phase-initialized to 4 (loc_80B82F2: mov r0, #4 / strb r0, [r5,#oBattleObject_PhaseInitialized]).
+    However, the per-frame branch at loc_80B8304 always re-sets bit 2 first (strb r0, [r5,#oObjectHeader_Flags]
+    after orr r0,r1) before the carry-check that clears it on odd Timer values via loc_80B831E, so the
+    flicker is correctly described. End condition at loc_80B8320 uses ''sub r0, #2; bgt locret_80B8336'',
+    meaning ~16 frames, then sets bit 2 again and writes 4 to oBattleObject_CurPhaseAndPhaseInitialized
+    — matching the proposal. The name ''battle_blinkOutPhase'' is misleading because the object becomes
+    permanently invisible (bit 2 set = invisible) after the flicker; better as ''phantomOwlishEclipsePhase''
+    no — ''phantomOwlishEclipse'' violates the prefix rules. Use ''object_blinkInPhase'' or ''battle_blinkInPhase''
+    (bit 2 is set permanently at end, so it is a blink-in then vanish/finish). Since 0x1F/2 ≈ 16 frames
+    and the routine sets invisible at end, ''battle_blinkOutPhase'' is actually appropriate but the summary
+    slightly misstates ''sets bit 2 permanently'' vs ''clears timer''; the summary is otherwise accurate.
+    Minor wording issue only.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sound 0x94 and the phase-4 successor handler are (would confirm vanish vs. hit-flicker)
+- which entity type uses this phase table (no callers known)
+- 'The first-run branch correctly sets bit 2, loads 0x1F into the timer, plays sound 0x94, zeros oBattleObject_Timer,
+  and sets phase-initialized to 4 (loc_80B82F2: mov r0, #4 / strb r0, [r5,#oBattleObject_PhaseInitialized]).
+  However, the per-frame branch at loc_80B8304 always re-sets bit 2 first (strb r0, [r5,#oObjectHeader_Flags]
+  after orr r0,r1) before the carry-check that clears it on odd Timer values via loc_80B831E, so the flicker
+  is correctly described. End condition at loc_80B8320 uses ''sub r0, #2; bgt locret_80B8336'', meaning
+  ~16 frames, then sets bit 2 again and writes 4 to oBattleObject_CurPhaseAndPhaseInitialized — matching
+  the proposal. The name ''battle_blinkOutPhase'' is misleading because the object becomes permanently
+  invisible (bit 2 set = invisible) after the flicker; better as ''phantomOwlishEclipsePhase'' no — ''phantomOwlishEclipse''
+  violates the prefix rules. Use ''object_blinkInPhase'' or ''battle_blinkInPhase'' (bit 2 is set permanently
+  at end, so it is a blink-in then vanish/finish). Since 0x1F/2 ≈ 16 frames and the routine sets invisible
+  at end, ''battle_blinkOutPhase'' is actually appropriate but the summary slightly misstates ''sets bit
+  2 permanently'' vs ''clears timer''; the summary is otherwise accurate. Minor wording issue only.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B82E0 -> battle_blinkOutPhase
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B82E0

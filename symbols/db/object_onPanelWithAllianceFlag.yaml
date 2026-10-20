@@ -1,0 +1,60 @@
+name: object_onPanelWithAllianceFlag
+address: '0x080DB864'
+kind: function
+status: probable
+summary: Returns 1 if the panel the battle object stands on has any panel-status bits matching the object's
+  alliance mask, else 0.
+interface: (r5 = battle object; r0/r1 taken from oBattleObject_PanelX/PanelY) -> r0 = 1 if panel flags
+  & allianceMask[Alliance] != 0, else 0
+details: 'Loads the object''s panel coordinates, calls object_getPanelParameters to fetch the tile''s
+  status flags word, then indexes byte_80DB888 by Alliance<<2 to get a 32-bit mask (alliance 0: 0x0, alliance
+  1: 0x00000580, alliance 2: 0x00000A80) and TSTs the flags against it. Alliance 0 objects therefore always
+  get 0. The masks are 0x80|0x100|0x400 and 0x80|0x200|0x800, suggesting overlapping panel-state bits
+  (e.g. hole/broken plus side-specific states). r5 must already point at the object on entry; the function
+  takes no real arguments.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getPanelParameters after loading oBattleObject_PanelX/PanelY shows it queries the
+    tile under the object; ldr r1,[r2,r1] with r1 = Alliance<<2 selects the per-alliance mask from byte_80DB888;
+    tst r0,r1 / beq / mov r4,#1 shows the return value is a boolean match test; byte_80DB888 table {0,
+    0x580, 0xA80} shows side-dependent flag sets, neutral alliance always fails; single caller sub_80DB75C
+    is itself undocumented, so no higher-level context is available
+  refs:
+  - bn6f/asm/asm31.s:77767
+  - 0x080DB75C sub_80DB75C
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080DB864
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it loads panel X/Y from the battle object at r5, calls
+    object_getPanelParameters, indexes a 4-byte mask table by Alliance<<2, and TSTs. The only nit is the
+    name ''battle_objectOnFlaggedPanelForAlliance'' is awkward; ''object_onPanelWithAllianceFlag'' or
+    similar would read better. The byte_80DB888 values are little-endian 32-bit: offset 0 = 0x00000000,
+    offset 4 = 0x05800000 (only bit 0x05800000), offset 8 = 0x0A800000 (only bit 0x0A800000), which differs
+    from the proposal''s stated values but the mechanism is the same.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of panel-flag bits 0x80/0x100/0x200/0x400/0x800 (depends on object_getPanelParameters's
+  flag definitions)
+- what sub_80DB75C does with the boolean result (e.g. whether this gates movement, hit detection, or an
+  AI behavior)
+- 'The code matches the proposal''s behavior: it loads panel X/Y from the battle object at r5, calls object_getPanelParameters,
+  indexes a 4-byte mask table by Alliance<<2, and TSTs. The only nit is the name ''battle_objectOnFlaggedPanelForAlliance''
+  is awkward; ''object_onPanelWithAllianceFlag'' or similar would read better. The byte_80DB888 values
+  are little-endian 32-bit: offset 0 = 0x00000000, offset 4 = 0x05800000 (only bit 0x05800000), offset
+  8 = 0x0A800000 (only bit 0x0A800000), which differs from the proposal''s stated values but the mechanism
+  is the same.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB864 -> object_onPanelWithAllianceFlag
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB864

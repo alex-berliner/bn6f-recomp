@@ -1,0 +1,62 @@
+name: camera_stepTowardsTarget
+address: '0x080A58F4'
+kind: function
+status: probable
+summary: Steps a camera struct's x ([r5+0xc]→[r5+0x24]) and y ([r5+0x10]→[r5+0x28]) toward their targets
+  by at most the given step, recomputing a derived z/screen value via checkZCoordModifiers_8031612 and
+  storing it at [r5+0x14] and [r5+0x20]; returns 1 if any coordinate moved, else 0.
+interface: (r0 = max step amount, r5 = camera/position struct from caller) -> r0 = 1 if any coordinate
+  changed this call, else 0
+details: 'For the pair current=[r5+0xc], target=[r5+0x24], it checks the distance; if the step r0 reaches
+  the target it sets current equal within one step (sign-aware: adds when target>current, subtracts otherwise)
+  and sets a ''moved'' byte at [r5+6]. The identical pattern runs for y: [r5+0x10] toward [r5+0x28]. If
+  y moved (or even when only x path fell through at loc_80A594E), it calls checkZCoordModifiers_8031612
+  with &r5+0xc and stores the halfword-extended result into both [r5+0x14] and [r5+0x20], keeping a derived
+  field in sync with the position. Returns the moved flag in r0. Note r5 is not an argument register here
+  — the caller must set r5 to the struct before the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80A58FA-80A591E: sign-aware approach of [r5+0xc] toward [r5+0x24] by r0, sets [r5+6]=1
+    on movement; loc_80A591E-80A594E: same approach pattern for [r5+0x10] toward [r5+0x28]; bl checkZCoordModifiers_8031612
+    with r5+0xc, result stored to [r5+0x14] and [r5+0x20]; return value is the moved flag (mov r0, r4),
+    typical of per-frame step functions polled by a caller'
+  refs:
+  - bn6f/asm/asm29.s:1502
+  - 0x080A58AC sub_80A58AC
+  - 0x08031612 checkZCoordModifiers_8031612
+  reproduce: python3 tools/asmcat.py 0x080A58F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: sign-aware step toward [r5+0x24] for [r5+0xc], then [r5+0x28]
+    for [r5+0x10], with checkZCoordModifiers_8031612 called on &r5+0xc and result lsl-extended into [r5+0x14]
+    and [r5+0x20], and moved flag returned in r0. However, it does NOT set a ''moved'' byte at [r5+6]
+    unconditionally — strb r4,[r5,#6] only runs when the corresponding coordinate is reached within step
+    (loc_80A591A / loc_80A593E fall-through); also r0 is set to #1 by mov r4,#1, not by setting a field.
+    Naming is fine but the summary''s ''reports whether anything moved'' and ''sets a moved byte'' phrasing
+    is slightly off; callee name suggests camera-screen/Z, so ''camera'' prefix fits.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Caller sub_80A58AC is itself unnamed; confirming it sets r5 to the camera struct and uses the return
+  flag would raise confidence
+- Exact meaning of the derived fields at +0x14/+0x20 depends on checkZCoordModifiers_8031612's semantics
+- 'The code matches the proposal''s behavior: sign-aware step toward [r5+0x24] for [r5+0xc], then [r5+0x28]
+  for [r5+0x10], with checkZCoordModifiers_8031612 called on &r5+0xc and result lsl-extended into [r5+0x14]
+  and [r5+0x20], and moved flag returned in r0. However, it does NOT set a ''moved'' byte at [r5+6] unconditionally
+  — strb r4,[r5,#6] only runs when the corresponding coordinate is reached within step (loc_80A591A /
+  loc_80A593E fall-through); also r0 is set to #1 by mov r4,#1, not by setting a field. Naming is fine
+  but the summary''s ''reports whether anything moved'' and ''sets a moved byte'' phrasing is slightly
+  off; callee name suggests camera-screen/Z, so ''camera'' prefix fits.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A58F4 -> camera_stepTowardsTarget
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A58F4

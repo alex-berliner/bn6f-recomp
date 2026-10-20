@@ -1,0 +1,54 @@
+name: rfu_countPlayersByStatus
+address: '0x0803F674'
+kind: function
+status: probable
+summary: Counts linked-battle players whose sub_8144D04 status is 1 (r0) or 2 (r1), iterating i=0..(eLinkState+0x48
+  bits 4:2)-1.
+interface: () -> r0 = count of players with status 1, r1 = count of players with status 2; flags from
+  final mov r1
+details: Reads eLinkState+0x48, masks bits 0x1C and shifts right by 2 to get the number of connected players
+  (a 3-bit player count field). Loops index 0..count-1, calling sub_8144D04(i) which returns a per-player
+  value of 1 or 2, tallying status 1 in r4 and status 2 in r5. Returns the two tallies in r0/r1; indices
+  with other return values are ignored. Reads no other state, so its meaning depends entirely on the unknown
+  callee.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r7, off_803F6AC / ldr r0,[r7,#0x48]; and 0x1C; lsr #2 extracts a player count from eLinkState;
+    loop calls sub_8144D04(i) and branches on cmp r0,#2 / cmp r0,#1 to tally r5 or r4; returns r0=r4,
+    r1=r5 with no other side effects (pop {r4-r7,pc}); eLinkState base indicates this runs in the link
+    multiplayer subsystem'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13709
+  - 0x08120B54 sub_8120B54
+  - 0x0812A8EC sub_812A8EC
+  - 0x08144D04 sub_8144D04
+  reproduce: python3 tools/asmcat.py 0x0803F674
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code behavior matches the proposal: it reads eLinkState+0x48, masks 0x1C, LSR by 2 for player
+    count (r6), loops calling sub_8144D04 per index, tallying return==1 in r4 and return==2 in r5, returning
+    r4/r5 in r0/r1 (per `mov r0,r4`/`mov r1,r5`). However, the proposed name uses a `link` prefix not
+    in the allowed naming list; `rfu` is the standard prefix for link-battle state in this codebase.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_8144D04 is undocumented; knowing what statuses 1 and 2 mean (e.g. alive/defeated vs ready/waiting)
+  would pin down the name and purpose
+- the caller sub_8120B54's link-gated chip logic does not reveal how the two tallies are used
+- 'The code behavior matches the proposal: it reads eLinkState+0x48, masks 0x1C, LSR by 2 for player count
+  (r6), loops calling sub_8144D04 per index, tallying return==1 in r4 and return==2 in r5, returning r4/r5
+  in r0/r1 (per `mov r0,r4`/`mov r1,r5`). However, the proposed name uses a `link` prefix not in the allowed
+  naming list; `rfu` is the standard prefix for link-battle state in this codebase.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803F674 -> rfu_countPlayersByStatus
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F674

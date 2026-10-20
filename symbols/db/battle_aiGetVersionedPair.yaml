@@ -1,0 +1,62 @@
+name: battle_aiGetVersionedPair
+address: '0x080F7970'
+kind: function
+status: probable
+summary: Looks up two AI parameter halfwords via battle_aiGetVersionedTableEntry_800FE12 from one of three
+  8-byte table groups selected by r0 (0-2), and returns the second halfword packed into the high 16 bits
+  of r0 alongside the first.
+interface: (r0 = table-set index 0-2, r1 = battle object / version index, also used as halfword offset)
+  -> r0 = second table value << 16 | first table value
+details: r0*8 selects one of three 8-byte table groups at byte_80F79A4/AC/B4 (first group) and 80F79C8/D0/D8
+  (second group); r1 is added to the table pointer and also passed to battle_aiGetVersionedTableEntry_800FE12,
+  which reads a halfword indexed by the AI version and special-cases version 4 with a multiplier scale.
+  The first lookup yields values like 0x14/0x3C/0x6E (index 0/2) or 0x28/0x78/0xDC (index 1); the second
+  lookup always yields 0xA from its tables. The two halfwords are combined with lsl/orr into one word
+  returned in r0. The tables are halfword arrays (byte pairs 0x14,0x00 etc.). No flags are meaningfully
+  set by the return path. Without callers, the gameplay meaning of the values (e.g. timers, distances,
+  counts) is not established.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mul r0,#8 + add r0,r1 selects and offsets one of three 8-byte tables before each callee call;
+    two calls to battle_aiGetVersionedTableEntry_800FE12, whose summary says it reads a halfword indexed
+    by the battle object's AI version; lsl r0,#16 / orr r0,r6 packs the second lookup's result into the
+    high halfword of the first; second table group byte_80F79C8/D0/D8 contains only 0xA entries, so the
+    high halfword is constant except for version-4 scaling in the callee; no callers known; only the callee
+    summary constrains interpretation
+  refs:
+  - bn6f/asm/asm31.s:138198
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F7970
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal: two calls to battle_aiGetVersionedTableEntry_800FE12 with r1 set
+    to a table pointer offset by r0*8, then the second result is shifted left 16 and OR''d with the first
+    (lsl r0,r0,#0x10; orr r0,r6). However, r1 is the table base plus the r0*8 offset (a table-set selector),
+    not a ''battle object / version index'' — the version index lives inside the callee (battle_aiGetVersionedTableEntry
+    reads it from the battle object). So the interface summary is slightly off. The name and summary otherwise
+    fit; a clearer name is battle_aiGetVersionedPair.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the returned pair is used for (timers, movement, decision frequency?) — needs a caller
+- Whether r1 is a battle-object pointer or a raw AI-version/halfword index
+- What the three table-set indices (0-2) correspond to in game terms
+- 'The code confirms the proposal: two calls to battle_aiGetVersionedTableEntry_800FE12 with r1 set to
+  a table pointer offset by r0*8, then the second result is shifted left 16 and OR''d with the first (lsl
+  r0,r0,#0x10; orr r0,r6). However, r1 is the table base plus the r0*8 offset (a table-set selector),
+  not a ''battle object / version index'' — the version index lives inside the callee (battle_aiGetVersionedTableEntry
+  reads it from the battle object). So the interface summary is slightly off. The name and summary otherwise
+  fit; a clearer name is battle_aiGetVersionedPair.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F7970 -> battle_aiGetVersionedPair
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7970

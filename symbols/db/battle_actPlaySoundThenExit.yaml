@@ -1,0 +1,53 @@
+name: battle_actPlaySoundThenExit
+address: '0x080CC868'
+kind: function
+status: probable
+summary: 'Battle-object action step: on phase 0 play sound 0xB7 once and store Param2 into Timer; on subsequent
+  calls decrement Timer, and when it expires set CurAction=4 and zero CurPhaseAndPhaseInitialized to end
+  the action.'
+interface: (r5 = battle object) -> void; updates oBattleObject_CurPhase, oBattleObject_Timer, oBattleObject_CurAction
+details: On phase 0 it stores 4 into oBattleObject_CurPhase, plays sound effect 0xB7 via PlaySoundEffect,
+  and copies oBattleObject_Param2 into oBattleObject_Timer as a frame countdown. On subsequent calls it
+  decrements oBattleObject_Timer until it goes below zero. When the timer expires it sets oBattleObject_CurAction
+  to 4 and zeroes oBattleObject_CurPhaseAndPhaseInitialized, returning control to the object's action
+  scheduler. The 4 written to CurPhase mid-step and the shared phase/action fields indicate this is one
+  step of a scripted action sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; tst; bne — phase-0-only setup block typical of action
+    steps; bl PlaySoundEffect with r0=0xB7 only in the phase-0 branch; ldrb r0,[r5,#oBattleObject_Param2];
+    strh r0,[r5,#oBattleObject_Timer] — timer seeded from a per-instance parameter; sub r0,#1; bge loop
+    on oBattleObject_Timer — frame countdown until expiry; mov r0,#4; strb r0,[r5,#oBattleObject_CurAction]
+    — ends the action with the standard 'done' code 4
+  refs:
+  - bn6f/asm/asm31.s:45147
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080CC868
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: phase 0 stores 4 to CurPhase, plays SFX 0xB7, copies Param2 into Timer; decrement
+    loop on later calls; on expiry writes 4 to CurAction and zeros CurPhaseAndPhaseInitialized (returning
+    control). The action return value 4 suggests this is a final/exit step, so a name reflecting ''end
+    this action after a delay'' fits better than ''actPlaySoundThenDelay''.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No known callers: which actors run this action script and what SFX 0xB7 means in context is unconfirmed'
+- Exact meaning of CurAction value 4 (end/done vs. hand-off) rests on the project's field interpretation
+- 'The code matches: phase 0 stores 4 to CurPhase, plays SFX 0xB7, copies Param2 into Timer; decrement
+  loop on later calls; on expiry writes 4 to CurAction and zeros CurPhaseAndPhaseInitialized (returning
+  control). The action return value 4 suggests this is a final/exit step, so a name reflecting ''end this
+  action after a delay'' fits better than ''actPlaySoundThenDelay''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CC868 -> battle_actPlaySoundThenExit
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC868

@@ -1,0 +1,52 @@
+name: spawn_object4F
+address: '0x080E62F4'
+kind: function
+status: probable
+summary: Spawns battle object type 0x4F, then stores the caller's r0-r2 as bytes at +0x12/+0x13/+0x0E,
+  r5 as a word at +0x4C, a byte from r5+0x16 at +0x16, and r6/r7 at +0x2C/+0x30.
+interface: (r0 = byte -> obj+0x12, r1 = byte -> obj+0x13, r2 = byte -> obj+0x0E, r3/r5-r7 = misc init
+  values) -> r0 = spawned object ptr or 0 on failure
+details: Wrapper around object_spawnType4 with the object type fixed to 0x4F. The saved arguments are
+  restored after the call (push {r0-r2,r5} / pop {r1-r3,r5}), so r1-r3 become the caller's original r0-r2
+  and are stored into the new object at +0x12, +0x13 (bytes), +0x0E (byte), and the caller's r5 at +0x4C
+  (word). It also copies byte +0x16 from the caller's r5 struct into the object's +0x16 and stores r6/r7
+  into +0x2C/+0x30. The beq after the spawn skips all initialization when the spawn returned NULL.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x4f; bl object_spawnType4 — spawns battle object type 0x4F; pop {r1-r3,r5} after
+    the call maps saved args back to r1-r3 for the field stores; strb r1,[r0,#0x12]; strb r2,[r0,#0x13];
+    strb r3,[r0,#0xe]; str r5,[r0,#0x4c] — parameter copies into the new object; ldrb r1,[r5,#0x16]; strb
+    r1,[r0,#0x16] — copies a byte from caller''s struct into the object; beq locret_80E6314 — skips init
+    when spawn failed (r0 == NULL)'
+  refs:
+  - bn6f/asm/asm31.s:101380
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E62F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly fixes the object type to 0x4F and copies saved r0-r2 from the caller''s stack into
+    the new object''s +0x12, +0x13, +0x0E, plus r5 into +0x4C, byte from r5+0x16 into +0x16, and r6/r7
+    into +0x2C/+0x30. The summary''s ''+0x4C word'' and ''r5 struct'' wording is slightly misleading since
+    r5 is a raw register copy, not a struct copy; otherwise it matches. A clearer name reflecting object
+    0x4F is preferable.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of fields 0x12/0x13/0x0E/0x4C/0x2C/0x30 and what battle object type
+  0x4F is remain unidentified
+- The assembly fixes the object type to 0x4F and copies saved r0-r2 from the caller's stack into the new
+  object's +0x12, +0x13, +0x0E, plus r5 into +0x4C, byte from r5+0x16 into +0x16, and r6/r7 into +0x2C/+0x30.
+  The summary's '+0x4C word' and 'r5 struct' wording is slightly misleading since r5 is a raw register
+  copy, not a struct copy; otherwise it matches. A clearer name reflecting object 0x4F is preferable.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E62F4 -> spawn_object4F
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E62F4

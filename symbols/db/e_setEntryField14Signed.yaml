@@ -1,0 +1,64 @@
+name: e_setEntryField14Signed
+address: '0x0811D69C'
+kind: function
+status: probable
+summary: Stores a signed halfword at entry[r1]->field14 of the 0x58-byte struct array at 2008450, negating
+  the magnitude for any nonzero index. No-op if the entry is free.
+interface: (r0 = magnitude value, r1 = entry index into eStructArr2008450) -> r0 clobbered by BIOS Div;
+  writes struct->field14 halfword; no meaningful return value
+details: 'r1 is passed to getStructFrom2008450, which returns the entry pointer in r1 and its in-use byte
+  with NZ flags; if the entry is free the function returns without writing. Otherwise the value in r0
+  is multiplied by 100 (0x32<<1) and run through SWI 6 (BIOS Div, divisor still 100), which nets out to
+  the original value, likely a compiler artifact of a (x*100)/100 expression. Then r6, which holds the
+  original index argument, is tested: for index 0 the value is stored as-is, for any nonzero index it
+  is negated via multiply by 0xFFFFFFFF before being stored as a halfword at entry+0x14. So entries 1+
+  receive the mirrored/negative of the magnitude given to entry 0, suggesting paired opposing-side values
+  (e.g. left/right offsets or velocities) set from one call per magnitude.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getStructFrom2008450 with r1=index; beq exits when the entry''s in-use byte is zero, so
+    the write only hits live entries; mov r1,#0x32; lsl r1,#1; mul r0,r1 then svc 6 with r1 still 100:
+    value*100/100 = value (BIOS Div idiom); r6 saved from the index argument before the call; tst r6,rsb-free
+    beq skips the mul by dword_811D6C8 (=0xFFFFFFFF), negating only for nonzero indices; strh r0,[r5,#0x14]
+    writes a halfword into the 0x58-byte entry at offset 0x14 returned by getStructFrom2008450'
+  refs:
+  - bn6f/asm/asm32.s:31885
+  - 0x08038C78 sub_8038C78
+  - 0x08038CF4 sub_8038CF4
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x0811D69C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match: getStructFrom2008450 returns NZ if entry is free (beq loc_811D6C2
+    returns), r0 is multiplied by 100 then SWI 6 divides by r1=100 (net zero effect), and entries with
+    nonzero index negate via *0xFFFFFFFF before strh at [r5,#0x14]. However, the proposed name ''e_setEntryField14Signed''
+    is fine but the rationale ''mirrored/negative of magnitude given to entry 0, suggesting paired opposing-side
+    values'' overreaches — the caller passes a per-entry magnitude, not a shared one, so index 0 just
+    means ''no negation''. The summary should reflect that sign is flipped for nonzero indices.; run wf
+    investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What gameplay meaning field 0x14 of the 0x58-byte eStructArr2008450 entries has (velocity, position
+  offset, timer?) — sub_8038C78/sub_8038CF4 are themselves undocumented and would need to show how field14
+  is read
+- Why the magnitude is negated for all indices except 0 (paired opposing entities vs. a sign flag encoded
+  in the index)
+- 'The proposal''s mechanics match: getStructFrom2008450 returns NZ if entry is free (beq loc_811D6C2
+  returns), r0 is multiplied by 100 then SWI 6 divides by r1=100 (net zero effect), and entries with nonzero
+  index negate via *0xFFFFFFFF before strh at [r5,#0x14]. However, the proposed name ''e_setEntryField14Signed''
+  is fine but the rationale ''mirrored/negative of magnitude given to entry 0, suggesting paired opposing-side
+  values'' overreaches — the caller passes a per-entry magnitude, not a shared one, so index 0 just means
+  ''no negation''. The summary should reflect that sign is flipped for nonzero indices.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811D69C -> e_setEntryField14Signed
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D69C

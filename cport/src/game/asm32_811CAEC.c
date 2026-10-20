@@ -2701,9 +2701,9 @@ static inline call_notZero_eByte200AD04_result call_notZero_eByte200AD04(void) {
 }
 
 typedef struct { u32 r0, r4, r5, r6; } call_sub_803F674_result;
-/* register form: generated wrapper: sub_803F674 has no typed C interface yet */
+/* register form: generated wrapper: rfu_countPlayersByStatus has no typed C interface yet */
 static inline call_sub_803F674_result call_sub_803F674(void) {
-    GUEST_CALL(sub_803F674);
+    GUEST_CALL(rfu_countPlayersByStatus);
     return (call_sub_803F674_result){ R0, R4, R5, R6 };
 }
 
@@ -2756,7 +2756,7 @@ static style_result_t compute_style_override(u32 chip_value, u32 in_r3) {
         return res;
     }
 
-    /* Battle phase: sub_803F674 returns state >= 2 means late battle. */
+    /* Battle phase: rfu_countPlayersByStatus returns state >= 2 means late battle. */
     call_sub_803F674_result state_res = call_sub_803F674();
     if ((s32)state_res.r0 >= 2) {
         /* Check battle-effects flag bit 3 (effect active). */

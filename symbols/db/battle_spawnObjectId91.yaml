@@ -1,0 +1,57 @@
+name: battle_spawnObjectId91
+address: '0x080D73D6'
+kind: function
+status: probable
+summary: Spawns the fixed battle object id 0x91 via object_spawnType3, then copies panel X, panel Y, element
+  from caller's saved r0-r2, alliance from the source object in r5, and damage from r6 into the new object,
+  ORing 0x10 into oObjectHeader_Flags.
+interface: (r0 = panel X, r1 = panel Y, r2 = element; r5 = source object whose AllianceAndDirectionFlip
+  is copied, r6 = damage value) -> r0 = spawned object or 0 on failure; flags set by callee's result.
+details: 'It saves the caller''s r0-r2 (and relies on caller-supplied r5/r6), calls object_spawnType3
+  with id 0x91, and aborts if the spawn returned null (beq on the callee''s flags). On success r0 holds
+  the new object, and it stores PanelX, PanelY and Element from the original arguments, copies the 16-bit
+  AllianceAndDirectionFlip field from the object in r5, and writes r6 into DamageAndStaminaDamageCounterDisabler.
+  Finally it ORs 0x10 into oObjectHeader_Flags, presumably marking the object with some special behavior
+  (e.g. no counter/damage tracking). Quirks: the push/pop trick shifts r0-r2 into r1-r3 so the argument
+  values survive the spawn call, and r6 is used without being saved.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x91 before bl object_spawnType3: spawns battle object id 0x91; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    right after the pop of the saved caller args; ldrh r1,[r5,#AllianceAndDirectionFlip] + strh to the
+    new object copies faction/direction from a source object; str r6 to oBattleObject_DamageAndStaminaDamageCounterDisabler
+    then orr 0x10 into oObjectHeader_Flags; beq locret after the spawn call skips all initialization when
+    spawning failed'
+  refs:
+  - bn6f/asm/asm31.s:68504
+  - 0x080C314E sub_80C314E
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D73D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claim that r6 is ''the damage value'' is correct (it''s written to oBattleObject_DamageAndStaminaDamageCounterDisabler),
+    but the push/pop quirk is slightly off: it pushes r0-r2 and r5, then after the spawn does `mov r0,
+    r5` so the popped values (r1-r3) align with the saved panel X/Y/element. The name ''battle_spawnObjectWithProps''
+    is acceptable but a more specific name reflecting the fixed object id 0x91 would be clearer, e.g.
+    battle_spawnObjectId91.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object id 0x91 is and what header flag 0x10 means
+- What the caller sub_80C314E passes in r5/r6 (which source object and which damage value) and in what
+  gameplay context this runs
+- 'The summary''s claim that r6 is ''the damage value'' is correct (it''s written to oBattleObject_DamageAndStaminaDamageCounterDisabler),
+  but the push/pop quirk is slightly off: it pushes r0-r2 and r5, then after the spawn does `mov r0, r5`
+  so the popped values (r1-r3) align with the saved panel X/Y/element. The name ''battle_spawnObjectWithProps''
+  is acceptable but a more specific name reflecting the fixed object id 0x91 would be clearer, e.g. battle_spawnObjectId91.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D73D6 -> battle_spawnObjectId91
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D73D6

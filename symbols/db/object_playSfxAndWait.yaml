@@ -1,0 +1,51 @@
+name: object_playSfxAndWait
+address: '0x080BF2FC'
+kind: function
+status: probable
+summary: Plays sound 0x94 once, decrements an oBattleObject Timer from 60, then sets CurAction=4 and CurPhaseAndPhaseInitialized=0.
+interface: (r5 = battle object, only fields read/written) -> r0 = 0 always; no flags used by caller pattern
+details: Uses r5 as a battle object struct with the known oBattleObject fields. On first run (PhaseInitialized
+  == 0) it plays sound effect 0x94, loads Timer with 0x3C (60 frames), and sets PhaseInitialized = 4 so
+  the init block is skipped afterwards. Every frame it decrements Timer; while it's still > 0 it just
+  returns. When the timer reaches 0 it sets CurAction = 4 and writes 0 to CurPhaseAndPhaseInitialized,
+  sending the object on to its next action/phase. This is the classic one-shot 'play sound, pause a second,
+  move on' phase seen in battle object scripts.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / tst / bne guards a one-time init block (asm
+    lines 2-4); init block: mov r0,#0x94; bl PlaySoundEffect — plays SFX 0x94 once; strh r0(=0x3C),[r5,#oBattleObject_Timer]
+    — 60-frame countdown; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh; bgt locret — per-frame wait
+    until timer expires; on expiry: strb 4 -> CurAction and strh 0 -> CurPhaseAndPhaseInitialized — advances
+    to action 4, re-arms phase init'
+  refs:
+  - bn6f/asm/asm31.s:15616
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080BF2FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s behavior matches the asm: init block branches via PhaseInitialized, plays 0x94, sets
+    Timer=0x3C, sets PhaseInitialized=4; timer decrements and returns while >0; on 0 sets CurAction=4
+    and CurPhaseAndPhaseInitialized=0. However the proposed name is overly verbose; the standard short
+    form is `object_playSfxAndWait`.; run wf investigate investigate-20261019-022109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What object/behavior this belongs to and what sound 0x94 is — no callers known, so the owning object
+  and the meaning of action 4 are unidentified
+- Whether PhaseInitialized value 4 (rather than 1) is meaningful or just the phase index being tracked
+- 'The summary''s behavior matches the asm: init block branches via PhaseInitialized, plays 0x94, sets
+  Timer=0x3C, sets PhaseInitialized=4; timer decrements and returns while >0; on 0 sets CurAction=4 and
+  CurPhaseAndPhaseInitialized=0. However the proposed name is overly verbose; the standard short form
+  is `object_playSfxAndWait`.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BF2FC -> object_playSfxAndWait
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF2FC

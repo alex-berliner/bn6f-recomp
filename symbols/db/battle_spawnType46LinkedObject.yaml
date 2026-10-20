@@ -1,0 +1,67 @@
+name: battle_spawnType46LinkedObject
+address: '0x080E5A64'
+kind: function
+status: probable
+summary: Spawns a type-0x46 battle object via object_spawnType4; if r5 is non-NULL, copies its allegiance
+  and flip, stores r5 as related-object pointer, writes r6 to the damage/stamina counter-disabler field,
+  sets element to 1, and clears bit 0x10 of the header flags.
+interface: (r0 = 0x46 type id, r1-r4 pass through to spawn initializer; r5 = source battle object or NULL,
+  r6 = value for DamageAndStaminaDamageCounterDisabler) -> r0 = new object pointer or passthrough of r5;
+  flags from the beq test
+details: 'The routine is a thin wrapper over object_spawnType4: it only sets r0 to 0x46 and lets the other
+  spawn arguments (which must already be in r1-r4 from the caller) pass through unchanged. If the caller
+  had a non-NULL object pointer in r5, it copies oBattleObject_AllianceAndDirectionFlip and stores r5
+  in the new object''s oBattleObject_RelatedObject1Ptr, linking the spawn to its source; it also writes
+  r6 into the damage/stamina-counter-disabler field. It sets oBattleObject_Element to 1 (element constant
+  1, exact meaning unverified) and clears bit 0x10 of oObjectHeader_Flags on the new object, likely a
+  default ''flag set by initializer'' being undone. If r5 was NULL, the new object is returned untouched
+  and no fields are copied. Note the odd pop {r5} right after the spawn: r5 was pushed but never reloaded,
+  so the returned r0 is the spawn result only when the beq path falls through.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x46 immediately before bl object_spawnType4: the spawned type id is 0x46; ldrh/strh
+    on oBattleObject_AllianceAndDirectionFlip between r5 and the new object copies allegiance/flip; str
+    r5,[r0,#oBattleObject_RelatedObject1Ptr] links the new object back to the caller''s object; mov r1,#1;
+    strb r1,[r0,#oBattleObject_Element] sets element field to 1; bic r1,#0x10 on oObjectHeader_Flags clears
+    bit 0x10 on the freshly spawned object'
+  refs:
+  - bn6f/asm/asm31.s:100151
+  - 0x080F00B0 sub_80F00B0
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E5A64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mischaracterizes the pop+beq trick: the pop restores r5 from the stack BEFORE the beq,
+    so when the beq is taken (likely from object_spawnType4 returning a pointer and the subsequent move
+    making Z flag reflect something), r0 holds r5 (the source pointer, not the spawn), contradicting the
+    note. Also the summary says ''damage/stamina-counter-disabler'' is copied only when r5 is non-NULL,
+    but the code stores r6 unconditionally into the new object — and the interface phrasing implies r6
+    is only for the non-NULL case, which is misleading. The core behavior (spawn type 0x46, copy allegiance,
+    link r5, set element 1, clear flag 0x10) is correct.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What type 0x46 represents in-game (its initializer and behavior) is not shown here
+- What element constant 1 means for this object kind (heat/other) needs the element enum
+- What r6 (DamageAndStaminaDamageCounterDisabler) receives in the caller sub_80F00B0 and why
+- What header flag bit 0x10 means and why it must be cleared right after spawn
+- 'The summary mischaracterizes the pop+beq trick: the pop restores r5 from the stack BEFORE the beq,
+  so when the beq is taken (likely from object_spawnType4 returning a pointer and the subsequent move
+  making Z flag reflect something), r0 holds r5 (the source pointer, not the spawn), contradicting the
+  note. Also the summary says ''damage/stamina-counter-disabler'' is copied only when r5 is non-NULL,
+  but the code stores r6 unconditionally into the new object — and the interface phrasing implies r6 is
+  only for the non-NULL case, which is misleading. The core behavior (spawn type 0x46, copy allegiance,
+  link r5, set element 1, clear flag 0x10) is correct.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E5A64 -> battle_spawnType46LinkedObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5A64

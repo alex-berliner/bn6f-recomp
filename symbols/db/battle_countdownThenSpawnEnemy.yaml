@@ -1,0 +1,63 @@
+name: battle_countdownThenSpawnEnemy
+address: '0x080BEB46'
+kind: function
+status: probable
+summary: 'Battle-object state handler: animates for 4 frames in anim 4, then clears oObjectHeader_Flags
+  bit 1 and advances CurPhaseAndPhaseInitialized to 0x10; if its ExtraVars pointer is non-null it zeros
+  its first byte, unpacks NameID via unpackVerActorTyAndAIIdx_800F29C, calls sub_8011044 with r2=1 to
+  spawn the referenced enemy, and sets the object to CUR_STATE_DESTROY.'
+interface: (r5 = battle object) -> void; sets object's CurState to CUR_STATE_DESTROY on completion
+details: On first entry (PhaseInitialized==0) it sets CurAnim=4, Timer=4 and marks the phase initialized,
+  so it runs for 4 frames. Each tick decrements Timer; while it is still positive the handler returns.
+  When the timer expires it clears bit 1 of oObjectHeader_Flags and writes 0x10 to CurPhaseAndPhaseInitialized
+  (advancing the object's phase machine). If oBattleObject_FuturePanelX is nonzero it just returns (the
+  object will be re-placed elsewhere); otherwise it clears the first byte of the ExtraVars buffer, unpacks
+  oBattleObject_NameID via unpackVerActorTyAndAIIdx_800F29C into {version, actor type, AI index}, calls
+  sub_8011044 (apparently spawning an enemy actor from that record), and sets the object's state to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb on oBattleObject_PhaseInitialized with mov r0,#4 to CurAnim/Timer: one-time 4-frame
+    countdown setup; ldrh Timer / sub r0,#1 / bgt locret: per-frame decrement, early return until timer
+    expires; bic of bit 2 in oObjectHeader_Flags and strh #0x10 to CurPhaseAndPhaseInitialized: state/phase
+    advance on timeout; tst FuturePanelX / bne locret: aborts the spawn path when a future panel position
+    was set; bl unpackVerActorTyAndAIIdx_800F29C then bl sub_8011044 then CUR_STATE_DESTROY: turns the
+    object into a spawned enemy and removes itself'
+  refs:
+  - bn6f/asm/asm31.s:14557
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BEB46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: 4-frame countdown in anim 4, clears flag bit 1, advances phase to 0x10, then
+    conditionally spawns via sub_8011044 and sets CUR_STATE_DESTROY. However, the gate is not oBattleObject_FuturePanelX
+    being nonzero — it''s testing the ExtraVars pointer itself (`ldr r1, [r5,#oBattleObject_ExtraVars];
+    tst r1, r1; beq loc_80BEB7E`). FuturePanelX is loaded after the flag clear, and a nonzero value just
+    returns without affecting anything destructive. Also, ExtraVars handling writes 0 to its first byte,
+    not ''clears the first byte of the ExtraVars buffer'' as a precondition.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_8011044 does exactly (r0/r1/r2 argument meaning, whether it spawns an enemy actor) — not shown
+  here
+- Which game object uses this state and what animation 4 depicts; no callers are known
+- Meaning of the byte cleared at ExtraVars and of the cleared flag bit 1 in ObjectHeader_Flags
+- 'The behavior matches: 4-frame countdown in anim 4, clears flag bit 1, advances phase to 0x10, then
+  conditionally spawns via sub_8011044 and sets CUR_STATE_DESTROY. However, the gate is not oBattleObject_FuturePanelX
+  being nonzero — it''s testing the ExtraVars pointer itself (`ldr r1, [r5,#oBattleObject_ExtraVars];
+  tst r1, r1; beq loc_80BEB7E`). FuturePanelX is loaded after the flag clear, and a nonzero value just
+  returns without affecting anything destructive. Also, ExtraVars handling writes 0 to its first byte,
+  not ''clears the first byte of the ExtraVars buffer'' as a precondition.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEB46 -> battle_countdownThenSpawnEnemy
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEB46

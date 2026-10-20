@@ -1,0 +1,56 @@
+name: battle_breakPanelExpireTick
+address: '0x080DC45E'
+kind: function
+status: probable
+summary: 'Per-frame tick for the break/panel-expire battle object: dispatches via its action handler table,
+  or marks it destroyed once battle_isBattleOver returns nonzero.'
+interface: (r0 unused, r5 = battle object) -> r0 = battle-over flag consumed; writes oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  no return value
+details: Calls battle_isBattleOver; if the battle is over it stores CUR_STATE_DESTROY into the object's
+  state/phase field at +CurStateActionPhaseAndPhaseInitialized, terminating the object. Otherwise it reads
+  the object's CurAction byte and uses it to index the handler table at off_80DC480, calling the selected
+  handler with r5 still pointing at the object (mov lr, pc / bx r1 keeps the thumb return). The visible
+  table entry points to battle_breakPanelExpireUpdate, so this is the generic state-update driver shared
+  by battle objects, of which the break/panel-expire object is one instance.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver + tst/bne gates the whole function on battle-over state; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] destroys the object when battle
+    ends; ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 is a per-action dispatch through
+    off_80DC480; table entry off_80DC480 = battle_breakPanelExpireUpdate+1, an action handler for this
+    object type; mov lr, pc before bx r1 is the standard thumb tail-call-into-dispatch pattern returning
+    to locret
+  refs:
+  - bn6f/asm/asm31.s:79361
+  - 0x0800A18E battle_isBattleOver
+  reproduce: python3 tools/asmcat.py 0x080DC45E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (battle_isBattleOver gate, table dispatch on CurAction,
+    destroy on battle end), but the handler is battle_breakPanelExpireUpdate, meaning this is a per-frame
+    update specifically for the break/panel-expire object, not a generic battle-object driver. The off_80DC480
+    table holds only one entry, so calling it a shared driver is unsupported. The name battle_objectUpdate
+    overstates generality; a tighter name is battle_breakPanelExpireUpdateCall or similar.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- full extent of the handler table at off_80DC480 (which other object actions share this update) and what
+  r0/r1 arguments each handler expects
+- The code matches the proposal's mechanics (battle_isBattleOver gate, table dispatch on CurAction, destroy
+  on battle end), but the handler is battle_breakPanelExpireUpdate, meaning this is a per-frame update
+  specifically for the break/panel-expire object, not a generic battle-object driver. The off_80DC480
+  table holds only one entry, so calling it a shared driver is unsupported. The name battle_objectUpdate
+  overstates generality; a tighter name is battle_breakPanelExpireUpdateCall or similar.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DC45E -> battle_breakPanelExpireTick
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC45E

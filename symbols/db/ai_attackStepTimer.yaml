@@ -1,0 +1,56 @@
+name: ai_attackStepTimer
+address: '0x080F1BF4'
+kind: function
+status: probable
+summary: 'Per-frame step for an AI attack: on first call initializes AttackElement=4, CurAnim=7, StepTimer=20;
+  each call decrements StepTimer and when it reaches zero clears CurAnim and calls object_exitAttackState.'
+interface: (r0 = ? unused, r7 = AI attack vars block, r5 = battle object) -> r0 = clobbered; no meaningful
+  return
+details: Reads oAIAttackVars_AttackElement from the r7 AI-attack struct; if it is zero the attack hasn't
+  started, so it stores element 4, sets oBattleObject_CurAnim (r5) to 7, and initializes oAIAttackVars_StepTimer
+  to 0x14 (20 frames). On subsequent frames it decrements StepTimer each call and returns while it's still
+  positive. When the timer hits zero it stores 0 back into AttackElement... wait, it clears oBattleObject_CurAnim
+  to 0 and tail-calls object_exitAttackState to leave the attack state. The element-4 value identifies
+  which attack this is, but no caller is known so the owning enemy is unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between arming and countdown paths;
+    stores element 4, anim 7 (oBattleObject_CurAnim) and timer 0x14 on first entry; decrements oAIAttackVars_StepTimer
+    and loops back while bgt holds; bl object_exitAttackState after resetting CurAnim to 0 confirms it
+    is an AI attack-state handler; only field writes touch oAIAttackVars_* (r7) and oBattleObject_CurAnim
+    (r5)
+  refs:
+  - bn6f/asm/asm31.s:126226
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F1BF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: first call sets AttackElement=4, CurAnim=7, StepTimer=0x14;
+    later calls decrement and on reaching zero clear CurAnim and tail-call object_exitAttackState. However
+    the summary''s ''telegraph phase'' interpretation is uncertain, and the proposed name ''ai_attackChargeStep''
+    implies charging which isn''t shown in the code. A more neutral name reflecting just the attack-step
+    timer is preferable.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack this handler belongs to (needs its caller in the AI dispatch table, which would also
+  confirm r5/r7 roles)
+- What element value 4 maps to and what happens after exitAttackState (the actual attack firing is elsewhere)
+- Whether the unused r0 input matters — the prologue read of it is overwritten immediately
+- 'The code matches the proposal''s behavior: first call sets AttackElement=4, CurAnim=7, StepTimer=0x14;
+  later calls decrement and on reaching zero clear CurAnim and tail-call object_exitAttackState. However
+  the summary''s ''telegraph phase'' interpretation is uncertain, and the proposed name ''ai_attackChargeStep''
+  implies charging which isn''t shown in the code. A more neutral name reflecting just the attack-step
+  timer is preferable.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F1BF4 -> ai_attackStepTimer
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1BF4

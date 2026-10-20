@@ -1,0 +1,54 @@
+name: battle_applyNaviStatsXYOffset
+address: '0x0801D6D8'
+kind: function
+status: probable
+summary: Adjusts an (x,y) coordinate pair by a per-entry offset selected from a small table using byte
+  0x16 of the battle NaviStats record.
+interface: (r0 = base X, r1 = base Y; r5 = battle-side struct whose +0x48 points at NaviStats) -> r0 =
+  X + 2*stat + tableX, r1 = Y + tableY; flags not meaningful
+details: Reads one byte (offset 0x29) of the NaviStats record via GetBattleNaviStatsByte, doubles it (so
+  it indexes 2-byte entries, valid range 0..6), and uses it to pick a pair of sign-extended bytes from
+  dword_801D700. The saved original r0/r1 are restored (push/pop around the call), then tableX (plus 2*stat)
+  is added to X and tableY to Y, returning the adjusted coordinates. All seven table entries have one
+  small (~-4..-12) and one large (~-55..-77) negative component, consistent with form- or navi-dependent
+  UI position deltas.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl GetBattleNaviStatsByte with r1=0x29 selects the indexed byte from the NaviStats record; add
+    r0,r0,r0 then add r3,r3,r0 makes the table 2-byte-entry indexed by that stat; ldrsb pairs at [r3]
+    and [r3,#1] from dword_801D700 provide signed dx/dy values; push {r0,r1}/pop {r0,r1} shows r0,r1 are
+    inputs preserved across the stats-byte call, returned modified
+  refs:
+  - bn6f/asm/asm00_2.s:30589
+  - 0x0801D65C sub_801D65C
+  - 0x080136CC GetBattleNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x0801D6D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads byte 0x16 of NaviStats (line `ldrb r0, [r0,#0x16]`), not 0x29; 0x29 is the *third
+    argument* (offset) passed to GetBattleNaviStatsByte. The proposal''s summary incorrectly says ''byte
+    0x29 of the battle NaviStats record'' is the index. The rest of the behavior (doubling, table lookup,
+    sign-extended byte additions to X and Y) is correct.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What field NaviStats+0x29 actually is (looks like a form/selected-cross index, 7 entries) — needs the
+  stats-struct layout or a caller with context
+- What sub_801D65C does with the returned coordinates (which on-screen element is being positioned)
+- The code reads byte 0x16 of NaviStats (line `ldrb r0, [r0,#0x16]`), not 0x29; 0x29 is the *third argument*
+  (offset) passed to GetBattleNaviStatsByte. The proposal's summary incorrectly says 'byte 0x29 of the
+  battle NaviStats record' is the index. The rest of the behavior (doubling, table lookup, sign-extended
+  byte additions to X and Y) is correct.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801D6D8 -> battle_applyNaviStatsXYOffset
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D6D8

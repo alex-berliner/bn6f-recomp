@@ -1,0 +1,64 @@
+name: battle_spawnChildObjectAtPanel
+address: '0x080BFCD0'
+kind: function
+status: probable
+summary: Spawns a type-0x25 battle object, stores the caller's panelX/panelY/element into it, records
+  the parent (r5) as RelatedObject1Ptr, copies AllianceAndDirectionFlip from the parent, sets flag 0x10,
+  and marks a tracking byte via r7 if non-NULL.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = spawn y/coord arg, r4 = spawn params, r5 = parent
+  BattleObject, r6 = damage/stamina fields word, r7 = extra-var pointer) -> r0 = spawned BattleObject
+  or NULL; flags from callee's null check
+details: 'Uses a push/pop shuffle: it saves entry r0-r2 and r5, loads r0=0x25 and calls object_spawnType1
+  with the still-live r1-r4, then pops the saved values back shifted one register so the original arguments
+  can be stored into the new object: orig r0->PanelX, orig r1->PanelY, orig r2->Element. It stores r6
+  into DamageAndStaminaDamageCounterDisabler, the original r5 into RelatedObject1Ptr, and r7 into ExtraVars+4;
+  if r7 is non-NULL it writes 1 to the byte it points at (marking the parent''s tracking slot as active).
+  It then reads AllianceAndDirectionFlip from the RelatedObject1Ptr object and copies it onto the new
+  object, so the spawned entity inherits its parent''s side/flip, and sets oObjectHeader_Flags |= 0x10
+  on the new object. If the spawn fails, the function just returns without touching anything.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x25 + bl object_spawnType1 spawns battle object id 0x25 with caller-passed r1-r4;
+    push {r0-r2,r5} / pop {r1-r3,r5} shifts saved args so strb r1/r2/r3 hit oBattleObject_PanelX/PanelY/Element;
+    str r5,[r0,#oBattleObject_RelatedObject1Ptr] links the spawned object to the object pointer passed
+    in r5; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip] + strh copies the linked object''s alliance/flip
+    onto the new object; orr with #0x10 into oObjectHeader_Flags only on the success path after beq locret_80BFD00'
+  refs:
+  - bn6f/asm/asm31.s:17073
+  - 0x080BF9CC sub_80BF9CC
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BFCD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate: it spawns type 0x25, stores PanelX/PanelY/Element from the saved
+    r0-r2 (which pop into r1-r3), stores r6 into DamageAndStaminaDamageCounterDisabler, r5 into RelatedObject1Ptr,
+    r7 into ExtraVars+4, and writes 1 to *r7 if non-NULL. It copies AllianceAndDirectionFlip from RelatedObject1Ptr
+    (r5 is the parent) and sets the 0x10 flag. However, the name ''battle_spawnLinkedObject'' is vague;
+    a more descriptive name like battle_spawnChildObjectAtPanel fits better, and the r5 register holds
+    the parent (RelatedObject1Ptr), not arbitrary spawn params.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object id 0x25 is in this game's spawn table (would pin down the exact effect/entity)
+- meaning of the 0x10 bit in oObjectHeader_Flags
+- what the byte written to *r7 tracks on the parent object
+- what caller sub_80BF9CC is and which in-game event reaches it
+- 'The summary is mostly accurate: it spawns type 0x25, stores PanelX/PanelY/Element from the saved r0-r2
+  (which pop into r1-r3), stores r6 into DamageAndStaminaDamageCounterDisabler, r5 into RelatedObject1Ptr,
+  r7 into ExtraVars+4, and writes 1 to *r7 if non-NULL. It copies AllianceAndDirectionFlip from RelatedObject1Ptr
+  (r5 is the parent) and sets the 0x10 flag. However, the name ''battle_spawnLinkedObject'' is vague;
+  a more descriptive name like battle_spawnChildObjectAtPanel fits better, and the r5 register holds the
+  parent (RelatedObject1Ptr), not arbitrary spawn params.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BFCD0 -> battle_spawnChildObjectAtPanel
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFCD0

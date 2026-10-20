@@ -1,0 +1,54 @@
+name: object_spawnAnimPhaseDispatch
+address: '0x080164A0'
+kind: function
+status: probable
+summary: Dispatches a battle object's spawn-animation step to one of three handlers chosen by its current
+  phase byte, via a tail call through the off_80164B4 table.
+interface: (r5 = battle object pointer, implicit) -> tail-jumps to phase handler; r0-r3 may be clobbered
+  by handler
+details: Loads the object's oBattleObject_CurPhase byte from [r5], indexes the 3-entry table at off_80164B4
+  to get a thumb handler pointer, sets lr=pc and bx to the handler so the handler's own return goes straight
+  back to this function's caller (tail call). Phase 0 -> sub_80164C0, phase 1 -> sub_8016520, phase 2
+  -> sub_801657E; no bounds check, so phases above 2 would jump through garbage. The alignment padding
+  (0,0) after pop {pc} confirms a compiled C-like dispatcher rather than a leaf helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0] selects handler by phase field; mov
+    lr,pc / bx r1 performs a tail-call into the selected thumb handler; off_80164B4 holds exactly three
+    thumb pointers: sub_80164C0+1, sub_8016520+1, sub_801657E+1; sole caller 0x08016380 (RunSpawnAnimationMaybe_8016380)
+    treats it as the object''s state update step'
+  refs:
+  - bn6f/asm/asm00_2.s:17166
+  - 0x08016380 RunSpawnAnimationMaybe_8016380
+  reproduce: python3 tools/asmcat.py 0x080164A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the dispatch mechanism (ldrb from oBattleObject_CurPhase, table
+    at off_80164B4, tail call via mov lr,pc; bx r1, with the +1 Thumb bit set). However, the ''per-frame
+    update'' framing is not established by the asm; this function is called from RunSpawnAnimationMaybe_8016380,
+    so it''s a spawn-animation phase dispatcher, not a generic per-frame update. A more accurate name
+    would emphasize spawn animation dispatch.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_80164C0/8016520/801657E do per phase (init/update/cleanup?) to confirm naming and the object's
+  state machine
+- what object type r5 points to beyond the oBattleObject_CurPhase field offset
+- The proposal correctly identifies the dispatch mechanism (ldrb from oBattleObject_CurPhase, table at
+  off_80164B4, tail call via mov lr,pc; bx r1, with the +1 Thumb bit set). However, the 'per-frame update'
+  framing is not established by the asm; this function is called from RunSpawnAnimationMaybe_8016380,
+  so it's a spawn-animation phase dispatcher, not a generic per-frame update. A more accurate name would
+  emphasize spawn animation dispatch.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80164A0 -> object_spawnAnimPhaseDispatch
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80164A0

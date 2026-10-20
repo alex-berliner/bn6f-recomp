@@ -1,0 +1,66 @@
+name: battle_spawnAndConfigure77
+address: '0x080D3DC4'
+kind: function
+status: probable
+summary: Spawns an object via object_spawnType3 with initializer 0x77, then writes the caller's panel/element/r6
+  damage/r7 extra-vars into the new object, copies the alliance-flip halfword from r5, links the object
+  two-way through the r3 handle slot, and sets flag 0x10.
+interface: (r0 = arg A (byte), r1 = arg B (byte), r2 = arg C (byte), r3 = handle slot ptr, r5 = related
+  object ptr, r6 = damage/stamina word, r7 = extra vars word) -> r0 = spawned object ptr or 0; Z from
+  spawn result
+details: 'Wrapper around object_spawnType3: it sets r0 = 0x77 while forwarding the entry r1-r3 as the
+  spawn''s remaining arguments. The push {r0-r2,r5} / pop {r1-r3,r5} idiom shifts the entry r0-r2 into
+  r1-r3 so r0 can carry the spawned object pointer. On success it writes the three byte args into oBattleObject_PanelX/PanelY/Element,
+  stores r5 in oBattleObject_RelatedObject1Ptr, r6 in the DamageAndStamina word, r7 in oBattleObject_ExtraVars,
+  and copies oBattleObject_AllianceAndDirectionFlip from the r5 object to the new one. It then restores
+  the original r3, stores it in oBattleObject_ExtraVars+4 and stores the object pointer back into *r3
+  — a two-way link so either side can find the other (typical parent-handle pattern). Finally it sets
+  bit 0x10 in oObjectHeader_Flags, likely marking the object as configured/active. On spawn failure it
+  just returns without touching anything.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x77 + bl object_spawnType3: spawns battle object type 0x77, forwarding entry r1-r3
+    as spawn args; push {r0-r2,r5} / pop {r1-r3,r5} shifts entry args down one register to free r0 for
+    the spawn result; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element fills the new object''s basic
+    fields from the args; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] + strh back: copies alliance/flip
+    from the r5 related object; pop {r3}; str r3,[ExtraVars+4]; str r0,[r3] plus flag 0x10 in oObjectHeader_Flags:
+    two-way object/handle link and activation flag'
+  refs:
+  - bn6f/asm/asm31.s:61271
+  - 0x080E6924 sub_80E6924
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D3DC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee is object_spawnType3, not a type 0x77 spawner — type 0x77 is the initializer ID passed
+    in r0, not the spawn type. The function is a post-spawn configurator that hand the spawned object
+    off to a type-3 initializer. A prefix like ''spawn'' fits since it spawns and configures; ''battle_spawnAndConfigure77''
+    is more accurate than ''battle_spawnType77WithArgs''. The rest of the interface (panel/element/related
+    object/extra vars/flag 0x10) matches the code correctly.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'The listed ''mov r0, r5'' after the bl is anomalous: if taken literally the field writes target the
+  caller''s r5 object instead of the spawned one, making the ldrh/strh of AllianceAndDirectionFlip a same-address
+  no-op; the raw instruction may be mov r5,r0 or the spawn result may be conveyed differently — checking
+  sub_80E6924''s surrounding code would settle which object receives the fields'
+- What battle object kind type 0x77 is and what its initializer does with r1-r3
+- Exact meaning of oObjectHeader_Flags bit 0x10
+- The callee is object_spawnType3, not a type 0x77 spawner — type 0x77 is the initializer ID passed in
+  r0, not the spawn type. The function is a post-spawn configurator that hand the spawned object off to
+  a type-3 initializer. A prefix like 'spawn' fits since it spawns and configures; 'battle_spawnAndConfigure77'
+  is more accurate than 'battle_spawnType77WithArgs'. The rest of the interface (panel/element/related
+  object/extra vars/flag 0x10) matches the code correctly.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D3DC4 -> battle_spawnAndConfigure77
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3DC4

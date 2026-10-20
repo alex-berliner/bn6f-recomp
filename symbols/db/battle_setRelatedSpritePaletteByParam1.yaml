@@ -1,0 +1,60 @@
+name: battle_setRelatedSpritePaletteByParam1
+address: '0x080E6BA6'
+kind: function
+status: probable
+summary: Iterates a 4-entry (Param1, palette) table at paletteByParam1_80E6BD4; on the first match with
+  r5's oBattleObject_Param1, calls sprite_setPalette with the paired palette byte on r5's oBattleObject_RelatedObject1Ptr,
+  otherwise returns.
+interface: (r0-r4 unused; r5 = battle object with Param1 and RelatedObject1Ptr) -> void; calls sprite_setPalette(palette)
+  on the related object
+details: Iterates over the four (Param1, palette) byte pairs at paletteByParam1_80E6BD4, comparing each
+  entry's first byte against r5's oBattleObject_Param1. On the first match it loads r5's oBattleObject_RelatedObject1Ptr
+  and calls sprite_setPalette with the table's palette byte, which stores the index at byte 4 of that
+  sprite struct, then returns immediately. If no entry matches Param1 (0-3 range implied by table), the
+  function does nothing. It relies on r5 being set by the caller and clobbers r0-r3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r5,#oBattleObject_Param1]; cmp r1,r2 — match key is the object''s Param1 (sub_80E6BA6
+    loop); ldr r5,[r5,#oBattleObject_RelatedObject1Ptr]; bl sprite_setPalette — palette applied to the
+    related sprite; paletteByParam1_80E6BD4: .byte 1,2 / 2,4 / 4,6 / 3,8 — four (Param1, palette) pairs;
+    callee sprite_setPalette stores r0 in byte 4 of the sprite struct, confirming the palette semantics;
+    loop caps at cmp r3,#3; ble — exactly four table entries are scanned'
+  refs:
+  - bn6f/asm/asm31.s:102783
+  - 0x080E6B36 sub_80E6B36
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x080E6BA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match the code well; r0 is used as scratch index, r5 holds the battle object,
+    and the function correctly reads Param1 and dispatches palette to the related sprite. However, the
+    proposed name `battle_setSpritePaletteByParam1` is fine but the table entries (1,2 / 2,4 / 4,6 / 3,8)
+    suggest these are color/layer pairings, not just param1→palette mapping; the function name could be
+    more specific. Also the interface comment says "r0-r4 unused" but r0 is actually used as the loop
+    index (set from r3 at `mov r0, r3`). A name like `battle_setRelatedSpritePaletteByParam1` is slightly
+    more precise.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Caller sub_80E6B36 is undocumented, so which enemy/objects use this palette-swap path and what Param1
+  values 1-4 represent in that context is unknown
+- Whether the related object pointed to by RelatedObject1Ptr is always a sprite struct (assumed from sprite_setPalette's
+  known behavior)
+- The summary and behavior match the code well; r0 is used as scratch index, r5 holds the battle object,
+  and the function correctly reads Param1 and dispatches palette to the related sprite. However, the proposed
+  name `battle_setSpritePaletteByParam1` is fine but the table entries (1,2 / 2,4 / 4,6 / 3,8) suggest
+  these are color/layer pairings, not just param1→palette mapping; the function name could be more specific.
+  Also the interface comment says "r0-r4 unused" but r0 is actually used as the loop index (set from r3
+  at `mov r0, r3`). A name like `battle_setRelatedSpritePaletteByParam1` is slightly more precise.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E6BA6 -> battle_setRelatedSpritePaletteByParam1
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6BA6

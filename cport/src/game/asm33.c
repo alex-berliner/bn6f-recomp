@@ -2113,7 +2113,7 @@ Next sub_81245D4(void) {
     case 0x80: case 0x81: GUEST_CALL(chatbox_textShowNextPage); break;
     case 0x82:            GUEST_CALL(npc_runBeastOutDialog); break;
     case 0x83:            GUEST_CALL(npc_showTextByStoryFlag); break;
-    case 0x84:            GUEST_CALL(sub_81246D8); break;
+    case 0x84:            GUEST_CALL(t4_runConditionalChatboxScript); break;
     case 0x85:            GUEST_CALL(npc_conditionalChat); break;
     }
 

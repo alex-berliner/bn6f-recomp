@@ -1,0 +1,69 @@
+name: battle_actTimedCollisionWait
+address: '0x080D0B54'
+kind: function
+status: probable
+summary: 'Battle-object action handler: on first call initializes CurPhase=4 with Timer=0x2E; while Timer>0
+  each tick checks the opposing-side collision mask from off_80D0BC0 (0x4000000/0x8000000) and, if hit,
+  clears its collision region and sets Param2; when Timer expires it reloads Timer from byte_80D0BCC[Param1*2]
+  (180/240/300/360) and sets CurAction=4 (was hit) or, if never hit, clears its collision region, zeros
+  ExtraVars[0] and transitions to CUR_STATE_DESTROY.'
+interface: (r5 = battle object) -> void; no arguments or return value
+details: 'Reads oBattleObject fields via r5 (no arguments; ''this'' in r5). On first entry (CurPhase 0)
+  it sets CurPhase=4 and Timer=0x2E. Each tick it decrements Timer and, while it is still running, checks
+  CollisionDataPtr->FlagsFromCollision against an alliance mask taken from off_80D0BC0 (0x4000000 for
+  alliance 0, 0x8000000 for alliance 1); if the object was touched by the opposing side it calls object_clearCollisionRegion
+  and sets Param2 (a ''was hit'' flag). When the timer expires: if Param2 was set, it reloads Timer from
+  a small duration table byte_80D0BCC indexed by Param1*2 (values 180/240/300/360), sets CurAction=4 and
+  clears the phase, i.e. it transitions to another behavior; if it was never hit, it clears its collision
+  region, zeroes ExtraVars[0] and sets its state to CUR_STATE_DESTROY. sub_80D0C5C is called once at entry
+  when Param2 is already set, likely replaying an effect; its role is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80D0B6E: decrements oBattleObject_Timer and branches when it hits 0, so this is a timed
+    state; loc_80D0B90 off_80D0BC0: FlagsFromCollision is masked with 0x4000000/0x8000000 selected by
+    oBattleObject_Alliance; loc_80D0B90: sets Param2=1 after object_clearCollisionRegion, a ''got hit''
+    latch; loc_80D0BAA: loads next Timer from byte_80D0BCC[Param1*2] and sets CurAction=4 when Param2
+    set, else CUR_STATE_DESTROY; byte_80D0BCC holds {0xB4,0xF0,0x12C,0x168}, Param1-indexed durations
+    (3-6 seconds)'
+  refs:
+  - bn6f/asm/asm31.s:54334
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080D0C5C sub_80D0C5C
+  reproduce: python3 tools/asmcat.py 0x080D0B54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary align with the asm: CurPhase==0 initializes CurPhase=4 and Timer=0x2E (lines
+    at loc_80D0B60), alliance-mask load from off_80D0BC0 with lsl r3,#2 (loc_80D0B6E), hit flag in Param2
+    (loc_80D0B86), Timer reload from byte_80D0BCC and CurAction=4 (loc_80D0B90). However the summary''s
+    listed values are wrong: byte_80D0BCC holds 0xB4/0xF0/0x12C/0x168 (=180/240/300/360), but it is indexed
+    by Param1*2, not Param2 as the proposal hinted, and it is loaded as a halfword (ldrh), not a byte.
+    Also sub_80D0C5C is called only when Param2 is already nonzero on entry, so it is not a replay effect
+    but a continuation/re-entry path; the summary''s characterization of ''destroying'' conflates CUR_STATE_DESTROY
+    with destruction of the object. The name ''battle_actTimedCollisionWait'' is reasonable but the summary
+    should be corrected.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which battle object/action id invokes this handler is unknown
+- sub_80D0C5C is undocumented; it likely plays an effect when Param2 was already set at entry
+- What action 4 does for this object (the follow-up behavior after a successful hit) is not shown
+- 'The name and summary align with the asm: CurPhase==0 initializes CurPhase=4 and Timer=0x2E (lines at
+  loc_80D0B60), alliance-mask load from off_80D0BC0 with lsl r3,#2 (loc_80D0B6E), hit flag in Param2 (loc_80D0B86),
+  Timer reload from byte_80D0BCC and CurAction=4 (loc_80D0B90). However the summary''s listed values are
+  wrong: byte_80D0BCC holds 0xB4/0xF0/0x12C/0x168 (=180/240/300/360), but it is indexed by Param1*2, not
+  Param2 as the proposal hinted, and it is loaded as a halfword (ldrh), not a byte. Also sub_80D0C5C is
+  called only when Param2 is already nonzero on entry, so it is not a replay effect but a continuation/re-entry
+  path; the summary''s characterization of ''destroying'' conflates CUR_STATE_DESTROY with destruction
+  of the object. The name ''battle_actTimedCollisionWait'' is reasonable but the summary should be corrected.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D0B54 -> battle_actTimedCollisionWait
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0B54

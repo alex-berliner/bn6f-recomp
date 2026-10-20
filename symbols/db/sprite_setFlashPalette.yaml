@@ -1,0 +1,56 @@
+name: sprite_setFlashPalette
+address: '0x080BF522'
+kind: function
+status: probable
+summary: Selects sprite palette 0 or 4 based on a bit mask derived from the magnitude of the input counter,
+  delegating to sprite_setPalette to store the chosen index in the object's sprite struct.
+interface: (r0 = value whose bit is tested, e.g. frame counter) -> r0 = passthrough of chosen palette
+  (0 or 4); calls sprite_setPalette(r0)
+details: 'A mask is chosen from r0''s magnitude: r0 <= 0x14 gives mask 4, larger values give 2 (an r1=8
+  path and the mask-1 path appear unreachable as disassembled, suggesting the branch conditions may be
+  swapped and the real intent is bit 0/1/2 for small/medium/large r0). tst r0, r1 then selects palette
+  0 when the bit is set and 4 when clear, and the result is passed to sprite_setPalette, which stores
+  it in byte 4 of the object''s sprite struct. Testing a bit of a counter is characteristic of a periodic
+  palette blink. Only caller is the equally undocumented sub_80BF4EC, so which entity uses this flash
+  is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst r0, r1 + beq selects r2=4 vs r2=0 before the only call (loc_80BF538-540); only callee is
+    sprite_setPalette, known to write the palette index to sprite struct byte 4; r1 mask picked from r0
+    thresholds 0x14 and 0xa (cmp/bgt/ble at 80BF524-536); single caller sub_80BF4EC is itself undocumented,
+    giving no game context
+  refs:
+  - bn6f/asm/asm31.s:15951
+  - 0x080BF4EC sub_80BF4EC
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x080BF522
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal misreads the palette values: the code sets r2=4 then conditionally r2=0 when the mask
+    bit is set, so the chosen palette is 4 (clear) or 0 (set), not 0/4 swapped as stated. Also ''flash''
+    framing is fine, but the masks (1/2/4/8) come from magnitude bands of r0, not swapped conditions.
+    Behavior is consistent with sprite_setPalette storing a palette index 0 or 4.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which caller/entity invokes this and what r0 counts (frames? state?)
+- why one mask branch appears dead — branch conditions may be misdisassembled, so the intended bit selection
+  for r0>0x14 vs r0<=0xa is uncertain
+- what gameplay state palette 0 vs 4 distinguishes
+- 'The proposal misreads the palette values: the code sets r2=4 then conditionally r2=0 when the mask
+  bit is set, so the chosen palette is 4 (clear) or 0 (set), not 0/4 swapped as stated. Also ''flash''
+  framing is fine, but the masks (1/2/4/8) come from magnitude bands of r0, not swapped conditions. Behavior
+  is consistent with sprite_setPalette storing a palette index 0 or 4.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BF522 -> sprite_setFlashPalette
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF522

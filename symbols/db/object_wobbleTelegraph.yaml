@@ -1,0 +1,62 @@
+name: object_wobbleTelegraph
+address: '0x080C2B3C'
+kind: function
+status: probable
+summary: Plays SFX 0x94 once, then for ~31 frames toggles oObjectHeader_Flags bit 2 every other frame
+  (blink/wobble effect), finally advancing the battle object to phase 4.
+interface: (r0 = unused/trashed, r5 = battle object pointer) -> r0 = next phase value (4) on completion;
+  no meaningful return otherwise
+details: First invocation (PhaseInitialized == 0) initializes WobbleOrEffectTimer to 0x1F, plays sound
+  effect 0x94, zeroes oBattleObject_Timer, and sets PhaseInitialized to 4. On subsequent runs it sets
+  bit 2 (0x2) of oObjectHeader_Flags — likely an invisible/blink rendering flag — every other frame (Timer/1
+  halfword incremented, bit 0 of Timer>>1 clears the flag), while decrementing WobbleOrEffectTimer by
+  2 per frame. When the counter reaches 0 it re-sets flag bit 2, clears the counter, and writes phase
+  4 into oBattleObject_CurPhaseAndPhaseInitialized. The function never touches r0's incoming value; the
+  object is addressed via r5, i.e. it is called as a phase/state handler with r5 preloaded.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init branch: ''strb r0,[r5,#oBattleObject_WobbleOrEffectTimer]'' with r0=0x1F and PlaySoundEffect(0x94)
+    only when PhaseInitialized==0; blink loop: ''lsr r0,r0,#1 / bcc'' clears flags bit 2 on odd frames,
+    giving a 1-frame-on/1-frame-off flicker; termination: ''sub r0,#2 / strb ... / bgt'' counts 0x1F down
+    by 2 each frame, then ''mov r0,#4 / strh [oBattleObject_CurPhaseAndPhaseInitialized]'' moves to phase
+    4; callee PlaySoundEffect(0x94) fires only once at phase start, implying an alarm/telegraph sound'
+  refs:
+  - bn6f/asm/asm31.s:23667
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080C2B3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match: init sets WobbleOrEffectTimer=0x1F, plays SFX 0x94, zeros Timer,
+    sets PhaseInitialized=4; the loop ORs bit2 into oObjectHeader_Flags every frame, then conditionally
+    clears it when (Timer>>1) bit0 is set (toggling every other frame), decrements WobbleOrEffectTimer
+    by 2, and on reaching 0 re-sets bit2 and writes phase 4. However, the proposed name ''object_updateBlinkTelegraph''
+    implies generic blink handling; the dedicated WobbleOrEffectTimer and only-once SFX 0x94 strongly
+    indicate this is a phase-3→4 ''warp/wobble'' telegraph specific to this battle object, so ''object_wobbleTelegraph''
+    better reflects the timer field and SFX.; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object(s) use this as a phase handler (no callers known), so what the blink telegraphs
+  (e.g. bomb fuse, spawn/despawn flash)
+- what flag bit 2 in oObjectHeader_Flags renders as (blink vs. flash vs. invulnerable)
+- what phase 4 does for this object afterwards
+- 'The summary''s mechanics match: init sets WobbleOrEffectTimer=0x1F, plays SFX 0x94, zeros Timer, sets
+  PhaseInitialized=4; the loop ORs bit2 into oObjectHeader_Flags every frame, then conditionally clears
+  it when (Timer>>1) bit0 is set (toggling every other frame), decrements WobbleOrEffectTimer by 2, and
+  on reaching 0 re-sets bit2 and writes phase 4. However, the proposed name ''object_updateBlinkTelegraph''
+  implies generic blink handling; the dedicated WobbleOrEffectTimer and only-once SFX 0x94 strongly indicate
+  this is a phase-3→4 ''warp/wobble'' telegraph specific to this battle object, so ''object_wobbleTelegraph''
+  better reflects the timer field and SFX.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2B3C -> object_wobbleTelegraph
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2B3C

@@ -1,0 +1,56 @@
+name: object_freeExtraVarsChild
+address: '0x080D2E86'
+kind: function
+status: probable
+summary: Frees the child battle object referenced by the parent object's oBattleObject_ExtraVars+8 slot,
+  zeroing the child's flags byte before tail-calling object_freeMemory.
+interface: (r5 = parent battle object) -> r0 = freed child object's status from object_freeMemory; clobbers
+  r0-r1, lr
+details: Loads a pointer from [r5, oBattleObject_ExtraVars+8], which is another battle object, then stores
+  0 to that object's first byte before tail-calling object_freeMemory to release its slot, bitmap, list
+  link, and scaling. The zeroed byte is that child object's flags/state field, disabling it just before
+  deallocation. The parent object itself is not freed, so this only tears down the attached object recorded
+  in extra vars. No callers are known, so whether it is a destructor, a state-machine cleanup, or one
+  branch of a bigger teardown is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, [r5,#oBattleObject_ExtraVars+8]: the freed pointer comes from the parent object''s
+    extra-vars field, not from an argument; strb r1, [r0] with r1=0: clears a byte of the child object
+    (its flags) right before freeing; bl object_freeMemory: callee is documented as releasing a battle
+    object''s slot/bitmap/link/scaling, confirming r0 is a battle object'
+  refs:
+  - bn6f/asm/asm31.s:59003
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D2E86
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies loading the child pointer from [r5, oBattleObject_ExtraVars+8]
+    and zeroing its first byte before tail-calling object_freeMemory. However, ''object_freeExtraObject''
+    is misleading because only one specific slot (+8) is used, and the name ''object_freeExtraObject''
+    implies freeing the parent''s extra object rather than the child at ExtraVars+8. A name like ''object_freeExtraVarsChild''
+    or ''object_freeExtraVarsSlot8'' better reflects the fixed slot.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No known callers: unclear which object types store a child object at ExtraVars+8 or when this cleanup
+  runs'
+- Exact meaning of the byte zeroed at the child object (flags vs. state) not confirmed from this function
+  alone
+- The proposal correctly identifies loading the child pointer from [r5, oBattleObject_ExtraVars+8] and
+  zeroing its first byte before tail-calling object_freeMemory. However, 'object_freeExtraObject' is misleading
+  because only one specific slot (+8) is used, and the name 'object_freeExtraObject' implies freeing the
+  parent's extra object rather than the child at ExtraVars+8. A name like 'object_freeExtraVarsChild'
+  or 'object_freeExtraVarsSlot8' better reflects the fixed slot.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2E86 -> object_freeExtraVarsChild
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2E86

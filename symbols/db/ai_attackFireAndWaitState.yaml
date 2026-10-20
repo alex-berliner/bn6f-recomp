@@ -1,0 +1,61 @@
+name: ai_attackFireAndWaitState
+address: '0x080FFF84'
+kind: function
+status: probable
+summary: 'AI attack state: on first entry fires the attack via sub_80D2986 (writing element 4), sets StepTimer
+  to 30, then on subsequent ticks decrements StepTimer and exits via object_exitAttackState when it reaches
+  0.'
+interface: '(r0-r4, r6 = oAIAttackVars fields: AttackElement, TargetPanelX/Y, InitFlag, DifficultyTier,
+  ScratchVar; r7 = owner object whose TargetObjectPtr is passed to callee) -> void; StepTimer set to 30
+  or decremented'
+details: 'Reads fields from the oAIAttackVars block of the owner object in r7. If AttackElement is 0 it
+  writes 4 (the attack''s element id), loads TargetPanelX/Y, InitFlag, AiDifficultyTier and ScratchVar,
+  swaps r7 to the TargetObjectPtr and calls sub_80D2986 to actually create/drive the attack, then stores
+  0x1E into StepTimer as the state duration. Subsequent calls decrement StepTimer until it reaches 0,
+  then zero the object''s CurAnim (via r5, the object base pointer) and call object_exitAttackState to
+  return the AI to its normal state. The one-shot-init pattern keyed on AttackElement being 0 is a quirk:
+  element 0 doubles as ''not yet launched''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst on AttackElement + ''mov r0,#4; strb'' shows a first-entry init writing the element id;
+    ldrb panel X/Y, InitFlag, DifficultyTier, ScratchVar pushed into r0-r4,r6 with TargetObjectPtr moved
+    into r7 before bl sub_80D2986 — a launch call parameter block; strh #0x1E into StepTimer followed
+    by a decrement-and-bgt loop is a 30-frame wait; on timer expiry: ''strb #0 -> CurAnim'' then bl object_exitAttackState
+    ends the attack state'
+  refs:
+  - bn6f/asm/asm31.s:155770
+  - 0x08011714 object_exitAttackState
+  - 0x080D2986 sub_80D2986
+  reproduce: python3 tools/asmcat.py 0x080FFF84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and mechanics are accurate: on entry when AttackElement is 0 it writes 4, then calls
+    sub_80D2986 with target object and vars, then sets StepTimer=0x1E. Subsequent calls decrement StepTimer
+    and at <=0 zero CurAnim (via r5) and call object_exitAttackState. The name ai_attackWaitStateTick
+    fits, though the function doesn''t merely ''wait 30 frames'' on first run—it actively launches the
+    attack—so ai_attackFireAndWaitState is more precise.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_80D2986 does (attack spawn vs direct damage) — its callers/summary would confirm the launched
+  attack type
+- which enemy/AI uses this handler and what element 4 corresponds to
+- why r5 points to the object base while r7 points to oAIAttackVars — the caller's frame layout is unseen
+- 'The summary and mechanics are accurate: on entry when AttackElement is 0 it writes 4, then calls sub_80D2986
+  with target object and vars, then sets StepTimer=0x1E. Subsequent calls decrement StepTimer and at <=0
+  zero CurAnim (via r5) and call object_exitAttackState. The name ai_attackWaitStateTick fits, though
+  the function doesn''t merely ''wait 30 frames'' on first run—it actively launches the attack—so ai_attackFireAndWaitState
+  is more precise.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FFF84 -> ai_attackFireAndWaitState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFF84

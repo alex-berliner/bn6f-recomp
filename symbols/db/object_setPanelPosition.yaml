@@ -1,0 +1,67 @@
+name: object_setPanelPosition
+address: '0x080CEAC2'
+kind: function
+status: probable
+summary: Sets a battle object's panel grid coordinates (object+0x68/0x6c) to the given (panelX, panelY)
+  and calls object_setCoordinatesFromPanels to recompute pixel X/Y; also sets object+0x70=1 (dirty flag),
+  object[9]=8, and clears object+0xA, and returns the panelX (or 1 when r5==r0).
+interface: (r0 = battle object ptr, r1 = panel X (also returned in r1), r2 = panel Y) -> r1 = r1 (or 1
+  in the r5==r6 case); no flags
+details: 'Stores r1 into object+0x68 and r2 into object+0x6c — fields that object_setCoordinatesFromPanels
+  reads as the object''s panel-grid coordinates, since it recomputes the pixel X/Y from them. It then
+  sets object+0x70 = 1 (likely a ''position changed / dirty'' flag), writes 4 to the byte at object+9,
+  and clears the halfword at object+0xA, likely resetting a move/step state. If r0 is NULL it skips all
+  writes and just returns r1 unchanged. The leading ''cmp r5, r6 / mov r4, #1'' reads r5 before it is
+  set in this listing, so either the caller passes a value in r5 or the disassembly is missing an instruction;
+  that path forces the return value to 1, suggesting a ''target == something'' early-out. Returns via
+  r1 with a tail pop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'str r4,[r5,#0x68] / str r7,[r5,#0x6c] store the two args into consecutive object fields; bl
+    object_setCoordinatesFromPanels immediately after — the callee derives pixel X/Y from those panel
+    fields, confirming 0x68/0x6C are grid coords; strb #4,[r5,#9] and strh #0,[r5,#0xa] reset a per-object
+    state byte/halfword along with the move; tst r0,r0 / beq loc_80CEAEA: NULL object exits early returning
+    r1 unmodified; mov r5,r0 then str through r5: r0 is the battle object being modified'
+  refs:
+  - bn6f/asm/asm31.s:49845
+  - 0x080E8612 sub_80E8612
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CEAC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s summary and behavior largely match: r1/r2 are written to object+0x68/0x6c, object_setCoordinatesFromPanels
+    is called, and r5/r7 are preserved. However, the code shows the function pushes r2 (so it clobbers
+    it), and the ''stale r5'' observation is real — r5 is never set in this function, meaning r5 is a
+    parameter (likely ''force/teleport flag'') passed by the caller, not the disassembly being incomplete.
+    The ''target == something early-out forcing r1=1'' interpretation is a guess. Since the object is
+    moved and pixel coordinates recomputed, ''teleport'' is a reasonable description. The summary is slightly
+    inaccurate: the function sets r1''s return via ''mov r1, r4'', where r4 holds either the input panel
+    X or 1; that part is right.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What r5 holds on entry (the cmp r5,r6 path is unexplained in this listing — possibly a missing load
+  or a caller-passed value)
+- Exact meaning of object+9 = 4 and the 0x70 flag (move state? teleport animation?)
+- What caller 0x080E8612 is (unknown), which would confirm whether this is a teleport/forced-move helper
+  and the return-value convention
+- 'The proposal''s summary and behavior largely match: r1/r2 are written to object+0x68/0x6c, object_setCoordinatesFromPanels
+  is called, and r5/r7 are preserved. However, the code shows the function pushes r2 (so it clobbers it),
+  and the ''stale r5'' observation is real — r5 is never set in this function, meaning r5 is a parameter
+  (likely ''force/teleport flag'') passed by the caller, not the disassembly being incomplete. The ''target
+  == something early-out forcing r1=1'' interpretation is a guess. Since the object is moved and pixel
+  coordinates recomputed, ''teleport'' is a reasonable description. The summary is slightly inaccurate:
+  the function sets r1''s return via ''mov r1, r4'', where r4 holds either the input panel X or 1; that
+  part is right.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CEAC2 -> object_setPanelPosition
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEAC2

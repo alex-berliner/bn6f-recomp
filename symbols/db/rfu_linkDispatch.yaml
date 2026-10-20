@@ -1,0 +1,59 @@
+name: rfu_linkDispatch
+address: '0x0803C8E8'
+kind: function
+status: probable
+summary: 'Per-frame wireless link dispatch: clears finished peer slots, then routes execution to one of
+  two sub-handlers based on the link-state byte at +0x1 and a sub-structure flag at +0xC.'
+interface: () -> r0 = clobbered; no meaningful return; flags set by the cmp/tst of the state bytes
+details: Loads the base pointer byte_200AF80 (a wireless adapter state block) and first calls rfu_clearDisconnectedSlots
+  on it, which scans the four peer slots for finished connections and resets the player block when all
+  are done. It then reads the state byte at +0x1; if it equals 1 and the byte pointed to by the dword
+  at +0xC is nonzero, it calls sub_813D978, otherwise sub_803C90C. This is a top-level per-frame tick
+  of the wireless communication task, branching between two sub-modes of the state machine. The dword
+  at 0x200AF8C acts as a pointer into a sub-structure whose first byte is tested as a condition/flag.
+  No return value is produced; the function is purely control-flow dispatch over the shared link state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrs off_803C944 = byte_200AF80 and passes it to rfu_clearDisconnectedSlots, tying this to the
+    wireless slot bookkeeping; cmp state byte at [r4,#1] to 1 selects between two handler calls, a classic
+    state-machine dispatch; test of *(dword at +0xC) gates the sub_813D978 branch, so +0xC is a pointer
+    to a sub-state structure; no callers known and no return value used, consistent with an externally
+    scheduled per-frame tick
+  refs:
+  - bn6f/asm/asm03_1_1.s:7869
+  - 0x08146D98 rfu_clearDisconnectedSlots
+  - 0x0803C90C sub_803C90C
+  - 0x0813D978 sub_813D978
+  reproduce: python3 tools/asmcat.py 0x0803C8E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s structural reading matches the code: it prunes disconnected slots, branches on byte_200AF81==1
+    with a sub-structure flag check at dword_200AF8C, and dispatches to sub_813D978 or sub_803C90C. The
+    return interface description is right (no meaningful r0 return). However, ''pollLinkState'' is slightly
+    misleading because the function doesn''t return the state; it dispatches on it. A name like ''rfu_linkTick''
+    or ''rfu_linkDispatch'' fits better as it is a top-level per-frame tick.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_813D978 and sub_803C90C — knowing whether they are receive/send or connect-phase handlers
+  would pin the branch semantics
+- Meaning of the state value 1 in byte 0x200AF81 (idle vs connected vs mid-handshake)
+- What structure the pointer at 0x200AF8C points into and what its first byte represents
+- 'The proposal''s structural reading matches the code: it prunes disconnected slots, branches on byte_200AF81==1
+  with a sub-structure flag check at dword_200AF8C, and dispatches to sub_813D978 or sub_803C90C. The
+  return interface description is right (no meaningful r0 return). However, ''pollLinkState'' is slightly
+  misleading because the function doesn''t return the state; it dispatches on it. A name like ''rfu_linkTick''
+  or ''rfu_linkDispatch'' fits better as it is a top-level per-frame tick.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C8E8 -> rfu_linkDispatch
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C8E8

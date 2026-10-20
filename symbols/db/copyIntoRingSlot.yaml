@@ -1,0 +1,59 @@
+name: copyIntoRingSlot
+address: '0x0803F00C'
+kind: function
+status: probable
+summary: Copies a caller-supplied data block (r0=src, r1=size in bytes) into the current 0x100-byte slot
+  of an 8-slot ring buffer at unk_2009AC0, then advances the slot index modulo 8 in byte_200AC20.
+interface: (r0 = src pointer, r1 = size in bytes) -> void; destroys r4-r7, calls BIOS CpuSet via CopyWords.
+details: Reads the current slot index from byte_200AC20, computes unk_2009AC0 + index*0x40 words (0x100
+  bytes per slot), and CopyWords-copies r1 bytes from r0 into that slot. The index is then incremented
+  and wrapped with &7, so writes cycle through 8 slots. byte_200AC20 thus acts as a ring-buffer head;
+  the tail/reader is not touched here. All three known callers are adjacent functions at 0x0803EC1C-0x0803ECFC,
+  suggesting a small producer family around this queue. The 0x100-byte slot size and the count of 8 slots
+  are hardcoded.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r1, off_803F260 (=unk_2009AC0) and ldrb r4, [r5] (=byte_200AC20) select the ring buffer
+    and slot index; mov r2, #0x40; mul r2, r4 gives a 0x100-byte stride per slot; bl CopyWords with r0=src,
+    r2=dest, r7=size performs the actual copy; add r4,#1; and r4,#7; strb r4,[r5] wraps the slot counter
+    modulo 8; three sibling callers sub_803EC1C/EC54/ECFC pass source data, implying a queued-producer
+    pattern'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12681
+  - 0x0803EC1C sub_803EC1C
+  - 0x0803EC54 sub_803EC54
+  - 0x0803ECFC sub_803ECFC
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x0803F00C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The slot size is 0x40 words = 0x100 bytes and there are 8 slots, but CopyWords is given r7 (the
+    byte count in r1) directly, and CopyWords internally converts byte count to word count (as its docstring
+    notes), so it copies r1 bytes total — into one slot. The ring-buffer / ''rotating'' interpretation
+    is correct (index from byte_200AC20, incremented & 7, written back). However, calling it ''queue''
+    is speculative; it''s more precisely an 8-slot ring buffer of fixed 0x100-byte records. A name like
+    ''copyIntoRingSlot'' is more accurate.; run wf investigate investigate-20261019-022109; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what data the callers copy in (would need disassembly of sub_803EC1C/EC54/ECFC or their callers)
+- what consumes the slots at unk_2009AC0 and where the read/tail index lives
+- which subsystem owns this queue, to pick a proper prefix
+- The slot size is 0x40 words = 0x100 bytes and there are 8 slots, but CopyWords is given r7 (the byte
+  count in r1) directly, and CopyWords internally converts byte count to word count (as its docstring
+  notes), so it copies r1 bytes total — into one slot. The ring-buffer / 'rotating' interpretation is
+  correct (index from byte_200AC20, incremented & 7, written back). However, calling it 'queue' is speculative;
+  it's more precisely an 8-slot ring buffer of fixed 0x100-byte records. A name like 'copyIntoRingSlot'
+  is more accurate.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803F00C -> copyIntoRingSlot
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F00C

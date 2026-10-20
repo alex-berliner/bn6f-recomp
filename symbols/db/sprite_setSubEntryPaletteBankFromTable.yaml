@@ -1,0 +1,62 @@
+name: sprite_setSubEntryPaletteBankFromTable
+address: '0x0811AB14'
+kind: function
+status: probable
+summary: Looks up a pointer from a byte-indexed table using the entity's byte at +4 as offset and tail-calls
+  sprite_setSubEntryPaletteBank_800304A with that pointer in r0 and the raw offset byte in r1 to set a
+  sub-entry's palette bank.
+interface: (r0 = unused on entry, r5 = entity object) -> r0 = result of sprite_setSubEntryPaletteBank;
+  no flags used
+details: The function reads a byte from the entity at r5+4, uses it as an offset into a word table at
+  off_811AB28 (indexed byte-wise, not word-wise — an oddity, so indices are presumably multiples of 4
+  or the table is denser than it looks), loads the word there, and tail-calls sprite_setSubEntryPaletteBank_800304A
+  with that value in r0 and the raw index byte still in r1. Only the first table entry is visible in this
+  chunk (0x100); the table presumably continues for other entity types. The callee stores the palette
+  bank into byte +0x15 of a 0x10-byte object sub-entry, so this routine is a table-driven wrapper that
+  picks which sub-entry gets recolored. Both known callers call it right after sibling routines at 0x0811A998/0x0811AA14,
+  suggesting a sequence of per-entity visual setup steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#4] then ldr r0,[r0,r1] — index byte selects a table entry at off_811AB28; off_811AB28
+    holds .word 0x100 as the first entry, passed to the callee in r0; bl sprite_setSubEntryPaletteBank_800304A
+    with r1 = the unchanged index byte; callees'' known summary: stores a 4-bit palette bank into +0x15
+    of a 0x10-byte object sub-entry'
+  refs:
+  - bn6f/asm/asm32.s:26562
+  - 0x0811A998 sub_811A998
+  - 0x0811AA14 sub_811AA14
+  - 0x0800304A sprite_setSubEntryPaletteBank_800304A
+  reproduce: python3 tools/asmcat.py 0x0811AB14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly shows `ldrb r1,[r5,#4]` then `ldr r0,[r0,r1]` where r0 holds `off_811AB28`. Since r0
+    is a pointer and r1 is a byte offset, the table is indexed byte-wise, so each entry is one byte but
+    `ldr` reads a word at that byte position - this is the oddity noted. The callee stores palette bank
+    into +0x15 of a sub-entry. The proposal''s name is good but the summary''s claim that the index byte
+    ''still in r1'' is passed to the callee is not explicitly shown by ARM calling convention - it is
+    passed as the second arg, which is plausible. Name is accurate.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Full contents of the table at off_811AB28 and what entity states the r5+4 byte indexes
+- Whether 0x100 is a pointer, a flag set, or a packed argument for the callee, and what the callers at
+  0x0811A998/0x0811AA14 do with the result
+- The assembly shows `ldrb r1,[r5,#4]` then `ldr r0,[r0,r1]` where r0 holds `off_811AB28`. Since r0 is
+  a pointer and r1 is a byte offset, the table is indexed byte-wise, so each entry is one byte but `ldr`
+  reads a word at that byte position - this is the oddity noted. The callee stores palette bank into +0x15
+  of a sub-entry. The proposal's name is good but the summary's claim that the index byte 'still in r1'
+  is passed to the callee is not explicitly shown by ARM calling convention - it is passed as the second
+  arg, which is plausible. Name is accurate.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811AB14 -> sprite_setSubEntryPaletteBankFromTable
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811AB14

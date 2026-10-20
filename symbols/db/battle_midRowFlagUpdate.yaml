@@ -1,0 +1,64 @@
+name: battle_midRowFlagUpdate
+address: '0x080D2C40'
+kind: function
+status: probable
+summary: Battle-object update that walks along the middle arena row from one end, setting oObjectHeader_Flags
+  bit 0x10 on the object header of each visited panel, then destroys itself.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized/Timer/Param3/Param4, CUR_STATE_DESTROY
+  on completion
+details: 'Phase 0: sets Timer=1, Param3 = 6 - 5*(Alliance XOR DirectionFlip) (so column 6 from one side,
+  1 from the other), Param4 = 1 (middle row), phase=1. Phase 1: decrements Timer; on zero calls object_isValidPanel(col,row);
+  if invalid or sub_80D2CBE(col,row) returns 0xFF, moves to phase 2. Otherwise resolves an id via sub_80D2CBE,
+  fetches the object header with sub_80D30A4(id) and sets oObjectHeader_Flags bit 0x10 on it, rewrites
+  Param3 as packed halfword (col|row<<8), and sets Timer to 8 if the second sub_80D2CBE result equals
+  the saved id (popped into r4) else 0x18. Phase 2: waits until [ExtraVars+4]==0 then writes CUR_STATE_DESTROY
+  into CurStateActionPhaseAndPhaseInitialized. Param3 is written as a byte but read back as a halfword,
+  so Param3/Param4 are one packed column/row pair.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r1,#5 / mul / mov r0,#6 / sub: start column is 6 or 1 chosen by Alliance^DirectionFlip,
+    Param4 hardcoded 1; bl object_isValidPanel on Param3/Param4 with beq to phase=2: iterates over 6x3
+    grid panels; cmp r0,#0xff after bl sub_80D30A4-input bl sub_80D2CBE: 0xFF means no object on panel,
+    terminating the sweep; ldrb r2,[r0,#oObjectHeader_Flags]; orr #0x10: marks the object found on the
+    panel; ldr ExtraVars+4 tst; mov r0,#CUR_STATE_DESTROY: final phase waits then self-destructs'
+  refs:
+  - bn6f/asm/asm31.s:58861
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D2CBE sub_80D2CBE
+  - 0x080D30A4 sub_80D30A4
+  reproduce: python3 tools/asmcat.py 0x080D2C40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The phase 0 logic matches: Timer=1, Param3 = 6 - 5*(Alliance XOR DirectionFlip), Param4=1, phase=1.
+    Phase 1 decrements Timer; on zero, calls object_isValidPanel(col,row); if invalid or sub_80D2CBE returns
+    0xFF, jumps to phase 2. Otherwise fetches the object via sub_80D30A4 and sets bit 0x10 of oObjectHeader_Flags.
+    Param3 is read with ldrh and re-stored as a halfword, so the column/row packing is correct. Phase
+    2 waits for ExtraVars+4==0 then writes CUR_STATE_DESTROY. The proposed name is fine but ''Sweep''
+    implies a more elaborate animation; a simpler name fits the simple flag-setting behavior.; run wf
+    investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact purpose of sub_80D2CBE (find object on panel?) and sub_80D30A4 (id -> object header?) — needed
+  to say which attack/effect this is
+- Meaning of oObjectHeader_Flags bit 0x10 set on the swept object
+- Why the timer is 8 vs 0x18 depending on cmp r0,r4
+- No known callers; context (which boss/attack spawns this object) unknown
+- 'The phase 0 logic matches: Timer=1, Param3 = 6 - 5*(Alliance XOR DirectionFlip), Param4=1, phase=1.
+  Phase 1 decrements Timer; on zero, calls object_isValidPanel(col,row); if invalid or sub_80D2CBE returns
+  0xFF, jumps to phase 2. Otherwise fetches the object via sub_80D30A4 and sets bit 0x10 of oObjectHeader_Flags.
+  Param3 is read with ldrh and re-stored as a halfword, so the column/row packing is correct. Phase 2
+  waits for ExtraVars+4==0 then writes CUR_STATE_DESTROY. The proposed name is fine but ''Sweep'' implies
+  a more elaborate animation; a simpler name fits the simple flag-setting behavior.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2C40 -> battle_midRowFlagUpdate
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2C40

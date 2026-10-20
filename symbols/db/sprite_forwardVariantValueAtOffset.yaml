@@ -1,0 +1,62 @@
+name: sprite_forwardVariantValueAtOffset
+address: '0x0811B194'
+kind: function
+status: probable
+summary: Loads the sprite's screen coordinates via sprite_getCoordinates, adds the signed halfword pair
+  from word_811B1E8 (-0x5C, -0x0E), indexes byte_811B1D0 and byte_811B1DC by the caller's variant byte
+  (assumed in r5), reads a halfword through the resulting EWRAM pointer, and tail-calls sub_8132A14(x+dx,
+  y+dy, 0, value).
+interface: (r0-r3 = call clobbered; r5 = object/sprite work pointer) -> r0 = sub_8132A14 result; r0 =
+  x+offset, r1 = y+offset, r2 = 0, r3 = halfword from table on entry to sub_8132A14
+details: 'Saves sprite_getCoordinates(x, y) on the stack, then adds the constant pair at word_811B1E8
+  (-0x5C, -0x0E) to get a position up and to the left of the object — a typical label/number anchor. It
+  indexes two tables with byte [r5,#3] (an object variant/param): byte_811B1D0 supplies a second constant
+  (0x430 in both entries) and byte_811B1DC supplies an EWRAM pointer (0x023B3BA0/0x023B3BB0) whose halfword
+  is loaded as r3. It then tail-calls sub_8132A14(x, y, 0, value), which presumably renders something
+  at that position. The two table entries differ only in the source pointer, so the variant byte picks
+  which piece of state is shown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sprite_getCoordinates + str to sp/sp,#4 stores the object's x,y (sub_811B194 lines 3-5);
+    ldrsh of word_811B1E8 gives -0x5C,-0x0E added to the coords — fixed offset from the sprite; ldrb r2,[r5,#3]
+    with table byte_811B1DC selects an EWRAM pointer; ldrh r3,[r3] loads the displayed value; bl sub_8132A14
+    receives (x, y, 0, value) — the actual rendering call, unknown; sole caller sub_811ADC0 is itself
+    undocumented, so no caller context confirms the message type
+  refs:
+  - bn6f/asm/asm32.s:27404
+  - 0x0811ADC0 sub_811ADC0
+  - 0x080030A8 sprite_getCoordinates
+  - 0x08132A14 sub_8132A14
+  reproduce: python3 tools/asmcat.py 0x0811B194
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly identifies the x/y offset (-0x5C,-0x0E from word_811B1E8), the variant-indexed
+    tables (byte_811B1D0 all 0x430, byte_811B1DC pointing to EWRAM 0x02023BA0/0x02023BB0), and the ldrh/halfword
+    fetch. However, the interface clause ''r5 = object/sprite work pointer'' is wrong: r5 is never initialized
+    in the function and is clobbered by ''ldr r5, [r5, r3]'' before the tail call. Also calling sub_8132A14
+    a ''printer'' is speculation. The r5-incoming assumption should be noted as caller-supplied, not preserved.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8132A14 renders (text, number, OAM?) — its summary would pin the exact purpose
+- What the byte at [r5,#3] indexes into in the caller's object structure
+- What lives at 0x023B3BA0/0x023B3BB0 in EWRAM
+- Why byte_811B1D0 supplies 0x430 and how sub_8132A14 uses it via the caller sub_811ADC0
+- 'The summary correctly identifies the x/y offset (-0x5C,-0x0E from word_811B1E8), the variant-indexed
+  tables (byte_811B1D0 all 0x430, byte_811B1DC pointing to EWRAM 0x02023BA0/0x02023BB0), and the ldrh/halfword
+  fetch. However, the interface clause ''r5 = object/sprite work pointer'' is wrong: r5 is never initialized
+  in the function and is clobbered by ''ldr r5, [r5, r3]'' before the tail call. Also calling sub_8132A14
+  a ''printer'' is speculation. The r5-incoming assumption should be noted as caller-supplied, not preserved.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B194 -> sprite_forwardVariantValueAtOffset
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B194

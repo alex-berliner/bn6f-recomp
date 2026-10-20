@@ -1,0 +1,56 @@
+name: t1_waitObjectsDoneThenChatbox
+address: '0x08129A54'
+kind: function
+status: probable
+summary: Polls 3 entity pointers in unk_20251A0 (stripping bit31); if any slot's byte+7 is nonzero, returns
+  immediately to keep waiting. Once all are clear, rewrites each pointer with bit31 cleared, then sets
+  r5+3 = 8 and calls sub_812B3FC to show chatbox line 8, finally clearing bit0 of r5+0x1b.
+interface: (r4 = &unk_20251A0 [3-pointer slot array], r5 = script/chatbox context struct) -> r0 = last
+  value written to r5[0x1b] on success, or the slot flag byte when bailing early; no meaningful flags
+details: Loops over 3 pointers in unk_20251A0 (stride 4, count 12/4=3), masking off bit31 and testing
+  byte [ptr+7]; if any slot's byte 7 is still nonzero it returns immediately, i.e. it waits until all
+  three entities report done/inactive. On the pass-through loop it writes each pointer back with bit31
+  cleared, releasing some 'in use/locked' marker on the slots. It then stores 8 into r5+3 — the field
+  sub_812B3FC uses as an index into its chatbox line table — and calls it, so a specific chatbox line
+  is run. Finally it clears bit0 of r5+0x1b, a wait/pause flag, resuming script flow. Likely a script
+  command handler for 'wait until spawned objects finish, then show chatbox line 8'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_8129A5A loop tests ldrb r0,[r0,#7] after bic bit31 and bnes out, so any slot with byte7
+    set blocks progress; loc_8129A72 loop rewrites each of the 3 pointers in unk_20251A0 with bit31 cleared;
+    strb r5,#3 = 8 immediately before bl sub_812B3FC, matching that callee''s table-lookup field; callee
+    sub_812B3FC known summary: runs a chatbox script line via table lookup on an r5 field; bic on r5[0x1b]
+    bit0 looks like clearing a script-wait flag after the chatbox call'
+  refs:
+  - bn6f/asm/asm33.s:13556
+  - 0x0812B3FC sub_812B3FC
+  reproduce: python3 tools/asmcat.py 0x08129A54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop checks byte[ptr+7] of each of the 3 slots and exits early if any is nonzero (bails), not
+    the other way around. Also the second loop rewrites the slot pointers with bit31 cleared back into
+    the array, not into r5. The proposal''s summary has these reversed. The name ''t1_waitObjectsDoneThenChatbox''
+    fits the behavior, but the summary needs correction.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the 3 pointers at unk_20251A0 point to (object structs?) and what byte+7 counts down means
+- What bit31 on the pointers marks and who sets/clears it elsewhere
+- Which script opcode dispatches here (no callers known)
+- The loop checks byte[ptr+7] of each of the 3 slots and exits early if any is nonzero (bails), not the
+  other way around. Also the second loop rewrites the slot pointers with bit31 cleared back into the array,
+  not into r5. The proposal's summary has these reversed. The name 't1_waitObjectsDoneThenChatbox' fits
+  the behavior, but the summary needs correction.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8129A54 -> t1_waitObjectsDoneThenChatbox
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129A54

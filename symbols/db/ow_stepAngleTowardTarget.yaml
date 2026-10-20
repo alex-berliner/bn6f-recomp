@@ -1,0 +1,61 @@
+name: ow_stepAngleTowardTarget
+address: '0x080A8D02'
+kind: function
+status: probable
+summary: Rotates the u16 angle at [r7+4] toward the direction from the overworld player to the target
+  object at r5 by at most r0 units per call, clamping the signed delta and adding it back without overshoot.
+interface: (r0 = max angular step, r5 = target object [x=+0x10, y=+0xc], r7 = struct with u16 angle at
+  +4) -> r0 = clamped signed delta; no flags of interest
+details: 'Reads the overworld player object via gameState->overworldPlayerObject and subtracts its position
+  (fields 0x1c, 0x20) from the target object at r5 (fields 0xc, 0x10), feeding the vector to calcAngle_800117C
+  (BIOS ArcTan2, 0..255 byte scaled <<8). It computes the signed delta between that angle and the u16
+  at [r7+4], takes its absolute value, clamps it to r0, restores the sign, and adds it back into [r7+4].
+  This is a smooth turn-toward helper: the angle approaches the player->target direction without overshooting.
+  Callers r5/r7 are set up before the call, so it is a nested helper of the two adjacent overworld routines.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr gameState/player object then sub of r5 fields 0x10/0xc minus player 0x20/0x1c before bl
+    calcAngle_800117C: angle from player to target; ldrh r1,[r7,#4] / sub r0,r1: delta toward stored angle
+    at +4; abs-value, cmp r1,r4 / ble skip / mov r1,r4 clamp, sign restored via neg r1; strh r0,[r7,#4]
+    stores the stepped angle back; both callers 0x080A8B4C and 0x080A8BBC are adjacent overworld routines
+    calling it with a step limit'
+  refs:
+  - bn6f/asm/asm29.s:7678
+  - 0x080A8B4C sub_80A8B4C
+  - 0x080A8BBC sub_80A8BBC
+  - 0x0800117C calcAngle_800117C
+  reproduce: python3 tools/asmcat.py 0x080A8D02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r0 holds max step, r5 is the target object (x at +0x10, y at +0xc), r7 is a struct
+    with u16 angle at +4, and player pos is taken from gameState (0x20 y, 0x1c x). However, the angle
+    is read FROM the player/target pair (player pos at 0x1c/0x20, target at 0xc/0x10), and r0 is shifted
+    left by 8 to match the u16 angle scale, so the proposed interface claim ''r0 = clamped signed delta''
+    is wrong (r0 is the max step input). The returned r0 is the new angle written to [r7+4]. Name ''ow_stepAngleTowardTarget''
+    is fine; the ''Toward'' should clarify ''toward target'' (direction from player to target), which
+    it does.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What r7 and r5 structures actually are (arrow/indicator struct vs object) — the callers' setup would
+  confirm whether it is a player-attached direction indicator or an object turning
+- What the step limit values passed by the callers are and in what context (cutscene, HUD arrow, NPC)
+- 'The code matches: r0 holds max step, r5 is the target object (x at +0x10, y at +0xc), r7 is a struct
+  with u16 angle at +4, and player pos is taken from gameState (0x20 y, 0x1c x). However, the angle is
+  read FROM the player/target pair (player pos at 0x1c/0x20, target at 0xc/0x10), and r0 is shifted left
+  by 8 to match the u16 angle scale, so the proposed interface claim ''r0 = clamped signed delta'' is
+  wrong (r0 is the max step input). The returned r0 is the new angle written to [r7+4]. Name ''ow_stepAngleTowardTarget''
+  is fine; the ''Toward'' should clarify ''toward target'' (direction from player to target), which it
+  does.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8D02 -> ow_stepAngleTowardTarget
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8D02

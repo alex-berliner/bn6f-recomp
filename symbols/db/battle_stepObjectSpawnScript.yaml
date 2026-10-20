@@ -1,0 +1,67 @@
+name: battle_stepObjectSpawnScript
+address: '0x080BE97A'
+kind: function
+status: probable
+summary: 'Per-frame battle-object spawn-script step: selects a 5-byte-per-entry table (byte_80BE9D8 or
+  byte_80BE9F3) by alliance, spawns an object via sub_80BF160 using the current Timer2 entry, copies this
+  object''s PanelXY to the spawn''s FuturePanelXY, increments Timer2, and either loops via sub_80BE7BC
+  or terminates the phase (sets oBattleObject_CurPhaseAndPhaseInitialized = 0x10) on the 0xFF entry.'
+interface: (r0 = r5 = battle object ptr, r1 = 0x20 stats-byte selector) -> r0 = spawned object or void;
+  sets oBattleObject_CurPhaseAndPhaseInitialized = 0x10 when script terminates
+details: Selects one of two script tables (byte_80BE9D8 / byte_80BE9F3) from the battle object's alliance/version
+  stats byte (r1=0x20). Each entry is 5 bytes (stride 5) indexed by oBattleObject_Timer2; byte0=0xFF is
+  the terminator, which stores phase 0x10 and returns. Otherwise it packs r4 = Timer2<<24 | e[2]<<16 |
+  e[1]<<8 | e[0], passes e[4] as r2 and 0 as r3 to sub_80BF160 along with r5+0x6C+Timer2 (a slot in the
+  object's local array) and the damage/stamina field, and treats the returned pointer as a new battle
+  object whose oBattleObject_FuturePanelXY is set to this object's oBattleObject_PanelXY. Timer2 is then
+  incremented and control jumps into sub_80BE7BC at loc_80BE824 for the next step. The two tables differ
+  only in a few byte values, suggesting version-specific (Gregar/Falzar) variants of the same effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r7, off_80BEA48 / bl GetBattleNaviStatsByte_AllianceFromBattleObject (r1=0x20) picks byte_80BE9D8
+    vs byte_80BE9F3; mov r2,#5; mul r2,r6 (Timer2) indexes 5-byte script entries; byte0==0xFF branch ends
+    phase (strh 0x10 into CurPhaseAndPhaseInitialized); r4 packed as Timer2<<24|e2<<16|e1<<8|e0, e4 in
+    r2, r3=0, passed to sub_80BF160 which returns an object pointer; strh PanelXY into returned object's
+    oBattleObject_FuturePanelXY; Timer2 incremented; b loc_80BE824 (inside sub_80BE7BC); Tables end with
+    0xFF terminators and differ only slightly (5/4/0/1/x vs 0xA/4/0/1/x...), consistent with version-specific
+    scripted FX
+  refs:
+  - bn6f/asm/asm31.s:14320
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080BE824 sub_80BE7BC
+  - 0x080BF160 sub_80BF160
+  reproduce: python3 tools/asmcat.py 0x080BE97A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The script steps a table with stride 5 indexed by Timer2, terminates on 0xFF setting phase 0x10,
+    and calls sub_80BF160 with r5+0x6C+Timer2; however the proposal mislabels the returned pointer handling
+    (r4 is the return value, not a packed timer field — the packed register is built before the call as
+    r4) and the interface note about r1=0x20 as a ''stats-byte selector'' overstates it: r1=0x20 is passed
+    only to GetBattleNaviStatsByte, which returns alliance, not directly the table selector. The behavior
+    (per-frame spawn driven by Timer2, branching on terminator, then jumping to sub_80BE7BC) is correct.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80BF160 spawns (its r4/r7/r6 register-argument meaning) and what game effect these tables produce
+  (Beast Over FX, panel trap, dust, etc.)
+- Which battle routine/caller invokes this and which phase/state leads here
+- Meaning of the 0x6C+Timer2 slot passed via r7
+- 'The script steps a table with stride 5 indexed by Timer2, terminates on 0xFF setting phase 0x10, and
+  calls sub_80BF160 with r5+0x6C+Timer2; however the proposal mislabels the returned pointer handling
+  (r4 is the return value, not a packed timer field — the packed register is built before the call as
+  r4) and the interface note about r1=0x20 as a ''stats-byte selector'' overstates it: r1=0x20 is passed
+  only to GetBattleNaviStatsByte, which returns alliance, not directly the table selector. The behavior
+  (per-frame spawn driven by Timer2, branching on terminator, then jumping to sub_80BE7BC) is correct.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BE97A -> battle_stepObjectSpawnScript
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE97A

@@ -1,0 +1,57 @@
+name: battle_slideStepPhase4
+address: '0x080C06DC'
+kind: function
+status: probable
+summary: Battle phase handler that on init sets a 20-frame timer and slides the object at ±2 px/frame
+  (twice its facing multiplier) along X, then advances to phase 4 when the timer expires.
+interface: (r0 = unused; r5 = battle object) -> void; updates oBattleObject_Timer, XVelocity, PhaseInitialized,
+  CurPhaseAndPhaseInitialized, X
+details: On first run (PhaseInitialized == 0) it sets the timer to 0x14 (20 frames), computes the facing
+  multiplier via object_getFrontDirection, doubles it (giving ±2), stores it as XVelocity, and sets PhaseInitialized
+  = 4. Each subsequent call decrements the timer; when it reaches 0 it zeroes XVelocity and writes phase
+  4 into CurPhaseAndPhaseInitialized. Every invocation applies X += XVelocity, so the object moves a fixed
+  total of ±40 px horizontally. The doubled front-direction suggests the object slides away from the player
+  when the player is in front, i.e. a retreat/backstep or knockback motion.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] / bne: first-entry init block sets Timer=0x14 and
+    XVelocity=2*frontDirection; object_getFrontDirection call followed by add r0,r0 / lsl #0x10: velocity
+    is twice the ±1 facing multiplier; timer countdown with bgt: after 20 frames velocity is zeroed and
+    CurPhaseAndPhaseInitialized set to 4; ldr [X]/add XVelocity/str [X]: per-frame horizontal integration;
+    callee object_getFrontDirection is the known ±1 alliance/DirectionFlip helper, confirming horizontal
+    slide direction'
+  refs:
+  - bn6f/asm/asm31.s:18537
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C06DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior: it sets Timer=0x14 on init, doubles object_getFrontDirection
+    into XVelocity, sets PhaseInitialized=4, decrements Timer each frame, zeroes XVelocity and writes
+    phase 4 to CurPhaseAndPhaseInitialized on expiry, and applies X += XVelocity every call (lines 0x080C06DC–0x080C0716).
+    The proposed name ''battle_slideStepPhase'' is reasonable and uses the battle_ prefix, but the phase
+    written is 4 specifically; ''battle_slideStepPhase4'' would be more precise.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller known, so which enemy/object uses this phase and what phase 4 does next is unidentified
+- the exact meaning of the doubled direction (retreat vs advance) depends on the object's alliance side,
+  not visible here
+- 'The code matches the proposed behavior: it sets Timer=0x14 on init, doubles object_getFrontDirection
+  into XVelocity, sets PhaseInitialized=4, decrements Timer each frame, zeroes XVelocity and writes phase
+  4 to CurPhaseAndPhaseInitialized on expiry, and applies X += XVelocity every call (lines 0x080C06DC–0x080C0716).
+  The proposed name ''battle_slideStepPhase'' is reasonable and uses the battle_ prefix, but the phase
+  written is 4 specifically; ''battle_slideStepPhase4'' would be more precise.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C06DC -> battle_slideStepPhase4
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C06DC

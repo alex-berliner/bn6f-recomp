@@ -1,0 +1,59 @@
+name: battle_dispatchObjectSubHandler
+address: '0x080E4B9E'
+kind: function
+status: probable
+summary: If time-stop is inactive, reads a sub-type byte at [r5+0xA] and tail-calls one of two Thumb handlers
+  from a two-entry table at off_80E4BB8; otherwise returns immediately.
+interface: (r5 = object pointer; r0 = state byte read from [r5+0xA]) -> r0 = handler return value; no
+  flags relied on by caller seen
+details: The routine first queries battle_isTimeStop (battle flags bit 2) and returns immediately if the
+  battle is frozen. Otherwise it loads the byte at [r5+0xA], uses it as an index into a two-entry thumb
+  function-pointer table at off_80E4BB8 (entries sub_80E4BC0 and sub_80E4BD4), and tail-calls the selected
+  handler via 'mov lr, pc; bx r1' (long-call from Thumb). The two-entry table plus a small object field
+  suggests a two-phase/two-mode update for one specific battle object; r5 is set up by the sole caller
+  sub_80E4B88 just before the call. The time-stop gate is the classic BN6 pattern for battle-scene animation/update
+  steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isTimeStop / tst r0,r0 / bne return: skips the update while time-stop freezes the
+    battle; ldrb r0,[r5,#0xa]; ldr r1,[r1,r0]: state byte at r5+0xA indexes the dispatch table; off_80E4BB8
+    holds exactly two thumb pointers (sub_80E4BC0, sub_80E4BD4): two-mode handler table; mov lr,pc; bx
+    r1: Thumb long-call, standard BN6 dispatch of a handler routine; sole caller sub_80E4B88 sets up r5
+    immediately before, so this is a per-object step call'
+  refs:
+  - bn6f/asm/asm31.s:98013
+  - 0x080E4B88 sub_80E4B88
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080E4B9E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches exactly: it checks battle_isTimeStop, returns if true, loads a byte at [r5+0xA],
+    uses it as an index into off_80E4BB8 (a table with two entries: sub_80E4BC0 and sub_80E4BD4), and
+    tail-calls via ''mov lr, pc; bx r1''. The name ''battle_runObjectStateHandler'' is fine and matches
+    the prefix rules, but ''objectStateHandler'' is slightly misleading since [r5+0xA] is just a sub-type/state
+    byte index into handler pointers, not necessarily a state machine per se. A more accurate name would
+    emphasize that it dispatches to one of two object sub-type handlers.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80E4BC0 and sub_80E4BD4 do (which object this updates and what the two modes are)
+- What structure r5 points to and what the 0xA field means beyond a state/type selector
+- 'The code matches exactly: it checks battle_isTimeStop, returns if true, loads a byte at [r5+0xA], uses
+  it as an index into off_80E4BB8 (a table with two entries: sub_80E4BC0 and sub_80E4BD4), and tail-calls
+  via ''mov lr, pc; bx r1''. The name ''battle_runObjectStateHandler'' is fine and matches the prefix
+  rules, but ''objectStateHandler'' is slightly misleading since [r5+0xA] is just a sub-type/state byte
+  index into handler pointers, not necessarily a state machine per se. A more accurate name would emphasize
+  that it dispatches to one of two object sub-type handlers.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4B9E -> battle_dispatchObjectSubHandler
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4B9E

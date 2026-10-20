@@ -1,0 +1,65 @@
+name: ai_attackHighlightTargetPanels
+address: '0x080F88DA'
+kind: function
+status: probable
+summary: 'AI attack state: on first call seeds AttackElement=4, StepTimer=0x3C, ChargeCycles=0; each tick
+  increments ChargeCycles and, when ChargeCycles is not a multiple of 8, highlights a target panel region
+  on the enemy side; when StepTimer hits 0, sets HitElement=0x10 to trigger the hit.'
+interface: (r0 = unused, r7 = attack vars struct, r5 = battle object) -> void; sets AttackElement, StepTimer,
+  ChargeCycles, HitElement in r7 struct
+details: 'If oAIAttackVars_AttackElement is 0, the attack initializes: AttackElement=4, StepTimer=0x3C
+  (60 frames), ChargeCycles=0. On subsequent runs it increments ChargeCycles, and every 8th tick (lsr
+  by 3 with carry check) calls object_highlightPanelRegion with r1=2, r2=4 and the object''s AllianceAndDirectionFlip,
+  drawing/animating a highlight over a target area (likely telegraphing the attack zone on the enemy side).
+  Meanwhile StepTimer counts down from 60; when it reaches 0, HitElement is set to 0x10, which presumably
+  signals the parent AI state machine to fire the actual attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — branches between init and charge phases;
+    strh #0x3C into StepTimer with ChargeCycles=0 — a 60-frame charge window; lsr r0,#3 + bcs gating the
+    object_highlightPanelRegion call — highlight refreshed every 8 frames; bl object_highlightPanelRegion
+    with r1=2, r2=4, r3=oBattleObject_AllianceAndDirectionFlip — marks a region on the flipped side; StepTimer
+    hits 0 -> strh #0x10 into HitElement — done signal consumed by caller; caller unknown; no AttackElement==4
+    handler seen'
+  refs:
+  - bn6f/asm/asm31.s:140203
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080F88DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee `object_highlightPanelRegion` and the per-8-cycle highlight call match the proposal,
+    but the Carry-flag branch on `lsr r0, r0, #3` is the opposite of what''s claimed: `bcs loc_80F8906`
+    SKIPS the highlight, so the highlight fires when ChargeCycles is NOT a multiple of 8, not every 8th
+    tick. Also, HitElement is set with `strh` (halfword), and StepTimer/ChargeCycles are also halfwords,
+    contradicting the summary saying StepTimer counts down ''from 60 frames'' while it actually counts
+    ChargeCycles upward and decrements StepTimer. The proposed interface saying r0 is unused is wrong
+    — r7 is read but the caller convention isn''t proven; the function reads [r5,oBattleObject_AllianceAndDirectionFlip].
+    The name is acceptable but the summary is inaccurate.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which AI attack/character uses this (no caller found), so the exact attack and the meaning of AttackElement=4
+  are unconfirmed
+- What HitElement=0x10 triggers in the follow-up state
+- Exact panel area highlighted (interpretation of r1=2, r2=4 in object_highlightPanelRegion)
+- 'The callee `object_highlightPanelRegion` and the per-8-cycle highlight call match the proposal, but
+  the Carry-flag branch on `lsr r0, r0, #3` is the opposite of what''s claimed: `bcs loc_80F8906` SKIPS
+  the highlight, so the highlight fires when ChargeCycles is NOT a multiple of 8, not every 8th tick.
+  Also, HitElement is set with `strh` (halfword), and StepTimer/ChargeCycles are also halfwords, contradicting
+  the summary saying StepTimer counts down ''from 60 frames'' while it actually counts ChargeCycles upward
+  and decrements StepTimer. The proposed interface saying r0 is unused is wrong — r7 is read but the caller
+  convention isn''t proven; the function reads [r5,oBattleObject_AllianceAndDirectionFlip]. The name is
+  acceptable but the summary is inaccurate.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F88DA -> ai_attackHighlightTargetPanels
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F88DA

@@ -1,0 +1,56 @@
+name: battle_objPlaySfxDelay
+address: '0x080D7358'
+kind: function
+status: probable
+summary: Battle-object phase that plays sound 0x12 once, waits 14 frames, then ends the phase and advances
+  the object to action 4.
+interface: (r0 = sound id 0x12 (constant), r5 = battle object ptr) -> r0 = 0 after completion; updates
+  oBattleObject_Timer, PhaseInitialized, CurAction, CurPhaseAndPhaseInitialized
+details: On first entry (PhaseInitialized byte == 0) it stores 0xE into the 16-bit Timer field, plays
+  sound effect 0x12 (0x13-1) via PlaySoundEffect, and sets PhaseInitialized = 4 so the init runs only
+  once. Each subsequent call decrements Timer with flags set; while the result is non-negative it just
+  returns. When the timer underflows (bge not taken) it writes 4 to the CurAction byte and clears CurPhaseAndPhaseInitialized
+  (phase=0, initialized=0), handing control back to the object's action dispatcher. This matches the standard
+  phase-handler structure shared by battle objects; the 14-frame delay with a sound cue suggests a wind-up/charge
+  telegraph before the object performs its action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized plus 'mov r0,#4; strb' shows one-shot init guarded
+    by the phase-initialized flag; mov r0,#0xE; strh [r5,oBattleObject_Timer] then a decrementing 'sub
+    r0,#1; bge' loop is a frame-count delay; bl PlaySoundEffect with r0 = 0x13-1 = 0x12 plays a fixed
+    sound effect during the init step; On timer expiry it writes CurAction=4 and zero to CurPhaseAndPhaseInitialized,
+    the standard end-of-phase handoff; r5 base with oBattleObject_* field offsets throughout identifies
+    r5 as a battle object structure
+  refs:
+  - bn6f/asm/asm31.s:68429
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080D7358
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanism matches: 0xE stored to Timer, 0x13+0xFF=0x12 played, PhaseInitialized set to 4, then
+    timer counts down and on underflow CurAction=4 and CurPhaseAndPhaseInitialized=0. However the name
+    ''battle_objDelayPhasePlaySfx'' has the words out of order — the SFX plays first, then the delay —
+    so a name like ''battle_objPlaySfxDelay'' reads more naturally.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so which object type (enemy, obstacle, boss part) uses this phase and what action
+  4 triggers afterwards is unconfirmed
+- The identity of sound effect 0x12 is unknown from this code alone
+- 'The mechanism matches: 0xE stored to Timer, 0x13+0xFF=0x12 played, PhaseInitialized set to 4, then
+  timer counts down and on underflow CurAction=4 and CurPhaseAndPhaseInitialized=0. However the name ''battle_objDelayPhasePlaySfx''
+  has the words out of order — the SFX plays first, then the delay — so a name like ''battle_objPlaySfxDelay''
+  reads more naturally.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D7358 -> battle_objPlaySfxDelay
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7358

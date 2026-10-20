@@ -1,0 +1,58 @@
+name: battle_phaseTimerCountdownHandler
+address: '0x080BA528'
+kind: function
+status: probable
+summary: 'Battle object phase handler: on phase 0 sets CurPhase=4, CurAnim=0xF, Timer=0x2E and plays sound
+  0xAA; decrements Timer each call, plays sound 0x14 at 0x15 remaining, and on reaching 0 sets CurAction=0x14
+  and clears CurPhaseAndPhaseInitialized.'
+interface: (r5 = battle object) -> mutates oBattleObject_CurPhase/CurAnim/Timer/CurAction; no return value
+details: On phase 0 it sets CurPhase to 4, CurAnim to 0xF, plays sound 0xAA (0xAB-1), and stores Timer=0x2E
+  via bl sub_80BA6A4 and the strh. While the timer runs it decrements it each call; at 0x15 remaining
+  it plays sound 0x14 (a countdown/heartbeat cue), and when it reaches 0 it sets CurAction to 0x14 and
+  clears CurPhaseAndPhaseInitialized to 0 so the next action's phase restarts. Everything is done through
+  the standard battle-object fields at offsets oBattleObject_CurPhase, oBattleObject_CurAnim, oBattleObject_Timer,
+  oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized. The exact meaning of action 0x14
+  and what object uses this handler is unknown since no callers are identified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb #4,[r5,#CurPhase]; strb #0xf,[r5,#CurAnim] then bl PlaySoundEffect(0xAA) and Timer=0x2E
+    — phase init block; cmp r0,#0x15 / beq plays sound 0x14 — audible cue near the end of the countdown;
+    timer reaching 0 sets CurAction=0x14 and zeroes CurPhaseAndPhaseInitialized — handoff to the next
+    action; callees are only PlaySoundEffect (0x080005CC) and sub_80BA6A4 — pure state/AV sequencing,
+    no rendering or collision'
+  refs:
+  - bn6f/asm/asm31.s:4827
+  - 0x080005CC PlaySoundEffect
+  - 0x080BA6A4 sub_80BA6A4
+  reproduce: python3 tools/asmcat.py 0x080BA528
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s name and summary are mostly correct: it sets CurPhase=4, CurAnim=0xF, Timer=0x2E,
+    plays sound 0xAA (0xAB-1 via `add r0, #0xff`), beeps at 0x15, and transitions to CurAction=0x14 clearing
+    CurPhaseAndPhaseInitialized. However, it is not strictly a ''charge timer'' phase handler; it''s a
+    phase-step of some action that counts down a timer, so a more neutral name fits better. The summary''s
+    ''secondary beep'' is fine but calling it a ''charge'' is an interpretation not supported by callers
+    (none known).; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object/enemy installs this handler as its phase update (no callers known)
+- What battle action 0x14 performs
+- What animation 0xF and sounds 0xAA/0x14 correspond to
+- 'The proposal''s name and summary are mostly correct: it sets CurPhase=4, CurAnim=0xF, Timer=0x2E, plays
+  sound 0xAA (0xAB-1 via `add r0, #0xff`), beeps at 0x15, and transitions to CurAction=0x14 clearing CurPhaseAndPhaseInitialized.
+  However, it is not strictly a ''charge timer'' phase handler; it''s a phase-step of some action that
+  counts down a timer, so a more neutral name fits better. The summary''s ''secondary beep'' is fine but
+  calling it a ''charge'' is an interpretation not supported by callers (none known).'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA528 -> battle_phaseTimerCountdownHandler
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA528

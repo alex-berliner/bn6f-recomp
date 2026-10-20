@@ -1,0 +1,60 @@
+name: battle_spawnKind80InheritingElement
+address: '0x080E94DC'
+kind: function
+status: probable
+summary: Spawns a kind-0x80 battle object via object_spawnType4 with caller-supplied arguments, then copies
+  the source's element, related-object pointer (source itself), damage/stamina counter, and alliance+facing
+  halfword into the new object so it inherits its spawner's element and team/facing.
+interface: (r0 = source battle object, r1-r4 = pass-through args for object_spawnType4) -> r0 = new battle
+  object pointer, or 0/unchanged flow if spawn failed; flags set by the spawn's return check
+details: The function calls object_spawnType4 with r0 = 0x80 (the object kind/parameter) plus caller-supplied
+  arguments, then bails out if the spawn returned null. On success it writes oBattleObject_Element (byte),
+  oBattleObject_RelatedObject1Ptr (the source object pointer, r5), oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and copies the oBattleObject_AllianceAndDirectionFlip halfword from the source object, so the new entity
+  shares the spawner's element and team/facing. The listing appears partly misdecoded (push/pop of r0-r3,
+  beq after pop), but the store/load pattern to the battle-object fields is clear. With no known callers,
+  the gameplay role of kind-0x80 type-4 objects is unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x80; bl object_spawnType4 — spawns a battle object of type 4 with parameter 0x80;
+    beq locret_80E94F6 — early exit when the spawn returns null; strb r3, [r0,#oBattleObject_Element]
+    — new object gets an element value; str r5, [r0,#oBattleObject_RelatedObject1Ptr] — new object links
+    back to the source object in r5; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r1,[r0,...]
+    — team/flip state copied from source'
+  refs:
+  - bn6f/asm/asm31.s:108245
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E94DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee wrapper is `object_spawnType4` (kind 4 spawn), but the first argument passed in is `r0
+    = 0x80`, so the kind/parameter is 0x80, not that this spawns a ''type 4 battle object'' as the name
+    implies. The push/pop is `push {r0-r2,r5}` and `pop {r1-r3,r5}`, so after pop, r3 holds the original
+    r2 (element byte), r1 holds original r0 (source pointer), and r0 = original r5. The strb stores r3
+    into the new object''s Element field, confirming element inheritance. The name should reflect inheriting
+    element from the source rather than ''type 4''.; run wf investigate investigate-20261019-015108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the in-game use of the 0x80 type-4 object (attack/effect) is unconfirmed
+- The listing is partly misdecoded; exact source of the element value (r3) and param setup before the
+  bl needs a clean disassembly
+- The callee wrapper is `object_spawnType4` (kind 4 spawn), but the first argument passed in is `r0 =
+  0x80`, so the kind/parameter is 0x80, not that this spawns a 'type 4 battle object' as the name implies.
+  The push/pop is `push {r0-r2,r5}` and `pop {r1-r3,r5}`, so after pop, r3 holds the original r2 (element
+  byte), r1 holds original r0 (source pointer), and r0 = original r5. The strb stores r3 into the new
+  object's Element field, confirming element inheritance. The name should reflect inheriting element from
+  the source rather than 'type 4'.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E94DC -> battle_spawnKind80InheritingElement
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E94DC

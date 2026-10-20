@@ -1,0 +1,63 @@
+name: ai_attackStepFire
+address: '0x080ED5BE'
+kind: function
+status: probable
+summary: AI attack-state step that fires a single shot one panel in front of the object every 14 ticks,
+  loading a per-shot delay from a 4-entry table, until ChargeCycles is exhausted, then sets HitElement=8
+  to end the attack.
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = result of sub_80CB686; no meaningful
+  return to caller (state kept in r7 fields)
+details: Each call decrements oAIAttackVars_StepTimer; when it reaches 0 it is reloaded with 0xE, so an
+  action fires every 14 frames. On the first invocation (AttackElement==0) it bumps a counter at TempAttackObject+0x10
+  and latches AttackElement=4. Each shot indexes dword_80ED618 by ChargeCycles to load a byte into TimerOrCycles,
+  then calls object_getFrontDirection to get +1/-1 facing and adds it to oBattleObject_PanelX, targeting
+  the panel in front. It passes panelY in r1, InitFlag in r2, a constant 0x10<<16 in r3, AttackBoost2
+  in r4, and Damage+AttackBoost in r6 to sub_80CB686, which evidently spawns the attack/projectile at
+  that panel. ChargeCycles counts down per shot; when it hits 0, HitElement is set to 8, ending the volley.
+  dword_80ED618 = bytes 00 03 10 10, likely per-shot timer/delay values for the last four shots.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with reload of 0xE at loc_80ED5DC: fixed shot interval;
+    bl object_getFrontDirection then add r0, r0, PanelX: target x is one panel in facing direction; Damage
+    + AttackBoost loaded into r6 and AttackBoost2 into r4 before bl sub_80CB686: damage payload for spawned
+    attack; ldrb r0, [r1,r0] off dword_80ED618 indexed by ChargeCycles into TimerOrCycles: per-shot timing
+    table; ChargeCycles countdown with HitElement=8 on exhaustion: volley terminates after fixed shot
+    count'
+  refs:
+  - bn6f/asm/asm31.s:116818
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CB686 sub_80CB686
+  reproduce: python3 tools/asmcat.py 0x080ED5BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: StepTimer reloads 0xE, AttackElement latches to 4, dword_80ED618
+    (0x1010300) is indexed by ChargeCycles, sub_80CB686 is called with front-panel coords, ChargeCycles
+    counts down to 0 then sets HitElement=8. However, the name ''ai_attackStepFireVolley'' is reasonable
+    but the prefix/verb is fine; a tighter name reflecting the per-shot step semantics is preferable.
+    dword_80ED618 bytes are 00 03 10 10 as proposed.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_80CB686 is undocumented — its signature and what it spawns (projectile vs hitbox, what r3=0x100000
+  means) would confirm the exact attack
+- No known callers, so the AI attack enum value / which boss or enemy uses this volley is unknown
+- Meaning of the counter at TempAttackObject+0x10 and semantics of TimerOrCycles vs the dword_80ED618
+  entries
+- 'The code matches the proposal: StepTimer reloads 0xE, AttackElement latches to 4, dword_80ED618 (0x1010300)
+  is indexed by ChargeCycles, sub_80CB686 is called with front-panel coords, ChargeCycles counts down
+  to 0 then sets HitElement=8. However, the name ''ai_attackStepFireVolley'' is reasonable but the prefix/verb
+  is fine; a tighter name reflecting the per-shot step semantics is preferable. dword_80ED618 bytes are
+  00 03 10 10 as proposed.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ED5BE -> ai_attackStepFire
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED5BE

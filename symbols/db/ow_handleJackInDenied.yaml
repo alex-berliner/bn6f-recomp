@@ -1,0 +1,61 @@
+name: ow_handleJackInDenied
+address: '0x0804AEC4'
+kind: function
+status: probable
+summary: Queues a denial text string into the chatbox (when flag), maps a reason code to a chatbox ID
+  and calls sub_804AF10, plays SOUND_CANT_JACK_IN, backs up the overworld object's prior state byte (+3)
+  into +0xD and sets its state to 8.
+interface: (r0 = show-message flag, r1 = text pointer, r2 = reason code, r5 = object ptr) -> r0 = result
+  of sub_804AF10; destroys r4
+details: 'If r0 != 0, it fetches the toolkit''s ChatboxPtr (via r10) and stores r1 at chatbox+0x4C, i.e.
+  queues the text to display. It then maps r2 to a small ID (r0!=0: 5->0x10, 1->6, else 7; r0==0: 5->0xF,
+  0->3, 1->4, else 5) and calls sub_804AF10, likely a chatbox/message-window setup taking that ID. It
+  unconditionally plays SOUND_CANT_JACK_IN via PlaySoundEffect. Finally it backs up object byte +3 into
+  +0xD and sets +2 to 8, a typical overworld-object state transition with saved previous state. r5 is
+  never set inside, so the caller must supply it as the object context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r4,[r10,#oToolkit_ChatboxPtr]; str r1,[r4,#0x4c] queues r1 into the chatbox struct; the
+    r2-based ID tables (0xf/3/4/5 vs 0x10/7/6) pick a message/window mode for sub_804AF10; mov r0,#SOUND_CANT_JACK_IN;
+    bl PlaySoundEffect always plays the denied-jack-in sound; ldrb r0,[r5,#3]; strb r0,[r5,#0xd]; mov
+    r0,#8; strb r0,[r5,#2] is a state set-to-8 with old state saved; reason code 5 gets a distinct ID
+    in both branches, implying a special denial case
+  refs:
+  - bn6f/asm/asm03_2.s:8969
+  - 0x080005CC PlaySoundEffect
+  - 0x0804AF10 sub_804AF10
+  reproduce: python3 tools/asmcat.py 0x0804AEC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mapping table for r2 is wrong. When r0==0, code maps r2=5->0xF, r2=0->3, r2=1->4,
+    else->5 (not r2=0->3 only). When r0!=0, code maps r2=5->0x10, else->7, then if r2==1->6 (the proposal
+    said r2=1->6 but listed 7 first too; minor). The summary is otherwise accurate: stores r1 at chatbox+0x4C,
+    calls sub_804AF10, plays SOUND_CANT_JACK_IN, saves object+3 to +0xD and sets +2 to 8. The name ''ow_showJackInDeniedMessage''
+    is reasonable since it handles a jack-in denial response, but a more general ''ow_handleJackInDenied''
+    fits since it just queues text and transitions state.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so the meaning of r0 (show-message flag vs something else), r2's reason codes,
+  and what object r5 points to are unconfirmed
+- sub_804AF10 is undocumented; its ID parameter's exact effect (chatbox open vs message print mode) is
+  unknown
+- 'The proposal''s mapping table for r2 is wrong. When r0==0, code maps r2=5->0xF, r2=0->3, r2=1->4, else->5
+  (not r2=0->3 only). When r0!=0, code maps r2=5->0x10, else->7, then if r2==1->6 (the proposal said r2=1->6
+  but listed 7 first too; minor). The summary is otherwise accurate: stores r1 at chatbox+0x4C, calls
+  sub_804AF10, plays SOUND_CANT_JACK_IN, saves object+3 to +0xD and sets +2 to 8. The name ''ow_showJackInDeniedMessage''
+  is reasonable since it handles a jack-in denial response, but a more general ''ow_handleJackInDenied''
+  fits since it just queues text and transitions state.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804AEC4 -> ow_handleJackInDenied
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AEC4

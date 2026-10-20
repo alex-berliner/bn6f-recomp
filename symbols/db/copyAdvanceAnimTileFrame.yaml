@@ -1,0 +1,61 @@
+name: copyAdvanceAnimTileFrame
+address: '0x0803F0A4'
+kind: function
+status: probable
+summary: If config flags at [r0] and [r0+0xC] are both clear, calls sub_803EF48(1); then copies the current
+  animated tile frame (index [r2+3], stride 0x40 bytes from r3 frame bank) into the dest buffer (r1) via
+  CopyByEightWords, advances the frame index modulo 8, and increments the call counter at [r2+8].
+interface: (r0 = config struct (u8 flag@0x0, u8 flag@0xC), r1 = dest ptr, r2 = state struct (u8 frameIdx@0x3,
+  u16 count@0x8), r3 = src frame bank base) -> r0 = new frame count; no meaningful flags
+details: If either byte at [r0] or [r0,#0xC] is zero, it calls sub_803EF48(1) (r0 saved around the call),
+  likely flagging/requesting something. It then selects frame [r2+3] from a bank at r3 whose frames are
+  0x40 bytes apart, and block-copies r3 bytes (size passed straight through from the caller) via CpuFastSet
+  wrapper CopyByEightWords. Afterwards it advances the frame index at [r2+3] modulo 8 and increments the
+  u16 counter at [r2+8]. The 8-frame, 0x40-byte-stride layout is the classic GBA animated-tile pattern,
+  so the dest (r1, from the caller) is presumably a VRAM tile slot. The exact meaning of the r0 flags
+  and of the sub_803EF48(1) call is not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803F0A4: ldrb r4,[r5,#3]; mov r2,#0x40; mul r2,r4; add r1,r1,r2 — src offset is 0x40 *
+    frame index; bl CopyByEightWords with src=bank+0x40*frame, dest=r6, size=r3 unchanged from caller;
+    add r4,#1; and r4,#7; strb r4,[r5,#3] — frame index cycles through 8 frames; ldrh r0,[r5,#8]; add
+    r0,#1; strh r0,[r5,#8] — u16 counter at state+8 incremented, returned in r0; tst of [r0] and [r0,#0xC]
+    with bail-out bl sub_803EF48(=1) guards the copy'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12809
+  - 0x0803F334 sub_803F334
+  - 0x08000950 CopyByEightWords
+  - 0x0803EF48 sub_803EF48
+  reproduce: python3 tools/asmcat.py 0x0803F0A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately describes the behavior: it reads frame index [r2+3], selects frame at offset
+    0x40*idx from r3, CopyByEightWords-copies r6 bytes, advances idx modulo 8, and increments [r2+8].
+    The r0 flags guard a sub_803EF48(1) call. However, the name ''copy_advanceAnimTileFrame'' is fine
+    but ''copyAdvanceAnimTileFrame'' is more idiomatic; also the summary''s phrasing ''cycling the frame
+    index each call'' is correct. Minor: the proposed_name has lowercase ''copy'' which doesn''t match
+    the camelCase pattern; should be ''copyAdvanceAnimTileFrame''.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_803EF48(1) does (likely sets a request/flag) and what the r0 struct's flag bytes gate
+- Who calls sub_803F334 and what destination (VRAM tile slot?) and source bank (which animated tile graphic)
+  are passed
+- 'The summary accurately describes the behavior: it reads frame index [r2+3], selects frame at offset
+  0x40*idx from r3, CopyByEightWords-copies r6 bytes, advances idx modulo 8, and increments [r2+8]. The
+  r0 flags guard a sub_803EF48(1) call. However, the name ''copy_advanceAnimTileFrame'' is fine but ''copyAdvanceAnimTileFrame''
+  is more idiomatic; also the summary''s phrasing ''cycling the frame index each call'' is correct. Minor:
+  the proposed_name has lowercase ''copy'' which doesn''t match the camelCase pattern; should be ''copyAdvanceAnimTileFrame''.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803F0A4 -> copyAdvanceAnimTileFrame
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F0A4

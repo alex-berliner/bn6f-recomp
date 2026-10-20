@@ -1,0 +1,61 @@
+name: t3_renderIndexedText
+address: '0x08120280'
+kind: function
+status: probable
+summary: Dispatcher that picks a text script from table TextScript873EA50 by index and tail-calls sub_81202B4
+  to expand it into tile indices, with a tile base packed as ((param<<12)|0x200).
+interface: (r0..r2 = ?, r3 = tile-offset param, r4 = script index into table) -> writes tile indices to
+  the two u16 arrays at r2 and r2+0x10; r0/r1 clobbered
+details: 'Packs the tile descriptor ((r3 << 12) | 0x200, 0x200 being a tile/char-block base) and stores
+  it at [sp], then stores the output buffer r2 at [sp,#8] and r2+0x10 at [sp,#0xC] — two arrays of 8 u16
+  tile indices (0x10 bytes apart, matching r5 = 8). It uses r4 as an index into the halfword offset table
+  TextScript873EA50 (r1 = table[r4 << 1]) to pick a string pointer, then tail-calls the known text expander
+  sub_81202B4, which converts the string into pairs of font tile indices using the packed base value and
+  the two arrays. r4 and r5 are reloaded as extra register arguments for the callee''s convention. The
+  function is a thin dispatcher: pick a string by index, render it to a small fixed-size tile buffer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_81202AC + ldrh r1,[r0,r1<<1] + add r0,r0,r1: r4 indexes table TextScript873EA50
+    to select the string; str r2,[sp,#8] / str r3(=r2+0x10),[sp,#0xC]: two adjacent 8-halfword output
+    arrays passed to the callee; orr r3, r6 (0x200) after lsl r3,#0xC: packed tile-base value stored at
+    [sp] for the expander; Callee sub_81202B4 is documented as expanding a text string into pairs of font
+    tile indices with a base-tile offset; r5 = 8 matches the fixed 8-entry size implied by the 0x10-byte
+    array spacing'
+  refs:
+  - bn6f/asm/asm32.s:37503
+  - 0x0812EDFC sub_812EDFC
+  - 0x081202B4 sub_81202B4
+  reproduce: python3 tools/asmcat.py 0x08120280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads a halfword offset from TextScript873EA50 (lsl r1,#1; ldrh r1,[r0,r1]; add r0,r0,r1)
+    to derive the string pointer, and tail-calls sub_81202B4 which expands the string into tile indices.
+    The ''t3_renderIndexedTextTiles'' name is reasonable but the prefix ''t3'' isn''t clearly justified;
+    the callee is the actual expander. The summary correctly describes the dispatch + tail-call pattern.
+    A name like ''renderIndexedText'' or keeping the existing one is fine, though the base value is 0x200
+    (tile block 1 base) not a char-block base as stated.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of the r3<<12 field and the 0x200 base (char block vs palette bits)
+- Why r1 is left holding the raw table halfword when the callee is entered
+- Which game screen/caller sub_812EDFC uses this and what the strings in TextScript873EA50 say
+- The function reads a halfword offset from TextScript873EA50 (lsl r1,#1; ldrh r1,[r0,r1]; add r0,r0,r1)
+  to derive the string pointer, and tail-calls sub_81202B4 which expands the string into tile indices.
+  The 't3_renderIndexedTextTiles' name is reasonable but the prefix 't3' isn't clearly justified; the
+  callee is the actual expander. The summary correctly describes the dispatch + tail-call pattern. A name
+  like 'renderIndexedText' or keeping the existing one is fine, though the base value is 0x200 (tile block
+  1 base) not a char-block base as stated.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8120280 -> t3_renderIndexedText
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120280

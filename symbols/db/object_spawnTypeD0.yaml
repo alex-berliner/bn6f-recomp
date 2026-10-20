@@ -1,0 +1,58 @@
+name: object_spawnTypeD0
+address: '0x080DF848'
+kind: function
+status: probable
+summary: Spawns battle object type 0xD0, fills its parameter fields from the caller's arguments (r0-r3,
+  r5, r6), sets the 0x10 status flag, and runs sub_80DF520 as an additional setup routine.
+interface: (r0, r1, r2, r3, r5, r6 = spawn parameters) -> r0 = new object pointer, or 0 if spawn failed;
+  sets object flag 0x10 in byte 0x00
+details: 'Saves r0-r2 and r5 with push, then calls object_spawnType3 with r0=0xD0 as the object kind.
+  On success (r0 != 0) it stores the saved arguments into the new object''s custom fields: byte 0x12 =
+  arg0, byte 0x13 = arg1, halfword 0x16 = arg2, word 0x3C = r6, word 0x4C = old r5 (likely pointers/callbacks
+  given word size). It ORs 0x10 into the object''s status byte at 0x00, then calls sub_80DF520 with r0
+  = the new object, probably a per-type initializer. On spawn failure it returns immediately with r0 =
+  0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xd0 immediately before bl object_spawnType3 fixes the spawned object kind; pop {r1-r3,r5}
+    recovers the pushed arguments so r1/r2/r3/r5 can be written into the new object; strb/str/strh to
+    offsets 0x12,0x13,0x3C,0x4C,0x16 of the returned object fill its parameter fields; orr r2, #0x10 /
+    strb r2,[r0] sets a flag in the object''s first status byte; bl sub_80DF520 with r0 = new object runs
+    a follow-up setup step'
+  refs:
+  - bn6f/asm/asm31.s:86341
+  - 0x08003358 object_spawnType3
+  - 0x080DF520 sub_80DF520
+  reproduce: python3 tools/asmcat.py 0x080DF848
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does call object_spawnType3 with r0=0xD0, fills custom fields, sets flag 0x10, and calls
+    sub_80DF520. However, the proposal says ''On success (r0 != 0)'' — but the `beq locret_80DF874` branches
+    on r5 (after `mov r0, r5`), so the success/failure logic is inverted in the description. Also, `object_spawnType3`
+    already runs the initializer per the callee description, so calling sub_80DF520 is an additional setup
+    step, not ''probably a per-type initializer.'' The name `object_spawnTypeD0WithParams` is reasonable
+    but could be more concise.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What game object kind 0xD0 is (needs callers or the type-3 spawn table)
+- What sub_80DF520 initializes on the object
+- Meaning of fields 0x3C/0x4C (pointers vs values) and which object struct layout they belong to
+- The code does call object_spawnType3 with r0=0xD0, fills custom fields, sets flag 0x10, and calls sub_80DF520.
+  However, the proposal says 'On success (r0 != 0)' — but the `beq locret_80DF874` branches on r5 (after
+  `mov r0, r5`), so the success/failure logic is inverted in the description. Also, `object_spawnType3`
+  already runs the initializer per the callee description, so calling sub_80DF520 is an additional setup
+  step, not 'probably a per-type initializer.' The name `object_spawnTypeD0WithParams` is reasonable but
+  could be more concise.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF848 -> object_spawnTypeD0
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF848

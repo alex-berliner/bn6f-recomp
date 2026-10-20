@@ -1,0 +1,61 @@
+name: drawSplitStripScroll
+address: '0x0803A422'
+kind: function
+status: probable
+summary: Decrements [r5+0x19] each call and writes two 4-row BG tile-id strips from unk_202A204 and word_202A604
+  into the BG map at columns 4 and 12, with the strips' rows offset by the counter and 32-counter respectively
+  so they animate apart.
+interface: (r5 = work struct; byte at +0x19 = scroll counter, decremented each call) -> r0 = last row
+  passed to bg_writeTileIdRow; updates tile-id maps at unk_202A204 and word_202A604
+details: First decrements [r5+0x19], then loops r7=0..3 calling bg_writeTileIdRow with row = counter,
+  column 4+r7, source unk_202A204 + r7*64 (each 64-byte block is one 32-tile row) into a 32x32 map. A
+  second loop does the same at column 12+r7 with row = 32 - counter and source word_202A604 + r7*64, so
+  the two strips move in opposite vertical directions as the counter falls. Both buffers are 4x32-tile
+  (256-byte) tile-id images staged in RAM. The effect ends when the counter runs out, as callers at 803A334/A39C/A3C4/A410
+  are small drivers around it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb on [r5,#0x19] with ''sub #1'' makes the scroll counter tick once per call; two identical
+    4-iteration loops both call bg_writeTileIdRow_80018E0 with r4=0x20 (32x32 map) and r3 = base + r7*64
+    (one row of 32 tile ids); first loop passes row = [r5+0x19], second passes row = 32-[r5+0x19] — opposite
+    motion, matching a split transition; sources unk_202A204 and word_202A604 are two separate 256-byte
+    tile-id buffers written by other code; all four callers (0x803A334..0x803A410) are tiny wrappers in
+    the same block, consistent with per-frame effect stepping'
+  refs:
+  - bn6f/asm/asm03_1_1.s:3220
+  - 0x0803A334 sub_803A334
+  - 0x0803A39C sub_803A39C
+  - 0x0803A3C4 sub_803A3C4
+  - 0x080018E0 bg_writeTileIdRow_80018E0
+  reproduce: python3 tools/asmcat.py 0x0803A422
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the asm: [r5+0x19] is decremented, then loop r7=0..3 calls bg_writeTileIdRow
+    with row=counter, column=4+r7, source unk_202A204+r7*64, width 0x20; a second loop does row=0x20-counter,
+    column=0xc+r7, source word_202A604+r7*64. The four small caller wrappers at 803A334/A39C/A3C4/A410
+    are consistent with a per-frame driver. However the name ''bg_scrollStripPair'' uses a ''bg_'' prefix
+    that is not in the allowed prefix list.; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what scene uses this (the callers' context and the contents of unk_202A204/word_202A604 are unknown)
+- exact meaning of bg_writeTileIdRow's r0/r1/r2 argument order (row vs column vs count) should be confirmed
+  from 0x80018E0 itself
+- 'The proposal''s mechanics match the asm: [r5+0x19] is decremented, then loop r7=0..3 calls bg_writeTileIdRow
+  with row=counter, column=4+r7, source unk_202A204+r7*64, width 0x20; a second loop does row=0x20-counter,
+  column=0xc+r7, source word_202A604+r7*64. The four small caller wrappers at 803A334/A39C/A3C4/A410 are
+  consistent with a per-frame driver. However the name ''bg_scrollStripPair'' uses a ''bg_'' prefix that
+  is not in the allowed prefix list.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803A422 -> drawSplitStripScroll
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A422

@@ -1,0 +1,54 @@
+name: battle_aiPickRandomRowObject
+address: '0x0802D3A8'
+kind: function
+status: probable
+summary: AI step that loops (up to 3 attempts) calling a row-object picker using the actor's PanelY and
+  returns 0 to retry or 2 after resetting the attempt counter.
+interface: (r0 = unused, r5 = battle object, r6 = AI work struct) -> r0 = 0 if an object was picked, 2
+  if the attempts were exhausted; no flags of interest
+details: 'This is an AI/state-machine step: it first stores 8 (a frame delay or next-state id) into the
+  work struct at [r6], then reads the attempt counter at [r6,#4]. While the counter is <= 2 it calls battle_pickRandomRowObjectFields_810971A
+  with the object''s PanelY field, letting the callee choose a row from alliance-dependent panel parameters
+  and return an id/attribute pair. If the callee reports no pick (r0 == 0) the function returns 0 so the
+  caller can retry or proceed; otherwise it resets the counter at [r6,#4] to 0 and returns 2, signalling
+  the AI to move on (probably after 3 failed attempts).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh #8,[r6] then ldrh/cmp [r6,#4],#2 implements a bounded retry counter in the AI work struct;
+    ldrb [r5,#oBattleObject_PanelY] feeds the object''s row into battle_pickRandomRowObjectFields_810971A;
+    beq loc_802D3C6 returns 0 on success while failure falls through to reset [r6,#4]=0 and return 2;
+    callee summary (random object from a row chosen by alliance-dependent panel params) matches the ''pick
+    target on row'' behaviour'
+  refs:
+  - bn6f/asm/asm03_0.s:15520
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  reproduce: python3 tools/asmcat.py 0x0802D3A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary accurately describe the function, which loops up to 3 times calling battle_pickRandomRowObjectFields_810971A
+    and either returns 0 (to retry) or resets the counter and returns 2. However, the interface is slightly
+    off: r0 is not ''unused'' — it carries the value 8 written to [r6] as a halfword. A more accurate
+    name reflecting that this is an AI loop attempting a random row pick would still be appropriate.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers are known, so the meaning of the 0/2 return codes in the surrounding AI state machine and
+  the purpose of the stored 8 at [r6] are inferred, not confirmed
+- whether r0 is an argument or unused is unclear from the code
+- 'The name and summary accurately describe the function, which loops up to 3 times calling battle_pickRandomRowObjectFields_810971A
+  and either returns 0 (to retry) or resets the counter and returns 2. However, the interface is slightly
+  off: r0 is not ''unused'' — it carries the value 8 written to [r6] as a halfword. A more accurate name
+  reflecting that this is an AI loop attempting a random row pick would still be appropriate.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802D3A8 -> battle_aiPickRandomRowObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D3A8

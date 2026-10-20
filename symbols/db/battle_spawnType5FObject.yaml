@@ -1,0 +1,62 @@
+name: battle_spawnType5FObject
+address: '0x080E76D4'
+kind: function
+status: probable
+summary: Spawns a battle object via object_spawnType4 with type ID 0x5F, then initializes its panel coordinates,
+  element, related-object linkage (copying alliance/direction flip), damage, and chip ID from caller registers.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related object ptr, r6 = damage value, r7 = chip
+  ID) -> r0 = related object ptr (spawned object in callee's return); sets flags from r5 test
+details: The wrapper pushes r0-r2 and r5, calls object_spawnType4 with r0=0x5F, then pops the saved values
+  shifted by one slot so the caller's r0,r1,r2 land in r1,r2,r3, which are stored to oBattleObject_PanelX,
+  PanelY and Element. It also stores the caller's r5 to oBattleObject_RelatedObject1Ptr, copies AllianceAndDirectionFlip
+  from that object, and stores r6 and r7 to DamageAndStaminaDamageCounterDisabler and ChipID. MOV r0,r5
+  (a flag-setting Thumb ADDS) makes the later BEQ skip all field stores when r5 is NULL, so the object
+  spawns without linkage if no related object is given. The return value in r0 is just the caller's r5.
+  The reliance on caller-set r5-r7 is a nonstandard ABI quirk typical of inline-optimized spawn sites.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_spawnType4 with r0=0x5F: the object type/param for this spawn; strb r1,[r0,#oBattleObject_PanelX]
+    / strb r2,[...PanelY] / strb r3,[...Element]: position and element setup from the pop-shifted caller
+    args; str r5,[r0,#oBattleObject_RelatedObject1Ptr] then ldrh from AllianceAndDirectionFlip of that
+    same r5 object; mov r0,r5 followed by beq locret: MOV Rd,Rm in low-regs sets flags, so NULL r5 skips
+    all field stores; stores to DamageAndStaminaDamageCounterDisabler (r6) and ChipID (r7) complete the
+    object''s initial state'
+  refs:
+  - bn6f/asm/asm31.s:104154
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E76D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The wrapper pushes r0-r2 and r5, calls object_spawnType4 with type 0x5F, then reuses r5 as the spawned-object
+    pointer base, not the return value of object_spawnType4 (its prototype returns r0 already, and the
+    code never moves it). The proposed description of ''shifts saved values by one slot so r0,r1,r2 land
+    in r1,r2,r3'' matches the POP/PUSH semantics, but naming should reflect that it actually spawns and
+    configures a type-0x5F battle object rather than just ''type-4'' generically, and that r0 ends up
+    pointing at the spawned object after POP. The function has no known callers, so behavior is clear
+    from the code; a better name should highlight the 0x5F ID and the panel/element/damage/chip initialization.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which gameplay object type 0x5F is and why r5-r7 carry arguments is unconfirmed
+- What object_spawnType4 does with the 0x5F param (object kind vs. sprite/behavior id) needs its own analysis
+  to name this more precisely
+- The wrapper pushes r0-r2 and r5, calls object_spawnType4 with type 0x5F, then reuses r5 as the spawned-object
+  pointer base, not the return value of object_spawnType4 (its prototype returns r0 already, and the code
+  never moves it). The proposed description of 'shifts saved values by one slot so r0,r1,r2 land in r1,r2,r3'
+  matches the POP/PUSH semantics, but naming should reflect that it actually spawns and configures a type-0x5F
+  battle object rather than just 'type-4' generically, and that r0 ends up pointing at the spawned object
+  after POP. The function has no known callers, so behavior is clear from the code; a better name should
+  highlight the 0x5F ID and the panel/element/damage/chip initialization.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E76D4 -> battle_spawnType5FObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E76D4

@@ -1,0 +1,57 @@
+name: battle_spawnThreeDimmingCollisionRegions
+address: '0x080BD24C'
+kind: function
+status: probable
+summary: Spawns three dimming collision-region objects at successive offsets derived from sub_80BD278
+  and base 0x405FF00, using r5's battle-object element and damage/stamina word.
+interface: (r0 = source object/context passed to sub_80BD278, r5 = battle object ptr) -> r0 = last spawn
+  result; clobbers r2-r7
+details: Loops r7 = 1..3, calling sub_80BD278 with r1 = index to get an offset in r2; adds it to base
+  0x405FF00 to form r4, presumably the spawn x/position base. Reads r5's oBattleObject_Element byte and
+  oBattleObject_DamageAndStaminaDamageCounterDisabler word, sets r3 = 0 and r7 = 3, then calls object_spawnDimmingCollisionRegion.
+  The pushed/popped r7 preserves the loop counter across the call. The three iterations suggest a 3-panel-wide
+  effect (e.g. a column or triple-panel attack) tied to the element in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop `mov r7,#1` ... `cmp r7,#3; ble` runs the spawn three times with r1 = iteration; callee
+    object_spawnDimmingCollisionRegion is documented as spawning a timestop-proof collision region; r4
+    = 0x405FF00 + offset from sub_80BD278, position parameter for the spawn; r5 fields oBattleObject_Element
+    and oBattleObject_DamageAndStamina... match battle-object layout passed to the spawner
+  refs:
+  - bn6f/asm/asm31.s:11153
+  - 0x080BCF7A sub_80BCF7A
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  - 0x080BD278 sub_80BD278
+  reproduce: python3 tools/asmcat.py 0x080BD24C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop runs r7=1,2,3 inclusive (cmp r7,#3 / ble) so three spawns is correct, and r4 is built from
+    dword 0x405FF00 plus r2 (the offset from sub_80BD278). However r0 is never loaded with a ''source
+    object/context'' here — the function only uses r5 and r7, and r0 isn''t even set before the call.
+    The element read and damage/stamina word are passed to object_spawnDimmingCollisionRegion, fitting
+    a 3-panel dimming spawn. The name is fine but the summary''s claim about r0/source and ''persisting
+    through timestop'' isn''t visible in this snippet — that detail belongs to the callee.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80BD278 computes (per-index x/panel offset?)
+- which attack/move in sub_80BCF7A invokes this and what r0/r5 actually are
+- The loop runs r7=1,2,3 inclusive (cmp r7,#3 / ble) so three spawns is correct, and r4 is built from
+  dword 0x405FF00 plus r2 (the offset from sub_80BD278). However r0 is never loaded with a 'source object/context'
+  here — the function only uses r5 and r7, and r0 isn't even set before the call. The element read and
+  damage/stamina word are passed to object_spawnDimmingCollisionRegion, fitting a 3-panel dimming spawn.
+  The name is fine but the summary's claim about r0/source and 'persisting through timestop' isn't visible
+  in this snippet — that detail belongs to the callee.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BD24C -> battle_spawnThreeDimmingCollisionRegions
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD24C

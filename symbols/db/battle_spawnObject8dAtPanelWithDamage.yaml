@@ -1,0 +1,64 @@
+name: battle_spawnObject8dAtPanelWithDamage
+address: '0x080D6D18'
+kind: function
+status: probable
+summary: Spawns battle object 0x8D, and on success sets its PanelX/PanelY/Element from the caller's r0/r1/r2,
+  copies DamageAndStaminaDamageCounterDisabler from r6, copies AllianceAndDirectionFlip from the source
+  object in r5, and sets Flags bit 0x10.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = source battle object whose AllianceAndDirectionFlip
+  is copied, r6 = damage value) -> r0 = spawned object pointer on success; Z flag from spawn success
+details: 'Thin spawn veneer: it pushes its incoming r0/r1/r2/r5 (plus lr) so object_spawnType3 can pick
+  up its five arguments from the stack, and passes object ID 0x8D in r0. If the spawn succeeds, it writes
+  the new object''s oBattleObject_PanelX, PanelY and Element from the caller''s r0/r1/r2, sets oBattleObject_DamageAndStaminaDamageCounterDisabler
+  from r6, copies AllianceAndDirectionFlip from the object passed in r5 (the owning/attacking object,
+  so the attack sides with its owner), and ORs 0x10 into oObjectHeader_Flags. The 0x10 flag is likely
+  a behavioral marker (e.g. no-collision/no-delete) set on this object type. On spawn failure it returns
+  immediately without touching anything. The exact identity of object 0x8D is not visible from this function
+  alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x8d + bl object_spawnType3 with pushed r0-r2,r5 matches the documented five-argument
+    spawn convention; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element right after the success check;
+    str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler] sets the damage field from a caller
+    register; ldrh r3,[r5,#AllianceAndDirectionFlip]/strh copies owner alignment onto the new object;
+    orr 0x10 into oObjectHeader_Flags marks the spawned object after initialization
+  refs:
+  - bn6f/asm/asm31.s:67592
+  - 0x080BAE60 sub_80BAE60
+  - 0x0810108E sub_810108E
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D6D18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are accurate: it pushes r0-r2/r5/lr, spawns object 0x8D via object_spawnType3,
+    and on success copies PanelX/PanelY/Element/Damage/AllianceAndDirectionFlip and sets Flags 0x10. However,
+    the interface is incorrect: r6 (damage) is not pushed to the stack, so it is still live in r6 for
+    the str r6 instruction; only r0,r1,r2,r5 are stashed. Also, after object_spawnType3, the code does
+    ''mov r0, r5'' (preserving the source pointer in r0 across the pop), so r5 must remain the source
+    battle object. The name should reflect it spawns at a panel with damage and aligns to a source object''s
+    alliance.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object ID 0x8D actually is (attack/effect table lookup needed)
+- Meaning of flag 0x10 in oObjectHeader_Flags
+- What sub_80BAE60 and sub_810108E are (would confirm the in-game context, e.g. which chip/attack spawns
+  this)
+- 'The proposal''s mechanics are accurate: it pushes r0-r2/r5/lr, spawns object 0x8D via object_spawnType3,
+  and on success copies PanelX/PanelY/Element/Damage/AllianceAndDirectionFlip and sets Flags 0x10. However,
+  the interface is incorrect: r6 (damage) is not pushed to the stack, so it is still live in r6 for the
+  str r6 instruction; only r0,r1,r2,r5 are stashed. Also, after object_spawnType3, the code does ''mov
+  r0, r5'' (preserving the source pointer in r0 across the pop), so r5 must remain the source battle object.
+  The name should reflect it spawns at a panel with damage and aligns to a source object''s alliance.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D6D18 -> battle_spawnObject8dAtPanelWithDamage
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6D18

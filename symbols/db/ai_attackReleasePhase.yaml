@@ -1,0 +1,58 @@
+name: ai_attackReleasePhase
+address: '0x080ED52C'
+kind: function
+status: probable
+summary: AI attack step that decrements the spawned attack object's +0x10 charge counter, waits 20 frames
+  (StepTimer=0x14) with AttackElement=4 set, then nulls the temp attack pointer and related object pointer
+  and exits the attack state.
+interface: (r0 = battle object (also r5), r7 = oAIAttackVars, r5 = battle object) -> r0 clobbered; sets
+  AttackElement=4 then exits attack state when timer expires
+details: Reads oAIAttackVars_AttackElement from the AI attack vars at r7. If it is 0, fetches the temp
+  attack object via oBattleObject_AIDataPtr->oAIData_TempAttackObjectPtr, decrements its byte at +0x10
+  (a repeat/charge counter on the spawned attack object), stores 0x14 into oAIAttackVars_StepTimer, and
+  sets AttackElement=4. Each frame then decrements StepTimer; once it goes below 0 (bge), it nulls oBattleObject_RelatedObject1Ptr
+  and oAIData_TempAttackObjectPtr and calls object_exitAttackState, ending this attack's turn. The counter
+  at +0x10 suggests multi-charge attacks that tick down per activation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne gates a one-time setup branch per attack;
+    ldr r0,[r0,#oAIData_TempAttackObjectPtr]; ldrb r1,[r0,#0x10]; sub r1,#1 decrements a counter in the
+    spawned attack object; strh 0x14 to oAIAttackVars_StepTimer and strb 4 to AttackElement switch to
+    a timed wait phase; after timer expires, RelatedObject1Ptr and TempAttackObjectPtr are cleared and
+    object_exitAttackState is called; callees list only object_exitAttackState, matching an AI attack
+    state-machine step
+  refs:
+  - bn6f/asm/asm31.s:116735
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080ED52C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Behavior matches: temp object +0x10 decremented, StepTimer set to 0x14, AttackElement=4 set, then
+    loop decrements StepTimer and on underflow nulls RelatedObject1Ptr + TempAttackObjectPtr before calling
+    object_exitAttackState. Minor: bge branches when non-negative, so the cleanup path executes when StepTimer
+    becomes negative, not ''below 0'' as worded. Renaming to ai_attackReleasePhase better reflects the
+    null-out and exit state that concludes the step.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'no callers known: which enemy attack table dispatches this is unknown'
+- meaning of byte +0x10 in the temp attack object (repeat count vs. charge timer) unconfirmed
+- what the initial phase before element==4 does elsewhere (spawning code likely lives in a sibling function)
+- 'Behavior matches: temp object +0x10 decremented, StepTimer set to 0x14, AttackElement=4 set, then loop
+  decrements StepTimer and on underflow nulls RelatedObject1Ptr + TempAttackObjectPtr before calling object_exitAttackState.
+  Minor: bge branches when non-negative, so the cleanup path executes when StepTimer becomes negative,
+  not ''below 0'' as worded. Renaming to ai_attackReleasePhase better reflects the null-out and exit state
+  that concludes the step.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ED52C -> ai_attackReleasePhase
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED52C

@@ -1,0 +1,58 @@
+name: object_queueOamEntryPacked
+address: '0x0804AA74'
+kind: function
+status: probable
+summary: Thin wrapper that packs two halfwords into r0 (hi<<16 | lo), then forwards attribute/table parameters
+  as halfword loads at byte offsets r2 and r3 from an object pointer in r5 to object_computeAndQueueOamEntry_811FA98,
+  with fixed r1=0x20002, r4=7, r6=0xC24C, r7=0x64.
+interface: (r0 = two halfwords packed as (hi<<16)|lo, r1..r3 = indices/params, r5 = object struct pointer)
+  -> queues one OAM entry via object_computeAndQueueOamEntry
+details: 'Builds a 32-bit packed value in r0 from a halfword shifted left 16 OR''d with another halfword,
+  then calls object_computeAndQueueOamEntry_811FA98 with r2 and r3 taken as halfword loads at [r5 + r2*1]
+  and [r5 + r3*1] (byte offsets, not element indices). Fixed constants are forwarded: r1 = 0x20002 (packed
+  tile attributes), r4 = 7, r6 = 0xC24C (likely object/OAM-queue base pointer), r7 = 0x64 (100, likely
+  size or offset). r5 is never set inside, so the caller (sub_804AA58) must place the object pointer there
+  before calling. The wrapper only pre-composes the packed tile word; everything else is pass-through.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: lsl r0,r0,#0x10 / orr r0,r1 composes the packed value from two halfwords; ldrh r2,[r5,r2] and
+    ldrh r3,[r5,r3] read fields from a struct in r5 at caller-supplied byte offsets; only call is object_computeAndQueueOamEntry_811FA98,
+    whose summary says it packs (tile,attribute) and queues OAM; constants 0x20002, 7, 0xC24C, 0x64 are
+    hard-coded and forwarded unchanged; single caller sub_804AA58 must supply r5, indicating an object-context
+    helper
+  refs:
+  - bn6f/asm/asm03_2.s:8330
+  - 0x0804AA58 sub_804AA58
+  - 0x0811FA98 object_computeAndQueueOamEntry_811FA98
+  reproduce: python3 tools/asmcat.py 0x0804AA74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The packed r0, fixed r1=0x20002, r4=7, r6=0xC24C, r7=0x64, and the call to object_computeAndQueueOamEntry_811FA98
+    are all correct as described. However r2 and r3 are halfword loads via `ldrh r2,[r5,r2]` and `ldrh
+    r3,[r5,r3]`, where r5 is the caller''s object pointer (never set inside), so they are byte offsets
+    into the object, not ''indices/params'' as loosely stated. The name is fine but the summary should
+    clarify r2/r3 are byte offsets from r5 (the object struct).; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of fields 0x20002, 7 and 0x64 in object_computeAndQueueOamEntry's parameter contract
+- what structure r5 points to and whether 0xC24C is an object pointer or OAM-queue handle
+- why r5 is used implicitly instead of a register parameter — caller sub_804AA58's context would clarify
+- The packed r0, fixed r1=0x20002, r4=7, r6=0xC24C, r7=0x64, and the call to object_computeAndQueueOamEntry_811FA98
+  are all correct as described. However r2 and r3 are halfword loads via `ldrh r2,[r5,r2]` and `ldrh r3,[r5,r3]`,
+  where r5 is the caller's object pointer (never set inside), so they are byte offsets into the object,
+  not 'indices/params' as loosely stated. The name is fine but the summary should clarify r2/r3 are byte
+  offsets from r5 (the object struct).
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804AA74 -> object_queueOamEntryPacked
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AA74

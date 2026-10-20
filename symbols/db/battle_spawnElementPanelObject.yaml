@@ -1,0 +1,67 @@
+name: battle_spawnElementPanelObject
+address: '0x080DC5B4'
+kind: function
+status: probable
+summary: Spawns battle object type 0xB9 via object_spawnType3, then patches the new object with the caller's
+  PanelX/PanelY/Element/Damage and copies AllianceAndDirectionFlip from the source battle object (r5),
+  setting flag 0x10 in the object header.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3-r4 = passed through to spawn, r5 = source battle
+  object, r6 = damage value) -> r0 = spawned object (0 if spawn failed); flags reflect spawn success
+details: 'Saves the caller''s r0-r2 and r5 across the call, then invokes object_spawnType3 with type 0xB9,
+  forwarding the caller''s r1-r3 as the spawn arguments. On failure (r0 = 0) it returns immediately. Otherwise
+  it patches the spawned object directly: PanelX = caller''s r0, PanelY = caller''s r1, Element = caller''s
+  r2, the 32-bit DamageAndStaminaDamageCounterDisabler field = caller''s r6, and the AllianceAndDirectionFlip
+  halfword is copied from the battle object the caller passed in r5 (the spawner/attacker). Finally it
+  sets bit 0x10 of the object header flags, whose meaning is unknown here (possibly marks the object as
+  intangible, persistent, or non-targetable). Note the spawned-object pointer must survive in r0/r5 across
+  the call for the stores to hit the new object; the exact return-register convention of object_spawnType3
+  is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xb9; bl object_spawnType3 — spawns battle object type 0xB9, forwarding caller r1-r3;
+    push/pop of r0-r2,r5 around the bl preserves the caller''s position/element args for the post-spawn
+    fixup; strb r1/r2/r3 to oBattleObject_PanelX, PanelY, Element — sets panel position and element on
+    the new object; str r6 to oBattleObject_DamageAndStaminaDamageCounterDisabler; ldrh/strh of AllianceAndDirectionFlip
+    from caller''s r5 object; ldrb oObjectHeader_Flags; orr #0x10; strb — sets header flag bit 0x10 on
+    the spawn'
+  refs:
+  - bn6f/asm/asm31.s:79554
+  - 0x080BAEDC sub_80BAEDC
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DC5B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate: r0=PanelX, r1=PanelY, r2=Element, r6=Damage, source battle object
+    in r5, and bit 0x10 set in the object header. However, `object_spawnType3` takes only 5 args (r0-r4)
+    per the callee spec, so the ''r3-r4 passed through'' wording is slightly off since r3-r4 aren''t forwarded;
+    rather the caller pushes its r0-r2,r5 and the spawned pointer ends up in r5 after spawn (mov r0, r5),
+    with r1-r3 popped back as the caller''s original PanelX/Y/Element values. Also the spawned object
+    pointer is not preserved in r0 but moved into r5 from object_spawnType3''s return, then back to r0,
+    so ''r0/r5'' is misleading. The interface''s arg mapping for r3-r4 should be dropped.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which gameplay object type 0xB9 is (its initializer and behavior) — needed for a game-terms name
+- Meaning of header flag bit 0x10 on battle objects
+- Exact register in which object_spawnType3 returns the spawned object (r0 vs r5)
+- What caller sub_80BAEDC does and which in-game action triggers this spawn
+- 'The summary is mostly accurate: r0=PanelX, r1=PanelY, r2=Element, r6=Damage, source battle object in
+  r5, and bit 0x10 set in the object header. However, `object_spawnType3` takes only 5 args (r0-r4) per
+  the callee spec, so the ''r3-r4 passed through'' wording is slightly off since r3-r4 aren''t forwarded;
+  rather the caller pushes its r0-r2,r5 and the spawned pointer ends up in r5 after spawn (mov r0, r5),
+  with r1-r3 popped back as the caller''s original PanelX/Y/Element values. Also the spawned object pointer
+  is not preserved in r0 but moved into r5 from object_spawnType3''s return, then back to r0, so ''r0/r5''
+  is misleading. The interface''s arg mapping for r3-r4 should be dropped.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DC5B4 -> battle_spawnElementPanelObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC5B4

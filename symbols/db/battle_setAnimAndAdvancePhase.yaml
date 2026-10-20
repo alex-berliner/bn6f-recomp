@@ -1,0 +1,54 @@
+name: battle_setAnimAndAdvancePhase
+address: '0x080BEF02'
+kind: function
+status: probable
+summary: 'Battle object phase handler: on first entry sets animation 0 (r0 = battle object base via oBattleObject_ExtraVars+4,
+  r1 = 0) and a 10-frame timer; when the timer expires writes 0x20 to oBattleObject_CurAction and clears
+  oBattleObject_CurPhaseAndPhaseInitialized.'
+interface: (r0 = anim index (always 0), r1 = 0; r5 = battle object) -> r0 = clobbered; sets object action/phase
+  fields
+details: On first entry (PhaseInitialized == 0) it calls battle_setObjectAnim with anim 0, stores a 10-frame
+  timer at oBattleObject_Timer, and marks the phase initialized (0x04). Every subsequent call decrements
+  the timer; once it hits zero it writes 0x20 to oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized,
+  so the object's action machine moves to action 0x20 and re-enters phase 0 next tick. This is a standard
+  'idle/wait then transition' phase step; the r5 base and offsets come from the battle object struct used
+  throughout the battle engine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: first-entry block sets anim 0 via battle_setObjectAnim and timer 0xa (asm lines 3-9); timer
+    decrement with 'bgt locret' gates the transition (asm lines 13-15); transition writes CurAction=0x20
+    and clears CurPhaseAndPhaseInitialized (asm lines 16-20); callee battle_setObjectAnim is the known
+    battle object animation setter, confirming r5 is a battle object
+  refs:
+  - bn6f/asm/asm31.s:15074
+  - 0x080B8E70 battle_setObjectAnim
+  reproduce: python3 tools/asmcat.py 0x080BEF02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code: first entry (tst r0,r0 at 0x080BEF06) sets anim 0 via battle_setObjectAnim,
+    stores 0xa timer, sets phase-initialized=4. On zero, writes 0x20 to CurAction and 0 to CurPhaseAndPhaseInitialized.
+    However the r0 comment is wrong — r0 is loaded from [r5,oBattleObject_ExtraVars+4], not ''always 0''.
+    The proposed name also carries the placeholder digit ''20'' which violates the no-digit-run rule;
+    drop it.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which object type/action 0x20 this leads to — no caller is known, so the specific enemy or object using
+  this wait phase is unidentified
+- 'The proposal matches the code: first entry (tst r0,r0 at 0x080BEF06) sets anim 0 via battle_setObjectAnim,
+  stores 0xa timer, sets phase-initialized=4. On zero, writes 0x20 to CurAction and 0 to CurPhaseAndPhaseInitialized.
+  However the r0 comment is wrong — r0 is loaded from [r5,oBattleObject_ExtraVars+4], not ''always 0''.
+  The proposed name also carries the placeholder digit ''20'' which violates the no-digit-run rule; drop
+  it.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEF02 -> battle_setAnimAndAdvancePhase
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEF02

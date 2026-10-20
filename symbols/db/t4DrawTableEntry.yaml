@@ -1,0 +1,63 @@
+name: t4DrawTableEntry
+address: '0x0803B63C'
+kind: function
+status: probable
+summary: Stashes four caller values into the toolkit's text-renderer state struct, indexes a 12-byte entry
+  in table off_803B66C by r0, unpacks its fields, and invokes renderTextGfx_8045F8C to render the selected
+  glyph chunk.
+interface: (r0 = entry index into 12-byte-entry table TextScript87E36F8, r1..r4 = values saved to [toolkit
+  unk200a220]+8/+0xC/+0x10/+0x14) -> r0 = result of renderTextGfx_8045F8C
+details: 'The four extra ''arguments'' r1-r4 are written into a struct reached via toolkit field Unk200a220
+  at offsets 8, 0xC, 0x10, 0x14, so the function both persists caller state and performs a render. It
+  then indexes the table at off_803B66C (misleadingly labeled TextScript87E36F8) by r0*12 and unpacks
+  the entry: byte[0] -> r1, word[+4] -> r2, word[+8] -> r3, byte[1] -> r4, byte[2] -> r5, byte[3] -> r7,
+  plus a global pointer dword_86A5D60 into r6, and the table base itself into r0. It tail-invokes renderTextGfx_8045F8C,
+  which publishes a text-gfx base pointer and hands a selected glyph chunk to sub_3006B94. The byte/word
+  mix suggests fields like coords/flags plus pointers, but without callers the meaning of each field and
+  of the stashed r1-r4 values is unconfirmed. Note the callee receives the table base, not the entry address,
+  so the entry index must be re-derived inside the callee or the base is reused differently.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'str r1/r2/r3/r4 to [r7,#8/#0xC/#0x10/#0x14] via toolkit Unk200a220 pointer (asm lines 4-8);
+    mov r1,#0xC; mul r0,r1; add r7,r7,r0 — 12-byte-stride table lookup at off_803B66C; ldrb/ldr of entry
+    bytes 0-3 and words +4/+8 loaded into r1-r5,r7 before the call; ldr r6, off_803B670 = dword_86A5D60
+    passed as a data pointer to the renderer; callee renderTextGfx_8045F8C summary: publishes text-gfx
+    base pointer, forwards glyph chunk to sub_3006B94'
+  refs:
+  - bn6f/asm/asm03_1_1.s:5482
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0803B63C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the stashing of r1-r4 into the toolkit struct and the indexing
+    of a 12-byte table at off_803B66C, but the asm shows `mov r1, #0xc; mul r0, r1; add r7, r7, r0` where
+    r7=off_803B668 which equals off_803B66C (TextScript87E36F8), so the table base is used for entry address
+    computation, not just ''passed'' separately. The summary''s claim of ''tail-invokes'' is accurate
+    (pop {r4-r7,pc}). However, the name ''renderTextGfx_drawTableEntry'' uses an invalid prefix; a better
+    prefix would be ''t4'' (text-gfx) to match the callee''s namespace.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the meaning of the r1-r4 values written to the Unk200a220 struct is inferred only
+  from the callee's renderer role
+- Field semantics of the 12-byte table entries (coords? palettes? flags?) and the role of dword_86A5D60
+  are unverified
+- 'The proposal correctly identifies the stashing of r1-r4 into the toolkit struct and the indexing of
+  a 12-byte table at off_803B66C, but the asm shows `mov r1, #0xc; mul r0, r1; add r7, r7, r0` where r7=off_803B668
+  which equals off_803B66C (TextScript87E36F8), so the table base is used for entry address computation,
+  not just ''passed'' separately. The summary''s claim of ''tail-invokes'' is accurate (pop {r4-r7,pc}).
+  However, the name ''renderTextGfx_drawTableEntry'' uses an invalid prefix; a better prefix would be
+  ''t4'' (text-gfx) to match the callee''s namespace.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803B63C -> t4DrawTableEntry
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803B63C

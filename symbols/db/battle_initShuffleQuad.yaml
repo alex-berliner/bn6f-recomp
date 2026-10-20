@@ -1,0 +1,55 @@
+name: battle_initShuffleQuad
+address: '0x080E2BE0'
+kind: function
+status: probable
+summary: 'Initializes a battle object: stores substate 3, packed packed value 0x030201, and 0; shuffles
+  4 bytes at offset 0x64 via ShuffleByteList_PrimaryRNG with 3 swaps; sets timer=12 and enters phase 4.'
+interface: (r5 = battle object) -> sets object fields, returns void; r0-r3 clobbered
+details: 'Treats r5 as a battle object: stores 3 at oBattleObject_ExtraVars+0, 0 at +8, and the packed
+  constant 0x30201 at +4 (three substate values 1,2,3, likely consumed one per later step). It then shuffles
+  the 4 bytes at object+0x64 by calling ShuffleByteList_PrimaryRNG with r1=3 random swaps, so the list
+  contents are randomized in place using the game RNG. Finally it sets oBattleObject_Timer to 12 and oBattleObject_CurPhaseAndPhaseInitialized
+  to 4, moving the object into phase 4 with a short delay. The +0x64 bytes are presumably meaningful identifiers
+  or panel/tile indices set elsewhere; the shuffled order drives whatever the object does in phase 4 onward.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ShuffleByteList_PrimaryRNG with r0=obj+0x64, r1=3, r2=4: shuffles a 4-byte array at object+0x64
+    with 3 RNG swaps; str 3/0x30201/0 into oBattleObject_ExtraVars+0/+4/+8 seeds a 3-step substate sequence;
+    strh 12 into oBattleObject_Timer and 4 into oBattleObject_CurPhaseAndPhaseInitialized starts phase
+    4 with a 12-frame timer; no known callers, so the object identity (which boss/attack/obstacle uses
+    this) is not visible from this code'
+  refs:
+  - bn6f/asm/asm31.s:93418
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  reproduce: python3 tools/asmcat.py 0x080E2BE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches almost exactly: store 3 at +0, 0 at +8, packed 0x30201 at +4, shuffle 4 bytes at
+    +0x64 with 3 swaps via ShuffleByteList_PrimaryRNG, set Timer=12 and CurPhaseAndPhaseInitialized=4.
+    However, ShuffleByteList_PrimaryRNG takes (r0=ptr, r1=count, r2=numSwaps) per its signature; the proposal
+    has r1/r2 swapped (says r1=3 swaps). Also the proposal claims r0-r3 are clobbered but only r0-r2 are
+    passed/used by callee convention implied here. Name and summary otherwise fit.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what battle object owns this state (no callers known); a caller or the phase-4+ handlers for the same
+  object would confirm what the shuffled bytes at +0x64 select
+- whether the three substate values 1,2,3 in ExtraVars+4 index into the shuffled quad or a separate table
+- 'The code matches almost exactly: store 3 at +0, 0 at +8, packed 0x30201 at +4, shuffle 4 bytes at +0x64
+  with 3 swaps via ShuffleByteList_PrimaryRNG, set Timer=12 and CurPhaseAndPhaseInitialized=4. However,
+  ShuffleByteList_PrimaryRNG takes (r0=ptr, r1=count, r2=numSwaps) per its signature; the proposal has
+  r1/r2 swapped (says r1=3 swaps). Also the proposal claims r0-r3 are clobbered but only r0-r2 are passed/used
+  by callee convention implied here. Name and summary otherwise fit.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E2BE0 -> battle_initShuffleQuad
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2BE0

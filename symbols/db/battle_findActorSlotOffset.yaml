@@ -1,0 +1,58 @@
+name: battle_findActorSlotOffset
+address: '0x0800B4CE'
+kind: function
+status: probable
+summary: Scans BattleState's alive-opponent actor list and battle-object list for an actor pointer and
+  returns the field offset (in r4) of the matching slot, or 0 if not found or if GetBattleEffects bit
+  0x8 is set on a first-slot match.
+interface: (r0 = actor pointer) -> r0 = offset of the matching slot in BattleState (relative to oBattleState_AliveOpponentActors
+  / oBattleState_BattleObjectList), or 0 if not found; flags clobbered by bl.
+details: Saves r0 (an actor pointer) in r4, loads the current BattleState via the toolkit's oToolkit_BattleStatePtr,
+  and scans every 4-byte field from oBattleState_AliveOpponentActors up to oBattleState_Drop comparing
+  each word against the actor pointer. If the match lands in the very first slot (oBattleState_AliveOpponentActors),
+  it calls GetBattleEffects and, when effect bit 0x8 is set, returns 0 instead of the offset (treats the
+  actor as unlocatable). Otherwise it falls through to scan oBattleState_BattleObjectList for 8 entries;
+  on a match it returns that field offset, and if nothing matches anywhere it returns 0. The offset-in-bytes
+  return convention (rather than an index) matches how the caller can reuse the value directly as a ldr
+  offset into BattleState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_800B4CE: ldr r0,[r0,#oToolkit_BattleStatePtr] then word-compares r4 against fields stepping
+    by 4 from oBattleState_AliveOpponentActors to oBattleState_Drop; match in first slot: bl GetBattleEffects;
+    tst r0,#8 gates whether the offset or 0 is returned; second loop scans oBattleState_BattleObjectList
+    for 8 entries (mov r3,#8) before defaulting r4=0 at loc_800B50A; sole caller battle_linkSendTaggedPacketMode3
+    fits encoding an actor reference as a BattleState slot offset in a link packet'
+  refs:
+  - bn6f/asm/asm00_1.s:19123
+  - 0x0800B4B2 battle_linkSendTaggedPacketMode3
+  - 0x0802D246 GetBattleEffects
+  reproduce: python3 tools/asmcat.py 0x0800B4CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s scan of oBattleState_AliveOpponentActors and oBattleState_BattleObjectList,
+    returning offset 0 via loc_800B50A on no match or on the effect-0x8 case. However, the offset is stored
+    in r4 and returned via pop {pc}, so r0 holds the actor pointer (not the offset), contradicting the
+    proposed interface. The summary should clarify r4 is returned (offset or 0).; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact role of effect bit 0x8 that suppresses the first-slot match
+- how battle_linkSendTaggedPacketMode3 consumes the returned offset (packet field layout unknown)
+- meaning of the fields between AliveOpponentActors and Drop (are they ally/enemy actor slots?)
+- The code matches the proposal's scan of oBattleState_AliveOpponentActors and oBattleState_BattleObjectList,
+  returning offset 0 via loc_800B50A on no match or on the effect-0x8 case. However, the offset is stored
+  in r4 and returned via pop {pc}, so r0 holds the actor pointer (not the offset), contradicting the proposed
+  interface. The summary should clarify r4 is returned (offset or 0).
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800B4CE -> battle_findActorSlotOffset
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B4CE

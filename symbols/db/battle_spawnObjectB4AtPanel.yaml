@@ -1,0 +1,68 @@
+name: battle_spawnObjectB4AtPanel
+address: '0x080DBE82'
+kind: function
+status: probable
+summary: Spawns battle object 0xB4 via object_spawnType3, then writes PanelX/Y/Element from the saved
+  args, copies AllianceAndDirectionFlip from the source, stores r6 into RelatedObject1Ptr, and writes
+  r6 into DamageAndStaminaDamageCounterDisabler. Called from sub_80DBEA2.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r5 = source/owner battle object, r6 = DamageAndStaminaDamageCounterDisabler
+  value) -> r0 = spawn success source base (new object reached via r5 after object_spawnType3); flags
+  from object_spawnType3's success test, Z set skips all field writes
+details: 'Wrapper around object_spawnType3: it pushes r0-r2 and r5 as stack arguments, sets the object
+  ID argument to 0xB4, and calls the spawner. On success it fills the new object''s oBattleObject_PanelX/PanelY/Element
+  from the saved r0-r2, writes r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler, copies oBattleObject_AllianceAndDirectionFlip
+  from the source object in r5 (so the spawn inherits the caller''s side/flip), and stores the source
+  object pointer into oBattleObject_RelatedObject1Ptr. If the spawn fails (Z set after the call), the
+  writes are skipped entirely. The mov r0,r5 after the call only makes sense if object_spawnType3 leaves
+  the new object pointer in r5, which the pop then swaps back to the source object. The exact game identity
+  of object 0xB4 and the origin of the r6 value are not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xb4; bl object_spawnType3 — spawns battle object ID 0xB4 through the known type-3
+    spawner with stacked args; strb r1,[r0,#oBattleObject_PanelX] / strb r2,[r0,#oBattleObject_PanelY]
+    / strb r3,[r0,#oBattleObject_Element] — popped original r0-r2 args become position and element; str
+    r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler] — caller- or callee-supplied r6 stored
+    into the damage-counter field; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r3,[r0,#...]
+    — alliance/direction-flip copied from the r5 source object; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    plus beq locret_80DBEA0 — new object linked back to its spawner, writes skipped on spawn failure'
+  refs:
+  - bn6f/asm/asm31.s:78577
+  - 0x080DBEA2 sub_80DBEA2
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DBE82
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and fields are correct (PanelX/PanelY/Element, DamageAndStaminaDamageCounterDisabler,
+    AllianceAndDirectionFlip, RelatedObject1Ptr). However, the caller at 0x080DBEA2 invokes sub_80DBEA2,
+    not sub_80DBE82, so sub_80DBE82 itself is a leaf helper. Also, after object_spawnType3, r0,r5 are
+    swapped via ''mov r0,r5'' then ''pop {r1-r3,r5}'', meaning the new object pointer comes from the spawner''s
+    r5 (not the caller''s r5). The proposed name is fine but the summary should note that sub_80DBE82
+    is called by sub_80DBEA2 and that the new-object pointer arrives in r5 from object_spawnType3.; run
+    wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object ID 0xB4 actually is in game terms (needs cross-references to other spawn sites or
+  object tables)
+- Whether the r6 written to DamageAndStaminaDamageCounterDisabler is set by the caller sub_80DBEA2 or
+  returned by object_spawnType3
+- Confirmation that object_spawnType3 returns the new object pointer in r5 (implied by mov r0,r5 but not
+  stated in its known summary)
+- The summary and fields are correct (PanelX/PanelY/Element, DamageAndStaminaDamageCounterDisabler, AllianceAndDirectionFlip,
+  RelatedObject1Ptr). However, the caller at 0x080DBEA2 invokes sub_80DBEA2, not sub_80DBE82, so sub_80DBE82
+  itself is a leaf helper. Also, after object_spawnType3, r0,r5 are swapped via 'mov r0,r5' then 'pop
+  {r1-r3,r5}', meaning the new object pointer comes from the spawner's r5 (not the caller's r5). The proposed
+  name is fine but the summary should note that sub_80DBE82 is called by sub_80DBEA2 and that the new-object
+  pointer arrives in r5 from object_spawnType3.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DBE82 -> battle_spawnObjectB4AtPanel
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DBE82

@@ -1,0 +1,61 @@
+name: t3_showFullScreenBackground
+address: '0x0804CB64'
+kind: function
+status: probable
+summary: Enables BG layer flags (0x2800) in RenderInfo, copies a full-screen 30x20 tilemap from byte_86A34E0
+  into BG tile block 3, calls sub_8006990, then stores state 8 at r5+0x10.
+interface: (r0..r2 = unused/zero locals, r5 = ptr to struct with u8 state at +0x10) -> r0 = clobbered;
+  writes RenderInfo flags and struct byte
+details: Sets bits 0x2800 in the halfword at [toolkit->RenderInfo], likely enabling the BG layer for tile
+  block 3. Calls CopyBackgroundTiles(0, 0, 3, byte_86A34E0, 30, 20), i.e. fills the entire 32x32 tile
+  block 3 screen from a tile-id table at 0x86A34E0, so the source is a full-screen background image definition.
+  It then does a long call (mov lr, pc; bx) to sub_8006990, whose purpose is unknown. After that call
+  it writes 8 to byte at r5+0x10, presumably a state/phase field of the caller's context object; r5 here
+  is the caller's r5 since the push/pop {r5} pair cancels out.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r1]; orr 0x2800; strh back to [Toolkit_RenderInfoPtr] sets BG enable flags; CopyBackgroundTiles
+    called with j_size=0x1E (30), i_size=0x14 (20), block 3, tile table byte_86A34E0 — exactly one full
+    GBA screen; far call via mov lr,pc; bx sub_8006990+1 with no args set afterwards; strb #8,[r5,#0x10]
+    writes a state byte into a caller-provided struct after the call; only caller sub_804CB0C is itself
+    undocumented, so the scene/owner is unidentified'
+  refs:
+  - bn6f/asm/asm03_2.s:11257
+  - 0x0804CB0C sub_804CB0C
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x08006990 sub_8006990
+  reproduce: python3 tools/asmcat.py 0x0804CB64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code does set 0x2800 in RenderInfo (orr r0, r2; strh r0, [r1]) and calls CopyBackgroundTiles(0,0,3,byte_86A34E0,0x1e,0x14),
+    confirming a full-screen 30x20 tilemap into BG block 3. The sub_8006990+1 call and the strb r0,[r5,#0x10]
+    writing 8 also match. However, the proposal claims ''r5 is the caller''s r5 since push/pop cancels''
+    — but r5 is never set before the push, and after the pop r5 is restored to its pushed value; the strb
+    therefore writes to whatever r5 contained on entry, which is caller-supplied, but there is no evidence
+    it specifically holds a ''caller struct''. The summary otherwise fits.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what byte_86A34E0 depicts (which background/scene)
+- what sub_8006990 does (fade? wait? text?)
+- what structure r5 points to and what state 8 means
+- what sub_804CB0C is and when it runs
+- The code does set 0x2800 in RenderInfo (orr r0, r2; strh r0, [r1]) and calls CopyBackgroundTiles(0,0,3,byte_86A34E0,0x1e,0x14),
+  confirming a full-screen 30x20 tilemap into BG block 3. The sub_8006990+1 call and the strb r0,[r5,#0x10]
+  writing 8 also match. However, the proposal claims 'r5 is the caller's r5 since push/pop cancels' —
+  but r5 is never set before the push, and after the pop r5 is restored to its pushed value; the strb
+  therefore writes to whatever r5 contained on entry, which is caller-supplied, but there is no evidence
+  it specifically holds a 'caller struct'. The summary otherwise fits.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804CB64 -> t3_showFullScreenBackground
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804CB64

@@ -1,0 +1,56 @@
+name: ai_attackTimedStep
+address: '0x080F204E'
+kind: function
+status: probable
+summary: 'Enemy AI timed attack step: on first call stores element 4 and a 30-frame timer; each subsequent
+  call decrements the timer and on expiry resets CurAnim=0 and calls object_exitAttackState, then optionally
+  sub_80E8788 if AiAttackParam is nonzero.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> void; sets oBattleObject_CurAnim = 0 and
+  calls object_exitAttackState when timer expires
+details: On the first call (AttackElement == 0) it stores element 4 into oAIAttackVars_AttackElement and
+  loads oAIAttackVars_StepTimer with 0x1E (30 frames), returning immediately so the attack runs for that
+  duration. On later calls it decrements StepTimer each frame; once it hits zero it resets the object's
+  current animation to 0 and calls object_exitAttackState to leave the attacking state. If oAIAttackVars_AiAttackParam
+  is nonzero it additionally calls sub_80E8788, presumably a follow-up/effect hook for this attack. The
+  element-4/30-frame pairing suggests a specific enemy attack whose per-frame behavior is handled elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between init (mov r0,#4; strb)
+    and countdown; mov r0,#0x1e; strh r0,[r7,#oAIAttackVars_StepTimer] — 30-frame delay after arming;
+    loc_80F2060: decrements StepTimer, bgt exits until it reaches 0; mov r0,#0; strb r0,[r5,#oBattleObject_CurAnim];
+    bl object_exitAttackState — ends attack and resets animation; ldr r0,[r7,#oAIAttackVars_AiAttackParam];
+    tst; beq skip; bl sub_80E8788 — conditional follow-up call'
+  refs:
+  - bn6f/asm/asm31.s:127016
+  - 0x08011714 object_exitAttackState
+  - 0x080E8788 sub_80E8788
+  reproduce: python3 tools/asmcat.py 0x080F204E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct but the order of operations is wrong: the code calls object_exitAttackState
+    and then checks AiAttackParam, not the other way around. Also, the summary says ''ends the attack''
+    when timer lapses, but the code only sets CurAnim=0 and calls exitAttackState; sub_80E8788 is called
+    after, only if param is nonzero. Name is fine, summary needs a tweak.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which enemy/attack this belongs to (no known caller) — caller would identify element 4's attack
+- What sub_80E8788 does when AiAttackParam is set
+- What per-frame attack behavior is driven elsewhere while StepTimer counts down
+- 'The proposal is mostly correct but the order of operations is wrong: the code calls object_exitAttackState
+  and then checks AiAttackParam, not the other way around. Also, the summary says ''ends the attack''
+  when timer lapses, but the code only sets CurAnim=0 and calls exitAttackState; sub_80E8788 is called
+  after, only if param is nonzero. Name is fine, summary needs a tweak.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F204E -> ai_attackTimedStep
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F204E

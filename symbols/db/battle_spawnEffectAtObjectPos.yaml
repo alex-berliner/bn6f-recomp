@@ -1,0 +1,60 @@
+name: battle_spawnEffectAtObjectPos
+address: '0x080DE70C'
+kind: function
+status: probable
+summary: If r0 is nonzero, spawns a type-0 effect object at the current battle object's X and Y position
+  (Z=0), with the low halfword of the spawn parameter set to 0x2 and the high halfword set to oBattleObject_Alliance
+  XOR oBattleObject_DirectionFlip; returns the spawned object pointer via spawn_t1_0x0_EffectObject.
+interface: (r0 = enable flag, nonzero to spawn; r5 = current battle object) -> r0 = spawned effect object
+  pointer (or unchanged/0 if skipped)
+details: If r0 is zero the function returns immediately without doing anything. Otherwise it reads the
+  current battle object (global pointer in r5), takes oBattleObject_Alliance XOR oBattleObject_DirectionFlip,
+  shifts it into the high byte, and ORs in a low byte of 0x2 (from dword_80DE72C) to form the spawned
+  object's type/params halfword. It copies the object's oBattleObject_X and oBattleObject_Y as the spawn
+  position and forces Z to 0, then calls the wrapper spawn_t1_0x0_EffectObject, which spawns a type-4
+  battle object with effect kind 0 and returns its pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / beq locret_80DE72A: r0 is a gate flag, nonzero required to spawn; ldrb r0,[r5,#oBattleObject_Alliance];
+    eor with oBattleObject_DirectionFlip; lsl 8: builds high byte of spawn params from the object''s facing
+    data; orr r4,r0 with dword_80DE72C = 0x2: fixed low-byte kind 2 for the spawned effect; ldr r1/[r5,#oBattleObject_X],
+    r2/[r5,#oBattleObject_Y], mov r3,#0: spawns at object''s X/Y with Z cleared; bl spawn_t1_0x0_EffectObject:
+    delegates to the known effect-object spawner (type 4, effect 0)'
+  refs:
+  - bn6f/asm/asm31.s:84064
+  - 0x080DE430 sub_80DE430
+  - 0x080DE618 sub_80DE618
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DE70C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly right: it returns early when r0 is zero, copies X/Y/Z, XORs alliance with
+    direction flip into the high byte, ORs in 0x2, and calls spawn_t1_0x0_EffectObject. However, Z is
+    not forced to 0 — the code loads oBattleObject_Z into r3 then immediately overwrites r3 with #0, dropping
+    the read entirely, so the Z field is effectively irrelevant / passed as 0. Also ''current battle object''s
+    X/Y position'' is correct but ''forces Z to 0'' is clearer than ''drops the Z read''.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What effect kind 0 with param byte 2 actually looks like in game (which visual effect this is)
+- What the r0 gate flag means at the call sites in sub_80DE430 and sub_80DE618 (e.g. a one-shot trigger
+  vs. an effect selector)
+- Why Z is forced to 0 rather than copied from the source object
+- 'The proposal is mostly right: it returns early when r0 is zero, copies X/Y/Z, XORs alliance with direction
+  flip into the high byte, ORs in 0x2, and calls spawn_t1_0x0_EffectObject. However, Z is not forced to
+  0 — the code loads oBattleObject_Z into r3 then immediately overwrites r3 with #0, dropping the read
+  entirely, so the Z field is effectively irrelevant / passed as 0. Also ''current battle object''s X/Y
+  position'' is correct but ''forces Z to 0'' is clearer than ''drops the Z read''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE70C -> battle_spawnEffectAtObjectPos
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE70C

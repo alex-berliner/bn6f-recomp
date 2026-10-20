@@ -1,0 +1,59 @@
+name: clearFlagFromTable
+address: '0x080A5EA0'
+kind: function
+status: probable
+summary: Reads an index byte from [r5+4], uses it to select one of four 32-bit flag entries from byte_80A5EB8
+  (0x1641-0x1644), and passes the selected word to ClearEventFlag to clear that flag.
+interface: (no register args; r5 = context object, [r5+4] = variant index 0-3) -> r0 = result of ClearEventFlag;
+  no other outputs
+details: Reads a byte at [r5,#4], multiplies by 4, and uses it to index a table of four halfword event-flag
+  IDs at byte_80A5EB8 (0x1641, 0x1642, 0x1643, 0x1644). It then calls ClearEventFlag with the selected
+  ID, clearing exactly one of four mutually related story-progress flags. The use of r5 instead of a register
+  argument means the caller must set up the context pointer before the call, suggesting this is a callback
+  or script handler operating on a shared context. The variant field likely distinguishes which of four
+  similar cases (e.g., a choice, NPC variant, or sub-event) is being processed. Nothing is written back
+  to the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#4]; lsl r0,r0,#2 loads a variant index scaled to 4-byte entries; ldr r1,off_80A5EB4
+    points at table byte_80A5EB8 holding flag IDs 0x1641-0x1644; bl ClearEventFlag passes the selected
+    flag ID to the known flag-clearing routine; uses r5 (not r0) for the context pointer, implying caller-supplied
+    shared state rather than a direct argument
+  refs:
+  - bn6f/asm/asm29.s:2290
+  - 0x080A5EC8 sub_80A5EC8
+  - 0x0802F130 ClearEventFlag
+  reproduce: python3 tools/asmcat.py 0x080A5EA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does read [r5,#4], shift left by 2, load a 4-byte value from byte_80A5EB8 (a 32-bit aligned
+    table of word entries), and call ClearEventFlag. The proposal''s description of the mechanism is accurate,
+    including the IDs 0x1641-0x1644, but calling the values ''halfword event-flag IDs'' is wrong: the
+    load `ldr r0, [r1,r0]` reads a full 32-bit word, so these are word-sized entries (each padded to 4
+    bytes in the table), not halfwords. A more precise name would acknowledge that it''s clearing a word/flag
+    entry, not specifically a ''Variant'' — the field is just an index.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What structure r5 points to (likely a script/event object) and which field at +4 semantically holds
+  the variant
+- What story flags 0x1641-0x1644 represent in the game, and which in-game scenario invokes caller sub_80A5EC8
+- 'The code does read [r5,#4], shift left by 2, load a 4-byte value from byte_80A5EB8 (a 32-bit aligned
+  table of word entries), and call ClearEventFlag. The proposal''s description of the mechanism is accurate,
+  including the IDs 0x1641-0x1644, but calling the values ''halfword event-flag IDs'' is wrong: the load
+  `ldr r0, [r1,r0]` reads a full 32-bit word, so these are word-sized entries (each padded to 4 bytes
+  in the table), not halfwords. A more precise name would acknowledge that it''s clearing a word/flag
+  entry, not specifically a ''Variant'' — the field is just an index.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A5EA0 -> clearFlagFromTable
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5EA0

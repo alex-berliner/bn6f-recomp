@@ -1,0 +1,59 @@
+name: object_spawnType6f
+address: '0x080E8464'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x6F via object_spawnType4, then copies saved call arguments and
+  an owner/spawner struct into the new object's fields (offset 0x12, 0x13, 0xe, 0x16, 0x4c, 0x2c, 0x30).
+interface: (r0/r1/r2 = spawn parameters passed to object_spawnType4, r5 = spawner/owner struct) -> r0
+  = spawned object pointer (or skip of init on failure); flags from the null-check
+details: 'The wrapper saves r0-r2 and r5 on the stack, loads the type id 0x6F into r0, and calls object_spawnType4
+  to create the battle object. It then restores the saved registers into r1-r3/r5, null-checks the spawned
+  pointer (beq skips the init), and writes the original arguments into the new object: bytes at +0x12,
+  +0x13 and +0xe. It stores the spawner struct pointer at +0x4c (a parent/owner link), copies halfword
+  +0x16 from that struct into the object''s +0x16, and stores two more words into +0x2c and +0x30. The
+  pop-into-different-registers trick ({r0-r2,r5} pushed, {r1-r3,r5} popped) plus the stores to +0x2c/+0x30
+  suggest the listing mislabels some registers, but the shape is a typed spawn plus field-by-field initialization.
+  What object type 0x6F actually is cannot be told without a caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x6f then bl object_spawnType4: spawns battle object of type 0x6F; beq locret_80E8484
+    right after the call/restore: null-check on the spawned object before initializing; strb r1,[r0,#0x12]
+    / strb r2,[r0,#0x13] / strb r3,[r0,#0xe]: original caller args written into the new object; str r5,[r0,#0x4c]
+    and ldrh r1,[r5,#0x16] -> strh [r0,#0x16]: stores the spawner-struct pointer and copies its +0x16
+    halfword; no known callers, so the identity of type-0x6F objects remains unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:106090
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E8464
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the overall shape described, but the summary is wrong on a key detail: `mov r0,
+    r5` followed by `pop {r1-r3,r5}` means r5 is the *spawner struct* and is moved to r0 (so it becomes
+    the spawned-object pointer base), while r6/r7 (not the popped registers) are written to +0x2c/+0x30.
+    The ''beq'' checks the Z flag left by `mov r0, r5`, not a null-check of the spawn result. Also `object_spawnType4`
+    is the type-4 wrapper, not ''generic''.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No callers known: which game system spawns type-0x6F objects and what the r0/r1/r2 arguments mean'
+- Exact semantics of fields +0x12, +0x13, +0xe, +0x2c, +0x30 on the spawned object
+- Whether the disassembly's odd register juggling (r6/r7 stored but never restored) hides additional argument
+  mapping
+- 'The code matches the overall shape described, but the summary is wrong on a key detail: `mov r0, r5`
+  followed by `pop {r1-r3,r5}` means r5 is the *spawner struct* and is moved to r0 (so it becomes the
+  spawned-object pointer base), while r6/r7 (not the popped registers) are written to +0x2c/+0x30. The
+  ''beq'' checks the Z flag left by `mov r0, r5`, not a null-check of the spawn result. Also `object_spawnType4`
+  is the type-4 wrapper, not ''generic''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E8464 -> object_spawnType6f
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8464

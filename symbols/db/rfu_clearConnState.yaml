@@ -1,0 +1,55 @@
+name: rfu_clearConnState
+address: '0x08144EA4'
+kind: function
+status: probable
+summary: Clears the RFU link-connection state struct eStruct200FE00, resetting connection state fields
+  and slot tables.
+interface: () -> void; clobbers r0-r5, lr
+details: 'Writes the global RFU struct eStruct200FE00: zeroes bytes at 0x04, 0x05, 0x07, 0x10, 0x0C, 0x24
+  and 0x30, stores 0xFF at 0x06 (an invalid/slot marker), and clears two halfword tables of 4 entries
+  each at offsets 0x28 and 0x34 (likely per-slot connection IDs / peer slot data). All six call sites
+  are inside rfu_updateConnState, which uses this whenever the link state machine drops or resets a connection.
+  No return value or flags are meaningful.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Only caller is rfu_updateConnState at six sites (0x08145120-0x081451BA), all in the state machine''s
+    reset/error paths; strb 0xFF,[r2,#0x6] stores a sentinel value into eStruct200FE00+0x06, typical for
+    an invalid slot/index; Loop at loc_8144ECC clears 4 halfwords each at struct+0x28 and struct+0x34
+    (r5/r2 bases, r3 counts 0..3); All other stores zero byte fields (0x04,0x05,0x07,0x0C,0x10,0x24,0x30),
+    a wholesale state clear; Callees: none — pure inline clearing of one global struct'
+  refs:
+  - bn6f/asm/libs.s:2004
+  - 0x08145120 rfu_updateConnState
+  - 0x08145190 rfu_updateConnState
+  - 0x0814519C rfu_updateConnState
+  reproduce: python3 tools/asmcat.py 0x08144EA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s byte-by-byte claim mostly matches, but it lists 0x24 and 0x30 as separate zero writes;
+    asm shows a single strb [r1] where r1 = base+0x24, then add r1,#0xc → base+0x30, so both are indeed
+    zeroed. The 0x06=0xFF and slot-table clears (halfwords at 0x28, 0x34, looped 4× with r3=0..3 bls)
+    match. Name fits but ''reset'' is vague; ''rfu_clearConnState'' better mirrors init/clear convention
+    since 0x06=0xFF is a sentinel, not a reset.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of eStruct200FE00 fields 0x04-0x07, 0x24, 0x28 table and 0x34 table (slot ids? player
+  slots?) not confirmed without reading the rest of rfu_updateConnState
+- The summary's byte-by-byte claim mostly matches, but it lists 0x24 and 0x30 as separate zero writes;
+  asm shows a single strb [r1] where r1 = base+0x24, then add r1,#0xc → base+0x30, so both are indeed
+  zeroed. The 0x06=0xFF and slot-table clears (halfwords at 0x28, 0x34, looped 4× with r3=0..3 bls) match.
+  Name fits but 'reset' is vague; 'rfu_clearConnState' better mirrors init/clear convention since 0x06=0xFF
+  is a sentinel, not a reset.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8144EA4 -> rfu_clearConnState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144EA4

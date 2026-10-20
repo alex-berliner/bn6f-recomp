@@ -1,0 +1,58 @@
+name: ai_attackElementChargeStep
+address: '0x080FCC22'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step: when AttackElement is 0, sets AttackElement=4, CurAnim=4 on the owning
+  object, null-clears ScratchVar and initializes StepTimer=3; each subsequent frame decrements it, storing
+  HitElement=0x18 once it expires.'
+interface: (uses r7 = oAIAttackVars struct, r5 = owning battle object) -> r0 = clobbered by calls; sets
+  AttackElement, CurAnim, ScratchVar, StepTimer, HitElement
+details: 'Two-phase state machine driven by oAIAttackVars_AttackElement. Phase 0 (element == 0): stores
+  element 4 into AttackElement, sets oBattleObject_CurAnim = 4 on the object in r5, clears ScratchVar
+  via clearWordIfNonNull, and loads StepTimer with 3. Phase 1: decrements StepTimer each frame; when it
+  reaches 0, stores 0x18 (24) into HitElement, presumably the element applied when this attack connects.
+  No branch-back to phase 0 is visible here, so reset is done elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits setup vs countdown phases; strb #4
+    into AttackElement and oBattleObject_CurAnim = 4 in the setup branch; bl clearWordIfNonNull on [r7,#oAIAttackVars_ScratchVar]
+    null-safe clear; mov #3; strh into StepTimer, then decrement-and-test countdown in the other branch;
+    mov #0x18; strh into oAIAttackVars_HitElement when the timer expires'
+  refs:
+  - bn6f/asm/asm31.s:148756
+  - 0x080FCF9C clearWordIfNonNull
+  reproduce: python3 tools/asmcat.py 0x080FCC22
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: AttackElement==0 branch stores 4 into AttackElement and CurAnim,
+    clears ScratchVar, sets StepTimer=3; else branch decrements StepTimer and when ≤0 stores 0x18 into
+    HitElement. strh for StepTimer/HitElement (halfword) and strb for AttackElement/CurAnim (byte) agree
+    with the interface. The name is fine but the summary should clarify that HitElement is only written
+    once when StepTimer expires, with no branch back, since the proposal wording ''writes hit element
+    0x18'' undersells the halfword store and could mislead.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so which enemy/AI uses this and when in its attack sequence is unknown
+- Meaning of element ids 4 and 0x18 (which elements those enum values are) is not shown
+- Whether HitElement 0x18 is an element, panel effect, or damage modifier depends on the oAIAttackVars
+  layout documentation
+- 'The code matches the proposal: AttackElement==0 branch stores 4 into AttackElement and CurAnim, clears
+  ScratchVar, sets StepTimer=3; else branch decrements StepTimer and when ≤0 stores 0x18 into HitElement.
+  strh for StepTimer/HitElement (halfword) and strb for AttackElement/CurAnim (byte) agree with the interface.
+  The name is fine but the summary should clarify that HitElement is only written once when StepTimer
+  expires, with no branch back, since the proposal wording ''writes hit element 0x18'' undersells the
+  halfword store and could mislead.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FCC22 -> ai_attackElementChargeStep
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCC22

@@ -1,0 +1,63 @@
+name: ai_attackColumnHighlightStep
+address: '0x081028B4'
+kind: function
+status: probable
+summary: 'AI attack step: on first call arms a timed column attack (latches target X, anim 8, sets AttackElement=4),
+  then every 4 frames highlights the 3-panel vertical column on the target''s file, and when the timer
+  hits zero writes 4 into HitElement to resolve the hit.'
+interface: (r0 = unused on entry, r5 = battle object, r7 = oAIAttackVars struct) -> r0 = scratch/callee
+  return; sets HitElement=4 when the timer runs out
+details: 'On entry with oAIAttackVars_AttackElement == 0 it initializes the attack: copies oAIAttackVars_ScratchVar
+  into oAIAttackVars_StepTimer as a duration, sets the object''s current animation (r5+oBattleObject_CurAnim)
+  to 8, latches the target''s X coordinate (target object +0x12) into oAIAttackVars_TargetPanelX, and
+  writes 4 into AttackElement to mark it armed. On subsequent runs, once every 4 frames ((StepTimer >>
+  2) carry clear) it calls object_highlightPanel for (targetX, targetY-1), (targetX, targetY) and (targetX,
+  targetY+1), i.e. a full vertical column on the target''s file. It then decrements StepTimer; when it
+  goes negative, the attack resolves by writing element 4 into oAIAttackVars_HitElement, which presumably
+  triggers the damage check elsewhere. The highlight-only-then-hit pattern suggests a telegraphed column
+  attack from an enemy AI script.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — zero means unstarted, so the block is one-time
+    init storing ScratchVar to StepTimer and setting anim 8; ldrh r1,[r0,#0x12]; strh r1,[r7,#oAIAttackVars_TargetPanelX]
+    — captures the target object's X as the attack column; lsr r0,#2 / bcc gating two-plus-one object_highlightPanel
+    calls with y-1, y, y+1 — every-4-frame highlight of the target column; sub r0,#1; strh; bge locret
+    — timer counts down and on expiry writes mov r0,#4; strh r0,[r7,#oAIAttackVars_HitElement]; callee
+    object_highlightPanel marks a panel via its flag byte at offset 1, matching the telegraph-highlight
+    behavior
+  refs:
+  - bn6f/asm/asm31.s:161265
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x081028B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches the proposal closely: arm-on-first-run, then every 4 frames highlight 3 vertical
+    panels around the target, then decrement StepTimer and on expiry write 4 to HitElement. One correction:
+    the HitElement write at 0x081028F6 is strh (halfword), not strb — consistent with HitElement being
+    a 16-bit field. Also, the highlight scheduling uses BCC on (StepTimer >> 2), so it highlights on cycles
+    0,4,8,... not ''once every 4 frames later''. Name and summary otherwise accurate.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No caller known: which AI script/boss invokes this and what attack it represents (name/element 4 semantics)
+  is unconfirmed'
+- Exact layout/meaning of oAIAttackVars fields (ScratchVar source of the duration, HitElement consumer)
+  not shown
+- 'The flow matches the proposal closely: arm-on-first-run, then every 4 frames highlight 3 vertical panels
+  around the target, then decrement StepTimer and on expiry write 4 to HitElement. One correction: the
+  HitElement write at 0x081028F6 is strh (halfword), not strb — consistent with HitElement being a 16-bit
+  field. Also, the highlight scheduling uses BCC on (StepTimer >> 2), so it highlights on cycles 0,4,8,...
+  not ''once every 4 frames later''. Name and summary otherwise accurate.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81028B4 -> ai_attackColumnHighlightStep
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81028B4

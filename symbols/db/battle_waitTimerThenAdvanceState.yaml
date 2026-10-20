@@ -1,0 +1,59 @@
+name: battle_waitTimerThenAdvanceState
+address: '0x0803868C'
+kind: function
+status: probable
+summary: Decrements a u16 countdown at [r5+4]; once it underflows, polls joypad for A/B/Start press and
+  on press calls SetScreenFade(0xC, 8) and writes 0xC to [r5] to advance the caller state machine.
+interface: '(r5 = state struct: +0 u8 state, +4 u16 timer; r10 = toolkit for joypad) -> void; no return
+  value'
+details: Decrements the u16 at [r5+4]; while it remains >=0 the decremented value is stored back and the
+  function returns. Once the timer is exhausted, it reads oJoypad_Pressed via oToolkit_JoypadPtr from
+  r10's toolkit and tests mask 0xB (A, B, Start). On a press it calls SetScreenFade(0xC, 8) — fade type
+  12, speed 8 — and sets the state byte [r5+0] to 0xC so the surrounding state machine advances to the
+  fade/next-state handler. The timer decrement is skipped entirely once expired, so the input poll runs
+  every frame after that. r4-r7 are pushed but unused.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#4]; sub r0,#1; blt -> timer-expired branch, else strh back (timer countdown at
+    +4); ldr r0,[r10,#oToolkit_JoypadPtr]; ldrh r0,[r0,#oJoypad_Pressed]; tst with #0xb — waits for A/B/Start
+    press; bl SetScreenFade with r0=0xc, r1=8 — begins fade type 12 at speed 8; strb r0(=0xc),[r5] — advances
+    the state byte to 0xC, matching the fade just started'
+  refs:
+  - bn6f/asm/asm03_1_1.s:85
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0803868C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claim that ''once expired the input poll runs every frame'' is wrong: after the timer
+    branch, control falls through to loc_8038698 unconditionally without any further decrement, so yes
+    the poll does run every frame — but the bigger issue is the name ''skipWait_fadeOutOnButton'' is speculative;
+    this is a generic state-machine helper used to push sets in MMBN6 (push {r4-r7,lr} suggests it could
+    be called from many sites, not just a ''skip wait'' context). The mask 0xB = A|B|Start is correct
+    per tst r1, r0. SetScreenFade(0xC, 8) and strb r0, #0xC into [r5] match. The r4-r7 push is unused
+    as stated. A more neutral name reflecting it as a state advance helper is warranted.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which scene/state machine owns this struct (r5) and what state 0xC leads to is
+  unconfirmed; the timer's initial value and what the player is skipping (intro, credits, cutscene) would
+  come from the caller or the struct initializer.
+- 'The summary''s claim that ''once expired the input poll runs every frame'' is wrong: after the timer
+  branch, control falls through to loc_8038698 unconditionally without any further decrement, so yes the
+  poll does run every frame — but the bigger issue is the name ''skipWait_fadeOutOnButton'' is speculative;
+  this is a generic state-machine helper used to push sets in MMBN6 (push {r4-r7,lr} suggests it could
+  be called from many sites, not just a ''skip wait'' context). The mask 0xB = A|B|Start is correct per
+  tst r1, r0. SetScreenFade(0xC, 8) and strb r0, #0xC into [r5] match. The r4-r7 push is unused as stated.
+  A more neutral name reflecting it as a state advance helper is warranted.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803868C -> battle_waitTimerThenAdvanceState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803868C

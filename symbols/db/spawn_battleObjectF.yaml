@@ -1,0 +1,62 @@
+name: spawn_battleObjectF
+address: '0x080BA920'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0xF via object_spawnType1 (which receives the incoming r0-r2 as
+  obj_idx/x/y and r6/r7 as z/params) and, on success, initialises the resulting object with PanelX, PanelY,
+  Element, copies the source object's AllianceAndDirectionFlip into it and links that source object as
+  RelatedObject1Ptr, writes the incoming DamageAndStamina and CollisionDataPtr, then enables the collision
+  data byte.
+interface: (r0-r2 = values stored to PanelX/PanelY/Element, r5 = source object whose AllianceAndDirectionFlip
+  is copied and whose pointer becomes RelatedObject1Ptr, r6 = DamageAndStamina value, r7 = collision data
+  ptr) -> r0 = BattleObject* or null; flags from spawn result drive the null check
+details: 'The wrapper saves the incoming r0-r2 (plus r5), calls object_spawnType1 with type/index 0xF,
+  and on success restores the saved values into r1-r3 to initialise the new object: PanelX, PanelY, Element.
+  It copies AllianceAndDirectionFlip from the struct pointed to by r5 and stores that same pointer into
+  RelatedObject1Ptr, links r6 into DamageAndStaminaDamageCounterDisabler and r7 into CollisionDataPtr,
+  then writes 1 to the first byte of the collision data (enabling it). If the spawn fails, it returns
+  immediately without touching the object. The register-based r5/r6/r7 inputs and the fact that r6/r7
+  are never saved suggest a hand-written battle-mode helper whose caller sets those registers deliberately
+  (likely r5 = the object this new one is attached to).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xf + bl object_spawnType1: spawns object type/index 0xF; pop {r1-r3,r5} after the
+    call restores saved r0-r2 into r1-r3 for use as field values; strb r1/r2 to oBattleObject_PanelX/PanelY
+    and strb r3 to oBattleObject_Element; str r5 to RelatedObject1Ptr and ldrh/strh copying oBattleObject_AllianceAndDirectionFlip
+    from [r5]; str r6 to Damage..., str r7 to CollisionDataPtr, then mov r1,#1; strb r1,[r7] enables collision
+    byte 0'
+  refs:
+  - bn6f/asm/asm31.s:5419
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BA920
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the field stores (PanelX/PanelY/Element, RelatedObject1Ptr, AllianceAndDirectionFlip
+    copy, DamageAndStamina, CollisionDataPtr with byte 0 written), but misrepresents the control flow:
+    r0-r2 are passed INTO object_spawnType1 as its first three args (obj_idx, x, y), and r6/r7 are its
+    z and params — they are not ''caller-set registers deliberately'' beyond the normal ABI. The function
+    is essentially a post-spawn field initializer keyed to type 0xF. With no known callers, naming is
+    uncertain.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of object type 0xF and what r5/r6/r7 hold at call time is unconfirmed
+- What the caller is (an attack/panel-effect routine would pin down a more specific name) and what element
+  value r3 carries in practice
+- 'The proposal correctly identifies the field stores (PanelX/PanelY/Element, RelatedObject1Ptr, AllianceAndDirectionFlip
+  copy, DamageAndStamina, CollisionDataPtr with byte 0 written), but misrepresents the control flow: r0-r2
+  are passed INTO object_spawnType1 as its first three args (obj_idx, x, y), and r6/r7 are its z and params
+  — they are not ''caller-set registers deliberately'' beyond the normal ABI. The function is essentially
+  a post-spawn field initializer keyed to type 0xF. With no known callers, naming is uncertain.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA920 -> spawn_battleObjectF
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA920

@@ -2,28 +2,26 @@ name: battle_rollRandomChipDrop
 address: '0x080AAC8C'
 kind: function
 status: probable
-summary: 'Picks a random chip-drop for the battle-result record: returns 0xFFFF if an RNG byte <8 and
-  sub_80AAE36 returns 0; otherwise builds a 6-entry halfword pool, scans circularly from sub_80AAB68''s
-  starting index, picks via SWI 6 Div on a fresh RNG, and returns sub_80AAD04''s pair packed as (r1<<9)|r0
-  (or 0 if the pool is empty).'
-interface: '(r0 = battle-result record ptr) -> r0 = packed drop: 0xFFFF = none, 0 = none found, else low
-  field | (r1<<9); clobbers r4,r6,r7'
-details: First an RNG byte is drawn; if it is <8 and sub_80AAE36 (likely a 'drop guaranteed' override)
-  returns 0, it returns 0xFFFF (no drop). Otherwise it sorts/rebuilds the chip-pack aux data, then sub_80AAD70
-  fills a 6-entry halfword table on the stack (sp+4..sp+0xF) — each entry being a count/pool size, 0 =
-  empty. sub_80AAB68(record) supplies a starting index; the table is scanned circularly from that index
-  (downward to 0 first, then upward to entry 5), returning 0 if all six entries are empty. The first nonzero
-  entry's value v is used as a divisor (SWI 6 Div with a fresh RNG) so RNG mod v picks one option inside
-  that pool, and sub_80AAD04(entryIndex, pick) resolves it to the chip fields that get packed as (r1<<9)|r0
-  for the caller's record.
+summary: 'Picks a random chip-drop for the battle-result record: returns 0xFFFF if an RNG byte <8 and sub_80AAE36
+  returns 0; otherwise builds a 6-entry halfword pool, scans circularly from sub_80AAB68''s starting index, picks
+  via SWI 6 Div on a fresh RNG, and returns sub_80AAD04''s pair packed as (r1<<9)|r0 (or 0 if the pool is empty).'
+interface: '(r0 = battle-result record ptr) -> r0 = packed drop: 0xFFFF = none, 0 = none found, else low field |
+  (r1<<9); clobbers r4,r6,r7'
+details: First an RNG byte is drawn; if it is <8 and sub_80AAE36 (likely a 'drop guaranteed' override) returns 0,
+  it returns 0xFFFF (no drop). Otherwise it sorts/rebuilds the chip-pack aux data, then sub_80AAD70 fills a 6-entry
+  halfword table on the stack (sp+4..sp+0xF) — each entry being a count/pool size, 0 = empty. sub_80AAB68(record)
+  supplies a starting index; the table is scanned circularly from that index (downward to 0 first, then upward to
+  entry 5), returning 0 if all six entries are empty. The first nonzero entry's value v is used as a divisor (SWI
+  6 Div with a fresh RNG) so RNG mod v picks one option inside that pool, and sub_80AAD04(entryIndex, pick) resolves
+  it to the chip fields that get packed as (r1<<9)|r0 for the caller's record.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: caller sub_802C8FA fills the battle-result record and consumes this as a drop/reward field;
-    0x080AACF8 path returns dword_80AAD00=0xFFFF, the classic 'no chip' sentinel; pack_sortAndReinitChipAuxData
-    call then a 6-halfword stack table built by sub_80AAD70; SWI 6 Div with r0=RNG, r1=table value gives
-    RNG%value = random pick within an entry's pool; circular r2-flagged scan (back then forward, r1 limits
-    0..0xA) returns 0 when all 6 entries are zero
+  detail: caller sub_802C8FA fills the battle-result record and consumes this as a drop/reward field; 0x080AACF8
+    path returns dword_80AAD00=0xFFFF, the classic 'no chip' sentinel; pack_sortAndReinitChipAuxData call then a
+    6-halfword stack table built by sub_80AAD70; SWI 6 Div with r0=RNG, r1=table value gives RNG%value = random
+    pick within an entry's pool; circular r2-flagged scan (back then forward, r1 limits 0..0xA) returns 0 when all
+    6 entries are zero
   refs:
   - bn6f/asm/asm29.s:12056
   - 0x0802C8FA sub_802C8FA
@@ -31,34 +29,31 @@ evidence:
   - 0x080AADA6 pack_sortAndReinitChipAuxData
   - 0x080AAB68 sub_80AAB68
   reproduce: python3 tools/asmcat.py 0x080AAC8C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is largely correct: it draws an RNG byte, checks against sub_80AAE36 returning 0xFFFF
-    when <8, calls pack_sortAndReinitChipAuxData, builds a 6-entry halfword table via sub_80AAD70, uses
-    sub_80AAB68 as a starting index, scans down then up, and packs sub_80AAD04''s output as (r1<<9)|r0.
-    However the scan reaches r1+=2 comparing against #0xa (covers up to offset 10, i.e. entries 0..5),
-    not entry 5; minor. More importantly, the caller is sub_802C8FA which fills a battle-result record
-    — so naming with the battle_ prefix is reasonable. A clearer name reflecting it selects a chip drop
-    for the battle reward would be battle_rollRandomChipDrop, which is fine, but summary should note ''returns
-    0xFFFF on no drop or RNG<8 with override clear, else 0 if pool empty''. Also the callee at loc_80AACF4
-    does `lsl r1,r1,#9; orr r0,r1` only when r1 is set; when returning 0/0 it goes through the same path
-    with r1=0, giving r0=0 (not 0xFFFF). This is correctly captured.; run wf investigate investigate-20261019-003606;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    is largely correct: it draws an RNG byte, checks against sub_80AAE36 returning 0xFFFF when <8, calls pack_sortAndReinitChipAuxData,
+    builds a 6-entry halfword table via sub_80AAD70, uses sub_80AAB68 as a starting index, scans down then up, and
+    packs sub_80AAD04''s output as (r1<<9)|r0. However the scan reaches r1+=2 comparing against #0xa (covers up
+    to offset 10, i.e. entries 0..5), not entry 5; minor. More importantly, the caller is sub_802C8FA which fills
+    a battle-result record — so naming with the battle_ prefix is reasonable. A clearer name reflecting it selects
+    a chip drop for the battle reward would be battle_rollRandomChipDrop, which is fine, but summary should note
+    ''returns 0xFFFF on no drop or RNG<8 with override clear, else 0 if pool empty''. Also the callee at loc_80AACF4
+    does `lsl r1,r1,#9; orr r0,r1` only when r1 is set; when returning 0/0 it goes through the same path with r1=0,
+    giving r0=0 (not 0xFFFF). This is correctly captured.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - what sub_80AAE36 actually gates (guaranteed-drop flag?)
 - what sub_80AAB68 reads from the battle-result record to pick the starting table index
-- what the six table entries represent (per-enemy drop pools?) and what sub_80AAD04's two return fields
-  (r0 vs r1<<9) encode — chip id vs code/count
-- 'The summary is largely correct: it draws an RNG byte, checks against sub_80AAE36 returning 0xFFFF when
-  <8, calls pack_sortAndReinitChipAuxData, builds a 6-entry halfword table via sub_80AAD70, uses sub_80AAB68
-  as a starting index, scans down then up, and packs sub_80AAD04''s output as (r1<<9)|r0. However the
-  scan reaches r1+=2 comparing against #0xa (covers up to offset 10, i.e. entries 0..5), not entry 5;
-  minor. More importantly, the caller is sub_802C8FA which fills a battle-result record — so naming with
-  the battle_ prefix is reasonable. A clearer name reflecting it selects a chip drop for the battle reward
-  would be battle_rollRandomChipDrop, which is fine, but summary should note ''returns 0xFFFF on no drop
-  or RNG<8 with override clear, else 0 if pool empty''. Also the callee at loc_80AACF4 does `lsl r1,r1,#9;
-  orr r0,r1` only when r1 is set; when returning 0/0 it goes through the same path with r1=0, giving r0=0
-  (not 0xFFFF). This is correctly captured.'
+- what the six table entries represent (per-enemy drop pools?) and what sub_80AAD04's two return fields (r0 vs r1<<9)
+  encode — chip id vs code/count
+- 'The summary is largely correct: it draws an RNG byte, checks against sub_80AAE36 returning 0xFFFF when <8, calls
+  pack_sortAndReinitChipAuxData, builds a 6-entry halfword table via sub_80AAD70, uses sub_80AAB68 as a starting
+  index, scans down then up, and packs sub_80AAD04''s output as (r1<<9)|r0. However the scan reaches r1+=2 comparing
+  against #0xa (covers up to offset 10, i.e. entries 0..5), not entry 5; minor. More importantly, the caller is
+  sub_802C8FA which fills a battle-result record — so naming with the battle_ prefix is reasonable. A clearer name
+  reflecting it selects a chip drop for the battle reward would be battle_rollRandomChipDrop, which is fine, but
+  summary should note ''returns 0xFFFF on no drop or RNG<8 with override clear, else 0 if pool empty''. Also the
+  callee at loc_80AACF4 does `lsl r1,r1,#9; orr r0,r1` only when r1 is set; when returning 0/0 it goes through the
+  same path with r1=0, giving r0=0 (not 0xFFFF). This is correctly captured.'
 sources:
 - wf investigate investigate-20261019-003606
 changes:
@@ -70,5 +65,9 @@ changes:
   what: rename sub_80AAC8C -> battle_rollRandomChipDrop
   where: bn6f 54bc3514
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
 previous_names:
 - sub_80AAC8C

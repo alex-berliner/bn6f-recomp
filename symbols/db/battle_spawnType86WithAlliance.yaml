@@ -1,0 +1,64 @@
+name: battle_spawnType86WithAlliance
+address: '0x080CF594'
+kind: function
+status: probable
+summary: Pushes caller regs and r5, spawns a battle object of type 0x56 via object_spawnType3, and on
+  success writes PanelX/PanelY/Element from popped regs, DamageAndStaminaDamageCounterDisabler from r6,
+  and copies AllianceAndDirectionFlip from the word at [r5].
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3/stack = remaining spawn args; r5 = source for
+  alliance, r6 = damage value) -> r0 = spawned object or 0; flags from spawn result (beq skips init)
+details: 'This is a thin wrapper around object_spawnType3 with the type constant hardcoded to 0x56 (86).
+  It uses the common BN6 argument-spill idiom: push {r0-r2,r5} saves the incoming arguments, r0 is overwritten
+  with the type ID before the spawn call, and pop {r1-r3,r5} reloads the saved args shifted into r1-r3
+  so the new object can be filled in. On a successful spawn it writes oBattleObject_PanelX, oBattleObject_PanelY,
+  oBattleObject_Element, oBattleObject_DamageAndStaminaDamageCounterDisabler (from r6), and copies oBattleObject_AllianceAndDirectionFlip
+  from the word at [r5]. If the spawn fails it returns immediately without touching anything. The field
+  set (panel position, element, damage, alliance) matches a fully parameterized battle entity spawn, likely
+  a custom/extra enemy or effect object defined by the type-3 initializer at index 0x56.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x56 followed by bl object_spawnType3 shows this spawns type-86 battle objects (asm
+    lines 3-4); push {r0-r2,r5} / pop {r1-r3,r5} reloads original args shifted by one, the standard BN6
+    spawn-wrapper arg-spill idiom; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element fills position
+    and element right after the spawn; ldrh/strh of oBattleObject_AllianceAndDirectionFlip via [r5] copies
+    alliance data from a caller-provided source; beq locret_80CF5B0 skips all field writes when the spawn
+    call reports failure'
+  refs:
+  - bn6f/asm/asm31.s:51167
+  - 0x080CF5B2 sub_80CF5B2
+  - 0x080E5A22 sub_80E5A22
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CF594
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The wrapper hardcodes type 0x56 to object_spawnType3, then on success stores PanelX/PanelY/Element
+    from popped regs, DamageAndStamina… from r6, and copies AllianceAndDirectionFlip from [r5]. The save
+    {r0-r2,r5} only preserves three data regs (r0-r2) and r5, so r3 must come from the caller''s original
+    r3, not the stack. The summary''s ''r3/stack = remaining spawn args'' and ''flags from spawn result''
+    are fine, but ''caller''s arguments/source data'' is vague. Also the name ''battle_spawnType86WithStats''
+    misreads ''Stats''; the copied field is AllianceAndDirectionFlip, not stats — ''WithAlliance'' would
+    be more accurate.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What game entity object type 0x56 is (the type-3 initializer table entry would identify it)
+- Exactly how r5 and r6 are set by the callers (sub_80CF5B2, sub_80E5A22) — whether r5 is a template object
+  pointer and r6 a damage argument or a disassembly artifact
+- The wrapper hardcodes type 0x56 to object_spawnType3, then on success stores PanelX/PanelY/Element from
+  popped regs, DamageAndStamina… from r6, and copies AllianceAndDirectionFlip from [r5]. The save {r0-r2,r5}
+  only preserves three data regs (r0-r2) and r5, so r3 must come from the caller's original r3, not the
+  stack. The summary's 'r3/stack = remaining spawn args' and 'flags from spawn result' are fine, but 'caller's
+  arguments/source data' is vague. Also the name 'battle_spawnType86WithStats' misreads 'Stats'; the copied
+  field is AllianceAndDirectionFlip, not stats — 'WithAlliance' would be more accurate.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CF594 -> battle_spawnType86WithAlliance
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF594

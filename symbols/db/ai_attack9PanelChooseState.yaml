@@ -1,0 +1,58 @@
+name: ai_attack9PanelChooseState
+address: '0x08101E96'
+kind: function
+status: probable
+summary: 'AI state for attack 9 panel-choosing: first entry sets AttackDecisionFlag=4 and tail-calls ai_setupAttack9PanelChoose;
+  on callback return clears ScriptId/SubState and reinitializes attack-vars if HasMoved.'
+interface: (r6 = battle object AI-state struct, r7 = AI attack-vars block) -> r0 = 0; touches AttackDecisionFlag,
+  ScriptId, SubState, HasMoved
+details: On entry it tests oAIState_AttackDecisionFlag at r6; when clear it stores 4 there and tail-calls
+  ai_setupAttack9PanelChoose, passing off_810216C (=sub_8102FF4+1) as the follow-up callback, so this
+  is the kick-off for attack 9's panel-choosing phase. When the flag is already set (the callback finished
+  the decision), it clears oAIState_ScriptId and oAIState_SubState to return the object to the neutral
+  AI script state, and if oAIAttackVars_HasMoved (r7) is set it reinitializes the attack-vars block via
+  battle_aiInitAttackVars so the object can attack again. No return value is produced; r0 ends as 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r6,#oAIState_AttackDecisionFlag]; tst; bne — one-shot gate on the attack-decision flag;
+    mov r0,#4; strb r0,[r6,#oAIState_AttackDecisionFlag]; bl ai_setupAttack9PanelChoose — starts attack
+    9 panel-choose with callback off_810216C; strb/strh r0 to oAIState_ScriptId and oAIState_SubState
+    — resets AI script state after the attack resolves; ldrb r0,[r7,#oAIAttackVars_HasMoved]; beq; bl
+    battle_aiInitAttackVars — only reinits attack vars if the object already moved
+  refs:
+  - bn6f/asm/asm31.s:159647
+  - 0x08101F08 ai_setupAttack9PanelChoose
+  - 0x08102016 battle_aiInitAttackVars
+  reproduce: python3 tools/asmcat.py 0x08101E96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary mostly fit: the function writes 4 to AttackDecisionFlag and tail-calls ai_setupAttack9PanelChoose,
+    then on re-entry clears ScriptId/SubState and re-initializes attack vars if HasMoved. However, the
+    summary''s phrase ''starts attack 9''s panel-choose setup'' slightly overstates — ai_setupAttack9PanelChoose
+    is the setup itself; this function just dispatches into it. Also the interface claim ''touches AttackDecisionFlag,
+    ScriptId, SubState, HasMoved'' matches the code exactly. A cleaner name would reflect both the dispatch
+    and the cleanup halves.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which AI script/state table dispatches to this handler (no callers known), confirming it is the attack-9
+  step of the standard AI attack state machine
+- What the sub_8102FF4+1 callback does after panel choice completes
+- 'The name and summary mostly fit: the function writes 4 to AttackDecisionFlag and tail-calls ai_setupAttack9PanelChoose,
+  then on re-entry clears ScriptId/SubState and re-initializes attack vars if HasMoved. However, the summary''s
+  phrase ''starts attack 9''s panel-choose setup'' slightly overstates — ai_setupAttack9PanelChoose is
+  the setup itself; this function just dispatches into it. Also the interface claim ''touches AttackDecisionFlag,
+  ScriptId, SubState, HasMoved'' matches the code exactly. A cleaner name would reflect both the dispatch
+  and the cleanup halves.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8101E96 -> ai_attack9PanelChooseState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101E96

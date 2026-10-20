@@ -1,0 +1,63 @@
+name: chatbox_expandStringById
+address: '0x08120228'
+kind: function
+status: probable
+summary: Resolves a text-script bank/string id to a string pointer and expands it into font tile-index
+  pair buffers for chatbox rendering.
+interface: (r0 = unused/scratch, r1 = unused, r2 = dest u16[8] array 1, r3 = tile attr (bank bits, <<12),
+  r4 = text id ((bank<<8)|index, 0 = default script entry 0x31)) -> r0 = from sub_81202B4; expands up
+  to 8 chars
+details: 'The id in r4 is split: high byte selects a string-table pointer from off_8120270 (TextScriptChipNames0/1...),
+  low byte is the string index; a u16 offset read at table[index*2] is added to the bank base to get the
+  actual string pointer. If r4 == 0, the default/active text script buffer eTextScript201BA20 is used
+  with fixed index 0x31, likely a fallback or dynamically-loaded script. The tile attribute r3 is combined
+  as (r3<<12)|0x200 — a 0x200-tile font base plus palette/bank bits — and passed with r5=8 (max characters)
+  to sub_81202B4, which expands the string into two u16 arrays of font tile indices based at r2 and r2+0x10.
+  The stack slots merely stash r4''s derived value and r2 across the branch. Given the callee''s known
+  role and the TextScriptChipNames tables, this is the standard ''print string by text-bank id into tile
+  buffers'' helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,[off_8120270 + (r1>>8)*2*2]; ldrh r1,[r0, id*2]; add r0,r0,r1 — bank table + u16 offset
+    gives string pointer; tst r1,r1 / bne with r1=r4; zero path loads eTextScript201BA20 and id 0x31 —
+    default script entry fallback; orr r3, r6 (=0x200) after lsl r3,#0xc, moved to r4 before bl — tile
+    base 0x200 plus attribute bits for the expander; mov r5,#8 then bl sub_81202B4 — matches callee's
+    known 'expand string into pairs of font tile indices, two u16 arrays' with 8 chars; str r2/[sp,#8]
+    and r2+0x10/[sp,#0xc] — two output u16 arrays at r2 and r2+0x10
+  refs:
+  - bn6f/asm/asm32.s:37455
+  - 0x0812D934 sub_812D934
+  - 0x081202B4 sub_81202B4
+  reproduce: python3 tools/asmcat.py 0x08120228
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s interface, role, and behavior (splitting bank/index, table lookup, 0x200 tile base,
+    max 8 chars expand into two u16 arrays via sub_81202B4) match the code, including the r4==0 fallback
+    reading off_8120278 (eTextScript201BA20) with index 0x31. However the name prefixes tile indexing
+    with ''t3'' while the callee manipulates tile attributes as (r3<<12)|0x200, which is consistent with
+    chatbox/text rendering rather than a generic t3 helper.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of r0 (never read by this function)
+- Whether r1/r2 at the call to sub_81202B4 carry extra meaning (e.g. array length vs. buffer pointers)
+- Full contents of the off_8120270 bank table beyond the two known chip-name banks
+- Why id 0 maps to entry 0x31 of the default script — caller sub_812D934 is unanalyzed
+- The proposal's interface, role, and behavior (splitting bank/index, table lookup, 0x200 tile base, max
+  8 chars expand into two u16 arrays via sub_81202B4) match the code, including the r4==0 fallback reading
+  off_8120278 (eTextScript201BA20) with index 0x31. However the name prefixes tile indexing with 't3'
+  while the callee manipulates tile attributes as (r3<<12)|0x200, which is consistent with chatbox/text
+  rendering rather than a generic t3 helper.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8120228 -> chatbox_expandStringById
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120228

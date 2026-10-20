@@ -1,0 +1,63 @@
+name: object_spawn9aInheritPanelElement
+address: '0x080D88B8'
+kind: function
+status: probable
+summary: Spawns battle object 0x9A, copying PanelX, PanelY, Element, and the caller's r6 (DamageAndStaminaDamageCounterDisabler)
+  from arguments, while inheriting AllianceAndDirectionFlip from a source object in r5 and setting flag
+  0x10.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = extra arg passed to spawner; r5 = source battle
+  object, r6 = damage-counter value) -> r0 = new object or 0 on failure; no flags relevant
+details: 'The wrapper saves its first three arguments plus r5 on the stack, calls object_spawnType3 with
+  object ID 0x9A (r1-r3 still holding the caller''s arguments), and aborts if the spawn failed (beq).
+  On success it writes the saved args into the new object: PanelX, PanelY, and Element, stores r6 (a caller-prepared
+  value, not set here) into the DamageAndStaminaDamageCounterDisabler field, and copies AllianceAndDirectionFlip
+  from the object pointer in r5, so the spawn inherits the source object''s team/facing. It then ORs 0x10
+  into oObjectHeader_Flags, marking the new object with some special state. The trick of pushing r0-r2,r5
+  and popping into r1-r3,r5 shuffles the original arguments back into registers after the spawn call overwrites
+  r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x9a; bl object_spawnType3 — spawns battle object type 0x9A; strb r1/r2/r3 into oBattleObject_PanelX/PanelY/Element
+    — position and element come from saved args; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh back — alliance/flip copied from caller's object; orr with 0x10 into oObjectHeader_Flags — sets
+    a special flag on the new object; beq locret_80D88DC — leaves the object untouched when object_spawnType3
+    failed
+  refs:
+  - bn6f/asm/asm31.s:71213
+  - 0x080D8706 sub_80D8706
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D88B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well, but the interface is slightly off. r0 holds the return value
+    of object_spawnType3 (the new object pointer), and before popping, `mov r0, r5` overwrites r0 with
+    r5 (the source object pointer) before the beq branch. That means r0 entering the beq is the source
+    object pointer, not the new object. The save/pop trick preserves r1-r3 (panelX, panelY, element) and
+    r5, while r6 is not saved on stack—it''s used directly. The proposed name and summary are acceptable
+    but the spawn prefix would be more consistent with project naming.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What battle object ID 0x9A is and what its initializer does
+- Meaning of flag 0x10 in oObjectHeader_Flags
+- What r6 (damage counter value) and r3 represent in the caller sub_80D8706
+- What the object pointed to by r5 is (owner/enemy?)
+- The code matches the proposal well, but the interface is slightly off. r0 holds the return value of
+  object_spawnType3 (the new object pointer), and before popping, `mov r0, r5` overwrites r0 with r5 (the
+  source object pointer) before the beq branch. That means r0 entering the beq is the source object pointer,
+  not the new object. The save/pop trick preserves r1-r3 (panelX, panelY, element) and r5, while r6 is
+  not saved on stack—it's used directly. The proposed name and summary are acceptable but the spawn prefix
+  would be more consistent with project naming.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D88B8 -> object_spawn9aInheritPanelElement
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D88B8

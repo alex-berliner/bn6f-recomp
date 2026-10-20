@@ -1,0 +1,59 @@
+name: ai_attackDespawnAndExit
+address: '0x08102636'
+kind: function
+status: probable
+summary: 'AI attack-state routine: on first entry initializes StepTimer from AiAttackParam, waits for
+  the timer to expire, then unlinks the spawned attack object from both the battle object (RelatedObject1Ptr)
+  and AI data (TempAttackObjectPtr), resets CurAnim, and exits the attack state via object_exitAttackState.'
+interface: (r0 = element read from oAIAttackVars_AttackElement via r7) -> void; sets flags via tst/sub
+  (N,Z from decrement)
+details: On entry, if the AI attack vars' element field (used here as a phase flag) is 0, it initializes
+  the StepTimer from AiAttackParam and sets the flag to 4. Each frame it decrements StepTimer and returns
+  while it is still >= 0. Once the timer expires, it nulls oBattleObject_RelatedObject1Ptr (r5) and, through
+  the object's AIData pointer, nulls oAIData_TempAttackObjectPtr, so the attack object spawned earlier
+  is detached from both the enemy and its AI data. It then resets oBattleObject_CurAnim to 0 and calls
+  object_exitAttackState to return the enemy to its normal state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oAIAttackVars_AttackElement + strh of AiAttackParam into oAIAttackVars_StepTimer
+    and flag=4 implement a one-shot timer init; ldrh/sub/strh on oAIAttackVars_StepTimer with bge locret
+    is the frame countdown wait loop; str r0,[r5,#oBattleObject_RelatedObject1Ptr] and via oBattleObject_AIDataPtr
+    clears oAIData_TempAttackObjectPtr, detaching the spawned attack object; mov r0,#0; strb into oBattleObject_CurAnim
+    resets the enemy's current animation; bl object_exitAttackState ends the attack state after the wait
+  refs:
+  - bn6f/asm/asm31.s:160719
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x08102636
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches the proposal: it initializes StepTimer from AiAttackParam on first entry (setting
+    AttackElement to 4 as a ''done initializing'' flag), decrements StepTimer each call, and once it expires
+    unlinks RelatedObject1Ptr and TempAttackObjectPtr, resets CurAnim, and calls object_exitAttackState.
+    However, the name ''ai_attackWaitForSpawnedObject'' is misleading: the function doesn''t just wait
+    — its primary role is detaching/unlinking the spawned attack object from both the battle object and
+    AI data, then exiting the attack state. A name emphasizing the cleanup/unlink is more accurate.; run
+    wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so which enemies/states reach this and what element value 4 corresponds to is unconfirmed
+- What spawns the object stored in RelatedObject1Ptr/TempAttackObjectPtr (presumably an earlier attack
+  phase) is not shown here
+- 'The behavior matches the proposal: it initializes StepTimer from AiAttackParam on first entry (setting
+  AttackElement to 4 as a ''done initializing'' flag), decrements StepTimer each call, and once it expires
+  unlinks RelatedObject1Ptr and TempAttackObjectPtr, resets CurAnim, and calls object_exitAttackState.
+  However, the name ''ai_attackWaitForSpawnedObject'' is misleading: the function doesn''t just wait —
+  its primary role is detaching/unlinking the spawned attack object from both the battle object and AI
+  data, then exiting the attack state. A name emphasizing the cleanup/unlink is more accurate.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8102636 -> ai_attackDespawnAndExit
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102636

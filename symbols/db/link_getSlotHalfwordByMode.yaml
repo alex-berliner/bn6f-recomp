@@ -1,0 +1,55 @@
+name: link_getSlotHalfwordByMode
+address: '0x0803E7A4'
+kind: function
+status: probable
+summary: Returns a 16-bit per-slot value from byte_2009940 at offset 8*slot plus a per-link-mode base
+  (0x02 for modes 0, 0x04 for mode 3); for unsupported modes (1,2) returns r0=0, r1=1 as an error indicator.
+interface: (r0 = slot index 0..7) -> r0 = halfword byte_2009940[8*slot + offset[mode]], r1 = 0 on success;
+  r0 = 0, r1 = 1 if the current link mode has no table entry
+details: It first calls link_getModeSelector_803DD30, which derives the current link mode (0..3) from
+  the eStruct200BC30 jump-offset slot and eLinkState. That mode indexes the byte table at dword_803E7D4
+  (0x04FFFF02, i.e. bytes 02,FF,FF,04), yielding a base offset into the byte_2009940 area; 0xFF marks
+  modes 1 and 2 as unsupported, in which case it returns r0=0 with r1=1 as an error flag. Otherwise it
+  computes 8*r7 + baseOffset and reads a halfword from byte_2009940 at that offset, returning it in r0
+  with r1=0. So the buffer is laid out as per-mode blocks of 8 halfwords, with modes 0 and 3 pointing
+  at blocks starting at offsets 2 and 4 (their blocks overlap at halfword granularity). The halfword size
+  and 8-entry stride suggest per-player/per-slot data such as IDs or selection values in a wireless link
+  session. The exact game meaning of byte_2009940 is not established from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl link_getModeSelector_803DD30 — mode comes from the shared link-state subsystem; ldrb r0,[r1,r0];
+    cmp r0,#0xff; beq — table 0x04FFFF02 maps mode to offset, 0xFF is an invalid marker; mul r1,r7 / ldrh
+    r0,[r0,r1] with byte_2009940 — 8-halfword-stride slot lookup; mov r1,#1; mov r0,#0 vs mov r1,#0 —
+    r1 is a success/failure flag alongside the value
+  refs:
+  - bn6f/asm/asm03_1_1.s:11290
+  - 0x0803E018 sub_803E018
+  - 0x0803DD30 link_getModeSelector_803DD30
+  reproduce: python3 tools/asmcat.py 0x0803E7A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the proposal''s behavior (ldrh at byte_2009940 with mode-indexed base offset, r1=1
+    error for 0xFF modes 1/2). However ''ModeSlotHalfword'' is awkward; the function reads a per-slot
+    value in a mode-indexed region, so ''link_getSlotHalfwordByMode'' is clearer.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What byte_2009940 represents (trade offers? player selection values?) — the only caller sub_803E018
+  is unanalyzed and would show how the returned halfword is used
+- What link modes 0 and 3 correspond to in game terms
+- Code matches the proposal's behavior (ldrh at byte_2009940 with mode-indexed base offset, r1=1 error
+  for 0xFF modes 1/2). However 'ModeSlotHalfword' is awkward; the function reads a per-slot value in a
+  mode-indexed region, so 'link_getSlotHalfwordByMode' is clearer.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803E7A4 -> link_getSlotHalfwordByMode
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803E7A4

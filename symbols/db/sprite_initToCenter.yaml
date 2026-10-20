@@ -1,0 +1,60 @@
+name: sprite_initToCenter
+address: '0x0811C508'
+kind: function
+status: probable
+summary: 'Initializes/resets a sprite-bearing object: sets byte [r5] to 1 and [r5+8] to 4, calls sprite_setCoordinates
+  with (0x80, 0x80) to recenter the sprite, re-asserts 4 at [r5+8], clears two counter bytes at [r5+0x12]/[r5+0x13],
+  and tails into sub_811C52C.'
+interface: (r5 = object/sprite struct pointer, fixed register) -> r0 clobbered; struct bytes 0x0, 0x8,
+  0x12, 0x13 written; sprite position set to 0x80,0x80
+details: Stores 1 at [r5] (likely an active/visible flag) and 4 at [r5+8] (likely a state or mode id),
+  then calls sprite_setCoordinates with x=0x80, y=0x80, placing the object at the center of the 240x160
+  screen (128,128 in the game's coordinate space). It re-writes 4 to [r5+8] after the call, suggesting
+  sprite_setCoordinates or something it calls may touch that byte or that the value must persist across
+  it. It then zeroes [r5+0x12] and [r5+0x13] (likely timers/counters) and calls sub_811C52C before returning.
+  The struct is passed in callee-saved r5, so this is an initializer/reset step for a sprite-driven object
+  rather than a standalone routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r4=1 at [r5] and strb 4 at [r5,#8] set flag/state fields of the r5 struct; mov r0,#0x80
+    / mov r1,#0x80 then bl sprite_setCoordinates positions the sprite at screen center; strb 4 to [r5,#8]
+    is repeated after sprite_setCoordinates, implying that call may disturb it; strb 0 to [r5,#0x12] and
+    [r5,#0x13] clears two adjacent byte fields, likely counters; tail call to sub_811C52C (unknown) finishes
+    the reset sequence
+  refs:
+  - bn6f/asm/asm32.s:29822
+  - 0x0800307C sprite_setCoordinates
+  - 0x0811C52C sub_811C52C
+  reproduce: python3 tools/asmcat.py 0x0811C508
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name ''sprite_resetToScreenCenter'' and summary fit the code well: it sets struct bytes 0/8/0x12/0x13,
+    repositions via the sprite_setCoordinates call, and follows up with sub_811C52C. However, the description
+    of the struct byte meanings (active flag, state id, timers) is speculative, and the prefix ''sprite''
+    is fine but ''init'' better reflects that this is a full initializer called on an existing struct
+    rather than just a position reset. The code''s r5-fixed callee-saved argument and the follow-up sub_811C52C
+    suggest this is part of a larger sprite-init sequence.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the meaning of the r5 struct (owner, object type) and of byte 8's value 4 is unconfirmed
+- sub_811C52C is unknown; it may reveal whether this is a spawn, respawn, or state-reset routine
+- 'The name ''sprite_resetToScreenCenter'' and summary fit the code well: it sets struct bytes 0/8/0x12/0x13,
+  repositions via the sprite_setCoordinates call, and follows up with sub_811C52C. However, the description
+  of the struct byte meanings (active flag, state id, timers) is speculative, and the prefix ''sprite''
+  is fine but ''init'' better reflects that this is a full initializer called on an existing struct rather
+  than just a position reset. The code''s r5-fixed callee-saved argument and the follow-up sub_811C52C
+  suggest this is part of a larger sprite-init sequence.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811C508 -> sprite_initToCenter
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811C508

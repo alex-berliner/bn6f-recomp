@@ -1,0 +1,62 @@
+name: ow_updateMarkerProj
+address: '0x08006990'
+kind: function
+status: probable
+summary: Per-frame coroutine that projects an overworld point to screen, conditionally queues its OAM
+  marker when visible, fills an Unk2009740 buffer, advances two fixed-point animation fields clamped to
+  per-axis targets, and returns 1 when the progress byte reaches 0xFF.
+interface: () -> r0 = 1 when anim field 0x20096A4 reaches 0xFF, else 0; clobbers r0-r3
+details: 'Works on a state struct at 0x20096A0: +0x24 is the world-space point passed to the camera projection
+  (sub_8003694), whose visibility flag gates the draw. On a visible frame with [+4] < 0xFF it calls sub_8006A6C
+  and sub_8006B3A and stores their results into toolkit Unk200f3a0 +0/+4, having set +8=0x3F and +0xA=0x17
+  (likely tile/palette for the OAM entry), so this queues the marker''s sprite. It also fills Unk2009740
+  bytes with 0x48, 0x37, 0x10 and [+0xC]>>16 each frame. Two 16.16 fixed-point channels advance: velocity
+  [+8]+accel[+0x14] clamped to target [+0x1C] is added to position [+4], capped by max byte [+3]; velocity
+  [+0x10]+accel[+0x18] clamped to [+0x20] likewise feeds [+0xC], which is additionally hard-capped at
+  16<<16. Return value 1 when [+4] >= 0xFF makes this an animation/draw coroutine polled by sub_804CB64.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#0x24-...] style: r0=r5+0x24 then bx sub_8003694 with tst r2 visibility check gates
+    the draw path; sub_8006A6C/sub_8006B3A results stored to oToolkit_Unk200f3a0_Ptr fields +0/+4 after
+    writing bytes 0x3F/+8, 0x17/+0xA; fields +8/+0x14/+0x1C and +0x10/+0x18/+0x20 are clamped velocity/accel/target
+    pairs added into positions +4 and +0xC; position +0xC hard-capped at 0x10<<16 and truncated >>16 to
+    a byte written into Unk2009740+2; return: cmp [+4],0xFF; return 1 if >=, else 0 — completion flag
+    consumed by caller sub_804CB64'
+  refs:
+  - bn6f/asm/asm00_1.s:7529
+  - 0x0804CB64 sub_804CB64
+  - 0x08003694 sub_8003694
+  - 0x08006A6C sub_8006A6C
+  - 0x08006B3A sub_8006B3A
+  reproduce: python3 tools/asmcat.py 0x08006990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The projection of unk_20096A0+0x24 via sub_8003694 happens unconditionally, and the visibility flag
+    (r2) gates the sprite-queueing at sub_8006A6C/sub_8006B3A only — Unk2009740 is filled every frame,
+    not gated. The two channels aren''t ''pan/zoom''; +4 is an animation progress byte (compared to 0xFF
+    and the max at +3), while +0xC looks like a Z/depth value hard-capped at 16<<16 (matching sub_8003694''s
+    affine/Z return). The name should reflect marker/projection/coroutine, not pan/zoom.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_8006A6C and sub_8006B3A draw (sprite queue vs OAM) to confirm 'marker'
+- meaning of the Unk2009740 bytes 0x48/0x37/0x10
+- which overworld cutscene or object owns the 0x20096A0 state struct (caller sub_804CB64 context)
+- The projection of unk_20096A0+0x24 via sub_8003694 happens unconditionally, and the visibility flag
+  (r2) gates the sprite-queueing at sub_8006A6C/sub_8006B3A only — Unk2009740 is filled every frame, not
+  gated. The two channels aren't 'pan/zoom'; +4 is an animation progress byte (compared to 0xFF and the
+  max at +3), while +0xC looks like a Z/depth value hard-capped at 16<<16 (matching sub_8003694's affine/Z
+  return). The name should reflect marker/projection/coroutine, not pan/zoom.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8006990 -> ow_updateMarkerProj
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8006990

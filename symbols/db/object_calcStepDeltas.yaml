@@ -1,0 +1,62 @@
+name: object_calcStepDeltas
+address: '0x08001288'
+kind: function
+status: probable
+summary: Given a start {x,y} struct and target x/y plus speed params, returns step count in r0 with per-step
+  x/y increments in r1/r2 via signed division with half-rounding.
+interface: (r0 = ptr to {x,y} start struct, r1 = target x, r2 = target y, r3 = param A, r4 = param B)
+  -> r0 = step count, r1 = dx/steps, r2 = dy/steps; clobbers r3, r7
+details: 'Subtracts the struct''s fields ([r0] and [r0+4], likely origin x/y) from r1/r2 to get dx and
+  dy, saving them on the stack. Step count is computed as (2*r3)/(-r4) via SWI_Div, with rounding: the
+  remainder is compared against r3>>1 and the quotient is incremented when remainder >= that half (r4''s
+  negation suggests speed is stored as a negative value, or param B is inverted). It then divides dy and
+  dx by the step count (dx divided second, overwriting the quotient into r0 at the end via the register
+  juggling). Returns r0 = number of steps, r1 = x increment, r2 = y increment — a linear-interpolation/movement
+  setup for an entity traveling between two points.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r7,[r0] / sub r1,r1,r7 and ldr r7,[r0,#4] / sub r2,r2,r7: dx,dy = target minus start struct
+    fields (offsets 0x0,0x4); lsl r0,r3,#1; neg r1,r4; bl SWI_Div: step count = (2*r3)/(-r4); lsr r3,r3,#1;
+    cmp r1,r3; bmi; add r0,#1: rounds the quotient up when remainder >= r3/2; two further SWI_Div calls
+    divide r2 (dy) and r1 (dx) by the quotient; final pop {r0,r2} leaves r0 = steps, r1 = dx/steps, r2
+    = dy/steps'
+  refs:
+  - bn6f/asm/asm00_0.s:2429
+  - 0x0814D8BC SWI_Div
+  reproduce: python3 tools/asmcat.py 0x08001288
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The core mechanism (compute delta, divide, round) is correct: r7 loads from [r0] and [r0+4], dx/dy
+    are pushed, steps = (2*r3)/(-r4) via SWI_Div with rounding, then dx/steps and dy/steps are each divided.
+    However, the proposed summary overstates output: only r1 and r2 are returned as per-step increments,
+    while the stack pops into r0 at the end give r0=step count but discard r2''s original as the final
+    x increment—the return is r0=steps, r1=dx/steps, r2=dy/steps, matching the proposal. The name `object_calcStepDeltas`
+    is reasonable but a better prefix is unclear without callers; `get` is unsuitable. The summary is
+    slightly imprecise about dividing order (dy is divided first, then dx), but this is minor.; run wf
+    investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of r3 (appears doubled and used as rounding threshold) and r4 (divided
+  as -r4, likely a speed) in game terms is unconfirmed
+- Which structure [r0] points to (an object's position struct?) and which subsystem uses this interpolation
+  is unknown; a caller would confirm the prefix and parameter semantics
+- 'The core mechanism (compute delta, divide, round) is correct: r7 loads from [r0] and [r0+4], dx/dy
+  are pushed, steps = (2*r3)/(-r4) via SWI_Div with rounding, then dx/steps and dy/steps are each divided.
+  However, the proposed summary overstates output: only r1 and r2 are returned as per-step increments,
+  while the stack pops into r0 at the end give r0=step count but discard r2''s original as the final x
+  increment—the return is r0=steps, r1=dx/steps, r2=dy/steps, matching the proposal. The name `object_calcStepDeltas`
+  is reasonable but a better prefix is unclear without callers; `get` is unsuitable. The summary is slightly
+  imprecise about dividing order (dy is divided first, then dx), but this is minor.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8001288 -> object_calcStepDeltas
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8001288

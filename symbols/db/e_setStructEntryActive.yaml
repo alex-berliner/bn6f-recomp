@@ -1,0 +1,59 @@
+name: e_setStructEntryActive
+address: '0x0811DF0C'
+kind: function
+status: probable
+summary: For entry `r0` of the 0x58-byte struct array at eStruct2008450, if its status byte is already
+  non-zero (in use), writes 1 to that byte; otherwise no-op.
+interface: (r0 = index into eStructArr2008450) -> no meaningful return; NZ flags come from the entry's
+  in-use byte via getStructFrom2008450
+details: 'Fetches a pointer to entry `r0` of the 0x58-byte struct array at 2008450 through getStructFrom2008450.
+  That helper returns NZ if the entry''s first byte (its in-use/status flag) is set; if so, this function
+  stores 1 into that same first byte (offset 0), effectively (re-)activating or enabling the entry. If
+  the entry''s flag byte is zero (entry unused), it does nothing. Nothing else in the 0x58-byte entry
+  is written. Quirk: it only takes effect on entries whose status byte was already non-zero, and it silently
+  ignores indices whose flag byte is zero, so the flag serves both as existence and as the value being
+  written.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl getStructFrom2008450 returns entry base in r1 with NZ from the entry's first byte (callee
+    summary); beq locret_811DF18 skips the write when the flag byte is zero; mov r0,#1; strb r0,[r1] writes
+    1 to offset 0 of the struct, the in-use/status byte
+  refs:
+  - bn6f/asm/asm32.s:32644
+  - 0x08128E2C sub_8128E2C
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x0811DF0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code calls getStructFrom2008450 (r0=index, returns pointer in r1, NZ from flag byte), branches
+    to pop if zero, else writes 1 to [r1] (offset 0). That matches the proposal''s mechanics. However,
+    the proposal''s phrasing as ''setting flag byte to 1 (re-)activate'' is slightly misleading — it actually
+    only writes when already active, and the caller (sub_8128E2C) likely uses this to set the flag rather
+    than toggle. A clearer name reflecting ''set active flag'' is fine; ''e_setStructEntryActive'' is
+    acceptable but ''e_setStructEntryStatus'' better matches that offset 0 is reused as both existence
+    check and written value.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the 0x58-byte entries represent beyond offset 0 (enemy, object, other battle entity) — need the
+  array's other users
+- Why the write is skipped for entries whose flag is 0 (refresh vs. first-time-enable semantics), needs
+  caller sub_8128E2C context
+- The code calls getStructFrom2008450 (r0=index, returns pointer in r1, NZ from flag byte), branches to
+  pop if zero, else writes 1 to [r1] (offset 0). That matches the proposal's mechanics. However, the proposal's
+  phrasing as 'setting flag byte to 1 (re-)activate' is slightly misleading — it actually only writes
+  when already active, and the caller (sub_8128E2C) likely uses this to set the flag rather than toggle.
+  A clearer name reflecting 'set active flag' is fine; 'e_setStructEntryActive' is acceptable but 'e_setStructEntryStatus'
+  better matches that offset 0 is reused as both existence check and written value.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811DF0C -> e_setStructEntryActive
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811DF0C

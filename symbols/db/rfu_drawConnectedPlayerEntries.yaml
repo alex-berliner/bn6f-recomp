@@ -1,0 +1,62 @@
+name: rfu_drawConnectedPlayerEntries
+address: '0x0803A104'
+kind: function
+status: probable
+summary: Each frame, draws up to 4 lines of wireless-connect info (codes 0x27, 0x7b via sub_803B814 and
+  0x21 via sub_803B9C0) indexed by [r5,#0xb]+i and stride 0x20, marks entries active, then ticks sprite/entity
+  updates; may early-return if sub_803A2A4 signals done.
+interface: '(r5 = connection-state struct: +0xb base index, +0x24/+0x26 draw params, +0x18 flag) -> r0
+  destroyed; draws text per entry via sub_803B814/sub_803B9C0.'
+details: 'If [r5,#0x18] is nonzero it first runs sub_803A2A4, then clears/prepares via sub_803A214. It
+  loops i=0..3 while i < sub_813D638() (apparently the number of connected players); each iteration calls
+  sub_803C440([r5,#0xb]+i), which returns a value/handle pair used as draw data. Three text-draw calls
+  follow with per-entry destination stride 0x20: code 0x27 at offset 0x23+i*0x20 with count 6 using [r5,#0x24],
+  code 0x7b at the same row with count 7 using [r5,#0x26], and after sub_8146728 a call to sub_803B9C0
+  with code 0x21 at offset 0x1a+i*0x20, count 4. sub_803A238(i,1) marks the entry active, and chatbox_waitStepUpdateEntities
+  ticks entity/sprite updates for the frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bounded by cmp r6,r0 after bl sub_813D638 and cmp r6,#4 — up to 4 entries, matching 4-player
+    wireless; bl sub_803C440 with ldrb r0,[r5,#0xb]+i fetches per-player data used as r3/r7 in the draws;
+    three bl sub_803B814/bl sub_803B9C0 calls all use mov r2,#0x20; mul r2,r6 — one 0x20-byte slot per
+    player; caller 0x08049416 in rfu_wirelessConnectStep places this in the wireless connection flow;
+    tail bl chatbox_waitStepUpdateEntities keeps the chatbox/entities rendering while this screen shows
+  refs:
+  - bn6f/asm/asm03_1_1.s:2798
+  - 0x08049416 rfu_wirelessConnectStep
+  - 0x08039C32 sub_8039C32
+  - 0x08039D08 sub_8039D08
+  - 0x0803A186 chatbox_waitStepUpdateEntities
+  - 0x0803A1D8 sub_803A1D8
+  - 0x0803A214 sub_803A214
+  reproduce: python3 tools/asmcat.py 0x0803A104
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop is bounded by both r6 < sub_813D638() and r6 < 4 (lines ''cmp r6, r0 / bge loc_803A176''
+    AND ''cmp r6, #4 / blt''), and sub_803A2A4''s zero return causes an early exit (beq locret_803A184)
+    — proposal misses this. It also claims the third text draw is sub_803B9C0 but the code only calls
+    sub_803B9C0 once (code 0x21) and sub_803B814 twice (0x27, 0x7b). Otherwise the name and overall behavior
+    fit.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of sub_803B814's r0 codes (0x27/0x7b) and whether the drawn text is player names or connection
+  status
+- what sub_803C440 returns (r0/r1 pair) and the struct it indexes
+- roles of sub_803A2A4/sub_803A214 in the pre-loop setup
+- 'The loop is bounded by both r6 < sub_813D638() and r6 < 4 (lines ''cmp r6, r0 / bge loc_803A176'' AND
+  ''cmp r6, #4 / blt''), and sub_803A2A4''s zero return causes an early exit (beq locret_803A184) — proposal
+  misses this. It also claims the third text draw is sub_803B9C0 but the code only calls sub_803B9C0 once
+  (code 0x21) and sub_803B814 twice (0x27, 0x7b). Otherwise the name and overall behavior fit.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803A104 -> rfu_drawConnectedPlayerEntries
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A104

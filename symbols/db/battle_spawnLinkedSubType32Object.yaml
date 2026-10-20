@@ -1,0 +1,63 @@
+name: battle_spawnLinkedSubType32Object
+address: '0x080C17F4'
+kind: function
+status: probable
+summary: Spawns a type-1 battle object with sub-type id 0x32, copying panel coords/element/AllianceAndDirectionFlip
+  from a parent object, linking back to it via RelatedObject1Ptr, storing caller's r6 into a damage/stamina
+  counter field, mirroring Param1 to offset 0x64, and initialising an external vars pointer (with its
+  first word set to 1).
+interface: (r0 = panelX, r1 = panelY, r2 = element/byte arg, r3 = third byte arg, r5 = parent BattleObject,
+  r6 = value for damage-counter field, r7 = pointer to extra-vars block) -> r0 = new BattleObject or null
+  (spawn's flags)
+details: 'Saves the caller''s r0-r2/r5 on the stack, spawns a type-1 object with id 0x32 using the caller''s
+  remaining registers as spawn arguments, then copies fields into the new object: PanelX from arg0, PanelY
+  from arg1, a byte arg into Element, and AllianceAndDirectionFlip is copied from the parent object in
+  r5, whose pointer is also stored in RelatedObject1Ptr. Caller register r6 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and the byte in Param1 is also duplicated to offset 0x64 of the new object. r7 is treated as a pointer
+  to an extra-vars block stored in ExtraVars, whose first word is set to 1. Success/failure comes from
+  object_spawnType1''s flags (beq on null return in r5); the wrapper preserves the caller''s r5. The exact
+  gameplay meaning of type 0x32 and the r6/r7 payloads is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x32 + bl object_spawnType1: spawns battle object id 0x32; strb r1/r2/r3 to PanelX/PanelY/Element
+    after pop: initial position/element come from caller args; ldrh r1,[r5,#AllianceAndDirectionFlip]
+    + str r5,[r0,#RelatedObject1Ptr]: copies and links the parent object passed in r5; str r7,[r0,#ExtraVars];
+    mov r1,#1; str r1,[r7]: attaches an extra-vars block initialised to 1; beq locret_80C181E after the
+    spawn call: skips all setup when spawnType1 returns null'
+  refs:
+  - bn6f/asm/asm31.s:21067
+  - 0x080E9164 sub_80E9164
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080C17F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary says ''Spawns a type-0x32 battle object'', but the code at `mov r0, #0x32` passes 0x32
+    to object_spawnType1, which spawns a type-1 battle object with obj_idx 0x32, not a 0x32-typed object.
+    Also, the detail about ''AllianceAndDirectionFlip copied from parent'' matches the `ldrh`/`strh` at
+    those lines, and ExtraVars with value 1 matches the final two str/str lines. The name ''battle_spawnLinkedType50Object''
+    misreads 0x32 as ''Type50'', which is incorrect.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What battle entity object type 0x32 is (needs the type-1 initialiser or more type-0x32 spawn sites)
+- Meaning of the r6 value stored in DamageAndStaminaDamageCounterDisabler and of the extra-vars block
+  whose first word is 1
+- What caller sub_80E9164 is and which parent objects pass themselves in as r5
+- 'The summary says ''Spawns a type-0x32 battle object'', but the code at `mov r0, #0x32` passes 0x32
+  to object_spawnType1, which spawns a type-1 battle object with obj_idx 0x32, not a 0x32-typed object.
+  Also, the detail about ''AllianceAndDirectionFlip copied from parent'' matches the `ldrh`/`strh` at
+  those lines, and ExtraVars with value 1 matches the final two str/str lines. The name ''battle_spawnLinkedType50Object''
+  misreads 0x32 as ''Type50'', which is incorrect.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C17F4 -> battle_spawnLinkedSubType32Object
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C17F4

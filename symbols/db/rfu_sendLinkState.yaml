@@ -1,0 +1,64 @@
+name: rfu_sendLinkState
+address: '0x08144DB0'
+kind: function
+status: probable
+summary: 'Wireless link action: transmits a 0/1 state flag to the peer via rfu_REQ_sendData, either clearing
+  a pending byte and sending 0 (when a session-level flag in dword_2010CC0 is set) or sending 0/1 derived
+  from eStruct200FE00 byte 0x2.'
+interface: (r0 = link command/event byte) -> r0 = result of rfu_REQ_sendData(r0 = 0/1 flag, r1 = inherited,
+  r2 = 0/1); flags from callee
+details: Takes the link command byte as r0 and first tests a session-level flag via pointer dword_2010CC0
+  (its first byte). If that byte is nonzero it clears byte 200FE03 (a one-shot/pending marker in the RFU
+  link struct eStruct200FE00) and passes 0 as the data argument; otherwise it reads byte 200FE02, converting
+  '== 1' into 1 and anything else into 0. It then calls rfu_REQ_sendData with r0 = that 0/1 value and
+  r2 = 0/1, i.e. it transmits the current connection/slot status to the peer. Note r1 is only explicitly
+  zeroed on the flag-set path; on the other path it is inherited from the caller, suggesting rfu_REQ_sendData
+  ignores or barely uses r1 here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r0] on *dword_2010CC0 selects between the clear-and-send-0 path and the status path
+    (asm lines 4-9); ldrb r0,[r0,#2] of eStruct200FE00 compared to #1 produces the 0/1 payload (lines
+    10-15); strb r1,[r0,#3] wipes byte 200FE03 once before sending (lines 19-21); tail call bl rfu_REQ_sendData
+    with r0/r2 set, r1 untouched on one path (line 24); called from rfu_handleLinkCommand, the dispatcher
+    of wireless link commands, and repeatedly from sub_8146F90''s command handlers'
+  refs:
+  - bn6f/asm/libs.s:1860
+  - 0x0814801C rfu_handleLinkCommand
+  - 0x08146F90 sub_8146F90
+  - 0x08147104 sub_8146F90
+  - 0x0814B0B4 rfu_REQ_sendData
+  reproduce: python3 tools/asmcat.py 0x08144DB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The interface is wrong: lsl/lsr at lines 4-5 put the input byte in r2, not r0; rfu_REQ_sendData
+    is called with r0=0 on the session-flag path (loc_8144DD8 falls into loc_8144DE0 with r0=r2=0 implicitly?
+    No — r0=r2 was only done in ''else'' branch; on flag-set path r0 holds the [r0]->byte(3) read value,
+    but mov r0,r2 at loc_8144DE0 overwrites it). So r0 is always the derived 0/1 flag, never the original
+    command byte. The name ''sendSlotFlag'' oversells — on the flag-set path it transmits 0 while clearing
+    a pending marker, not a slot flag.; run wf investigate investigate-20261019-022109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the byte at eStruct200FE00+2 (parent vs child vs slot state) needs the struct's other
+  writers
+- the exact signature/parameter roles of rfu_REQ_sendData (what r0 and r2 mean there) and why r1 is not
+  always set
+- what flag dword_2010CC0 tracks (some session-ready or sync flag) — its writers would clarify
+- 'The interface is wrong: lsl/lsr at lines 4-5 put the input byte in r2, not r0; rfu_REQ_sendData is
+  called with r0=0 on the session-flag path (loc_8144DD8 falls into loc_8144DE0 with r0=r2=0 implicitly?
+  No — r0=r2 was only done in ''else'' branch; on flag-set path r0 holds the [r0]->byte(3) read value,
+  but mov r0,r2 at loc_8144DE0 overwrites it). So r0 is always the derived 0/1 flag, never the original
+  command byte. The name ''sendSlotFlag'' oversells — on the flag-set path it transmits 0 while clearing
+  a pending marker, not a slot flag.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8144DB0 -> rfu_sendLinkState
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144DB0

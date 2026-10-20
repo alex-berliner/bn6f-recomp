@@ -1,0 +1,56 @@
+name: battle_getTimerEnableFlag
+address: '0x08144D04'
+kind: function
+status: probable
+summary: Returns the byte at offset 0x2A + index within the engine timer-enable struct eTimerEnable200F460,
+  used by link-battle state code to gate timer behavior.
+interface: (r0 = index (byte)) -> r0 = byte at eTimerEnable200F460 + 0x2A + index; flags set by final
+  LDRB
+details: The routine zero-extends r0 to a byte, then loads eTimerEnable200F460, adds the fixed offset
+  0x2A and the caller's index, and returns the single byte at that address. It is a pure indexed getter
+  with no side effects; the LDRB sets condition flags which are irrelevant since it returns immediately
+  via BX LR. The base symbol is the engine timer-enable/status block, so offset 0x2A is a sub-array of
+  per-entity or per-mode flags/counters. All known callers are battle/link-battle state routines, suggesting
+  the queried entries gate timer behavior in link battles.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r0] after add r0, r0, r1 indexes eTimerEnable200F460+0x2A by the byte argument (asm
+    lines 2-7); only data reference is off_8144D14 = eTimerEnable200F460, confirming the table base; callers
+    include battle_getLinkStateCode_803F560 and other sub_803Exxx/sub_803Fxxx battle-state routines; fixed
+    add r1, #0x2a selects one field of the timer block, not its start'
+  refs:
+  - bn6f/asm/libs.s:1745
+  - 0x0803F560 battle_getLinkStateCode_803F560
+  - 0x0803E428 sub_803E428
+  - 0x0803E78C sub_803E78C
+  reproduce: python3 tools/asmcat.py 0x08144D04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (zero-extend index, base+0x2A+index, LDRB, BX LR). However,
+    the symbol eTimerEnable200F460 is annotated by the project''s documented symbol table as ''eTimerEnable200F460''
+    (a named engine timer-enable field, not a full table), and callers like battle_getLinkStateCode_803F560
+    suggest gating timer behavior per slot. The name is fine, but the summary should be tightened: it''s
+    a per-byte indexed read into the eTimerEnable200F460 struct at fixed offset 0x2A, not a ''table''
+    sub-array.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what the bytes at offset 0x2A mean (per-player, per-timer or mode flags) — a named caller showing how
+  the return value is tested would disambiguate
+- 'The code matches the proposal''s mechanics (zero-extend index, base+0x2A+index, LDRB, BX LR). However,
+  the symbol eTimerEnable200F460 is annotated by the project''s documented symbol table as ''eTimerEnable200F460''
+  (a named engine timer-enable field, not a full table), and callers like battle_getLinkStateCode_803F560
+  suggest gating timer behavior per slot. The name is fine, but the summary should be tightened: it''s
+  a per-byte indexed read into the eTimerEnable200F460 struct at fixed offset 0x2A, not a ''table'' sub-array.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8144D04 -> battle_getTimerEnableFlag
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144D04

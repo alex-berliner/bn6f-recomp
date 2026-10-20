@@ -1,0 +1,63 @@
+name: ai_strikeFacingPanels
+address: '0x080EDFEA'
+kind: function
+status: probable
+summary: AI attack step that iterates a facing-offset panel list (entry at +0x68 of PanelOffsetListsPointerTable,
+  terminated by 0x7F dx), applying each (dx,dy) relative to the object's facing-adjusted position and
+  calling sub_80D07A0 with InitFlag, 0, 0x95A01, and Damage for every in-bounds panel (1..6 x 1..3).
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = result of sub_80D07A0 on last panel; uses
+  object's PanelX/PanelY
+details: Loads a signed byte-pair offset list from PanelOffsetListsPointerTable (entry at +0x68) and walks
+  it as (dx, dy) pairs terminated by a 0x7F dx. Each dx is multiplied by object_getFrontDirection's +1/-1
+  facing multiplier and added to the object's oBattleObject_PanelX, dy to PanelY; offsets are applied
+  to scratch copies restored after each iteration. If the resulting panel is within x 1..6 and y 1..3,
+  it calls sub_80D07A0 with r2 = oAIAttackVars_InitFlag, r3 = 0, r4 = 0x95A01 (likely an attack/effect
+  ID) and r6 = oAIAttackVars_Damage. The 0x7F sentinel exits the loop; out-of-bounds panels are silently
+  skipped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r6, off_80EE03C / ldr r6,[r6,#0x68] loads the pattern list from PanelOffsetListsPointerTable;
+    bl object_getFrontDirection, then mul r2,r4 scales each dx by the facing direction; bounds checks
+    cmp r0,#1/#6 and cmp r1,#1/#3 gate the call per panel; ldr r6,[r7,#oAIAttackVars_Damage] + bl sub_80D07A0
+    passes the attack's damage to the hit routine; cmp r2,#0x7f / beq locret terminates the walk over
+    (dx,dy) pairs
+  refs:
+  - bn6f/asm/asm31.s:118266
+  - 0x080EDF78 sub_80EDF78
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D07A0 sub_80D07A0
+  reproduce: python3 tools/asmcat.py 0x080EDFEA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The walk-and-strike behavior, +1/-1 facing multiplier from object_getFrontDirection, PanelX/PanelY
+    application, 0x7F dx terminator, bounds checks 1..6 / 1..3, and the call to sub_80D07A0 with r2=InitFlag,
+    r3=0, r4=0x95A01, r6=Damage all match the proposal. However, dx is multiplied after being sign-extended
+    (ldrsb) and added to (facing + PanelX) — i.e., to the already-facing-adjusted base — so ''relative
+    to facing'' wording is fine, but the ''returns r0 = sub_80D07A0 result on last panel'' is not established:
+    r0 is never read after sub_80D07A0 returns and is simply restored from the push; the function returns
+    0/undefined. Minor wording issue, not a code contradiction.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_80D07A0 does with r2/r3/r4/r6 (hit spawn vs direct damage) and what attack ID 0x95A01 selects
+- which AIAttackVars field the InitFlag read controls
+- 'The walk-and-strike behavior, +1/-1 facing multiplier from object_getFrontDirection, PanelX/PanelY
+  application, 0x7F dx terminator, bounds checks 1..6 / 1..3, and the call to sub_80D07A0 with r2=InitFlag,
+  r3=0, r4=0x95A01, r6=Damage all match the proposal. However, dx is multiplied after being sign-extended
+  (ldrsb) and added to (facing + PanelX) — i.e., to the already-facing-adjusted base — so ''relative to
+  facing'' wording is fine, but the ''returns r0 = sub_80D07A0 result on last panel'' is not established:
+  r0 is never read after sub_80D07A0 returns and is simply restored from the push; the function returns
+  0/undefined. Minor wording issue, not a code contradiction.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EDFEA -> ai_strikeFacingPanels
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDFEA

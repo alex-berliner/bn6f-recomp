@@ -105,9 +105,9 @@ static bool battle_effects_has_8(void) {
 }
 
 static u32 sub_8144D04_call(u32 arg) {
-    /* Register form: calls sub_8144D04 outside this file, which has no typed C interface yet. */
+    /* Register form: calls battle_getTimerEnableFlag outside this file, which has no typed C interface yet. */
     R0 = arg;
-    GUEST_CALL(sub_8144D04);
+    GUEST_CALL(battle_getTimerEnableFlag);
     return R0;
 }
 
@@ -172,7 +172,7 @@ static void do_step(u8 prev_step) {
     if (!battle_effects_has_8())
         return;
 
-    /* Two-step handshake with sub_8144D04: ask with arg 0, then with arg 3. If both
+    /* Two-step handshake with battle_getTimerEnableFlag: ask with arg 0, then with arg 3. If both
      * answer "1" we leave the step alone; otherwise commit step 4 (E_STEP_BUSY). */
     if (sub_8144D04_call(0) == 1 && sub_8144D04_call(3) == 1)
         return;

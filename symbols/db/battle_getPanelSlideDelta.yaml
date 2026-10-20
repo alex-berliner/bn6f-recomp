@@ -1,0 +1,58 @@
+name: battle_getPanelSlideDelta
+address: '0x0800E500'
+kind: function
+status: probable
+summary: Returns the slide delta (dx, dy, speed) for a battle object's panel when its panel type is 9-12,
+  otherwise returns (0,0,0).
+interface: (r5 = battle object) -> r0 = dx (signed byte), r1 = dy (signed byte), r2 = third table byte
+  (always 1); flags not meaningful
+details: Reads the object's PanelX/PanelY from the battle object struct pointed to by r5 and looks up
+  its panel via object_getPanelDataOffset. If the panel exists and oPanelData_Type is between 9 and 12
+  inclusive, it subtracts 9 and indexes a 4-entry, 4-byte table (byte_800E538), loading two signed bytes
+  and one unsigned byte as dx, dy, and a third value. The four table entries are (0,-1,1), (0,1,1), (-1,0,1),
+  (1,0,1) — the four cardinal unit vectors — so panel types 9-12 correspond to the four slide directions,
+  with the third byte likely a speed/strength of 1. For any other panel type or an out-of-range panel
+  it returns 0,0,0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX]/ldrb r1,[r5,#oBattleObject_PanelY] then bl object_getPanelDataOffset
+    — input is the caller object''s panel; cmp r0,#9 / blt / cmp r0,#0xc / bgt — only panel types 9-12
+    qualify; ldr r3,off_800E534; ldrsb r0,[r3,r0] etc. — returns two signed bytes plus a byte from one
+    of four 4-byte entries; byte_800E538 data 00 FF 01 00 | 00 01 01 00 | FF 00 01 00 | 01 00 01 00 —
+    four cardinal direction vectors with constant third value 1; loc_800E52C: mov r0/r1/r2,#0 — default
+    is zero delta for ordinary panels'
+  refs:
+  - bn6f/asm/object.s:5287
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x0800E500
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal. The summary is accurate and the table entries match: index 0: (0,-1,1)
+    `0x00,0xFF,0x01`, index 1: (0,1,1) `0x00,0x01,0x01`, index 2: (-1,0,1) `0xFF,0x00,0x01`, index 3:
+    (1,0,1) `0x01,0x00,0x01`. The summary''s claim that the slide direction is stored for panel types
+    9-12 is correct. The wording ''always 1'' is fine but ''speed of 1'' is also correct. However, dx/dy
+    from the table are loaded into r0/r1 before r2; the summary says ''r0 = dx, r1 = dy, r2 = third table
+    byte'' which is correct.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of panel types 9-12 (e.g. which broken/slide panel variants) and of the third table byte
+  (speed vs flag) — needs callers or the panel-type enum
+- no callers known, so how the returned dx/dy is consumed (slide movement vs knockback) is unconfirmed
+- 'The code matches the proposal. The summary is accurate and the table entries match: index 0: (0,-1,1)
+  `0x00,0xFF,0x01`, index 1: (0,1,1) `0x00,0x01,0x01`, index 2: (-1,0,1) `0xFF,0x00,0x01`, index 3: (1,0,1)
+  `0x01,0x00,0x01`. The summary''s claim that the slide direction is stored for panel types 9-12 is correct.
+  The wording ''always 1'' is fine but ''speed of 1'' is also correct. However, dx/dy from the table are
+  loaded into r0/r1 before r2; the summary says ''r0 = dx, r1 = dy, r2 = third table byte'' which is correct.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800E500 -> battle_getPanelSlideDelta
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800E500

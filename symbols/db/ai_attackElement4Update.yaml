@@ -1,0 +1,56 @@
+name: ai_attackElement4Update
+address: '0x08104998'
+kind: function
+status: probable
+summary: 'AI attack handler for element-4 attacks: on first call stores AttackElement=4, starts a camera
+  shake (mag=2, frames=0x14) and sets StepTimer=0x14; each subsequent call decrements StepTimer and writes
+  0x18 to HitElement when the timer expires.'
+interface: (r7 = object AI attack vars struct) -> sets AttackElement=4, StepTimer=0x14 on init; decrements
+  StepTimer each call, sets HitElement=0x18 at 0; no return value
+details: 'State machine keyed on oAIAttackVars_AttackElement at [r7+...]: 0 means unstarted, so it stores
+  element 4, calls camera_initShakeEffect(2, 0x14) and sets StepTimer to 0x14. Every later call decrements
+  StepTimer and, when it reaches 0, writes 0x18 into oAIAttackVars_HitElement, which presumably the shared
+  attack-hit logic consumes. The 20-frame shake and timer line up, so the shake lasts exactly until the
+  hit lands. Element 4 likely identifies this quake/shake-type attack; 0x18 is the element damage dealt
+  on hit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / bne: AttackElement==0 gates the one-time init branch; bl camera_initShakeEffect_80302a8
+    with r0=2, r1=0x14: shake magnitude 2 for 20 frames; strh #0x14,[r7,StepTimer]: timer matches shake
+    duration; sub r0,#1 / bgt: per-frame countdown until timer hits zero; strh #0x18,[r7,HitElement]:
+    delayed hit element written on expiry'
+  refs:
+  - bn6f/asm/asm31.s:165520
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x08104998
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s behavior matches the asm: branch on AttackElement==0 stores 4, shakes with (2,0x14),
+    and sets StepTimer=0x14; subsequent calls decrement the halfword StepTimer and at 0 store 0x18 into
+    HitElement. The only nit is the summary/interface claim ''hit element 0x18'' is written via strh,
+    so it''s a halfword at offset HitElement (consistent with other AI attack fields), and the name ''ai_quakeAttackUpdate''
+    assumes element 4 is a quake, which the code does not confirm.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no known callers, so which enemy/attack uses this and what elements 4 and 0x18 mean in the element table
+  is unconfirmed
+- what consumes oAIAttackVars_HitElement afterwards (the shared AI hit handler) is not seen here
+- 'The proposal''s behavior matches the asm: branch on AttackElement==0 stores 4, shakes with (2,0x14),
+  and sets StepTimer=0x14; subsequent calls decrement the halfword StepTimer and at 0 store 0x18 into
+  HitElement. The only nit is the summary/interface claim ''hit element 0x18'' is written via strh, so
+  it''s a halfword at offset HitElement (consistent with other AI attack fields), and the name ''ai_quakeAttackUpdate''
+  assumes element 4 is a quake, which the code does not confirm.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8104998 -> ai_attackElement4Update
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104998

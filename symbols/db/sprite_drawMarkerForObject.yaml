@@ -1,0 +1,62 @@
+name: sprite_drawMarkerForObject
+address: '0x0811B028'
+kind: function
+status: probable
+summary: Draws a small marker at a fixed offset from a sprite's position, with the graphic and palette
+  chosen by a per-object index.
+interface: (r0 unused, r5 = object struct -> uses [r5,#3] as selector) -> r0 = sub_8132A50 result; no
+  flags of interest
+details: The selector byte at [r5,#3] indexes two pointer tables (byte_2023BC0/byte_2023BC8); the pointed-to
+  byte is split into nibbles and passed to sprite_getCoordinates, which returns a base x/y (r0/r1). Fixed
+  offsets 0x24 and 0xFFEA (word_811B08C) are added, giving a screen position ~36px right and ~22px up
+  from the sprite anchor. The same selector then picks a word from off_811B080 (0x480 or 0x490, plausibly
+  a tile/OAM graphic index) and a byte from dword_811B094 (0x05 or 0x06, plausibly palette/attr). These
+  are passed with the coordinates to sub_8132A50(r0=x, r1=y, r2=byte, r3=word), which presumably queues
+  the render. The two parallel tables suggest two variants (e.g. two indicator graphics) selectable per
+  object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#3] with lsl #2 indexes both off_811B074 and off_811B080 tables; lsr r1,r0,#4 /
+    and r0,#0xf feed sprite_getCoordinates, whose r0/r1 results are stored to sp; ldrsh of word_811B08C
+    (0x24, 0xFFEA) is added to the coordinates before the call; off_811B080 holds 0x480/0x490 and dword_811B094
+    holds 0x05/0x06, passed as r3/r2 to sub_8132A50'
+  refs:
+  - bn6f/asm/asm32.s:27217
+  - 0x0811ADC0 sub_811ADC0
+  - 0x080030A8 sprite_getCoordinates
+  - 0x08132A50 sub_8132A50
+  reproduce: python3 tools/asmcat.py 0x0811B028
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms loading [r5,#3] as selector, indexing byte_2023BC0/BC8 to get coords via sprite_getCoordinates,
+    adding offsets 0x24/0xFFEA, and passing a graphic word (0x480/0x490) plus palette byte (0x05) to sub_8132A50.
+    The summary is fine, but ''sprite_drawIndicatorForObject'' is speculative; ''sprite_drawSelectionMarkForObject''
+    or simply ''sprite_drawMarkerForObject'' is equally unsupported. The ''r0 unused'' claim is wrong:
+    r0 holds the loaded offset table base before ldrb, and [sp,#0] stores sprite_getCoordinates'' r0 (x).
+    Also ''dword_811B094'' byte is 0x05, not 0x06.; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_8132A50 is unnamed, so the exact render action (OAM queue vs other) and meaning of r2/r3 are inferred
+- contents of byte_2023BC0/byte_2023BC8 targets and what sprite_getCoordinates' nibble args select are
+  unknown
+- caller sub_811ADC0 context would confirm what object type draws this indicator
+- 'The code confirms loading [r5,#3] as selector, indexing byte_2023BC0/BC8 to get coords via sprite_getCoordinates,
+  adding offsets 0x24/0xFFEA, and passing a graphic word (0x480/0x490) plus palette byte (0x05) to sub_8132A50.
+  The summary is fine, but ''sprite_drawIndicatorForObject'' is speculative; ''sprite_drawSelectionMarkForObject''
+  or simply ''sprite_drawMarkerForObject'' is equally unsupported. The ''r0 unused'' claim is wrong: r0
+  holds the loaded offset table base before ldrb, and [sp,#0] stores sprite_getCoordinates'' r0 (x). Also
+  ''dword_811B094'' byte is 0x05, not 0x06.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B028 -> sprite_drawMarkerForObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B028

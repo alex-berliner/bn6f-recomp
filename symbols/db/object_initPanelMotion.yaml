@@ -1,0 +1,61 @@
+name: object_initPanelMotion
+address: '0x080DE67E'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s panel-relative motion: records the current panel into 0x60/0x61,
+  loads Param1-indexed YVelocity from byte_80DE3DC, derives facing-relative XVelocity via object_getFrontDirection,
+  and precomputes 0x280000/YVelocity and 0x80/quotient into 0x65/0x66 while zeroing 0x62-0x64.'
+interface: (r0 = unused, r5 = battle object ptr) -> r0 = final div result (side effect); sets object fields
+  0x60-0x66, uses no flags meaningfully
+details: 'Copies the object''s PanelX/PanelY into fields 0x60/0x61, evidently the destination panel for
+  a leap (the object is presumably standing there already, or this is a self-targeted hop). Reads Param1
+  as an index into the 4-byte-entry table byte_80DE3DC and stores the fetched word as YVelocity; multiplies
+  it by object_getFrontDirection(r5) to get a facing-relative XVelocity. Uses SWI 6 (Div) twice: 0x280000
+  / velocity stored at field 0x65, and if nonzero, 0x80 / that quotient stored at field 0x66 — precomputed
+  reciprocals/step sizes so later per-frame motion code avoids division. Finally zeroes fields 0x62, 0x63
+  and 0x64, which look like per-frame motion state (angle, sub-position, timer).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PanelX/PanelY then strb to +0x60/+0x61 = target/destination panel copy; ldr r0, [off_80DE6C8,
+    Param1<<2] -> str to YVelocity: Param1 selects speed from byte_80DE3DC; bl object_getFrontDirection;
+    mul r0, r2; str to XVelocity: horizontal speed is direction-signed; svc 6 with 0x280000 and again
+    with 0x80 stores quotients to +0x65/+0x66, classic divide-precompute for frame stepping; fields +0x62/+0x63/+0x64
+    explicitly zeroed as fresh motion-state init'
+  refs:
+  - bn6f/asm/asm31.s:84117
+  - 0x080DE430 sub_80DE430
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DE67E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Mechanics description matches: PanelX/PanelY copied to 0x60/0x61, Param1 indexes byte_80DE3DC into
+    YVelocity, XVelocity = YVelocity * frontDirection, 0x280000/YVel→0x65, 0x80/that→0x66, 0x62-0x64 zeroed.
+    However ''arc leap'' is an inference not directly evidenced by this init code alone — the shape (XVel,
+    YVel, two precomputed divisors, end panel) fits generic motion init just as well as a leap. A more
+    neutral name better reflects what the code actually does without overclaiming.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact semantics of fields 0x62-0x66 (angle, sine step, frame counter?) — need the per-frame user of
+  these fields
+- Which objects/caller sub_80DE430 spawns with this movement, and what units byte_80DE3DC speed values
+  use
+- Whether 0x60/0x61 are truly a destination panel or just a position snapshot
+- 'Mechanics description matches: PanelX/PanelY copied to 0x60/0x61, Param1 indexes byte_80DE3DC into
+  YVelocity, XVelocity = YVelocity * frontDirection, 0x280000/YVel→0x65, 0x80/that→0x66, 0x62-0x64 zeroed.
+  However ''arc leap'' is an inference not directly evidenced by this init code alone — the shape (XVel,
+  YVel, two precomputed divisors, end panel) fits generic motion init just as well as a leap. A more neutral
+  name better reflects what the code actually does without overclaiming.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE67E -> object_initPanelMotion
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE67E

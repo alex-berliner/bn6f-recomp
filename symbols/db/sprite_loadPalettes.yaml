@@ -1,0 +1,56 @@
+name: sprite_loadPalettes
+address: '0x08006414'
+kind: function
+status: probable
+summary: Loads two palette records (selected by [r5+0x18]/[r5+0x1C] indices) from arrays at [r5+0x10]/[r5+0x14]
+  into software palette slots [r5+0xC]+0x14 (2 entries) and [r5+0xC]+0x15 (4 entries).
+interface: '(r5 = sprite resource struct: [0x10]/[0x14] palette array ptrs, [0x18]/[0x1C] entry indices,
+  [0xC] base slot; r6 = arg passed to palette filler) -> void; r0-r3 clobbered'
+details: 'r5 points to a resource struct whose fields 0x10 and 0x14 hold pointers to arrays of 32-byte
+  palette records (one 16-color palette each); fields 0x18 and 0x1C select which record via index*0x20.
+  The function calls sub_8002378 twice: first filling palette slot [r5+0xC]+0x14 with 2 colors/entries
+  from the first array, then slot [r5+0xC]+0x15 with 4 from the second, passing r6 unchanged as the filler''s
+  r1 in both calls. The byte at [r5+0xC] is a per-object palette-slot base so multiple objects can share
+  the code with different banks. Both callers (sub_80063C0, sub_8006444) are adjacent sprite-setup routines,
+  so r5/r6 are set up by them before this runs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#0x18]; lsl r0,#5; add r4,r4,r0 — 32-byte-stride index into array at [r5+0x10];
+    mov r2,#2 / bl sub_8002378 with r3=[r5+0xC]+0x14 — fills slot base+0x14; mov r2,#4 / bl sub_8002378
+    with r3=[r5+0xC]+0x15 — fills slot base+0x15 from second array at [r5+0x14]; callee sub_8002378 is
+    the documented software-palette-table filler keyed by slot r3
+  refs:
+  - bn6f/asm/asm00_1.s:7084
+  - 0x080063C0 sub_80063C0
+  - 0x08006444 sub_8006444
+  - 0x08002378 sub_8002378
+  reproduce: python3 tools/asmcat.py 0x08006414
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies two palette records loaded into slots +0x14 and +0x15 of the software
+    palette table, but misstates the interface: r0 is loaded from [r5+0x8] (not r6) and passed to sub_8002378
+    as its r0, while r6 fills r1. The struct layout (0x10/0x14 arrays, 0x18/0x1C indices*0x20, 0xC base
+    slot) is accurate. Function loads two palette entries into BG/OBJ slots 0x14 and 0x15.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of r6 (filler's r1) and the count values 2/4 (colors vs sub-palettes) need sub_8002378's
+  parameter semantics confirmed
+- what struct type r5 belongs to (sprite resource vs object) would confirm the sprite_ prefix
+- 'The proposal correctly identifies two palette records loaded into slots +0x14 and +0x15 of the software
+  palette table, but misstates the interface: r0 is loaded from [r5+0x8] (not r6) and passed to sub_8002378
+  as its r0, while r6 fills r1. The struct layout (0x10/0x14 arrays, 0x18/0x1C indices*0x20, 0xC base
+  slot) is accurate. Function loads two palette entries into BG/OBJ slots 0x14 and 0x15.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8006414 -> sprite_loadPalettes
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8006414

@@ -1,0 +1,66 @@
+name: object_updatePosition
+address: '0x0811D634'
+kind: function
+status: probable
+summary: Given x, y, and an index into the 0x58-byte object array at eStructArr2008450, if the entry is
+  in use, writes x/y into the object's struct via sub_811D6CC and then syncs the object's sprite position
+  via object_syncSpritePosition.
+interface: (r0 = x/halfword, r1 = y/halfword, r2 = object index) -> r0 = struct pointer or undefined if
+  unused; flags set from the entry's in-use byte
+details: The two argument values are stashed on the stack, then getStructFrom2008450 is called with r2
+  as index; its returned byte is tested and if the entry is unused (beq) the function returns without
+  touching anything. Otherwise r5 receives the struct pointer (r1 from the lookup) and sub_811D6CC is
+  invoked, which presumably consumes the stacked r0/r1 values and stores them into the object's position
+  fields; object_syncSpritePosition then copies those stored x/y fields into the object's sprite coordinates.
+  The trailing byte_811D658 blob looks like unrelated adjacent data rather than a table used here. The
+  in-use guard matches the known semantics of getStructFrom2008450.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'str r0,[sp]/str r1,[sp,#4] before the call: the first two args are saved for the callee that
+    writes them into the struct; bl getStructFrom2008450 + beq loc_811D64E: skips all work when the entry''s
+    in-use/status byte is zero; bl object_syncSpritePosition after sub_811D6CC: known to copy the object''s
+    stored x/y fields into its sprite, so the callee must have just written new coordinates; three callers
+    (0x08038C10/08038C78/08038CF4) in one code region suggest a family of ''place/move object'' wrappers
+    passing index + coordinates'
+  refs:
+  - bn6f/asm/asm32.s:31834
+  - 0x08038C10 sub_8038C10
+  - 0x08038C78 sub_8038C78
+  - 0x08038CF4 sub_8038CF4
+  - 0x080466C4 getStructFrom2008450
+  - 0x0811D6E8 object_syncSpritePosition
+  - 0x0811D6CC sub_811D6CC
+  reproduce: python3 tools/asmcat.py 0x0811D634
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s direction is right: r0/r1 are stacked, getStructFrom2008450 gates on the in-use byte,
+    then sub_811D6CC (with r5 holding the struct ptr) and object_syncSpritePosition run. But sub_811D6CC
+    is only called after getStructFrom2008450 returns NZ (line ''beq loc_811D64E''), not before, so r5
+    is only set in the used branch — consistent with the summary, though calling sub_811D6CC ''invoke''
+    is filler; it''s the one that actually writes the stacked x/y into the struct. The name is reasonable
+    but object_setPosition overclaims; given the unknown role of sub_811D6CC, object_updatePosition is
+    safer.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_811D6CC is unnamed; confirming it stores the stacked r0/r1 as x/y into the struct would raise confidence
+- caller contexts (0x08038C10 family) unexamined, so the exact meaning of the two coordinate arguments
+  (pixels vs tiles, signedness) is unverified
+- 'The summary''s direction is right: r0/r1 are stacked, getStructFrom2008450 gates on the in-use byte,
+  then sub_811D6CC (with r5 holding the struct ptr) and object_syncSpritePosition run. But sub_811D6CC
+  is only called after getStructFrom2008450 returns NZ (line ''beq loc_811D64E''), not before, so r5 is
+  only set in the used branch — consistent with the summary, though calling sub_811D6CC ''invoke'' is
+  filler; it''s the one that actually writes the stacked x/y into the struct. The name is reasonable but
+  object_setPosition overclaims; given the unknown role of sub_811D6CC, object_updatePosition is safer.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811D634 -> object_updatePosition
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D634

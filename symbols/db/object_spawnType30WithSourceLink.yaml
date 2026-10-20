@@ -1,0 +1,55 @@
+name: object_spawnType30WithSourceLink
+address: '0x080C9EA6'
+kind: function
+status: probable
+summary: Spawns a type-30 object via object_spawnType3; on success, overwrites its PanelX, PanelY, and
+  Element from the caller stack, copies the source object's AllianceAndDirectionFlip and DamageAndStaminaDamageCounterDisabler
+  fields, stores the source pointer into RelatedObject1Ptr, and ORs 0x10 into the header flags.
+interface: (r0 = source battle object, r1 = panel X, r2 = panel Y, r3 = element, stack r6 = damage/stamina-damage
+  word) -> r0 = new object ptr or 0 if spawn failed; flags set by callee
+details: Calls object_spawnType3 with the object-kind argument 0x30; if it returns 0 (spawn failed) the
+  function just returns. On success the caller's saved arguments (restored from the stack into r1-r3)
+  are written into the new object's PanelX, PanelY and Element bytes, and the AllianceAndDirectionFlip
+  halfword and the DamageAndStaminaDamageCounterDisabler word are copied from the source object r5. The
+  source object pointer r5 is stored into the new object's RelatedObject1Ptr, tying the two together,
+  and bit 0x10 is ORed into the new object's header flags.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType3 with r0=0x30 selects the spawned object kind; beq locret skips setup when
+    it failed; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element right after the call stores the spawn
+    arguments; ldrh/str of oBattleObject_AllianceAndDirectionFlip and str r6 to oBattleObject_DamageAndStaminaDamageCounterDisabler
+    copy combat state from r5/r6; str r5 into oBattleObject_RelatedObject1Ptr and ORR flags with 0x10
+    mark the new object as linked to its source
+  refs:
+  - bn6f/asm/asm31.s:39508
+  - 0x080C9EE6 sub_80C9EE6
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C9EA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate: r0 is moved to r5 before popping r1-r3, and r6 is used directly.
+    However, the callee object_spawnType3(0x30) actually spawns type 30 of a generic ''type 3'' object
+    family, not a battle object specifically. The prefix should be ''object'' rather than ''battle''.
+    Also, ''spawnType30'' in the name captures the kind argument better than ''Type30Copy''.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what object type 0x30 actually is (its initializer/header is not shown)
+- who calls sub_80C9EE6 and with what object, to name the 0x30 behaviour in game terms
+- 'The summary and interface are accurate: r0 is moved to r5 before popping r1-r3, and r6 is used directly.
+  However, the callee object_spawnType3(0x30) actually spawns type 30 of a generic ''type 3'' object family,
+  not a battle object specifically. The prefix should be ''object'' rather than ''battle''. Also, ''spawnType30''
+  in the name captures the kind argument better than ''Type30Copy''.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C9EA6 -> object_spawnType30WithSourceLink
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9EA6

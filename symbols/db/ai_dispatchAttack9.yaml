@@ -1,0 +1,54 @@
+name: ai_dispatchAttack9
+address: '0x08101E4A'
+kind: function
+status: probable
+summary: 'AI attack-9 dispatcher: on first pass sets the attack-decision flag and calls ai_setupAttack9PanelChoose
+  to start the attack; on subsequent passes clears AI script/substate, and if the AI has moved, calls
+  sub_8101FAE to finalize.'
+interface: (r6 = AI state struct, r7 = AI attack vars struct) -> r0 = clobbered; no return value
+details: Reads oAIState_AttackDecisionFlag from the AI state struct at r6. If the flag is clear, it sets
+  the flag to 4 and calls ai_setupAttack9PanelChoose, which per its known summary loads duration/scratch
+  table values and starts attack 9 — so this is the 'request the attack' phase. On a subsequent pass (flag
+  already set), it zeroes oAIState_ScriptId and oAIState_SubState, resetting the AI back to its idle/decision
+  script state, then checks oAIAttackVars_HasMoved at r7 and, only if the AI has moved, calls sub_8101FAE,
+  presumably undoing or finalizing the movement. The flag double-duty (0 = not started, 4 = in progress/done)
+  makes this a two-phase state machine step, likely invoked repeatedly by the AI's per-frame attack dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r6,#oAIState_AttackDecisionFlag]; tst/bne splits first call (queue attack) vs later
+    calls (cleanup); mov r0,#4; strb -> flag set to 4 before bl ai_setupAttack9PanelChoose, whose summary
+    says it starts attack 9; mov r0,#0; strb oAIState_ScriptId / strh oAIState_SubState reset the AI script/substate
+    on the second pass; ldrb r0,[r7,#oAIAttackVars_HasMoved]; beq skips bl sub_8101FAE, so cleanup only
+    fires if the AI moved
+  refs:
+  - bn6f/asm/asm31.s:159601
+  - 0x08101F08 ai_setupAttack9PanelChoose
+  - 0x08101FAE sub_8101FAE
+  reproduce: python3 tools/asmcat.py 0x08101E4A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate. However, the proposed name `ai_attack9DecisionHandler` implies a ''decision
+    handler,'' but the function is specifically for attack 9, and the primary action is calling `ai_setupAttack9PanelChoose`.
+    A clearer name reflecting that this is an attack-9 panel-choose setup/dispatch function is better.;
+    run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8101FAE actually does (movement undo vs finalize) is unknown without its body
+- Which AI script/state table dispatches to this handler, and what attack 9 represents in game terms,
+  is not visible here
+- The summary is accurate. However, the proposed name `ai_attack9DecisionHandler` implies a 'decision
+  handler,' but the function is specifically for attack 9, and the primary action is calling `ai_setupAttack9PanelChoose`.
+  A clearer name reflecting that this is an attack-9 panel-choose setup/dispatch function is better.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8101E4A -> ai_dispatchAttack9
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101E4A

@@ -1,0 +1,63 @@
+name: rfu_dispatchRequest
+address: '0x08049680'
+kind: function
+status: probable
+summary: Pops the next RFU/wireless request id, invokes its handler from dword_80496EC[id*8] while storing
+  a state byte at [r5+1], and returns whether a request was dispatched.
+interface: (r0/r1 = scratch, r5 = context struct ptr) -> r0 = 1 if a request was dispatched else 0; flags
+  clobbered
+details: 'Calls dispatch_803C620 which yields a request id (r4) and an empty/valid flag (r1); if the flag
+  is set or id is 0 it skips to the ''nothing done'' path. Otherwise it calls sub_813D978 (likely to acknowledge/clear
+  the request), reads an 8-byte entry from handler table dword_80496EC at id*8: the entry''s first byte
+  is stored to byte [r5+1] of the caller''s context struct (a state/phase field), and the word at +4 is
+  a function pointer invoked via `mov lr, pc; bx r0`. Finally sub_8148224 runs on both paths (likely a
+  queue/idle maintenance call) and the function returns 1 (dispatched) or 0 (queue empty/id==0). r5 is
+  never set here, so the caller supplies the context object; the table maps request ids to (stateByte,
+  handler) pairs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r1 / beq: empty flag or id==0 short-circuits to return 0; lsl r4,#3 + ldr r3,=dword_80496EC:
+    8-byte handler-table entries indexed by request id; strb r0,[r5,#1]: entry byte written to a state
+    field of the caller''s struct in r5; ldr r0,[r3,#4]; mov lr,pc; bx r0: entry word is a called handler
+    function pointer; caller rfu_wirelessConnectStep fits a per-step request pump inside the wireless
+    state machine'
+  refs:
+  - bn6f/asm/asm03_2.s:5671
+  - 0x08049416 rfu_wirelessConnectStep
+  - 0x0803C620 dispatch_803C620
+  - 0x0813D978 sub_813D978
+  - 0x08148224 sub_8148224
+  reproduce: python3 tools/asmcat.py 0x08049680
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely accurate: it pops a queued request via dispatch_803C620, checks r1 (valid
+    flag) and r0 (id), calls sub_813D978 to acknowledge, indexes dword_80496EC+id*8, stores byte [r5+1]
+    (state) and bx''s the word at +4 (handler), then sub_8148224 and returns 1 or 0. However, the caller
+    rfu_wirelessConnectStep suggests this is specifically the RFU/wireless request dispatch, so `req_dispatchQueued`
+    is too generic. Also, the proposal miscalls the indexed data (8 bytes contain two separate fields,
+    not a struct), but the core mechanism is correct.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what dispatch_803C620 actually dequeues (request queue head/id semantics)
+- what struct r5 points to and the meaning of the byte stored at +1
+- what sub_813D978 and sub_8148224 do (ack vs. queue maintenance)
+- 'The summary is largely accurate: it pops a queued request via dispatch_803C620, checks r1 (valid flag)
+  and r0 (id), calls sub_813D978 to acknowledge, indexes dword_80496EC+id*8, stores byte [r5+1] (state)
+  and bx''s the word at +4 (handler), then sub_8148224 and returns 1 or 0. However, the caller rfu_wirelessConnectStep
+  suggests this is specifically the RFU/wireless request dispatch, so `req_dispatchQueued` is too generic.
+  Also, the proposal miscalls the indexed data (8 bytes contain two separate fields, not a struct), but
+  the core mechanism is correct.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8049680 -> rfu_dispatchRequest
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049680

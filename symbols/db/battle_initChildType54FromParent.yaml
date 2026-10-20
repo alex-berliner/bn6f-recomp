@@ -1,0 +1,59 @@
+name: battle_initChildType54FromParent
+address: '0x080E696C'
+kind: function
+status: probable
+summary: Spawns a child battle object (type 0x54 via object_spawnType4) and, on success, copies the caller’s
+  r0..r2 plus a pointer/scalar set (r5) and parent-derived halfword (+0x16) into the new object’s +0x60/+0x64/+0xE/+0x4C/+0x16
+  slots, with r6/r7 stored at +0x2C/+0x30.
+interface: (r0, r1, r2, r3 = spawn params; r5 = source object, r6/r7 = extra values) -> r0 = new object
+  pointer (or unchanged if spawn failed); flags used for null check
+details: 'The function saves r0-r2 on the stack, sets the object type to 0x54 (84) and calls object_spawnType4,
+  whose remaining arguments are still the caller''s r1-r3. It then uses the push {r0-r2,r5}/pop {r1-r3,r5}
+  register-shift idiom so the original arguments can be written into the new object: arg0 to +0x64, arg1
+  to +0x60, arg2 byte to +0xE. Field +0x4C receives the caller''s r5 (likely a parent/owner battle object),
+  halfword +0x16 is copied from that object''s +0x16, and r6/r7 go to +0x2C/+0x30. If the spawn returns
+  null (branch on the flag left by the call sequence) the field writes are skipped.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x54 ; bl object_spawnType4 — spawns battle object type 0x54 using the shifted caller
+    args; push {r0-r2,r5} / pop {r1-r3,r5} — classic Thumb arg-rotation so the pre-call args land in r1-r3
+    for the field stores; str r5, [r0,#0x4c] and ldrh/strh around [r5,#0x16] — copies parent pointer and
+    halfword state from a source object into the new one; beq locret_80E698C guarding all stores — null-check
+    on the spawned object before initialization'
+  refs:
+  - bn6f/asm/asm31.s:102308
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E696C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the push/pop register-shift idiom, the conditional branch, and
+    all the field writes (+0x64, +0x60, +0xE, +0x4C, +0x16, +0x2C, +0x30). However, the spawned type is
+    0x54 via mov r0,#0x54 but it calls object_spawnType4 (type 4), and the summary claims r0-r2 are saved
+    and seeded; in fact r0 is r5 (source/parent) and r1-r3 are the caller''s r0-r2 after the pop, matching
+    how the code writes them into the new object. A cleaner name reflecting ''attach/initialize child
+    battle object type 0x54 from parent'' is better than ''spawnType54WithState'', since the spawn is
+    delegated to object_spawnType4.; run wf investigate investigate-20261019-022109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the gameplay role of object type 0x54 and what r6/r7 (+0x2C/+0x30) mean is unknown
+- Meaning of battle object fields 0x64, 0x60, 0xE and 0x16 not confirmed from this snippet alone
+- The proposal correctly identifies the push/pop register-shift idiom, the conditional branch, and all
+  the field writes (+0x64, +0x60, +0xE, +0x4C, +0x16, +0x2C, +0x30). However, the spawned type is 0x54
+  via mov r0,#0x54 but it calls object_spawnType4 (type 4), and the summary claims r0-r2 are saved and
+  seeded; in fact r0 is r5 (source/parent) and r1-r3 are the caller's r0-r2 after the pop, matching how
+  the code writes them into the new object. A cleaner name reflecting 'attach/initialize child battle
+  object type 0x54 from parent' is better than 'spawnType54WithState', since the spawn is delegated to
+  object_spawnType4.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E696C -> battle_initChildType54FromParent
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E696C

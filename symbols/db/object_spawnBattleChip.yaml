@@ -1,0 +1,59 @@
+name: object_spawnBattleChip
+address: '0x080E7F16'
+kind: function
+status: probable
+summary: Spawns battle object type 0x68 at a panel/element, copies the caller's PanelX/PanelY/Element
+  and ChipID into it, links RelatedObject1Ptr from r5 with its Alliance, and stores r6 as DamageAndStaminaDamageCounterDisabler.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related object ptr, r6 = damage/stamina-damage-counter-disabler
+  value, r7 = chip ID) -> r0 = new object ptr or 0; flags from spawn
+details: 'Pushes r0-r2 and r5, calls object_spawnType4 with r0=0x68 (object ID), then pops them shifted
+  into r1-r3 so the caller''s three args land where the spawned object''s initializer/fields expect. On
+  success stores PanelX, PanelY, Element from the shifted args, copies RelatedObject1Ptr from r5, reads
+  r5''s oBattleObject_Alliance and copies it, and stores caller r6 into DamageAndStaminaDamageCounterDisabler
+  and caller r7 into ChipID. Uses a nonstandard ABI: r5 is callee-saved (restored), but r6/r7 are consumed
+  from the caller without being saved, so the caller must pass live values there and not care that they
+  are clobbered. If the spawn returns 0 the branch skips all field writes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x68 + bl object_spawnType4: spawns battle object of type 0x68; push {r0-r2,r5} before
+    bl and pop {r1-r3,r5} after: caller''s r0-r2 become r1-r3, matching PanelX/PanelY/Element stores;
+    strb r1,[r0,#oBattleObject_PanelX] / strb r2,[...PanelY] / strb r3,[...Element]: positions new object;
+    ldrb r1,[r5,#oBattleObject_Alliance] and str r5,[...RelatedObject1Ptr]: r5 is a source battle object;
+    str r7,[r0,#oBattleObject_ChipID]: object is tied to a chip ID supplied by the caller'
+  refs:
+  - bn6f/asm/asm31.s:105306
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E7F16
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary says ''copies chip ID'' as a field write and lists r5=related object ptr, r6=damage-counter
+    disabler, r7=chip ID; the asm confirms r5→RelatedObject1Ptr, r6→DamageAndStaminaDamageCounterDisabler,
+    r7→ChipID, so the body is fine. However, the summary''s field-copy list omits storing PanelX/PanelY/Element/Alliance
+    (strb r1,r2,r3 to PanelX/PanelY/Element, and alliance copied from r5+Alliance), and the name ''object_spawnType68FromChip''
+    is misleading since chip ID is just one field filled in, not the spawn source. A name like ''object_spawnBattleChip''
+    better reflects the ChipID field setting.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No callers known: which chip/effect invokes this and what object type 0x68 is in game terms (hazard,
+  attack entity, etc.) is unknown'
+- Exact meaning of the value passed in r6 for DamageAndStaminaDamageCounterDisabler needs a caller
+- The summary says 'copies chip ID' as a field write and lists r5=related object ptr, r6=damage-counter
+  disabler, r7=chip ID; the asm confirms r5→RelatedObject1Ptr, r6→DamageAndStaminaDamageCounterDisabler,
+  r7→ChipID, so the body is fine. However, the summary's field-copy list omits storing PanelX/PanelY/Element/Alliance
+  (strb r1,r2,r3 to PanelX/PanelY/Element, and alliance copied from r5+Alliance), and the name 'object_spawnType68FromChip'
+  is misleading since chip ID is just one field filled in, not the spawn source. A name like 'object_spawnBattleChip'
+  better reflects the ChipID field setting.
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E7F16 -> object_spawnBattleChip
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7F16

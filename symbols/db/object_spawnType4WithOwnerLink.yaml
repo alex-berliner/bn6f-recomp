@@ -1,0 +1,62 @@
+name: object_spawnType4WithOwnerLink
+address: '0x080E6B88'
+kind: function
+status: probable
+summary: Calls object_spawnType4 with type-code 0x55 and r0-r2 from the caller; if the r5 owner pointer
+  is non-null, back-links it at +0x4C, copies its +0x16 halfword, zeroes +0x2C, and stores the caller's
+  r7 at +0x30.
+interface: (r0-r3 = spawn params, r0 immediately replaced by type 0x55; r5 = owner/source struct ptr,
+  r7 = value stored to obj+0x30) -> r0 = original r5; flags Z from r5 null-check
+details: 'The push {r0-r2,r5} / pop {r1-r3,r5} pair is an argument-stash: r0 is overwritten with the object
+  type 0x55 and r1-r3 pass through to object_spawnType4, whose returned object pointer is kept in r0 via
+  ''mov r0, r5''? — no, r5 still holds the caller''s original r5 (callee-saved), and after the pop r1-r3
+  hold the original r0-r2. The flags from ''mov r0, r5'' gate the init block: if the source pointer is
+  null the function just returns it. Otherwise it writes src ptr to obj+0x4C, copies the halfword at src+0x16
+  to obj+0x16, zeroes obj+0x2C, and stores r7 — the caller''s r7, never saved here, so the caller must
+  set it deliberately — to obj+0x30. Return value is the original r5, not the spawned object, so the caller
+  already has the owner and presumably finds the child via the +0x4C back-link.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x55 then bl object_spawnType4: spawns battle object type 0x55 with r1-r3 passed through;
+    pop {r1-r3,r5} + beq locret: original r5 doubles as success flag and source pointer for the init block;
+    str r5, [r0,#0x4c] and ldrh r1,[r5,#0x16]/strh r1,[r0,#0x16]: links spawned object to the source struct
+    and copies its 0x16 halfword; str r7, [r0,#0x30]: stores the caller''s r7 into the new object — no
+    local r7 save, so this relies on caller setup; no callers known; type 0x55 semantics come only from
+    the spawn wrapper'
+  refs:
+  - bn6f/asm/asm31.s:102609
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E6B88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it pushes {r0-r2,r5}, overwrites r0 with 0x55 and calls
+    object_spawnType4, then checks if r5 (the stashed owner pointer) is null via ''beq locret_80E6BA4'',
+    and otherwise stores r5 into obj+0x4C, copies src+0x16 halfword, zeroes +0x2C, and writes r7 to +0x30.
+    However, the proposal''s name uses ''object_spawnType55InitFromOwner'' yet the spawn type is actually
+    4 (object_spawnType4 is called); the 0x55 is a parameter to type-4, not a distinct spawn type. A better
+    name would reflect that this is a type-4 spawn with owner-linked initialization.; run wf investigate
+    investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what battle object type 0x55 is (no known caller or initializer of the spawned object)
+- why r7 is stored to +0x30 — caller must set it; the calling context is unknown
+- meaning of object fields 0x16, 0x2C, 0x30, 0x4C and whether r5 is an entity, object, or different struct
+- 'The code matches the proposal''s behavior: it pushes {r0-r2,r5}, overwrites r0 with 0x55 and calls
+  object_spawnType4, then checks if r5 (the stashed owner pointer) is null via ''beq locret_80E6BA4'',
+  and otherwise stores r5 into obj+0x4C, copies src+0x16 halfword, zeroes +0x2C, and writes r7 to +0x30.
+  However, the proposal''s name uses ''object_spawnType55InitFromOwner'' yet the spawn type is actually
+  4 (object_spawnType4 is called); the 0x55 is a parameter to type-4, not a distinct spawn type. A better
+  name would reflect that this is a type-4 spawn with owner-linked initialization.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E6B88 -> object_spawnType4WithOwnerLink
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6B88

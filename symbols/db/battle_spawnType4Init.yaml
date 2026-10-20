@@ -1,0 +1,56 @@
+name: battle_spawnType4Init
+address: '0x080E7FBA'
+kind: function
+status: probable
+summary: Helper that spawns a type-4 battle object with kind 0x69 and copies panel position, element,
+  parent link, alliance/flip, damage-counter word, and chip ID from caller-supplied registers into the
+  new object.
+interface: (r0 = PanelX, r1 = PanelY, r2 = Element; uses caller's r5 = parent/related object ptr, r6 =
+  damage word, r7 = chip ID) -> r0 = spawned object ptr; no meaningful flags
+details: Saves r0-r2 plus r5, calls object_spawnType4 with kind 0x69, then restores the saved args shifted
+  into r1-r3 and writes them to oBattleObject_PanelX/PanelY/Element of the returned object. The object
+  pointer returned in r0 is moved aside so r0 = caller's r5, which is used both as the store base and
+  as the value for oBattleObject_RelatedObject1Ptr. oBattleObject_AllianceAndDirectionFlip is read from
+  the parent object and copied, while oBattleObject_DamageAndStaminaDamageCounterDisabler and oBattleObject_ChipID
+  come straight from caller's r6/r7 (not saved, so this is a compiler factored-out spawn+init helper relying
+  on the caller's register state). If the spawn returned null the stores are skipped via the shared pop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x69; bl object_spawnType4 — spawns battle object type 4 with kind 0x69; pop {r1-r3,r5}
+    followed by strb to PanelX/PanelY/Element shows the pushed args land in those fields; mov r0, r5 then
+    str r5, [r0,#oBattleObject_RelatedObject1Ptr] uses caller''s r5 as object base and parent link; ldrh
+    r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh back copies alliance/flip from the parent object;
+    str r6/[Damage...] and str r7,[ChipID] show r6/r7 must already hold those values in the caller'
+  refs:
+  - bn6f/asm/asm31.s:105399
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E7FBA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it spawns type-4 kind 0x69, stores PanelX/Y/Element from saved r0-r2 (loaded into
+    r1-r3), copies AllianceAndDirectionFlip from the parent (r5), and stores r6/r7 into the damage and
+    chip ID fields. However, the name ''battle_spawnType4Kind69'' hardcodes a kind number (0x69), which
+    the naming rules forbid. A better name reflects it as a generic spawn-and-init helper for a battle
+    object of a specific kind.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so what battle object kind 0x69 is (its behavior/initializer) and which caller
+  registers r5-r7 (which parent object, which damage word, which chip ID) is unidentified
+- 'The code matches: it spawns type-4 kind 0x69, stores PanelX/Y/Element from saved r0-r2 (loaded into
+  r1-r3), copies AllianceAndDirectionFlip from the parent (r5), and stores r6/r7 into the damage and chip
+  ID fields. However, the name ''battle_spawnType4Kind69'' hardcodes a kind number (0x69), which the naming
+  rules forbid. A better name reflects it as a generic spawn-and-init helper for a battle object of a
+  specific kind.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E7FBA -> battle_spawnType4Init
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7FBA

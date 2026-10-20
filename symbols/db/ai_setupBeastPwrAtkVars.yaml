@@ -1,0 +1,61 @@
+name: ai_setupBeastPwrAtkVars
+address: '0x08011DBC'
+kind: function
+status: probable
+summary: 'Initializes an AI attack-vars struct for a Beast-Out power attack: clears ChargeReadyFlag, ChipUseDelay,
+  and AttackBoost; sets ExtraDamage=0x9E; computes Damage via battle_beastPwrAtk_addScaledBase(base=0x32,
+  mult=0x14); sets InitFlag=4; returns 0x4E.'
+interface: (no args; uses r7 = AI attack vars struct) -> r0 = 0x4E (next state/step); writes oAIAttackVars
+  fields
+details: Clears ChargeReadyFlag, ChipUseDelay and AttackBoost to 0, sets ExtraDamage to 0x9E (158), then
+  calls battle_beastPwrAtk_addScaledBase with base damage 0x32 (50) and multiplier arg 0x14 (20), storing
+  the returned scaled damage into oAIAttackVars_Damage. Finally sets InitFlag to 4 and returns 0x4E, which
+  looks like a state-machine advance value. The struct is the AI attack parameter block (oAIAttackVars_*)
+  used by AI-controlled battlers. No arguments are read; r7 must already point at the struct, so this
+  runs inside an AI routine with r7 established.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb/strh r0=[r7,#oAIAttackVars_*] sequence zeroes ChargeReadyFlag, ChipUseDelay, AttackBoost
+    and stores 0x9E to ExtraDamage; mov r0,#0x32 / mov r1,#0x14 then bl battle_beastPwrAtk_addScaledBase_8012642
+    computes base 50 x beast multiplier (clamped to 5); strh r0,[r7,#oAIAttackVars_Damage] stores the
+    callee's result as the attack damage; mov r0,#4 / strb InitFlag and pop with r0=0x4E suggest state-machine
+    initialization and step advance
+  refs:
+  - bn6f/asm/asm00_2.s:6930
+  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
+  reproduce: python3 tools/asmcat.py 0x08011DBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s substance is correct: it clears ChargeReadyFlag/ChipUseDelay/AttackBoost, sets ExtraDamage=0x9E,
+    calls battle_beastPwrAtk_addScaledBase with r0=0x32/r1=0x14, stores the result in Damage, sets InitFlag=4,
+    and returns 0x4E. However, the proposed name ''ai_setupBeastPwrAttackVars'' is fine, but a slightly
+    tighter name like ''ai_setupBeastPwrAtkVars'' better mirrors the callee ''battle_beastPwrAtk_addScaledBase''.
+    Also, the summary says damage is computed from a base of 50 scaled by the beast multiplier — that
+    matches the call — so it is accurate. Return value 0x4E is left as ''state-machine advance'' which
+    is plausible but not confirmed; harmless wording.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which boss/attack this state belongs to (no caller found), and the exact meaning of the 0x4E return
+  value and InitFlag=4
+- Whether the 0x9E ExtraDamage field is a fixed add or a separate attack component
+- 'The summary''s substance is correct: it clears ChargeReadyFlag/ChipUseDelay/AttackBoost, sets ExtraDamage=0x9E,
+  calls battle_beastPwrAtk_addScaledBase with r0=0x32/r1=0x14, stores the result in Damage, sets InitFlag=4,
+  and returns 0x4E. However, the proposed name ''ai_setupBeastPwrAttackVars'' is fine, but a slightly
+  tighter name like ''ai_setupBeastPwrAtkVars'' better mirrors the callee ''battle_beastPwrAtk_addScaledBase''.
+  Also, the summary says damage is computed from a base of 50 scaled by the beast multiplier — that matches
+  the call — so it is accurate. Return value 0x4E is left as ''state-machine advance'' which is plausible
+  but not confirmed; harmless wording.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8011DBC -> ai_setupBeastPwrAtkVars
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011DBC

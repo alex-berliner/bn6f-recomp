@@ -1,0 +1,61 @@
+name: battle_assignActorSlotToSprite
+address: '0x08002D20'
+kind: function
+status: probable
+summary: 'Grants a battle actor slot to a sprite object: returns 0 if SpriteFlags bits 0-1 are already
+  set or no slot is free, otherwise marks the sprite as owning an actor (sets those bits) and stores the
+  slot id shifted left by 1 into SpriteFlags3, returning 1. The object pointer is passed in r5.'
+interface: (r5 = sprite object pointer) -> r0 = 1 if a slot was assigned, 0 if already assigned or allocation
+  failed; flags clobbered
+details: 'Takes the object in r5 (not r0), reads oObjectSprite_SpriteFlags and tests bits 0-1: if either
+  is set it returns 0 immediately, so those bits act as ''actor already assigned''. Otherwise it calls
+  battle_allocateActorIndex_802FE48; on 0xFF (no free slot) it also returns 0. On success it sets SpriteFlags
+  bits 0-1 and writes the slot id into SpriteFlags3: it clears mask 0x3E (bits 1-5) with BIC and ORs in
+  index*2, meaning the id is stored shifted left by one and at most 31 slots are representable. r0 and
+  r1 are scratch; the object pointer must be preloaded into r5 by the caller, which is a quirk worth checking
+  against callers once known.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst r1, r0 with r1=3 on SpriteFlags gates the whole body, returning 0 if already flagged; bl
+    battle_allocateActorIndex_802FE48 with beq 0xFF on failure ties success to actor-slot allocation;
+    bic r7, r1 (0x3E) then orr r7, r0 with lsl r0,#1 packs the slot id into bits 1-5 of SpriteFlags3;
+    orr r2, r1 (3) strb into SpriteFlags sets the 'has actor' bits only after successful allocation; returns
+    1 after storing, 0 on both early-outs
+  refs:
+  - bn6f/asm/sprite.s:1131
+  - 0x0802FE48 battle_allocateActorIndex_802FE48
+  reproduce: python3 tools/asmcat.py 0x08002D20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: r5 is the object pointer, SpriteFlags bits 0-1 are checked/set, slot
+    0xFF returns 0, success returns 1, and SpriteFlags3 stores index*2 with mask 0x3E. However the name
+    ''battle_assignActorSlotToSprite'' describes the action but the interface clearly takes the object
+    in r5 (not r0), and the proposal''s parenthetical notes this as a quirk rather than an error. The
+    name and summary are acceptable; the summary''s ''storing the slot id in its flags'' is slightly imprecise
+    since the id goes into SpriteFlags3 (a separate field), not the same flags field. Minor wording issue
+    only.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so why r5 is used instead of r0 and which subsystem owns this object struct is unconfirmed
+- Exact meaning of the stored id*2 (actor index vs something like a priority/layer packed next to it)
+  needs a reader of SpriteFlags3
+- 'The code matches the proposal: r5 is the object pointer, SpriteFlags bits 0-1 are checked/set, slot
+  0xFF returns 0, success returns 1, and SpriteFlags3 stores index*2 with mask 0x3E. However the name
+  ''battle_assignActorSlotToSprite'' describes the action but the interface clearly takes the object in
+  r5 (not r0), and the proposal''s parenthetical notes this as a quirk rather than an error. The name
+  and summary are acceptable; the summary''s ''storing the slot id in its flags'' is slightly imprecise
+  since the id goes into SpriteFlags3 (a separate field), not the same flags field. Minor wording issue
+  only.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8002D20 -> battle_assignActorSlotToSprite
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8002D20

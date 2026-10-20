@@ -1,0 +1,59 @@
+name: ai_tryPickRowObject
+address: '0x0802D588'
+kind: function
+status: probable
+summary: 'Battle-AI step: picks a random object in the row matching the actor''s PanelY; if none picked
+  or a halfword retry counter at [r6,#6] underflows, writes state 8 to [r6] and returns 0; otherwise returns
+  2 to keep trying.'
+interface: (r5 = battle object whose PanelY selects the row, r6 = AI state/work struct) -> r0 = next AI
+  state (2 to continue picking, 0 when done/failed); no flags meaningful
+details: 'Reads oBattleObject_PanelY from the object at r5 and calls battle_pickRandomRowObjectFields_810971A
+  to pick an object from the row that panel-Y maps to. If the picker returns 0 (nothing picked), it immediately
+  gives up: stores state 8 into [r6] and returns 0. On a successful pick it decrements the 16-bit retry
+  counter at [r6,#6]; if the counter reaches 0 it also stores state 8 and returns 0, otherwise it stores
+  state 2 into [r6] (word/halfword state field) and returns 2, so the caller keeps invoking this step
+  until a target is found or attempts run out.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelY]; bl battle_pickRandomRowObjectFields_810971A — row to search
+    comes from the actor''s panel Y; ldrh r0,[r6,#6]; sub r0,#1; strh — [r6,#6] is a down-counting attempt
+    counter; beq after dec + ''mov r0,#8; strh r0,[r6]'' — counter exhausted switches state field to 8
+    and returns 0; successful path: ''mov r0,#2; strh r0,[r6]; mov r0,#0'' mismatch — actually sets [r6]=2
+    only when counter still nonzero, returning 2 to stay in this state; no callers known; r6 word at offset
+    0 acts as the AI state variable written with 2 or 8'
+  refs:
+  - bn6f/asm/asm03_0.s:15769
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  reproduce: python3 tools/asmcat.py 0x0802D588
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The control flow matches: it reads PanelY, calls the picker, and on r0==0 jumps to the ''give up''
+    path; otherwise it decrements a halfword counter at [r6,#6] and on underflow takes the same give-up
+    path. The disagreement is the give-up state value and store width: the proposal says ''stores state
+    8 into [r6]'' (word) but the asm uses `strh r0,[r6]` (halfword) and the success path sets state 2
+    with `mov r0,#2` but never stores it — the caller is expected to read r0. The summary''s ''word/halfword
+    state field'' is also confused.; run wf investigate investigate-20261019-022109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the exact AI structure at r6 (state machine layout, meaning of states 2 and 8) and
+  which AI actor invokes this are unconfirmed
+- Semantics of the callee's 0 return (empty row vs. no valid object) not fully verified
+- 'The control flow matches: it reads PanelY, calls the picker, and on r0==0 jumps to the ''give up''
+  path; otherwise it decrements a halfword counter at [r6,#6] and on underflow takes the same give-up
+  path. The disagreement is the give-up state value and store width: the proposal says ''stores state
+  8 into [r6]'' (word) but the asm uses `strh r0,[r6]` (halfword) and the success path sets state 2 with
+  `mov r0,#2` but never stores it — the caller is expected to read r0. The summary''s ''word/halfword
+  state field'' is also confused.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802D588 -> ai_tryPickRowObject
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D588

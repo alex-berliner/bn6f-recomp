@@ -1,0 +1,53 @@
+name: object_phaseHighlightPanelBlink
+address: '0x080CFD80'
+kind: function
+status: probable
+summary: Battle object phase that initializes a 10-frame timer and, while the timer is positive and its
+  bit 3 is set, calls object_highlightPanel on the object's panel to blink it, then ends by setting CurAction=4
+  and clearing the phase.
+interface: (r0 = unused? r5 = battle object ptr) -> void; no meaningful return
+details: On first entry (PhaseInitialized == 0) it stores a 10-frame timer into oBattleObject_Timer and
+  writes 4 to PhaseInitialized. Each call it decrements the timer; while it is positive, timer bit 3 (every
+  8 frames) triggers object_highlightPanel(r5.PanelX, r5.PanelY), producing a blinking highlight on the
+  panel the object occupies. When the timer reaches 0 it sets oBattleObject_CurAction = 4 and clears CurPhaseAndPhaseInitialized,
+  ending the phase. Uses r5 as the object pointer, so the caller passes the object in r5, not r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sets oBattleObject_Timer = 0xA and PhaseInitialized = 4 on first entry; decrements Timer and
+    calls object_highlightPanel(PanelX, PanelY) when timer bit 3 clear (lsr #3; bcc); on timer expiry
+    sets oBattleObject_CurAction = 4 and clears CurPhaseAndPhaseInitialized (phase-end convention); callee
+    object_highlightPanel ''marks the panel an object stands on as highlighted'''
+  refs:
+  - bn6f/asm/asm31.s:52383
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080CFD80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function does decrement the timer, only highlights while timer>0 via `lsr r0, r0, #3; bcc`,
+    and ends by writing 4 to CurAction and clearing CurPhaseAndPhaseInitialized at loc_80CFDA0. However,
+    the timer check is `timer & bit 3` (tst via carry from lsr), not ''every 8 frames while positive'';
+    highlights stop once the timer reaches 0. The summary should reflect that, and a prefix like ''object''
+    fits since it operates on an object pointer in r5.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller known, so which object/attack uses this blink phase is unknown
+- what CurAction value 4 means in this object's action table
+- 'The function does decrement the timer, only highlights while timer>0 via `lsr r0, r0, #3; bcc`, and
+  ends by writing 4 to CurAction and clearing CurPhaseAndPhaseInitialized at loc_80CFDA0. However, the
+  timer check is `timer & bit 3` (tst via carry from lsr), not ''every 8 frames while positive''; highlights
+  stop once the timer reaches 0. The summary should reflect that, and a prefix like ''object'' fits since
+  it operates on an object pointer in r5.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CFD80 -> object_phaseHighlightPanelBlink
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFD80

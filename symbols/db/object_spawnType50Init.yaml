@@ -1,0 +1,68 @@
+name: object_spawnType50Init
+address: '0x080E64E8'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x50 via object_spawnType4 and initializes its panel position,
+  element, related-object link, alliance/flip (copied from the related object), damage-counter and chip-ID
+  fields from caller-supplied registers, skipping field stores if the spawn returns null.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related object ptr / spawn scratch, r6 = damage+stamina
+  value, r7 = chipID) -> r0 = new oBattleObject; flags from null check on the new object
+details: 'Saves the caller''s r0-r2/r5, calls object_spawnType4 with r0 = 0x50 (the object type), then
+  copies the caller''s values straight into the freshly spawned oBattleObject: PanelX and PanelY (bytes),
+  Element (byte), RelatedObject1Ptr (word), AllianceAndDirectionFlip (halfword loaded from the related
+  object and stored here), plus DamageAndStaminaDamageCounterDisabler and ChipID words from r6/r7, which
+  this routine never touches and so passes through from the caller. If the spawned pointer is null (beq
+  after mov r0,r5) the field stores are skipped and it just returns. The mov r0,r5/pop {r5} sequence implies
+  the new object pointer is obtained via r5 (overwritten by the pop with the caller''s related-object
+  value, which is then stored into RelatedObject1Ptr), so the helper depends on object_spawnType4''s register
+  behavior rather than its r0 return.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x50 + bl object_spawnType4: spawns battle object type 0x50 (0x080E64EC-0x80E64F0);
+    strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element initialize position and element from the saved
+    caller args; ldrh from oBattleObject_AllianceAndDirectionFlip of the related object and strh into
+    the new object copies team/flip; str r6/r7 into DamageAndStaminaDamageCounterDisabler and ChipID shows
+    r6/r7 are caller-supplied params passed through untouched; beq locret after the pointer check skips
+    all field stores when spawn failed'
+  refs:
+  - bn6f/asm/asm31.s:101662
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E64E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are largely correct: it saves r0-r2/r5, passes r0=0x50 to object_spawnType4,
+    then restores caller r0/r1/r2 into r1/r2/r3 to populate PanelX/PanelY/Element, and stores the related-object
+    value into RelatedObject1Ptr plus AllianceAndDirectionFlip. However, the description of how r5 flows
+    is wrong: ''mov r0,r5'' uses r5 before the pop overwrites it, meaning r5 still holds object_spawnType4''s
+    return pointer at that point, not the caller''s related-object value. The related-object ptr comes
+    from the pop, after which it is stored into RelatedObject1Ptr. Also r6/r7 are not saved/popped here,
+    so they are caller-supplied as the description notes. The spawning is of a generic type 0x50, not
+    specifically ''object_spawnType50Init'' style.; run wf investigate investigate-20261019-022109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the exact meaning of each field value (especially what object type 0x50 is and
+  which chips/effects spawn it) is unconfirmed
+- Whether object_spawnType4 really leaves the new object pointer in r5, or the mov/pop ordering here reflects
+  a caller-register convention, needs the callee's asm checked
+- 'The summary and interface are largely correct: it saves r0-r2/r5, passes r0=0x50 to object_spawnType4,
+  then restores caller r0/r1/r2 into r1/r2/r3 to populate PanelX/PanelY/Element, and stores the related-object
+  value into RelatedObject1Ptr plus AllianceAndDirectionFlip. However, the description of how r5 flows
+  is wrong: ''mov r0,r5'' uses r5 before the pop overwrites it, meaning r5 still holds object_spawnType4''s
+  return pointer at that point, not the caller''s related-object value. The related-object ptr comes from
+  the pop, after which it is stored into RelatedObject1Ptr. Also r6/r7 are not saved/popped here, so they
+  are caller-supplied as the description notes. The spawning is of a generic type 0x50, not specifically
+  ''object_spawnType50Init'' style.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E64E8 -> object_spawnType50Init
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E64E8

@@ -1,0 +1,56 @@
+name: groundmanMinigamePosToGridIndex
+address: '0x08143D7A'
+kind: function
+status: probable
+summary: 'Converts a world position into a flat grid cell index for the Groundman minigame: adds the map''s
+  grid offsets (returned in r0/r1), shifts the saved input right by 5 to convert pixels to 32-px cells,
+  recenters by adding 0x80, then returns x_cell + y_cell * 256.'
+interface: (r0 = x pos, r1 = y pos) -> r0 = grid cell index (x_tile + y_tile*256); flags clobbered by
+  mul/mult-cycle
+details: 'It calls GetGroundmanMinigameGridOffsetsForMap, saving r0/r1 (the input position) on the stack
+  and popping them into r3/r4 after the call, since the callee returns the map''s grid offsets in r0/r1.
+  The 16-bit-packed offset words are unpacked via asr #16, added to the input x/y, then shifted right
+  by 5 to convert pixels to 32-pixel grid cells. 0x80 is added to each coordinate so the grid origin sits
+  at cell (128,128), i.e. the map spans a centered 256x256-cell index space. Finally it computes the flat
+  index r0 = x_cell + y_cell * 256 (r5 = 0x100 via lsl #1). So the grid is 256 cells wide and the map''s
+  grid offsets recenter arbitrary positions into that space.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl GetGroundmanMinigameGridOffsetsForMap with r0/r1 saved on stack and popped into r3/r4 after
+    — callee supplies grid offsets, inputs kept separately; asr r3/r4,#0x10 unpacks the two 16-bit halves
+    of the returned offset pair; asr r0/r1,#5 converts pixel coordinates to 32-pixel cells, +0x80 recenters
+    each axis; r5=0x100; mul r1,r5; add r0,r0,r1 -> index = x_cell + y_cell*256, a 256-wide grid; caller
+    sub_8143EA4 calls this as the only other Groundman-minigame routine alongside GetGroundmanMinigameGridOffsetsForMap
+  refs:
+  - bn6f/asm/asm37_1.s:3989
+  - 0x08143EA4 sub_8143EA4
+  - 0x08143D9E GetGroundmanMinigameGridOffsetsForMap
+  reproduce: python3 tools/asmcat.py 0x08143D7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The asrs at 0x08143D86/88 operate on r3/r4 (the saved input position popped from stack), not on
+    the callee''s returned offsets. The offsets stay in r0/r1 from GetGroundmanMinigameGridOffsetsForMap
+    and are added directly. The summary''s claim about unpacking 16-bit-packed offset words via asr #16
+    is incorrect. The rest (grid 256 wide, 0x80 recentering, pixel/32 conversion) matches the code.; run
+    wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the offsets returned by GetGroundmanMinigameGridOffsetsForMap (per-map origin vs. scroll)
+  and how caller sub_8143EA4 uses the index (collision lookup vs. tile data) is not visible here
+- 'The asrs at 0x08143D86/88 operate on r3/r4 (the saved input position popped from stack), not on the
+  callee''s returned offsets. The offsets stay in r0/r1 from GetGroundmanMinigameGridOffsetsForMap and
+  are added directly. The summary''s claim about unpacking 16-bit-packed offset words via asr #16 is incorrect.
+  The rest (grid 256 wide, 0x80 recentering, pixel/32 conversion) matches the code.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143D7A -> groundmanMinigamePosToGridIndex
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143D7A

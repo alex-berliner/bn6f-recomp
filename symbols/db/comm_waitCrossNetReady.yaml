@@ -1,0 +1,58 @@
+name: comm_waitCrossNetReady
+address: '0x0802B7E0'
+kind: function
+status: probable
+summary: Per-frame handler that, once per battle, calls comm_checkCrossNetBattleReady and latches the
+  result, then waits 20 frames (counter at +0x10) before setting owner state (+1) to 8 and clearing the
+  ready halfword (+2) and dword (+0xc).
+interface: '(r5 = task/state struct: +1 state byte, +2 ready flag byte, +0xc dword cleared, +0x10 frame
+  counter) -> r0 clobbered; no return value used'
+details: This is a per-frame handler for some object/task whose pointer lives in r5. If the byte at +2
+  is 0 it calls the cross-net battle-ready check; when that returns 2 (partner ready), it latches 1 into
+  +2 so the check isn't repeated. Every frame it increments the word counter at +0x10; once the count
+  reaches 0x14 (20 frames) it sets the state byte at +1 to 8, clears the ready flag at +2 and the dword
+  at +0xc, and resets the counter, so the owning state machine moves on regardless. The counter write-back
+  at the end happens on every non-transition path too. Structure layout (+1 state, +2 substate/flag, +0x10
+  timer) matches the game's standard work struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl comm_checkCrossNetBattleReady_801E754; cmp r0,#2; strb 1,[r5,#2] — latches ready flag when
+    the linked partner is ready; add r0,#1; cmp r0,#0x14; blt — counts 20 frames at [r5,#0x10] before
+    acting; mov r0,#8; strb r0,[r5,#1] — advances the owner's state to 8 after the delay; str r0,[r5,#0x10]
+    at loc_802B808 — counter is stored back every frame, confirming a per-frame handler
+  refs:
+  - bn6f/asm/asm03_0.s:11573
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x0802B7E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: the handler checks +2; if 0, calls comm_checkCrossNetBattleReady_801E754
+    and latches 1 into +2 when it returns 2. It then increments the +0x10 counter and, on reaching 0x14,
+    sets +1=8, zero-extends into +2 (strh, not byte), and clears +0xc. However, the summary says ''+0xc
+    dword cleared'' and ''+2 ready flag byte'' — the code uses strh at +2 (16-bit clear), so the flag/word
+    at +2 is actually a halfword field, not a single byte. The name ''comm_waitCrossNetReadyTimeoutHandler''
+    is fine but a touch verbose; ''comm_waitCrossNetReady'' fits the code''s per-frame role better.; run
+    wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the owning task/struct (what +1..+0x10 belong to) and which UI/battle flow state
+  8 leads to are unidentified
+- 'The summary is mostly correct: the handler checks +2; if 0, calls comm_checkCrossNetBattleReady_801E754
+  and latches 1 into +2 when it returns 2. It then increments the +0x10 counter and, on reaching 0x14,
+  sets +1=8, zero-extends into +2 (strh, not byte), and clears +0xc. However, the summary says ''+0xc
+  dword cleared'' and ''+2 ready flag byte'' — the code uses strh at +2 (16-bit clear), so the flag/word
+  at +2 is actually a halfword field, not a single byte. The name ''comm_waitCrossNetReadyTimeoutHandler''
+  is fine but a touch verbose; ''comm_waitCrossNetReady'' fits the code''s per-frame role better.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802B7E0 -> comm_waitCrossNetReady
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B7E0

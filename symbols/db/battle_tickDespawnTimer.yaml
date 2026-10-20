@@ -1,0 +1,59 @@
+name: battle_tickDespawnTimer
+address: '0x080D75A4'
+kind: function
+status: probable
+summary: Battle-object per-tick handler that mirrors the timer's bit 1 into the object's flag bit 1, decrements
+  the timer, and destroys the object when the timer expires or the object's panel becomes invalid.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_DESTROY on expiry or bad panel
+details: First calls object_isCurrentPanelValid on the object's own position (r5); if the panel is invalid
+  it immediately transitions the object to CUR_STATE_DESTROY. Otherwise it clears bit 1 (value 2) of oObjectHeader_Flags,
+  then re-sets that bit if bit 1 of oBattleObject_Timer is set — so the flag mirrors the timer's low bit,
+  likely a blink/flash indicator. It then decrements oBattleObject_Timer; when the counter reaches zero
+  the object is destroyed as well. r5 is the object pointer, never initialized in this function, so it
+  must be supplied by a caller-side convention (e.g. a script/state handler keeping the active object
+  in r5).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_isCurrentPanelValid followed by tst/beq destroys via CUR_STATE_DESTROY when panel
+    invalid; oObjectHeader_Flags bit 1 is cleared then re-set iff (oBattleObject_Timer & 2) != 0, mirroring
+    the timer's bit; oBattleObject_Timer is decremented each call and reaching 0 falls through to the
+    CUR_STATE_DESTROY store; destroy path stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    at loc_80D75CE; object_isCurrentPanelValid callee confirms r5 is the standard battle-object pointer
+    used for panel lookups
+  refs:
+  - bn6f/asm/asm31.s:68841
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080D75A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_80D75A4 matches the proposed behavior: it calls object_isCurrentPanelValid, clears
+    flag bit 1 then re-sets it from the timer''s bit 1, decrements the timer, and writes CUR_STATE_DESTROY
+    on expiry or invalid panel. However, the proposed name ''battle_timedDespawnCheckPanel'' awkwardly
+    mixes the despawn-check with the panel-check, and the summary''s claim that it ''toggles flag bit
+    1 from the timer'' is slightly off — it mirrors the timer''s bit 1 onto the flag rather than toggling.
+    A clearer name is warranted.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what kind of object uses this (caller unknown), so the exact game role (e.g. blinking temporary panel
+  object vs. trap) is unconfirmed
+- meaning of oObjectHeader_Flags bit 1 — likely blink/invisible, but not verified from callers
+- 'The code at sub_80D75A4 matches the proposed behavior: it calls object_isCurrentPanelValid, clears
+  flag bit 1 then re-sets it from the timer''s bit 1, decrements the timer, and writes CUR_STATE_DESTROY
+  on expiry or invalid panel. However, the proposed name ''battle_timedDespawnCheckPanel'' awkwardly mixes
+  the despawn-check with the panel-check, and the summary''s claim that it ''toggles flag bit 1 from the
+  timer'' is slightly off — it mirrors the timer''s bit 1 onto the flag rather than toggling. A clearer
+  name is warranted.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D75A4 -> battle_tickDespawnTimer
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D75A4

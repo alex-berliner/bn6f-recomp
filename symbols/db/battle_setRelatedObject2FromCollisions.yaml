@@ -1,0 +1,61 @@
+name: battle_setRelatedObject2FromCollisions
+address: '0x080DC3B2'
+kind: function
+status: probable
+summary: Collects current colliding objects and, for the first whose +0x28 byte is in 0xCD–0xFF and passes
+  sub_800F486, stores its pointer into the battle work's RelatedObject2Ptr and returns 1; returns 0 if
+  no entry matches.
+interface: () -> r0 = 1 if a matching colliding object was found (its pointer stored in [r5+RelatedObject2Ptr]),
+  else 0; r4/r6 clobbered
+details: Reserves 16 bytes on the stack and calls battle_getCollidingObjects(sp, 0x10), which fills it
+  with parent object pointers and returns the count. It walks the list, loading each object's field at
+  +0x28 (a type/id byte) and accepting only values >= 0xCD and <= 0xFF. Accepted candidates are passed
+  (value in r0, object pointer in r1) to sub_800F486, and only if that returns nonzero does the routine
+  store the object pointer into [r5+oBattleObject_RelatedObject2Ptr] of the battle-work object r5 points
+  at, returning 1. Otherwise it continues to the next entry; exhausting the list returns 0. Note r5 is
+  never set here, so it relies on a register-held global battle pointer from the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_getCollidingObjects with (sp, 0x10) then loop over returned count at 80DC3C8–80DC3EA;
+    cmp r0,#0xCD / blt skip and cmp r0,#0xFF / bgt skip restricts field +0x28 to 0xCD..0xFF; bl sub_800F486
+    with (field, objPtr); tst r0 / beq skip gates acceptance on its result; str r1,[r5,#oBattleObject_RelatedObject2Ptr];
+    mov r0,#1 on success, mov r0,#0 on list exhaustion
+  refs:
+  - bn6f/asm/asm31.s:79397
+  - 0x080DC310 sub_80DC310
+  - 0x0801A4DC battle_getCollidingObjects
+  - 0x0800F486 sub_800F486
+  reproduce: python3 tools/asmcat.py 0x080DC3B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly describes the loop: battle_getCollidingObjects fills the stack buffer, the
+    loop tests each entry''s +0x28 against 0xCD..0xFF, calls sub_800F486, and on success stores the pointer
+    in [r5+oBattleObject_RelatedObject2Ptr] returning 1. The only inaccuracy is the claim that ''r5 is
+    never set here'' — this is true in this function, but the proposal should not call that out as a notable
+    behavior; it''s a standard caller-passed global. A better name would emphasize the RelatedObject2Ptr
+    side-effect rather than the ID range, since the ID-range filter is incidental.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_800F486 tests (it decides which values in 0xCD–0xFF actually qualify)
+- What the +0x28 field denotes (object type id?) and what game event needs this specific range
+- Who calls sub_80DC3B2 and what the stored RelatedObject2Ptr is used for afterwards
+- 'The summary correctly describes the loop: battle_getCollidingObjects fills the stack buffer, the loop
+  tests each entry''s +0x28 against 0xCD..0xFF, calls sub_800F486, and on success stores the pointer in
+  [r5+oBattleObject_RelatedObject2Ptr] returning 1. The only inaccuracy is the claim that ''r5 is never
+  set here'' — this is true in this function, but the proposal should not call that out as a notable behavior;
+  it''s a standard caller-passed global. A better name would emphasize the RelatedObject2Ptr side-effect
+  rather than the ID range, since the ID-range filter is incidental.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DC3B2 -> battle_setRelatedObject2FromCollisions
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC3B2

@@ -1,0 +1,56 @@
+name: battle_objTimedCollisionTick
+address: '0x080CE9DC'
+kind: function
+status: probable
+summary: Per-frame handler that keeps a battle object's collision region 1 active for ExtraVars iterations
+  of 8 frames each, then sets action 8 and flips horizontal velocity.
+interface: (r0 = region index 1, r5 = battle object) -> void; no meaningful return
+details: Runs once per frame with the battle object in r5. It decrements oBattleObject_Timer; while the
+  timer hasn't expired it just returns. When the timer reaches 0 it calls object_setCollisionRegion(1)
+  — enabling/selecting collision region 1 — decrements oBattleObject_ExtraVars as a repeat counter, and
+  reloads Timer with 8. Once ExtraVars is exhausted, it stores CurAction = 8, resets CurPhaseAndPhaseInitialized
+  to 0, and negates oBattleObject_XVelocity, so the object flips horizontal direction for its next action.
+  Effectively a countdown that keeps the object solid for a fixed duration before bouncing it back.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bne locret exits until oBattleObject_Timer hits 0, then Timer is reloaded with 8 each cycle;
+    bl object_setCollisionRegion with r0=1 selects collision region 1 once per 8-frame cycle; oBattleObject_ExtraVars
+    counts the cycles; only when it reaches 0 does state change happen; state change stores CurAction=8,
+    clears phase, and negates oBattleObject_XVelocity (reverse motion); callees only object_setCollisionRegion,
+    whose summary matches region-index + collision-data use
+  refs:
+  - bn6f/asm/asm31.s:49706
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CE9DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior almost exactly: it decrements oBattleObject_Timer, returns
+    if still >0; on expiry calls object_setCollisionRegion(1), decrements ExtraVars, reloads Timer with
+    8, and when ExtraVars hits 0 sets CurAction=8, clears CurPhaseAndPhaseInitialized, and negates XVelocity.
+    The ''keeps region 1 for ExtraVars*8 frames'' phrasing is slightly off — ExtraVars is the number of
+    repetitions, each 8 ticks wide, so the total is ExtraVars*8 — but the mechanics are correct. The name
+    is fine but a bit verbose.; run wf investigate investigate-20261019-022109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- unknown which object/spawner calls this, so what CurAction 8 means for it (bounce, retreat, attack)
+- whether region 1 is being enabled or just re-selected
+- what ExtraVars normally holds for this object type (count vs. unrelated field reuse)
+- 'The code matches the proposed behavior almost exactly: it decrements oBattleObject_Timer, returns if
+  still >0; on expiry calls object_setCollisionRegion(1), decrements ExtraVars, reloads Timer with 8,
+  and when ExtraVars hits 0 sets CurAction=8, clears CurPhaseAndPhaseInitialized, and negates XVelocity.
+  The ''keeps region 1 for ExtraVars*8 frames'' phrasing is slightly off — ExtraVars is the number of
+  repetitions, each 8 ticks wide, so the total is ExtraVars*8 — but the mechanics are correct. The name
+  is fine but a bit verbose.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CE9DC -> battle_objTimedCollisionTick
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE9DC

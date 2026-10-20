@@ -1,0 +1,63 @@
+name: battle_spawnType14Object
+address: '0x080BA660'
+kind: function
+status: probable
+summary: Spawns a type-0xE battle object via object_spawnType1 and overwrites PanelX, PanelY, Element,
+  RelatedObject1Ptr, AllianceAndDirectionFlip, DamageAndStaminaDamageCounterDisabler and CollisionDataPtr
+  on the new object, then sets the first byte of the collision data to 1.
+interface: (r0 = PanelX, r1 = PanelY/spawn x, r2 = Element/spawn y, r3 = spawn z, r4 = spawn params; r5/r6/r7
+  must already hold RelatedObjectPtr, DamageCounterDisabler, CollisionDataPtr) -> r0 = new BattleObject
+  or 0
+details: Sets the spawn index to 0xE and calls object_spawnType1 with the remaining incoming r1-r4 as
+  x/y/z/params; the spawned pointer comes back in r5. If it is NULL the function returns immediately.
+  Otherwise it writes r1 to oBattleObject_PanelX, r2 to PanelY, r3 to Element, the pre-call r5 to RelatedObject1Ptr,
+  and the caller-prepared r6/r7 into DamageAndStaminaDamageCounterDisabler and CollisionDataPtr, finally
+  storing 1 into the first byte of the collision data. Note it clobbers r6/r7 without saving them, so
+  the caller must set those registers right before the call; no caller is known, so which object type
+  14 is (and why spawn x/y and PanelX/PanelY come from different argument registers) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xe / bl object_spawnType1 — spawns type-14 object with x,y,z,params taken from incoming
+    r1-r4; beq locret_80BA684 — returns the NULL spawn result untouched; strb r1,[r0,#oBattleObject_PanelX]
+    / strb r2,[r0,#PanelY] / strb r3,[r0,#Element] — post-spawn field overrides; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    / str r6,[...Disabler] / str r7,[...CollisionDataPtr]; mov r1,#1; strb r1,[r7] — related-object link,
+    disabler, and collision data whose first byte is set to 1; push {r0-r2,r5} / pop {r1-r3,r5} — register
+    shuffle mapping the wrapper''s args onto the field stores'
+  refs:
+  - bn6f/asm/asm31.s:5014
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BA660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly right: r0=0xE is passed to object_spawnType1, and on success the function
+    overwrites PanelX, PanelY, Element, RelatedObject1Ptr, AllianceAndDirectionFlip, DamageAndStaminaDamageCounterDisabler,
+    and CollisionDataPtr, then sets byte at CollisionDataPtr to 1. However, the proposal incorrectly says
+    only the pre-call r5 is written to RelatedObject1Ptr and misses the AllianceAndDirectionFlip copy
+    (`ldrh r1,[r5,...]; strh r1,[r0,...]`). Also, the function clobbers r5 as well, not just r6/r7. The
+    name is acceptable but the summary should be corrected.; run wf investigate investigate-20261019-022109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What battle object type 0xE is (its type-specific initialiser) and what the element/collision-data values
+  mean
+- Which caller sets r5-r7 before the call and what RelatedObject1Ptr and the collision-data byte 1 signify
+  here
+- 'The proposal is mostly right: r0=0xE is passed to object_spawnType1, and on success the function overwrites
+  PanelX, PanelY, Element, RelatedObject1Ptr, AllianceAndDirectionFlip, DamageAndStaminaDamageCounterDisabler,
+  and CollisionDataPtr, then sets byte at CollisionDataPtr to 1. However, the proposal incorrectly says
+  only the pre-call r5 is written to RelatedObject1Ptr and misses the AllianceAndDirectionFlip copy (`ldrh
+  r1,[r5,...]; strh r1,[r0,...]`). Also, the function clobbers r5 as well, not just r6/r7. The name is
+  acceptable but the summary should be corrected.'
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA660 -> battle_spawnType14Object
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA660

@@ -1,0 +1,59 @@
+name: battle_setupEmotionWindowEntries
+address: '0x080390F8'
+kind: function
+status: probable
+summary: 'Preloads EmotionData slots in the 0x58-byte EWRAM array at 0x02008450: loops r4 from 4 down
+  to 0 calling battle_initEmotionTableEntry_8046670 twice per iteration with type 0x3A into slots 3+2*r4
+  and 2+2*r4 (filling slots 2-11) using packed words from byte_803913C (tag 0x09) and byte_8039154 (tag
+  0x0A), and when r4==1 additionally initializes slot 12 with the packed value 0x50D.'
+interface: () -> r0 = undefined (void); no flags, writes EmotionData slots in the 0x58-byte EWRAM array
+  at 0x02008450
+details: Loops r4 from 4 down to 0, calling battle_initEmotionTableEntry_8046670 twice per iteration with
+  type 0x3A. Slot indices are 3+2*r4 and 2+2*r4, so slots 2-11 get filled; r2 is a packed word whose low
+  byte is a tag (0x09 from byte_803913C, 0x0A from byte_8039154) and whose upper byte is a flags value
+  (0,2,4,1,3 in the same order in both tables). When r4==1 it additionally initializes slot 12 with the
+  packed value 0x50D (tag 0x0D, flags 0x05). All slots share type 0x3A, so this seeds the portion of the
+  emotion-window data belonging to one emotion/window category.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop body calls battle_initEmotionTableEntry_8046670 with r0=0x3A and computed slot index 3+2*r4
+    / 2+2*r4 (loc_80390FC); byte_803913C/byte_8039154 are word tables 0x00000009,0x00020009,0x00040009,0x00010009,0x00030009
+    and 0x0A variants, i.e. tag|flags pairs; special case at 8039130 fills slot 0xC with packed value
+    0x50D only on the r4==1 pass; callee's known summary confirms it writes one EmotionData slot in the
+    0x58-byte EWRAM array at 0x02008450 from (type, index, packed tag/flags)
+  refs:
+  - bn6f/asm/asm03_1_1.s:1103
+  - 0x08038E5C sub_8038E5C
+  - 0x08046670 battle_initEmotionTableEntry_8046670
+  reproduce: python3 tools/asmcat.py 0x080390F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop fills slots 2-11 across r4=4..0 (slot indices 3+2r4 and 2+2r4) plus slot 12 when r4==1,
+    so the special entry is at index 12, not 13. Type is 0x3A throughout, and the r2 values from byte_803913C
+    and byte_8039154 have flags 0,2,4,1,3 (reading 4-byte words at offset 4*r4), with tags 0x09 and 0x0A
+    respectively; the extra slot uses packed 0x50D (tag 0x0D, flags 5). Calling pattern and structure
+    match, but the summary''s ''2-13'' range is off by one.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what emotion/window type 0x3A corresponds to in game terms
+- what sub_8038E5C (sole caller) does, to confirm when this setup runs
+- exact meaning of the flags values 0,1,2,3,4 and the special 0x05 entry
+- The loop fills slots 2-11 across r4=4..0 (slot indices 3+2r4 and 2+2r4) plus slot 12 when r4==1, so
+  the special entry is at index 12, not 13. Type is 0x3A throughout, and the r2 values from byte_803913C
+  and byte_8039154 have flags 0,2,4,1,3 (reading 4-byte words at offset 4*r4), with tags 0x09 and 0x0A
+  respectively; the extra slot uses packed 0x50D (tag 0x0D, flags 5). Calling pattern and structure match,
+  but the summary's '2-13' range is off by one.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f dbbeeae4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80390F8 -> battle_setupEmotionWindowEntries
+  where: bn6f 101226a8
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80390F8
