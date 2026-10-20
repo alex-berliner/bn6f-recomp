@@ -710,7 +710,7 @@ Next sub_803B91C(void) {
  *   clobbers: nz c v r0 lr
  *   preserved: r4 r5 r6 r7
  *
- * Thin wrapper that calls sub_803BA84 with a fixed 0x30/0x50/0x20/0x10
+ * Thin wrapper that calls chatbox_copyScriptExpandEndMarkers with a fixed 0x30/0x50/0x20/0x10
  * argument set. Original disassembly pops {r4-r7,pc} from the same stack
  * frame it pushed, so no caller-saved state escapes; r5 (and the
  * untouched r4/r6/r7) is preserved automatically. */
@@ -719,19 +719,19 @@ Next sub_803BA64(void) {
     R1 = 0x50;
     R2 = 0x20;
     R3 = 0x10;
-    GUEST_CALL(sub_803BA84);
+    GUEST_CALL(chatbox_copyScriptExpandEndMarkers);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_803BA74 ── */
-/* sub_803BA74: thin wrapper that configures and calls sub_803BA84 with
+/* sub_803BA74: thin wrapper that configures and calls chatbox_copyScriptExpandEndMarkers with
  * a fixed set of battle-screen parameters. r5 is preserved across the call. */
 Next sub_803BA74(void) {
     R0 = 0x90;
     R1 = 0xB0;
     R2 = 0x20;
     R3 = 0x11;
-    GUEST_CALL(sub_803BA84);
+    GUEST_CALL(chatbox_copyScriptExpandEndMarkers);
     RETURN_TO_CALLER();
 }
 

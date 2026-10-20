@@ -1,0 +1,80 @@
+name: object_collectFilteredPanels
+address: '0x08102CF8'
+kind: function
+status: probable
+summary: Collects up to N battle-grid panels passing validity/type/occupancy filters, seeds the source
+  object's panel first, tops off with shuffled extras from a filtered recursive pass, and writes them
+  as (row<<4)|col bytes.
+interface: (r0 = object ptr whose panel is seeded first, r1 = arg forwarded to sub_8102E5C filter, r2
+  = output byte buffer, r3 = count (bits 0-6) with bit 7 = no-refill flag; r5 = acting object with fields
+  0x12 x, 0x13 y, 0x16 mask index) -> r0 = number of panel bytes written; no flag guarantees
+details: First it may append the source object's own panel (x,y from +0x12/+0x13) if sub_8102E5C accepts
+  it, remembering that via sp+0x24. It then walks columns in the direction from object_getFrontDirection
+  starting at r5.x+dir, and for each column rows 1..3, keeping panels that are on the 6x3 grid (object_isValidPanel),
+  pass the sub_8102E5C filter, aren't a duplicate of the seeded panel, and match the clear/must mask pair
+  loaded from byte_8102E4C[r5.field0x16] via object_checkPanelParameters. Each kept panel is encoded as
+  (col<<4)|row into a 0x30-byte stack buffer. If fewer than the requested count (r3&0x7f) were found and
+  bit 7 of r3 is clear, it recurses with the local buffer to gather extra random candidates (ShuffleByteList
+  on the recursion result, CopyBytes of min(needed, extra) into buffer+count). Finally the whole list
+  is shuffled with ShuffleByteList_PrimaryRNG and min(count, total) bytes are CopyBytes'd to the caller's
+  r2 buffer; returns the count actually written.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8102D36: encodes own panel as (x<<4)|y and sets sp+0x24 flag after sub_8102E5C accepts
+    it; loc_8102D78-DC4: nested loop over columns (front direction) and rows 1..3 with object_isValidPanel
+    + object_checkPanelParameters gating each entry; off_8102F2C->byte_8102E4C indexed by [r5+0x16]<<3
+    supplies the must/clear mask pair for object_checkPanelParameters; loc_8102DDC-E1C: recursion with
+    (needed-found)+0x80 in r3 fills the shortfall, ShuffleByteList_PrimaryRNG randomizes the extra panels;
+    loc_8102E1C-E48: ShuffleByteList_PrimaryRNG on the final list then CopyBytes of min(count,found) bytes
+    to r2, returning the count'
+  refs:
+  - bn6f/asm/asm31.s:158222
+  - 0x081023C0 sub_81023C0
+  - 0x08102428 sub_8102428
+  - 0x08000920 CopyBytes
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x08102CF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The byte encoding is (row<<4)|col, not (col<<4)|row: at loc_8102D36 and the main loop, the code
+    does `lsl r1, r1, #4; orr r0, r1` where r0 is the column and r1 is the row, placing row in the high
+    nibble. The extras gathered via the recursive call still pass object_isValidPanel, sub_8102E5C, and
+    object_checkPanelParameters filters, so they are not truly ''random panels'' but valid filtered panels
+    whose selection order is randomized by ShuffleByteList_PrimaryRNG. The seeded-panel duplicate check
+    at loc_8102DA8 only compares against [r7] (the first byte), matching the proposal''s ''duplicate of
+    the seeded panel'' phrasing. The interface and walk description (direction from object_getFrontDirection,
+    rows 1..3 per column, mask pair from byte_8102E4C[index*8]) all match the code. Everything else is
+    accurate; only the nibble order and the ''random'' characterization need correction.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8102E5C (r2 filter) tests per-panel — likely object occupancy or alliance — to know exactly
+  which panels are excluded
+- What battle object/chip owns callers sub_81023C0/sub_8102428 and how the returned panel list is consumed
+  (attack targets vs. spawn placement)
+- Meaning of the panel-flag masks (0x20 / 0x20000000) in byte_8102E4C and what field 0x16 selects between
+- 'The byte encoding is (row<<4)|col, not (col<<4)|row: at loc_8102D36 and the main loop, the code does
+  `lsl r1, r1, #4; orr r0, r1` where r0 is the column and r1 is the row, placing row in the high nibble.
+  The extras gathered via the recursive call still pass object_isValidPanel, sub_8102E5C, and object_checkPanelParameters
+  filters, so they are not truly ''random panels'' but valid filtered panels whose selection order is
+  randomized by ShuffleByteList_PrimaryRNG. The seeded-panel duplicate check at loc_8102DA8 only compares
+  against [r7] (the first byte), matching the proposal''s ''duplicate of the seeded panel'' phrasing.
+  The interface and walk description (direction from object_getFrontDirection, rows 1..3 per column, mask
+  pair from byte_8102E4C[index*8]) all match the code. Everything else is accurate; only the nibble order
+  and the ''random'' characterization need correction.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102CF8 -> object_collectFilteredPanels
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102CF8

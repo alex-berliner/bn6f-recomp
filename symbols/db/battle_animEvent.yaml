@@ -1,0 +1,65 @@
+name: battle_animEvent
+address: '0x08115EBC'
+kind: function
+status: probable
+summary: Per-frame sprite/anim event callback that clears the battle object's collision region, and if
+  the current frame's attribute bit 0x80 is set, switches it to animation 4, re-registers collision region
+  1, and writes 8 to ExtraVars.
+interface: (r0 = battle object? uses r5 internally) -> void; no meaningful return, flags clobbered
+details: The routine first clears the object's collision region (removing it from hit/hurt detection),
+  then reads the current animation frame's attribute byte via sprite_getFrameParameters. If attribute
+  bit 0x80 is set, it writes 4 to oBattleObject_CurAnim (switching to another animation), sets collision
+  region index 1 via object_setCollisionRegion (re-registering the object in the battle collision grid),
+  and stores 8 into oBattleObject_ExtraVars. r5 holds the battle object pointer, suggesting this runs
+  as an animation/frame event where r5 is already bound to the active object. The clear-then-conditionally-set
+  pattern implies the object only becomes collidable on specific attack frames.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_clearCollisionRegion immediately followed by bl sprite_getFrameParameters: per-frame
+    event that first deactivates collision; tst r0,#0x80 on the frame attribute byte gates the whole body:
+    only flagged frames trigger the state change; strb r0(=4),[r5,#oBattleObject_CurAnim] and bl object_setCollisionRegion(r0=1):
+    anim switch + region 1 on trigger; str r0(=8),[r5,#oBattleObject_ExtraVars]: sets an object-specific
+    extra variable, likely an attack timer/flag; No callers known and run under the battlesweep route:
+    consistent with a battle animation event hook, exact owning object unidentified'
+  refs:
+  - bn6f/asm/asm32.s:15710
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x08115EBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and callees match: it clears collision, checks attribute 0x80 from sprite_getFrameParameters,
+    then on hit writes 4 to CurAnim, calls object_setCollisionRegion(1), and stores 8 to ExtraVars. However
+    r5 is never set inside this function; the proposal''s r5 description is just a guess. Also ''setAttackRegion''
+    implies it''s only an attack frame setup, but it''s a per-frame callback that may simply clear collision
+    and only conditionally enter the attack state — the name should reflect the per-frame animation event
+    role.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which object/animation this callback belongs to (no caller found); the animation-event dispatch table
+  would confirm
+- Meaning of ExtraVars=8 and of collision region index 1 for that object
+- Whether r0 on entry is the object pointer or ignored (r5 dependency suggests an established register
+  convention)
+- 'The summary and callees match: it clears collision, checks attribute 0x80 from sprite_getFrameParameters,
+  then on hit writes 4 to CurAnim, calls object_setCollisionRegion(1), and stores 8 to ExtraVars. However
+  r5 is never set inside this function; the proposal''s r5 description is just a guess. Also ''setAttackRegion''
+  implies it''s only an attack frame setup, but it''s a per-frame callback that may simply clear collision
+  and only conditionally enter the attack state — the name should reflect the per-frame animation event
+  role.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115EBC -> battle_animEvent
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115EBC

@@ -1,0 +1,68 @@
+name: battle_runAiStateScriptAndGauge
+address: '0x0811649E'
+kind: function
+status: probable
+summary: 'Per-frame AI tick for a battle object: if the battle continues and a valid nearest enemy exists,
+  dispatch this object''s AI-state script; then unconditionally clear oObjectHeader_Flags bit 1 and set
+  the custom gauge to [obj+0x60]*[obj+0x66].'
+interface: (r5 = BattleObject this) -> r0 = destroyed?; clears oObjectHeader_Flags bit 1 on r5, adds oBattleObject[0x60]*[0x66]
+  to the custom gauge
+details: 'First calls battle_isBattleOver and aborts to the tail if the battle has ended. Otherwise it
+  flips bit 0 of r5''s oBattleObject_Alliance and calls battleObject_findClosestEnemyBattleObject_80103F8
+  to find the nearest object on the opposite alliance; if none exists, or its halfword at +0x24 is 0,
+  it skips the script. When an enemy is found it reads oAIState_ScriptId from r5''s AIDataPtr+0x80, indexes
+  a dispatch table (off_81164E8, currently holding the single handler sub_81164EC), and tail-calls it
+  via ''mov lr, pc; bx r1'' (ARM/Thumb interworking). Control always reaches the tail: bit 1 of oObjectHeader_Flags
+  is cleared and SetCustGauge is called with [r5+0x60] * [r5+0x66]. The flag clear plus gauge fill running
+  unconditionally suggests this is a periodic/object-end update, not a death routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isBattleOver then tst/bne skips everything on battle end (loc_81164CC); eor r0,#1
+    on oBattleObject_Alliance then findClosestEnemyBattleObject selects the opposing side; ldrb r0,[r6,#oAIState_ScriptId];
+    ldr r1,[r1,r0]; bx r1 dispatches an indexed AI script from off_81164E8; tail clears bit 1 of oObjectHeader_Flags
+    via bic and calls SetCustGauge with [r5+0x60]*[r5+0x66]
+  refs:
+  - bn6f/asm/asm32.s:16332
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801DFA2 SetCustGauge
+  reproduce: python3 tools/asmcat.py 0x0811649E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate but contains errors: (1) the read is `ldrh r0, [r5,#oBattleObject_AIDataPtr]`
+    then `add r6, r4, #0x80` so AIDataPtr+0x80 holds ScriptId — this matches. (2) The table at off_81164E8
+    holds sub_81164EC+1, so the BX target is the Thumb entry, correctly noted. (3) However, the summary
+    says ''adds oBattleObject[0x60]*[0x66] to the custom gauge'' but the code does `ldrh r0,[r5,#0x60];
+    ldrh r1,[r5,#0x66]; mul r0,r1; bl SetCustGauge` — it passes the product as the *new* gauge value to
+    SetCustGauge (a setter), not an increment. (4) It does not ''flip'' the alliance bit; it XORs to compute
+    the *opposite* alliance for the enemy search. (5) Returning r0=destroyed is not evidenced; r0 holds
+    the SetCustGauge arg on return.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_81164EC (the sole AI-state handler) does, and the meaning of enemy halfword +0x24 and gauge
+  fields 0x60/0x66
+- Which flag bit 1 of oObjectHeader_Flags represents, and what caller/loop invokes this per frame (no
+  recorded caller)
+- 'The proposal is mostly accurate but contains errors: (1) the read is `ldrh r0, [r5,#oBattleObject_AIDataPtr]`
+  then `add r6, r4, #0x80` so AIDataPtr+0x80 holds ScriptId — this matches. (2) The table at off_81164E8
+  holds sub_81164EC+1, so the BX target is the Thumb entry, correctly noted. (3) However, the summary
+  says ''adds oBattleObject[0x60]*[0x66] to the custom gauge'' but the code does `ldrh r0,[r5,#0x60];
+  ldrh r1,[r5,#0x66]; mul r0,r1; bl SetCustGauge` — it passes the product as the *new* gauge value to
+  SetCustGauge (a setter), not an increment. (4) It does not ''flip'' the alliance bit; it XORs to compute
+  the *opposite* alliance for the enemy search. (5) Returning r0=destroyed is not evidenced; r0 holds
+  the SetCustGauge arg on return.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811649E -> battle_runAiStateScriptAndGauge
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811649E

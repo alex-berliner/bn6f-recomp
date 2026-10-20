@@ -1,0 +1,65 @@
+name: ow_swapMapEventFlags
+address: '0x080A8324'
+kind: function
+status: probable
+summary: 'When EVENT_9D6 is set, toggles a per-map event-flag pair: tests the first halfword via TestEventFlag,
+  calling SetEventFlag on the second if clear or ClearEventFlag if set; returns early if EVENT_9D6 is
+  not set.'
+interface: (r5 = map object/entry struct, [r5+4] = id index; r10 = game toolkit pointer) -> r0 = destroyed;
+  no meaningful flags
+details: 'If EVENT_9D6 is already set the function returns immediately. It computes a table index from
+  the game state: oGameState_MapGroup, using 3 when the group is 0x85, otherwise oGameState_MapNumber,
+  scaled by 4 to pick one of four per-map table pairs. [r5+4] << 1 indexes a halfword in each of the two
+  tables (off_80A8374 = flags to test/set, off_80A8384 = paired bitfield to set/clear). It tests the first
+  halfword as an event-flag bitfield: if clear, it SetEventFlag''s the second halfword''s flags; if set,
+  it ClearEventFlag''s them — effectively switching the map between two flag states. r5 is set up by the
+  caller, so this is really a helper operating on a caller-selected entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'movflag EVENT_9D6 + beq locret: early-out when the gate/condition flag is already set; ldrb
+    from oGameState_MapGroup/oGameState_MapNumber (group 0x85 -> constant 3) selects one of four per-map
+    table pairs via off_80A8374/off_80A8384; ldrh r7/r6 from the two tables at index [r5+4]*1<<1, then
+    TestEventFlag(r7) with SetEventFlag(r6) / ClearEventFlag(r6) — a paired flag swap'
+  refs:
+  - bn6f/asm/asm29.s:6209
+  - 0x080A822C sub_80A822C
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F114 SetEventFlag
+  - 0x0802F168 TestEventFlag
+  reproduce: python3 tools/asmcat.py 0x080A8324
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The EVENT_9D6 guard is inverted in the summary: TestEventFlagFromImmediate returns !zf (ZF=0 when
+    set), so beq branches (returns) when the flag is NOT set, meaning the function only proceeds when
+    EVENT_9D6 is set—the proposal says the opposite. The toggle logic itself (test r7 halfword → SetEventFlag
+    r6 if clear, ClearEventFlag r6 if set) and the table indexing (MapGroup==0x85→index 3, else MapNumber;
+    [r5+4]<<1 for halfword offset) are correct. The ow_ prefix and caller context (beastsp, maps routes;
+    sub_80A822C helper) fit an overworld/map helper.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+- maps
+open_questions:
+- What EVENT_9D6 represents (story gate, mode switch?) and what the four map tables correspond to exactly
+- What structure r5 points to and what field +4 holds (likely a map-object/NPC id); the caller sub_80A822C
+  would confirm
+- 'The EVENT_9D6 guard is inverted in the summary: TestEventFlagFromImmediate returns !zf (ZF=0 when set),
+  so beq branches (returns) when the flag is NOT set, meaning the function only proceeds when EVENT_9D6
+  is set—the proposal says the opposite. The toggle logic itself (test r7 halfword → SetEventFlag r6 if
+  clear, ClearEventFlag r6 if set) and the table indexing (MapGroup==0x85→index 3, else MapNumber; [r5+4]<<1
+  for halfword offset) are correct. The ow_ prefix and caller context (beastsp, maps routes; sub_80A822C
+  helper) fit an overworld/map helper.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8324 -> ow_swapMapEventFlags
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8324

@@ -1,0 +1,58 @@
+name: pet_returnToPetMenu
+address: '0x08136D8C'
+kind: function
+status: probable
+summary: 'Ends the Beast+ scenario: sets completion event flags, zeroes its 16-byte work area, loads scenario
+  assets, then resets game state to 0x28 and restores the PET menu.'
+interface: () -> void; sets flags via SetEventFlagFromImmediate, clobbers r0-r3
+details: Sets two story flags (EVENT_F4 then EVENT_F2) marking the scenario's outcome, then zeroes the
+  16-byte work buffer at byte_2009390 (likely the scenario's state/counter block). It runs a table-driven
+  asset load (decompAndCopyData on off_8136EC8), calls pet_prepareMenuOnReturn_811F6C0 to restore the
+  PET menu page/cursor, stores 0x28 into the byte at [r10,#0x34] (a global main-state field), and finally
+  tears down the current mode and jumps main state to 0x28 with mainState_resetGameAndGoto28_8005524.
+  The r10 store looks like the mode's own next-state field mirroring the state being entered.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two immediate SetEventFlagFromImmediate calls (EVENT_F4, EVENT_F2) mark story progress at function
+    start; ZeroFillByByte(byte_2009390, 0x10) clears the scenario work buffer before exit; pet_prepareMenuOnReturn_811F6C0
+    call shows it re-enters the PET menu rather than the field; mov r1,#0x28; strb r1,[r10,#0x34] followed
+    by mainState_resetGameAndGoto28 matches the 0x28 mode transition; recorded only on the beastsp route,
+    consistent with a Beast+ scenario epilogue/exit
+  refs:
+  - bn6f/asm/asm36.s:14200
+  - 0x0809ADA8 sub_809ADA8
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x080008B4 ZeroFillByByte
+  - 0x08000B30 decompAndCopyData
+  reproduce: python3 tools/asmcat.py 0x08136D8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the summary exactly: EVENT_F4/F2 set via SetEventFlagFromImmediate, ZeroFillByByte
+    on byte_2009390 with r1=#0x10, decompAndCopyData on off_8136EC8, pet_prepareMenuOnReturn_811F6C0,
+    strb 0x28 into [r10,#0x34], then mainState_resetGameAndGoto28_8005524. However the prefix ''beastsp''
+    is not in the allowed prefix list; ''pet'' fits since the net effect is returning to the PET menu
+    after scenario cleanup.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the two flags EVENT_F2/EVENT_F4 are named in game terms
+- contents of the off_8136EC8 initRefs table and what byte_2009390 belongs to
+- 'Code matches the summary exactly: EVENT_F4/F2 set via SetEventFlagFromImmediate, ZeroFillByByte on
+  byte_2009390 with r1=#0x10, decompAndCopyData on off_8136EC8, pet_prepareMenuOnReturn_811F6C0, strb
+  0x28 into [r10,#0x34], then mainState_resetGameAndGoto28_8005524. However the prefix ''beastsp'' is
+  not in the allowed prefix list; ''pet'' fits since the net effect is returning to the PET menu after
+  scenario cleanup.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136D8C -> pet_returnToPetMenu
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136D8C

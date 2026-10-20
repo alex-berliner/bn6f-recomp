@@ -1,0 +1,63 @@
+name: ai_attackDashStart
+address: '0x081107BC'
+kind: function
+status: probable
+summary: 'Setup handler for an AI dash attack: validates the target panel, and if it still matches reserves
+  the panel, records the future coords, sets HitElement=4, finalizes via sub_8110840, and launches the
+  per-frame dash move; otherwise clears HasMoved and exits the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = ...; sets oBattleObject_FuturePanelX/Y, oAIAttackVars_HitElement,
+  oAIAttackVars_HasMoved
+details: Reads the target panel X/Y and panel-param flag masks from the oAIAttackVars scratch block and
+  calls object_checkPanelParameters on that panel. If the panel still matches, it copies the target coords
+  into the battle object's FuturePanelX/Y fields, reserves the panel via object_reservePanel, stores HitElement
+  = 4, calls sub_8110840 (unexamined), and advances the attack with ai_attackDashMoveStep (moves by velocity,
+  commits on timer). If the panel check fails, it clears HasMoved and tears the attack down via object_exitAttackState_801171C,
+  implying the attack was interrupted (e.g. panel changed state under it). It is the outer per-frame driver;
+  the dash-move logic itself lives in ai_attackDashMoveStep.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#TargetPanelX]/ldrb r1,[r7,#TargetPanelY] + bl object_checkPanelParameters: validates
+    target panel before committing; strb to oBattleObject_FuturePanelX/Y then bl object_reservePanel:
+    commits the object to the target panel; strh #4 into oAIAttackVars_HitElement: tags the attack''s
+    hit element; beq path: mov #0 -> strb HasMoved, bl object_exitAttackState_801171C: aborts attack state
+    on panel mismatch; bl ai_attackDashMoveStep on the success path: delegates the actual per-frame dash
+    movement'
+  refs:
+  - bn6f/asm/asm32.s:5383
+  - 0x081107F2 ai_attackDashMoveStep
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x081107BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The control flow is not what the proposal says. The success branch first reserves the panel and
+    sets HitElement, then calls sub_8110840, then *calls* ai_attackDashMoveStep which already handles
+    panel sync, commit, and state transition - meaning sub_81107BC is the setup-and-launch function, not
+    the per-frame driver. The failure branch clears HasMoved and tears down via object_exitAttackState_801171C,
+    implying the panel no longer matches and the attack aborts before moving. A better name reflects the
+    setup role.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8110840 does (called only on the commit path)
+- which AI user/attack uses this handler and what HitElement value 4 corresponds to
+- The control flow is not what the proposal says. The success branch first reserves the panel and sets
+  HitElement, then calls sub_8110840, then *calls* ai_attackDashMoveStep which already handles panel sync,
+  commit, and state transition - meaning sub_81107BC is the setup-and-launch function, not the per-frame
+  driver. The failure branch clears HasMoved and tears down via object_exitAttackState_801171C, implying
+  the panel no longer matches and the attack aborts before moving. A better name reflects the setup role.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81107BC -> ai_attackDashStart
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81107BC

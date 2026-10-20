@@ -1,0 +1,74 @@
+name: battle_initFlyAnimObject
+address: '0x080E1D18'
+kind: function
+status: probable
+summary: Initializes an existing battle object (in r5) as a shadowless flying sprite (id 0x80) with animation
+  1, palette from Param1, and ZVelocity=0x20000, then transitions it into the fly-update-and-destroy state
+  handler.
+interface: (r5 = battle object header, with oBattleObject_Param1 preloaded as palette index; no register
+  args) -> void; sets object flags, sprite, anim, palette, ZVelocity, CurState
+details: Sets flag bit 0x2 in the object header, then loads sprite resource 0x80 with args (0x80, 0x14,
+  2) via sprite_load and disables its shadow. It selects animation index 1 (stored in both CurAnim and
+  CurAnimCopy), loads the animation data, and takes the palette index from oBattleObject_Param1 via sprite_setPalette
+  — so callers customize color through that field. It writes ZVelocity = 0x20000 (2.0 in fixed point,
+  rising motion), switches CurState to CUR_STATE_UPDATE (2), and calls battle_objectFlyAnimUpdateAndDestroy_80E1D54,
+  which advances the anim, integrates Z, and moves the object to destroy state at the animation end-of-life
+  flag. The routine is entirely r5-relative, so it acts as a per-object setup called with the object pointer
+  already in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'orr r0,#2 / strb into oObjectHeader_Flags then sprite_load(0x80,0x14,2) and sprite_noShadow:
+    sprite resource setup; mov r0,#1 stored to oBattleObject_CurAnim and CurAnimCopy, then sprite_setAnimation
+    and sprite_loadAnimationData; ldrb r0,[r5,#oBattleObject_Param1] passed to sprite_setPalette: palette
+    comes from a caller-set field; str 0x20000 to oBattleObject_ZVelocity and CUR_STATE_UPDATE to oBattleObject_CurState:
+    launch into the update state; tail call to battle_objectFlyAnimUpdateAndDestroy_80E1D54, whose summary
+    matches the fly-up-then-destroy behavior'
+  refs:
+  - bn6f/asm/asm31.s:89635
+  - 0x080E1D54 battle_objectFlyAnimUpdateAndDestroy_80E1D54
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E1D18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s details almost perfectly: flag bit 0x2 set, sprite_load(0x80,0x14,2),
+    sprite_noShadow, anim 1 in CurAnim/CurAnimCopy, palette from Param1, ZVelocity=0x20000, CurState=2,
+    then call to battle_objectFlyAnimUpdateAndDestroy. However, ''spawn'' in the name implies creating
+    a new object, while the routine operates entirely on an already-existing object whose header is in
+    r5 (it reads/writes offsets from r5 throughout). ''init'' is the correct prefix since this sets up
+    the object''s properties. The summary''s ''upward Z velocity'' is a plausible but unconfirmed directional
+    claim; the code only writes 0x20000 without specifying axis convention, though the callee''s description
+    of integrating Z supports vertical motion.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles1
+- beastsp
+- story2
+- story9
+open_questions:
+- Which gameplay entity uses sprite 0x80 (no callers captured identify the spawner), and what the 0x14
+  argument to sprite_load means
+- Sign/axis convention of ZVelocity (upward vs downward flight) not confirmable without the update loop's
+  coordinate math
+- 'The code matches the proposal''s details almost perfectly: flag bit 0x2 set, sprite_load(0x80,0x14,2),
+  sprite_noShadow, anim 1 in CurAnim/CurAnimCopy, palette from Param1, ZVelocity=0x20000, CurState=2,
+  then call to battle_objectFlyAnimUpdateAndDestroy. However, ''spawn'' in the name implies creating a
+  new object, while the routine operates entirely on an already-existing object whose header is in r5
+  (it reads/writes offsets from r5 throughout). ''init'' is the correct prefix since this sets up the
+  object''s properties. The summary''s ''upward Z velocity'' is a plausible but unconfirmed directional
+  claim; the code only writes 0x20000 without specifying axis convention, though the callee''s description
+  of integrating Z supports vertical motion.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1D18 -> battle_initFlyAnimObject
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1D18

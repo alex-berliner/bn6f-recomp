@@ -1,0 +1,70 @@
+name: battleObject_thrownProjectileHitHandler
+address: '0x080D9ABA'
+kind: function
+status: probable
+summary: 'Collision handler for a thrown-projectile battle object: removes collision data, spawns hit
+  effect, optionally applies damage (CurAction 8), then dispatches by action or tears down—going to teardown
+  when applyDamage returns -1 or when the battle is still running, and to action dispatch only when the
+  battle is over and time is not stopped.'
+interface: (r5 = battle object) -> r0 clobbered; on finish sets oBattleObject state to CUR_STATE_DESTROY,
+  clears flag bit 1 and the collision region; otherwise continues via per-action dispatch or object_presentCollisionData.
+details: 'Standard on-hit sequence: tail-removes the object''s collision data and spawns the hit-effect
+  object at the collision point (jittered). It tests CollisionData_FlagsFromCollision against 0xf800000;
+  if any of those bits are set it skips damage and goes straight to teardown. If CurAction is 8 it calls
+  object_applyDamage(0) and aborts teardown if that returns -1. Otherwise it checks battle-over/time-stop:
+  while time is stopped it just refreshes collision state; if the battle is over it copies three words
+  from object+0x34 and spawns effect type 0x14 before teardown. Teardown clears object flags bit 1 (active-in-collision?),
+  clears the collision region and sets the state field to CUR_STATE_DESTROY. The action dispatch table
+  (0..2) continues the throw via battleObject_throwProjectile_80D9B2C or two further sub-handlers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl object_removeCollisionData / bl object_spawnCollisionEffect — the standard collide-with-something
+    pattern; ldr r1,[r0,#oCollisionData_FlagsFromCollision]; tst with 0xf800000 gates whether damage is
+    processed; CurAction==8 path calls object_applyDamage(0) before the dispatch; jump table off_80D9B20
+    indexed by oBattleObject_CurAction with battleObject_throwProjectile_80D9B2C as entry 0; exit path
+    clears oObjectHeader_Flags bit 1, calls object_clearCollisionRegion and stores CUR_STATE_DESTROY
+  refs:
+  - bn6f/asm/asm31.s:72203
+  - 0x080D9A74 sub_80D9A74
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D9ABA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The name and overall structure fit: object_removeCollisionData, object_spawnCollisionEffect, 0xf800000
+    flag check, CurAction==8 damage path, battle-over/time-stop branching, dispatch table for indices
+    0-2, and teardown (clears flag bit 1, object_clearCollisionRegion, sets CUR_STATE_DESTROY) all match.
+    However two conditionals are inverted: the code goes to teardown when object_applyDamage returns -1
+    (add r0,#1 / beq loc_80D9B08), not ''aborts teardown.'' Also battle_isBattleOver returns 0 when the
+    battle IS over, so bne loc_80D9AFC (the effect-0x14 spawn + teardown path) fires while the battle
+    is still RUNNING, not when it''s over as the proposal states.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- Exact meaning of the tested collision flag bits (0xf800000) — likely 'no damage/delete' classes, unconfirmed
+- Which thrown object(s) use this handler and what CurAction values 1 and 2 correspond to in sub_80D9C1C/sub_80D9C54
+- Meaning of effect type 0x14 spawned from object+0x34 when the battle ends
+- 'The name and overall structure fit: object_removeCollisionData, object_spawnCollisionEffect, 0xf800000
+  flag check, CurAction==8 damage path, battle-over/time-stop branching, dispatch table for indices 0-2,
+  and teardown (clears flag bit 1, object_clearCollisionRegion, sets CUR_STATE_DESTROY) all match. However
+  two conditionals are inverted: the code goes to teardown when object_applyDamage returns -1 (add r0,#1
+  / beq loc_80D9B08), not ''aborts teardown.'' Also battle_isBattleOver returns 0 when the battle IS over,
+  so bne loc_80D9AFC (the effect-0x14 spawn + teardown path) fires while the battle is still RUNNING,
+  not when it''s over as the proposal states.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9ABA -> battleObject_thrownProjectileHitHandler
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9ABA

@@ -1,0 +1,59 @@
+name: battle_markSuspendDuringFade
+address: '0x08126E88'
+kind: function
+status: probable
+summary: Battle-object command step that, if a screen fade is active, marks the object suspended (sets
+  [r5+1]=8 and ORs 1 into [r5+0xC]) and then queues the next command via battle_dispatchNextCmd_81272C4.
+interface: (r5 = battle object) -> void; calls battle_dispatchNextCmd_81272C4 to continue the object's
+  command queue.
+details: 'If a screen fade is currently active (IsScreenFadeActive sets ZF), the handler marks the object:
+  bit 0 is OR-ed into the halfword at [r5+0xC] and byte [r5+1] is set to 8, likely a wait/suspend state.
+  It then unconditionally falls into battle_dispatchNextCmd_81272C4, which queues the object''s next command
+  based on its state bytes. So this is a per-command handler in the battle-object command flow that pauses/flags
+  progress during fades — consistent with its use on beastsp (Beast Out) routes, which trigger a screen
+  fade.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive with beq skip: the flag-and-state write only happens while a fade is
+    running; strb r1 (8) into [r5,#1] sets an object state byte, orr bit 0 into [r5,#0xC] sets a status
+    flag; tail bl battle_dispatchNextCmd_81272C4: handler hands control back to the battle command dispatcher;
+    recorded-route usage is ''beastsp'', the Beast Out transformation sequence, which uses a screen fade'
+  refs:
+  - bn6f/asm/asm33.s:7806
+  - 0x081272C4 battle_dispatchNextCmd_81272C4
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08126E88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: IsScreenFadeActive branches to loc_8126E9C only when ZF is clear (i.e., NOT equal
+    — beq taken when no fade), so the body runs only during an active fade. It ORs 1 into [r5+0xC] (the
+    halfword flag), sets [r5+1]=8, then unconditionally calls battle_dispatchNextCmd_81272C4. However,
+    the name ''cmdWaitDuringScreenFade'' is slightly off — the function doesn''t wait; it flags the object
+    and immediately advances the queue, which is more accurately ''mark/suspend during fade''. Consider
+    a tighter name.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of state byte 8 at [r5+1] and bit 0 of [r5+0xC]
+- Which command ID / dispatch table entry selects this handler, and what the next dispatched command is
+  after it
+- 'The code matches: IsScreenFadeActive branches to loc_8126E9C only when ZF is clear (i.e., NOT equal
+  — beq taken when no fade), so the body runs only during an active fade. It ORs 1 into [r5+0xC] (the
+  halfword flag), sets [r5+1]=8, then unconditionally calls battle_dispatchNextCmd_81272C4. However, the
+  name ''cmdWaitDuringScreenFade'' is slightly off — the function doesn''t wait; it flags the object and
+  immediately advances the queue, which is more accurately ''mark/suspend during fade''. Consider a tighter
+  name.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8126E88 -> battle_markSuspendDuringFade
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126E88

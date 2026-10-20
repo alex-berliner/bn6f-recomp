@@ -1,0 +1,71 @@
+name: battle_getCursorBlinkIfTargetOnNegativeSide
+address: '0x08031C64'
+kind: function
+status: probable
+summary: Returns the battle textbox cursor blink state byte only when the entity's position relative to
+  a doubled target reference lies on the negative side of the half-plane test; returns 0 otherwise.
+interface: (r0 = entity/target descriptor for calcRelPosToTarget) -> r0 = blink-state byte if the point
+  test passes, else 0
+details: 'The function first calls battle_calcRelPosToTarget_803172E, which writes the entity''s position
+  (and next position) relative to a doubled target reference into a scratch buffer. It then loads constants
+  (r2=2, r3=2, r4=0, r5=0x10) and calls math_pointCrossHalfPlaneTest_8031594, an area/hit-test predicate
+  reading that scratch data; its 0/1 return is not discarded but chained: it is passed as the mode argument
+  to chatbox_getCursorBlinkState_8031B7C. Since getCursorBlinkState returns the blink byte only for mode
+  1 and 0 otherwise, the composite effect is: return the cursor blink state when the point lies on the
+  negative side of the test edge, otherwise return 0. This gating pattern suggests a battle UI check (e.g.
+  targeting-cursor/OK-cursor visibility tied to the target''s position). The final r0 is the blink-state
+  byte from the chatbox state struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: bl battle_calcRelPosToTarget_803172E first fills the shared scratch buffer used by the
+    follow-up test; asm: r2=2/r3=2/r4=0/r5=0x10 set up the edge/point arguments for math_pointCrossHalfPlaneTest_8031594;
+    asm: the cross-test''s r0 result flows directly into chatbox_getCursorBlinkState_8031B7C as its mode
+    argument; callee doc: getCursorBlinkState returns the blink byte only when passed mode 1, else 0 —
+    so the test result gates the return value; recorded routes (beastsp, fuzz, maps, menus2, story3) hit
+    it with no known callers, consistent with a battle-UI per-frame visibility check'
+  refs:
+  - bn6f/asm/asm03_0.s:25795
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  - 0x08031B7C chatbox_getCursorBlinkState_8031B7C
+  - 0x08031594 math_pointCrossHalfPlaneTest_8031594
+  reproduce: python3 tools/asmcat.py 0x08031C64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The call chain and byte-level behavior described are correct: battle_calcRelPosToTarget fills the
+    scratch, math_pointCrossHalfPlaneTest returns 0/1, and chatbox_getCursorBlinkState is called with
+    that result as the mode (so mode 1 => return blink byte, else => 0). However, the proposed name buries
+    the leading return-zero semantics and reads awkwardly; since the function ultimately gates the chatbox
+    cursor blink on a half-plane test, a name like battle_getCursorBlinkIfTargetOnNegativeSide reflects
+    both the gating and the return semantics more clearly.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+- fuzz
+- maps
+- menus2
+- story3
+open_questions:
+- No callers are known, so the meaning of r0 on entry (which entity/target struct) and what UI element
+  consumes the result is unconfirmed
+- The exact geometry of the half-plane test (what area the constants 2,2,0,0x10 define relative to the
+  scratch rel-position data) is inferred only from the callee summaries
+- 'The call chain and byte-level behavior described are correct: battle_calcRelPosToTarget fills the scratch,
+  math_pointCrossHalfPlaneTest returns 0/1, and chatbox_getCursorBlinkState is called with that result
+  as the mode (so mode 1 => return blink byte, else => 0). However, the proposed name buries the leading
+  return-zero semantics and reads awkwardly; since the function ultimately gates the chatbox cursor blink
+  on a half-plane test, a name like battle_getCursorBlinkIfTargetOnNegativeSide reflects both the gating
+  and the return semantics more clearly.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8031C64 -> battle_getCursorBlinkIfTargetOnNegativeSide
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8031C64

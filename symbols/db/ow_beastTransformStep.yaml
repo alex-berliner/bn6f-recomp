@@ -1,0 +1,72 @@
+name: ow_beastTransformStep
+address: '0x0809B054'
+kind: function
+status: probable
+summary: 'Overworld Beast transform step: from the player''s charge timer (>=60 → state 2 else 3) decides
+  the target beast form, early-outs with r0=1 if already there (state 2 also requires work+0x10 cleared),
+  otherwise plays the form''s sound (0xE1/0xE2), sets/clears the OW player Navi palette index (0 vs 4),
+  and SpawnOverworldMapObject(0x48020000) at the player''s position with object id 0xB, returning 0.'
+interface: (r0 unused, r5 = beast-out work struct, r10+0x3c = engine struct) -> r0 = 1 if already in the
+  requested state, 0 after spawning the transform object; flags clobbered
+details: 'Reads a halfword at [engine+0x18]->+0x24 (asr #16, likely a charge/meter timer) and writes state
+  2 to work+7 if it is >= 60, else state 3. If work+6 (current mode) already equals the target state it
+  returns 1 immediately. When the target is 2 (work+6==2 path) it additionally checks work+0x10 and bails
+  with 1 if set. On activation it builds arguments from the player struct at [engine+0x18]: r0=0xB (object/effect
+  id), r1=[+0x1e]-0x40, r2=[+0x22]+0x40, r3=[+0x26]+0x40 (or +0x50 in the ==2 path), plays sound 0xE1
+  or 0xE2 (one per mode), zeroes or sets the OW player navi palette index to 4 via the palette helpers,
+  then calls SpawnOverworldMapObject with r4=0x48020000 and returns 0. The two sound/palette variants
+  (0xE1 + palette 0 vs 0xE2 + palette 4) suggest two distinct beast forms/modes, e.g. normal Beast Out
+  versus Beast Over.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asr r1,r1,#0x16 vs cmp #0x3c picks state 2 or 3 stored to [r5+7] — mode selection from a scaled
+    timer; PlaySoundEffect 0xE1 / 0xE2 in the two activation branches, each paired with Zero/SetOWPlayerNaviPaletteIndex(4);
+    push {r0-r3} with r0=0xB and x/y from [r7+0x18]+0x1e/0x22/0x26 fed straight into SpawnOverworldMapObject;
+    early returns of 1 when [r5+6] already equals the chosen state or [r5+0x10] is set — re-entry guard
+    for a per-frame state step; recorded route is ''beastsp'' and callees are overworld player palette
+    + overworld object spawners'
+  refs:
+  - bn6f/asm/asm28_0.s:2963
+  - 0x080005CC PlaySoundEffect
+  - 0x0809E2FE SetOWPlayerNaviPaletteIndex
+  - 0x0809E2FC ZeroOWPlayerNaviPaletteIndex
+  reproduce: python3 tools/asmcat.py 0x0809B054
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The structure matches the proposal well: timer check at [engine+0x18]+0x24 >>16 vs 0x3c selects
+    r0=2 or r0=3 written to work+7, and the two branches (loc_809B078 for state 3 path with sound 0xE1
+    and ZeroOWPlayerNaviPaletteIndex; loc_809B098 for state 2 with extra work+0x10 check, sound 0xE2,
+    and SetOWPlayerNaviPaletteIndex(4)) map to two transform modes. However the proposal incorrectly swaps
+    which path uses which sound/palette and misstates r0 as unused (r5 is the work struct from caller,
+    r0 is computed in-function). Also the r3 offset is +0x50 only in the state==2 branch, not ''+0x40
+    or +0x50''. The name is reasonable but ''ow_beastOutTransformStep'' conflates beast out and beast
+    over; ''ow_beastTransformStep'' is more neutral.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the states 2 and 3 in work+6/+7 (Beast Over vs regular Beast Out, or which beast form)
+  and what sound IDs 0xE1/0xE2 are
+- What the timer at [engine+0x18]->+0x24 counts (charge/meter vs HP) and what struct r5 is, plus the meaning
+  of the SpawnOverworldMapObject argument block (r0=0xB id, r4=0x48020000)
+- 'The structure matches the proposal well: timer check at [engine+0x18]+0x24 >>16 vs 0x3c selects r0=2
+  or r0=3 written to work+7, and the two branches (loc_809B078 for state 3 path with sound 0xE1 and ZeroOWPlayerNaviPaletteIndex;
+  loc_809B098 for state 2 with extra work+0x10 check, sound 0xE2, and SetOWPlayerNaviPaletteIndex(4))
+  map to two transform modes. However the proposal incorrectly swaps which path uses which sound/palette
+  and misstates r0 as unused (r5 is the work struct from caller, r0 is computed in-function). Also the
+  r3 offset is +0x50 only in the state==2 branch, not ''+0x40 or +0x50''. The name is reasonable but ''ow_beastOutTransformStep''
+  conflates beast out and beast over; ''ow_beastTransformStep'' is more neutral.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809B054 -> ow_beastTransformStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809B054

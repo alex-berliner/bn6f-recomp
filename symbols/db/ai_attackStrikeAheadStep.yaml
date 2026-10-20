@@ -1,0 +1,72 @@
+name: ai_attackStrikeAheadStep
+address: '0x080FC700'
+kind: function
+status: probable
+summary: 'AI attack step: first call sets element/anim/sound/timer; on subsequent frames counts StepTimer
+  down, and at 0x14 calls sub_80FCE40 on the adjacent panel (PanelX+facing, PanelY, 4) and spawns an effect
+  object at that panel''s pixel coords; when timer hits 0 writes 0x14 to HitElement.'
+interface: (r0 = unused on entry; r5 = battle object, r7 = oAIAttackVars state) -> r0 = spawned effect
+  object pointer or garbage when early-returning; no meaningful flags
+details: 'On the first invocation (AttackElement == 0) it commits to the attack: AttackElement = 4, CurAnim
+  = 5, calls sub_80FCF90 with the ScratchVar, plays sound effect 0xB0, sets the object counter time to
+  12, and loads StepTimer with 30. On later invocations it counts StepTimer down; when it hits 0x14 it
+  calls sub_80FCE40 with (front-panel X = PanelX + facing, PanelY, 4), i.e. the panel four columns in
+  front of the object — likely spawning/arming the attack there. When the timer expires (<= 0) it writes
+  0x14 into HitElement, apparently reusing the field as a post-hit marker, and stops. At StepTimer ==
+  0x14 it also computes the same front panel''s pixel coordinates via object_getCoordinatesForPanels and
+  spawns a type-1/type-4 effect object (effect type 0) there; r4 = object_getFlip()*0x100 + 0x27 is computed
+  before that call but never passed, a leftover quirk. This is a per-frame state-machine step of the battle
+  AI attack handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80FC700 entry: tst AttackElement; sets element 4, CurAnim 5, PlaySoundEffect(0xB0), object_setCounterTime(0xC),
+    StepTimer = 0x1E; countdown at loc_80FC728: StepTimer-- ; branch at ==0x14 and <=0 only; at StepTimer==0x14:
+    object_getFrontDirection + PanelX/Y + 4 passed to sub_80FCE40 — attack lands 4 panels ahead; also
+    at 0x14: object_getCoordinatesForPanels(PanelfrontX, PanelY) then spawn_t1_0x0_EffectObject(x, y,
+    0x100000) spawns the impact effect; on expiry: mov r0,#0x14; strh r0,[r7,#oAIAttackVars_HitElement]
+    — field reuse as marker'
+  refs:
+  - bn6f/asm/asm31.s:144952
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080FC700
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The first-entry branch (lines 4–14) and countdown/timer logic (lines 15–23) match the proposal exactly.
+    However the proposal repeatedly says ''strikes the panel 4 ahead'' but the code computes PanelX +
+    facing (1 panel ahead) and passes 4 as the third argument to sub_80FCE40; the effect spawn at lines
+    24–35 also uses PanelX + facing with no +4 offset. The r4 = flip*0x100 + 0x27 is indeed computed but
+    never consumed—correctly noted as a quirk. No known callers, so ''per-frame state-machine step'' is
+    an inference, though reasonable given the AttackElement/StepTimer/HitElement state flow. The name
+    and core logic are fine; only the ''4 ahead'' characterization is wrong.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80FCF90 (called with ScratchVar) and sub_80FCE40 (called with target panel + 4) actually do
+  — likely attack/panel-effect spawners
+- Which enemy/attack this step belongs to (element 4, sound 0xB0, anim 5) and what HitElement = 0x14 means
+  downstream
+- Why r4 = flip*0x100 + 0x27 is computed but never passed to the spawn call
+- The first-entry branch (lines 4–14) and countdown/timer logic (lines 15–23) match the proposal exactly.
+  However the proposal repeatedly says 'strikes the panel 4 ahead' but the code computes PanelX + facing
+  (1 panel ahead) and passes 4 as the third argument to sub_80FCE40; the effect spawn at lines 24–35 also
+  uses PanelX + facing with no +4 offset. The r4 = flip*0x100 + 0x27 is indeed computed but never consumed—correctly
+  noted as a quirk. No known callers, so 'per-frame state-machine step' is an inference, though reasonable
+  given the AttackElement/StepTimer/HitElement state flow. The name and core logic are fine; only the
+  '4 ahead' characterization is wrong.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC700 -> ai_attackStrikeAheadStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC700

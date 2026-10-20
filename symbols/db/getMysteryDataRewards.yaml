@@ -1,0 +1,85 @@
+name: getMysteryDataRewards
+address: '0x0809FB4C'
+kind: function
+status: probable
+summary: 'Returns the two reward indices for a Mystery Data pickup: BLUE/PURPLE rotate the per-type counter
+  at sub_809FADE by +1 (clamped to len-1) when its event flag is clear, else reuse the stored counters;
+  UNK_2/UNK_4 return 0 (or len-1).'
+interface: (r0 = mystery data type id, r1 = reward table A (8-byte entries), r2 = reward table B, r3 =
+  event flag id) -> r0 = index into table A, r1 = index into table B; flags clobbered
+details: 'r0 selects between mystery data kinds: BLUE/PURPLE share one path, UNK_2/UNK_4 another. Table
+  entries are 8 bytes each and counted until a zero first byte, giving each list''s length. For blue/purple,
+  if the r3 event flag (TestEventFlag) is clear, it reads the type''s two-byte record from sub_809FADE''s
+  0x02004xxx buffer (offset relative to 0x1400), returns min(stored[0]+1, lenA-1) and min(stored[1]+1,
+  lenB-1) — a cycling/rotating pick bounded by table size; if the flag is set it returns stored[0] and
+  stored[1] unchanged, i.e. the previously determined pair. For the two unknown types the indices are
+  simply 0 (0xFF if a table is empty), ignoring the stored counters. So the function computes which two
+  table entries (likely item/chip + secondary reward) a given Mystery Data yields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#BLUE/PURPLE_MYSTERY_DATA branches: r0 is a mystery-data type, matching caller clearMysteryDataEventFlags_809FB04;
+    counting loops stride r6/r7 by 8 and stop at a zero first byte: null-terminated 8-byte reward tables;
+    bl TestEventFlag with r3, then flag-set path returns ldrb [r0]/[r0,#1] directly: flag locks in the
+    previously stored pair; bl sub_809FADE (halfword record at 0x1400-relative buffer) gives per-type
+    persistent counters used as stored+1 picks; unknown-type path hardcodes r6/r7 = 0, so only blue/purple
+    rotate through the tables'
+  refs:
+  - bn6f/asm/asm28_1.s:259
+  - 0x0809FB04 clearMysteryDataEventFlags_809FB04
+  - 0x0802F168 TestEventFlag
+  - 0x0809FADE sub_809FADE
+  reproduce: python3 tools/asmcat.py 0x0809FB4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary direction is right: BLUE/PURPLE branch counts table lengths, increments stored bytes
+    from sub_809FADE by +1 and clamps to len-1, while UNK_2/UNK_4 returns index 0 (or len-1) without consulting
+    sub_809FADE. But the ''cycling/rotating'' framing is misleading — sub_809FADE is a separate getter
+    per type that just supplies a stored byte; this function never cycles internally. The .eventFlagSet
+    path returns the raw stored bytes unchanged (ldrb r0/r1, no +1), so the proposal''s claim that ''stored[0]/stored[1]''
+    are returned is correct but ''previously determined pair'' is unverified. A simpler name fits better.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What the 8-byte table entries contain (chip id, item id, count?) and who owns the two tables passed
+  in r1/r2
+- Which game feature calls this with UNK_MYSTERY_DATA_2/4 and why they always pick entry 0
+- What the 0x1400-relative 0x02004xxx record is (save-field for mystery data state?) and how byte0/byte1
+  get randomized between calls
+- 'The summary direction is right: BLUE/PURPLE branch counts table lengths, increments stored bytes from
+  sub_809FADE by +1 and clamps to len-1, while UNK_2/UNK_4 returns index 0 (or len-1) without consulting
+  sub_809FADE. But the ''cycling/rotating'' framing is misleading — sub_809FADE is a separate getter per
+  type that just supplies a stored byte; this function never cycles internally. The .eventFlagSet path
+  returns the raw stored bytes unchanged (ldrb r0/r1, no +1), so the proposal''s claim that ''stored[0]/stored[1]''
+  are returned is correct but ''previously determined pair'' is unverified. A simpler name fits better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809FB4C -> getMysteryDataRewards
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809FB4C

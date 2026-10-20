@@ -1,0 +1,89 @@
+name: sprite_acquireObjPaletteSlot
+address: '0x03006108'
+kind: function
+status: probable
+summary: Returns the OBJ palette slot index for an object's 16-color palette (applying its color shader
+  first) by matching the byte_3001550 cache; if no match it falls back to sub_3006428 and either marks
+  the sprite dirty or installs the palette in a new slot.
+interface: (r5 = object sprite struct; r0 ignored) -> r0 = palette slot index (0xF if all 15 slots are
+  in use); sets object byte[3] |= 0x10 when a reload is needed
+details: 'From the object sprite struct it computes the address of a 32-byte (16x BGR555) palette: [r5+0x1c]->[+4]
+  + [r5+0x18] + 32*(byte[4]+byte[5]). If oObjectSprite_ColorShader is nonzero, it copies the palette to
+  iPallete3001750 and calls palette_addOrSubtractColor (r0 = shader value, r2 = bit15<<2 as add/subtract
+  mode, r6 = 0x20 length), then continues with the shaded copy (pop {r0}). It then linearly searches the
+  15-entry palette cache at byte_3001550 (0x20 bytes per entry, tracked by count dword_200F340) comparing
+  all 8 words per entry; an exact match returns that index immediately. Otherwise it calls sub_3006428;
+  if r3 != 0 it marks the object dirty (byte[3] |= 0x10, [r5+0x24] = 0) and returns, else it writes the
+  palette into the next free cache slot, increments the count, and returns the new index. When the cache
+  is full (count >= 0xF) it returns 0xF as a failure code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller 0x3006028 is sprite_ensureGfxResident, whose summary mentions OBJ VRAM tiles and 'palette
+    has an OBJ palette slot'; loc_3006128 copies 32 bytes to iPallete3001750 then calls palette_addOrSubtractColor
+    with mode from ColorShader bit 15; loc_3006154 compares each 0x20-byte entry of byte_3001550 against
+    the computed palette and returns the matching index r1; cmp r4,#0xF / bge loc_3006196 caps the cache
+    at 15 entries and returns 0xF when full; loc_300616A sets byte[3] |= 0x10 and [r5+0x24]=0 based on
+    sub_3006428's r3, then loc_3006184 stores the palette and bumps dword_200F340
+  refs:
+  - bn6f/asm/asm38.s:822
+  - 0x03006028 sprite_ensureGfxResident
+  - 0x03005EF0 palette_addOrSubtractColor
+  - 0x03006428 sub_3006428
+  reproduce: python3 tools/asmcat.py 0x03006108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal overall: it locates the 16-color BGR555 palette via [r5+0x1c][4]+[r5+0x18]+32*(byte[4]+byte[5]),
+    conditionally applies the color shader via palette_addOrSubtractColor into iPallete3001750, linearly
+    searches the byte_3001550 cache (dword_200F340 entries) and either returns the matched slot, marks
+    dirty via sub_3006428, or writes a new entry. However the dirty path does NOT write a new palette
+    - it returns with r0 still holding the shader-processed pointer (which is iPallete3001750), not the
+    slot index; this is a bug in the proposal''s summary. The name is fine but ''sprite_acquireObjPaletteSlot''
+    slightly oversells the cache-miss path which also depends on sub_3006428.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- sub_3006428 is unknown — it presumably decides whether the chosen slot still needs a VRAM palette upload
+  (r3 semantics unclear)
+- exact meaning of object byte[3] bit 0x10 and field [r5+0x24] set in the reload path
+- how the returned slot index is consumed by sprite_ensureGfxResident (which object field stores it)
+- 'The code matches the proposal overall: it locates the 16-color BGR555 palette via [r5+0x1c][4]+[r5+0x18]+32*(byte[4]+byte[5]),
+  conditionally applies the color shader via palette_addOrSubtractColor into iPallete3001750, linearly
+  searches the byte_3001550 cache (dword_200F340 entries) and either returns the matched slot, marks dirty
+  via sub_3006428, or writes a new entry. However the dirty path does NOT write a new palette - it returns
+  with r0 still holding the shader-processed pointer (which is iPallete3001750), not the slot index; this
+  is a bug in the proposal''s summary. The name is fine but ''sprite_acquireObjPaletteSlot'' slightly
+  oversells the cache-miss path which also depends on sub_3006428.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3006108 -> sprite_acquireObjPaletteSlot
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006108

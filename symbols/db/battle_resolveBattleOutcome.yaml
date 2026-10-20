@@ -1,0 +1,67 @@
+name: battle_resolveBattleOutcome
+address: '0x08009E56'
+kind: function
+status: probable
+summary: Battle-state handler that, after the hand-validation helper returns a nonzero outcome code (1/2/7),
+  records that result and busting-level category, writes BattlePhase to eStruct fields, gates phase-2
+  completion on battle-effect bits 0x8/0x2/0x400, then sets Index_01 (0x14 or 0) and clears StatePhaseAndInitFlag
+  to advance the state machine.
+interface: (r5 = current battle state object) -> void; sets battle state fields BattlePhase->result byte,
+  BustingLevelCategory, Index_01, StatePhaseAndInitFlag
+details: 'Runs the per-frame init-once pattern (SubPhaseInitFlag guards sub_8009140), then calls the hand-validation
+  helper; when it returns nonzero the battle is being resolved. It dispatches on oBattleState_BattlePhase:
+  for phases 1 and 2 it stores that value as the battle result via setTwoStructs_800A840, computes the
+  busting-level category from battle effects into oBattleState_BustingLevelCategory, and writes player-eStruct
+  fields Unk03 (battle phase) and Unk00. In the phase-2 branch it additionally reads GetBattleEffects
+  and only proceeds when bit 8 and bit 2 are clear, unless bit 0x400 is set and sub_800AF50 returns nonzero
+  — gating the end on special battle-effect conditions. Phase 7 just stores result 7. Finally Index_01
+  is set to 0x14 (or r2=0 in the gated path) and StatePhaseAndInitFlag is cleared to move to the next
+  battle sub-state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: dispatch on ldrb [r5,#oBattleState_BattlePhase] to three branches (1, 2, 7); each branch calls
+    setTwoStructs_800A840 with the phase value — known to store the battle-result byte; battle_bustingLevelCategoryForEffect_800AF84
+    result stored to [r5,#oBattleState_BustingLevelCategory]; phase-2 branch tst's GetBattleEffects against
+    8, 2 and 0x400 (off_8009FB8) before sub_800AF50; tail sets [r5,#oBattleState_Index_01]=r2 (0x14 or
+    0) and strh 0 to StatePhaseAndInitFlag
+  refs:
+  - bn6f/asm/asm00_1.s:15210
+  - 0x0802D246 GetBattleEffects
+  - 0x0800AF84 battle_bustingLevelCategoryForEffect_800AF84
+  - 0x0800B6B6 eStruct200A008_setUnk00
+  reproduce: python3 tools/asmcat.py 0x08009E56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal claims dispatch is on oBattleState_BattlePhase, but after push/pop of the hand-validation
+    return value, cmp r0,#1/2/7 branches on someChipHandValidationHappensHere''s result (the outcome code
+    1=win, 2=loss, 7=other), while BattlePhase is only read to write eStruct via setUnk03. The bit-condition
+    description is inverted: code branches to ED8 (skip gating) when bits 0x8 and 0x2 are CLEAR (beq after
+    tst), and only enters the 0x400/sub_800AF50 gate when both are SET. Name is acceptable but summary
+    should say ''dispatches on the hand-validation outcome code'' rather than ''BattlePhase''.; run wf
+    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of what someChipHandValidationHappensHere_800B090 returns (battle-finished flag?)
+- what sub_800AF50 tests and which battle effects bits 8/2/0x400 represent
+- whether phases 1/2/7 map to win/loss/draw exactly
+- 'The proposal claims dispatch is on oBattleState_BattlePhase, but after push/pop of the hand-validation
+  return value, cmp r0,#1/2/7 branches on someChipHandValidationHappensHere''s result (the outcome code
+  1=win, 2=loss, 7=other), while BattlePhase is only read to write eStruct via setUnk03. The bit-condition
+  description is inverted: code branches to ED8 (skip gating) when bits 0x8 and 0x2 are CLEAR (beq after
+  tst), and only enters the 0x400/sub_800AF50 gate when both are SET. Name is acceptable but summary should
+  say ''dispatches on the hand-validation outcome code'' rather than ''BattlePhase''.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009E56 -> battle_resolveBattleOutcome
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009E56

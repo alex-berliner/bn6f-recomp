@@ -2385,10 +2385,10 @@ static void init_navi_stats_battle7(u32 navi_stats, u32 battle_buf) {
     GUEST_CALL(sub_8013554);
 }
 
-/* register form: calls sub_80135E8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_initChipSelectState outside this file, which has no typed C interface yet */
 static void init_navi_stats_battle9(u32 navi_stats, u32 battle_buf) {
     R0 = navi_stats; R4 = battle_buf;
-    GUEST_CALL(sub_80135E8);
+    GUEST_CALL(battle_initChipSelectState);
 }
 
 /* register form: calls battle_testFlag0x40_800A8F8 outside this file, which has no typed C interface yet */

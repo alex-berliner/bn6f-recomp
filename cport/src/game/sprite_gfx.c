@@ -1,6 +1,6 @@
 /*
  * sprite_gfx.c — per-frame sprite placement and graphics residency
- * (sprite_projectAndCull, sub_300631C, sub_300638C, sprite_ensureGfxResident, sub_3006108 and their
+ * (sprite_projectAndCull, sub_300631C, sub_300638C, sprite_ensureGfxResident, sprite_acquireObjPaletteSlot and their
  * helpers in bn6f asm38.s; IWRAM routines in the original).
  *
  * For every visible object the overworld calls, in order:
@@ -210,7 +210,7 @@ COLD_PATH static u32 tinted_palette(u32 pal, u32 effect) {
     return PALETTE_SCRATCH;
 }
 
-/* OBJ palette slot for the sprite's palette (sub_3006108): an identical
+/* OBJ palette slot for the sprite's palette (sprite_acquireObjPaletteSlot): an identical
  * palette already loaded is shared, else the next free slot is taken. With
  * every slot taken, the sprite is skipped this frame (and, as in the
  * original, the palette's address comes back instead of a slot). */

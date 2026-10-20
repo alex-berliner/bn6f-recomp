@@ -1,0 +1,75 @@
+name: ai_pickForwardRowPanel
+address: '0x0811152C'
+kind: function
+status: probable
+summary: 'Battle AI move picker: prefers advancing one row toward the enemy (Y+1 from row 1, Y-1 or Y+1
+  from row 2, Y-1 from row 3) by calling battle_pickRandomRowObjectFields and GetRandomRelativePanelFiltered;
+  falls back to a horizontal sidestep via panelFlagCheck for rows 1/3, or to a vertical one-row shuffle
+  for row 2.'
+interface: (r5 = battle object; reads oBattleObject_PanelX/PanelY/Alliance) -> r0 = result/panel-or-0
+  from the pickers (0 = no panel found); picks an AI move target via callee side effects
+details: Dispatches on the object's PanelY (1/2/3, i.e. which row it stands on). For each row it first
+  calls battle_pickRandomRowObjectFields_810971A on the adjacent row toward the other side (Y+1 from row
+  1, Y+1 then Y-1 from row 2, Y-1 from row 3); a nonzero return means that row holds objects, so it retries
+  the other direction. If a candidate row is clear, it loads alliance-dependent panel parameters (byte_8111740
+  table via GetAllianceDependentPanelParamArgs) and calls GetRandomRelativePanelFiltered with r4=1 and
+  r6=Alliance to pick a random reachable panel there. When no forward move works, it calls panelFlagCheck_8015D80
+  with a relative-offset list byte_8111640 = (-1,0),(1,0),0x7F — a horizontal sidestep in the current
+  row. The byte_8111630 entry of the off_8111624 list table (vertical offsets) is loaded into r4 in some
+  paths but never dereferenced here, so it is dead/local-unused. Result handling is entirely inside the
+  picker callees, which likely write the chosen target panel into the AI/object state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'locret dispatch: ldrb r0,[r5,#oBattleObject_PanelY]; cmp #1/#2/#3 branches to three symmetric
+    row cases; each case calls battle_pickRandomRowObjectFields_810971A with PanelY+1 or PanelY-1 to test
+    occupancy of the adjacent row; clear-row path: GetAllianceDependentPanelParamArgs(...,byte_8111740)
+    then GetRandomRelativePanelFiltered with r4=1, r6=[r5,#oBattleObject_Alliance]; all fallback paths
+    (loc_8111564, loc_81115D0, loc_8111608) call panelFlagCheck_8015D80 with off_8111624[1] = byte_8111640
+    = (-1,0),(1,0),0x7F horizontal offsets; recorded route ''battlesweep'' and caller sub_81114C8 fit
+    an AI movement chooser using the ai panelFlagCheck picker'
+  refs:
+  - bn6f/asm/asm32.s:6980
+  - 0x081114C8 sub_81114C8
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  reproduce: python3 tools/asmcat.py 0x0811152C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal in structure: row 1 tries Y+1 forward then sidestep; row 3 tries Y-1
+    forward then sidestep; row 2 tries Y-1 then Y+1, then on total failure uses the vertical-offset list
+    (off_8111624[0] = byte_8111630 = (0,-1),(0,1)). However the proposal incorrectly claims byte_8111640
+    is the sidestep list for rows 1/3. The assembly shows rows 1 and 3 use off_8111624[4] = byte_8111640
+    = (-1,0),(1,0) which is the sidestep — actually that part is correct — but the proposal also says
+    byte_8111630 is loaded and unused; in reality byte_8111630 is the vertical offset list used in row
+    2''s fallback (loc_8111578 path). The name ai_pickForwardRowPanel fits well.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact direction semantics of PanelY 1/2/3 relative to the two field sides (which row is 'forward' per
+  alliance)
+- How panelFlagCheck_8015D80 and GetRandomRelativePanelFiltered record the chosen panel into the AI/object
+  structure
+- What the caller sub_81114C8 is (per-enemy AI step?) and why byte_8111630 exists in the list table
+- 'The code matches the proposal in structure: row 1 tries Y+1 forward then sidestep; row 3 tries Y-1
+  forward then sidestep; row 2 tries Y-1 then Y+1, then on total failure uses the vertical-offset list
+  (off_8111624[0] = byte_8111630 = (0,-1),(0,1)). However the proposal incorrectly claims byte_8111640
+  is the sidestep list for rows 1/3. The assembly shows rows 1 and 3 use off_8111624[4] = byte_8111640
+  = (-1,0),(1,0) which is the sidestep — actually that part is correct — but the proposal also says byte_8111630
+  is loaded and unused; in reality byte_8111630 is the vertical offset list used in row 2''s fallback
+  (loc_8111578 path). The name ai_pickForwardRowPanel fits well.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811152C -> ai_pickForwardRowPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811152C

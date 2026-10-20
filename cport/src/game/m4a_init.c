@@ -21,7 +21,7 @@
 
 Next m4aSoundInit(void) {
     u32 ret = LR;
-    R0 = SOUND_INFO;   GUEST_CALL(sub_814ECC8);    /* SoundInit */
+    R0 = SOUND_INFO;   GUEST_CALL(soundInit);    /* SoundInit */
     R0 = CGB_CHANNELS; GUEST_CALL(cgbSoundInit_814EB84);    /* CGB channel init */
     R0 = SOUND_MODE;   GUEST_CALL(sound_setM4AControl_814EE2C);    /* SoundMode */
     for (u32 i = 0; i < MPLAY_COUNT; i++) {

@@ -162,10 +162,10 @@ static void call_onUpdateInRealWorld_8033A96(u32 self) {
     GUEST_CALL(onUpdateInRealWorld_8033A96);
 }
 
-/* register form: calls sub_8033AB0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runStartAnimFrame outside this file, which has no typed C interface yet */
 static void call_sub_8033AB0(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033AB0);
+    GUEST_CALL(battle_runStartAnimFrame);
 }
 
 /* register form: calls battle_resetState_8033AC4 outside this file, which has no typed C interface yet */

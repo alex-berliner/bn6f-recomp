@@ -1,0 +1,65 @@
+name: ai_attackMoveToChosenPanel
+address: '0x081035D8'
+kind: function
+status: probable
+summary: 'AI attack step: validates movement, calls the panel-choose callback (params in r2/r3, returns
+  x in r0 y in r1), reserves target and own panels, sets CANNOT_SLIDE/anim4/timer3/element4, or aborts
+  via exitAttackState.'
+interface: (r7 = AI attack vars, r5 = battle object; callback in oAIAttackVars_PanelChooseCallback receives
+  dword_810362C params and returns panel x in r0, y in r1) -> r0 = HasMoved (1 moved, 0 not); flags from
+  callees
+details: If object_canMove fails, or the callback returns 0 in r0, it sets oAIAttackVars_HasMoved = 0
+  and falls back via object_exitAttackState. Otherwise it stores the callback-returned panel x/y into
+  TargetPanelX/Y and calls object_reservePanel to claim that panel. It then copies the object's current
+  oBattleObject_PanelX/Y into its FuturePanelX/Y and calls object_reservePanel again (claiming the object's
+  own panel), sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, starts animation 4 (oBattleObject_CurAnim),
+  sets oAIAttackVars_StepTimer = 3 and HasMoved = 1, and writes HitElement = 4. off_8103628 points to
+  a two-word parameter block (0x10 and 0x0F880080) passed through r1/r2 to the panel-choose callback,
+  so this is a generic 'move to a chosen panel' attack/state driver shared by several enemies.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_canMove + beq loc_810361E gates the whole action on the object being free to move;
+    ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; bx r1; strb r0/r1 to TargetPanelX/Y shows a pluggable
+    panel picker returning coords; two object_reservePanel calls bracketed by FuturePanelX/Y copies show
+    it reserving destination and current panels; OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1 plus anim
+    4 and StepTimer=3 start a slide/move animation state; failure path writes HasMoved=0 and calls object_exitAttackState,
+    matching an attack-step state machine
+  refs:
+  - bn6f/asm/asm31.s:159405
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x081035D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal says the 0x10 and 0xF880080 params are passed in r1/r2, but in the asm r2=[r1] and
+    r3=[r1,#4] load them, then r1 is overwritten with the callback pointer before bx r1; so they arrive
+    in r2/r3. The callback''s own r1 is the callback address itself, not a param. The name and overall
+    flow (canMove check, callback, reserve, setFlag, anim/timer/element, abort→exitAttackState) match
+    the code exactly. No callers are recorded, so ''shared by several enemies'' is speculative.; run wf
+    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/route invokes this exact callback parameter block (0x10, 0x0F880080) and what panel-selection
+  routine sits behind PanelChooseCallback
+- what animation 4 and HitElement value 4 represent in the shared AI attack state machine
+- The proposal says the 0x10 and 0xF880080 params are passed in r1/r2, but in the asm r2=[r1] and r3=[r1,#4]
+  load them, then r1 is overwritten with the callback pointer before bx r1; so they arrive in r2/r3. The
+  callback's own r1 is the callback address itself, not a param. The name and overall flow (canMove check,
+  callback, reserve, setFlag, anim/timer/element, abort→exitAttackState) match the code exactly. No callers
+  are recorded, so 'shared by several enemies' is speculative.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81035D8 -> ai_attackMoveToChosenPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81035D8

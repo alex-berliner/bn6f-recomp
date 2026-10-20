@@ -1,0 +1,65 @@
+name: sprite_applyAnimRequest
+address: '0x08118A88'
+kind: function
+status: probable
+summary: Per-frame hook that marks the object animating, reads a queued animation index from byte 0xD,
+  and if non-zero selects that animation, reloads its frame data, and updates the sprite.
+interface: (r0 = unused, r5 = sprite/object struct base) -> r0 = clobbered by calls; no meaningful return
+details: Stores 1 into byte 0 of the struct at r5 (likely an 'animating/active' flag) and clears byte
+  0xC, a frame/animation counter. It then compares byte 0xC against byte 0xD; only if they differ does
+  it call sprite_setAnimation (r0 = the cleared counter value, r1 = byte 0xD) and sprite_loadAnimationData,
+  i.e. re-select the animation and reload its frame data. Finally it always calls sprite_update once so
+  the sprite advances/draws this frame. The set-then-immediately-read of 0xC means the restart branch
+  is taken whenever byte 0xD is nonzero, so the animation is (re)issued every call — a looping/one-shot
+  replay driver.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8118A88+2..6: strb 1 to [r5], strb 0 to [r5,#0xc] — sets an active flag and zeroes the
+    counter; ldrb [r5,#0xc]/[r5,#0xd]; cmp; beq skip — restart only gated on the two bytes differing;
+    bl sprite_setAnimation then bl sprite_loadAnimationData — re-select animation and reload its data;
+    bl sprite_update before pop — always advances the sprite this frame; callees sprite_setAnimation/sprite_loadAnimationData/sprite_update
+    all operate on the object''s sprite slot, so r5 is that struct'
+  refs:
+  - bn6f/asm/asm32.s:21506
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x08118A88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads byte 0xC after clearing it (always 0) and compares against byte 0xD, so the branch
+    only animates when byte 0xD is nonzero — but since it sets an ''active'' flag via strb r1 to offset
+    0 (with r1=#1) and unconditionally clears the counter, calling it every tick effectively re-applies
+    a stored animation request stored at offset 0xD. The proposal''s ''set-then-immediately-read 0xC''
+    is true but its sprite_setAnimation argument is wrong: it passes r0 (the cleared 0 from offset 0xC)
+    and r1 (byte 0xD), but sprite_setAnimation takes one argument — the issue is the animation index is
+    stored elsewhere. A better name reflects this ''apply/refresh animation request'' behavior.; run wf
+    investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No callers are known, so the exact identity of the r5 struct (sprite slot vs enclosing object) and the
+  meaning of byte 0xD (target frame/total frames vs animation id) are unconfirmed
+- sprite_setAnimation's second argument (r1 = [r5+0xD]) is undocumented in the known summary; a caller
+  or that callee's body would clarify
+- 'The function reads byte 0xC after clearing it (always 0) and compares against byte 0xD, so the branch
+  only animates when byte 0xD is nonzero — but since it sets an ''active'' flag via strb r1 to offset
+  0 (with r1=#1) and unconditionally clears the counter, calling it every tick effectively re-applies
+  a stored animation request stored at offset 0xD. The proposal''s ''set-then-immediately-read 0xC'' is
+  true but its sprite_setAnimation argument is wrong: it passes r0 (the cleared 0 from offset 0xC) and
+  r1 (byte 0xD), but sprite_setAnimation takes one argument — the issue is the animation index is stored
+  elsewhere. A better name reflects this ''apply/refresh animation request'' behavior.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8118A88 -> sprite_applyAnimRequest
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118A88

@@ -1,0 +1,67 @@
+name: ai_checkFrontPanelSide
+address: '0x08111F70'
+kind: function
+status: probable
+summary: AI helper that checks whether the panel directly in front of the r5 battle object has bit 0x20
+  of its panel status matching the object's alliance*0x20; returns 1 when it does not match and 0 when
+  it does.
+interface: (r5 = battle object) -> r0 = 0 if front panel's bit 0x20 == Alliance*0x20 else 1
+details: Takes the object from r5 (no argument setup before the calls, so the caller must have the object
+  in r5 or object_getFrontDirection reads it globally). It calls object_getFrontDirection to get the +1/-1
+  facing multiplier, adds it to oBattleObject_PanelX while keeping oBattleObject_PanelY, and calls object_getPanelParameters
+  on that coordinate. It masks the panel status word with 0x20 and compares the result to oBattleObject_Alliance
+  * 0x20, so bit 0x20 of the panel status appears to encode which side the panel belongs to. Returns 1
+  by default and forces 0 when the panel flag equals the alliance-derived value, i.e. the panel matches
+  the object's own side. The 'panel in front' is the front-direction step, not the object's own tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection then add r0, r0, [r5,#PanelX] computes the adjacent front panel
+    coordinates (sub_8111F70+2..+A); bl object_getPanelParameters with PanelX+dir / PanelY fetches the
+    panel status word (sub_8111F70+0xC); mov r1,#0x20 / and r1,r0 then mul r2,Alliance,0x20 / cmp r1,r2
+    shows the comparison of panel bit 0x20 against alliance*0x20; r0 initialized to 1 and cleared only
+    on equality gives the inverted (mismatch=1) return convention; called from ai_setupAttackPlan, whose
+    summary says it picks panel-targeted attacks, fitting a target-side legality check
+  refs:
+  - bn6f/asm/asm32.s:8284
+  - 0x08111E14 ai_setupAttackPlan
+  - 0x08111F94 sub_8111F94
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08111F70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The interface summary says r0=0 on match and 1 on mismatch, but the code does the opposite: `mov
+    r0,#1` first and `mov r0,#0` only on the `beq` branch (the proposal states ''Returns 1 by default
+    and forces 0 when the panel flag equals the alliance-derived value'', which actually matches). So
+    the proposal''s own statement is self-consistent but the interface line contradicts the body. The
+    naming is fine and the caller ai_setupAttackPlan at 0x08111E14 fits an AI check. Fix the interface
+    line to reflect 0 on match.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of bit 0x20 in the panel status word (side ownership vs. a terrain flag) is inferred,
+  not documented
+- Whether the object pointer is expected in r5 or r0 is unclear from the assembly alone
+- Caller sub_8111F94's purpose is unknown, so the return polarity's intended boolean reading (mismatch=1)
+  is unconfirmed
+- 'The interface summary says r0=0 on match and 1 on mismatch, but the code does the opposite: `mov r0,#1`
+  first and `mov r0,#0` only on the `beq` branch (the proposal states ''Returns 1 by default and forces
+  0 when the panel flag equals the alliance-derived value'', which actually matches). So the proposal''s
+  own statement is self-consistent but the interface line contradicts the body. The naming is fine and
+  the caller ai_setupAttackPlan at 0x08111E14 fits an AI check. Fix the interface line to reflect 0 on
+  match.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111F70 -> ai_checkFrontPanelSide
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111F70

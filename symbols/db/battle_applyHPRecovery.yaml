@@ -1,0 +1,67 @@
+name: battle_applyHPRecovery
+address: '0x0800E360'
+kind: function
+status: probable
+summary: 'Battle HP recovery: if r1==0, adds r0 HP via object_addHP and spawns a t1 effect using [r5+0x34..0x40];
+  else looks up the opposite side in the table at 0x2036720 and, if its first byte is 0xBD, runs a special
+  panel path (sub_80E37D2 on PanelX/Y, battle_queueEffectRequest with id = r6+(0x1E<<16), sub_800ABC6,
+  sub_802CEA6) returning 1; otherwise falls through to the normal recovery. Returns 0 on the normal path,
+  1 on the 0xBD path.'
+interface: (r0 = value passed through to object_addHP / scratch, r1 = mode flag) -> r0 = 0 on the normal
+  path, 1 on the 0xBD path; r5 holds the acting battle object (Alliance/PanelX/PanelY/+0x34 fields read)
+details: 'The routine operates on an acting object kept in r5. If r1 is nonzero it XORs the object''s
+  Alliance with 1 (opposing side), looks up that side''s 16-byte record in the table at 0x2036720, and
+  if the first field is 0xBD takes a special path: it calls sub_80E37D2 with the object''s PanelX/PanelY,
+  then battle_queueEffectRequest for the opposite alliance with id 1 and the returned value as parameter,
+  plus sub_800ABC6(x,y) and sub_802CEA6(alliance^1), returning 1. Otherwise (or when r1 == 0) it calls
+  object_addHP, then spawns a type-1 effect object via spawn_t1_0x0_EffectObject copying three parameter
+  words from [r5+0x34..0x3F] — consistent with the floating ''+N'' heal-number effect — and returns 0.
+  The add r6,r6,r2 (0x1E<<16) before sub_80E37D2 is odd and may be an argument or dead code. The 0xBD
+  value and the meaning of the side-indexed table are not resolved from this call site.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_800E378: ''mov r0, r6; bl object_addHP'' followed by spawn_t1_0x0_EffectObject with {r1-r3}
+    loaded from [r5+0x34] — heal plus recovery display effect; ''ldrb r0,[r5,#oBattleObject_Alliance];
+    eor r0,#1; bl getTable2036720EntryFields_802CE78; cmp r0,#0xbd; beq loc_800E38E'' gates the alternate
+    path; loc_800E38E builds a request from PanelX/PanelY via sub_80E37D2 and ''bl battle_queueEffectRequest''
+    with r1=1 for alliance^1; Return value is set to 0 on the heal path and ''mov r0, #1'' only on the
+    0xBD path'
+  refs:
+  - bn6f/asm/object.s:4996
+  - 0x0800BF16 battle_queueEffectRequest
+  - 0x0802CE78 getTable2036720EntryFields_802CE78
+  - 0x0800E2EC object_addHP
+  reproduce: python3 tools/asmcat.py 0x0800E360
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary describes object_addHP/special panel effect correctly, but the proposal says r1 is a
+    ''mode flag'' that XORs the alliance; actually tst r1,r1 checks whether to skip the alliance-block
+    entirely, not toggle it. Also ''r0 = value passed through'' is wrong: the ''add r6,r6,r2 (0x1E<<16)''
+    near sub_80E37D2 adjusts r6 (a parameter later passed to battle_queueEffectRequest via the queued
+    id), not an argument to sub_80E37D2. The name and intent are right but the description has those errors.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What table 0x2036720 holds and what entry 0xBD represents (would identify the special-case behavior)
+- Whether r0 is the heal amount or the target object pointer (depends on object_addHP's exact signature)
+- Purpose of sub_80E37D2, sub_800ABC6 and sub_802CEA6 (panel-coordinate helpers?)
+- 'The summary describes object_addHP/special panel effect correctly, but the proposal says r1 is a ''mode
+  flag'' that XORs the alliance; actually tst r1,r1 checks whether to skip the alliance-block entirely,
+  not toggle it. Also ''r0 = value passed through'' is wrong: the ''add r6,r6,r2 (0x1E<<16)'' near sub_80E37D2
+  adjusts r6 (a parameter later passed to battle_queueEffectRequest via the queued id), not an argument
+  to sub_80E37D2. The name and intent are right but the description has those errors.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800E360 -> battle_applyHPRecovery
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800E360

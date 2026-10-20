@@ -1,0 +1,65 @@
+name: battle_pickRandomPanelIgnoringColumn
+address: '0x0810FFC4'
+kind: function
+status: probable
+summary: Picks a random panel from the full battle grid (ignoring one column derived from the closest
+  enemy's field-0x13 panel-param entry) and returns its column and row.
+interface: (r5 = BattleObject, stack buffer at sp) -> r0 = column (low 3 bits), r1 = row (byte>>4) of
+  a randomly chosen enemy-side panel; r0 = 0 if no enemy object or no qualifying panels
+details: Reads the BattleObject's alliance field, XORs it with 1 to target the opposing team, and finds
+  the closest enemy BattleObject via battleObject_findClosestEnemyBattleObject_80103F8. From that enemy
+  it loads field 0x13 and looks up an entry in table byte_81100A0 via GetAllianceDependentPanelParamArgs,
+  which yields the parameter that object_getPanelsIgnoreColumnFiltered uses as its ignore-column filter;
+  the matching panels (packed as col | row<<4) are written to a buffer on the stack. It then draws GetPositiveSignedRNG,
+  uses SWI 6 (Div) to reduce it modulo the panel count, and indexes the buffer with the remainder. The
+  chosen byte is split into row (r1 = byte>>4) and column (r0 = low bits). On either failure path (no
+  enemy, zero panels) it returns early with r0 = 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1 then bl battleObject_findClosestEnemyBattleObject_80103F8
+    — targets the enemy team's side; ldrb r0,[r0,#0x13]; ldr r3,=byte_81100A0; bl GetAllianceDependentPanelParamArgs
+    — fetches the panel-param entry that supplies the filter; bl object_getPanelsIgnoreColumnFiltered
+    followed by tst r0/beq — fills sp buffer with (col|row<<4) panels and bails if none; bl GetPositiveSignedRNG
+    with panel count in r1, then svc 6 (Div) — remainder r1 is a random index into the panel buffer; lsr
+    r1,r0,#4 / lsl r0,#0x1d; lsr r0,#0x1d — splits the packed byte into row and column return values
+  refs:
+  - bn6f/asm/asm32.s:4483
+  - 0x0810FF68 sub_810FF68
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  reproduce: python3 tools/asmcat.py 0x0810FFC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches the proposal almost exactly: alliance XOR 1, findClosestEnemy, load field 0x13,
+    GetAllianceDependentPanelParamArgs with byte_81100A0, buffer at sp via mov r7/sp, object_getPanelsIgnoreColumnFiltered,
+    RNG+SWI Div modulo, byte>>4 for row, low-3-bit mask for column, r0=0 on both early exits. However,
+    object_getPanelsIgnoreColumnFiltered scans the full grid (rows 1-3, cols 1-6), not specifically the
+    ''closest enemy''s side''—the enemy is only used to derive the ignore-column parameter via its field
+    0x13. The summary''s phrase ''on the closest enemy''s side'' mischaracterizes the scan scope.; run
+    wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What panel effect or game mechanic table byte_81100A0 belongs to (which column gets ignored and why)
+- What caller sub_810FF68 does with the returned random panel (attack/teleport/panel-effect target?)
+- 'The asm matches the proposal almost exactly: alliance XOR 1, findClosestEnemy, load field 0x13, GetAllianceDependentPanelParamArgs
+  with byte_81100A0, buffer at sp via mov r7/sp, object_getPanelsIgnoreColumnFiltered, RNG+SWI Div modulo,
+  byte>>4 for row, low-3-bit mask for column, r0=0 on both early exits. However, object_getPanelsIgnoreColumnFiltered
+  scans the full grid (rows 1-3, cols 1-6), not specifically the ''closest enemy''s side''—the enemy is
+  only used to derive the ignore-column parameter via its field 0x13. The summary''s phrase ''on the closest
+  enemy''s side'' mischaracterizes the scan scope.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810FFC4 -> battle_pickRandomPanelIgnoringColumn
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FFC4

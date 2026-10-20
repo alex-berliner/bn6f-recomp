@@ -1,0 +1,63 @@
+name: battle_spawnObjectType93
+address: '0x080D7A78'
+kind: function
+status: probable
+summary: Wrapper that spawns a type-0x93 battle object via object_spawnType3 (passing through r1-r4 from
+  caller), copies r6 and the alliance/flip halfword from the caller's source object into the spawned object,
+  and registers it as a field battle object with setFieldBattleObject_800F614.
+interface: (r0 = value stored into the new object's DamageAndStaminaDamageCounterDisabler field; r1-r4
+  = pass-through spawn args) -> r0 = spawned object pointer, or 0 if spawn failed
+details: The wrapper saves the caller's r0 on the stack, sets the spawn type to 0x93 and calls object_spawnType3,
+  which consumes r1-r4 unchanged from the caller. If the spawn fails (r0 == 0, checked via the flags from
+  the call) it just returns. On success it writes the saved caller value into the new object's DamageAndStaminaDamageCounterDisabler
+  field, copies a halfword (AllianceAndDirectionFlip) from the caller-supplied source object into the
+  new object, and calls setFieldBattleObject_800F614 with r2=1 to finalize/register the object. Being
+  on the recorded 'chips' route with a single nearby caller, it is a shared chip-effect spawn helper rather
+  than a per-chip routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x93; bl object_spawnType3 — spawns battle object type 0x93 with caller's remaining
+    args; push {r0}/pop before-then-after the call — caller's r0 is preserved and stored to oBattleObject_DamageAndStaminaDamageCounterDisabler
+    of the new object; ldrh/strh around oBattleObject_AllianceAndDirectionFlip — copies the parent's alliance/flip
+    halfword into the spawn; mov r2,#1; bl setFieldBattleObject_800F614 — final field/registration setup
+    with flag 1; beq locret after the spawn call — early return of 0 when object_spawnType3 fails
+  refs:
+  - bn6f/asm/asm31.s:68185
+  - 0x080D7A96 sub_80D7A96
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080D7A78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures spawn type 0x93 via object_spawnType3, copying r6 into DamageAndStaminaDamageCounterDisabler
+    and AllianceAndDirectionFlip from the caller''s object, then registering with setFieldBattleObject_800F614.
+    However, the proposed name ''battle_spawnChipEffect93'' implies a chip-specific helper, while r1-r4
+    are pass-through args to object_spawnType3 (not r0-r4), and the field is a battle-object generic.
+    A more accurate name reflects just spawning a type-0x93 battle object.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- chips
+open_questions:
+- Exact meaning of the value stored at DamageAndStaminaDamageCounterDisabler (r0 from the caller) — caller
+  sub_80D7A96 needs analysis
+- What setFieldBattleObject_800F614's third argument (1) selects (side of field, active flag, etc.)
+- Which chips' effects route through this wrapper and what object type 0x93 visually does
+- The summary correctly captures spawn type 0x93 via object_spawnType3, copying r6 into DamageAndStaminaDamageCounterDisabler
+  and AllianceAndDirectionFlip from the caller's object, then registering with setFieldBattleObject_800F614.
+  However, the proposed name 'battle_spawnChipEffect93' implies a chip-specific helper, while r1-r4 are
+  pass-through args to object_spawnType3 (not r0-r4), and the field is a battle-object generic. A more
+  accurate name reflects just spawning a type-0x93 battle object.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7A78 -> battle_spawnObjectType93
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7A78

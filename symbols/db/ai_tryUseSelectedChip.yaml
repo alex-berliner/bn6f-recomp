@@ -1,0 +1,63 @@
+name: ai_tryUseSelectedChip
+address: '0x0810E34A'
+kind: function
+status: probable
+summary: If the object (passed in r5) has a selected chip and battle state Unk_40 >= 0x12C, load its low-9-bit
+  ID, write chip params, set attack0, decrement the held queue, and return 1; otherwise return 0.
+interface: (r0 = battle object) -> r0 = 1 if the chip was consumed this call, else 0; r4 clobbered
+details: 'Reads the object''s selected chip via battle_getSelectedChipForUse (r3 flags that one exists),
+  masks it to its low 9 bits (r4 = raw chip ID with element/type bits stripped), then checks battle state
+  field Unk_40: only if it is >= 0x12C (300) does it proceed. It writes the chip''s parameters via somethingWriteChipParams_80126E4,
+  sets the object''s attack state with object_setAttack0, consumes the chip from the object''s queue with
+  battleObject_decrementChipHeldAndClearChip, and returns 1; otherwise it returns 0. Runs on AI-driven
+  battles (battlesweep route), so it looks like the AI''s "release the held chip" step. The 300 threshold
+  suggests a frame-count delay or gauge before the AI acts, but Unk_40''s meaning is not confirmed from
+  this code alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getSelectedChipForUse_800ED90 + tst r3,r3 beq: returns 0 when no chip is selected;
+    lsl r4,#0x17 / lsr r4,#0x17: keeps only the low 9 bits of the chip word (ID without type bits) for
+    somethingWriteChipParams_80126E4; bl battle_getStateUnk40_800A704; cmp r0,#0x12C; blt loc_810E376:
+    use is gated on the counter reaching 300; bl object_setAttack0 + bl battleObject_decrementChipHeldAndClearChip_800F322:
+    the chip is actually fired and consumed before returning r6=1'
+  refs:
+  - bn6f/asm/asm32.s:1243
+  - 0x0810E17A sub_810E17A
+  - 0x0800F322 battleObject_decrementChipHeldAndClearChip_800F322
+  - 0x0800ED90 battle_getSelectedChipForUse_800ED90
+  - 0x0800A704 battle_getStateUnk40_800A704
+  reproduce: python3 tools/asmcat.py 0x0810E34A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The logic matches: battle_getSelectedChipForUse (r3 flag), lsl/lsr #0x17 masks to low 9 bits, battle_getStateUnk40
+    compared against 0x12c, then somethingWriteChipParams, object_setAttack0, decrementChipHeldAndClearChip,
+    and r6=1 return. However, the caller sub_810E17A passes r5 (not r0) into the function, so the battle
+    object is in r5 at entry, not r0 as the interface claims. The ''300'' threshold is correctly 0x12C
+    in the cmp against off_810E3DC. Everything else (AI chip release flow, return convention, r4 clobber)
+    is accurate.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What battle state field oBattleState_Unk_40 counts (frame timer, gauge, or state index) and why 300
+  is the threshold
+- What sub_810E17A does with the returned flag (retry next frame vs. pick a new chip)
+- 'The logic matches: battle_getSelectedChipForUse (r3 flag), lsl/lsr #0x17 masks to low 9 bits, battle_getStateUnk40
+  compared against 0x12c, then somethingWriteChipParams, object_setAttack0, decrementChipHeldAndClearChip,
+  and r6=1 return. However, the caller sub_810E17A passes r5 (not r0) into the function, so the battle
+  object is in r5 at entry, not r0 as the interface claims. The ''300'' threshold is correctly 0x12C in
+  the cmp against off_810E3DC. Everything else (AI chip release flow, return convention, r4 clobber) is
+  accurate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810E34A -> ai_tryUseSelectedChip
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E34A

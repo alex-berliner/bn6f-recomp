@@ -1,0 +1,66 @@
+name: battle_aiAttackInit
+address: '0x080FB028'
+kind: function
+status: probable
+summary: 'Initializes an AI attack: loads difficulty tier, sets phase flags, configures attack duration/timer/sub-step
+  fields, installs the panel-choose callback, targets the opposing player via XOR''d alliance, and starts
+  the attack with object_setAttack0(0xc).'
+interface: (r0 = attack AI data ptr, r5 = attacker object, r7 = oAIAttackVars state) -> r0 = 0 (from object_setAttack0);
+  no flags expected
+details: Reads the enemy AI difficulty byte via battle_getAiDifficultyTier_800FE36 into oAIAttackVars_AiDifficultyTier,
+  then writes 0x10 to InitFlag (a state-machine phase marker). Calls sub_80FB062(2) to configure something
+  (likely an attack mode/step), then fills AttackDuration from sub_80FAF7C and AttackBoost2/TimerOrCycles/SubStepIndex
+  from sub_80FAF44. Installs sub_80FB812 as PanelChooseCallback — the routine that picks panels while
+  the attack runs. Flips the attacker's Alliance bit and calls battle_findPlayer to store the enemy player
+  object in TargetObjectPtr, then calls object_setAttack0 with 0xc to begin the attack phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 caches
+    AI difficulty; ldr r0,off_80FB110 (=sub_80FB812+1); str r0,[r7,#oAIAttackVars_PanelChooseCallback]
+    installs a per-attack callback; eor r0,r1(1) + bl battle_findPlayer + str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    targets the opposing side's player; writes InitFlag 0x10, AttackDuration, AttackBoost2, TimerOrCycles,
+    SubStepIndex — full reset of the oAIAttackVars state; mov r0,#0xc; bl object_setAttack0 ends the routine
+    by starting attack phase 0xc
+  refs:
+  - bn6f/asm/asm31.s:142457
+  - 0x080FADF0 sub_80FADF0
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FB028
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s sequence (difficulty tier, InitFlag=0x10, sub_80FB062(2), durations
+    via sub_80FAF7C/sub_80FAF44, panel callback, XOR''d alliance → battle_findPlayer, object_setAttack0(0xc)).
+    The only issue: it''s invoked for AI attack setup, but the chosen name ''battle_aiAttackInit'' is
+    fine while the summary''s ''stores the AI difficulty tier'' slightly undersells that this also targets
+    the opposing player and launches the attack phase. Name fits the battle_ prefix rules and the function''s
+    role, so the revision is just a tighter summary.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact meaning of sub_80FB062's argument 2
+- which attack this init belongs to — needs sub_80FADF0's dispatch table
+- what sub_80FB812 (the panel-choose callback) does
+- 'The code matches the proposal''s sequence (difficulty tier, InitFlag=0x10, sub_80FB062(2), durations
+  via sub_80FAF7C/sub_80FAF44, panel callback, XOR''d alliance → battle_findPlayer, object_setAttack0(0xc)).
+  The only issue: it''s invoked for AI attack setup, but the chosen name ''battle_aiAttackInit'' is fine
+  while the summary''s ''stores the AI difficulty tier'' slightly undersells that this also targets the
+  opposing player and launches the attack phase. Name fits the battle_ prefix rules and the function''s
+  role, so the revision is just a tighter summary.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB028 -> battle_aiAttackInit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB028

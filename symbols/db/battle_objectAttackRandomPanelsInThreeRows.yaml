@@ -1,0 +1,70 @@
+name: battle_objectAttackRandomPanelsInThreeRows
+address: '0x080E9A38'
+kind: function
+status: probable
+summary: 'Object attack: shuffles an alliance-specific byte table (seeded with 0x02) via the primary RNG
+  to determine a per-row attack variant, then for each of three rows picks a random panel matching team-specific
+  panel-flag criteria (avoiding columns already used) and spawns an attack there via sub_80D1182.'
+interface: (r5 = battle object ptr; r0-r3 unused on entry) -> no meaningful return; spawns attack(s) via
+  sub_80D1182, consumes primary RNG
+details: First shuffles the 3-byte list {2,1,0} at sp+0xC with the primary RNG, giving a random order
+  of three attack variants. A per-alliance table (byte_80E9ACC, indexed by oBattleObject_Alliance*8) supplies
+  two panel-flag masks (required/forbidden) used for panel searches. Looping rows 1..3, it calls object_getPanelsInRowIgnoreColumnFiltered
+  with a column-exclusion value kept at sp (initially 0); if the row yields no panel it falls back to
+  object_checkPanelParameters and aborts (stores 0, breaks) if even a bare panel match fails. When panels
+  exist it draws GetPositiveSignedRNG modulo the count, takes the packed panel byte from the list at sp+0x10,
+  splits it into row nibble (>>4) and column (low 3 bits), and stores the column back to sp so later rows
+  skip it. Each hit builds Param1 = (variant * 0x1400) | oBattleObject_Param1 and calls sub_80D1182 with
+  the object's Damage field and Element, apparently spawning the attack object at that panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ShuffleByteList_PrimaryRNG on {2,1,0} at sp+0xC randomizes which of three variants fires
+    at each step; off_80E9ACC table indexed by oBattleObject_Alliance*8 gives required/forbidden panel-flag
+    words passed as r2/r3 to the panel queries; loop ''add r4,#1; cmp r4,#3; ble'' iterates rows 1..3,
+    calling object_getPanelsInRowIgnoreColumnFiltered per row; GetPositiveSignedRNG + svc 6 selects a
+    random panel entry; lsr #4 / low-3-bit split extracts packed panel coords, column fed back to [sp]
+    as the ignore filter; ldrb variant*0x14 <<8 orr''d with oBattleObject_Param1, plus Element and DamageAndStaminaDamageCounterDisabler,
+    passed to sub_80D1182 (attack spawner)'
+  refs:
+  - bn6f/asm/asm31.s:106989
+  - 0x080E99DC sub_80E99DC
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080E9A38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The shuffle list at sp+0xC is initialized with 0x02 only (str r0,[sp,#0xc]), not the 3-byte {2,1,0}
+    claimed in the summary; bytes at sp+0xD and sp+0xE are uninitialized garbage that gets shuffled. Also,
+    after a row yields no panel, it falls back to object_checkPanelParameters once, then sets sp to 0
+    and breaks — it does not ''abort (stores 0, breaks) if even a bare panel match fails'', since that
+    fallback still proceeds to spawn via sub_80D1182. Param1 is computed from a *0x14 byte (mul r3,r2
+    with r2=0x14=20) of the shuffled byte value, not ''variant * 0x1400''. The naming otherwise fits.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D1182 spawns (attack object type) and the meaning of the variant*0x1400 field within Param1
+- Which battle object/boss routes into caller sub_80E99DC and sets r5, to confirm the identity of the
+  attack
+- Exact semantics of the r0 argument to object_getPanelsInRowIgnoreColumnFiltered (column filter vs pointer)
+- The shuffle list at sp+0xC is initialized with 0x02 only (str r0,[sp,#0xc]), not the 3-byte {2,1,0}
+  claimed in the summary; bytes at sp+0xD and sp+0xE are uninitialized garbage that gets shuffled. Also,
+  after a row yields no panel, it falls back to object_checkPanelParameters once, then sets sp to 0 and
+  breaks — it does not 'abort (stores 0, breaks) if even a bare panel match fails', since that fallback
+  still proceeds to spawn via sub_80D1182. Param1 is computed from a *0x14 byte (mul r3,r2 with r2=0x14=20)
+  of the shuffled byte value, not 'variant * 0x1400'. The naming otherwise fits.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9A38 -> battle_objectAttackRandomPanelsInThreeRows
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9A38

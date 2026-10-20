@@ -1,0 +1,67 @@
+name: navicust_handleBoardConfirm
+address: '0x08136218'
+kind: function
+status: probable
+summary: 'Navi Customizer board ''confirm'' handler: adds cursor halfwords at r5+0x24/+0x20 to index into
+  the board via sub_8136290; if sub_813629C returns 0 it calls battle_resetEStructRecords_8046664 then
+  plays SOUND_CANT_JACK_IN; if the cell ID is 0x14C it stores state 0x2C, plays SOUND_SELECT_82 and dispatches
+  to sub_813686C/sub_813677C; else if cell''s +2 word is nonzero it stores state 0x10, calls sub_813660C(1),
+  redraws the board and plays SOUND_MENU_SELECT (pick-up).'
+interface: () -> void; reads cursor coords from context r5 at +0x20/+0x24, writes state byte [r5+2], plays
+  a sound ID in r0 via PlaySoundEffect
+details: 'Uses the context in r5 (a NaviCust screen state struct): adds the halfwords at +0x20 and +0x24
+  (cursor x/y or similar coords) and passes the sum to sub_8136290, which returns a pointer to the board-cell
+  entry. It reads the entry''s halfword ID at [r7] and calls sub_813629C as a predicate; when it fails
+  it calls battle_resetEStructRecords_8046664 (restoring the part-effect record/preview state) and plays
+  SOUND_CANT_JACK_IN as the cancel/error path. If the cell''s ID equals the special value 0x14C it plays
+  SOUND_SELECT_82, stores state 0x2C into [r5+2] and calls sub_813686C/sub_813677C (a different sub-screen
+  flow). Otherwise, if the entry''s field at +2 is nonzero (a part occupies the cell) it stores state
+  0x10 into [r5+2], calls sub_813660C(1), redraws the board via navicust_drawBoardTilemap(1) and plays
+  SOUND_MENU_SELECT — consistent with picking up/removing the selected part.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x24]; ldrh r1,[r5,#0x20]; add + bl sub_8136290 — resolves the board cell from
+    cursor coordinates in the r5 NaviCust struct; branch on sub_813629C then battle_resetEStructRecords_8046664
+    + PlaySoundEffect(SOUND_CANT_JACK_IN) — failure/cancel path restoring part-effect records; cmp r6
+    (=[r7]) with 0x14C; state 0x2C + sub_813686C/sub_813677C + SOUND_SELECT_82 — special-cell branch;
+    strb 0x10,[r5,#2] + sub_813660C(1) + navicust_drawBoardTilemap(1) + SOUND_MENU_SELECT — successful
+    pick-up: state change and board redraw; callee navicust_drawBoardTilemap redraws the 49-cell Navi
+    Customizer grid, confirming the NaviCust-board context'
+  refs:
+  - bn6f/asm/asm36.s:12735
+  - 0x08135830 sub_8135830
+  - 0x080005CC PlaySoundEffect
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  reproduce: python3 tools/asmcat.py 0x08136218
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal inverts the sub_813629C predicate: `bl sub_813629C; bne loc_8136236; bl battle_resetEStructRecords_8046664`
+    means battle_resetEStructRecords runs when sub_813629C returns 0, not when it fails. The SOUND_CANT_JACK_IN
+    cancel path at loc_813625A is reached both when sub_813629C returns nonzero (special error) AND when
+    [r7+2] is zero (empty cell). Otherwise the code, name, and structure match.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the special ID 0x14C and what sub_813686C/sub_813677C do (the 0x2C state flow) is unknown
+- Semantics of sub_8136290/sub_813629C (cell lookup and its predicate) and the meaning of the entry fields
+  at +0 and +2 are inferred only from usage
+- 'The proposal inverts the sub_813629C predicate: `bl sub_813629C; bne loc_8136236; bl battle_resetEStructRecords_8046664`
+  means battle_resetEStructRecords runs when sub_813629C returns 0, not when it fails. The SOUND_CANT_JACK_IN
+  cancel path at loc_813625A is reached both when sub_813629C returns nonzero (special error) AND when
+  [r7+2] is zero (empty cell). Otherwise the code, name, and structure match.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136218 -> navicust_handleBoardConfirm
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136218

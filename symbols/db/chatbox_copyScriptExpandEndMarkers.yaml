@@ -1,0 +1,68 @@
+name: chatbox_copyScriptExpandEndMarkers
+address: '0x0803BA84'
+kind: function
+status: probable
+summary: Copies a 2-byte-aligned block of chatbox script from src to dest, then scans backward from the
+  first 0xE6 opcode, expanding each 0xE5 entry into the two-byte pair 0xB2 0xE5, bounded by a count byte
+  in the buffer.
+interface: (r0 = src offset, r1 = dest offset, r2 = byte count, r3 = index of count byte in buffer, r5
+  = script buffer base) -> void; no meaningful return value
+details: Both source and destination are offsets added to the base pointer in r5, and CopyBytes moves
+  r2 bytes between them. The routine then scans the destination forward in strides of 2 (entries are 2-byte
+  records) until it finds opcode 0xE6. From that point it walks backwards in strides of 2, and for every
+  0xE5 byte it finds it writes 0xB2 at that slot and 0xE5 at the following slot, converting each single
+  0xE5 entry into a 0xB2 0xE5 pair; a second backward pass continues the same rewrite over the rest of
+  the buffer. The scan bound is r6 = buffer[r3] * 2, i.e. the entry count is read from a byte in the buffer
+  itself. The wrapper sub_803BA64 invokes it with fixed sizes 0x30, 0x50, 0x20, 0x10, suggesting standard
+  chatbox text-buffer capacities. The exact meaning of opcodes 0xB2, 0xE5 and 0xE6 in the text engine
+  is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl CopyBytes with r0+r5/r1+r5 copies the entry block between two regions of a shared base buffer
+    (0x803BA8A-0x803BA8E); forward loop scans 2 bytes at a time for the first 0xE6 (loc_803BA9A); two
+    backward stride-2 loops overwrite each 0xE5 with strb #0xB2,[r1] / strb #0xE5,[r1,#1] (loc_803BAAE,
+    loc_803BAC8); loop bound r6 = ldrb [r5,r3] << 1, so the record count lives in the buffer at index
+    r3 (0x803BAAC); caller sub_803BA64 only forwards constant tuples (0x30,0x50,0x20,0x10), matching fixed
+    text-buffer sizes'
+  refs:
+  - bn6f/asm/asm03_1_1.s:5773
+  - 0x0803BA64 sub_803BA64
+  - 0x0803BA74 sub_803BA74
+  - 0x08000920 CopyBytes
+  reproduce: python3 tools/asmcat.py 0x0803BA84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at loc_803BAAE walks backwards in 2-byte steps until r4 <= r6, and the same backward pass
+    continues at loc_803BAC8 after the unconditional sub r4,#2 — so it is one backward scan from the 0xE6
+    marker, not two separate scans. CopyBytes is called with src=r0+r5, dest=r1+r5, so r0 is source offset
+    and r1 is dest offset (the proposal reverses them). The 0xE5 -> 0xB2,0xE5 rewrite is correct, but
+    the destination-byte index argument is read via ''ldrb r6,[r5,r3]'' where r3 was already pushed as
+    [sp,#4], consistent with the proposal.; run wf investigate investigate-20261018-182231; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- What the opcodes 0xB2, 0xE5 and 0xE6 mean in the chatbox script engine (needed for a semantic name)
+- Which structure r5 points to (chatbox text buffer vs. generic script buffer) and who owns it
+- Why sub_803BA74 is listed as a caller while it appears to call battle_80290 instead
+- The code at loc_803BAAE walks backwards in 2-byte steps until r4 <= r6, and the same backward pass continues
+  at loc_803BAC8 after the unconditional sub r4,#2 — so it is one backward scan from the 0xE6 marker,
+  not two separate scans. CopyBytes is called with src=r0+r5, dest=r1+r5, so r0 is source offset and r1
+  is dest offset (the proposal reverses them). The 0xE5 -> 0xB2,0xE5 rewrite is correct, but the destination-byte
+  index argument is read via 'ldrb r6,[r5,r3]' where r3 was already pushed as [sp,#4], consistent with
+  the proposal.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803BA84 -> chatbox_copyScriptExpandEndMarkers
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803BA84

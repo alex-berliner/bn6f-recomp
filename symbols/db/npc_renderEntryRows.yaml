@@ -1,0 +1,71 @@
+name: npc_renderEntryRows
+address: '0x08128008'
+kind: function
+status: probable
+summary: Renders up to four NPC entry-selection rows (row gfx, secondary gfx, and a text-script name)
+  into BG tile VRAM from per-row buffers, clamped to 4 rows.
+interface: '(r5 = state struct: u16 count at +0x1e (clamped <=4), u16 first-row index at +0x24; r0 = 0x201
+  flag mask for the table build) -> r0 = clobbered; renders 4 rows max'
+details: 'First calls buildNpcEntryEventTable_81280DC with mask 0x201 to refresh the entry-event table
+  at unk_2026700. Then for up to 4 rows starting at index [r5+0x24], it reads a 0x20-byte record at dword_2027590
+  + 0x20*i and makes three renderTextGfx_8045F8C calls per row: 11 tiles from byte_2017A20+i*0x5C0 to
+  VRAM 0x6004020, 8 tiles from unk_2017D20+i*0x5C0 to 0x6004320 (tile counts taken from record bytes +0x14
+  and +0x10), and a mode-3 text-script draw of 2 tiles from eTextScript201BA00 to 0x6004560, with the
+  string selected via the record''s high halfword at +0x1c stored into the toolkit text-renderer state
+  ([r10 toolkit]+8). All three calls use dword_86A5D60 as gfx base and write to row buffers offset by
+  0x5C0 per row.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl buildNpcEntryEventTable_81280DC with r0=0x201 refreshes entry-event state before drawing;
+    three bl renderTextGfx_8045F8C per loop iteration target VRAM 0x6004020/0x6004320/0x6004560 with tile
+    counts 11/8/2; row source buffers byte_2017A20/unk_2017D20/unk_2017F60 offset by 0x5C0*i, and [record+0x1c]>>16
+    set into toolkit text state selects the row string; loop bounded by [r5+0x1e] clamped to 4, starting
+    at [r5+0x24], records strided 0x20 at dword_2027590; called from submenu_HandleInput_8127B18 (screen
+    redraw path) alongside battle_sceneReset-style full resets, fitting a list-screen text rebuild
+  refs:
+  - bn6f/asm/asm33.s:10051
+  - 0x08127A1C battle_sceneReset_8127A1C
+  - 0x08127B18 submenu_HandleInput_8127B18
+  - 0x08127B94 sub_8127B94
+  - 0x081280DC buildNpcEntryEventTable_81280DC
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x08128008
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal in structure: it clamps [r5+0x1e] to 4, reads records from dword_2027590,
+    and makes three renderTextGfx calls with row offsets of 0x5C0 to BG tile VRAM. However, the second
+    call''s tile count is the immediate `#8` (mov r4, #8), not taken from record+0x10 — that''s the VRAM
+    dest offset (0x6004320). The r4/#8 is fixed; record+0x10 isn''t loaded as the count. Also, the first
+    call''s count is fixed at 0xb (11), not read from record+0x14 (record+0x14 is loaded but never used
+    as r4 here). The text-script call stores the high halfword into [r10 toolkit]+8 correctly.; run wf
+    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- which exact in-game screen/struct owns dword_2027590 and the 0x20-byte records (fields +0x10/+0x14/+0x1c)
+- what the 0x201 flag mask means to buildNpcEntryEventTable_81280DC
+- identity of dword_86A5D60 (shared gfx/base pointer passed as r6)
+- 'The code matches the proposal in structure: it clamps [r5+0x1e] to 4, reads records from dword_2027590,
+  and makes three renderTextGfx calls with row offsets of 0x5C0 to BG tile VRAM. However, the second call''s
+  tile count is the immediate `#8` (mov r4, #8), not taken from record+0x10 — that''s the VRAM dest offset
+  (0x6004320). The r4/#8 is fixed; record+0x10 isn''t loaded as the count. Also, the first call''s count
+  is fixed at 0xb (11), not read from record+0x14 (record+0x14 is loaded but never used as r4 here). The
+  text-script call stores the high halfword into [r10 toolkit]+8 correctly.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8128008 -> npc_renderEntryRows
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128008

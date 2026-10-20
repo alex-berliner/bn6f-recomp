@@ -1,0 +1,63 @@
+name: ai_spawnAttackEffect
+address: '0x0810FC0C'
+kind: function
+status: probable
+summary: If r0 is non-NULL, spawns a type-4/effect-type-0 battle object at the enemy at r5's X/Y with
+  Z forced to 0 and a facing byte derived from (Alliance XOR DirectionFlip) << 8 OR 0x2; called from enemy
+  rush/swoop attack states.
+interface: (r0 = enable flag/pointer, checked for NULL; r5 = battle object) -> r0 = spawned effect object
+  pointer or unchanged; no flags meaningful
+details: 'If r0 is NULL the function returns without doing anything; otherwise it reads the battle object
+  at r5 and builds an effect spawn parameter: (oBattleObject_Alliance XOR oBattleObject_DirectionFlip)
+  << 8 OR''d with 2, i.e. the low byte selects effect variant 2 and the high byte encodes the object''s
+  facing. It passes the object''s oBattleObject_X and oBattleObject_Y as the position, forces Z to 0,
+  and calls spawn_t1_0x0_EffectObject, which spawns a type-4 battle object with effect type 0 and returns
+  its pointer. The XOR of alliance and direction flip mirrors how the engine derives sprite facing for
+  objects. Both known callers are enemy attack state handlers, so this is the visual effect (dust/flash)
+  accompanying the attack moment at the enemy''s current panel position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq locret: NULL check on caller-supplied enable value before spawning; ldrb r0,[r5,#oBattleObject_Alliance];
+    eor with oBattleObject_DirectionFlip, lsl #8: facing packed into high byte of spawn param; ldr r1/r2
+    from oBattleObject_X/oBattleObject_Y, mov r3,#0: effect placed at object''s X/Y on the ground plane
+    (Z=0); dword_810FC2C = 0x2 OR''d into param: effect subtype 2 passed to the spawner; callers ai_rushAttackStep
+    and ai_swoopAttackUpdate both invoke it in their attack-state code paths'
+  refs:
+  - bn6f/asm/asm32.s:4019
+  - 0x0810F6C4 ai_rushAttackStep
+  - 0x0810F898 ai_swoopAttackUpdate
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x0810FC0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal''s behavior (NULL check, XOR of Alliance/DirectionFlip shifted
+    to high byte, Z forced to 0, OR with 0x2, then spawn_t1_0x0_EffectObject). However, the low byte is
+    just 0x2 (from dword_810FC2C), not ''effect variant 2'', and the spawned object is type-4/effect-type-0
+    per the callee''s documented semantics, not ''type-0''. A more accurate name reflecting its role at
+    the enemy''s position during rush/swoop attacks is fine, but the summary''s variant/type claims need
+    fixing.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What r0 actually is (enable flag vs. unrelated pointer) — need to see the exact call sites
+- Which visual effect variant 2 of effect type 0 is (dust puff, flash, etc.) — needs the effect object's
+  render table
+- The assembly matches the proposal's behavior (NULL check, XOR of Alliance/DirectionFlip shifted to high
+  byte, Z forced to 0, OR with 0x2, then spawn_t1_0x0_EffectObject). However, the low byte is just 0x2
+  (from dword_810FC2C), not 'effect variant 2', and the spawned object is type-4/effect-type-0 per the
+  callee's documented semantics, not 'type-0'. A more accurate name reflecting its role at the enemy's
+  position during rush/swoop attacks is fine, but the summary's variant/type claims need fixing.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810FC0C -> ai_spawnAttackEffect
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FC0C

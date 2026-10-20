@@ -1,0 +1,64 @@
+name: battle_queueFixedOverlayOam
+address: '0x081267F0'
+kind: function
+status: probable
+summary: If [r5+0x3a] is non-zero, queues one fixed animated overlay OAM entry (r0=0x43, r1=0xe, r2=0,
+  r3=0x11, r4=byte_8124A98, r6=0x40000000, r7=byte_8124A9E) via battle_queueAnimatedOamEntry; otherwise
+  returns immediately.
+interface: (r5 = battle object, flag at [r5+0x3a]) -> none; queues an OAM entry via battle_queueAnimatedOamEntry
+  when flag != 0
+details: 'A parameterless wrapper that first tests the halfword flag at [r5+0x3a] of the battle object
+  (r5 set by callers); if it is zero the routine returns without drawing anything. Otherwise it invokes
+  battle_queueAnimatedOamEntry with a fully fixed argument set: r0=0x43 (overlay element id), r1=0xE (count/frames),
+  r2=0, r3=0x11 (animation state), r4=byte_8124A98 (per-element animation buffer/table), r6=0x40000000
+  (OAM attribute word, likely tile/priority bits), r7=byte_8124A9E (secondary buffer, e.g. the 0xFF-terminated
+  animation table or palette/tile data). Since all arguments are constants, the routine draws one specific
+  pre-battle overlay sprite each frame while the flag is active. Both known callers run during the battle
+  intro/visual-transition phases.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq on ldrh [r5,#0x3a] gates the whole call on a battle-object flag; all args to
+    battle_queueAnimatedOamEntry are immediates: 0x43, 0xE, 0, 0x11, 0x40000000; r4/r7 point at static
+    buffers byte_8124A98/byte_8124A9E, matching the callee''s animation-table contract; callers battle_runIntro_812508C
+    and battle_transitionTick run it only during intro/transition phases'
+  refs:
+  - bn6f/asm/asm33.s:7191
+  - 0x0812509C battle_runIntro_812508C_812509C
+  - 0x08125170 battle_transitionTick_8125170
+  - 0x0812503C sub_812503C
+  - 0x08126570 battle_queueAnimatedOamEntry
+  reproduce: python3 tools/asmcat.py 0x081267F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it tests [r5+0x3a], returns if zero, else calls battle_queueAnimatedOamEntry with
+    r0=0x43, r1=0xe, r2=0, r3=0x11, r4=byte_8124A98, r6=0x40000000, r7=byte_8124A9E. However, intro/transition
+    callers don''t strongly justify `IntroOverlay` — only 2 of 4 callers are intro-related (the other
+    two are sub_812503C/sub_81251F4), and the function itself has no intro-specific logic beyond drawing
+    one fixed sprite. A more general name like `battle_queueFixedOverlayOam` fits the generic guard-then-queue
+    behavior better.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- story2
+open_questions:
+- what visual element id 0x43 renders on screen
+- exact meaning of the 0x3a flag byte in the battle object
+- contents/role of byte_8124A98 vs byte_8124A9E
+- 'The code matches: it tests [r5+0x3a], returns if zero, else calls battle_queueAnimatedOamEntry with
+  r0=0x43, r1=0xe, r2=0, r3=0x11, r4=byte_8124A98, r6=0x40000000, r7=byte_8124A9E. However, intro/transition
+  callers don''t strongly justify `IntroOverlay` — only 2 of 4 callers are intro-related (the other two
+  are sub_812503C/sub_81251F4), and the function itself has no intro-specific logic beyond drawing one
+  fixed sprite. A more general name like `battle_queueFixedOverlayOam` fits the generic guard-then-queue
+  behavior better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81267F0 -> battle_queueFixedOverlayOam
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81267F0

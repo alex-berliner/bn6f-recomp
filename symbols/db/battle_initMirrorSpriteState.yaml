@@ -1,0 +1,63 @@
+name: battle_initMirrorSpriteState
+address: '0x080C0F8C'
+kind: function
+status: probable
+summary: Init-state handler that clones sprite setup (load 0x80/4/0x10, noShadow, anim 8) and palette
+  (related obj + 0x12) from a related object, mirrors its X/Y/Z into ExtraVars[0..2], sets CUR_STATE_UPDATE,
+  then calls sub_80C0FE8.
+interface: (r5 = battle object header, no args) -> r0 = result of sub_80C0FE8; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_UPDATE
+details: 'Reads the current battle mode and stores 7 into the object header''s flags byte when the mode
+  is 6, otherwise 3 — a mode-dependent variant selector. It then sets up the object''s own sprite: sprite_load(0x80,
+  4, 0x10), reload of animation data, noShadow, and animation index 8. The palette is taken from the related
+  object (oBattleObject_RelatedObject1Ptr) via sprite_getPalette plus a fixed offset of 0x12, so the clone
+  shares the source''s palette bank. Finally it snapshots the related object''s X/Y/Z into ExtraVars[0..3]
+  (a follow/mirror of the source position), marks the object as entering the update phase, and tail-calls
+  sub_80C0FE8, presumably the update-phase handler that keeps tracking the source.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetBattleMode; cmp r0,#6 selects 7 vs 3 stored to oObjectHeader_Flags (mode-dependent variant);
+    sprite_load 0x80,4,0x10 + sprite_loadAnimationData + sprite_noShadow + sprite_setAnimation 8 build
+    the object's sprite; sprite_getPalette on [r5,#oBattleObject_RelatedObject1Ptr] then sprite_setPalette(pal+0x12)
+    copies the source palette; X/Y/Z loads from RelatedObject1Ptr stored into oBattleObject_ExtraVars
+    — position mirror of another object; state set to CUR_STATE_UPDATE then bl sub_80C0FE8 — standard
+    enter-update-phase handoff
+  refs:
+  - bn6f/asm/asm31.s:19591
+  - 0x0802D234 GetBattleMode
+  - 0x08002D8C sprite_getPalette
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080C0F8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mode-dependent flag logic (r1=#7 vs r0=#3, strb to Flags), sprite_load(0x80,4,0x10), noShadow,
+    animation index 8, palette-from-related+0x12, and ExtraVars position snapshot all match the asm. However
+    the proposal says ''tail-calls sub_80C0FE8'' but the code uses bl followed by pop {r7,pc}, a normal
+    call. Also ExtraVars is written at offsets +0,+4,+8 (indices 0..2, three values) not ''0..3''. The
+    proposal also omits the second sprite_loadAnimationData and sprite_update calls, and the svc 6 between
+    getPalette and setPalette.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80C0FE8 does (presumably the update-phase follower) is unknown
+- Which battle mode value 6 corresponds to (and thus what the flags 7-vs-3 select) is unknown
+- No known caller, so which object uses this init state is unidentified
+- The mode-dependent flag logic (r1=#7 vs r0=#3, strb to Flags), sprite_load(0x80,4,0x10), noShadow, animation
+  index 8, palette-from-related+0x12, and ExtraVars position snapshot all match the asm. However the proposal
+  says 'tail-calls sub_80C0FE8' but the code uses bl followed by pop {r7,pc}, a normal call. Also ExtraVars
+  is written at offsets +0,+4,+8 (indices 0..2, three values) not '0..3'. The proposal also omits the
+  second sprite_loadAnimationData and sprite_update calls, and the svc 6 between getPalette and setPalette.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0F8C -> battle_initMirrorSpriteState
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0F8C

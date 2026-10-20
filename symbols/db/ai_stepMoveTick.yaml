@@ -1,0 +1,65 @@
+name: ai_stepMoveTick
+address: '0x081034FC'
+kind: function
+status: probable
+summary: 'Per-tick handler for an AI''s step-style attack: decrements oAIAttackVars_StepTimer and, on
+  expiry, sets anim=3, commits FuturePanelX/Y into PanelX/Y, releases the panel reservation, recomputes
+  pixel coordinates from panels, syncs the collision record and facing, reloads StepTimer with 3, and
+  writes 8 into oAIAttackVars_HitElement.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = 0/void; flags from final strh
+details: Runs each frame of an AI attack (r7 is the oAIAttackVars struct used by AI attack scripts). It
+  decrements oAIAttackVars_StepTimer and returns early while it is still positive. On reaching zero it
+  sets the object's current animation to 3 (a movement/step anim), copies FuturePanelX/FuturePanelY into
+  PanelX/PanelY, releases the panel reservation via object_removePanelReserve, recomputes pixel coordinates
+  from panels, and syncs the collision record + facing via object_updateCollisionPanels. It then reloads
+  StepTimer with 3 (period of the step cycle) and writes 8 into oAIAttackVars_HitElement, which in this
+  attack's context is reused as a step-phase/count state rather than an element.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub/sub/strh/bgt — a per-tick countdown gate at the top;
+    strb of FuturePanelX/Y into PanelX/Y plus bl object_removePanelReserve — commits the reserved move
+    destination; bl object_setCoordinatesFromPanels then bl object_updateCollisionPanels — updates pixel
+    position and collision/facing after the move; mov r0,#3; strh into oAIAttackVars_StepTimer — restarts
+    the same countdown, so this is a periodic step tick; mov r0,#8; strh into oAIAttackVars_HitElement
+    — sets the attack's per-step state/element field after the step completes
+  refs:
+  - bn6f/asm/asm31.s:159811
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x081034FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s behavior matches the code well (countdown of StepTimer, anim=3, panel commit, panel
+    reservation release, coordinate/collision sync, reloading StepTimer=3, writing 8 to HitElement). However,
+    calling the 8 written to HitElement a ''step-phase/count state'' is speculation; HitElement is a documented
+    field elsewhere, so the summary''s parenthetical reinterpretation should be dropped. Also the interface
+    description ''r0 = 0/void; flags from final strh'' is inaccurate — r0 holds the value 8 after the
+    final strh, and the function returns via pop {pc} with no explicit return value.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which AI attack script invokes this (no callers known), so the exact attack (e.g. a dash/charge step)
+  and the meaning of HitElement=8 are unconfirmed
+- What animation index 3 corresponds to for the relevant enemy object
+- The proposal's behavior matches the code well (countdown of StepTimer, anim=3, panel commit, panel reservation
+  release, coordinate/collision sync, reloading StepTimer=3, writing 8 to HitElement). However, calling
+  the 8 written to HitElement a 'step-phase/count state' is speculation; HitElement is a documented field
+  elsewhere, so the summary's parenthetical reinterpretation should be dropped. Also the interface description
+  'r0 = 0/void; flags from final strh' is inaccurate — r0 holds the value 8 after the final strh, and
+  the function returns via pop {pc} with no explicit return value.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81034FC -> ai_stepMoveTick
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81034FC

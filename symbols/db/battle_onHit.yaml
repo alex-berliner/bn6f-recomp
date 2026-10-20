@@ -1,0 +1,70 @@
+name: battle_onHit
+address: '0x08010488'
+kind: function
+status: probable
+summary: 'Battle hit-received handler: if target is invincible, accumulates (Damage+SubStepIndex) into
+  a per-alliance/per-AttackBoost2 halfword tally in unk_2036120 records and plays SFX 0x157; otherwise
+  spawns a 0x300000 impact effect at the object''s panel offset 4px toward the enemy via sub_80E1D7A and
+  plays SFX 0x90.'
+interface: (r5 = battle object ptr, not passed in r0) -> void; reads oBattleObject_AIDataPtr, Alliance,
+  PanelX/Y; no return value
+details: Reads the object's AIData attack vars. If oAIAttackVars_IsInvincible != 0, it gets the 0x1D0-stride
+  record for the object's alliance from unk_2036120, computes halfword offset 0x36 + 2*AttackBoost2 inside
+  it, and accumulates (Damage + SubStepIndex) into that halfword, then plays sound 0x157. Otherwise it
+  converts PanelX/PanelY to 16.16 pixel coordinates, offsets x by facing*4.0 px (object_getEnemyDirection
+  shifted left 0x12 = ±0x40000), calls sub_80E1D7A(x, y, 0x300000, 0) — apparently an effect spawner —
+  and plays sound 0x90. The tally array looks like a hidden bookkeeping buffer rather than gameplay HP,
+  since hits on invincible targets should be nullified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r7,#oAIAttackVars_IsInvincible]; beq split -> two distinct hit outcomes; add r1,#0x36
+    after doubling AttackBoost2, strh r3,[r0,r1] -> per-alliance/per-type halfword damage accumulator
+    in unk_2036120 records; lsl r0,#0x12 after object_getEnemyDirection, added to pixel x -> 4px offset
+    along facing for the spawned effect; bl sub_80E1D7A with (x, y, 0x30<<16, 0) -> effect spawn at battle-field
+    position; two distinct PlaySoundEffect ids (0x157 vs 0x90) match two hit outcomes
+  refs:
+  - bn6f/asm/asm00_2.s:3534
+  - 0x080005CC PlaySoundEffect
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x08010488
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the proposal''s branch logic: invincible path accumulates (Damage+SubStepIndex) at
+    offset 0x36+2*AttackBoost2 in a per-alliance 0x1D0-stride record and plays 0x157; else path converts
+    PanelX/Y via object_getCoordinatesForPanels, shifts x by enemy-direction*0x40000, calls sub_80E1D7A
+    with (x,y,0x300000,0), plays 0x90. However, naming it ''tallyInvincibleHit'' overemphasizes one branch;
+    the function is the generic hit-received handler that dispatches on the invincible flag, so a broader
+    name fits better. r5-based calling convention, no return value, and callee set all confirm the proposal.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- beastsp
+- story2
+- story9
+open_questions:
+- What sub_80E1D7A actually spawns (effect id vs object) and what 0x300000/r4=0 mean
+- Which callers invoke this and whether the tally at unk_2036120+0x36 is anti-cheat bookkeeping, nullified-hit
+  stats, or deferred damage
+- Exact meaning of AttackBoost2/SubStepIndex field names — whether they are really attack-type index and
+  sub-step, affecting the tally layout
+- 'Code matches the proposal''s branch logic: invincible path accumulates (Damage+SubStepIndex) at offset
+  0x36+2*AttackBoost2 in a per-alliance 0x1D0-stride record and plays 0x157; else path converts PanelX/Y
+  via object_getCoordinatesForPanels, shifts x by enemy-direction*0x40000, calls sub_80E1D7A with (x,y,0x300000,0),
+  plays 0x90. However, naming it ''tallyInvincibleHit'' overemphasizes one branch; the function is the
+  generic hit-received handler that dispatches on the invincible flag, so a broader name fits better.
+  r5-based calling convention, no return value, and callee set all confirm the proposal.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8010488 -> battle_onHit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010488

@@ -1,0 +1,92 @@
+name: soundInit
+address: '0x0814ECC8'
+kind: function
+status: probable
+summary: 'Initialises the single m4a music player struct at the pointer in r0: zeroes it, resets/rearms
+  DMA1/DMA2 against ChannelA/B FIFOs from offsets +0x350/+0x980, enables PSG (NR52, NR50, NR51, SOUNDBIAS
+  bit6), installs ply_note/nullsub_23 handlers and the CGB channel-default table via sub_814E09C, kicks
+  the PCM rate with SampleFreqSet(0x40000), then stamps the ''Smsh'' (0x68736D53) magic at struct[0].'
+interface: (r0 = pointer to ~4016-byte music player struct) -> r0 = undefined; configures DMA1/DMA2, NR52/NR50/NR51,
+  SOUNDBIAS and the player struct in place
+details: Clears the player struct by CpuSet-filling 0x3EC words with 0, then stores the 'Smsh' magic (0x68736D53)
+  at offset 0 — the m4a 'player initialised' marker. Resets DMA1/DMA2 word counts (0x84400004), stops
+  both channels (control 0x400), and points their source addresses at the struct's Direct Sound A/B buffers
+  (r5+0x350 and r5+0x980) targeting ChannelA/ChannelB FIFOs. Enables sound by writing NR52=0x8F, NR50/NR51=0xA90E,
+  and setting bit 0x40 (bias enable) in SOUNDBIAS. Stores ply_note at +0x38, nullsub_23 stubs at +0x28/+0x2C/+0x30/+0x3C,
+  fills the CGB channel defaults from off_3005570 via sub_814E09C (pointer saved at +0x34), and calls
+  SampleFreqSet with 0x40000 to start the PCM DMA. Finally records the struct pointer at byte_3007FF0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: CpuSet fill with mode 0x50003EC zeroes 0x3EC words starting at r5 (the player struct); store
+    of dword_814EDBC = 0x68736D53 ('Smsh') at [r5] is the m4a player-init magic; DMA1/DMA2 source addresses
+    set to r5+0x350 / r5+0x980 with targets ChannelA/ChannelBFIFO_Data0_3; NR52=0x8F, NR50/NR51=0xA90E,
+    SOUNDBIAS |= 0x40 enable the sound hardware; calls SampleFreqSet_814EDC0 (0x40000) and sub_814E09C
+    (copies CGB channel default table into off_3005570 buffer)
+  refs:
+  - bn6f/asm/libs.s:23431
+  - 0x0814E8A0 m4aSoundInit
+  - 0x0814D8B8 SWI_CpuSet
+  - 0x0814EDC0 SampleFreqSet_814EDC0
+  - 0x0814E09C sub_814E09C
+  reproduce: python3 tools/asmcat.py 0x0814ECC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: it zeroes the struct (CpuSet fill 0x3EC words = 0x50003EC mode),
+    wires DMA1/DMA2 to ChannelA/B FIFOs from offsets +0x350 and +0x980, enables PSG (NR52=0x8F, NR50/NR51=0xA90E,
+    SOUNDBIAS bit 0x40), installs handlers/ply_note, copies CGB defaults via sub_814E09C, calls SampleFreqSet(0x40000),
+    and finally stores the ''Smsh'' magic 0x68736D53 at offset 0. However the proposed name ''m4aInitMusicPlayer''
+    is wrong: only one global instance (byte_3007FF0) is ever saved, and the callee name is SampleFreqSet,
+    while the well-known m4a routine that performs exactly this is named ''SoundDriverMain'' / ''SoundMain''
+    in pokelib/pokeem m4a; the closest documented analog is m4aInitMusicPlayer (no such name in m4a).
+    A safer name is ''soundInit'' or simply m4a''s standard ''MPlayMain'' analog; given only one player
+    is opened, ''m4aInitOnePlayer'' is not a documented m4a symbol either. The prefix ''sound'' is available
+    (init isn''t listed as a sound prefix but ''e'' isn''t either); best is ''init'' + descriptive: not
+    perfect. Better: ''soundMainInit'' isn''t documented. I''ll just suggest ''soundInit''.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- beastsp
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact m4a upstream name for this per-player init variant (m4aMPlayInit vs a wrapper) not confirmable
+  without more m4a engine context
+- which game-side player struct is passed by m4aSoundInit (only one recorded call site seen)
+- 'The summary is largely correct: it zeroes the struct (CpuSet fill 0x3EC words = 0x50003EC mode), wires
+  DMA1/DMA2 to ChannelA/B FIFOs from offsets +0x350 and +0x980, enables PSG (NR52=0x8F, NR50/NR51=0xA90E,
+  SOUNDBIAS bit 0x40), installs handlers/ply_note, copies CGB defaults via sub_814E09C, calls SampleFreqSet(0x40000),
+  and finally stores the ''Smsh'' magic 0x68736D53 at offset 0. However the proposed name ''m4aInitMusicPlayer''
+  is wrong: only one global instance (byte_3007FF0) is ever saved, and the callee name is SampleFreqSet,
+  while the well-known m4a routine that performs exactly this is named ''SoundDriverMain'' / ''SoundMain''
+  in pokelib/pokeem m4a; the closest documented analog is m4aInitMusicPlayer (no such name in m4a). A
+  safer name is ''soundInit'' or simply m4a''s standard ''MPlayMain'' analog; given only one player is
+  opened, ''m4aInitOnePlayer'' is not a documented m4a symbol either. The prefix ''sound'' is available
+  (init isn''t listed as a sound prefix but ''e'' isn''t either); best is ''init'' + descriptive: not
+  perfect. Better: ''soundMainInit'' isn''t documented. I''ll just suggest ''soundInit''.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814ECC8 -> soundInit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814ECC8

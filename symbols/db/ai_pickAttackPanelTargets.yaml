@@ -1,0 +1,71 @@
+name: ai_pickAttackPanelTargets
+address: '0x08108D24'
+kind: function
+status: probable
+summary: AI attack helper that writes the target's packed panel to AiAttackParam[0], then picks a random
+  panel from a row-filtered scan into [1] (skipped if target panel invalid) and from a column-ignored
+  scan into [2] (always attempted); filter words indexed by alliance from byte_8108DE0.
+interface: (r5 = battle object, r7 = oAIAttackVars block) -> AiAttackParam[0]=target panel byte, [1]=random
+  row-scan panel, [2]=random ignore-column panel; r0/r1 clobbered
+details: Clears AiAttackParam (offset 0x34) and reads the target object's (col,row) from oBattleObject+0x12/0x13,
+  validating them with object_isValidPanel; if valid it stores the packed (col|row<<4) byte at r7+0x34.
+  It then temporarily reserves the target's panel with object_reservePanel, scans panels with object_getPanelsInRowFiltered
+  (r0=2, filter words taken from byte_8108DE0 at Alliance*8, buffer on stack), releases the reservation,
+  and picks a random entry with GetPositiveSignedRNG % count (SWI 6 division) stored at r7+0x35. The same
+  reserve/scan/release pattern repeats with object_getPanelsIgnoreColumnFiltered (skipping the target's
+  column) and the result goes to r7+0x36. The alliance-indexed table byte_8108DE0 supplies per-side filter
+  parameters (0x20/0x80 for one side, 0/0xA0 for the other). If the target panel is invalid, both random
+  picks are skipped. The final panel reservation is released and not re-taken.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str r0,[r7,#oAIAttackVars_AiAttackParam] and strb at r7+0x34/0x35/0x36 show three attack-param
+    slots being filled; ldrb r0,[r1,#0x12]/[r1,#0x13] + object_isValidPanel: target object''s panel coords
+    gate everything; object_reservePanel/object_removePanelReserve around each scan mark panels only to
+    exclude them from the filter; GetPositiveSignedRNG + svc 6 (Div) + ldrb [sp8+result] picks a random
+    scan result; ldr r3,off_8108DDC with Alliance*8 index: per-alliance filter table byte_8108DE0'
+  refs:
+  - bn6f/asm/asm31.s:170772
+  - 0x0810831C sub_810831C
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CFA6 object_getPanelsIgnoreColumnFiltered
+  - 0x0800D012 object_getPanelsInRowFiltered
+  reproduce: python3 tools/asmcat.py 0x08108D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The name and interface are correct: r5 is the battle object (alliance read at +0x??), r7 is oAIAttackVars,
+    and AiAttackParam at +0x34 gets packed panel + two random picks via row-filtered (object_getPanelsInRowFiltered)
+    and column-ignored (object_getPanelsIgnoreColumnFiltered) scans with GetPositiveSignedRNG % count.
+    However the claim ''If the target panel is invalid, both random picks are skipped'' is wrong: beq
+    loc_8108D94 on invalid only skips the first (row) pick; loc_8108D94 unconditionally reserves, scans
+    ignore-column, and writes r7+0x36. Also the callee description of object_getPanelsIgnoreColumnFiltered
+    says ''skipping the row'' but the function name and filter usage indicate a column skip—the proposal
+    correctly says ''ignore-column'' but the row-scan param r0=2 is a fixed row/depth, not literally ''same-row''
+    as the target''s row.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the r0=2 argument to the two panel-scan calls (row index vs. filter mode)
+- semantic meaning of the byte_8108DE0 filter words (panel-state masks?)
+- 'The name and interface are correct: r5 is the battle object (alliance read at +0x??), r7 is oAIAttackVars,
+  and AiAttackParam at +0x34 gets packed panel + two random picks via row-filtered (object_getPanelsInRowFiltered)
+  and column-ignored (object_getPanelsIgnoreColumnFiltered) scans with GetPositiveSignedRNG % count. However
+  the claim ''If the target panel is invalid, both random picks are skipped'' is wrong: beq loc_8108D94
+  on invalid only skips the first (row) pick; loc_8108D94 unconditionally reserves, scans ignore-column,
+  and writes r7+0x36. Also the callee description of object_getPanelsIgnoreColumnFiltered says ''skipping
+  the row'' but the function name and filter usage indicate a column skip—the proposal correctly says
+  ''ignore-column'' but the row-scan param r0=2 is a fixed row/depth, not literally ''same-row'' as the
+  target''s row.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8108D24 -> ai_pickAttackPanelTargets
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108D24

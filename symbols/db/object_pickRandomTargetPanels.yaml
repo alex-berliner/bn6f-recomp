@@ -1,0 +1,69 @@
+name: object_pickRandomTargetPanels
+address: '0x080C7A94'
+kind: function
+status: probable
+summary: Battle helper that gathers alliance-filtered panels (excluding self), then appends 1–4 randomly
+  chosen panel indices to the object's Param3-indexed target list at object+0x60, storing the count at
+  object+0x74+Param3.
+interface: (r5 = battle object; Param2 = mode, Param3 = slot) -> writes panel list at object+0x60, list
+  length at object+0x79, count at object+0x74+Param3; no r0 return
+details: 'Param2 selects behavior: 1 = pick exactly one random panel, 3 = use the low half of byte_80C7B50
+  (1–3 panels), anything else uses the high half (2–4 panels) with count = table[(RNG&7)+base]. object_getPanelsExceptCurrentFiltered
+  is called with two bitmask words read from a per-Alliance table (byte_80C7B64 for modes 0/3, byte_80C7B78
+  for mode 1), so the panel type filter differs by mode and by whether the object is player/allied or
+  enemy side. Matching panel indices are stored on the stack, shuffled with the primary RNG, then appended
+  one by one to the array at object+0x60 using the running counter at object+0x79; the final count is
+  stored at object+0x74+Param3, implying multiple named target lists per object. If no panels match the
+  filter, nothing is queued and nothing is written. This is the classic random-panel-target setup used
+  by enemies/bosses that crack, judge, or strike scattered panels.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_getPanelsExceptCurrentFiltered is called with required/forbidden masks from byte_80C7B64/byte_80C7B78
+    indexed by oBattleObject_Alliance*8; count table byte_80C7B50 = {1,2,2,2,3,3,3,3, 2,3,3,3,3,3,4,4}
+    indexed by (RNG&7)+base where base is 0 for Param2==3 else 8; loop stores each shuffled panel id into
+    [obj+0x60 + [obj+0x79]] and increments obj+0x79 — appending to a target queue; final count stored
+    to obj+0x74+Param3; Param2==1 path picks exactly one entry via svc 6 (modulo) after shuffle; callees
+    GetPositiveSignedRNG and ShuffleByteList_PrimaryRNG confirm the picks are primary-RNG random
+  refs:
+  - bn6f/asm/asm31.s:33943
+  - 0x080C79BC sub_80C79BC
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  reproduce: python3 tools/asmcat.py 0x080C7A94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code agrees with the broad structure: it reads Param2, picks a count from byte_80C7B50, uses
+    object_getPanelsExceptCurrentFiltered with Alliance-keyed bitmasks, shuffles/copies panel indices
+    into object+0x60, increments the counter at object+0x79, and writes r7 to object+0x74+Param3. However,
+    the Param2==1 branch only copies one panel (r7=1, no shuffle, no loop), and uses byte_80C7B78 not
+    byte_80C7B64. The default branch (Param2 !=1, !=3) hits r4=8 -> byte_80C7B50 indices 8..15 (2-4 panels),
+    not 2-4 as in the summary; 3 uses 0..7 (1-3). The naming should reflect it''s a per-Param3 target-list
+    builder rather than ''pickRandom'' specifically.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what attack consumes the queue at obj+0x60 / counters at 0x74+Param3 (would confirm which boss/enemy
+  this belongs to)
+- exact meaning of the panel attribute bits in the 0x20/0x02800000-style masks
+- 'The code agrees with the broad structure: it reads Param2, picks a count from byte_80C7B50, uses object_getPanelsExceptCurrentFiltered
+  with Alliance-keyed bitmasks, shuffles/copies panel indices into object+0x60, increments the counter
+  at object+0x79, and writes r7 to object+0x74+Param3. However, the Param2==1 branch only copies one panel
+  (r7=1, no shuffle, no loop), and uses byte_80C7B78 not byte_80C7B64. The default branch (Param2 !=1,
+  !=3) hits r4=8 -> byte_80C7B50 indices 8..15 (2-4 panels), not 2-4 as in the summary; 3 uses 0..7 (1-3).
+  The naming should reflect it''s a per-Param3 target-list builder rather than ''pickRandom'' specifically.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7A94 -> object_pickRandomTargetPanels
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7A94

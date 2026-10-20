@@ -1,0 +1,69 @@
+name: battleObject_updateDirectionFlip
+address: '0x080D1FD8'
+kind: function
+status: probable
+summary: Sets a battle object's direction-flip flag based on its horizontal velocity sign vs its alliance's
+  default facing, falling back to closest enemy panel-X comparison when stationary.
+interface: (r5 = battle object) -> r0 = ?; sets oBattleObject_DirectionFlip (0/1), no flags of use
+details: 'Called with the object in r5. First it gets the object''s default facing via object_getEnemyDirection
+  (+1 player side, -1 enemy side); if oBattleObject_XVelocity is nonzero, the flip flag is set when the
+  velocity''s sign bit differs from that default facing''s sign bit, i.e. the object is moving against
+  its side''s natural facing. If velocity is 0, it XORs the alliance with 1 and calls battleObject_findClosestEnemyBattleObject_80103F8
+  to get the nearest object of the opposite side, reads its byte 0x12 (panel X) and compares it with the
+  object''s own oBattleObject_PanelX: same column leaves the flip flag untouched, otherwise flip = 1 when
+  the enemy is to the right (negative difference). Finally battleObject_refreshSpriteAndArm_800F2C6 is
+  called so the sprite/arm pose takes the new facing into account.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getEnemyDirection + cmp with oBattleObject_XVelocity: default facing vs movement
+    decide the flip; eor alliance,#1 + bl battleObject_findClosestEnemyBattleObject_80103F8: when idle
+    it looks up the nearest opposite-side object; ldrb r0,[r0,#0x12] vs oBattleObject_PanelX, sub + lsr
+    #0x1f: flip set from which panel column the enemy is on; strb r2,[r5,#oBattleObject_DirectionFlip]
+    then bl battleObject_refreshSpriteAndArm_800F2C6: writes flip flag and re-renders sprite/arm'
+  refs:
+  - bn6f/asm/asm31.s:56138
+  - 0x080D1EF2 sub_80D1EF2
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080D1FD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal agrees with most of the code: vel=0 path XORs alliance and uses findClosestEnemyBattleObject
+    with panelX at offset 0x12 (loc_80D1FE0-80D1FF6), nonzero velocity falls through to the sign-bit compare
+    (loc_80D1FF8), strb writes oBattleObject_DirectionFlip, then refreshSpriteAndArm is called. However
+    the proposal''s branch for the zero-velocity case is wrong: the `beq locret_80D200A` happens after
+    the subtraction when equal, not ''leaves flip untouched'', and when vel is nonzero r0 still holds
+    object_getEnemyDirection''s result used in the sign-bit compare, not r1. The name ''updateDirectionFlip''
+    is fine, but ''chooses facing ... or toward the nearest opposing object'' misframes it — it sets a
+    flip flag based on direction, with no enemy lookup when moving.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact semantics of byte 0x12 on the found object (assumed panel X) could be confirmed from battleObject_findClosestEnemyBattleObject_80103F8's
+  own docs
+- Caller sub_80D1EF2 is undocumented, so which object types invoke this (player-only?) is unconfirmed
+- 'The proposal agrees with most of the code: vel=0 path XORs alliance and uses findClosestEnemyBattleObject
+  with panelX at offset 0x12 (loc_80D1FE0-80D1FF6), nonzero velocity falls through to the sign-bit compare
+  (loc_80D1FF8), strb writes oBattleObject_DirectionFlip, then refreshSpriteAndArm is called. However
+  the proposal''s branch for the zero-velocity case is wrong: the `beq locret_80D200A` happens after the
+  subtraction when equal, not ''leaves flip untouched'', and when vel is nonzero r0 still holds object_getEnemyDirection''s
+  result used in the sign-bit compare, not r1. The name ''updateDirectionFlip'' is fine, but ''chooses
+  facing ... or toward the nearest opposing object'' misframes it — it sets a flip flag based on direction,
+  with no enemy lookup when moving.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D1FD8 -> battleObject_updateDirectionFlip
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1FD8

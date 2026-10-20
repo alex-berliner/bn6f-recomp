@@ -1,0 +1,67 @@
+name: ai_startPanelLunge
+address: '0x081030C0'
+kind: function
+status: probable
+summary: 'AI attack step: if the object can move, asks a per-alliance callback for a target panel, reserves
+  it, sets CANNOT_SLIDE, CurAnim=4 (lunge), StepTimer=3, HitElement=4; otherwise exits attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 1 if a move was started; calls object_exitAttackState
+  if the object cannot move
+details: 'If object_canMove says the object is free, it indexes a small per-alliance table (8 bytes per
+  Alliance: two words passed as r2/r3 parameters, e.g. 0x10/0x0F8800A0 for alliance 0, 0x30/0x0F880080
+  for alliance 1) and calls the callback stored in oAIAttackVars_PanelChooseCallback, which returns a
+  panel x/y in r0/r1. Those are written to oBattleObject_FuturePanelX/Y and the panel is claimed via object_reservePanel.
+  It then ORs OBJECT_FLAGS_CANNOT_SLIDE into the object''s flags, sets oBattleObject_CurAnim to 4 (a move/lunge
+  animation), and sets oAIAttackVars_StepTimer=3 and oAIAttackVars_HitElement=4 before returning. If the
+  object cannot move, it instead calls object_exitAttackState. The exact meaning of the two table words
+  handed to the callback (likely x/y search bounds) is not proven from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl #3 indexes byte_8103100, so the table is 8 bytes
+    per alliance and supplies the callback''s r2/r3 arguments; ldr r0,[r7,#oAIAttackVars_PanelChooseCallback];
+    bx r0 with r0=table entry — an AI-vars callback chooses the destination panel; strb r0/r1 to oBattleObject_FuturePanelX/Y
+    then bl object_reservePanel — the returned panel is stored and claimed; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 and CurAnim=4 / StepTimer=3 / HitElement=4 set the movement state; beq loc_81030F6
+    -> bl object_exitAttackState handles the blocked case'
+  refs:
+  - bn6f/asm/asm31.s:158715
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x081030C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The overall flow matches: object_canMove gate, per-alliance 8-byte table indexing, callback invocation,
+    FuturePanelX/Y stores, object_reservePanel, CANNOT_SLIDE flag, CurAnim=4, StepTimer=3, HitElement=4,
+    and object_exitAttackState on failure. However the interface claim ''r0 = 1 if a move was started''
+    is wrong—the last explicit r0 assignment before the return is `mov r0, #4` (for HitElement at strh),
+    so the success path returns 4, not 1. The name ''ai_chooseMovePanel'' undersells the function: it
+    doesn''t just choose a panel, it also reserves it, sets flags, and kicks off the lunge animation and
+    timers, making ''ai_startPanelLunge'' more accurate.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the two words passed to the panel-choose callback (x/y bounds?) and which callbacks
+  are installed in oAIAttackVars_PanelChooseCallback
+- What animation/state id 4 and the value 4 in oAIAttackVars_HitElement correspond to
+- 'The overall flow matches: object_canMove gate, per-alliance 8-byte table indexing, callback invocation,
+  FuturePanelX/Y stores, object_reservePanel, CANNOT_SLIDE flag, CurAnim=4, StepTimer=3, HitElement=4,
+  and object_exitAttackState on failure. However the interface claim ''r0 = 1 if a move was started''
+  is wrong—the last explicit r0 assignment before the return is `mov r0, #4` (for HitElement at strh),
+  so the success path returns 4, not 1. The name ''ai_chooseMovePanel'' undersells the function: it doesn''t
+  just choose a panel, it also reserves it, sets flags, and kicks off the lunge animation and timers,
+  making ''ai_startPanelLunge'' more accurate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81030C0 -> ai_startPanelLunge
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81030C0

@@ -1,0 +1,59 @@
+name: battle_resetObjectOnBattleEnd
+address: '0x08101472'
+kind: function
+status: probable
+summary: Resets a battle object's combat state via battle_initObjectCombatState and, if its RelatedObject2Ptr
+  is non-NULL, ends that linked object's current animation, used during battle-end sweep.
+interface: (r0 = battle object pointer, passed through) -> r0 = battle object pointer; no flags documented
+details: 'Takes an object in r0 and first calls battle_initObjectCombatState to reset it: clearing a flag,
+  registering it in the status list, and setting up its collision record and self-damage values. It then
+  reads the object''s RelatedObject2Ptr field at offset in the oBattleObject struct; if non-NULL, it calls
+  battle_EndObjectCurrentAnim_80C44D2 on that pointer, marking the linked object''s animation finished
+  (0xFF) and refreshing its animation state. The function returns with r0 still holding the original object
+  pointer. The use of r5 for the struct suggests this is part of a larger object-setup/teardown routine
+  (the callees appear to share r5 as the object base). Its execution in the ''battlesweep'' route fits
+  clearing/recycling objects when a battle ends or the field is swept.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_initObjectCombatState immediately on entry resets the object's combat/collision state;
+    ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq gates the second call on a non-NULL related
+    object; bl battle_EndObjectCurrentAnim_80C44D2 ends the linked object's current animation (sets 0xFF
+    and refreshes state); route 'battlesweep' as the recorded execution context matches object cleanup/recycling
+  refs:
+  - bn6f/asm/asm31.s:155535
+  - 0x080C44D2 battle_EndObjectCurrentAnim_80C44D2
+  - 0x0810173C battle_initObjectCombatState
+  reproduce: python3 tools/asmcat.py 0x08101472
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal: it calls battle_initObjectCombatState on r0, then if RelatedObject2Ptr
+    (r5-based struct) is non-NULL, calls battle_EndObjectCurrentAnim_80C44D2 on it. However, the proposal''s
+    name ''battle_resetObjectForSpawn'' overstates the purpose since the function doesn''t spawn anything—it
+    simply resets combat state and ends a related animation. The route ''battlesweep'' suggests battle-end
+    cleanup, so a name reflecting end-of-battle reset is more accurate.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No direct callers are known, so whether r0 or r5 carries the object pointer into battle_initObjectCombatState
+  is inferred from the callees' r5 usage
+- The exact meaning of RelatedObject2Ptr (parent, companion, or chip-spawned object) is unconfirmed
+- 'The assembly matches the proposal: it calls battle_initObjectCombatState on r0, then if RelatedObject2Ptr
+  (r5-based struct) is non-NULL, calls battle_EndObjectCurrentAnim_80C44D2 on it. However, the proposal''s
+  name ''battle_resetObjectForSpawn'' overstates the purpose since the function doesn''t spawn anything—it
+  simply resets combat state and ends a related animation. The route ''battlesweep'' suggests battle-end
+  cleanup, so a name reflecting end-of-battle reset is more accurate.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101472 -> battle_resetObjectOnBattleEnd
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101472

@@ -1,0 +1,67 @@
+name: battle_drawGaugeOverlay
+address: '0x0801C576'
+kind: function
+status: probable
+summary: 'Redraws the on-screen battle gauge strip on the BG map each frame: when the gauge value at [r5+0x20]
+  is below 0x4000 it draws a 0x10-wide base tile strip then a filled segment of up to 3 tiles; once the
+  value reaches 0x4000 it instead increments an animation counter at [r5] (wrapped at 0x70) and uses (counter%7)&3
+  to pick one of four full-gauge flash tiles at 0x9232. Skips drawing when battle_IsBattleEnding_800A97A
+  reports end-of-battle.'
+interface: (r5 = gauge state struct ptr, set by caller) -> r0 = clobbered; draws BG tiles
+details: Reads a 16-bit value at [r5+0x20] (gauge value/spec) and a frame counter byte at [r5]. If the
+  value has bit 14 set (>= 0x4000, i.e. full), it increments the counter byte, wraps it at 112, uses SWI
+  6 (DivMod) by 7 and masks &3 to pick one of four tiles at 0x9232, and draws it via call_sub_3005EBA(7,1,3,tile,0x10,1)
+  — a slow 7-frames-per-tile flash. Otherwise it draws a 16-tile strip of tile 0x9222 at fixed coords
+  (7,1) in block 3, then fills (value>>10) tiles with 0x922A (the fill level, 1-15), and finally writes
+  a single edge tile 0x9222+((value>>7)&7) at x = 7+(value>>10) via bgmap_WriteTileIdAtBlock_800187C.
+  The whole update is skipped when battle_IsBattleEnding_800A97A reports the end-of-battle sequence. Note
+  the state pointer arrives in r5, i.e. the caller passes it via a register convention rather than r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_IsBattleEnding_800A97A; bne locret — no drawing once the end-of-battle effect is active;
+    ldrh r6,[r5,#0x20]; cmp r6,#0x4000; blt loc_801C5B2 — bit 14 of the value switches fill drawing vs
+    full-flash drawing; ldrb r6,[r5]; add r6,#1; cmp r6,#0x70; svc 6 (div by 7); and r0,#3 — anim counter
+    wraps at 112, 4 tiles at 0x9232 shown 7 frames each; call_sub_3005EBA(7,1,3,0x9222,0x10,1) then call_sub_3005EBA(7,1,3,0x922A,value>>10,1)
+    — 16-tile background strip plus fill-length tiles; bgmap_WriteTileIdAtBlock_800187C(7+(value>>10),1,3,0x9222+((value>>7)&7))
+    — single edge tile at the end of the filled portion
+  refs:
+  - bn6f/asm/asm00_2.s:27815
+  - 0x0800A97A battle_IsBattleEnding_800A97A
+  - 0x0800187C bgmap_WriteTileIdAtBlock_800187C
+  - 0x080018D0 call_sub_3005EBA
+  reproduce: python3 tools/asmcat.py 0x0801C576
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The branch logic inverts relative to the proposal: when r6 < 0x4000 (not full), it draws the base
+    strip and fill (loc_801C5B2 path), and when r6 >= 0x4000 it increments [r5] and runs the flash animation.
+    Also, the proposal misread the ''mod 7 then & 3'' as ''7 frames per tile''; `svc 6` returns remainder
+    mod 7, then & 3 just selects one of 4 phases (0..3). The fill count comes from `(value>>10)+1` since
+    both tiles 0x9222 and edge contribute, not just `>>10`. Name fits but summary needs correction.; run
+    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which in-game gauge this is (cross gauge vs custom gauge vs another bar) — the fill-length and flash
+  behavior fit a gauge, but the tile set 0x9222-0x9232 isn't identified
+- Meaning of the 8 edge-tile variants selected by (value>>7)&7
+- Which caller(s) own the r5 struct and how [r5+0x20] is updated toward 0x4000
+- Exact parameter meaning of call_sub_3005EBA (assumed x,y,block,tile,count,flag)
+- 'The branch logic inverts relative to the proposal: when r6 < 0x4000 (not full), it draws the base strip
+  and fill (loc_801C5B2 path), and when r6 >= 0x4000 it increments [r5] and runs the flash animation.
+  Also, the proposal misread the ''mod 7 then & 3'' as ''7 frames per tile''; `svc 6` returns remainder
+  mod 7, then & 3 just selects one of 4 phases (0..3). The fill count comes from `(value>>10)+1` since
+  both tiles 0x9222 and edge contribute, not just `>>10`. Name fits but summary needs correction.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801C576 -> battle_drawGaugeOverlay
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801C576

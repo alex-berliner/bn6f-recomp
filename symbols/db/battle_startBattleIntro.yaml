@@ -1,0 +1,62 @@
+name: battle_startBattleIntro
+address: '0x08009658'
+kind: function
+status: probable
+summary: 'Battle-state phase-4 handler: init spawns a type-4 object and enemy objects, pauses, applies
+  navi stats, plays encounter BGM; subsequent frames run sub_80096E0 then poll bit 2 of unk5c and dispatch
+  the intro-finished transition to the next state.'
+interface: (r5 = battle state) -> updates oBattleState_SubPhaseInitFlag, State4EventCount, StatePhase,
+  Index_01; r0 = 0/1
+details: 'Runs once (init half): reads the battle-effects bitmask; if bit 0x400 is set it increments State4EventCount,
+  otherwise copies BattleSettings+5 into it, then spawns the enemy objects via battle_SpawnEnemyObjects_8007358,
+  calls PauseBattle, applies the navi stat table entry, and plays the BGM — song 0x15 if effect bit 8
+  is set, else BattleSettings+2, skipped when it equals 0x63 — before setting SubPhaseInitFlag = 4. On
+  later frames it runs sub_80096E0 once (StatePhase = 4) and polls bit 2 of battle_getStateUnk5c_800139A;
+  when set it calls dispatch_801DA48(1) and sets eStruct request bits, then stores 4 (or 0x24 if event
+  flag EVENT_1735 is set) into Index_01 and clears StatePhaseAndInitFlag to advance the state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: init half calls battle_SpawnEnemyObjects_8007358, PauseBattle, PlayMusic — classic battle-start
+    sequence; effect bit 8 selects song 0x15 else BattleSettings+2, with 0x63 meaning 'no BGM change';
+    loop half waits on battle_getStateUnk5c_800139A bit 2 before dispatch_801DA48(1); sets State4EventCount
+    from BattleSettings+5 or an increment, depending on effect bit 0x400; Index_01 = 4 vs 0x24 selected
+    by story flag EVENT_1735
+  refs:
+  - bn6f/asm/asm00_1.s:14076
+  - 0x0802D246 GetBattleEffects
+  - 0x0800A028 PauseBattle
+  - 0x080005D4 PlayMusic
+  reproduce: python3 tools/asmcat.py 0x08009658
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The init path also calls battle_spawnType4ObjectWithActiveFlag_80E06F8 before battle_SpawnEnemyObjects_8007358,
+    which the proposal omits. The interface claim ''r0 = 0/1'' is unsupported: every return path is just
+    pop {r4,r6,r7,pc} with no r0 write. The name and general phase-handler description fit (spawn, pause,
+    BGM, poll bit 2 of unk5c, then clear StatePhaseAndInitFlag to advance), but the missing type-4 spawn
+    and bogus return value warrant a correction.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of State4EventCount (custom-vs-random effect variant counter?)
+- what sub_80096E0 and dispatch_801DA48(1) draw/drive during the intro
+- what the 4 vs 0x24 Index_01 values select (normal encounter vs flagged variant, e.g. tutorial)
+- 'The init path also calls battle_spawnType4ObjectWithActiveFlag_80E06F8 before battle_SpawnEnemyObjects_8007358,
+  which the proposal omits. The interface claim ''r0 = 0/1'' is unsupported: every return path is just
+  pop {r4,r6,r7,pc} with no r0 write. The name and general phase-handler description fit (spawn, pause,
+  BGM, poll bit 2 of unk5c, then clear StatePhaseAndInitFlag to advance), but the missing type-4 spawn
+  and bogus return value warrant a correction.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009658 -> battle_startBattleIntro
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009658

@@ -1,0 +1,71 @@
+name: t3_spawnAttackObjectWithSource
+address: '0x080C86B0'
+kind: function
+status: probable
+summary: Wrapper around object_spawnType3 that spawns the type-3 battle object ID 0x22, copies the caller's
+  panelX/panelY/element and a damage/stamina word from r6, inherits oBattleObject_AllianceAndDirectionFlip
+  from the source object in r5, and sets flag 0x10 in oObjectHeader_Flags.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = extra spawn arg, r5 = source object to inherit
+  AllianceAndDirectionFlip from, r6 = damage/damage-counter word) -> r0 = spawned object or 0 on failure;
+  flags from spawn success test
+details: The wrapper pushes the caller's r0-r2 (and r5) so they ride the stack as extra arguments, then
+  calls object_spawnType3 with r0 = 0x22 (object ID); the spawn result comes back in r5 and is moved to
+  r0 before the pop restores r1-r3 (shifting the saved r0-r2 into r1-r3). On success it writes the caller's
+  panelX, panelY and element into oBattleObject_PanelX/PanelY/Element of the new object, stores the caller's
+  r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler, and copies oBattleObject_AllianceAndDirectionFlip
+  from the object in r5 so the spawned attack fights on the source's side. It then ORs flag 0x10 into
+  the new object's oObjectHeader_Flags. The trailing t3_0x23 state-machine code in the same region shows
+  this family of type-3 objects runs init/collision/update handler tables. Failure path (beq) returns
+  immediately leaving the object unconfigured.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnType3 with r0=0x22 after push {r0-r2,r5} stacks the caller''s args as the remaining
+    spawn parameters; strb r1/r2/r3 into oBattleObject_PanelX/PanelY/Element of the returned object (sub_80C86B0+0x12..0x1A);
+    str r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler and ldrh/strh of oBattleObject_AllianceAndDirectionFlip
+    copied from r5; ldrb oObjectHeader_Flags / orr #0x10 / strb sets header flag 0x10 on the new object;
+    caller ai_panelAttackStep invokes it when its step timer expires to spawn the attack on the target
+    panel'
+  refs:
+  - bn6f/asm/asm31.s:35600
+  - 0x080F7BDE ai_panelAttackStep
+  - 0x080B961A sub_80B961A
+  - 0x080F1558 sub_80F1558
+  - 0x08003358 object_spawnType3
+  - 0x0801BCA6 object_updateSpritePaused
+  - 0x0801BBF4 object_updateSpriteTimestop
+  reproduce: python3 tools/asmcat.py 0x080C86B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal accurately describes the wrapper''s behavior (push caller regs, spawn ID 0x22, copy
+    panel/element/damage/alliance, OR 0x10 flag), but the summary''s wording and the name ''spawnPanelAttackObject''
+    overreach: r6 is described as ''damage/damage-counter word'' (it''s stored verbatim into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+    but its semantic role isn''t fixed here), and r3 as ''extra spawn arg'' — actually r3 is stashed then
+    popped into r3 used as element. Minor naming nit only.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What gameplay object ID 0x22 actually is (sprite/visual) and what header flag 0x10 means
+- What the 4th spawn argument (caller's r3) contributes inside object_spawnType3
+- Whether r5 is always the attacking object or just any alliance template
+- 'The proposal accurately describes the wrapper''s behavior (push caller regs, spawn ID 0x22, copy panel/element/damage/alliance,
+  OR 0x10 flag), but the summary''s wording and the name ''spawnPanelAttackObject'' overreach: r6 is described
+  as ''damage/damage-counter word'' (it''s stored verbatim into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  but its semantic role isn''t fixed here), and r3 as ''extra spawn arg'' — actually r3 is stashed then
+  popped into r3 used as element. Minor naming nit only.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C86B0 -> t3_spawnAttackObjectWithSource
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C86B0

@@ -1,0 +1,66 @@
+name: ai_frontPanelSlashAttack
+address: '0x080EECCC'
+kind: function
+status: probable
+summary: 'AI attack step handler: after a 12-frame windup, plays sound 0x10A, spawns a one-panel collision
+  region in front of the attacker and a flip-dependent slash effect at that panel, then nulls attack pointers
+  and sets HitElement=8 when StepTimer underflows.'
+interface: (r5 = battle object, r7 = AI attack vars struct) -> void; uses oAIAttackVars_StepTimer/oAIAttackVars_Damage,
+  writes oAIAttackVars_HitElement
+details: While StepTimer equals 0xC (the windup frame) it plays sound 0xA, reads the object's Damage,
+  and spawns a collision region at PanelX + frontDirection, PanelY with parameters (4, 0) and stack args
+  (panelX, panelY, 1), so the hit lands on the single panel in front. It then spawns a type-1 effect object
+  (effect type 0) at that panel's pixel coordinates with parameter ((getFlip<<8)+0x33), i.e. a flip-dependent
+  effect sprite index, likely a slash sprite. Each call decrements StepTimer; once it goes negative it
+  nulls oBattleObject_RelatedObject1Ptr and oAIData_TempAttackObjectPtr and stores HitElement = 8 (sword-type?)
+  into the AI attack vars. This matches a one-panel melee swing AI attack in the battle engine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp StepTimer, #0xc / PlaySoundEffect(0xA): one-shot setup on the windup frame; object_getFrontDirection
+    added to oBattleObject_PanelX before object_spawnCollisionRegion: hit panel is the one in front; lsl
+    r4, r0, #8 + #0x33 from object_getFlip before spawn_t1_0x0_EffectObject at object_getCoordinatesForPanels
+    output: flip-mirrored visual effect at the struck panel; final block: dec StepTimer, on underflow
+    clear RelatedObject1Ptr, TempAttackObjectPtr and set HitElement=8: attack teardown; route context
+    ''beastsp'' with oAIAttackVars_Damage read: this is an AI-controlled enemy attack routine'
+  refs:
+  - bn6f/asm/asm31.s:117485
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080EECCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal says sound 0xA, but the code does `mov r0,#0xb` then `add r0,#0xff`, yielding 0x10A
+    (266), not 0xA. All other structural claims check out: frontDirection-added panelX at line `add r0,
+    r0, r1`, collision params r2=4/r3=0 with stack {r0,r1,1}, effect param `(getFlip<<8)+0x33`, and cleanup
+    nulling RelatedObject1Ptr/TempAttackObjectPtr with HitElement=8. The callee is described as spawning
+    a type-4 object, not type-1, so the proposal''s ''type-1 effect object'' wording is slightly off.
+    Name and overall flow are otherwise accurate.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact identity of the attack (which enemy/beast uses it) — needs the AI script or route that selects
+  this handler
+- meaning of HitElement value 8 and the collision region's stack arguments (element? flags?)
+- what effect index 0x33 vs 0xFFFFFF33 renders visually
+- 'The proposal says sound 0xA, but the code does `mov r0,#0xb` then `add r0,#0xff`, yielding 0x10A (266),
+  not 0xA. All other structural claims check out: frontDirection-added panelX at line `add r0, r0, r1`,
+  collision params r2=4/r3=0 with stack {r0,r1,1}, effect param `(getFlip<<8)+0x33`, and cleanup nulling
+  RelatedObject1Ptr/TempAttackObjectPtr with HitElement=8. The callee is described as spawning a type-4
+  object, not type-1, so the proposal''s ''type-1 effect object'' wording is slightly off. Name and overall
+  flow are otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EECCC -> ai_frontPanelSlashAttack
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EECCC

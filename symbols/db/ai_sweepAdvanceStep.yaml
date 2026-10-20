@@ -1,0 +1,60 @@
+name: ai_sweepAdvanceStep
+address: '0x080F2F54'
+kind: function
+status: probable
+summary: 'Per-frame timer driver for an AI panel-sweep: when the step timer hits zero, commits FuturePanelX/Y
+  to PanelX/Y, frees the panel reservation, resnaps coordinates/collision, and reloads the timer + a state
+  word for the next sweep step.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value
+details: Runs each frame of an AI attack; decrements oAIAttackVars_StepTimer and returns until it reaches
+  0. On expiry it sets the object's animation to 3 (movement/step anim), copies FuturePanelX/Y into PanelX/Y
+  (committing the queued move), then calls object_removePanelReserve to release the reserved target panel,
+  object_setCoordinatesFromPanels to snap pixel position to the new panel, and object_updateCollisionPanels
+  to sync collision/facing. It reloads StepTimer with 5 to pace the next step and stores 8 into oAIAttackVars_HitElement,
+  likely a per-step damage/element value applied while sweeping. Effectively a stepwise panel-crawling
+  attack driver, matching the recorded 'battlesweep' route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'StepTimer countdown with bgt locret gates the whole body: ldrh/sub/strh oAIAttackVars_StepTimer,
+    bgt; FuturePanelX/Y copied to PanelX/Y before the three panel-related calls — a queued move being
+    committed; object_removePanelReserve immediately after the panel copy frees the reserved target panel;
+    StepTimer reset to 5 and HitElement written to 8 after the move, keeping per-step cadence and per-step
+    effect; Sets oBattleObject_CurAnim to 3, consistent with a move/step animation state'
+  refs:
+  - bn6f/asm/asm31.s:126196
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F2F54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The step-by-step behavior, the 5 reload, the three callees, and the animation-3 + FuturePanel→Panel
+    commit all match the proposal. However, `oAIAttackVars_HitElement` is being written with a value,
+    not stored as ''HitElement'' in the sense of a damage element; combined with the ''battlesweep'' route
+    this is more plausibly a next-state/step counter than an element. Renaming reflects the role better
+    while keeping the ai prefix.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of HitElement = 8 (element id vs hitbox flag) and whether damage is dealt elsewhere per
+  step
+- Which AI attack/routine owns this handler (caller graph empty; inferred from the battlesweep route)
+- The step-by-step behavior, the 5 reload, the three callees, and the animation-3 + FuturePanel→Panel
+  commit all match the proposal. However, `oAIAttackVars_HitElement` is being written with a value, not
+  stored as 'HitElement' in the sense of a damage element; combined with the 'battlesweep' route this
+  is more plausibly a next-state/step counter than an element. Renaming reflects the role better while
+  keeping the ai prefix.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F2F54 -> ai_sweepAdvanceStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2F54

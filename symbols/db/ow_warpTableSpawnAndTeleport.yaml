@@ -1,0 +1,70 @@
+name: ow_warpTableSpawnAndTeleport
+address: '0x0809BDB8'
+kind: function
+status: probable
+summary: 'Overworld warp handler: matches player grid position against byte_809BE6C table (or forces index
+  3 via EVENT_128); for index < 0x10 builds a 0x14-byte spawn request at r5+0x70 from byte_809BA30, calls
+  SpawnOverworldMapObject, sets/clears event flags, and writes camera (r0=1,r1=request); regardless of
+  index, copies player-state+0x24/+0x28/+0x2c into coordinates via owPlayer_indirectlySetPlayerCoordsMaybe.'
+interface: (r0 = unused/result flag input, r5 = overworld controller struct, r10+0x3c = overworld/player
+  state struct) -> r0 = 0; sets/clears event flags, writes camera field
+details: If EVENT_128 is set it immediately uses index 3, otherwise it reads two halfwords from the struct
+  at r10+0x3c (fields +0x4 and +0xc, likely the player's grid x/y) and scans byte_809BE6C, a table of
+  halfword coordinate pairs, for a match, storing the index at r5+8. If the index is < 0x10 it builds
+  a 0x14-byte spawn request at r5+0x70 from byte_809BA30[idx*0x14] (x/y/z sign-extended and <<16, halfword
+  +6 lsr 1 as a parameter, +0xe copied), calls SpawnOverworldMapObject and stores the returned object
+  pointer at request+0x10; it also sets EVENT_38 and EVENT_39, clears the event-flag bitfield at table
+  entry +0x10, and flags camera field via camera_writeUnk03(r6,1). Finally it copies the struct's +0x24/+0x28/+0x2c
+  words into the player's coordinates via owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4, i.e. moves
+  the player to the destination position. Indices >= 0x10 (the last five table pairs) skip the spawn/teleport
+  entirely.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_809BDB8+0x14..0x2e: scans byte_809BE6C pairs against halfwords [r2,#0xc] and [r2,#4] from
+    r10+0x3c to get an index stored at [r5,#8]; sub_809BDB8+0x38..0x74: builds 0x14-byte record at r5+0x70
+    from byte_809BA30[idx*0x14] and calls SpawnOverworldMapObject; sub_809BDB8+0x86..0x9c: sets EVENT_38/EVENT_39
+    and clears the u16 flag bitfield at table entry +0x10; sub_809BDB8+0x9e..0xa8: calls camera_writeUnk03_14_80301b2
+    with r6 and value 1; sub_809BDB8+0xaa..0xbc: copies r10+0x3c struct +0x24/+0x28/+0x2c into player
+    coords via owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4'
+  refs:
+  - bn6f/asm/asm28_0.s:3816
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0809BDB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal states indices >= 0x10 ''skip the spawn/teleport entirely'' but the bge at line ''bge
+    loc_809BE52'' jumps directly to the teleport code, so only the spawn block is skipped and owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4
+    still executes. The table byte_809BE6C has 23 halfword-pair entries, not 16; calling indices 16-22
+    ''the last five table pairs'' is incorrect. The camera call is ''mov r0,#1; mov r1,r6; bl camera_writeUnk03''
+    so arguments are (1, r6) not (r6,1). The destination coords at +0x24/+0x28/+0x2c are read from the
+    player-state struct (r10+0x3c), not ''the overworld struct.''; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which in-game location/trigger uses this (recorded only on the beastsp route); the exact meaning of
+  the coordinate tables byte_809BA30 and byte_809BE6C and the fields r10+0x3c+4/+0xc/+0x24 is unconfirmed
+- What SpawnOverworldMapObject returns and the full layout of the r5+0x70 request record are only partially
+  known
+- The proposal states indices >= 0x10 'skip the spawn/teleport entirely' but the bge at line 'bge loc_809BE52'
+  jumps directly to the teleport code, so only the spawn block is skipped and owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4
+  still executes. The table byte_809BE6C has 23 halfword-pair entries, not 16; calling indices 16-22 'the
+  last five table pairs' is incorrect. The camera call is 'mov r0,#1; mov r1,r6; bl camera_writeUnk03'
+  so arguments are (1, r6) not (r6,1). The destination coords at +0x24/+0x28/+0x2c are read from the player-state
+  struct (r10+0x3c), not 'the overworld struct.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809BDB8 -> ow_warpTableSpawnAndTeleport
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809BDB8

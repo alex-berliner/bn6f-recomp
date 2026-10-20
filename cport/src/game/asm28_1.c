@@ -231,7 +231,7 @@ Next mysteryData_InitMapGroupTables_809FAF4(void) {
 }
 
 /* ── clearMysteryDataEventFlags_809FB04 ── */
-/* register form: calls sub_809FB4C outside this file, which has no typed C interface yet.
+/* register form: calls getMysteryDataRewards outside this file, which has no typed C interface yet.
  * (kind, placements, contents, eventFlag) -> { kindResult in kindR, placementResult in placementR } */
 static void call_sub_809FB4C(u32 kind, u32 placements, u32 contents, u16 eventFlag,
                              u32 *kindR, u32 *placementR) {
@@ -239,7 +239,7 @@ static void call_sub_809FB4C(u32 kind, u32 placements, u32 contents, u16 eventFl
     R1 = placements;
     R2 = contents;
     R3 = eventFlag;
-    GUEST_CALL(sub_809FB4C);
+    GUEST_CALL(getMysteryDataRewards);
     *kindR = R0;
     *placementR = R1;
 }

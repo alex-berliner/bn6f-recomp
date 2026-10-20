@@ -13,7 +13,7 @@
  *   drawPanel_800C01C  the panel itself (family 0xFF blanks its block)
  *   drawPanelOverlay_800C0BA  one of two overlays drawn over the panel
  *   drawPanelUnderStrip_800C100  the one-tile-high strip under the panel
- * A slot holding no panel is blanked, and sub_800C138 draws whatever
+ * A slot holding no panel is blanked, and battle_erasePanelRow draws whatever
  * shows in its place.
  *
  * Which tiles a panel uses depends on the field's orientation: when
@@ -202,7 +202,7 @@ static void update_panels(void) {
             R0 = column;
             R1 = row + 1;
             R2 = LD8(panel + PANEL_SIDE);
-            GUEST_CALL(sub_800C138);
+            GUEST_CALL(battle_erasePanelRow);
             continue;
         }
 

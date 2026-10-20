@@ -1,0 +1,69 @@
+name: battleMenu_showChipInfo
+address: '0x08047A96'
+kind: function
+status: probable
+summary: On confirmation in the battle-menu chip browser, looks up the selected entry's 8-byte record
+  and runs the matching chatbox description script (with event-flag-dependent variants); passes halfword+2
+  as text-id, byte+4, and CDC-scaled halfword+6 to chatbox_setTextParams.
+interface: '(r5 = battle-menu state struct: u8 cursor@0x14, u16 page@0x18, mode-ptr@0x1C, TextScriptArchive*@0x24)
+  -> none; selects script index in r7 and plays a sound effect'
+details: 'Reads the 8-byte record at byte_2019A00 + (col+page)*8 (pointer saved to [r5,#0x20]); fields:
+  byte0=kind (0-3, kind 3 adds 0x90 to the text id at halfword+2), byte1=variant flag, halfword+6=numeric
+  param routed through sub_8047CDC (x100 unless a global mode==1). Those three values go to chatbox_setTextParams.
+  If *(u32*)[r5,#0x1C]==2 it additionally tests event flags 0x1E20+id and 0x2420+id (acquired/seen flags)
+  and sub_8048F68(id) to choose among script indices 0x18-0x1D; otherwise it picks script 5/4/0xB by kind
+  after a stub check (failure path plays SOUND_CANT_JACK_IN and returns without text). Success path plays
+  SOUND_SELECT then chatbox_runScript([r5,#0x24], index).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7,=byte_2019A00; ldrh r0,[r5,#0x14]+[r5,#0x18]; mul r0,#8; str r7,[r5,#0x20] — indexed
+    record lookup from menu cursor; mov r0,r4/r1=r2/r2=halfword+6; bl chatbox_setTextParams_8045EFC after
+    sub_8047CDC — feeds text id/kind/value to chatbox; TestEventFlag(0x1E20+id) and (0x2420+id) plus sub_8048F68(id)
+    pick script variants 0x18-0x1D; mov r1,r7 (script index); ldr r0,[r5,#0x24]; bl chatbox_runScript;
+    Caller battleMenu_navigate_8047950 is the A-confirm handler over a 2D chip cursor
+  refs:
+  - bn6f/asm/asm03_2.s:3450
+  - 0x08047950 battleMenu_navigate_8047950
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F168 TestEventFlag
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x08047A96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Name, summary, and interface all match: r5 struct fields 0x14/0x18/0x1C/0x24 are cursor/page/mode-ptr/script-archive,
+    record is byte_2019A00+(col+page)*8, mode==2 tests 0x1E20+id and 0x2420+id, else stub then picks 5/4/0xB
+    by kind. However the details say ''byte0=kind, byte1=variant, halfword+6 → those three go to chatbox_setTextParams'';
+    the code actually passes r0=halfword+2(+0x90 if kind3), r1=byte+4, r2=CDC(halfword+6) to that callee—byte0
+    selects the script-branch and byte1 is the variant flag only in the mode==2 path. The failure path
+    via stub_doNothingReturnZero is unreachable (it always returns 0/Z). Script indices in mode==2 are
+    {5,0x18,0x19,0x1A,0x1C}, not the range 0x18-0x1D the proposal implies.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles2
+- beastsp
+- story2
+open_questions:
+- Exact semantics of record byte0 kinds (0-3) and byte1; what sub_8048F68(id) tests (chip owned vs registered?);
+  meaning of the *(mode-ptr)==2 branch (folder vs library screen?) and of the +0x90 text-id offset for
+  kind 3
+- 'Name, summary, and interface all match: r5 struct fields 0x14/0x18/0x1C/0x24 are cursor/page/mode-ptr/script-archive,
+  record is byte_2019A00+(col+page)*8, mode==2 tests 0x1E20+id and 0x2420+id, else stub then picks 5/4/0xB
+  by kind. However the details say ''byte0=kind, byte1=variant, halfword+6 → those three go to chatbox_setTextParams'';
+  the code actually passes r0=halfword+2(+0x90 if kind3), r1=byte+4, r2=CDC(halfword+6) to that callee—byte0
+  selects the script-branch and byte1 is the variant flag only in the mode==2 path. The failure path via
+  stub_doNothingReturnZero is unreachable (it always returns 0/Z). Script indices in mode==2 are {5,0x18,0x19,0x1A,0x1C},
+  not the range 0x18-0x1D the proposal implies.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8047A96 -> battleMenu_showChipInfo
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8047A96

@@ -1,0 +1,61 @@
+name: ai_spawnArrivalEffectAtPanel
+address: '0x081141E8'
+kind: function
+status: probable
+summary: Plays the type-0 arrival/teleport effect on the panel (r0=col, r1=row) of the enemy battle object
+  in r5, tagged with the object's alliance value (with DirectionFlip XORed in) shifted into the high byte
+  of the spawn flags.
+interface: (r0 = panel column, r1 = panel row; r5 = battle object) -> r0 = spawned effect object pointer
+details: Saves the panel column/row args, computes (oBattleObject_Alliance ^ oBattleObject_DirectionFlip)
+  << 8 from the object in r5, then calls object_getCoordinatesForPanels to turn the column/row into 16.16
+  screen x/y. It then calls spawn_t1_0x0_EffectObject with r0 = the shifted side flag, r1 = x, r2 = y,
+  r3 = 0, and r4 = 0x14 | side flag << 8 (0x14 being a fixed effect parameter, likely a draw sort/z value).
+  The side flag XORed into the high byte presumably mirrors or re-colors the effect for the enemy's side.
+  Returns whatever the spawn wrapper returns (the new effect object pointer).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor of oBattleObject_Alliance and oBattleObject_DirectionFlip shifted <<8 is stashed and passed
+    as r0/r4-high to the effect spawn; object_getCoordinatesForPanels is called with the saved r0/r1 panel
+    coords to get screen x/y for the effect; r4 = 0x14 | flag<<8: fixed constant ORed with the side flag
+    as the effect''s parameter word; caller ai_moveToTargetPanelStartAttack teleports the enemy onto its
+    saved target panel and arms the attack, matching an arrival effect at that panel'
+  refs:
+  - bn6f/asm/asm32.s:12421
+  - 0x08113AB8 ai_moveToTargetPanelStartAttack
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x081141E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The XOR of oBattleObject_Alliance with oBattleObject_DirectionFlip isn''t a meaningful ''side flag'';
+    DirectionFlip is just a mirror bit and XORing it in only possibly flips one bit of the alliance value.
+    The high byte passed to spawn_t1_0x0_EffectObject is simply that shifted alliance byte (likely a palette/side
+    tag), and 0x14 is one spawn parameter, not a z/sort value. The function is specifically called by
+    ai_moveToTargetPanelStartAttack to play the arrival/teleport effect when the enemy reaches its target
+    panel, so the summary is close but the name should reflect that.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of effect type 0 and the 0x14 parameter word in spawn_t1_0x0_EffectObject (teleport flash
+  vs. generic spawn puff) needs the spawn wrapper's internals
+- The XOR of oBattleObject_Alliance with oBattleObject_DirectionFlip isn't a meaningful 'side flag'; DirectionFlip
+  is just a mirror bit and XORing it in only possibly flips one bit of the alliance value. The high byte
+  passed to spawn_t1_0x0_EffectObject is simply that shifted alliance byte (likely a palette/side tag),
+  and 0x14 is one spawn parameter, not a z/sort value. The function is specifically called by ai_moveToTargetPanelStartAttack
+  to play the arrival/teleport effect when the enemy reaches its target panel, so the summary is close
+  but the name should reflect that.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81141E8 -> ai_spawnArrivalEffectAtPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81141E8

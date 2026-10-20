@@ -2974,9 +2974,9 @@ static void sub_81267A8_reg(void) {
     GUEST_CALL(sprite_queueBattleOamEntry);
 }
 
-/* register form: calls sub_81267F0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_queueFixedOverlayOam outside this file, which has no typed C interface yet */
 static void sub_81267F0_reg(void) {
-    GUEST_CALL(sub_81267F0);
+    GUEST_CALL(battle_queueFixedOverlayOam);
 }
 
 /* Initialize battle-state fields on the object pointed to by R5, then run the
@@ -3103,9 +3103,9 @@ static void call_8126554(void) {
     GUEST_CALL(sub_8126554);
 }
 
-/* register form: calls sub_81267F0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_queueFixedOverlayOam outside this file, which has no typed C interface yet */
 static void call_81267F0(void) {
-    GUEST_CALL(sub_81267F0);
+    GUEST_CALL(battle_queueFixedOverlayOam);
 }
 
 /* register form: IsScreenFadeActive's condition flags must reach the caller

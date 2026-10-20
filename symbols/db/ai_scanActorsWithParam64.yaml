@@ -1,0 +1,61 @@
+name: ai_scanActorsWithParam64
+address: '0x0810B58A'
+kind: function
+status: probable
+summary: 'AI helper: loads scan arguments (0x64, 0x13, 0x18) and tail-calls FindBattleActorsWithNonzeroParam_ReturnCountAndSum,
+  returning its count/sum result unchanged.'
+interface: () -> r0 = count/sum result of FindBattleActorsWithNonzeroParam(0x64, 0x13, 0x18); flags from
+  that call
+details: 'Thin wrapper that sets up three scan arguments (0x64, 0x13, 0x18) and tail-calls FindBattleActorsWithNonzeroParam_ReturnCountAndSum,
+  returning its count/sum unchanged. Its only known user, the Swordy variant at 0x810B49C, compares the
+  returned value to <=3 before rolling RNG and launching attack id 0xC, implying the result encodes proximity/panel
+  span to a target (likely the player) rather than a plain boolean. The three constants are opaque without
+  the callee''s internals: 0x64 is presumably a param/field id and 0x13/0x18 shape the search area or
+  column bounds. Quirk: it preserves no state and takes no input, so the scan is fully parameterized by
+  these constants.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_810B58A body is only mov #0x64/#0x13/#0x18 + bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+    (asm lines 2-5); caller sub_810B49C checks the result <= 3 before GetPositiveSignedRNG & 1, matching
+    Swordy''s slash-when-close behavior; both callers belong to the Swordy AI cluster rooted at ai_swordyTryStartAttack
+    (attack id 0xC); callee is already named FindBattleActorsWithNonzeroParam_ReturnCountAndSum, so this
+    is a fixed-argument specialization of it'
+  refs:
+  - bn6f/asm/asm31.s:176273
+  - 0x0810B436 ai_swordyTryStartAttack
+  - 0x0810B49C sub_810B49C
+  - 0x0810B3E4 sub_810B3E4
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  reproduce: python3 tools/asmcat.py 0x0810B58A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal''s mechanics: mov r0,#0x64 / mov r1,#0x13 / mov r2,#0x18 / bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+    / pop {pc}, matching the described thin wrapper. However, the ''ai_swordy'' prefix is wrong — caller
+    0x0810B3E4 is not labeled Swordy, so this helper is a shared battle-AI scan, not Swordy-specific.
+    A neutral name like ''ai_scanActorsWithParam64'' fits the code better.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- meaning of the three constants 0x64/0x13/0x18 (param id vs area bounds) requires reading FindBattleActorsWithNonzeroParam
+- whether the returned value is a distance, panel sum, or packed count+sum — the <=3 caller check is the
+  only clue
+- 'The code confirms the proposal''s mechanics: mov r0,#0x64 / mov r1,#0x13 / mov r2,#0x18 / bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  / pop {pc}, matching the described thin wrapper. However, the ''ai_swordy'' prefix is wrong — caller
+  0x0810B3E4 is not labeled Swordy, so this helper is a shared battle-AI scan, not Swordy-specific. A
+  neutral name like ''ai_scanActorsWithParam64'' fits the code better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810B58A -> ai_scanActorsWithParam64
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B58A

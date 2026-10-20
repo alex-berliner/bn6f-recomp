@@ -1,0 +1,59 @@
+name: battle_beastSpStartCutscene
+address: '0x0808711C'
+kind: function
+status: probable
+summary: 'Starts a beast-SP cutscene by comparing a stored byte (r5 field 0xC) against a normalized counter
+  (r5 field 6, with values >=0x32 reduced by 0x28) and dispatching StartCutscene with one of two scripts:
+  byte_80868C8+0x20 on match, otherwise byte_8086678+0x20.'
+interface: (r5 = *BeastSpState) -> void; no return value
+details: 'Uses the caller''s r5 as a beast-SP state struct: reads field 0xC and the counter at field 6.
+  The counter is normalized — if it is >= 50 (0x32) it has 0x28 subtracted, folding it into a lower range.
+  The normalized value becomes the StartCutscene param. If the normalized value equals the field-0xC value,
+  the script at byte_80868C8+0x20 is used; otherwise the script at byte_8086678+0x20 is used, so the two
+  scripts likely correspond to ''phase unchanged'' vs ''phase changed'' (e.g. first transform vs subsequent/continued
+  beast state).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r5,#6]; cmp r2,#0x32; blt ...; sub r2,#0x28 — normalizes a state counter into a phase/param
+    value; ldrb r1,[r5,#0xc]; cmp r1,r2; beq — script selection depends on whether field 0xC matches the
+    current phase; two distinct cutscene script pointers (byte_80868C8+0x20, byte_8086678+0x20) selected
+    by that comparison; tail call bl StartCutscene with r2 as param matches the known StartCutscene(script,
+    param) interface; sole caller battle_beastSpUpdateStep_8086EA8 is described as running/queuing the
+    beast intro cutscene
+  refs:
+  - bn6f/asm/asm22.s:268
+  - 0x08086EA8 battle_beastSpUpdateStep_8086EA8
+  - 0x08036E90 StartCutscene
+  reproduce: python3 tools/asmcat.py 0x0808711C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Name and core mechanics (normalize field 6, compare to field 0xC, pick one of two scripts, call
+    StartCutscene) match the asm exactly. However, the summary''s ''phase unchanged vs phase changed''
+    and ''first transform vs subsequent'' interpretation overstates what the code actually shows; the
+    code only proves a conditional choice between two cutscene scripts based on a normalized counter vs
+    a stored byte. A more conservative summary is warranted.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the field-6 counter and the 50/40 folding (beast timer? turn count?)
+- which of the two cutscene scripts is the intro vs the variant, and what the param means inside the script
+- Name and core mechanics (normalize field 6, compare to field 0xC, pick one of two scripts, call StartCutscene)
+  match the asm exactly. However, the summary's 'phase unchanged vs phase changed' and 'first transform
+  vs subsequent' interpretation overstates what the code actually shows; the code only proves a conditional
+  choice between two cutscene scripts based on a normalized counter vs a stored byte. A more conservative
+  summary is warranted.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808711C -> battle_beastSpStartCutscene
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808711C

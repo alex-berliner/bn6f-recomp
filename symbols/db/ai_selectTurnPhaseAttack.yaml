@@ -1,0 +1,68 @@
+name: ai_selectTurnPhaseAttack
+address: '0x080F2B6C'
+kind: function
+status: probable
+summary: 'Generic AI script step: while TurnCounter<3 rolls RNG to increment it, sets basic attack (id
+  9) on the flipped-alliance player with callback sub_80F36A2; at counter 3 issues charged attack (id
+  0xA) with callback sub_80F3704, then routes through difficulty-tier (tier==0 → ScriptId 4; otherwise
+  XORs AttackCounter, resetting TurnCounter if it clears to 0, else ScriptId 4).'
+interface: (r6 = AI state struct, r7 = AI attack vars, r5 = battle object) -> r0 = destroyed; writes oAIAttackVars_*
+  and oAIState_* fields
+details: 'Reads oAIState_TurnCounter: while it is below 3, it rolls GetPositiveSignedRNG & 0xF and increments
+  the counter unless the roll is >= 12, keeps the panel-choose callback sub_80F36A2, stores the target
+  player object (battle_findPlayer on the flipped alliance) into oAIAttackVars_TargetObjectPtr, and issues
+  attack id 9 via object_setAttack4. Once the counter reaches 3, it copies oAIState_AttackCounter into
+  oAIAttackVars_AttackBoost2, stores the AI difficulty tier and init flag, gets a duration from sub_80F2DDC/sub_80F2CE4,
+  sets the panel-choose callback to sub_80F3704, stashes r5+0x60 as a scratch pointer, and issues attack
+  id 0xA via object_setAttack0. On the difficulty-tier path it also XORs oAIState_AttackCounter with 1
+  and, when that clears it to 0, resets oAIState_TurnCounter to 0 and continues the loop; otherwise it
+  advances oAIState_ScriptId to 4 to hand control to the next AI script step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp r0,#3 / blt loc_80F2BBE branches on oAIState_TurnCounter between the two attack modes; str
+    r0,[r7,#oAIAttackVars_PanelChooseCallback] installs sub_80F3704 or sub_80F36A2 depending on branch;
+    bl battle_findPlayer after eor alliance with 1 stores the player into oAIAttackVars_TargetObjectPtr;
+    bl object_setAttack4 with r0=9 in the waiting branch and object_setAttack0 with r0=0xA in the charged
+    branch; GetPositiveSignedRNG & 0xF >= 12 gate slows the turn-counter charge, and ScriptId=4 ends the
+    routine
+  refs:
+  - bn6f/asm/asm31.s:125372
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080F2B6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The turn-counter structure (increment unless RNG roll ≥ 12, special attack at counter 3) matches
+    loc_80F2BBE/loc_80F2B6C exactly, and the two attack IDs (9 via object_setAttack4, 0xA via object_setAttack0)
+    and callbacks (sub_80F36A2, sub_80F3704) are correct. However the proposal labels this ''boss'' AI,
+    yet the routine is a generic AI script step dispatched from battlesweep with no boss-specific gating.
+    Also the summary''s difficulty-tier description omits that tier==0 jumps directly to ScriptId=4 (beq
+    loc_80F2BB8) without ever reaching the XOR; the XOR path is only entered when tier!=0.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which boss's AI this belongs to (no caller or boss id seen here)
+- what attacks 9 and 0xA do in the attack table
+- the exact semantics of sub_80F2DDC/sub_80F2CE4 duration computation
+- The turn-counter structure (increment unless RNG roll ≥ 12, special attack at counter 3) matches loc_80F2BBE/loc_80F2B6C
+  exactly, and the two attack IDs (9 via object_setAttack4, 0xA via object_setAttack0) and callbacks (sub_80F36A2,
+  sub_80F3704) are correct. However the proposal labels this 'boss' AI, yet the routine is a generic AI
+  script step dispatched from battlesweep with no boss-specific gating. Also the summary's difficulty-tier
+  description omits that tier==0 jumps directly to ScriptId=4 (beq loc_80F2BB8) without ever reaching
+  the XOR; the XOR path is only entered when tier!=0.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F2B6C -> ai_selectTurnPhaseAttack
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2B6C

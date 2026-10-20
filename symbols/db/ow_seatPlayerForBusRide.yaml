@@ -1,0 +1,61 @@
+name: ow_seatPlayerForBusRide
+address: '0x0808F990'
+kind: function
+status: probable
+summary: 'Part of the bus-boarding sequence: locks player input and swaps the overworld player''s sprite
+  to the seated/riding pose used while the bus moves.'
+interface: () -> r0 = 0; no meaningful flags
+details: Locks the overworld player's InteractionLocked flag, calls sub_809E304, and clears the player's
+  eStruct2000aa0 Sprite_04 byte at 0x2000AA4. It then reads the game state's overworld player object pointer
+  and loads sprite ID 0x37 (with parameters 0x80 and 0x18) onto it, sets the sprite's animation index
+  to the byte at player+0x14 (the player's current animation, so the seated pose matches facing), loads
+  the animation data, and disables the shadow via sprite_noShadow before a sprite_update. Always returns
+  0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl owPlayer_setInteractionLocked_809e230 then owPlayer_zeroS2000AA0Param0x4_809e312 at the
+    top: player is put into a non-interactive ride state; ldr r5,[r5,#oGameState_OverworldPlayerObjectPtr];
+    mov r0,#0x80; mov r1,#0x18; mov r2,#0x37; bl sprite_load: sprite 0x37 loaded for the ride; ldrb r0,[r5,#0x14];
+    bl sprite_setAnimation: animation index taken from the player object, keeping its facing; bl sprite_noShadow:
+    no ground shadow, consistent with riding inside a bus sprite; Caller busStation_runBusMoveSequence_controller_808F900
+    drives MegaMan into the bus and the ride; this is the boarding/ride-setup step'
+  refs:
+  - bn6f/asm/asm25.s:184
+  - 0x0808F900 busStation_runBusMoveSequence_controller_808F900
+  - 0x0808FB18 sub_808FB18
+  - 0x0809E230 owPlayer_setInteractionLocked_809e230
+  - 0x0809E312 owPlayer_zeroS2000AA0Param0x4_809e312
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x0808F990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — All details match: interaction lock, sub_809E304 call, zeroing 0x2000AA4, loading sprite 0x37 via
+    sprite_load, setting animation from player+0x14, loadAnimationData, noShadow, sprite_update, return
+    0. However, the prefix ''busStation'' is not in the allowed prefix list; since the function manipulates
+    the overworld player''s sprite for the bus-riding pose, ''ow'' is the correct prefix. The summary
+    and details are accurate.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sprite 0x37 depicts exactly (seated MegaMan vs. something else) and what the 0x80/0x18 sprite_load
+  parameters mean would need the sprite table or a runtime check
+- What sub_809E304 does
+- 'All details match: interaction lock, sub_809E304 call, zeroing 0x2000AA4, loading sprite 0x37 via sprite_load,
+  setting animation from player+0x14, loadAnimationData, noShadow, sprite_update, return 0. However, the
+  prefix ''busStation'' is not in the allowed prefix list; since the function manipulates the overworld
+  player''s sprite for the bus-riding pose, ''ow'' is the correct prefix. The summary and details are
+  accurate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808F990 -> ow_seatPlayerForBusRide
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808F990

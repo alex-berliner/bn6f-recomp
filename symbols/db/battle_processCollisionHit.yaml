@@ -1,0 +1,93 @@
+name: battle_processCollisionHit
+address: '0x03007218'
+kind: function
+status: probable
+summary: 'Applies one collision hit: gates on time-stop and type-flag compatibility, then accumulates
+  damage, element multipliers, status, and hit modifiers into the target''s CollisionData; no meaningful
+  return value.'
+interface: (r0 = target oCollisionData, r1 = attacker oCollisionData) -> r0 = heat-on-grass extra damage
+  for caller to add; flags from early-exit tst/cmp
+details: 'First gates the hit: returns without effect if time-stop is active (battle_isTimeStop) or if
+  attacker/target collision type flags are incompatible (long chain of tst tests on oCollisionData_SelfCollisionTypeFlags,
+  fields 0x3c and 0x30, bit 0x20-vs-0x80, etc.). If the attacker''s flags have bit 0x1, it sets bit 0
+  in target+0x70 and marks the hit flag per element in oCollisionData_HitFlagMask. Otherwise (bit 8 case)
+  it merges attacker+0x30 and +0x44 flags into oCollisionData_FlagsFromCollision/oCollisionData_CollisionFlagsAccumulated,
+  copies status effect ([r7,#0x10] into oCollisionData_StatusEffectFinal), ORs [r7,#0x19] into byte 0x76,
+  and calls sub_3007460. Counter interaction: if target''s oCollisionData_CounterTimer is set, the counter
+  flag 0x40 is set and damage counters at offsets 0x90/0x92 (damage, hit count) accumulate instead of
+  flowing normally; offset 0x8e always accumulates the (7f-masked) damage. Element handling: getPrimaryElementWeaknessMultipler_3007432
+  and getSecondaryElementWeaknessMultipler_30074e2 build a multiplier stored to oCollisionData_DamageMultiplier
+  (and the exclamation indicator field via sub_30074BA/applyElecOnBubbleMultipler_30074a2), elec-attacker
+  damage is accumulated to oCollisionData_ElecElementDamageAccumulator, multiplied damage is added to
+  oCollisionData_PanelDamage1, and applyHeatOnGrassDamage_300766c adds bonus damage. Extra element damage
+  from the attacker is accumulated at oCollisionData_ExtraElementDamageAccumulator; hit modifier from
+  [r7,#0xe] is ORed into oCollisionData_HitModifierFinal, and [r7,#0x12] is copied to offset 0xa4.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'calls battle_isTimeStop and skips all processing when frozen (sub+0xa); accumulates [r7,#oCollisionData_SelfDamage]
+    * element multiplier into oCollisionData_PanelDamage1 (locs 30073CC-300740A); ORs attacker status/flag
+    fields into oCollisionData_FlagsFromCollision, StatusEffectFinal, HitModifierFinal; callee list is
+    the element-weakness/electric-on-bubble/heat-on-grass multiplier family used only for damage resolution;
+    counter branch: target oCollisionData_CounterTimer != 0 sets flag 0x40 and accumulates counters at
+    offsets 0x90/0x92 instead of taking the hit normally'
+  refs:
+  - bn6f/asm/asm38.s:3286
+  - 0x03007650 sub_3007650
+  - 0x0800A098 battle_isTimeStop
+  - 0x03007432 getPrimaryElementWeaknessMultipler_3007432
+  - 0x030074A2 applyElecOnBubbleMultipler_30074a2
+  reproduce: python3 tools/asmcat.py 0x03007218
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The name and high-level summary fit: r0=r6=target, r1=r7=attacker, gates via battle_isTimeStop and
+    type-flag tst chains (0x20-vs-0x80 etc.), then accumulates damage/element/status into target. However
+    the interface is wrong: applyHeatOnGrassDamage_300766c''s return is immediately added to PanelDamage1
+    (line 0x300740A+) and r0 is left undefined at locret_3007430, not returned as ''heat-on-grass extra
+    damage''. Also, the bit-0x70 write at [r7,#0x70] (line 0x030072E6) modifies the ATTACKER, not the
+    target, and bit 0x8 of target ObjectFlags1 (tst r2,#8 at 0x03007330) causes an EXIT to locret_3007430,
+    inverting the proposal''s ''Otherwise (bit 8 case) it merges'' claim.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Which side is attacker vs defender is inferred from data flow (r1 supplies damage/element, r0 accumulates);
+  confirming via sub_3007650's role would make this certain
+- exact meaning of the flag bits tested in the long compatibility-gate chain (offsets 0x3c, 0x30, SelfCollisionTypeFlags
+  bit meanings)
+- what sub_3007460 contributes
+- 'The name and high-level summary fit: r0=r6=target, r1=r7=attacker, gates via battle_isTimeStop and
+  type-flag tst chains (0x20-vs-0x80 etc.), then accumulates damage/element/status into target. However
+  the interface is wrong: applyHeatOnGrassDamage_300766c''s return is immediately added to PanelDamage1
+  (line 0x300740A+) and r0 is left undefined at locret_3007430, not returned as ''heat-on-grass extra
+  damage''. Also, the bit-0x70 write at [r7,#0x70] (line 0x030072E6) modifies the ATTACKER, not the target,
+  and bit 0x8 of target ObjectFlags1 (tst r2,#8 at 0x03007330) causes an EXIT to locret_3007430, inverting
+  the proposal''s ''Otherwise (bit 8 case) it merges'' claim.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3007218 -> battle_processCollisionHit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3007218

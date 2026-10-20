@@ -1,0 +1,63 @@
+name: sprite_stage2SubmenuHandleInput
+address: '0x08125678'
+kind: function
+status: probable
+summary: 'Per-frame input handler for a battle-sprite submenu: Start/B records selection 0x3C and triggers
+  exit+fade, Right writes state 0x48 or 0x1c based on [r5+0x64], Left writes 0x14 (all play SFX 0x7A);
+  Up/Down delegate to sub_8125820 after swapping in [r5+0x60] as the cursor field at [r5+0x26].'
+interface: (r0 = context/r5 struct ptr, uses toolkit joypad via r10) -> r0 = clobbered; sets state byte
+  [r5+2], plays SFX 0x7A, or exits menu
+details: 'Reads pressed keys from the toolkit joypad struct. Start or B calls menu_confirmExitAndFade
+  (submenu selection + sound + fade kind 0xC, 0x10 frames) and returns, i.e. leaves this mode. Pressed
+  Right (0x10): if [r5+0x64] is zero it stores state 0x48 into byte [r5+2], otherwise 0x1c, then plays
+  SFX 0x7A; pressed Left (0x20) stores state 0x14 and plays the same SFX — [r5+2] looks like a state-machine
+  next-state byte. Otherwise, if halfword [r5+0x60] is nonzero, it saves [r5+0x26], temporarily copies
+  [r5+0x60] into [r5+0x26], and calls sub_8125820(r0 = pressed&~0xC0 or held, r1 = 7, r2 = 0) — the 0x300
+  held mask (Up/Down) selects which variant — then stores the joypad pointer at [r5+0x70] and restores
+  [r5+0x26]; so +0x26 is the scroll/cursor field the helper operates on and +0x60 the scroll amount/target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst with JOYPAD_START|JOYPAD_B then bl menu_confirmExitAndFade_812580C = exit-with-fade path;
+    pressed 0x10 branches on [r5+0x64] to store 0x48 or 0x1c into [r5+2]; pressed 0x20 stores 0x14; both
+    bl playSoundEffect_7A_81258E8; halfword [r5+0x60] guarded nonzero; pushed/restored [r5+0x26] around
+    bl sub_8125820 with r1=7, r2=0 and held-mask 0x300 test; str r7 (joypad ptr) into [r5+0x70] after
+    the scroll call; caller sprite_stage2InitBattleState_8124E7C initializes the same r5 battle-sprite
+    struct, so this is its paired input/update handler
+  refs:
+  - bn6f/asm/asm33.s:4699
+  - 0x08124E7C sprite_stage2InitBattleState_8124E7C
+  - 0x0812580C menu_confirmExitAndFade_812580C
+  - 0x081258E8 playSoundEffect_7A_81258E8
+  - 0x08125820 sub_8125820
+  reproduce: python3 tools/asmcat.py 0x08125678
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: Start/B exits via menu_confirmExitAndFade, Right stores
+    0x48 or 0x1c, Left stores 0x14 with SFX 0x7A, and Up/Down (0x300) call sub_8125820 saving/restoring
+    [r5+0x26]. However, the Start/B branch uses `mov r0, #0x3c` (selection byte 0x3C, not just exit) and
+    the callee is named with the 7A suffix. The function belongs to a sprite submenu flow, so a better
+    name reflects the submenu context.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- story2
+open_questions:
+- Exact meaning of state ids 0x48/0x1c/0x14 and fields +0x60/+0x64/+0x26 in the r5 struct; sub_8125820's
+  signature and what 7/0 mean would confirm the scroll semantics
+- 'The code matches the proposal''s mechanics: Start/B exits via menu_confirmExitAndFade, Right stores
+  0x48 or 0x1c, Left stores 0x14 with SFX 0x7A, and Up/Down (0x300) call sub_8125820 saving/restoring
+  [r5+0x26]. However, the Start/B branch uses `mov r0, #0x3c` (selection byte 0x3C, not just exit) and
+  the callee is named with the 7A suffix. The function belongs to a sprite submenu flow, so a better name
+  reflects the submenu context.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8125678 -> sprite_stage2SubmenuHandleInput
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125678

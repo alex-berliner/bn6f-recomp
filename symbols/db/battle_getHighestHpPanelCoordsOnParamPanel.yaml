@@ -1,0 +1,73 @@
+name: battle_getHighestHpPanelCoordsOnParamPanel
+address: '0x08112466'
+kind: function
+status: probable
+summary: Collects, into a caller-supplied scratch buffer, the packed (PanelY<<4|(PanelX-frontDir)) panel
+  bytes of battle objects whose front panel matches an alliance-dependent panel-parameter check and which
+  have the highest HP (ties kept). Returns the count and the winning HP value.
+interface: (r0 = scratch ctx whose [ctx..] is a pointer array filled by the callee, r1..r3 args passed
+  to object_getEnemyByNameRange, r5 = source battle object) -> r0 = count of stored panel bytes; coords
+  written to ctx+0x10.., best HP in ctx+0x1c, running count in ctx+0x20
+details: 'First fills the caller''s scratch buffer with enemy objects via object_getEnemyByNameRange (ctx,
+  1, 0xae, alliance from r5) and gets the count. For each entry it skips self (cmp [ptr],r5), computes
+  the enemy''s front panel (PanelX - object_getFrontDirection(), PanelY), and tests it against table byte_81125E0
+  through GetAllianceDependentPanelParamArgs + object_checkPanelParameters. On a match it compares the
+  entry''s HP against ctx+0x1c: lower HP entries are dropped, an equal-HP entry is appended, and a higher-HP
+  entry resets ctx+0x20 to 0 before appending — so only the highest-HP matching enemies survive. Each
+  survivor''s panel is stored as (PanelY<<4)|(PanelX-dir) at ctx+0x10+count, and the final count is returned.
+  The 0x1c/0x20 scratch fields are zeroed at entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getEnemyByNameRange with (ctx,1,0xAE,alliance) then mov r6,r0 gives the iterated
+    entry count; GetAllianceDependentPanelParamArgs(off_81126BC=byte_81125E0) feeding object_checkPanelParameters
+    on PanelX-dir,PanelY = front-panel test; HP compare against ctx+0x1c: blt skips, higher HP zeroes
+    ctx+0x20, equal HP falls through to the store; lsl r1,#4; orr r0,r1; strb at [ctx+count+0x10] packs
+    panel y<<4|x and appends; returns ldr r0,[ctx,#0x20] = number of entries stored'
+  refs:
+  - bn6f/asm/asm32.s:8775
+  - 0x081123EC sub_81123EC
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08112466
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are nearly right, but a few details are off. The ''count'' returned in r0 is
+    read from ctx+0x20 ([r7,#0x20]), which matches. The HP comparison uses blt (skip if lower) and beq
+    (equal -> store without resetting count), then higher HP resets 0x20 to 0 before storing — that is
+    correct. However the proposal says ''coords written to ctx+0x10..'' and stored as ''(PanelY<<4)|(PanelX-dir)'',
+    but the code does `lsl r1, #4; orr r0, r1; strb r0,[r3,#0x10]` (byte store, Y in high nibble, adjusted-X
+    in low), and the offset is ctx+0x10+count, also correct. The biggest error is calling it ''HighestHpEnemies'':
+    it stores the panel bytes, not enemy pointers, and ''skip self'' is correct. A slightly better name
+    focusing on the panel-listing role is appropriate.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what enemy name-range 0xAE selects (specific boss/chip-spawned object class)
+- what the alliance-dependent table byte_81125E0 tests panels for (panel type/flag semantics)
+- what sub_81123EC (the only known caller) uses the coordinate list for — attack targeting vs AI decision
+  would pin down the game-level purpose
+- 'The name and summary are nearly right, but a few details are off. The ''count'' returned in r0 is read
+  from ctx+0x20 ([r7,#0x20]), which matches. The HP comparison uses blt (skip if lower) and beq (equal
+  -> store without resetting count), then higher HP resets 0x20 to 0 before storing — that is correct.
+  However the proposal says ''coords written to ctx+0x10..'' and stored as ''(PanelY<<4)|(PanelX-dir)'',
+  but the code does `lsl r1, #4; orr r0, r1; strb r0,[r3,#0x10]` (byte store, Y in high nibble, adjusted-X
+  in low), and the offset is ctx+0x10+count, also correct. The biggest error is calling it ''HighestHpEnemies'':
+  it stores the panel bytes, not enemy pointers, and ''skip self'' is correct. A slightly better name
+  focusing on the panel-listing role is appropriate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112466 -> battle_getHighestHpPanelCoordsOnParamPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112466

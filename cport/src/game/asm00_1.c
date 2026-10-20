@@ -3509,7 +3509,7 @@ Next mainState_runFrame_8005814(void) {
  *   0x10 ow_startJackOutMapEnterCutscene                            jack out warp
  *   0x14 startBeastSpCutscene                            levbus warp
  *   0x18 start_cutsceneWithFlagSwap                            underground warp
- *   0x1C sub_8005A28                            like 0x00, but with a delay +
+ *   0x1C start_setEventsAndFade                            like 0x00, but with a delay +
  *                                               plays a hardcoded sound
  *   0x20 gameState_fadeToOverworldAfterEvent                            same as above, different delay
  * ------------------------------------------------------------------------- */

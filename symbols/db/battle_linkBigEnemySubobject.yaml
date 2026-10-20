@@ -1,0 +1,59 @@
+name: battle_linkBigEnemySubobject
+address: '0x080E8F78'
+kind: function
+status: probable
+summary: Spawns a type-4 (0x78) battle sub-object linked to the big-enemy parent in r5, copies its alliance/direction,
+  ORs 0x14 into its header flags, and returns the parent pointer in r0.
+interface: (r5 set by caller = parent battle object; r0 = 0x78 sub-object kind) -> r0 = new object pointer
+  (0 if spawn failed); flags from the mov r0,r5 reload.
+details: Called only from battle_initBigEnemyHpAndHidePanels during big-enemy battle init. It invokes
+  object_spawnType4 with 0x78, which creates a battle object of type 4 and runs its initializer. On success
+  the new object gets the parent stored in oBattleObject_RelatedObject1Ptr, the parent's oBattleObject_AllianceAndDirectionFlip
+  halfword is copied so the sub-object faces the same side, and oObjectHeader_Flags gets bits 0x04|0x10
+  (0x14) ORed in. The spawn-then-link pattern makes this the companion/body object that goes with the
+  big enemy whose 3x3 panels the caller hides. Note the listing reads oddly (r5 is pushed but seemingly
+  only written by the caller), so the exact parent/new pointer flow may be a disassembly artifact.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType4 with r0=0x78 creates the companion object; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    links new object to the parent; ldrh/strh of oBattleObject_AllianceAndDirectionFlip copies facing/alliance
+    to the new object; orr r1,0x14 into oObjectHeader_Flags marks the spawned object; sole caller battle_initBigEnemyHpAndHidePanels
+    is big-enemy init (HP table, anim 20, hidden 3x3 panels)
+  refs:
+  - bn6f/asm/asm31.s:105774
+  - 0x08105554 battle_initBigEnemyHpAndHidePanels
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E8F78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code and callee/object_spawnType4 match: type-4 spawn with r0=0x78, then the new object''s RelatedObject1Ptr,
+    AllianceAndDirectionFlip, and Flags |= 0x14 are set from r5 (parent). However, `mov r0, r5` after
+    spawn means r0 becomes the parent pointer, not the new object, contradicting the proposed interface
+    `r0 = new object pointer (0 if spawn failed)`. The function returns parent-in-r0, not new-object-in-r0,
+    so the summary''s interface is wrong.; run wf investigate investigate-20261018-182231; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of type-4 spawn param 0x78 (which big-enemy sub-object this is)
+- semantics of object flag bits 0x04 and 0x10
+- why r5 appears uninitialized in this listing — verify against raw binary whether r5 is the parent pointer
+  or the spawn result
+- 'The code and callee/object_spawnType4 match: type-4 spawn with r0=0x78, then the new object''s RelatedObject1Ptr,
+  AllianceAndDirectionFlip, and Flags |= 0x14 are set from r5 (parent). However, `mov r0, r5` after spawn
+  means r0 becomes the parent pointer, not the new object, contradicting the proposed interface `r0 =
+  new object pointer (0 if spawn failed)`. The function returns parent-in-r0, not new-object-in-r0, so
+  the summary''s interface is wrong.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8F78 -> battle_linkBigEnemySubobject
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8F78

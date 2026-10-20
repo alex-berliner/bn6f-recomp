@@ -1,0 +1,80 @@
+name: mysteryData_registerNpcVisit
+address: '0x0809FC1C'
+kind: function
+status: probable
+summary: Looks up the current map's mystery-data table entry for the given NPC id and, on match, indexes
+  its sub-tables via the NPC's work-buffer state bytes before calling sub_809FE36 to bump the matching
+  counter; returns zeros/0xFF padding when no entry matches.
+interface: (r0 = npc id / work-buffer offset) -> r0..r3 = entry data forwarded through sub_809FE36, or
+  r0 = 0 and r1..r3 = 0xFF when no entry matches; flags clobbered
+details: 'Reads the game state''s MapGroup/MapNumber and picks RealWorldMysteryDataMapGroupEntries (group
+  < 0x80) or InternetMysteryDataMapGroupEntries (group >= 0x80, id minus 0x80), then walks a per-map 12-byte
+  entry list (byte, byte, halfword id, word ptr, word group-ptr) until the halfword at +2 equals the input
+  id. On a match it fetches the NPC''s work entry via sub_809FADE (offset relative to 0x1400 in the 0x02004xxx
+  buffer) and uses its two state bytes as indices: state byte 0 selects an 8-byte record in the table
+  at entry+4, giving a pointer (base+8*idx+2), and state byte 1 indexes a second table resolved through
+  mysteryData_resolveMapGroupEntry_809FBF2 with entry+8 as base. It then calls sub_809FE36 with r0=entry
+  byte0, r1=entry byte1, r2=the computed record pointer, r3=the byte read from the resolved table, and
+  r4=input id, and returns its results. If no entry matches the id, it returns r0=0, r1=r2=r3=0xFF. The
+  0xFF/0 defaults strongly suggest a ''this NPC is not mystery data'' signal to the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_809FC2E/34: map group >= 0x80 selects InternetMysteryDataMapGroupEntries, else RealWorldMysteryDataMapGroupEntries,
+    indexed by (group<<3)+4 then (map<<2); loc_809FC40: loop scans 0xC-byte entries comparing ldrh [r4,#2]
+    against r6 (input id); loc_809FC50: sub_809FADE(r6) yields the NPC work entry whose bytes [0] and
+    [1] index the record tables at [entry+4] and resolveMapGroupEntry(entry[0], [entry+8]); locret path
+    loc_809FC8C: returns r0=0, r1=r2=r3=0xFF when the scan hits the 0 terminator; sole caller NPCCommand_init_mystery_data
+    converts an NPC into a mystery-data orb, matching a lookup of that NPC''s mystery-data entry'
+  refs:
+  - bn6f/asm/asm28_1.s:384
+  - 0x0809F058 NPCCommand_init_mystery_data
+  - 0x0809FBF2 mysteryData_resolveMapGroupEntry_809FBF2
+  - 0x0809FADE sub_809FADE
+  - 0x0809FE36 sub_809FE36
+  reproduce: python3 tools/asmcat.py 0x0809FC1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee sub_809FE36 is captured as ''Increments a caller-supplied counter when r4 equals the
+    halfword index/state field... otherwise returns the counter unchanged,'' which contradicts a ''returns
+    record parameters (or not-found marker)'' interface. The function is plumbed to deliver entry bytes
+    plus computed pointers/index to a counter-update callee, not forward a record to the caller; the 0/0xFF
+    ''not-found'' branch is consistent with not bumping the counter. Rename should reflect a lookup-then-bump
+    idiom, not a ''get entry'' getter. Proposed name ''mysteryData_getNpcEntry'' is misleading.; run wf
+    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- maps
+- story1
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact meaning of the halfword at byte_2000210+6 that sub_809FE36 compares against r4 (collected-id tracker
+  vs. some counter) and what the incremented r0 return value is used for
+- What the computed pointer (record base+8*state+2) and the byte from the second resolved table represent
+  (item id? amount? text index?) — would need sub_809FE36's body or how NPCCommand_init_mystery_data consumes
+  r0-r3
+- The callee sub_809FE36 is captured as 'Increments a caller-supplied counter when r4 equals the halfword
+  index/state field... otherwise returns the counter unchanged,' which contradicts a 'returns record parameters
+  (or not-found marker)' interface. The function is plumbed to deliver entry bytes plus computed pointers/index
+  to a counter-update callee, not forward a record to the caller; the 0/0xFF 'not-found' branch is consistent
+  with not bumping the counter. Rename should reflect a lookup-then-bump idiom, not a 'get entry' getter.
+  Proposed name 'mysteryData_getNpcEntry' is misleading.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809FC1C -> mysteryData_registerNpcVisit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809FC1C

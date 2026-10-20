@@ -1,0 +1,64 @@
+name: battle_objectPickRandomSignAndResetAction
+address: '0x0811555C'
+kind: function
+status: probable
+summary: Writes 0xA to the object's StaminaDamageCounterDisabler, stores a random +1/-1 (from (GetPositiveSignedRNG()&2)-1)
+  into ExtraVars, zeroes the halfword at +0x6C, then resets the object's action to 8 via battle_ResetObjectActionState_80165B8.
+interface: (r5 = battle object) -> r0 = 0 (from battle_ResetObjectActionState); sets collisionData disabler
+  byte, ExtraVars, and halfword +0x6C
+details: Stores 0xA into oCollisionData_StaminaDamageCounterDisabler of the object's collision data, which
+  evidently suppresses that counter's effect. Calls GetPositiveSignedRNG and computes (rng & 2) - 1, storing
+  -1 or +1 into oBattleObject_ExtraVars — a random binary choice. Clears the halfword at object+0x6C (likely
+  a timer or repeat counter). Finishes by calling battle_ResetObjectActionState_80165B8, setting the current
+  action to 8 and clearing the phase, i.e. returning the object to its idle/none state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,[r0,#oCollisionData_StaminaDamageCounterDisabler] with r1=0xA disables a collision-data
+    counter; and r1,r0,#2; sub r1,#1; str r1,[r5,#oBattleObject_ExtraVars] stores a random -1/+1; mov
+    r1,#0x6c; strh r0,[r5,r1] zeroes a halfword counter/timer field of the object; tail call to battle_ResetObjectActionState_80165B8
+    sets action=8, phase=0, ending the action
+  refs:
+  - bn6f/asm/asm32.s:14653
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080165B8 battle_ResetObjectActionState_80165B8
+  reproduce: python3 tools/asmcat.py 0x0811555C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies each operation in the code (writes 0xA to StaminaDamageCounterDisabler,
+    computes (rng&2)-1 into ExtraVars, zeroes halfword at +0x6C, and calls battle_ResetObjectActionState_80165B8).
+    However, the name and summary overstate it as a generic ''idle reset'' handler; the function deterministically
+    writes a random +/-1 into ExtraVars and clears a halfword before resetting the action — the action
+    reset to 8 is the final step, not the purpose. A name reflecting ''pick random sign and reset action''
+    is fine, but the summary should not lead with ''disables a collision counter'' as the primary role,
+    since that is incidental and the caller list is empty, so its role is not ''idle'' — it looks more
+    like an action-completion/setup handler that randomizes a direction/sign.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which object or enemy uses this handler (no callers captured)
+- what consumes the ±1 value in ExtraVars and what field 0x6C counts
+- what the 0xA value in the stamina-damage disabler specifically gates
+- The proposal correctly identifies each operation in the code (writes 0xA to StaminaDamageCounterDisabler,
+  computes (rng&2)-1 into ExtraVars, zeroes halfword at +0x6C, and calls battle_ResetObjectActionState_80165B8).
+  However, the name and summary overstate it as a generic 'idle reset' handler; the function deterministically
+  writes a random +/-1 into ExtraVars and clears a halfword before resetting the action — the action reset
+  to 8 is the final step, not the purpose. A name reflecting 'pick random sign and reset action' is fine,
+  but the summary should not lead with 'disables a collision counter' as the primary role, since that
+  is incidental and the caller list is empty, so its role is not 'idle' — it looks more like an action-completion/setup
+  handler that randomizes a direction/sign.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811555C -> battle_objectPickRandomSignAndResetAction
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811555C

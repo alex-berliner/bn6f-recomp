@@ -1,0 +1,66 @@
+name: spawnBeastSpEncounterObject
+address: '0x080A7CA4'
+kind: function
+status: probable
+summary: 'Initializes and spawns the Beast SP overworld encounter object: writes state 3 to [r5], loads/configures
+  its sprite, calls SpawnOverworldMapObject (type 0x7a) at coordinates from [r5+0xc/0x10/0x14], advances
+  local state to 4 at [r5+8], then calls the Beast SP encounter tick.'
+interface: (r5 = encounter state struct pointer, caller-set) -> void; state byte [r5] = 3 on entry path,
+  [r5+8] = 4 after spawn
+details: 'Writes 3 to the state byte at [r5], then loads sprite resource (0x80, 0x1c, 0x4b) into the current
+  object via sprite_load and configures it: animation 0, animation data loaded, no shadow, priority 2,
+  palette 1. It then calls SpawnOverworldMapObject with type 0x7a and position fields loaded from [r5+0xc],
+  [r5+0x10], [r5+0x14], so r5 is a state/parameter struct laid out by the caller. After spawning it sets
+  [r5+8] = 4 (advancing the local state machine step) and tail-runs the Beast SP encounter tick, which
+  checks bounds and triggers the encounter while updating the sprite. The sequence 3 -> spawn -> 4 suggests
+  a scripted spawn-then-wait state machine for the Beast SP overworld encounter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #3,[r5] then sprite_load(0x80,0x1c,0x4b) and render setup lines configure the encounter
+    sprite; SpawnOverworldMapObject called with r4=0x7a and coords from [r5+0xc/0x10/0x14]; strb #4,[r5+8]
+    after spawn advances a state variable before ticking; callee owMapObject_updateBeastSpEncounter_80A7CEA
+    is documented as the Beast SP encounter tick; executed on recorded beastsp routes, consistent with
+    the encounter flow'
+  refs:
+  - bn6f/asm/asm29.s:5459
+  - 0x080A7CEA owMapObject_updateBeastSpEncounter_80A7CEA
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A7CA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s code reading is nearly perfect: [r5]=3, sprite_load(0x80,0x1c,0x4b), animation 0,
+    no shadow, priority 2, palette 1, SpawnOverworldMapObject with type 0x7a at [r5+0xc/0x10/0x14], [r5+8]=4,
+    then bl owMapObject_updateBeastSpEncounter_80A7CEA all match lines in the asm. However the name uses
+    an underscore (spawn_beastSp…) which violates lowerCamel; it should be spawnBeastSpEncounterObject.
+    Also ''tail-runs the tick'' is slightly inaccurate—it is a regular `bl` (not `b`), though the very
+    next instruction is the pop-and-return, so the effect is similar. The interface note ''[r5] = 3 on
+    entry path'' is misleading since the function unconditionally writes 3 at the start rather than requiring
+    it as a precondition.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact layout/owner of the r5 state struct (who sets r5 and the coordinate fields)
+- meaning of state values 3 and 4 in the wider state machine and where the other states are handled
+- 'The proposal''s code reading is nearly perfect: [r5]=3, sprite_load(0x80,0x1c,0x4b), animation 0, no
+  shadow, priority 2, palette 1, SpawnOverworldMapObject with type 0x7a at [r5+0xc/0x10/0x14], [r5+8]=4,
+  then bl owMapObject_updateBeastSpEncounter_80A7CEA all match lines in the asm. However the name uses
+  an underscore (spawn_beastSp…) which violates lowerCamel; it should be spawnBeastSpEncounterObject.
+  Also ''tail-runs the tick'' is slightly inaccurate—it is a regular `bl` (not `b`), though the very next
+  instruction is the pop-and-return, so the effect is similar. The interface note ''[r5] = 3 on entry
+  path'' is misleading since the function unconditionally writes 3 at the start rather than requiring
+  it as a precondition.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A7CA4 -> spawnBeastSpEncounterObject
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7CA4

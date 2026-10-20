@@ -1,0 +1,66 @@
+name: ai_attackWindup
+address: '0x08103286'
+kind: function
+status: probable
+summary: AI attack step that initializes a multi-phase attack (element 4, anim 5, sound 0xC7, counter
+  0xC, boost-based spawn via sub_8103966/sub_81039A4, camera shake 2/30) once, then ticks StepTimer to
+  0 and writes 0x14 into HitElement to advance to the hit phase.
+interface: (r7 = AI attack vars struct, r5 = battle object; no args passed) -> r0 = 0; updates AttackElement,
+  CurAnim, StepTimer, HitElement fields
+details: 'If oAIAttackVars_AttackElement is still 0, this starts the attack: writes element 4 into AttackElement,
+  sets the object''s animation to 5, calls sub_80C47EC (r4=0x1C), plays sound effect 0xC7, sets the object''s
+  counter time to 12 frames, passes oAIAttackVars_AttackBoost2 to sub_8103966 and sub_81039A4 (likely
+  spawning/positioning the attack object from the boost parameter), triggers a camera shake of magnitude
+  2 for 30 frames, and stores 0x1E into StepTimer. On subsequent calls it just decrements StepTimer each
+  frame; once it reaches 0, it writes 0x14 into oAIAttackVars_HitElement, presumably letting the shared
+  hit logic apply the actual damage/effect. This is the telegraphed windup phase of one AI attack (likely
+  an earthquake or slam, given the long shake).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'branch on ldrb [r7,#oAIAttackVars_AttackElement]==0 guards a one-time setup block (start of
+    routine); camera_initShakeEffect_80302a8 with r0=2, r1=0x1E shows a 30-frame ground shake during the
+    windup; PlaySoundEffect #0xC7 and object_setCounterTime #0xC run once at attack start; StepTimer=0x1E
+    then per-frame decrement, on expiry strh #0x14 into HitElement (end of routine); callees sub_8103966/sub_81039A4
+    both receive oAIAttackVars_AttackBoost2, consistent with spawning the attack tied to a charge parameter'
+  refs:
+  - bn6f/asm/asm31.s:159475
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x08103286
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the windup logic: it starts the attack on first call (sets AttackElement=4,
+    CurAnim=5, plays sound 0xC7, counter time 0xC, calls sub_80C47EC/sub_8103966/sub_81039A4, camera shake
+    magnitude 2 for 30 frames, StepTimer=0x1E), then decrements StepTimer and writes 0x14 to HitElement
+    when done. However, HitElement is written as halfword (strh) not byte (strb), and oAIAttackVars_StepTimer
+    is a halfword too — minor. The summary says ''flags the hit'' which is accurate but ''sets HitElement
+    to 0x14'' is more precise. The name ''ai_quakeAttackWindup'' is speculative about the quake/stomp
+    flavor; ''ai_attackWindup'' is safer.; run wf investigate investigate-20261018-182231; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8103966 and sub_81039A4 spawn or modify with AttackBoost2
+- which boss/attack this state belongs to (no known callers)
+- what HitElement=0x14 triggers in the shared attack-hit code
+- 'The proposal correctly captures the windup logic: it starts the attack on first call (sets AttackElement=4,
+  CurAnim=5, plays sound 0xC7, counter time 0xC, calls sub_80C47EC/sub_8103966/sub_81039A4, camera shake
+  magnitude 2 for 30 frames, StepTimer=0x1E), then decrements StepTimer and writes 0x14 to HitElement
+  when done. However, HitElement is written as halfword (strh) not byte (strb), and oAIAttackVars_StepTimer
+  is a halfword too — minor. The summary says ''flags the hit'' which is accurate but ''sets HitElement
+  to 0x14'' is more precise. The name ''ai_quakeAttackWindup'' is speculative about the quake/stomp flavor;
+  ''ai_attackWindup'' is safer.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8103286 -> ai_attackWindup
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103286

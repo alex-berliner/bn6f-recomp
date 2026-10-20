@@ -1,0 +1,70 @@
+name: object_stepXAndDestroyIfBlocked
+address: '0x080CD414'
+kind: function
+status: probable
+summary: Moves a battle object by its X velocity and updates its panel coordinates; if a forbidden flag
+  is set, the new panel is invalid, or its alliance's panel flag condition fails, the object is destroyed
+  (CurState = CUR_STATE_DESTROY) and its collision region is cleared.
+interface: (r5 = battle object ptr) -> void; destroys the object (sets CurState to CUR_STATE_DESTROY,
+  clears collision region) when the move is blocked
+details: 'If the object''s collision data has flag 0x800000 set, it skips everything and just gets destroyed?
+  No — it returns early at loc_80CD45C only after moving; the 0x800000 flag branch jumps straight to the
+  destroy path, so flag 0x800000 means ''destroy immediately''. Otherwise it adds XVelocity to X, recomputes
+  PanelX/PanelY (both in the object and its collision data) via convertBattleObjectXYToPanelXY, and returns
+  harmlessly if the panel is invalid (out of 6x3 grid) or Param1 bit 7 is set (skip panel-type check).
+  Then it indexes byte_80CD478 by Alliance*8 and calls object_checkPanelParameters with the two masks
+  there: alliance 0 requires panel flag 0x20 set, alliance 1 requires it clear, so it enforces a per-team
+  panel-type restriction (likely hole/panels). On any failure it clears the collision region, zeroes the
+  byte at ExtraVars+4, and sets CurState to CUR_STATE_DESTROY.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1, =0x800000; tst r0,r1; bne loc_80CD45E — flag 0x800000 jumps straight to the destroy
+    path; add r0, X, XVelocity; str X; bl convertBattleObjectXYToPanelXY; strb PanelX/PanelY in object
+    and collision data — movement step + panel sync; lsl r2, r2, #0x19; bcs locret — Param1 bit 7 skips
+    the panel-type check; ldr r2,[table+Alliance*8]; ldr r3,[table+Alliance*8+4]; bl object_checkPanelParameters
+    — per-alliance required/forbidden panel-flag masks (0x20) at byte_80CD478; bl object_clearCollisionRegion;
+    str CUR_STATE_DESTROY into CurState — destruction on blocked move'
+  refs:
+  - bn6f/asm/asm31.s:45960
+  - 0x0800E24C convertBattleObjectXYToPanelXY_800E24C
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CD414
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The ''X'' naming is misleading: the function moves X via XVelocity and destroys on blocked panel,
+    but the flag 0x800000 handling is described correctly, and the alliance-0 requires / alliance-1 forbids
+    panel flag 0x20 reads matches byte_80CD478 (alliance 0 entry = 0x20 at byte_80CD478, alliance 1 entry
+    = 0x20 at byte_80CD484). However the name ''object_stepXAndDestroyOnBlockedPanel'' is fine; propose
+    ''object_stepXAndDestroyIfBlocked'' to avoid the chained ''Panel'' wording and be more accurate (it
+    also destroys if flag 0x800000 or invalid panel).; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What panel type flag 0x20 represents (hole? grass?) — needs the panel-flag constants
+- What ExtraVars+4's zeroed byte is used for by other code
+- Which callers use this (none captured) — e.g. whether it's the generic forward-movement for projectiles
+  that die on holes/wrong panels
+- 'The ''X'' naming is misleading: the function moves X via XVelocity and destroys on blocked panel, but
+  the flag 0x800000 handling is described correctly, and the alliance-0 requires / alliance-1 forbids
+  panel flag 0x20 reads matches byte_80CD478 (alliance 0 entry = 0x20 at byte_80CD478, alliance 1 entry
+  = 0x20 at byte_80CD484). However the name ''object_stepXAndDestroyOnBlockedPanel'' is fine; propose
+  ''object_stepXAndDestroyIfBlocked'' to avoid the chained ''Panel'' wording and be more accurate (it
+  also destroys if flag 0x800000 or invalid panel).'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD414 -> object_stepXAndDestroyIfBlocked
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD414

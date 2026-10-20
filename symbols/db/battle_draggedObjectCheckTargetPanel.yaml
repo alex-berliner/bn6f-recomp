@@ -1,0 +1,62 @@
+name: battle_draggedObjectCheckTargetPanel
+address: '0x080D1E08'
+kind: function
+status: probable
+summary: 'Gate called for a dragged battle object: finds the actor on a flagged target panel, stores its
+  pointer into ExtraVars+0x14; if none, clears the object''s collision region and sets CurState=DESTROY,
+  otherwise sets Timer2=5 and CurPhase=4 and tail-calls battle_objectDraggedPhaseHandler.'
+interface: (r5 = battle object pointer) -> r0 = garbage from handler call; destroys object or sets Timer2=5
+  and phase=4
+details: Reads the object's PanelX, PanelY and Alliance and calls the panel-flag/actor lookup, storing
+  the found actor pointer into ExtraVars+0x14. If no actor stands on the flagged panel, it clears the
+  object's collision region (removing it from collision processing) and sets CurState to CUR_STATE_DESTROY.
+  If an actor is found, it sets Timer2=5 and CurPhase=4, then tail-continues into battle_objectDraggedPhaseHandler,
+  which drives the subsequent dragged/attack behavior against the stored target. The panel flag likely
+  marks the special tile (e.g. target/affected panel type) this dragged object acts on.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX] / r1=PanelY / r2=Alliance then bl ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
+    selects target only on flagged panel; str r0,[r5,#oBattleObject_ExtraVars+0x14] stores found actor
+    as the object''s target; no-actor branch: bl object_clearCollisionRegion; mov r0,#CUR_STATE_DESTROY;
+    str to oBattleObject_CurStateActionPhaseAndPhaseInitialized; actor branch: Timer2=5, CurPhase=4, then
+    falls into battle_objectDraggedPhaseHandler (per-frame dragged-object handler)'
+  refs:
+  - bn6f/asm/asm31.s:55858
+  - 0x080D1E32 battle_objectDraggedPhaseHandler
+  - 0x080E7486 ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D1E08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080D1E08 reads PanelX/PanelY/Alliance, stores the actor pointer into ExtraVars+0x14,
+    and on null clears collision and sets CurState=DESTROY; on non-null sets Timer2=5, CurPhase=4, then
+    calls battle_objectDraggedPhaseHandler directly. The summary''s ''per-frame step'' is wrong — there
+    is no per-frame driver here, it just delegates to the phase handler. The name ''battle_draggedObjectCheckTargetPanel''
+    is fine but the summary should drop ''Per-frame step'' and clarify it is a one-shot gate.; run wf
+    investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which panel flag bit the lookup uses and what tile it marks (would identify the attack this dragged
+  object belongs to)
+- no caller captured, so which enemy/attack spawns this dragged object and what phase 4 does is unknown
+- The code at 0x080D1E08 reads PanelX/PanelY/Alliance, stores the actor pointer into ExtraVars+0x14, and
+  on null clears collision and sets CurState=DESTROY; on non-null sets Timer2=5, CurPhase=4, then calls
+  battle_objectDraggedPhaseHandler directly. The summary's 'per-frame step' is wrong — there is no per-frame
+  driver here, it just delegates to the phase handler. The name 'battle_draggedObjectCheckTargetPanel'
+  is fine but the summary should drop 'Per-frame step' and clarify it is a one-shot gate.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D1E08 -> battle_draggedObjectCheckTargetPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1E08

@@ -1,0 +1,68 @@
+name: object_syncAppearanceFromRelated
+address: '0x080E7B4A'
+kind: function
+status: probable
+summary: 'Per-frame visual-clone tick: copies a related object''s sprite appearance (palette, shader,
+  flip, scaling, +0x34 state) each frame; self-destructs when battle is over, Param2 timer expires, or
+  (Param1==0 and target CurAction != Param3).'
+interface: (r5 = this battle object) -> r0 = ?; sets object state to CUR_STATE_DESTROY when battle over,
+  timer expired, or target action matches Param3
+details: 'This object mirrors the rendering state of its RelatedObject1Ptr: it copies three words from
+  +0x34 of the target into its own +0x34, ORs the target''s oObjectHeader_Flags bit 0x2 into its own flags,
+  then copies palette, color shader, final palette, the sprite flag-10/render-info byte, DirectionFlip
+  (via object_getFlip -> sprite_setFlip), and the mosaic/scaling parameters (-> sprite_setAlpha). If Param2
+  == 1, it counts down Timer and destroys itself when it hits zero; otherwise it lives until the target''s
+  CurAction equals Param3, or Param1 is nonzero which keeps it alive regardless. Battle-over (battle_isBattleOver)
+  also forces destruction. Effectively a per-frame ''copy how the target looks'' tick with a self-destruct
+  condition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldmia from [RelatedObject1Ptr+0x34] / stmia to [this+0x34] copies a 3-word block of appearance/position
+    state; chained sprite_get* on RelatedObject1Ptr followed by sprite_set* (palette, colorShader, finalPalette,
+    flip, alpha) copies the visual state; ldrb [target,#oBattleObject_CurAction] cmp Param3 then fallthrough
+    to locret vs mov #CUR_STATE_DESTROY is the self-destruct-on-target-action check; Param2==1 branch
+    decrements oBattleObject_Timer and ble loc_80E7BD2 destroys when the timer expires; bl battle_isBattleOver
+    / bne loc_80E7BD2 ends the effect when the battle ends'
+  refs:
+  - bn6f/asm/asm31.s:102644
+  - 0x0800A18E battle_isBattleOver
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080E7B4A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by hyper/qwen3.8-flash: revise
+    — The copy-appearance logic matches: lines at loc_80E7B62 copy 3 words from RelatedObject1Ptr+0x34,
+    OR flag bit 2, then get/set palette, color shader, final palette, sprite flag-10, DirectionFlip, and
+    mosaic/scaling. However the destruction condition is inverted: `cmp r0,r1` / `beq locret_80E7BD6`
+    means the object LIVES when CurAction equals Param3 and DESTROYS when it does not (with Param1==0).
+    The proposal says ''lives until CurAction equals Param3,'' implying death on equality, which is the
+    opposite of the code. Param1!=0 at the `bne locret_80E7BD6` correctly keeps it alive regardless, and
+    battle_isBattleOver / Timer==0 (Param2==1) force destruction as stated.; run wf investigate investigate-20261018-145652;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which game effect spawns this object (afterimage, mirror clone, etc.) is not shown by callers here
+- Meaning of the 3-word block at +0x34 copied between objects (likely sprite/position render fields) not
+  fully identified
+- 'The copy-appearance logic matches: lines at loc_80E7B62 copy 3 words from RelatedObject1Ptr+0x34, OR
+  flag bit 2, then get/set palette, color shader, final palette, sprite flag-10, DirectionFlip, and mosaic/scaling.
+  However the destruction condition is inverted: `cmp r0,r1` / `beq locret_80E7BD6` means the object LIVES
+  when CurAction equals Param3 and DESTROYS when it does not (with Param1==0). The proposal says ''lives
+  until CurAction equals Param3,'' implying death on equality, which is the opposite of the code. Param1!=0
+  at the `bne locret_80E7BD6` correctly keeps it alive regardless, and battle_isBattleOver / Timer==0
+  (Param2==1) force destruction as stated.'
+sources:
+- wf investigate investigate-20261018-145652
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7B4A -> object_syncAppearanceFromRelated
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7B4A

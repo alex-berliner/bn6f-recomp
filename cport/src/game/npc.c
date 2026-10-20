@@ -1088,7 +1088,7 @@ Next NPCCommand_play_sound(void) {
 }
 
 /* ── NPCCommand_init_mystery_data ── */
-/* Result of the mystery-data lookup sub_809FC1C, which answers in r0/r1/r2. */
+/* Result of the mystery-data lookup mysteryData_registerNpcVisit, which answers in r0/r1/r2. */
 typedef struct {
     u32 variant;    /* r0: 0 = nothing to spawn (data already collected), 1..7 = data variant */
     u32 flag_scale; /* r1: multiplier for one bit of UnkFlags_60 (its source field is always 0) */
@@ -1102,10 +1102,10 @@ static u16 read_npc_script_halfword_NPCCommand_init_mystery_data(u32 script_arg)
     return (u16)R0;
 }
 
-/* register form: calls sub_809FC1C outside this file, which has no typed C interface yet */
+/* register form: calls mysteryData_registerNpcVisit outside this file, which has no typed C interface yet */
 static MysteryDataLookup lookup_mystery_data(u32 mystery_data_id) {
     R0 = mystery_data_id; /* the original enters with r0 = the halfword just stored in Chatbox_90 */
-    GUEST_CALL(sub_809FC1C);
+    GUEST_CALL(mysteryData_registerNpcVisit);
     MysteryDataLookup md;
     md.variant    = R0;
     md.flag_scale = R1;

@@ -1514,10 +1514,10 @@ static void sub_81206C4_call(u32 addr) {
     GUEST_CALL(sub_81206C4);
 }
 
-/* register form: calls sub_8120740 outside this file, which has no typed C interface yet */
+/* register form: calls pack_reAddChipsFromFolders outside this file, which has no typed C interface yet */
 static void sub_8120740_call(u32 value) {
     R0 = value;
-    GUEST_CALL(sub_8120740);
+    GUEST_CALL(pack_reAddChipsFromFolders);
 }
 
 /* register form: calls sub_81206F8 outside this file, which has no typed C interface yet */

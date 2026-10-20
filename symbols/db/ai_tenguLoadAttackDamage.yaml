@@ -1,0 +1,59 @@
+name: ai_tenguLoadAttackDamage
+address: '0x080F9222'
+kind: function
+status: probable
+summary: Loads TenguMan's attack damage pair from two AI-version-parameter tables and stores it packed
+  into the battle object's AI attack-damage field (AIData+0xA0).
+interface: (r0 = attack/table index) -> r0 = packed value; stores word at [battleObj->AIData + 0xA0] (oAIAttackVars_Damage)
+details: Takes an index in r4, scales it by 8, and fetches two entries via battle_aiGetVersionedTableEntry_800FE12
+  — one from table byte_80F9284 and one from byte_80F92A8 — so both values vary with the battle object's
+  AI version. The first value is kept as the low halfword, the second is shifted left 16 and OR'd in,
+  producing a packed word. This word is written to AIData+0xA0, the known oAIAttackVars_Damage field of
+  the AI attack-vars block. All callers are TenguMan AI routines (ai_tenguInitAttack sets up an attack
+  with rolled duration/boost values), so this fills in the damage side of that setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two battle_aiGetVersionedTableEntry_800FE12 calls with tables byte_80F9284 and byte_80F92A8,
+    index*8 in r0; lsl r0,#0x10 + orr r6 packs the second table value into the upper halfword; str r6,[r3,#0xA0]
+    after r3=[r5+oBattleObject_AIDataPtr]+0xA0 writes oAIAttackVars_Damage; only callers are TenguMan
+    AI attack-init/step routines at 0x80F9168/0x80F91A2/0x80F91F6
+  refs:
+  - bn6f/asm/asm31.s:138708
+  - 0x080F9168 ai_tenguInitAttack
+  - 0x080F91A2 sub_80F91A2
+  - 0x080F91F6 sub_80F91F6
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F9222
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it loads two versioned table entries (tables at 0x80F9284 and 0x80F92A8), packs
+    them into a word (second shifted by 16, OR''d into first), and stores at AIData+0xA0 (oAIAttackVars_Damage).
+    However, the parameter in r0 is an index into the tables (scaled by 8), not ''attack/table index''
+    ambiguously; r4 holds it, not r0 at return. Naming is fine but summary overstates ''attack/table index''
+    and the interface claim of r0 index is slightly off since index is passed in r0 and returned packed
+    value is in r6.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what the upper halfword of oAIAttackVars_Damage means at consumers (second damage value vs. another
+  packed stat)
+- 'The code matches: it loads two versioned table entries (tables at 0x80F9284 and 0x80F92A8), packs them
+  into a word (second shifted by 16, OR''d into first), and stores at AIData+0xA0 (oAIAttackVars_Damage).
+  However, the parameter in r0 is an index into the tables (scaled by 8), not ''attack/table index'' ambiguously;
+  r4 holds it, not r0 at return. Naming is fine but summary overstates ''attack/table index'' and the
+  interface claim of r0 index is slightly off since index is passed in r0 and returned packed value is
+  in r6.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9222 -> ai_tenguLoadAttackDamage
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9222

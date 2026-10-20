@@ -921,8 +921,8 @@ Next sub_80ECF48(void) {
     u32 damage = LD32(R7 + oAIAttackVars_Damage) + boost;
     ST32(R7 + oAIAttackVars_Damage, damage);
 
-    /* sub_80ED040() -> byte stored at Unk_16 */
-    GUEST_CALL(sub_80ED040);
+    /* battle_findFilteredPanelCountAhead() -> byte stored at Unk_16 */
+    GUEST_CALL(battle_findFilteredPanelCountAhead);
     ST8(R7 + oAIAttackVars_TargetPanelX, (u8)R0);
 
     ST8(R7 + oAIAttackVars_TargetPanelY, 3);
@@ -963,7 +963,7 @@ Next sub_80ECF48(void) {
  * plays anim 0xD, then sets up per-attack parameters and spawns an effect
  * object at the target panel. Every frame it decrements a tick counter;
  * when it expires it bounces the target panel around the battlefield
- * (flipping direction and consulting sub_80ED040 for a row hint), then
+ * (flipping direction and consulting battle_findFilteredPanelCountAhead for a row hint), then
  * decrements an iteration counter. Once iterations are exhausted, it
  * tears down the attack state. */
 
@@ -1056,7 +1056,7 @@ Next sub_80ECF8E(void) {
              * helper which way the row should now nudge. */
             u32 neg_dir = (u32)(-(s32)dir);
             ST32(R7 + oAIAttackVars_ScratchVar, neg_dir);
-            GUEST_CALL(sub_80ED040);  /* R0 = row hint */
+            GUEST_CALL(battle_findFilteredPanelCountAhead);  /* R0 = row hint */
 
             u32 old_col = LD8(R7 + oAIAttackVars_TargetPanelX);
             u32 hint    = R0;

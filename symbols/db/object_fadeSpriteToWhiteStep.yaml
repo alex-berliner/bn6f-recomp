@@ -1,0 +1,70 @@
+name: object_fadeSpriteToWhiteStep
+address: '0x080A94F8'
+kind: function
+status: probable
+summary: Per-frame object step that fades the sprite to bright white via sprite_setColorShader using an
+  RGB555 grayscale color (brightness from byte_80A9558) and accumulates into object+0x14 using a stepped
+  ramp from byte_80A9544; once the ramp ends (0xFF) it clears event flag EVENT_BFC and runs sub_80A9568,
+  then increments object+0x24 and calls sprite_update.
+interface: (r5 = object) -> void; increments object+0x24 frame counter, accumulates object+0x14, calls
+  sprite_setColorShader(r0 = grayscale RGB555 color, r1 = brightness<<5), tail-calls sprite_update
+details: 'r5 is an object struct: field 0x24 is a frame counter, field 0x14 a 32-bit accumulator. Each
+  call it indexes two byte tables with (counter>>1): byte_80A9544 holds step amounts (4,4,4,3,2,1,0...)
+  which are added shifted <<16 into field 0x14 (i.e. added to the value''s upper half, likely a fixed-point
+  quantity read elsewhere), and byte_80A9558 holds a rising brightness ramp (4,6,8,...0x1F). The brightness
+  byte v is expanded to a grayscale RGB555 color (v | v<<5 | v<<10) and passed to sprite_setColorShader
+  together with v<<5 in r1, whitening the sprite more each step. When the first table yields 0xFF terminator
+  (after ~30 frames) the routine instead clears event flag EVENT_BFC and calls sub_80A9568 (the follow-up
+  phase, still unidentified). It always finishes by bumping the counter and tail-calling sprite_update,
+  matching an object step-handler shape.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r3,[r3,r0] from byte_80A9544 with cmp #0xff/beq: table with 0xFF terminator gates the
+    end of the sequence; table byte v expanded as v|v<<5|v<<10 (grayscale RGB555) then bl sprite_setColorShader:
+    progressive white-out color; byte_80A9558 ramps 0x4,0x6,...,0x1E,0x1F,0x1F: brightness saturating
+    at max; movflag EVENT_BFC + bl ClearEventFlagFromImmediate on terminator: signals story/effect state
+    completion; ldr r0,[r5,#0x24]; add #1; str; bl sprite_update: frame counter plus standard object sprite
+    tick, step-handler pattern'
+  refs:
+  - bn6f/asm/asm29.s:8674
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08002ED0 sprite_setColorShader
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080A94F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: byte_80A9544 has the 4,4,4,3,2,1,0... ramp ending in
+    0xFF and byte_80A9558 has the rising brightness ramp 4,6,...0x1F. The color is built as r0 |= r0<<5
+    | r0<<10 (RGB555 grayscale) and sprite_setColorShader is called with v<<5 in r1. However, the proposal
+    claims ''tail-calls sprite_update'', but the code pops {r4-r7,pc} after it, so it''s a normal call-then-return,
+    not a tail call. Also the entry clears no flag and branches - it only clears the flag on the 0xFF
+    terminator. Otherwise accurate.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_80A9568 does next (would confirm which cutscene/effect this belongs to)
+- Exact meaning of field +0x14 accumulation (byte<<16) and of the r1 = v<<5 argument to sprite_setColorShader
+  — the callee's known summary mentions an object-selected sprite block, which doesn't match the color
+  passed in r0 here
+- Which event flag EVENT_BFC corresponds to in game terms, and what sets up this object (no callers captured;
+  only the beastsp route executes it)
+- 'The code matches the proposal''s mechanics: byte_80A9544 has the 4,4,4,3,2,1,0... ramp ending in 0xFF
+  and byte_80A9558 has the rising brightness ramp 4,6,...0x1F. The color is built as r0 |= r0<<5 | r0<<10
+  (RGB555 grayscale) and sprite_setColorShader is called with v<<5 in r1. However, the proposal claims
+  ''tail-calls sprite_update'', but the code pops {r4-r7,pc} after it, so it''s a normal call-then-return,
+  not a tail call. Also the entry clears no flag and branches - it only clears the flag on the 0xFF terminator.
+  Otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A94F8 -> object_fadeSpriteToWhiteStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A94F8

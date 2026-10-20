@@ -1,0 +1,70 @@
+name: battle_findForwardUsableAttackPanel
+address: '0x080FF6E0'
+kind: function
+status: probable
+summary: Searches the opponent's row for a panel matching per-alliance attack criteria, falling back to
+  a looser mask and requiring a neighbor panel of the stricter type; returns the panel X/Y or 0 if none
+  qualifies.
+interface: (r0 = this BattleObject in r5, no args) -> r0 = panel X, r1 = panel Y, or r0 = 0 if no panel
+  found; r4/r6 clobbered
+details: Loads the object's Alliance, XORs it with 1 and calls battle_findPlayer to get the opposing player,
+  taking the player's PanelY as the search row. It then calls object_getClosestPanelMatchingRowFiltered
+  with per-alliance panel-flag masks from byte_80FF780 (alliance*8 gives required/forbidden word pairs);
+  if the found panel is not in this object's own row, or is in this object's row but strictly ahead by
+  object_getFrontDirection, its X/Y are returned directly. Otherwise a second search uses the masks at
+  byte_80FF794, and the found panel is accepted only if the panel at Y+1 or Y-1 matches the first mask
+  set (object_checkPanelParameters); if neither neighbor qualifies, or no panel was found at all, it returns
+  0. The two 8-byte tables hold (requiredMask, forbiddenMask) word pairs per alliance (0x10/0x0F8800A0,
+  0x30/0x0F880080 and 0x00010000/0x20, 0x00010020/0). The push/pop of r0,r1 around object_getFrontDirection
+  preserves the found coordinates for the return.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor with 1 then battle_findPlayer: targets the player of the opposite alliance (asm after push);
+    ldrb r6,[r0,#oBattleObject_PanelY] seeds the search row from the player; cmp r1,r3 compares result
+    row to this object''s PanelY; off_80FF77C/byte_80FF780 and byte_80FF794 are per-alliance (alliance<<3)
+    required/forbidden mask pairs fed to the panel-search/check helpers; sub r4, r0, r2; mul by object_getFrontDirection;
+    bgt keeps the panel only if it lies ahead of this object in its own row; fallthrough sets mov r0,#0
+    before locret_80FF778, so failure returns 0 while success returns the found X in r0 and Y in r1'
+  refs:
+  - bn6f/asm/asm31.s:151254
+  - 0x080FF1A2 sub_80FF1A2
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080FF6E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the code: it XORs Alliance with 1 to get the opposing player, uses
+    their PanelY as the search row, and applies two different mask tables (byte_80FF780 first, then byte_80FF794).
+    However, the proposed name ''battle_findTargetPanelNearPlayerRow'' is a bit misleading since the search
+    is across all rows from six rows behind (per object_getClosestPanelMatchingRowFiltered''s documented
+    behavior), not specifically ''near'' the player row; a name reflecting ''find usable attack panel
+    toward enemy row'' fits better.; run wf investigate investigate-20261018-155607; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which BeastSP/Falzar attack consumes the returned panel (caller sub_80FF1A2 is undocumented), i.e. whether
+  it spawns an object or aims an hit there
+- Exact meaning of the panel flag bits in the mask tables (0x10, 0x30, 0x00010000, 0x20 and the 0x0F8800xx
+  forbidden set)
+- 'The summary''s mechanics match the code: it XORs Alliance with 1 to get the opposing player, uses their
+  PanelY as the search row, and applies two different mask tables (byte_80FF780 first, then byte_80FF794).
+  However, the proposed name ''battle_findTargetPanelNearPlayerRow'' is a bit misleading since the search
+  is across all rows from six rows behind (per object_getClosestPanelMatchingRowFiltered''s documented
+  behavior), not specifically ''near'' the player row; a name reflecting ''find usable attack panel toward
+  enemy row'' fits better.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FF6E0 -> battle_findForwardUsableAttackPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF6E0

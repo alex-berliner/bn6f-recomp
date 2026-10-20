@@ -1,0 +1,69 @@
+name: ai_pickRandomOffRowPanelFromOffsets
+address: '0x08111764'
+kind: function
+status: probable
+summary: Walks an offset table of (x,y) signed pairs (terminated by x==0x7F), mirrors x by the object's
+  alliance direction, adds the base column/row, and tests each resulting panel against two flag masks
+  via object_checkPanelParameters. Matches whose row differs from the object's own row are stored packed
+  as (row<<4|col), then one is chosen randomly with GetPositiveSignedRNG+svc 6 (or 0 if none).
+interface: (r4 = offset list of signed (x,y) byte pairs terminated by x==0x7F, r5 = object struct (byte
+  0x13 = its row), r6 = object, r0 = base column, r1 = base row, r2 = panel mask-all, r3 = panel mask-none)
+  -> r0 = packed candidate (row<<4|column) chosen randomly, or 0 if none; r2 = number of matches; flags
+  destroyed.
+details: The function walks the r4 table of (x,y) signed-byte pairs until x == 0x7F. For each entry it
+  mirrors the x offset by the object's alliance direction (getAllianceDirection), adds the base column/row
+  from r0/r1, and calls object_checkPanelParameters with the two flag masks from r2/r3 to test the resulting
+  panel. Matching panels whose row differs from the object's current row (ldrb [r5,#0x13]) are packed
+  as (row<<4|column) into a stack array. Afterwards GetPositiveSignedRNG plus SWI Div (svc 6, remainder)
+  selects a random entry from that array; r2 carries the match count for the caller, and r0 is 0 if nothing
+  matched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop reads ldrsb [r4]/[r4,#1] pairs and exits when x byte == 0x7F — a relative-offset list with
+    terminator; bl object_getAllianceDirection then mul r0 — x offsets mirrored per player/enemy side,
+    as for BN6 column coordinates; bl object_checkPanelParameters with r2/r3 mask args filters candidates
+    by panel flag state; packed byte (row<<4|col) matches the game's panel-coordinate encoding; GetPositiveSignedRNG
+    + svc 6 (Div) yields random index via remainder; cmp against ldrb [r5,#0x13] skips panels on the object's
+    current row
+  refs:
+  - bn6f/asm/asm32.s:7299
+  - 0x08111750 sub_8111750
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x08111764
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it iterates an r4 offset table terminated by 0x7F, mirrors
+    x by object_getAllianceDirection, adds base column/row from r0/r1, calls object_checkPanelParameters
+    with r2/r3 masks, packs (row<<4|col) into a stack array skipping rows equal to [r5,#0x13], then picks
+    one via GetPositiveSignedRNG+svc6. However the summary says ''flag masks from r2/r3 test the panel''
+    — correct — but ''randomly'' is fine. The name ''ai_pickRandomMatchingPanelFromOffsets'' is reasonable;
+    a slightly tighter name reflecting the off-row filter and byte-packed coordinate return would be clearer.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of byte 0x13 in the r5 object struct (assumed current row)
+- what caller sub_8111750 does with the returned packed coordinate and match count
+- which shared offset tables feed the r4 list (e.g. a specific enemy's attack/move pattern)
+- 'The code matches the proposal''s behavior: it iterates an r4 offset table terminated by 0x7F, mirrors
+  x by object_getAllianceDirection, adds base column/row from r0/r1, calls object_checkPanelParameters
+  with r2/r3 masks, packs (row<<4|col) into a stack array skipping rows equal to [r5,#0x13], then picks
+  one via GetPositiveSignedRNG+svc6. However the summary says ''flag masks from r2/r3 test the panel''
+  — correct — but ''randomly'' is fine. The name ''ai_pickRandomMatchingPanelFromOffsets'' is reasonable;
+  a slightly tighter name reflecting the off-row filter and byte-packed coordinate return would be clearer.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111764 -> ai_pickRandomOffRowPanelFromOffsets
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111764

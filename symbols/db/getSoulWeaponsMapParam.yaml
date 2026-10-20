@@ -1,0 +1,57 @@
+name: getSoulWeaponsMapParam
+address: '0x0814278C'
+kind: function
+status: probable
+summary: Returns a per-map parameter byte (0x7,0xB,0xC,0xD,0xE,0x10,0x14,0x14) for the current SoulWeapons
+  map, using GetSoulWeaponsMapIndex as the lookup index.
+interface: (takes args passed through to GetSoulWeaponsMapIndex, likely r0 = map or weapon id) -> r0 =
+  byte_814279C[index]; flags from the ldrb
+details: Calls GetSoulWeaponsMapIndex to compute an index (0-7), then returns byte_814279C[index], an
+  8-entry table with values 0x7,0xB,0xC,0xD,0xE,0x10,0x14,0x14. The table likely holds an event/cutscene
+  or BBS-request parameter associated with each SoulWeapons map. It is a trivial lookup wrapper used by
+  soulWeapons_apply_8142510 and two small helpers at 0x814270A/0x8142734. No state is modified; it is
+  a pure getter.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetSoulWeaponsMapIndex then ldrb r0,[r7,r0] with r7=byte_814279C: index-and-table lookup,
+    no writes; table bytes 7,0xB,0xC,0xD,0xE,0x10,0x14,0x14 look like small IDs/counters, one per SoulWeapons
+    map; caller soulWeapons_apply_8142510 ''drives the BBS request flag and value, and starts the matching
+    cutscene'', matching a per-map parameter use'
+  refs:
+  - bn6f/asm/asm37_1.s:1488
+  - 0x08142510 soulWeapons_apply_8142510
+  - 0x0814270A sub_814270A
+  - 0x08142734 sub_8142734
+  - 0x081426CE GetSoulWeaponsMapIndex
+  reproduce: python3 tools/asmcat.py 0x0814278C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal: it calls GetSoulWeaponsMapIndex, uses the returned index to ldrb
+    from byte_814279C, and returns that byte (values 0x7,0xB,0xC,0xD,0xE,0x10,0x14,0x14). However, the
+    proposed name uses `soulWeapons` as a prefix, which is not in the allowed prefix list. The function
+    is a pure getter returning a per-map parameter, so it should use the `get` prefix.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the table values (cutscene id vs BBS request value vs spawn param) — would need to
+  see how sub_814270A/sub_8142734 or soulWeapons_apply consume the returned byte
+- what argument GetSoulWeaponsMapIndex expects (map id vs weapon id)
+- 'The code confirms the proposal: it calls GetSoulWeaponsMapIndex, uses the returned index to ldrb from
+  byte_814279C, and returns that byte (values 0x7,0xB,0xC,0xD,0xE,0x10,0x14,0x14). However, the proposed
+  name uses `soulWeapons` as a prefix, which is not in the allowed prefix list. The function is a pure
+  getter returning a per-map parameter, so it should use the `get` prefix.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814278C -> getSoulWeaponsMapParam
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814278C

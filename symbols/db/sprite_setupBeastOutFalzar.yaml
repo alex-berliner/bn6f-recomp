@@ -1,0 +1,64 @@
+name: sprite_setupBeastOutFalzar
+address: '0x080A783C'
+kind: function
+status: probable
+summary: 'Configure an object''s sprite slot for the Falzar Beast-Out form: sprite_load(0x80,0x1c,0x47),
+  set anim to byte[4], no-shadow, palette 0, priority 2 via tail-call.'
+interface: (r0 = object ptr also in r5, sprite/anim resource ids passed inline) -> r0 = destroyed; sets
+  object byte fields 0/5/8
+details: The function writes 3 into byte 0 of the object at r5 (likely a transform/state field), calls
+  sprite_load with fixed resource arguments (0x80, 0x1c, 0x47 — the Falzar Beast-Out sprite resource),
+  copies the object's byte at offset 4 into offset 5, then calls sprite_setAnimation, sprite_loadAnimationData,
+  sprite_noShadow, and sprite_setPalette with palette 0. It stores 4 into byte 8 (likely a form/cross
+  level id) and finishes by tail-calling sprite_setupBeastOutSprite_80A786C, which applies priority 2
+  and reloads the animation if changed. It is the companion variant of the known Beast-Out sprite setup,
+  distinguished only by its fixed sprite load arguments, so it is the other (Falzar) Beast-Out styling
+  path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load called with immediate args 0x80/0x1c/0x47 — a fixed, distinct sprite resource vs
+    the sibling at 80A786C; sprite_noShadow + sprite_setPalette(0) match battle-form sprite styling, matching
+    known callee summaries; tail call into the already-named sprite_setupBeastOutSprite_80A786C (Beast-Out
+    transform setup); strb #4, [r5,#8] stores a form id; captured route is beastsp (Beast-Out scenario)'
+  refs:
+  - bn6f/asm/asm29.s:4834
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A783C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code loads byte 4 into r0 as the argument for sprite_setAnimation, but stores r1 (0x1c, leftover
+    from sprite_load args) into byte 5 — not a ''copy of offset 4 into offset 5'' as the proposal claims.
+    The interface description ''r0 = object ptr also in r5'' is unsupported: r5 holds the object throughout
+    but r0 is never an entry parameter. The ''r0 = destroyed'' return claim has no basis; the function
+    simply pop {pc} with no r0 assignment. The rest (writes 3→byte0, sprite_load(0x80,0x1c,0x47), palette
+    0, byte8=4, tail-bl to sprite_setupBeastOutSprite_80A786C) matches. The Falzar name is reasonable
+    but speculative from resource IDs alone.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which of the two setup routines is Falzar vs Garou — the sibling's load arguments would confirm
+- Exact meaning of the byte 0 = 3 and byte 8 = 4 fields in the object structure
+- 'The code loads byte 4 into r0 as the argument for sprite_setAnimation, but stores r1 (0x1c, leftover
+  from sprite_load args) into byte 5 — not a ''copy of offset 4 into offset 5'' as the proposal claims.
+  The interface description ''r0 = object ptr also in r5'' is unsupported: r5 holds the object throughout
+  but r0 is never an entry parameter. The ''r0 = destroyed'' return claim has no basis; the function simply
+  pop {pc} with no r0 assignment. The rest (writes 3→byte0, sprite_load(0x80,0x1c,0x47), palette 0, byte8=4,
+  tail-bl to sprite_setupBeastOutSprite_80A786C) matches. The Falzar name is reasonable but speculative
+  from resource IDs alone.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A783C -> sprite_setupBeastOutFalzar
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A783C

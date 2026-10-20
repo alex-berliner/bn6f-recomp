@@ -1,0 +1,69 @@
+name: battle_updateArmAttachedEffectObject
+address: '0x080E0954'
+kind: function
+status: probable
+summary: Per-frame tick for an effect object riding on its owner's arm slot 5; plays SOUND_UNK_88 every
+  60 frames, inherits the owner's position/scale offset, and frees itself when its ExtraVars target word
+  or parent flag mask condition fails.
+interface: (r5 = battle object pointer; no register args) -> r0 = destroyed or undefined; no meaningful
+  flags
+details: 'Early-outs while time-stop is active. It sets flag bit 2 (0x2) on the object, then clears it
+  again if battle_findPlayerByAlliance_800EB6C reports the opposing player is blinded; it also clears
+  bit 2 if the object''s recomputed panel is invalid. When Param1 == 0 it counts down Timer, resetting
+  it to 60 and playing sound 0x3C each time it reaches zero. It copies the three-word position/scale block
+  at RelatedObject1Ptr+0x34 into its own +0x34 block, offset by the owner''s arm-slot-5 attachment position
+  (getBattleArmPositionMaybe with r1=5), then refreshes its panel coordinates. Lifetime is governed by
+  ExtraVars: the pointer at ExtraVars+4 targets a word that must be nonzero, and the parent''s flag word
+  (via object_getFlag) must contain the mask stored at (*ExtraVars)+4, otherwise the target word is zeroed
+  and object_freeMemory releases the object; while alive it calls object_updateSpriteTimestop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isTimeStop / bne locret — standard battle-object tick guard; getBattleArmPositionMaybe_8018810
+    called with r1=5 and owner NameID/Alliance/DirectionFlip, result added to words copied from owner+0x34
+    into r5+0x34 (ldmia/stmia pairs); Param1==0 branch decrements Timer, reloads 0x3C and calls PlaySoundEffect(SOUND_UNK_88=0x3C)
+    — recurring per-second sound; ldr ExtraVars+4 / tst r0 / object_getFlag on RelatedObject1Ptr tested
+    against [ExtraVars]+4 mask decides object_updateSpriteTimestop vs cleanup; object_freeMemory after
+    zeroing *(ExtraVars+4 target) ends the object's life
+  refs:
+  - bn6f/asm/asm31.s:86774
+  - 0x080E091C sub_80E091C
+  - 0x080005CC PlaySoundEffect
+  - 0x0800EB6C battle_findPlayerByAlliance_800EB6C
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080E0954
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Structure and flow match: early-out on battle_isTimeStop (bne locret), set/clear flag 0x2 via battle_findPlayerByAlliance_800EB6C
+    and object_isCurrentPanelValid, arm-slot-5 offset copy at +0x34, ExtraVars lifetime check with object_freeMemory,
+    and object_updateSpriteTimestop are all present. However, the sound played is SOUND_UNK_88, not 0x3C
+    (0x3C is the Timer reset value to 60); the proposal conflates these two constants. ''Looping sound''
+    should be ''periodic sound'' since it fires only when Timer hits zero. ''Three-word block'' is fine
+    for the ldmia r1-r3 but the additions operate on halfword pairs within those words.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which chip/status spawns this object and what the effect is visually (blind-related flag bit 2 and arm
+  slot 5 suggest an aura/attached effect, but the spawner is not in the shown callgraph)
+- Exact semantics of the ExtraVars structure (field at +0 and +4) and of the counter pointed to by ExtraVars+4
+- What sound 0x3C is and what Param1 selects (the Param1!=0 path skips the timer/sound entirely)
+- 'Structure and flow match: early-out on battle_isTimeStop (bne locret), set/clear flag 0x2 via battle_findPlayerByAlliance_800EB6C
+  and object_isCurrentPanelValid, arm-slot-5 offset copy at +0x34, ExtraVars lifetime check with object_freeMemory,
+  and object_updateSpriteTimestop are all present. However, the sound played is SOUND_UNK_88, not 0x3C
+  (0x3C is the Timer reset value to 60); the proposal conflates these two constants. ''Looping sound''
+  should be ''periodic sound'' since it fires only when Timer hits zero. ''Three-word block'' is fine
+  for the ldmia r1-r3 but the additions operate on halfword pairs within those words.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E0954 -> battle_updateArmAttachedEffectObject
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0954

@@ -1,0 +1,65 @@
+name: battle_relayDamageUpdate
+address: '0x080D95B0'
+kind: function
+status: probable
+summary: Per-frame update that takes normal damage and relays the HP delta to the object two levels deep
+  in RelatedObject1 chain (RelatedObject1->RelatedObject1), destroying itself or its partner chain when
+  battle ends, partner dies, or damage returns -1.
+interface: (r5 = battle object ptr, r0-r3 scratch) -> r0 = clobbered; updates HP, collision region, and
+  CurState of r5 and its RelatedObject1
+details: Runs the standard destruction preamble (removeCollisionData, spawnCollisionEffect), then bails
+  out setting CUR_STATE_DESTROY if the battle is over or sub_80D9690 (likely a partner-dead/HP-zero check)
+  says so. If the collision flags (bits 0x0C000000 of oCollisionData_FlagsFromCollision) are set it clears
+  the object's collision region, then refreshes its pixel coordinates from panels and updates collision
+  panels. It calls basicHandleBattleObjectDamage_801156A; a -1 return means it zeroes the RelatedObject1's
+  HP, clears its own collision region, and enters CUR_STATE_DESTROY. Otherwise it stores its new HP, computes
+  oldHP-newHP, and subtracts that delta from the RelatedObject1-of-RelatedObject1's HP, clamped to 0,
+  then calls sub_80D9638 (likely effect/state update) and object_presentCollisionData.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'basicHandleBattleObjectDamage_801156A then add r0,#1 / bne: -1 signals a special case that
+    zeroes the partner HP and destroys (loc_80D9600 path); sub r0,r1,r0 on old vs new HP then sub from
+    [RelatedObject1Ptr]->oBattleObject_HP: damage is mirrored to a linked object; ldr r0,[r0,#oCollisionData_FlagsFromCollision];
+    tst r0,0x0C000000: post-hit flags gate clearing the collision region; battle_isBattleOver and CUR_STATE_DESTROY
+    stores: normal end-of-life handling like other battle objects; Callees object_removeCollisionData/object_spawnCollisionEffect/object_presentCollisionData
+    are the standard object teardown/effect/collision-update sequence'
+  refs:
+  - bn6f/asm/asm31.s:71553
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D95B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The -1 branch and the normal branch both operate on [RelatedObject1]->[RelatedObject1]->HP (lines
+    `ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]; ldr r1,[r1,#oBattleObject_RelatedObject1Ptr]`), not
+    RelatedObject1''s own HP, so the summary and details misidentify the drain target. The collision mask
+    is 0xC000000, not 0x0C000000. The function is a full per-frame update (coords, collision panels, sub_80D9682)
+    that additionally relays damage, making ''relayDamage'' too narrow as a name. The destruction and
+    -1 bail paths do match.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D9690 and sub_80D9638 do exactly (partner-death check vs other condition, and post-damage
+  effect)
+- Which game entity uses this (likely a boss sub-object or shield relaying damage to a main HP pool) —
+  callers are unknown
+- The -1 branch and the normal branch both operate on [RelatedObject1]->[RelatedObject1]->HP (lines `ldr
+  r1,[r5,#oBattleObject_RelatedObject1Ptr]; ldr r1,[r1,#oBattleObject_RelatedObject1Ptr]`), not RelatedObject1's
+  own HP, so the summary and details misidentify the drain target. The collision mask is 0xC000000, not
+  0x0C000000. The function is a full per-frame update (coords, collision panels, sub_80D9682) that additionally
+  relays damage, making 'relayDamage' too narrow as a name. The destruction and -1 bail paths do match.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D95B0 -> battle_relayDamageUpdate
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D95B0

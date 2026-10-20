@@ -1,0 +1,71 @@
+name: ai_stepTargetPanelRepeatAttack
+address: '0x08113510'
+kind: function
+status: probable
+summary: 'AI attack driver: on first invocation spawns a 0xD3 attack object at (TargetPanelX,TargetPanelY)
+  with element 0 carrying AttackBoost2<<8 and Damage, then uses AttackBoost2 as a StepTimer delay. After
+  the delay, ChargeCycles (max 8) drives a zigzag walk of TargetPanelX/Y read as (dx,dy) signed pairs
+  from byte_8113594, with dx scaled by the attacker''s front direction; if X stays within 1..6 the attack
+  element is cleared to retrigger the spawn, otherwise anim 3 plays on r5, an extra-var+8 timer slot is
+  cleared, and HitElement=8 ends it.'
+interface: (r0 = unused (immediately overwritten), r5 = battle object, r7 = oAIAttackVars of attacker)
+  -> updates r7 fields and r5 anim/extra vars; no return value used
+details: 'On entry with oAIAttackVars_AttackElement==0 it sets it to 1 and spawns a type 0xD3 battle object
+  at (TargetPanelX,TargetPanelY) with element 0, carrying AttackBoost2<<8 and the Damage word, copying
+  alliance/flip from r5; AttackBoost2 then seeds StepTimer as a startup delay. Once the delay expires,
+  ChargeCycles counts down from 8; each tick it fetches a (dx,dy) byte pair from byte_8113594 at index
+  (8-ChargeCycles)*2, multiplies dx by object_getFrontDirection(r5) so the walk mirrors the attacker''s
+  facing, and adds it to TargetPanelX/Y. Path: two steps along the row, one across, two back, one across,
+  two along — a serpentine walk of the target panel. If the new X is still inside 1..6 it clears AttackElement
+  to 0 so the attack (spawn + walk) repeats; otherwise it plays anim 3 on the attacker, zeroes ExtraVars+8
+  via the timer-reset helper, and sets HitElement=8 to end the attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84 with TargetPanelX/Y, element 0
+    and Damage word; off_8113590 -> byte_8113594: eight (dx,dy) sign pairs indexed by (8-ChargeCycles)*2,
+    dx multiplied by object_getFrontDirection; strb r0, [r7,#oAIAttackVars_AttackElement] with 0 after
+    the X range check re-arms the whole spawn+walk sequence; termination sets oBattleObject_CurAnim=3,
+    calls battle_ResetObjectTimerTo8_80C4072 and sets oAIAttackVars_HitElement=8; executed on recorded
+    routes battlesweep/beastsp, consistent with a boss/enemy AI attack state machine'
+  refs:
+  - bn6f/asm/asm32.s:10855
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x080DFF84 battle_spawnTypeD3ObjectWithPanelElementAndDamage_80DFF84
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08113510
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but a few details are off. StepTimer is seeded from AttackBoost2
+    (not ''AttackBoost2<<8 seed''; lsl r4 shifts for the spawn, then AttackBoost2 itself is stored to
+    StepTimer). ChargeCycles counts down from 8 with an off-by-one nuance: when it hits 0 it falls through
+    to loc_8113576 immediately, and the 6 (dx,dy) entries are read at indices 14,12,... rather than walking
+    all 16 bytes. Also the X-bounds check uses 1..6 inclusive and only on X (Y is unchecked). The spawn-then-repeat-upon-attack-element-clear
+    mechanism is correct.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which enemy/boss uses this attack (no caller identified)
+- what object type 0xD3 renders as at the target panel
+- meaning of AttackBoost2/StepTimer delay value in game terms
+- whether anim 3 is a 'return/idle' or 'attack end' animation
+- 'The summary is mostly accurate, but a few details are off. StepTimer is seeded from AttackBoost2 (not
+  ''AttackBoost2<<8 seed''; lsl r4 shifts for the spawn, then AttackBoost2 itself is stored to StepTimer).
+  ChargeCycles counts down from 8 with an off-by-one nuance: when it hits 0 it falls through to loc_8113576
+  immediately, and the 6 (dx,dy) entries are read at indices 14,12,... rather than walking all 16 bytes.
+  Also the X-bounds check uses 1..6 inclusive and only on X (Y is unchecked). The spawn-then-repeat-upon-attack-element-clear
+  mechanism is correct.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8113510 -> ai_stepTargetPanelRepeatAttack
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113510

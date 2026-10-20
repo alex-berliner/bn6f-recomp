@@ -1,0 +1,67 @@
+name: battle_startAiAttackA
+address: '0x080F4AC6'
+kind: function
+status: probable
+summary: Initializes the AI attack-vars struct with the current difficulty tier and resets its fields,
+  then assigns a panel-choose callback, selects the opposing player as target, and transitions the object
+  into attack state 0xA.
+interface: (r7 = * oAIAttackVars struct for this battle object; r5 = * battle object) -> r0 = destroyed;
+  sets object attack state to 0
+details: Stores the AI difficulty tier (from battle_getAiDifficultyTier_800FE36) into oAIAttackVars_AiDifficultyTier
+  and clears the InitFlag. Calls sub_80F4B74 with r0=0 (likely a state/phase reset), then fills AttackDuration
+  from sub_80F49D4 and AttackBoost2/TimerOrCycles from sub_80F49F8, both presumably derived from the tier.
+  Installs a callback pointer (sub_80F5484+1) into oAIAttackVars_PanelChooseCallback, picks the opposing
+  player object via battle_findPlayer(Alliance ^ 1) into oAIAttackVars_TargetObjectPtr, and finally calls
+  object_setAttack0 with 0xA to put the object into attack state 0xA. This is clearly a per-object initialization/setup
+  routine for an AI attack behavior block at oAIAttackVars.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 stores
+    the tier into the AI vars struct; ldr r0,off_80F4C18; str r0,[r7,#oAIAttackVars_PanelChooseCallback]
+    installs a per-state callback pointer; bl battle_findPlayer with Alliance^1 stores the opposing player
+    pointer into oAIAttackVars_TargetObjectPtr; mov r0,#0xa; bl object_setAttack0 ends the routine by
+    entering attack state 0xA; struct writes all target oAIAttackVars_* fields of r7, matching an AI attack
+    state-machine block
+  refs:
+  - bn6f/asm/asm31.s:129703
+  - 0x080F48E8 sub_80F48E8
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080F4AC6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claims match the code: tier stored at oAIAttackVars_AiDifficultyTier, sub_80F4B74/sub_80F49D4/sub_80F49F8
+    fills, panel callback installed, target picked via battle_findPlayer(Alliance ^ 1), and object_setAttack0
+    called with 0xA. However, the proposed name ''battle_aiAttackVarsInit'' is misleading because the
+    routine is invoked from within an enemy''s attack-setup flow (callee of sub_80F48E8, executed on attacksweep
+    route) and is more specifically the ''attack 0xA start/initializer'' for an AI enemy object. A more
+    precise name reflecting that it kicks off the AI''s attack phase using the difficulty tier is warranted.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of sub_80F4B74(0), sub_80F49D4 and sub_80F49F8 (which values they derive and from what
+  inputs)
+- What state 0xA means in object_setAttack0 and what sub_80F5484 (the PanelChooseCallback) does
+- Which enemy/AI routine this struct belongs to and where sub_80F48E8 is invoked from
+- 'The summary''s claims match the code: tier stored at oAIAttackVars_AiDifficultyTier, sub_80F4B74/sub_80F49D4/sub_80F49F8
+  fills, panel callback installed, target picked via battle_findPlayer(Alliance ^ 1), and object_setAttack0
+  called with 0xA. However, the proposed name ''battle_aiAttackVarsInit'' is misleading because the routine
+  is invoked from within an enemy''s attack-setup flow (callee of sub_80F48E8, executed on attacksweep
+  route) and is more specifically the ''attack 0xA start/initializer'' for an AI enemy object. A more
+  precise name reflecting that it kicks off the AI''s attack phase using the difficulty tier is warranted.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F4AC6 -> battle_startAiAttackA
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4AC6

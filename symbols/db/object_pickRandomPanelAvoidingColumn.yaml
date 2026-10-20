@@ -1,0 +1,65 @@
+name: object_pickRandomPanelAvoidingColumn
+address: '0x080FB724'
+kind: function
+status: probable
+summary: Picks a random free battle panel for object r5, first scanning panels via object_getPanelsIgnoreColumnFiltered
+  (ignore column from object+0x13), falling back to object_getPanelsExceptCurrentFiltered, and finally
+  to the object's own column/row (object+0x12, object+0x13); uses GetPositiveSignedRNG mod count, packing
+  entries as col|row<<4.
+interface: (r5 = object ptr; r2, r3 = filter masks passed through to the panel scanners) -> r0 = column,
+  r1 = row; preserves flags
+details: 'Reads object+0x13 as the ignore-column parameter and calls object_getPanelsIgnoreColumnFiltered
+  to collect candidate panels packed as col|row<<4 into a 0x20-byte stack buffer. If that list is empty
+  it retries with object_getPanelsExceptCurrentFiltered (excluding the object''s own panel); if that is
+  also empty it returns object+0x12 and object+0x13 directly as col/row. Otherwise it calls GetPositiveSignedRNG
+  and SWI 6 (Div) to take the RNG modulo the panel count, indexing the packed entry in the buffer. The
+  entry is unpacked: r0 = entry & 7 (column), r1 = entry >> 4 (row). SWI 6''s remainder in r1 is deliberately
+  kept as the row result.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getPanelsIgnoreColumnFiltered / object_getPanelsExceptCurrentFiltered with results
+    tested for zero shows the two-stage candidate collection (0x80FB72E-0x80FB74C); bl GetPositiveSignedRNG
+    then svc 6 with r1 = panel count computes rng % count, used to index the stack buffer (0x80FB752-0x80FB75C);
+    lsr r1,#4 / lsl r0,#0x1d + lsr r0,#0x1d unpack col|row<<4 packing described by the callee (0x80FB75E-0x80FB764);
+    fallback ldrb r0,[r5,#0x12]; ldrb r1,[r5,#0x13] returns the object's own panel fields when no candidate
+    exists (0x80FB762); callee summaries (object_getPanels*) confirm the list format and the exclusion
+    semantics
+  refs:
+  - bn6f/asm/asm31.s:143396
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x0800CFA6 object_getPanelsIgnoreColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080FB724
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: ignore-column via object+0x13, fallback to ExceptCurrentFiltered, then fallback
+    to object+0x12/+0x13, with SWI 6 remainder in r1 used as row. However r0 = entry & 7 (column) is wrong
+    in code: it does `lsl r0,#0x1d; lsr r0,#0x1d` after an `lsr r1,r0,#4`, so r0 ends up as entry & 0x1F
+    (5 bits), not 7. Since rows are 1-3 (<<4) and cols 1-6 (0x0F), this likely intends cols & 0xF. Naming
+    is fine but ''AvoidingColumn'' is accurate.; run wf investigate investigate-20261018-182231; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact meaning of object+0x12/+0x13 (own column/row vs packed position) and which game feature calls
+  this (no known caller; recorded routes only show battlesweep/chips context)
+- 'The flow matches: ignore-column via object+0x13, fallback to ExceptCurrentFiltered, then fallback to
+  object+0x12/+0x13, with SWI 6 remainder in r1 used as row. However r0 = entry & 7 (column) is wrong
+  in code: it does `lsl r0,#0x1d; lsr r0,#0x1d` after an `lsr r1,r0,#4`, so r0 ends up as entry & 0x1F
+  (5 bits), not 7. Since rows are 1-3 (<<4) and cols 1-6 (0x0F), this likely intends cols & 0xF. Naming
+  is fine but ''AvoidingColumn'' is accurate.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB724 -> object_pickRandomPanelAvoidingColumn
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB724

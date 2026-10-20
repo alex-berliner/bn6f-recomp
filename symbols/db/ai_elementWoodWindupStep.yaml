@@ -1,0 +1,64 @@
+name: ai_elementWoodWindupStep
+address: '0x080FE354'
+kind: function
+status: probable
+summary: AI attack step that hardcodes element id 4 (Wood). On first call it sets AttackElement=4; if
+  unk-0x48 bit 0x20 is set, clears it, plays anim 7 + SFX 0xE1, arms StepTimer=0x22. Subsequent calls
+  decrement StepTimer; when it reaches 0 the hit element is committed as 4.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = 0; sets oAIAttackVars_AttackElement/HitElement,
+  oBattleObject_CurAnim, StepTimer
+details: If oAIAttackVars_AttackElement is 0, it is set to 4 (wood element id). It then tests bit 0x20
+  of the AI-data unk-0x48 flag word via GetAIDataUnk0x48Flag; if set, the bit is cleared, object CurAnim
+  is set to 7, sound effect 0xE1 is played, and StepTimer is loaded with 0x22 (34). Subsequent calls decrement
+  StepTimer until it reaches 0, at which point oAIAttackVars_HitElement is set to 4; if the flag was clear
+  the hit element is committed immediately with no windup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — first-call vs. countdown phases; strb r0(=4),[r7,#oAIAttackVars_AttackElement]
+    and later strh to oAIAttackVars_HitElement — element 4 committed to the hit; bl GetAIDataUnk0x48Flag
+    / ClearAIDataUnk0x48Flag with mask 0x20 — optional one-shot windup; mov r0,#7; strb r5 CurAnim + bl
+    PlaySoundEffect(0xE1) — windup animation and sound; StepTimer=0x22 then ldrh/sub/bgt — 34-frame delay
+    before the hit element is applied
+  refs:
+  - bn6f/asm/asm31.s:149156
+  - 0x080005CC PlaySoundEffect
+  - 0x0801031C ClearAIDataUnk0x48Flag
+  - 0x0801032C GetAIDataUnk0x48Flag
+  reproduce: python3 tools/asmcat.py 0x080FE354
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches mostly: AttackElement set to 4, HitElement set to 4, animation 7, sound 0xE1, StepTimer
+    0x22, and the decrement branch on StepTimer hit when previous element was non-zero. Two issues: summary
+    says ''after ~34 frames commits'' but the function decrements once per call and commits when it hits
+    0, so callers must keep re-invoking it (consistent with AI step state machine, but worth noting).
+    Also the HitElement store uses strh (halfword), not strb, so summary''s ''sets'' wording is fine but
+    detail note is off. Name is reasonable but ''WoodWindup'' implies only wood; since element id 4 is
+    hardcoded it''s fine, though ai_elementWoodWindupStep is more precise.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which enemy/AI script invokes this step and what the 0x20 bit of the AI unk-0x48 flag means semantically
+- Whether element id 4 is definitively wood in the battle engine's element table
+- 'Code matches mostly: AttackElement set to 4, HitElement set to 4, animation 7, sound 0xE1, StepTimer
+  0x22, and the decrement branch on StepTimer hit when previous element was non-zero. Two issues: summary
+  says ''after ~34 frames commits'' but the function decrements once per call and commits when it hits
+  0, so callers must keep re-invoking it (consistent with AI step state machine, but worth noting). Also
+  the HitElement store uses strh (halfword), not strb, so summary''s ''sets'' wording is fine but detail
+  note is off. Name is reasonable but ''WoodWindup'' implies only wood; since element id 4 is hardcoded
+  it''s fine, though ai_elementWoodWindupStep is more precise.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FE354 -> ai_elementWoodWindupStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE354

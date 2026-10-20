@@ -1,0 +1,62 @@
+name: battle_erasePanelRow
+address: '0x0800C138'
+kind: function
+status: probable
+summary: Writes a 5x1 strip of blank (tile id 0) tiles into BG tile block 2 at the mirrored panel position
+  for the current side, clearing one row of a battle panel slot during the panel animation update.
+interface: (r0 = panel column/frame index into byte_800C182, r1 = row index) -> r0 clobbered by call;
+  no return value
+details: Loads oBattleState_PlayerSide from the current BattleState and indexes byte_800C182 at (r0 +
+  side*8), a 16-entry table mirrored around the center (0xFB,0,5,10,15,20,25,30 | 30,25,20,15,10,5,0,0xFB),
+  giving the horizontal position for the player's or enemy's side. The row is computed as 3*r1+6. It then
+  calls CopyBackgroundTiles with tileBlock32x32=2, tile_ids pointing at byte_800C178 (ten zero bytes,
+  i.e. blank tile ids), j_size=5, i_size=1, so exactly five blank tiles are written. It is called per-frame
+  from updateBattlePanels_800C5E0, which steps panel animations and redraws panel slots, so this is the
+  erase/blank step for one animated panel row. The mirrored table suggests the panel area animates symmetrically
+  for both sides (e.g. area steal / panel shift), with the horizontal position being the animated offset.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r6,[r6,#oToolkit_BattleStatePtr]; ldrb r4,[r6,#oBattleState_PlayerSide]; lsl r4,#3; ldrb
+    r4,[r6,r0] — side-mirrored lookup in byte_800C182; byte_800C182 bytes 0xFB,0,5,...,0x1E,...,5,0,0xFB
+    — symmetric ramp, one half per battle side; mov r4,#3; mul r4,r1; add r4,#6 — row position = 3*r1+6;
+    tile_ids = byte_800C178 (all zeros) with j_size=5,i_size=1 to CopyBackgroundTiles — blank 5x1 tile
+    strip into tile block 2; Caller updateBattlePanels_800C5E0 is described as stepping panel animations
+    then redrawing every panel slot
+  refs:
+  - bn6f/asm/object.s:1277
+  - 0x0800C5E0 updateBattlePanels_800C5E0
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0800C138
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details match the asm: it loads oBattleState_PlayerSide, indexes byte_800C182 with
+    side*8+r0 to get the j coord, computes row = 3*r1+6, then calls CopyBackgroundTiles with tileBlock=2,
+    tile_ids=byte_800C178 (ten zero bytes of tile 0), j_size=5, i_size=1, writing 5 blank tiles. However,
+    the proposed name ''battle_clearPanelTiles'' is fine but a better fit is ''battle_erasePanelRow''
+    since only a single row (i_size=1) is cleared, not arbitrary panel tiles.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What r0 indexes exactly (panel column vs. animation frame) and what the byte_800C182 values mean in
+  pixels vs. tiles/subtiles
+- Which panel effect (area steal, crack, panel removal) triggers this call path in updateBattlePanels_800C5E0
+- 'The summary and details match the asm: it loads oBattleState_PlayerSide, indexes byte_800C182 with
+  side*8+r0 to get the j coord, computes row = 3*r1+6, then calls CopyBackgroundTiles with tileBlock=2,
+  tile_ids=byte_800C178 (ten zero bytes of tile 0), j_size=5, i_size=1, writing 5 blank tiles. However,
+  the proposed name ''battle_clearPanelTiles'' is fine but a better fit is ''battle_erasePanelRow'' since
+  only a single row (i_size=1) is cleared, not arbitrary panel tiles.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800C138 -> battle_erasePanelRow
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800C138

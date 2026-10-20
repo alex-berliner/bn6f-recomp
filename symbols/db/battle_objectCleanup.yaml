@@ -1,0 +1,69 @@
+name: battle_objectCleanup
+address: '0x080E1352'
+kind: function
+status: probable
+summary: 'Tears down a battle object''s transient state before removal: unconditionally clears flag bit
+  0x2, then per-bit (0=skip) optionally resets subordinate object, hit-source flags, alliance effect,
+  subordinate AI field, and AI script; no return value.'
+interface: (r0 = battle object, r1 = option bitmask) -> r0 = destroyed; flags clobbered
+details: 'r1 is a bitmask of independent cleanup steps (tested by successive lsr/bcs pairs). Unconditionally
+  it clears bit 0x2 of the object header flags and calls SetAIDataUnk0x48Flag with value 0 (clearing a
+  flag in AIData+0x48). Bit 0: recursively clean the AIData SubordinateObjectPtr via sub_80E0DCA. Bit
+  1: clear bit 0x2 of the flags of CollisionData_LastHitObjectPtr; bit 2: same for the object pointer
+  at CollisionData+0x4C, so hitters stop tracking this object. Bit 3: if battle_networkInvert(Alliance)
+  != 1 (i.e. not the inverted side), dispatch_801DACC(2) — likely a vanish/delete effect for the player''s
+  side. Bit 4: clear field 0x64 of the SubordinateAIObjectPtr (sub_80E0F22); bit 5: if AIData AIScriptOffset
+  is nonzero, run sub_80C4C46. This matches the caller sub_80C0EE2, a one-shot sub-state that waits 4
+  frames, performs this teardown, then triggers a NameID-tied effect and queues its own destruction.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80E1352 head: bic r2,#2 on oObjectHeader_Flags then SetAIDataUnk0x48Flag(0) clears the
+    object''s own transient flags; lsr r6/bcs chain tests six independent option bits, each gating one
+    teardown action; bits 1-2 clear bit 0x2 of LastHitObjectPtr and CollisionData+0x4C object flags, unlinking
+    hitters; bit 3: battle_networkInvert(Alliance)!=1 gates dispatch_801DACC(2), a side-dependent effect
+    call; caller sub_80C0EE2''s summary (one-shot setup/teardown before effect + self-destruct) matches
+    this teardown role'
+  refs:
+  - bn6f/asm/asm31.s:88101
+  - 0x080C0EE2 sub_80C0EE2
+  - 0x080B8A3C sub_80B8A3C
+  - 0x080BAF74 sub_80BAF74
+  - 0x08010312 SetAIDataUnk0x48Flag
+  - 0x0800A9EC battle_networkInvert
+  - 0x080E0F22 sub_80E0F22
+  reproduce: python3 tools/asmcat.py 0x080E1352
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and per-bit descriptions match the lsr/bcs chain correctly (bit0→sub_80E0DCA, bits1/2→clear
+    flag0x2 on hit-object/CollisionData+0x4C, bit3→dispatch_801DACC(2) when networkInvert≠1, bit4→sub_80E0F22,
+    bit5→sub_80C4C46). However, the proposal claims SetAIDataUnk0x48Flag with value 0 ''clears a flag
+    in AIData+0x48'', but that callee ORs flags in (read-modify-write OR); passing 0 is a no-op. Also,
+    the interface says ''r0 = destroyed'' but the function never sets r0 before pop, so there is no return
+    value. The bitmask is more accurately a ''skip'' mask: a CLEAR bit enables the step, not a set bit.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- story9
+open_questions:
+- What dispatch_801DACC(2) actually triggers (effect id 2 semantics)
+- exact meaning of each option bit as named by original callers
+- what sub_80C4C46 does with the AI script offset
+- 'The name and per-bit descriptions match the lsr/bcs chain correctly (bit0→sub_80E0DCA, bits1/2→clear
+  flag0x2 on hit-object/CollisionData+0x4C, bit3→dispatch_801DACC(2) when networkInvert≠1, bit4→sub_80E0F22,
+  bit5→sub_80C4C46). However, the proposal claims SetAIDataUnk0x48Flag with value 0 ''clears a flag in
+  AIData+0x48'', but that callee ORs flags in (read-modify-write OR); passing 0 is a no-op. Also, the
+  interface says ''r0 = destroyed'' but the function never sets r0 before pop, so there is no return value.
+  The bitmask is more accurately a ''skip'' mask: a CLEAR bit enables the step, not a set bit.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1352 -> battle_objectCleanup
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1352

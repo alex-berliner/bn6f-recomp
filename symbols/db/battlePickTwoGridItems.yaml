@@ -1,0 +1,75 @@
+name: battlePickTwoGridItems
+address: '0x0802A9D0'
+kind: function
+status: probable
+summary: 'Battle submenu letting the player select up to two items from a grid under a 0x32 budget: A
+  picks a cell (id from unk_2031000, weight from byte_802B5FC, total tracked at [r5+0x12]) into slot [r5+0x10]
+  then [r5+0x11]; B clears the most recent slot; 0x100 inspects (state 0x18, sound 0x9c); 0x200 confirms
+  (state 0x1c, text script 0).'
+interface: (r5 = menu state struct, r10 = toolkit) -> void; drives sounds, text script and screen rebuilds
+details: State machine on [r5+1] with a mode byte at [r5+2] (0 = grid mode). Cursor is a grid position
+  ([r5+0x24] = one axis, [r5+0x20] = other) whose index into the halfword grid unk_2031000 is (x+y)*2;
+  a 0xFFFF entry is an empty/invalid cell. A press on a valid cell loads its weight from byte_802B5FC[id*8+4]
+  and, if the running total [r5+0x12] stays <= 50 (0x32) and the item isn't already chosen, stores the
+  id into slot [r5+0x10] then [r5+0x11]; B clears the last-chosen slot back to 0xFF (via sub_802B5B0).
+  D-pad scroll goes through menu_adjustCursorOrValue_811F7F8, and after any change the display is rebuilt
+  by sub_802B358(unk_2031000, decomp_2032000) plus sub_802B438(unk_2030E60, unk_2031000). The 0x200 button
+  sets state 0x1c and runs battle-context text script 0 (RunTextScriptBattleRunDialog); 0x100 on a cell
+  sets state 0x18 with sound 0x9c (inspect?). Per-frame tail calls sub_802B15C for OAM slots 0x10/0x11,
+  then sub_802B1E4/sub_802B270.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_802AB36-802AB6C: weight = ldrh [byte_802B5FC + id*8+4], total [r5+0x12] rejected if > 0x32,
+    id stored into [r5+0x10] then [r5+0x11]; loc_802AA0E: B button unmarks via sub_802B5B0 and writes
+    0xff to slot 0x10/0x11, then rebuilds display via sub_802B358/sub_802B438; loc_802AA9A/AB20: grid
+    index (x+y)<<1 into unk_2031000 with 0xFFFF empty-cell check dword_802ABBC; menu_adjustCursorOrValue_811F7F8
+    called with [r5+0x24]/[r5+0x20] and old values cached in 0x26/0x22, triggering display rebuild on
+    change; loc_802AA7C: button 0x200 sets state 0x1c and calls RunTextScriptBattleRunDialog(0); sounds
+    SOUND_MENU_CUR_MOVE/SELECT/CANT_JACK_IN on transitions'
+  refs:
+  - bn6f/asm/asm03_0.s:9753
+  - 0x080005CC PlaySoundEffect
+  - 0x0811F7F8 menu_adjustCursorOrValue_811F7F8
+  - 0x0802B5EC RunTextScriptBattleRunDialog
+  reproduce: python3 tools/asmcat.py 0x0802A9D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code broadly matches the proposal: grid mode (mode byte 0), two slots at +0x10/+0x11 cleared
+    with 0xFF, weight table byte_802B5FC[id*8+4], running total at +0x12 budget 0x32, B clears slots,
+    D-pad via menu_adjustCursorOrValue, displays rebuilt via sub_802B358/sub_802B438. However, the summary
+    says ''each with a weight'' but the asm loads a byte (ldrh but compared/added as a small value stored
+    in a byte at +0x12) and the proposal misnames slot clearing — B clears whichever slot is occupied
+    (either +0x10 or +0x11), not just the last-chosen. Also sub_802B560 (callee not listed) is called,
+    so tail is sub_802B15C/sub_802B1E4/sub_802B270 plus sub_802B560. The name ''submenu_pickTwoGridItems''
+    is fine but ''battlesweep'' execution hints at a battle sweep selection screen; a battle-prefixed
+    name fits the prefix list better.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which in-game menu/machine this is (two slots, 50-point budget could be chip trade, minigame setup,
+  or event counter) — the grid data unk_2031000's producer would identify it
+- What sub_802B5DC and state 0x18 (sound 0x9c) do — likely inspecting/details of the cell under cursor
+- Semantics of the byte_802B5FC table's other fields (only +4 halfword used here)
+- Meaning of the text script id 0 shown on the 0x200 button
+- 'The code broadly matches the proposal: grid mode (mode byte 0), two slots at +0x10/+0x11 cleared with
+  0xFF, weight table byte_802B5FC[id*8+4], running total at +0x12 budget 0x32, B clears slots, D-pad via
+  menu_adjustCursorOrValue, displays rebuilt via sub_802B358/sub_802B438. However, the summary says ''each
+  with a weight'' but the asm loads a byte (ldrh but compared/added as a small value stored in a byte
+  at +0x12) and the proposal misnames slot clearing — B clears whichever slot is occupied (either +0x10
+  or +0x11), not just the last-chosen. Also sub_802B560 (callee not listed) is called, so tail is sub_802B15C/sub_802B1E4/sub_802B270
+  plus sub_802B560. The name ''submenu_pickTwoGridItems'' is fine but ''battlesweep'' execution hints
+  at a battle sweep selection screen; a battle-prefixed name fits the prefix list better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802A9D0 -> battlePickTwoGridItems
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A9D0

@@ -1367,7 +1367,7 @@ static void dispatch_behavior_vtable(void) {
     else if (selector == 4)
         GUEST_CALL(battle_chipSelectAnimTileStep);
     else
-        GUEST_CALL(sub_802C0A4);
+        GUEST_CALL(submenu_dispatchPendingSelection);
 
     /* register form: pop {pc} – undo the push so SP is restored */
     SP += 4;

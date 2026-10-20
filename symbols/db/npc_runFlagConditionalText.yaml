@@ -1,0 +1,70 @@
+name: npc_runFlagConditionalText
+address: '0x08127E9C'
+kind: function
+status: probable
+summary: 'Picks one of three chatbox text variants (0/1/2) for an NPC: uses variant 2 if the object''s
+  story-flag index at +0x1E is zero, otherwise counts matching story flag pairs via sub_8127EF4 and compares
+  the count to [GameState+0x78] (when +0xD bit0 set) or GameState+0x13 byte (equal → variant 1, else variant
+  0), then dispatches via chatbox_runVariantScript and clears object byte +0x02.'
+interface: (r5 = ow/NPC object, r10 = toolkit) -> r0 = 0; runs chatbox variant 0/1/2 on the object and
+  clears object+0x02
+details: 'Reads halfword r5+0x1E (a story-flag-pair index); if zero, selects chatbox variant 2 unconditionally.
+  Otherwise calls the flag-pair counter sub_8127EF4, which tests each pair against bit-7 conditions matched
+  to bit0 of the object status byte r5+0xD. The count is compared to [GameState+0x78] (when r5+0xD bit0
+  set) or byte GameState+0x13: equality selects variant 1, otherwise variant 0. The selected variant is
+  passed to chatbox_runVariantScript, which also applies the +10 variant offset for the alternate-language/context
+  flag. Finally byte r5+0x02 is cleared, resetting the object''s talk/state byte so the script trigger
+  fires once.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x1e] / tst: variant 2 forced when the flag-pair index is zero; bl sub_8127EF4
+    counts flag pairs filtered by bit0 of r5+0xD per its summary; cmp r0,r1 vs [gamestate+0x78] or byte
+    +0x13 picks variant 1 vs 0; bl chatbox_runVariantScript_8127ED4 runs the chosen script on this object;
+    strb #0,[r5,#2] clears the object''s state byte after speaking'
+  refs:
+  - bn6f/asm/asm33.s:9851
+  - 0x08127A1C battle_sceneReset_8127A1C
+  - 0x08127ED4 chatbox_runVariantScript_8127ED4
+  - 0x08127EF4 sub_8127EF4
+  reproduce: python3 tools/asmcat.py 0x08127E9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: r5+0x1E zero → variant 2 (mov r4,#2 at 0x8127E14); non-zero calls sub_8127EF4
+    then compares to [GameState+0x78] (tst r3,#1 branch at 0x8127B8) or byte GameState+0x13 (default at
+    0x8127BC), selecting variant 1 on equality (beq 0x8127EC6) else variant 0; finally chatbox_runVariantScript
+    is called and r5+0x02 cleared. However the callee chatbox_runVariantScript_8127ED4 description says
+    it already applies the +10 variant offset internally based on a context flag, so the proposal''s claim
+    that sub_8127E9C ''applies the +10 variant offset'' is misplaced — that belongs to the callee. A more
+    precise name reflects an NPC text-variant chooser rather than ''sayFlagConditionalText''.; run wf
+    investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- Exact meaning of GameState+0x78 vs +0x13 (chapter counter vs some other progress value)
+- What the +0x1E index refers to in the flag-pair table and why variant 2 is the fallback
+- Whether r5 is an overworld NPC or another object type using +0xD/+0x1E
+- 'The flow matches: r5+0x1E zero → variant 2 (mov r4,#2 at 0x8127E14); non-zero calls sub_8127EF4 then
+  compares to [GameState+0x78] (tst r3,#1 branch at 0x8127B8) or byte GameState+0x13 (default at 0x8127BC),
+  selecting variant 1 on equality (beq 0x8127EC6) else variant 0; finally chatbox_runVariantScript is
+  called and r5+0x02 cleared. However the callee chatbox_runVariantScript_8127ED4 description says it
+  already applies the +10 variant offset internally based on a context flag, so the proposal''s claim
+  that sub_8127E9C ''applies the +10 variant offset'' is misplaced — that belongs to the callee. A more
+  precise name reflects an NPC text-variant chooser rather than ''sayFlagConditionalText''.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8127E9C -> npc_runFlagConditionalText
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8127E9C

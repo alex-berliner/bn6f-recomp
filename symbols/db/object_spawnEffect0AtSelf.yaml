@@ -1,0 +1,51 @@
+name: object_spawnEffect0AtSelf
+address: '0x080D11FC'
+kind: function
+status: probable
+summary: Reads the active battle object (r5) X/Y and spawns effect-type-0 via spawn_t1_0x0_EffectObject
+  with r0=0x10000 and r3=0x100000; returns the spawned pointer.
+interface: (r5 = battle object) -> r0 = spawned effect object pointer or 0
+details: 'Takes the battle object implicitly in r5 (not set up here), reads oBattleObject_X and oBattleObject_Y,
+  and passes them as r1/r2 to spawn_t1_0x0_EffectObject along with packed constants r3=0x100002 (type-4
+  object, flags/effect subtype 2) and r0=0x10000 (effect type 0). Returns whatever the spawn wrapper returns,
+  i.e. the pointer to the new effect object. Quirk: uses r5 rather than a passed-in r0, so it can only
+  be called from contexts (like battle_objectThink) where r5 is the active object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_X] / ldr r2,[r5,#oBattleObject_Y]: position source is the r5 battle
+    object; r3=0x100002, r0=0x10000 packed constants fed to the spawn call; bl spawn_t1_0x0_EffectObject:
+    callee known to spawn type-4 effect object with effect type 0; caller 0x080D102E battle_objectThink
+    keeps r5 as the per-frame battle object'
+  refs:
+  - bn6f/asm/asm31.s:54259
+  - 0x080D102E battle_objectThink
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080D11FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — r3 is built as 0x10<<0x10 = 0x100000, not 0x100002 as claimed; r4 holds 0x10002 but is never passed
+    to spawn_t1_0x0_EffectObject (only r0/r1/r2/r3 are). The r3=0x100000 value still represents a subtype/parameter
+    for the type-0 effect, but the proposal''s claim about packed constants is incorrect.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what effect type 0 looks like in game (needs effect-type table or a route where the effect is visible)
+- meaning of the packed constant fields in r0/r3 of the spawn wrapper
+- r3 is built as 0x10<<0x10 = 0x100000, not 0x100002 as claimed; r4 holds 0x10002 but is never passed
+  to spawn_t1_0x0_EffectObject (only r0/r1/r2/r3 are). The r3=0x100000 value still represents a subtype/parameter
+  for the type-0 effect, but the proposal's claim about packed constants is incorrect.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D11FC -> object_spawnEffect0AtSelf
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D11FC

@@ -1,0 +1,58 @@
+name: battle_initSpriteProjection
+address: '0x080027E4'
+kind: function
+status: probable
+summary: Initializes the sprite/camera projection settings struct at byte_20098A8 by writing 8 to byte
+  +0, 4 to byte +1 (camera projection), and 0xFFFF to halfword +2.
+interface: () -> void; writes globals at byte_20098A8, no flags meaningful
+details: Stores 4 into byte_20098A8+1, which per symdb selects the camera projection (0 isometric, 4 side
+  view), sets byte_20098A8+0 to 8 (unknown, likely a scale/zoom or sprite-layout parameter), and writes
+  0xFFFF to the halfword at +2, which looks like a sentinel/reset value. It takes no arguments and is
+  called three times from initBattleStructsAndVram_80071D4, so it acts as a fixed initializer of the projection
+  settings struct during battle setup. The other two field meanings are inferred, not documented.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0(=4),[r1,#1] matches symdb note 'byte 1 selects camera projection, 4 = side view' (asm
+    lines 3-4); halfword at +2 set to 0xFF (0xFFFF) suggests clearing/sentinel value (ldr byte_8002810;
+    strh); no args, no return value; single fixed write pattern to one struct (mov/strb sequence); called
+    3x from initBattleStructsAndVram_80071D4, fitting a fixed battle-setup initializer
+  refs:
+  - bn6f/asm/sprite.s:261
+  - 0x080071D4 initBattleStructsAndVram_80071D4
+  - 0x080071FE initBattleStructsAndVram_80071D4
+  - 0x08007204 initBattleStructsAndVram_80071D4
+  reproduce: python3 tools/asmcat.py 0x080027E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code stores 4 at byte_20098A8+1 (camera projection, matching symdb), 8 at byte_20098A8+0, and
+    0xFFFF at the halfword at +2, then returns via `mov pc, lr`. The summary correctly describes side-view
+    initialization, but the name `battle_setSideViewSpriteProjection` over-commits to ''side view''; the
+    function just sets projection byte 1 to 4 (which symdb documents as the side-view value), but the
+    function name should not bake that interpretation in.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- meaning of byte_20098A8+0 = 8 (scale, sprite bank, layout?)
+- meaning of halfword at +2 and why 0xFFFF
+- why the caller invokes it three times — per-battle-side or per-mode variants elsewhere may set isometric
+  (0) instead
+- The code stores 4 at byte_20098A8+1 (camera projection, matching symdb), 8 at byte_20098A8+0, and 0xFFFF
+  at the halfword at +2, then returns via `mov pc, lr`. The summary correctly describes side-view initialization,
+  but the name `battle_setSideViewSpriteProjection` over-commits to 'side view'; the function just sets
+  projection byte 1 to 4 (which symdb documents as the side-view value), but the function name should
+  not bake that interpretation in.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80027E4 -> battle_initSpriteProjection
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80027E4

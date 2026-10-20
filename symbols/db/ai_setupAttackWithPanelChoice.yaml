@@ -1,0 +1,63 @@
+name: ai_setupAttackWithPanelChoice
+address: '0x080F9F24'
+kind: function
+status: probable
+summary: Installs a panel-choose callback on the AI object's oAIAttackVars, computes attack duration via
+  sub_80F9E34, resolves the opposing player via battle_findPlayer with flipped alliance, stores it as
+  the target, and enters object_setAttack4(9).
+interface: (r0 = attacker object? in r5/r7 context) -> r0 = clobbered; stores callback, duration, and
+  target into oAIAttackVars
+details: Installs sub_80FAA04 as oAIAttackVars_PanelChooseCallback for the AI-controlled object at r7,
+  then calls sub_80F9E34 whose return is stored as oAIAttackVars_AttackDuration (a halfword), so the duration
+  likely depends on difficulty or a per-attack table. It reads oBattleObject_Alliance from the object
+  at r5, XORs it with 1 to select the opposing side, and calls battle_findPlayer to store the enemy player
+  pointer in oAIAttackVars_TargetObjectPtr. Finally it calls object_setAttack4(9), switching the object
+  into attack state 4 with argument 9, presumably the 'aim at target panel' attack mode that the PanelChooseCallback
+  will service. The attack seems to be one where the AI picks a panel and fires after the computed delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,=sub_80FAA04; str r0,[r7,#oAIAttackVars_PanelChooseCallback] — registers the per-attack
+    callback; bl sub_80F9E34; strh r0,[r7,#oAIAttackVars_AttackDuration] — duration comes from helper,
+    not a constant; eor r0,r1 (alliance^1); bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    — target is the opposing player; mov r0,#9; bl object_setAttack4 — enters attack state 4 with param
+    9; route 'battlesweep' and single caller sub_80F9D94 fit an AI attack-table entry
+  refs:
+  - bn6f/asm/asm31.s:140313
+  - 0x080F9D94 sub_80F9D94
+  - 0x080103BC battle_findPlayer
+  - 0x08011690 object_setAttack4
+  - 0x080F9E34 sub_80F9E34
+  reproduce: python3 tools/asmcat.py 0x080F9F24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does match the described behavior (sets PanelChooseCallback, computes duration via sub_80F9E34,
+    XORs alliance with 1 and finds opposing player, calls object_setAttack4(9)), but the summary implies
+    a specific ''attack state 4 with param 9'' intent that goes beyond what the asm shows; object_setAttack4''s
+    semantics aren''t confirmed by the snippet. The name is fine, though ''InitTarget'' is a bit speculative—''ai_setupAttackWithPanelChoice''
+    is more faithful.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What sub_80FAA04 (PanelChooseCallback) actually does — would confirm the attack type
+- What sub_80F9E34 computes for the duration
+- Which enemy/boss uses attack state 4 param 9
+- The code does match the described behavior (sets PanelChooseCallback, computes duration via sub_80F9E34,
+  XORs alliance with 1 and finds opposing player, calls object_setAttack4(9)), but the summary implies
+  a specific 'attack state 4 with param 9' intent that goes beyond what the asm shows; object_setAttack4's
+  semantics aren't confirmed by the snippet. The name is fine, though 'InitTarget' is a bit speculative—'ai_setupAttackWithPanelChoice'
+  is more faithful.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9F24 -> ai_setupAttackWithPanelChoice
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9F24

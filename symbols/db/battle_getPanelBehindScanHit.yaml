@@ -1,0 +1,62 @@
+name: battle_getPanelBehindScanHit
+address: '0x081000E0'
+kind: function
+status: probable
+summary: Scans ahead of a battle object for the first relevant panel, then returns the coordinate of the
+  panel one step back toward the object (the panel directly in front of the object that borders the hit),
+  or 0 if the scan found nothing.
+interface: (r0 = battle object) -> r0 = panel/x of the panel one step toward the object from the hit panel,
+  or 0 if nothing found ahead; flags clobbered by callees
+details: Calls battle_scanPanelsInFront_800D58C with the object, which walks panels in the object's facing
+  direction and stops at the first panel relevant to its alliance. If nothing was found (r4 == 0) it returns
+  0 unchanged. Otherwise it takes the object's alliance-based horizontal facing step from object_getEnemyDirection
+  (+1 player side, -1 enemy side), negates it so it points back toward the object, and adds it to the
+  found panel's value, yielding the panel one square closer to the object than the hit. This is the 'approach'
+  square immediately in front of whatever the scan stopped on. Whether r4 is a panel pointer or a column
+  coordinate depends on scanPanelsInFront's return convention; the ±1 arithmetic only makes sense if panels
+  step by 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_scanPanelsInFront_800D58C then tst r4,r4 / beq returns the scan result unchanged when
+    zero; bl object_getEnemyDirection gives the ±1 alliance-based facing step; neg r0,r0; add r0,r0,r4
+    reverses the step and applies it to the found panel, producing the adjacent panel on the caller's
+    side
+  refs:
+  - bn6f/asm/asm31.s:152992
+  - 0x080FFE72 sub_80FFE72
+  - 0x0800D58C battle_scanPanelsInFront_800D58C
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x081000E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly right, but `sub_80FFE72` is the sole caller and the callee `object_getEnemyDirection`
+    returns +1/-1 (so ±1 arithmetic on a panel/column coordinate is sensible). However, calling it ''getPanelBeforeFrontTarget''
+    mixes ''before'' (behind) and ''frontTarget'' (ahead), which is confusing. A cleaner name reflecting
+    ''panel just behind the scan hit, in front of the object'' is better.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of battle_scanPanelsInFront's return value (panel pointer vs x/column vs panel index)
+  and its struct size, to confirm the ±1 arithmetic
+- what callers use the returned square for (e.g. spawning an object one tile short of a target)
+- The summary is mostly right, but `sub_80FFE72` is the sole caller and the callee `object_getEnemyDirection`
+  returns +1/-1 (so ±1 arithmetic on a panel/column coordinate is sensible). However, calling it 'getPanelBeforeFrontTarget'
+  mixes 'before' (behind) and 'frontTarget' (ahead), which is confusing. A cleaner name reflecting 'panel
+  just behind the scan hit, in front of the object' is better.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81000E0 -> battle_getPanelBehindScanHit
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81000E0

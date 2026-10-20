@@ -1,0 +1,68 @@
+name: battle_clearMatchedQueue
+address: '0x080473E6'
+kind: function
+status: probable
+summary: If state at [r5+0x1c]!=2, scans 8-byte-stride queue entries at byte_2019A00 for [r7+0xc] entries;
+  for live entries uses findRecordWithHalfwordAtOffset2 and battleFindEntryByFieldByte to compare +2 and
+  +4 fields against a reference array; on a match, ZeroFills 0x80 bytes at byte_2019A00, stores 0 to halfword
+  at 0x2011C22, and returns 1, else 0.
+interface: (r5 = owner struct; [r5+0x1c] -> {+0 state, +8 array base, +0xc entry count}) -> r0 = 1 if
+  a matching entry was found and the queue cleared, else 0
+details: If the state word at [[r5+0x1c]] is 2 it returns 0 immediately. Otherwise it walks the 8-byte-stride
+  records at byte_2019A00 for [r7+0xc] entries, skipping records whose byte at +0 is zero; for live records
+  it compares the halfword at +2 against a record in the array at [[r7]+byte_8047DA0] via findRecordWithHalfwordAtOffset2,
+  and the byte at +4 via battleFindEntryByFieldByte. On the first record matching both fields it zero-fills
+  0x80 bytes at byte_2019A00 (the whole queue, destroying all entries), stores 0 into the halfword at
+  byte_2011C10+0x12, and returns 1; if no entry matches it returns 0 without touching anything. r5 is
+  presumably a battle/actor context passed in a register other than r0-r3, so the caller sets it up before
+  the call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop compares each live queue record (byte_2019A00, stride 8) against array [[r5+0x1c]+8]+byte_8047DA0
+    by halfword +2 (bl findRecordWithHalfwordAtOffset2) and byte +4 (bl battleFindEntryByFieldByte); match
+    path zero-fills 0x80 bytes at byte_2019A00 with ZeroFillByWord, clearing the entire queue; match path
+    also writes halfword 0 to byte_2011C10+0x12 before returning r0=1; state check cmp r0,#2 / beq on
+    [[r5+0x1c]] returns 0 early, implying a phase/state field guards the scan
+  refs:
+  - bn6f/asm/asm03_2.s:2489
+  - 0x080008E0 ZeroFillByWord
+  - 0x08047456 battleFindEntryByFieldByte_8047456
+  - 0x0804743C findRecordWithHalfwordAtOffset2_804743C
+  reproduce: python3 tools/asmcat.py 0x080473E6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code zeroes exactly 0x80 bytes (mov r1,#0x40; add r1,#0x40; bl ZeroFillByWord) at byte_2019A00
+    on match, but the loop walks [r7+0xc] entries of 8 bytes each — if count>16, not all entries are zeroed,
+    so ''wipes the whole queue'' is wrong. The two ''compares'' are actually scans via findRecordWithHalfwordAtOffset2/battleFindEntryByFieldByte
+    that take only r0 and search arrays at r7. Function name should reflect a conditional queue clear
+    rather than clearing a single matched entry.; run wf investigate investigate-20261018-182231; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- story2
+open_questions:
+- what byte_2019A00's queue holds (its producer writes entries from elsewhere)
+- the meaning of byte_8047DA0's array and why entries match by halfword +2 plus byte +4
+- which battle field at [r5+0x1c]+0 (value 2) makes the check skipped; a known caller context would settle
+  the exact game meaning
+- The code zeroes exactly 0x80 bytes (mov r1,#0x40; add r1,#0x40; bl ZeroFillByWord) at byte_2019A00 on
+  match, but the loop walks [r7+0xc] entries of 8 bytes each — if count>16, not all entries are zeroed,
+  so 'wipes the whole queue' is wrong. The two 'compares' are actually scans via findRecordWithHalfwordAtOffset2/battleFindEntryByFieldByte
+  that take only r0 and search arrays at r7. Function name should reflect a conditional queue clear rather
+  than clearing a single matched entry.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80473E6 -> battle_clearMatchedQueue
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80473E6

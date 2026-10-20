@@ -1,0 +1,67 @@
+name: object_initVariantEntity
+address: '0x080DD0D0'
+kind: function
+status: probable
+summary: 'Battle-object spawn initializer: loads sprite, allocates and configures collision (4,5,1) with
+  hit effect 3, selects a status-effect value from a 6-entry table indexed by the object''s variant byte
+  at offset 0x64, transitions to update state, and calls sub_80DD15C as the first update step.'
+interface: (r5 = battle object header, implied) -> r0 = 0 on success path; frees the object if no collision
+  slot is free
+details: 'Runs on an object whose header pointer is in r5 (GBA convention: r5 holds the object being spawned).
+  It sets oObjectHeader_Flags bit 1, calls sprite_load(0x80, 0x10, 0x16), checks sprite_hasShadow, resets
+  oBattleObject_CurAnim and CurAnimCopy to 0, then loads animation data, sets palette 1, and mirrors the
+  sprite per object_getFlip. It allocates collision data; if that fails it calls object_freeMemory and
+  returns. On success it configures the collision as (4, 5, 1), sets hit effect 3, reads the object''s
+  byte at offset 0x64 (variant/kind selector, 0-5), indexes byte_80DD144 (entries 0x10,0x10,0x10,0x10,0x11,0x12
+  per variant) and writes that as the status-effect base value, then calls object_presentCollisionData,
+  sets CurStateActionPhase to CUR_STATE_UPDATE, and tail-calls sub_80DD15C as the first update step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load/sprite_setAnimation/sprite_setPalette/sprite_setFlip calls show this is the one-time
+    sprite setup of a battle object; object_createCollisionData followed by object_freeMemory on failure
+    is the classic spawn-init pattern (fail = discard the object); byte at [r5,#0x64] scaled by 4 indexes
+    byte_80DD144, whose six entries (0x10 x4, 0x11, 0x12) feed object_setCollisionStatusEffect1, so the
+    byte selects a variant with per-variant status effects; storing CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    hands control from spawn-time to the per-frame update routine sub_80DD15C; collision setup (4, 5,
+    1) and hit effect 3 fix this object's hitbox shape and hit visual
+  refs:
+  - bn6f/asm/asm31.s:79427
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080DD0D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by hyper/qwen3.8-flash: revise
+    — The flow matches: flags set, sprite_load(0x80,0x10,0x16), collision via (4,5,1), hit effect 3, variant
+    byte at [r5+0x64] indexing 32-bit words in byte_80DD144 (entries 0x10,0x10,0x10,0x10,0x11,0x12), then
+    object_setCollisionStatusEffect1 and object_presentCollisionData all confirmed. However, sub_80DD15C
+    is invoked with `bl` (line `bl sub_80DD15C` before `pop {pc}`), not `b`, so it is NOT a tail call.
+    The interface claim ''r0 = 0 on success path'' is unsupported—no explicit r0=0 is set; return value
+    comes from sub_80DD15C.; run wf investigate investigate-20261018-145652; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- 'What entity this actually spawns: sprite id 0x10/gfx 0x16, the collision box 4x5, and the meaning of
+  status values 0x10-0x12 (element or status id) need cross-references to identify it'
+- What the variant byte at offset 0x64 is set from (spawner argument vs. field data) and what sub_80DD15C
+  does per frame
+- 'The flow matches: flags set, sprite_load(0x80,0x10,0x16), collision via (4,5,1), hit effect 3, variant
+  byte at [r5+0x64] indexing 32-bit words in byte_80DD144 (entries 0x10,0x10,0x10,0x10,0x11,0x12), then
+  object_setCollisionStatusEffect1 and object_presentCollisionData all confirmed. However, sub_80DD15C
+  is invoked with `bl` (line `bl sub_80DD15C` before `pop {pc}`), not `b`, so it is NOT a tail call. The
+  interface claim ''r0 = 0 on success path'' is unsupported—no explicit r0=0 is set; return value comes
+  from sub_80DD15C.'
+sources:
+- wf investigate investigate-20261018-145652
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD0D0 -> object_initVariantEntity
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD0D0

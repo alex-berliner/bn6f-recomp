@@ -1,0 +1,58 @@
+name: ai_attackStepWaitEnd
+address: '0x0811288C'
+kind: function
+status: probable
+summary: 'Per-tick handler for an AI attack step: waits while oAIAttackVars_StepTimer is nonzero, then
+  clears the 0x40 ObjectFlags1 bit, sets CURRENTLY_MOVING, resets current animation, marks HasMoved, and
+  exits the attack state.'
+interface: (r7 = battle object AI attack vars, r5 = battle object) -> r0 = destroyed; flags from subtract
+details: Each invocation decrements oAIAttackVars_StepTimer and returns immediately while it is nonzero
+  (bne to pop). When the timer hits zero, it clears ObjectFlags1 bit 0x40 (likely a 'step in progress'
+  bit), sets the OBJECT_FLAGS_CURRENTLY_MOVING_1 bit via object_setFlag1, zeroes the object's current
+  animation (oBattleObject_CurAnim), sets oAIAttackVars_HasMoved = 1, and calls object_exitAttackState
+  to leave the attack routine. It is a state-machine tick callback for an AI attack phase that pauses
+  during a step/move before committing the move.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with bne locret: waits N frames before acting; object_clearFlag(0x40)
+    and object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) toggle movement flags on completion; strb
+    r0,[r5,#oBattleObject_CurAnim] resets animation to 0 and strb 1 to oAIAttackVars_HasMoved marks the
+    move done; tail call object_exitAttackState shows it is the terminal tick of an AI attack sub-state'
+  refs:
+  - bn6f/asm/asm32.s:9295
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x0811288C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it decrements oAIAttackVars_StepTimer, returns early if nonzero, then clears ObjectFlags1
+    bit 0x40, sets the CURRENTLY_MOVING bit, zeroes oBattleObject_CurAnim, sets HasMoved=1, and calls
+    object_exitAttackState. However, the proposed name ''ai_stepWaitEnd'' is fine but ''ai_attackStepWaitEnd''
+    more clearly conveys it''s an attack-state step wait ending handler. The summary and interface description
+    are accurate.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so unconfirmed whether it is an OAM/attack-script callback or called from the AI update
+  loop
+- Exact meaning of ObjectFlags1 bit 0x40 and how StepTimer is initialized (value determining step length)
+  are unknown
+- 'The code matches: it decrements oAIAttackVars_StepTimer, returns early if nonzero, then clears ObjectFlags1
+  bit 0x40, sets the CURRENTLY_MOVING bit, zeroes oBattleObject_CurAnim, sets HasMoved=1, and calls object_exitAttackState.
+  However, the proposed name ''ai_stepWaitEnd'' is fine but ''ai_attackStepWaitEnd'' more clearly conveys
+  it''s an attack-state step wait ending handler. The summary and interface description are accurate.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811288C -> ai_attackStepWaitEnd
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811288C

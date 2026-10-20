@@ -1,0 +1,74 @@
+name: ai_lungeAttackStep
+address: '0x080FA0D0'
+kind: function
+status: probable
+summary: 'AI attack step: on first call sets AttackElement=4, picks a panel near the target via the stored
+  PanelChooseCallback (indexing byte_80FA134 by Alliance<<3), reserves it, sets CANNOT_SLIDE and CurAnim=4,
+  then waits StepTimer=4 frames before writing HitElement=4; aborts via object_exitAttackState if canMove
+  or the panel choose fails.'
+interface: (uses r5 = battle object, r7 = oAIAttackVars) -> void; sets AttackElement/FuturePanelX/Y/HasMoved/StepTimer/HitElement
+details: First entry sets oAIAttackVars_AttackElement=4 and checks object_canMove; if blocked (or the
+  panel-choose callback returns 0) it clears HasMoved and calls object_exitAttackState to abort. Otherwise
+  it indexes byte_80FA134 by Alliance<<3 to get two word-sized parameters per side and calls the stored
+  oAIAttackVars_PanelChooseCallback with (targetObjectPtr, callbackSelf, param1, param2); the callback
+  returns the chosen panel in r0/r1, which are stored into FuturePanelX/Y, after which object_reservePanel
+  claims the panel and object_setFlag1 applies OBJECT_FLAGS_CANNOT_SLIDE. The object then plays CurAnim=4,
+  sets HasMoved=1 and StepTimer=4. On subsequent calls it counts StepTimer down, and on reaching 0 writes
+  HitElement=4, delivering the attack. The two offset pairs (0x10/0 and 0x30/0 with 0x0F8800A0-style payloads)
+  encode side-dependent targeting data for the callback.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80FA0D0+8: writes 4 to oAIAttackVars_AttackElement, so 4 identifies this attack''s element/phase;
+    calls object_canMove and on failure branches to loc_80FA124 which clears HasMoved and calls object_exitAttackState
+    (abort path); ldr r1,[r7,#oAIAttackVars_PanelChooseCallback] then bx r1 with target ptr and alliance-indexed
+    table data; result stored to FuturePanelX/Y followed by object_reservePanel; sets oBattleObject_CurAnim=4,
+    HasMoved=1, StepTimer=4; later branch decrements StepTimer and on zero stores HitElement=4 (delayed
+    hit); byte_80FA134 has two 8-byte entries indexed by oBattleObject_Alliance<<3, i.e. player/enemy-side
+    variants of the same attack'
+  refs:
+  - bn6f/asm/asm31.s:140076
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FA0D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: it sets AttackElement=4, checks object_canMove, indexes byte_80FA134
+    by Alliance<<3 (0x10/0x0F8800A0 vs 0x30/0x0F880080), reserves panel, sets CANNOT_SLIDE, CurAnim=4,
+    HasMoved=1, StepTimer=4, then decrements StepTimer and on 0 writes HitElement=4. However the proposal
+    says ''oAIAttackVars_PanelChooseCallback'' but the code calls the function indirectly via r1 which
+    is loaded from r7,#oAIAttackVars_PanelChooseCallback, and the summary saying ''lunges onto a panel''
+    is okay. Name ''ai_lungeAttackStep'' is reasonable; ''ai_attackStep_lunge'' or just ''ai_attackStep''
+    might be cleaner, but ''ai_lungeAttackStep'' fits. Minor: the summary implies ''element-4 hit'' which
+    is correct (HitElement=4). Slight nit that the function aborts via object_exitAttackState when canMove
+    or callback returns 0.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact meaning of the byte_80FA134 words passed to the panel-choose callback (offsets in pixels? callback-specific
+  encoding)
+- which enemy/attack this state belongs to (need the attack table entry pointing at sub_80FA0D0) and what
+  element 4 maps to in CollisionData terms
+- 'The code matches the proposal well: it sets AttackElement=4, checks object_canMove, indexes byte_80FA134
+  by Alliance<<3 (0x10/0x0F8800A0 vs 0x30/0x0F880080), reserves panel, sets CANNOT_SLIDE, CurAnim=4, HasMoved=1,
+  StepTimer=4, then decrements StepTimer and on 0 writes HitElement=4. However the proposal says ''oAIAttackVars_PanelChooseCallback''
+  but the code calls the function indirectly via r1 which is loaded from r7,#oAIAttackVars_PanelChooseCallback,
+  and the summary saying ''lunges onto a panel'' is okay. Name ''ai_lungeAttackStep'' is reasonable; ''ai_attackStep_lunge''
+  or just ''ai_attackStep'' might be cleaner, but ''ai_lungeAttackStep'' fits. Minor: the summary implies
+  ''element-4 hit'' which is correct (HitElement=4). Slight nit that the function aborts via object_exitAttackState
+  when canMove or callback returns 0.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FA0D0 -> ai_lungeAttackStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA0D0

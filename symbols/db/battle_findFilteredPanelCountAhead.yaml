@@ -1,0 +1,71 @@
+name: battle_findFilteredPanelCountAhead
+address: '0x080ED040'
+kind: function
+status: probable
+summary: Scans columns in the object's facing direction for the first one containing panels that pass
+  the alliance-filtered parameter check, and returns how many such panels exist there, defaulting to 6/1
+  with r1=0 if the scan leaves the 1–6 field range.
+interface: (r0 unused entry, r5 = battle object) -> r0 = count of panels passing the filter in the first
+  matching column ahead, or 6/1 when the scan runs off the field; r1 = 0 on the edge path
+details: Reads the object's facing multiplier via object_getFrontDirection and its oBattleObject_PanelX,
+  then repeatedly adds the direction to the column index. For each in-range column (1..6, stopping at
+  0 or >=7) it pushes an 8-byte param entry selected by the object's alliance from byte_80ED080 (param
+  0x1 with args 0x4 for one team, 0x8 for the other) and calls GetAllianceDependentPanelParamArgs, then
+  object_getPanelsInColumnFiltered to count panels in that column passing object_checkPanelParameters;
+  a nonzero count is returned directly. If the walk leaves the board it returns 6 for forward-facing objects
+  and 1 for backward-facing ones, with r1 = 0. Callers use it while setting up and iterating an AI attack
+  that moves/bounces a target panel, so the count feeds how the attack targets panels of a given type
+  ahead.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80ED04A loop: add r0,r0,r4 accumulates panelX by facing dir, bounds-checks 0 and >=7; calls
+    GetAllianceDependentPanelParamArgs with byte_80ED080 whose two 8-byte entries differ only in the args
+    byte 0x4 vs 0x8 (alliance-dependent filter); calls object_getPanelsInColumnFiltered and returns its
+    nonzero count immediately (cmp r0,#0; bne locret); edge path returns r0=6 when facing dir>0 else 1,
+    with r1=0; callers sub_80ECF48/sub_80ECF8E are the AI attack setup and its per-frame panel-bounce
+    loop'
+  refs:
+  - bn6f/asm/asm31.s:113587
+  - 0x080ECF48 sub_80ECF48
+  - 0x080ECF8E sub_80ECF8E
+  - 0x080EE89C sub_80EE89C
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080ED040
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The control flow matches: object_getFrontDirection → loop adding r4 to PanelX → beq/bge edge checks
+    (0, ≥7) → GetAllianceDependentPanelParamArgs with byte_80ED080 (param 0x1, args 0x4/0x8 per alliance)
+    → object_getPanelsInColumnFiltered → return nonzero count or edge 6/1 with r1=0. However the return
+    value is a panel COUNT, not a column index, so ''findFilteredPanelColumn'' misleads; callers use the
+    count to gauge how many target panels exist in the first matching column ahead (sub_80ECF8E bounce
+    logic). The summary correctly says ''returns the number'' but the name should reflect that.; run wf
+    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- story9
+open_questions:
+- exact meaning of the panel-filter param/args values 0x1/0x4 and 0x1/0x8 (which panel type is selected)
+  depends on object_checkPanelParameters semantics
+- why the edge fallback returns 6 vs 1 — likely caller-side step/distance semantics not visible here
+- 'The control flow matches: object_getFrontDirection → loop adding r4 to PanelX → beq/bge edge checks
+  (0, ≥7) → GetAllianceDependentPanelParamArgs with byte_80ED080 (param 0x1, args 0x4/0x8 per alliance)
+  → object_getPanelsInColumnFiltered → return nonzero count or edge 6/1 with r1=0. However the return
+  value is a panel COUNT, not a column index, so ''findFilteredPanelColumn'' misleads; callers use the
+  count to gauge how many target panels exist in the first matching column ahead (sub_80ECF8E bounce logic).
+  The summary correctly says ''returns the number'' but the name should reflect that.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED040 -> battle_findFilteredPanelCountAhead
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED040

@@ -1,0 +1,64 @@
+name: battle_collectKeyItemSurplus
+address: '0x08135E6C'
+kind: function
+status: probable
+summary: Scans a 4-entry ID table and, for each ID, subtracts the number of toolkit-array references (entries
+  whose first halfword + 0x90 matches the ID) from CheckKeyItem(id); if a surplus remains and the battle-object
+  descriptor's byte 3 is nonzero, appends a {id, surplus} 4-byte record to the caller-provided buffer.
+interface: (r6 = output buffer pointer) -> r0 = clobbered; writes 4-byte {id:halfword, count:halfword}
+  records into buffer, advancing past the last one written
+details: Iterates over an inline table of four IDs (0xC4, 0x11C, 0x120, 0x14C). For each, r7 = CheckKeyItem(id);
+  it then walks the 25 8-byte entries of the array pointed to by oToolkit_Unk2004190_Ptr, decrementing
+  r7 once for every entry whose first halfword + 0x90 equals the table ID. If the surplus r7 is nonzero,
+  it looks up the battle-object descriptor at index (id - 0x90) via battleObject_getByIndex and requires
+  byte 3 to be nonzero before appending the record {id, surplus} to the buffer whose pointer arrives in
+  r6 (callee-saved, set by the caller) and is kept in [sp], advanced by 4 per record. The pools off_8135ECC/ED0/ED4
+  referencing word_201DA80, 0x14C and 0xBC are unreferenced by this code. Returns no value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_8135EDC: .word 0xC4,0x11C,0x120,0x14C — fixed table looped r4=0..0x10 step 4; bl CheckKeyItem
+    then ''sub r7,#1'' per matching Unk2004190 entry (ldrh r1,[r0]; add r1,#0x90; cmp r1,r2); sub r0,#0x90;
+    bl battleObject_getByIndex_813B780; ldrb r1,[r0,#3] gates the write; ldr r0,[sp]; strh r6,[r0]; strh
+    r7,[r0,#2]; add r0,#4 — appends {id,surplus} pair and advances buffer'
+  refs:
+  - bn6f/asm/asm36.s:12241
+  - 0x08135D9C sub_8135D9C
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
+  - 0x0803CE28 CheckKeyItem
+  reproduce: python3 tools/asmcat.py 0x08135E6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate: the code at loc_8135E76/86/98/EBE scans four IDs from off_8135EDC,
+    walks 25 (cmp r6,#0x19) 8-byte toolkit entries subtracting from r7 when first halfword+0x90 matches,
+    and appends {id,count} 4-byte records to the [sp] buffer via strh/strh/add. However the name ''battle_collectMissingKeyItemIds''
+    is misleading because the function doesn''t only collect ''missing'' items—it collects every key item
+    whose CheckKeyItem count exceeds how many copies are referenced in the toolkit array, and it gates
+    the append on battleObject_getByIndex byte[3]!=0, so ''Missing'' misrepresents the criterion.; run
+    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What CheckKeyItem actually returns for these large IDs (count vs flag) and what these four IDs denote
+- What the 25-entry oToolkit_Unk2004190 array holds and what its first halfword means
+- Meaning of byte 3 in the 0x10-byte battle descriptor and how sub_8135D9C consumes the output records
+- 'The summary and interface are accurate: the code at loc_8135E76/86/98/EBE scans four IDs from off_8135EDC,
+  walks 25 (cmp r6,#0x19) 8-byte toolkit entries subtracting from r7 when first halfword+0x90 matches,
+  and appends {id,count} 4-byte records to the [sp] buffer via strh/strh/add. However the name ''battle_collectMissingKeyItemIds''
+  is misleading because the function doesn''t only collect ''missing'' items—it collects every key item
+  whose CheckKeyItem count exceeds how many copies are referenced in the toolkit array, and it gates the
+  append on battleObject_getByIndex byte[3]!=0, so ''Missing'' misrepresents the criterion.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8135E6C -> battle_collectKeyItemSurplus
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135E6C

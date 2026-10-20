@@ -1,0 +1,76 @@
+name: battle_stepIntroPhase
+address: '0x08008452'
+kind: function
+status: probable
+summary: 'Per-frame step of the pre-battle/intro phase: one-time player-tracker init and AI-timer warm-up
+  ticks for both alliances, then polls the two-slot state machine at dword_203C970 until it finishes;
+  the entire phase is skipped (writing 0x24 to [r5]) when the battle mode is NOT 5 and the 0x40 flag is
+  set.'
+interface: '(r0-r3 = scratch/call context, r5 = phase-state struct: word +0 = next phase id, byte +3 =
+  init-done flag) -> r0 = result of sub_802D6C4 (nonzero = phase still running) or 0x24 (next phase id
+  written to [r5]) when the phase ends'
+details: 'The struct''s byte +3 acts as a once-only init flag: while zero it calls battle_initPlayerTracker
+  and decrements the AI-data 0x0F countdown timer (where enabled and navi-stats byte 0x29 is clear) for
+  both alliance-0 and alliance-1 player objects, then sets +3 to 4. Every frame it then polls sub_802D6C4,
+  the two-slot state machine at dword_203C970; while it returns 0 the phase continues, and when it returns
+  nonzero the phase is done. If the battle mode is 5 or the battle flags word has bit 0x40 set, the whole
+  phase is skipped and 0x24 is written to [r5]+0 as the next phase id. The 0x24 exit value and the r5-based
+  phase-state layout suggest this is one step function in a battle phase dispatcher table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8008462: ldrb r0,[r5,#3]; tst/bne guards a one-time battle_initPlayerTracker call, then
+    sets [r5,#3]=4; mov r0,#0 / #1 into battle_findPlayer followed by battle_TickAIDataTimer0f for both
+    alliances; sub_802D6C4 result tested with tst; nonzero branches to locret keeping the phase running;
+    loc_800848C: mov r0,#0x24; str r0,[r5] writes the next phase id, also returned; GetBattleMode==5 or
+    TestBattleFlag_0x40 set skips init and jumps directly to the phase exit'
+  refs:
+  - bn6f/asm/asm00_1.s:11526
+  - 0x0802D234 GetBattleMode
+  - 0x0802E09A TestBattleFlag_0x40
+  - 0x08015A16 battle_TickAIDataTimer0f_8015A16
+  reproduce: python3 tools/asmcat.py 0x08008452
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code shows `cmp r0,#5 / beq loc_8008462` sends mode==5 into the normal init+poll path (loc_8008462),
+    NOT the skip. The skip-to-0x24 path (loc_800848C) is reached only when mode!=5 AND flag 0x40 is set
+    (`bl TestBattleFlag_0x40 / bne loc_800848C`). The proposal''s summary and details state ''mode is
+    5 or the 0x40 flag'' as skip conditions, which is backwards: mode==5 actually forces the phase to
+    run. Everything else (byte+3 init flag, alliance-0/1 AI ticks, sub_802D6C4 polling, 0x24 written to
+    [r5]) matches the asm.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- story2
+- story5
+- story6
+- story7
+- story9
+open_questions:
+- What state 0x24 leads to (needs the phase dispatcher table around r5-based structs)
+- What the two child objects ticked by sub_802D6C4 are (intro text? fade? cursor?)
+- What battle mode 5 and flag 0x40 mean specifically (e.g. tutorial vs flag-race skip)
+- 'The code shows `cmp r0,#5 / beq loc_8008462` sends mode==5 into the normal init+poll path (loc_8008462),
+  NOT the skip. The skip-to-0x24 path (loc_800848C) is reached only when mode!=5 AND flag 0x40 is set
+  (`bl TestBattleFlag_0x40 / bne loc_800848C`). The proposal''s summary and details state ''mode is 5
+  or the 0x40 flag'' as skip conditions, which is backwards: mode==5 actually forces the phase to run.
+  Everything else (byte+3 init flag, alliance-0/1 AI ticks, sub_802D6C4 polling, 0x24 written to [r5])
+  matches the asm.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008452 -> battle_stepIntroPhase
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008452

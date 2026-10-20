@@ -1,0 +1,74 @@
+name: pack_reAddChipsFromFolders
+address: '0x08120740'
+kind: function
+status: probable
+summary: Re-grants every chip stored in the folder-storage records (skipping folder index r0) to the spare
+  pack with library flag 1, returning 1 if an empty/invalid entry is hit, else 0.
+interface: (r0 = folder index to skip) -> r0 = 0 if all folders processed, 1 if aborted on empty/invalid
+  entry; flags clobbered
+details: Reads a folder count from [oToolkit_S2001c04_Ptr]+5 (does nothing if <=1) and walks that many
+  0x3C-byte records (30 halfword chip entries each) in the array at oToolkit_S_Chip_2002178_Ptr, skipping
+  record index r0. Each halfword is split into low 9 bits = chip ID and high 9 bits = code character;
+  the ID indexes the 44-byte chip database via getChip8021DA8 and the code is checked against that record's
+  first 4 bytes (the chip's legal codes). Valid entries are added to the spare pack via pack_addChipByIdSetLibraryFlag
+  with a flag argument of 1, which also sets the library event flag and bins the chip by code. An empty
+  entry (ID 0) or a code not owned by the chip immediately aborts with return 1; otherwise it returns
+  0 after scanning all folders. The literal at off_81207BC supplies the 0x3C stride; unk_20343E0 is just
+  adjacent pool data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8120740 outer loop: r5 counts folders with 0x3C stride off oToolkit_S_Chip_2002178_Ptr,
+    cmp r4,r5 skips one index; bl split9BitsFromBitfield_8021AE0 then tst r0,r0 / beq return-1: low halfword
+    treated as chip ID, 0 = empty slot; loop at loc_812077C compares r1 (high halfword) against ldrb of
+    chip record bytes 0..3, i.e. the chip''s code letters; bl pack_addChipByIdSetLibraryFlag_8021B2A with
+    r2=1 grants each validated chip and sets its library flag; caller petNavi_perFrameUpdate_81339BC (PET
+    per-frame update during fades) passes a folder index and ignores the return'
+  refs:
+  - bn6f/asm/asm32.s:37315
+  - 0x081339BC petNavi_perFrameUpdate_81339BC
+  - 0x08021AA4 getChip8021DA8
+  - 0x08021B2A pack_addChipByIdSetLibraryFlag_8021B2A
+  - 0x08021AE0 split9BitsFromBitfield_8021AE0
+  reproduce: python3 tools/asmcat.py 0x08120740
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the mechanics: it reads the folder count at oToolkit_S2001c04_Ptr+5,
+    walks 0x3C-byte records, splits each halfword via split9BitsFromBitfield, validates the code against
+    the chip database via getChip8021DA8, and calls pack_addChipByIdSetLibraryFlag. However the name ''pack_readdChipsFromFolderList''
+    is awkward (''readd'' is not standard) and the summary mentions ''library flags'' (plural) when only
+    flag arg 1 is passed. A cleaner name following the conventions would be ''pack_reAddChipsFromFolders''.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which game-side storage the 0x3C-stride array at oToolkit_S_Chip_2002178_Ptr represents (spare-pack
+  pages vs. multiple folders) and why one folder index is skipped
+- Why the PET/Navi per-frame update triggers this only during screen fades, and what the count at S2001c04+5
+  counts
+- 'The proposal correctly describes the mechanics: it reads the folder count at oToolkit_S2001c04_Ptr+5,
+  walks 0x3C-byte records, splits each halfword via split9BitsFromBitfield, validates the code against
+  the chip database via getChip8021DA8, and calls pack_addChipByIdSetLibraryFlag. However the name ''pack_readdChipsFromFolderList''
+  is awkward (''readd'' is not standard) and the summary mentions ''library flags'' (plural) when only
+  flag arg 1 is passed. A cleaner name following the conventions would be ''pack_reAddChipsFromFolders''.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8120740 -> pack_reAddChipsFromFolders
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120740

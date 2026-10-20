@@ -1,0 +1,76 @@
+name: object_findNearestFrontPanelTarget
+address: '0x080C0C9A'
+kind: function
+status: probable
+summary: Filters candidate panels by alliance and a DirectionFlip-aware directional transform (front-direction
+  negated, applied to Y), keeps those passing object_checkPanelParameters 0xF800000 or matching RelatedObject1Ptr's
+  panel, then returns the packed (y<<4|x) of the candidate closest in Manhattan distance to the object's
+  PanelX/PanelY (0xFF sentinel when none).
+interface: (r0 = battle object ptr (in r5 by convention), r1 = scratch for callee) -> r0 = (y<<4)|x of
+  nearest panel, 0xFF if none (or 0 if the panel list was empty); flags clobbered
+details: 'Builds a per-alliance panel filter table (off_80C0D8C indexed by Alliance<<2) and calls object_getPanelsExceptCurrentFiltered
+  to list candidate panels (each packed y<<4|x). Candidates are kept only if they lie strictly in front
+  of the object''s PanelX according to object_getFrontDirection negated (DirectionFlip-aware), and pass
+  object_checkPanelParameters with mask 0xF800000 (attribute matches, no forbidden bits) — except the
+  panel occupied by RelatedObject1Ptr, which is accepted unconditionally. Matching panels are packed into
+  a stack list, then the function picks the entry with minimal Manhattan components: smallest |dx|, tie-broken
+  by smallest |dy|, then smallest y, tracking best values in stack slots (init dx=0xFF, dy=0xFF). The
+  winner''s packed coordinates are returned; the caller (battle_panelObject_tryTargetAndSetPhase_80C0938)
+  stores them into Param3/Param4 and advances to the execute-panel-effect phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getPanelsExceptCurrentFiltered with alliance-indexed mask table off_80C0D8C builds
+    the candidate panel list (sub_80C0C9A +0x10..0x22); neg of object_getFrontDirection plus cmp against
+    own PanelX restricts candidates to panels ahead of the object (loc_80C0CE8); bl object_checkPanelParameters
+    with 0xF800000 attribute mask validates panels, bypassed for RelatedObject1Ptr's panel (loc_80C0D0A..D16);
+    second loop compares |dx|,|dy| against running best in [sp,#0x28]/[sp,#0x2c] and keeps the minimum
+    (loc_80C0D38..D7A); caller battle_panelObject_tryTargetAndSetPhase_80C0938 stores the returned bytes
+    into Param3/Param4 and advances to phase 4
+  refs:
+  - bn6f/asm/asm31.s:19156
+  - 0x080C0938 battle_panelObject_tryTargetAndSetPhase_80C0938
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  reproduce: python3 tools/asmcat.py 0x080C0C9A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary misreads the filtering logic. At loc_80C0CE8 the comparison uses candidate panel X vs
+    object''s PanelX chosen by DirectionFlip XOR Alliance, then `ble 0x80C0D22` skips, otherwise `object_getFrontDirection()`
+    is negated and added to candidate Y (not X), giving a ''transformed Y'' (sp+0x20). object_checkPanelParameters
+    is called with mask 0xF800000 on the *transformed* coordinates, and the related-object check compares
+    the transformed X/Y to that object''s panel — so it does not strictly lie ''in front''; it''s a directional
+    transform for facing. Also the ''find nearest'' loop uses Manhattan components from object''s PanelX/PanelY,
+    not from the transformed ones, and the unrelated claim about the caller storing into Param3/Param4
+    matches the caller stub. The prefix should be `object` not `battle_` since it operates on a battle
+    object generically, but the rest is close enough to need a rename + summary tweak.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- story9
+open_questions:
+- Exact meaning of the per-alliance filter entries at off_80C0D90 (0x4000000/0x8000000 attribute bits)
+- why RelatedObject1Ptr's panel bypasses the attribute check — likely the tracked target or panel-effect
+  owner
+- The summary misreads the filtering logic. At loc_80C0CE8 the comparison uses candidate panel X vs object's
+  PanelX chosen by DirectionFlip XOR Alliance, then `ble 0x80C0D22` skips, otherwise `object_getFrontDirection()`
+  is negated and added to candidate Y (not X), giving a 'transformed Y' (sp+0x20). object_checkPanelParameters
+  is called with mask 0xF800000 on the *transformed* coordinates, and the related-object check compares
+  the transformed X/Y to that object's panel — so it does not strictly lie 'in front'; it's a directional
+  transform for facing. Also the 'find nearest' loop uses Manhattan components from object's PanelX/PanelY,
+  not from the transformed ones, and the unrelated claim about the caller storing into Param3/Param4 matches
+  the caller stub. The prefix should be `object` not `battle_` since it operates on a battle object generically,
+  but the rest is close enough to need a rename + summary tweak.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0C9A -> object_findNearestFrontPanelTarget
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0C9A

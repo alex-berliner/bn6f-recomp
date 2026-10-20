@@ -1,0 +1,57 @@
+name: battle_highlightPanelsBehind
+address: '0x080C8FDC'
+kind: function
+status: probable
+summary: Highlights the panel a battle object stands on and the two panels directly behind it (opposite
+  its facing side), using object_getFrontDirection to flip direction across alliance sides.
+interface: (uses r5 = battle object ptr) -> r0 = 0 via loop end; no return value, flags clobbered by calls
+details: 'Loops i = 0..2; each pass calls object_getFrontDirection on the r5 battle object, negates the
+  returned +1/-1 facing multiplier, scales it by i, and adds it to the object''s PanelX (offset oBattleObject_PanelX)
+  to compute the X of the panel i tiles behind the object. Passes that X with the object''s PanelY and
+  r0 = i to object_highlightPanel, which sets the panel data flag byte at offset 1 to 1. Net effect: highlights
+  the object''s own panel and the two panels further behind it, mirrored correctly for either alliance
+  side via DirectionFlip.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop runs exactly 3 times (add r4,#1; cmp r4,#3; blt loc_80C8FE0); neg r0,r0 after object_getFrontDirection
+    reverses the facing multiplier, targeting panels behind the object; mul r0,r4 + add r0,PanelX builds
+    successive offsets from the object''s own panel; callees match known summaries: object_getFrontDirection
+    (alliance/DirectionFlip sign) and object_highlightPanel (flag byte at panel+1); called from sub_80C8EAC/sub_80C8ED0
+    on the recorded battlesweep route, consistent with a battle panel-targeting action'
+  refs:
+  - bn6f/asm/asm31.s:36841
+  - 0x080C8EAC sub_80C8EAC
+  - 0x080C8ED0 sub_80C8ED0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080C8FDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The loop body uses r0=i (r4) passed as the third arg to object_highlightPanel, not as a coordinate
+    multiplier; highlights the object''s own panel and the two tiles behind it, not three behind. The
+    proposed name ''battle_highlightPanelsBehind'' is correct in spirit, but the summary should say ''panel
+    behind and two further behind'' rather than ''three panels directly behind''.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what the two callers do with the highlighted panels (attack resolution vs. AI move selection) would
+  confirm the gameplay purpose
+- The loop body uses r0=i (r4) passed as the third arg to object_highlightPanel, not as a coordinate multiplier;
+  highlights the object's own panel and the two tiles behind it, not three behind. The proposed name 'battle_highlightPanelsBehind'
+  is correct in spirit, but the summary should say 'panel behind and two further behind' rather than 'three
+  panels directly behind'.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8FDC -> battle_highlightPanelsBehind
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8FDC

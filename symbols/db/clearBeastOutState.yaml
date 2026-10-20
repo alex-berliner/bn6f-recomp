@@ -1,0 +1,59 @@
+name: clearBeastOutState
+address: '0x0809AD4C'
+kind: function
+status: probable
+summary: 'Tears down the Beast Out scenario: clears EVENT_F5/1725, queues PET effect 1, reinitializes
+  and deactivates the scenario effect state, zeroes the event work struct, and acks the new-flag byte.'
+interface: () -> r0 = 0; no flags meaningful
+details: Called during the beastsp route, this sequence clears event flags EVENT_F5 and EVENT_1725 (likely
+  Beast Out related), then queues PET effect 1 via doPETEffect_8033fc0 (which writes into the eS2011E30
+  state block and clears the pending-effect flag). It then reinitializes the scenario effect state block
+  at 0x2000780 (scenario_initEffectState_8003962), one-time zero-fills the 0x48-byte event work struct
+  at 0x2001010 (zeroFill_8003AB2), clears the scenario effect's active bit (bit 7) to deactivate the current
+  scenario effect, and acks the fresh-flag bit (bit 7) of the event flag byte at eStruct2001010 so the
+  event no longer reads as pending. Returns 0. This looks like the cleanup/reset when the Beast special
+  sequence ends or is canceled.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: clears EVENT_F5 and EVENT_1725 via ClearEventFlagFromImmediate (movflag/bl pairs at start);
+    bl doPETEffect_8033fc0 with r0=1 queues PET effect 1; bl scenario_initEffectState_8003962 / scenario_ClearEffectActiveFlag_800399A
+    reset and deactivate the 0x2000780 scenario effect state; bl zeroFill_8003AB2 + event_ackNewFlagByte_8003AEA
+    reset the 0x2001010 event work struct and its new-flag byte; known route is beastsp, matching a Beast
+    Out sequence teardown
+  refs:
+  - bn6f/asm/asm28_0.s:2681
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08033FC0 doPETEffect_8033fc0
+  - 0x08003AEA event_ackNewFlagByte_8003AEA
+  reproduce: python3 tools/asmcat.py 0x0809AD4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The sequence matches: clears EVENT_F5 and EVENT_1725, queues PET effect 1 via doPETEffect, then
+    calls scenario_initEffectState, zeroFill, scenario_ClearEffectActiveFlag, and event_ackNewFlagByte,
+    returning 0. However the proposed name ''scenario_clearBeastOutState'' uses the invalid prefix ''scenario'';
+    the allowed prefix here is ''clear''. The summary accurately captures the teardown of Beast Out scenario
+    state and event work.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of PET effect 1 and which Beast Out state the two cleared flags control — a caller or
+  the effect-1 handler would confirm the beastout linkage
+- 'The sequence matches: clears EVENT_F5 and EVENT_1725, queues PET effect 1 via doPETEffect, then calls
+  scenario_initEffectState, zeroFill, scenario_ClearEffectActiveFlag, and event_ackNewFlagByte, returning
+  0. However the proposed name ''scenario_clearBeastOutState'' uses the invalid prefix ''scenario''; the
+  allowed prefix here is ''clear''. The summary accurately captures the teardown of Beast Out scenario
+  state and event work.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809AD4C -> clearBeastOutState
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809AD4C

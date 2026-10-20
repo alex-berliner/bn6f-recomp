@@ -1,0 +1,64 @@
+name: object_moveLinearChargeAndReturn
+address: '0x080CA408'
+kind: function
+status: probable
+summary: Per-frame state machine that drives a battle object through X-charge (phase 0, horizontal limit
+  by Param2 table), Y-sweep (phase 1, capped at 0x40000/0x340000), and X-return (phase 2, flipped via
+  Alliance^1), snapping pixel coords from panels on phase transitions and panels from pixels otherwise.
+interface: (-, r5 = battle object) -> void; no return value
+details: 'State machine in oBattleObject_Param3 with a per-instance Timer. Phase 0: moves X by XVelocity
+  * frontDirection and stops at a horizontal limit selected by Param2 from two tables (0xFF9C0000/0xFFC40000/0xFFEC0000
+  moving left, 0x640000/0x3C0000/0x140000 moving right, i.e. travel spans of 100/60/20 in fixed point);
+  on reaching the limit sets Param3=1 and snaps panel coords from pixels. Phase 1: moves Y by YVelocity,
+  capping at 0x40000 (rising) or 0x340000 (sinking), then sets Param3=2. Phase 2: reverses horizontal
+  travel by calling object_getFlipDirection with Alliance^1, so the object returns opposite its facing,
+  then syncs panels from pixels. Each frame ends with object_updateCollisionPanels, and if the collision
+  record''s direction is nonzero calls sub_80CA510 (likely the impact/hit handler).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oBattleObject_Timer plus Param3 cmp #2/#1 dispatch shows a phased movement state
+    machine; X movement uses object_getFrontDirection * XVelocity with limit tables off_80CA4B0/off_80CA4C0
+    indexed by Param2 (three selectable travel spans); Y phase clamps against dword_80CA4D0=0x40000 and
+    dword_80CA4D4=0x340000, flipping Param3 to 2 at the bound; Phase 2 negates travel via object_getFlipDirection(Alliance^1,
+    DirectionFlip), i.e. return pass; Tail calls object_setCoordinatesFromPanels/object_setPanelsFromCoordinates
+    and object_updateCollisionPanels, matching object-movement conventions'
+  refs:
+  - bn6f/asm/asm31.s:39499
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CA408
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The state machine, table values (0xFF9C0000/0xFFC40000/0xFFEC0000 left; 0x640000/0x3C0000/0x140000
+    right), Y caps (0x40000/0x340000), Alliance^1 flip in phase 2, and collision-end handling all match
+    the asm. However the proposal states phase-0→1 transition ''snaps panel coords from pixels''; at loc_80CA494
+    the code calls object_setCoordinatesFromPanels (pixels FROM panels), the reverse. Normal per-frame
+    movement at loc_80CA49A does call object_setPanelsFromCoordinates (panels FROM pixels), so the proposal
+    conflates the two sync directions. The name and summary are accurate; only the phase-transition detail
+    needs correction.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_80CA510 does on collision (probably the hit/impact step)
+- Which enemy/attack in the beastsp route uses this (Param2 range 0..2 selects travel span)
+- The state machine, table values (0xFF9C0000/0xFFC40000/0xFFEC0000 left; 0x640000/0x3C0000/0x140000 right),
+  Y caps (0x40000/0x340000), Alliance^1 flip in phase 2, and collision-end handling all match the asm.
+  However the proposal states phase-0→1 transition 'snaps panel coords from pixels'; at loc_80CA494 the
+  code calls object_setCoordinatesFromPanels (pixels FROM panels), the reverse. Normal per-frame movement
+  at loc_80CA49A does call object_setPanelsFromCoordinates (panels FROM pixels), so the proposal conflates
+  the two sync directions. The name and summary are accurate; only the phase-transition detail needs correction.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA408 -> object_moveLinearChargeAndReturn
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA408

@@ -1,0 +1,65 @@
+name: battle_runRepeatingPanelEffect
+address: '0x080E2F8C'
+kind: function
+status: probable
+summary: Battle-object update that periodically spawns a t1 effect on a panel (stored in the object at
+  offset 0xC0) with a fixed Z height, optionally playing a sound from a Param1-indexed table, repeating
+  Param2 times before destroying the object.
+interface: (r0 = object base pointer r5, battle object) -> r0 = destroyed/unchanged; sets object state
+  to CUR_STATE_DESTROY when repeats exhausted
+details: 'Counts down oBattleObject_Timer; on reaching zero it reloads the period from oBattleObject_Timer2
+  and decrements oBattleObject_Param2, the repeat counter. Each tick it reads a byte from table byte_80E2F48
+  at offset Param1*2: the high nibble is the panel column and the low 3 bits the row, which it converts
+  via object_getCoordinatesForPanels and passes to spawn_t1_0x0_EffectObject together with the Z height
+  from oBattleObject_Z. The second byte of the table entry (at [r7,#1]) is a sound-effect ID played if
+  nonzero. When Param2 underflows (bmi), the object''s CurState is set to CUR_STATE_DESTROY, ending the
+  effect.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Timer/Timer2 reload pattern plus ''sub r0,#1; bmi'' on Param2 shows a timed loop with Param2
+    as repeat count and destroy on exhaustion (asm 2-12, 35-37); lsr #4 / lsl 0x1d+lsr 0x1d splits a packed
+    byte into column/row nibbles fed to object_getCoordinatesForPanels; spawn_t1_0x0_EffectObject is called
+    with the converted coordinates, Z, and table-selected value, matching a panel effect spawn; The [r7,#1]
+    byte gates a PlaySoundEffect call, so each table entry is {packed panel byte, sound id}, hence Param1*2
+    indexing; Route context ''battlesweep'' and effect-type-0 spawn fit an on-panel visual effect generator'
+  refs:
+  - bn6f/asm/asm31.s:92310
+  - 0x080E2F74 sub_80E2F74
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080E2F8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''type-0 effect on a fixed field panel'' and ''repeats'' framing, plus the table
+    description, agree with the code (Param2 decrement/bmi, Timer reload, CUR_STATE_DESTROY at loc_80E2FD6).
+    However, the byte loaded via `mov r7, #0x60; add r7, r7, r5` is from the object itself at offset 0xC0,
+    not from byte_80E2F48; byte_80E2F48 is only used for the sound-effect byte at `ldrb r4, [r7]`, indexed
+    by Param1*2. Also `spawn_t1_0x0_EffectObject` takes panel x,y,not type-0, and the Param1-indexed table
+    doesn''t drive the panel.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of each byte_80E2F48 entry (which Param1 values are used by which attacks) and what effect
+  type 0 renders
+- Whether the sound byte's full 8 bits are the ID or it is packed too
+- 'The summary''s ''type-0 effect on a fixed field panel'' and ''repeats'' framing, plus the table description,
+  agree with the code (Param2 decrement/bmi, Timer reload, CUR_STATE_DESTROY at loc_80E2FD6). However,
+  the byte loaded via `mov r7, #0x60; add r7, r7, r5` is from the object itself at offset 0xC0, not from
+  byte_80E2F48; byte_80E2F48 is only used for the sound-effect byte at `ldrb r4, [r7]`, indexed by Param1*2.
+  Also `spawn_t1_0x0_EffectObject` takes panel x,y,not type-0, and the Param1-indexed table doesn''t drive
+  the panel.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2F8C -> battle_runRepeatingPanelEffect
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2F8C

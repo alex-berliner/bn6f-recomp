@@ -1,0 +1,65 @@
+name: battle_spawnSpecies41ObjectAtPanelWithAlliance
+address: '0x080CC584'
+kind: function
+status: probable
+summary: Spawns a type-3 battle object of hardcoded species 0x41 at a caller-given panel, copies the alliance
+  from a source object in r5, and initializes its panel/sprite/collision via the standard helper.
+interface: (r0 = panel X, r1 = panel Y, r5 = source battle object) -> r0/r5 = new oBattleObject or unchanged
+  on spawn failure; flags Z from the spawn result
+details: The wrapper pushes its three arguments (r0, r1, r5) as the stack argument block for object_spawnType3
+  and calls it with species 0x41 in r0. If the spawn returns a null pointer (beq after the flag-setting
+  Thumb 'mov r0,r5'), nothing else happens. Otherwise it stores the saved r0/r1 into oBattleObject_PanelX/PanelY
+  of the new object, copies oBattleObject_Alliance from the caller-supplied source object in r5, then
+  moves the new object into r5 and calls battleObject_initFromPanelSpriteAndCollision_80CC4EC to set up
+  its panel position, sprite/animation and collision block and advance its state. r5 is saved/restored
+  around that call, so r5 is used as the object pointer register by the callee.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x41; bl object_spawnType3 — spawns a type-3 battle object of species 0x41 using the
+    pushed r0/r1/r5 as stack args; Thumb 'mov r0,r5' (LSLS alias) sets flags, and 'beq locret' skips everything
+    when the spawn produced no object; strb r1/r2 to oBattleObject_PanelX/PanelY places the new object
+    at the caller's panel coordinates; ldrb r3,[r5,#oBattleObject_Alliance]; strb r3,[r0,#oBattleObject_Alliance]
+    inherits alliance from the third argument; mov r5,r0; bl battleObject_initFromPanelSpriteAndCollision_80CC4EC
+    runs the standard initializer on the new object
+  refs:
+  - bn6f/asm/asm31.s:44089
+  - 0x080F8540 sub_80F8540
+  - 0x080CC4EC battleObject_initFromPanelSpriteAndCollision_80CC4EC
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CC584
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The species 0x41 is hardcoded, not a parameter, and the proposal''s name ''spawnSpecies41ObjectAtPanel''
+    is acceptable but the interface description in the proposal is misleading: r0/r1 are the panel X/Y
+    pushed onto the stack, and r5 is the source object, not ''r0/r5'' as outputs. The callee `battleObject_initFromPanelSpriteAndCollision_80CC4EC`
+    matches the initializer claim. A clearer name reflecting the fixed species and source-object alliance
+    copy is warranted.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which battle object species 0x41 actually is (effect/summon/etc.) — needs the species table or a caller
+  context
+- Exact meaning and order of object_spawnType3's stack arguments (only three are pushed here; the callee
+  reportedly takes five)
+- What sub_80F8540 passes as the source object and coordinates, to confirm the r5-argument interpretation
+- 'The species 0x41 is hardcoded, not a parameter, and the proposal''s name ''spawnSpecies41ObjectAtPanel''
+  is acceptable but the interface description in the proposal is misleading: r0/r1 are the panel X/Y pushed
+  onto the stack, and r5 is the source object, not ''r0/r5'' as outputs. The callee `battleObject_initFromPanelSpriteAndCollision_80CC4EC`
+  matches the initializer claim. A clearer name reflecting the fixed species and source-object alliance
+  copy is warranted.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC584 -> battle_spawnSpecies41ObjectAtPanelWithAlliance
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC584

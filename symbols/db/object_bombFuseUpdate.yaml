@@ -1,0 +1,66 @@
+name: object_bombFuseUpdate
+address: '0x080C5760'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle hazard object: beeps via PlaySoundEffect every 8 frames, spawns
+  a type-0 effect object every 26 frames from its position block, and destroys itself (clearCollisionRegion
+  + state = CUR_STATE_DESTROY) when Param1 reaches zero.'
+interface: (r5 = battle object) -> void; mutates oBattleObject_Timer2, oBattleObject_Timer, oBattleObject_Param1,
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: r5 points to a battle object; this is its per-frame state handler. Timer2 counts down each frame;
+  when it expires it plays SOUND_HIT_BOMB_1 and reloads Timer2 = 8, giving a repeating sound every 8 frames.
+  The main Timer also counts down; on expiry it copies three words from the object at offset 0x34 (its
+  position/parameter block), calls spawn_t1_0x0_EffectObject with r4 = 0x23 (effect kind), and reloads
+  Timer = 0x1A, so a type-0x23 effect object is emitted every 26 frames. Independently, Param1 is decremented
+  each frame; when it reaches zero the object's collision region byte is cleared (object_clearCollisionRegion)
+  and its state word is set to CUR_STATE_DESTROY, removing it from play. The three counters thus run on
+  independent periods, with the object persisting for Param1 frames while beeping and emitting effects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oBattleObject_Timer2 with ''sub 1, bge'' and reload of #8 plus bl PlaySoundEffect(SOUND_HIT_BOMB_1)
+    = periodic sound; ldmia r0!,{r1-r3} from obj+0x34 then bl spawn_t1_0x0_EffectObject with r4=#0x23
+    and Timer reload #0x1A = periodic effect spawn; ldrb oBattleObject_Param1 decrement with bne skip,
+    then bl object_clearCollisionRegion and str CUR_STATE_DESTROY = timed self-destruct; callee object_clearCollisionRegion
+    known to remove object from its collision region; callee PlaySoundEffect known to start an M4A sound
+    by ID in r0'
+  refs:
+  - bn6f/asm/asm31.s:29195
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C5760
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the three counter logic, but the callee `spawn_t1_0x0_EffectObject` is documented
+    as spawning a type-4 battle object with effect type 0, not a type-0x23 effect object — the 0x23 is
+    the spawn argument passed in r4, not the type of object spawned. Also, the function does not set `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
+    to `CUR_STATE_DESTROY`; it stores r0 (CUR_STATE_DESTROY) into the state word which is at that offset,
+    but the write is `str r0, [r5,...]` so it overwrites the full word; the summary''s wording is acceptable.
+    The bigger issue is the effect type description.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact gameplay identity of the object (which bomb/hazard script spawns it) and meaning of the three
+  words at obj+0x34 passed to the effect spawner
+- Which object uses effect kind 0x23; a caller/spawner table would confirm the name
+- The summary captures the three counter logic, but the callee `spawn_t1_0x0_EffectObject` is documented
+  as spawning a type-4 battle object with effect type 0, not a type-0x23 effect object — the 0x23 is the
+  spawn argument passed in r4, not the type of object spawned. Also, the function does not set `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
+  to `CUR_STATE_DESTROY`; it stores r0 (CUR_STATE_DESTROY) into the state word which is at that offset,
+  but the write is `str r0, [r5,...]` so it overwrites the full word; the summary's wording is acceptable.
+  The bigger issue is the effect type description.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C5760 -> object_bombFuseUpdate
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5760

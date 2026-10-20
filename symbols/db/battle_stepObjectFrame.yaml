@@ -1,0 +1,70 @@
+name: battle_stepObjectFrame
+address: '0x080DFC8C'
+kind: function
+status: probable
+summary: 'Per-frame step for one battle object: if alive, removes prior collision, spawns hit effect,
+  then (unless the battle is over, which triggers the destruction path) calls sub_80DFDD6, dispatches
+  the CurAction handler via a 3-entry jump table unless time-stopped, and refreshes collision; if not
+  alive or battle ended, clears the collision region and marks the object CUR_STATE_DESTROY.'
+interface: (r5 = battle object) -> void; destroys object by setting CurState = CUR_STATE_DESTROY when
+  its presence check fails
+details: 'Uses r5 as the battle object pointer. First calls sub_80DFDC8 (an object-presence/alive check,
+  r0 != 0 = alive). If alive: object_removeCollisionData tears down the previous frame''s collision, object_spawnCollisionEffect
+  spawns the hit effect for the last collision, and battle_isBattleOver aborts further work when the battle
+  has ended. Otherwise it calls sub_80DFDD6 and, unless battle_isTimeStop freezes the frame, dispatches
+  through a 3-entry jump table indexed by oBattleObject_CurAction (sub_80DFCE0/sub_80DFD38/sub_80DFD56,
+  likely idle/custom+move/custom handlers), then always calls object_presentCollisionData to refresh collision
+  for this frame. If the presence check fails: object_clearCollisionRegion removes the object from its
+  collision region, presentCollisionData still runs, and the object''s state word is set to CUR_STATE_DESTROY
+  so the engine deletes it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — dispatches the object's action
+    handler from table off_80DFCD4; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — failure path marks the object destroyed; object_removeCollisionData + object_spawnCollisionEffect
+    before the action handler — per-frame collision teardown/effect spawn typical of the battle object
+    update loop; battle_isBattleOver / battle_isTimeStop guards show this runs once per frame inside the
+    battle simulation; Route 'battlesweep' execution context matches a battle engine per-object step function
+  refs:
+  - bn6f/asm/asm31.s:85153
+  - 0x080DFC58 sub_80DFC58
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DFC8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and overall structure match the code: alive-check (sub_80DFDC8), collision teardown/spawn,
+    3-entry jump table on oBattleObject_CurAction (sub_80DFCE0/D38/D56), and destruction path setting
+    CUR_STATE_DESTROY. However the proposal states ''then always calls object_presentCollisionData''—the
+    code at bne locret_80DFCCC after battle_isTimeStop returns WITHOUT calling it, so it is not always
+    invoked. Additionally, battle_isBattleOver does not merely ''abort further work''; the bne to loc_80DFCC0
+    sends the object into the same destruction path (clearCollisionRegion + DESTROY), which is a meaningful
+    distinction from a simple early-return.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80DFDC8 actually tests (presence flag, HP, custom object state) is unknown
+- The exact semantics of the three action handlers sub_80DFCE0/sub_80DFD38/sub_80DFD56 (which CurAction
+  values 0-2 mean) are not shown
+- 'The name and overall structure match the code: alive-check (sub_80DFDC8), collision teardown/spawn,
+  3-entry jump table on oBattleObject_CurAction (sub_80DFCE0/D38/D56), and destruction path setting CUR_STATE_DESTROY.
+  However the proposal states ''then always calls object_presentCollisionData''—the code at bne locret_80DFCCC
+  after battle_isTimeStop returns WITHOUT calling it, so it is not always invoked. Additionally, battle_isBattleOver
+  does not merely ''abort further work''; the bne to loc_80DFCC0 sends the object into the same destruction
+  path (clearCollisionRegion + DESTROY), which is a meaningful distinction from a simple early-return.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DFC8C -> battle_stepObjectFrame
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFC8C

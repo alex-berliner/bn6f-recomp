@@ -829,13 +829,13 @@ Next sub_80C0912(void) {
 
 /* ── battle_panelObject_tryTargetAndSetPhase_80C0938 ── */
 /* battle_panelObject_tryTargetAndSetPhase_80C0938(r5 = battle object pointer):
- * Try to find a panel target via sub_80C0C9A.
+ * Try to find a panel target via object_findNearestFrontPanelTarget.
  * On success: stash the picked param bytes into the object's Param3/Param4 and set
  *   its phase to 4 (the "execute panel effect" phase).
  * On failure: set its current action to 0xC and its phase to 0 (idle / no target).
- *   r5 is preserved; sub_80C0C9A may clobber nz/c/v and r0..r3. */
+ *   r5 is preserved; object_findNearestFrontPanelTarget may clobber nz/c/v and r0..r3. */
 Next battle_panelObject_tryTargetAndSetPhase_80C0938(void) {
-    GUEST_CALL(sub_80C0C9A);
+    GUEST_CALL(object_findNearestFrontPanelTarget);
 
     if (R0 != 0) {
         ST8(R5 + oBattleObject_Param3, (u8)R0);
@@ -1576,7 +1576,7 @@ Next sub_80C0EE2(void) {
             if (extra == 2) {
                 R0 = related;
                 R1 = 0;
-                GUEST_CALL(sub_80E1352);
+                GUEST_CALL(battle_objectCleanup);
             } else {
                 R0 = related;
                 GUEST_CALL(sub_80E146C);
@@ -3359,12 +3359,12 @@ static void state_init(u32 state, u32 handlerAddr, u32 battleObj) {
     GUEST_CALL(sub_80C6438);
 }
 
-/* register form: calls sub_80C647C outside this file, which has no typed C interface yet */
+/* register form: calls battle_objectUpdateByAction outside this file, which has no typed C interface yet */
 static void state_active(u32 state, u32 handlerAddr, u32 battleObj) {
     R0 = state;
     R1 = handlerAddr;
     R5 = battleObj;
-    GUEST_CALL(sub_80C647C);
+    GUEST_CALL(battle_objectUpdateByAction);
 }
 
 /* register form: calls object_genericDestroy outside this file, which has no typed C interface yet */
@@ -3428,9 +3428,9 @@ static void call_PlaySoundEffect(u32 effect) {
     GUEST_CALL(PlaySoundEffect);
 }
 
-/* register form: calls sub_80C647C outside this file, which has no typed C interface yet */
+/* register form: calls battle_objectUpdateByAction outside this file, which has no typed C interface yet */
 static void call_sub_80C647C(void) {
-    GUEST_CALL(sub_80C647C);
+    GUEST_CALL(battle_objectUpdateByAction);
 }
 
 /* "Item get" reaction: flag the object active, load its sprite, snap it to its panel's

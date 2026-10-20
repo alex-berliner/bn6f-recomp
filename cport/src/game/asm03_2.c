@@ -1016,16 +1016,16 @@ static bool scrambled_check_fails(u32 counter, u32 mult, u32 cost) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_8047384 outside this file, which has no typed C interface yet.
+/* register form: calls chatbox_processPurchaseIfNotOwned outside this file, which has no typed C interface yet.
  * Inputs R0=code R1=param R7=item_ptr R8=remaining; result in flags (Z=1 → available). */
 static bool availability_fails(u32 code, u32 param, u32 item_ptr, u32 remaining) {
     R0 = code; R1 = param; R7 = item_ptr; R8 = remaining;
-    GUEST_CALL(sub_8047384);
+    GUEST_CALL(chatbox_processPurchaseIfNotOwned);
     return !ZERO_FLAG();
 }
 
 /* register form: calls GiveChips outside this file, which has no typed C interface yet.
- * R0 (chip code) arrives from sub_8047384; R2=qty. Preserves R4,R5,R7,R8. */
+ * R0 (chip code) arrives from chatbox_processPurchaseIfNotOwned; R2=qty. Preserves R4,R5,R7,R8. */
 static u32 give_chips(u32 chip_code, u32 qty) {
     R2 = qty;
     GUEST_CALL(GiveChips);

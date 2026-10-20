@@ -1,0 +1,74 @@
+name: ai_attackStepTrigger
+address: '0x0810EDB8'
+kind: function
+status: probable
+summary: 'AI enemy attack-step dispatcher: on first entry initialises AttackElement and starts a wind-up
+  animation with a 30-frame counter, then on later calls waits for the marked animation trigger frame
+  (0x80) to load AiAttackParam from off_810F004 (indexed by AttackBoost2-1) and advance to the next animation
+  while setting HitElement=4.'
+interface: (r5 = battle object ptr, r7 = AI attack vars struct) -> r0 = 0; modifies AttackElement, AttackStepIndex,
+  AiAttackParam, HitElement, object CurAnim and flags
+details: 'If AttackElement is 0 this is the initial call: it stores element 1, sets ObjectFlags1 bit 22
+  via object_setFlag1 (likely making the object invulnerable/special during the attack), sets CurAnim
+  to SubStepIndex*4+1, sets a 30-frame counter via object_setCounterTime, and zeroes AttackStepIndex.
+  On later calls it reads the current frame''s parameters with sprite_getFrameParameters and returns unless
+  bit 0x80 (the trigger frame of the animation) is set. At the trigger it loads a 32-bit parameter (AiAttackParam)
+  from table off_810F004 indexed by AttackBoost2<<2, increments CurAnim, and sets HitElement to 4. The
+  table entry presumably drives the actual projectile/spawn done by a later step that reads AiAttackParam.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; beq-style split gives an init-once / fire-on-trigger
+    two-phase step handler; mov r0,#0x1e; bl object_setCounterTime sets a 30-frame wind-up timer; bl sprite_getFrameParameters;
+    tst r0,#0x80 gates firing on a specific animation frame; ldr r0,[r1,r0] off_810F004 indexed by AttackBoost2
+    selects per-variant attack parameters into AiAttackParam; callees object_setFlag1/object_setCounterTime
+    and the AIAttackVars layout match the documented AI attack step convention
+  refs:
+  - bn6f/asm/asm32.s:2421
+  - 0x0801A152 object_setFlag1
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x0810EDB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structural description: initial call sets AttackElement=1, raises
+    flag bit 22, computes CurAnim from SubStepIndex*4+1, sets a 30-frame counter and zeroes AttackStepIndex;
+    on later calls it waits for the trigger frame (bit 0x80) and loads AiAttackParam from off_810F004
+    using (AttackBoost2-1)<<2, advancing CurAnim and setting HitElement=4. However, the function is only
+    ever called (per build-snapshots) via the attack-step dispatcher, and CurAnim advancement plus HitElement=4
+    suggest this is a mid-attack transition step rather than the initial wind-up start. Note that CurAnim
+    is stored as a byte and is incremented without masking (add r0,#1 / strb), which could be a minor
+    inaccuracy in the original code rather than in the proposal. The name ''ai_attackFireStep'' is fine,
+    but ''ai_attackStepTrigger'' or similar would better capture the ''wait for trigger frame, then load
+    params'' semantics visible in loc_810EDE2.; run wf investigate investigate-20261018-182231; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- contents of table off_810F004 (what AiAttackParam values mean, which attack/projectile they configure)
+- which enemy/AI attack script calls this step and what element 1 / HitElement 4 map to
+- meaning of ObjectFlags1 bit 22 set during the wind-up
+- 'The code matches the proposal''s structural description: initial call sets AttackElement=1, raises
+  flag bit 22, computes CurAnim from SubStepIndex*4+1, sets a 30-frame counter and zeroes AttackStepIndex;
+  on later calls it waits for the trigger frame (bit 0x80) and loads AiAttackParam from off_810F004 using
+  (AttackBoost2-1)<<2, advancing CurAnim and setting HitElement=4. However, the function is only ever
+  called (per build-snapshots) via the attack-step dispatcher, and CurAnim advancement plus HitElement=4
+  suggest this is a mid-attack transition step rather than the initial wind-up start. Note that CurAnim
+  is stored as a byte and is incremented without masking (add r0,#1 / strb), which could be a minor inaccuracy
+  in the original code rather than in the proposal. The name ''ai_attackFireStep'' is fine, but ''ai_attackStepTrigger''
+  or similar would better capture the ''wait for trigger frame, then load params'' semantics visible in
+  loc_810EDE2.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810EDB8 -> ai_attackStepTrigger
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810EDB8

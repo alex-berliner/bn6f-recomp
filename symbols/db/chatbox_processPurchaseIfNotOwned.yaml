@@ -1,0 +1,72 @@
+name: chatbox_processPurchaseIfNotOwned
+address: '0x08047384'
+kind: function
+status: probable
+summary: 'Shop-purchase confirm handler: looks up the highlighted item ID in array A; if absent OR if
+  its +4 byte is absent in table B, zeroes a 0x80-byte work record, clears a shop-state halfword, sets
+  [chatbox_ctx+0xE]=1, returns 1; only when found in both tables returns 0 unchanged.'
+interface: (r0 = lookup array A (8-byte records), r1 = lookup table B) -> r0 = 1 if item was new and reset
+  was performed, 0 if item was found in both tables; sets [chatbox_ctx+0xE] = 1 on success
+details: Through the context at r5+0x1C it reaches a record base ([ctx+8] + off_8047478 = byte_8047DA0)
+  and reads the selected item's ID halfword at +2; findRecordWithHalfwordAtOffset2 scans the caller's
+  array r0 (8-byte records) for that ID. If found, battleFindEntryByFieldByte then searches table r1 for
+  a record whose byte at +4 matches the item's byte at +4. Only when both lookups MISS (item not already
+  present) does it zero 0x80 bytes at byte_2019A00, clear the halfword at byte_2011C10+0x12, store 1 into
+  [r5+0xE], and return 1; a match in both tables returns 0 with no side effects. If [ctx] == 2 the same
+  decision is made via sub_8006F1E(r0, r1) instead, implying an alternate compare path (possibly text/string)
+  for that chatbox state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Caller 0x08046ED2 chatbox_confirmShopPurchase invokes this with two table pointers in r0/r1;
+    ldrh r1,[r7,#2] off the byte_8047DA0-relative record feeds findRecordWithHalfwordAtOffset2_804743C(r8,
+    id); battleFindEntryByFieldByte_8047456(r9, [r7,#4]) must also match, else fall-through to the reset
+    path; ZeroFillByWord(byte_2019A00, 0x80) plus strh 0 at byte_2011C10+0x12 only on the not-found path;
+    strh #1,[r5,#0xE] and return 1 on reset path; both-matches path returns 0 with no writes'
+  refs:
+  - bn6f/asm/asm03_2.s:2434
+  - 0x08046ED2 chatbox_confirmShopPurchase_8046ED2
+  - 0x0804709C sub_804709C
+  - 0x080008E0 ZeroFillByWord
+  - 0x08047456 battleFindEntryByFieldByte_8047456
+  - 0x0804743C findRecordWithHalfwordAtOffset2_804743C
+  reproduce: python3 tools/asmcat.py 0x08047384
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code flow: if findRecordWithHalfwordAtOffset2 misses (bne at line after first bl), control jumps
+    to loc_80473B8 WITHOUT ever calling battleFindEntryByFieldByte, so it is inaccurate to say ''only
+    when both lookups MISS''—a single miss triggers the reset. The caller is chatbox_confirmShopPurchase_8046ED2,
+    and the prefix ''shop'' is not in the allowed list; ''chatbox'' fits. All other details (0x80 zero-fill
+    of byte_2019A00, clearing byte_2011C10+0x12, setting [r5+0xE]=1, return convention, ctx==2 alternate
+    path via sub_8006F1E) are confirmed by the asm.; run wf investigate investigate-20261018-155607; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles2
+- beastsp
+- story2
+open_questions:
+- What lists r0/r1 actually are (owned chips, already-purchased log, NaviCust programs) — the caller's
+  table bases would confirm
+- What the zeroed 0x80-byte buffer byte_2019A00 is used for afterwards (new item record vs. chatbox text
+  scratch)
+- Semantics of sub_8006F1E and why state==2 takes the alternate comparison path
+- Exact meaning of the halfword cleared at byte_2011C10+0x12
+- 'Code flow: if findRecordWithHalfwordAtOffset2 misses (bne at line after first bl), control jumps to
+  loc_80473B8 WITHOUT ever calling battleFindEntryByFieldByte, so it is inaccurate to say ''only when
+  both lookups MISS''—a single miss triggers the reset. The caller is chatbox_confirmShopPurchase_8046ED2,
+  and the prefix ''shop'' is not in the allowed list; ''chatbox'' fits. All other details (0x80 zero-fill
+  of byte_2019A00, clearing byte_2011C10+0x12, setting [r5+0xE]=1, return convention, ctx==2 alternate
+  path via sub_8006F1E) are confirmed by the asm.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8047384 -> chatbox_processPurchaseIfNotOwned
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8047384

@@ -1,0 +1,63 @@
+name: ai_chargedAttackUpdate
+address: '0x08115CF8'
+kind: function
+status: probable
+summary: 'Per-frame enemy charged-attack handler: countdown ChargeCycles, telegraph front panel every
+  4 frames via highlightPanelIfSomeCondition, then fire with CurAnim=2, SFX 0x10a, HitElement=4, and reset
+  AttackElement.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = 0; updates AttackElement/ChargeCycles/StepTimer/HitElement,
+  object anim, counter time, panel highlight, sound
+details: 'Phase 0: decrements ChargeCycles each frame; when it reaches 0 sets AttackElement=1 (attack
+  phase). Phase 1: decrements StepTimer; while nonzero, every 4 frames highlights the panel one tile in
+  front of the object via highlightPanelIfSomeCondition (base = PanelX+frontDir, PanelY, sideSign from
+  Alliance^DirectionFlip). When StepTimer hits 0, calls object_setCounterTime(0x10), sets CurAnim=2, runs
+  the two strike helpers sub_8115D76/sub_8115DA4, plays SFX 0x0a, stores HitElement=4, and resets AttackElement=0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ChargeCycles countdown then AttackElement=1 matches a charge-up phase before acting; StepTimer
+    countdown with &4 gating plus highlightPanelIfSomeCondition telegraphs the target panel during the
+    attack; On expiry: object_setCounterTime(0x10), CurAnim=2, SFX 0x0a, HitElement=4, AttackElement=0
+    — the attack fires and the state resets; object_getFrontDirection result added to PanelX shows the
+    target is the tile in front, side-corrected via Alliance^DirectionFlip'
+  refs:
+  - bn6f/asm/asm32.s:15400
+  - 0x080005CC PlaySoundEffect
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08115CF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Structure and name match: AttackElement 0→decrement ChargeCycles→set AttackElement=1, then StepTimer
+    decrement with panel highlight every 4 frames via object_getFrontDirection and highlightPanelIfSomeCondition,
+    ending with object_setCounterTime(0x10), CurAnim=2, two strike helpers, HitElement=4, AttackElement
+    reset. However the proposal states ''plays SFX 0x0a'' but the code at 0x8115D30 does mov r0,#0xb;
+    add r0,#0xff yielding 0x10a, not 0x0a. The interface claim ''r0 = 0'' is also unreliable since the
+    return path doesn''t guarantee r0 is zero in all branches.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8115D76/sub_8115DA4 actually do (spawn the attack object? deal damage?) — their bodies would
+  confirm the attack type
+- Which enemy/attack this belongs to — no known caller; the containing AI routine and the meaning of HitElement=4
+  are unknown
+- 'Structure and name match: AttackElement 0→decrement ChargeCycles→set AttackElement=1, then StepTimer
+  decrement with panel highlight every 4 frames via object_getFrontDirection and highlightPanelIfSomeCondition,
+  ending with object_setCounterTime(0x10), CurAnim=2, two strike helpers, HitElement=4, AttackElement
+  reset. However the proposal states ''plays SFX 0x0a'' but the code at 0x8115D30 does mov r0,#0xb; add
+  r0,#0xff yielding 0x10a, not 0x0a. The interface claim ''r0 = 0'' is also unreliable since the return
+  path doesn''t guarantee r0 is zero in all branches.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115CF8 -> ai_chargedAttackUpdate
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115CF8

@@ -1,0 +1,70 @@
+name: selectSoulWeaponCursorDir
+address: '0x081428D4'
+kind: function
+status: probable
+summary: 'Returns the chosen 8-way direction index for the soul-weapon/beast cursor: if the player''s
+  facing has bit0 set, returns the result of sub_8142952(state, facing, 1) directly; otherwise compares
+  the two neighbour directions (facing-1 and facing+1) by their camera-distance from the player and returns
+  the index whose cursor is farther away.'
+interface: (r0 = cursor state from sub_8142990? passed implicitly) -> r0 = chosen direction index (0-7);
+  no meaningful flags
+details: Calls sub_8142990 to fetch cursor state (r4), then GetOWPlayerFacingDirection. If facing has
+  bit0 set it immediately calls sub_8142952(state, dir, 1) and returns. Otherwise it builds the two neighbouring
+  directions dir-1 and (dir+1)&7, calls sub_8142952 for each (which apparently positions/registers the
+  cursor and returns a direction id), then for each candidate calls GetSoulWeaponCursorCameraCoords and
+  subtracts the player object's X/Y (from ReadOWPlayerObjectCoords) before calling sub_80014D4, evidently
+  a distance/length helper. The direction yielding the larger result (r0 > r1 keeps r6... comparison keeps
+  r7 unless the second is greater) wins; result is returned in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_8142990 / GetOWPlayerFacingDirection at top fetches cursor state and player facing;
+    sub r1,r0,#1; add r7,r0,#1; and ...#7 computes the two neighbouring 8-way directions; two GetSoulWeaponCursorCameraCoords
+    + sub_80014D4 pairs compare candidate distances from player coords stored on sp; cmp r0,r1; ble ->
+    keep r7 else r7=r6 selects the closer candidate before returning; beastsp route: only used in Beast
+    Out soul-weapon cursor context (callee GetSoulWeaponCursorCameraCoords)'
+  refs:
+  - bn6f/asm/asm37_1.s:1666
+  - 0x0808964C sub_808964C
+  - 0x0809E2B8 GetOWPlayerFacingDirection
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x08142868 GetSoulWeaponCursorCameraCoords
+  reproduce: python3 tools/asmcat.py 0x081428D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are largely accurate: the function fetches cursor state, gets the player facing
+    direction, and when facing bit0 is set it just returns sub_8142952''s result immediately (likewise
+    for the two-neighbour comparison path). However, the summary says it picks the direction ''whose cursor
+    tile is nearest the player,'' while the code at the comparison `cmp r0, r1; ble loc_814294C` keeps
+    r7 unless r0 > r1, which keeps the *larger* distance — i.e., it picks the *farther* candidate, not
+    the nearest. Also, the bit0 path (`tst r0, #1; beq`) returns when facing is odd (values 1 or 3) without
+    any neighbour comparison, so it isn''t an ''adjacent'' pick in that case. A better name is `selectSoulWeaponCursorDir`
+    and the summary should say the farther candidate wins.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact semantics of sub_8142952 and sub_8142990 (set vs get cursor direction) not confirmed
+- What sub_80014D4 computes exactly (distance metric) and whether '>' vs 'ble' tie-break matters
+- What caller sub_808964C does with the returned direction
+- 'The name and summary are largely accurate: the function fetches cursor state, gets the player facing
+  direction, and when facing bit0 is set it just returns sub_8142952''s result immediately (likewise for
+  the two-neighbour comparison path). However, the summary says it picks the direction ''whose cursor
+  tile is nearest the player,'' while the code at the comparison `cmp r0, r1; ble loc_814294C` keeps r7
+  unless r0 > r1, which keeps the *larger* distance — i.e., it picks the *farther* candidate, not the
+  nearest. Also, the bit0 path (`tst r0, #1; beq`) returns when facing is odd (values 1 or 3) without
+  any neighbour comparison, so it isn''t an ''adjacent'' pick in that case. A better name is `selectSoulWeaponCursorDir`
+  and the summary should say the farther candidate wins.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81428D4 -> selectSoulWeaponCursorDir
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81428D4

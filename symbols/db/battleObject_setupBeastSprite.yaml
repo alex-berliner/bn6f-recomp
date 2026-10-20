@@ -1,0 +1,67 @@
+name: battleObject_setupBeastSprite
+address: '0x080A822C'
+kind: function
+status: probable
+summary: 'Initializes a beast entity: loads gfx 0x1c/0x56, calls sub_80A8324, sets priority-by-event-flag,
+  applies animation + noShadow + OAM priority 2, converts three 16-bit coords to upper-word format into
+  [r5+0xC/0x10/0x14], and refreshes the sprite.'
+interface: (r5 = entity/object struct ptr, preset before entry) -> void; writes state bytes and position
+  fields into the struct
+details: Stores 3 at [r5] (a mode/state byte), calls sprite_load with (0x80, 0x1c, 0x56), then battleObject_checkSetPriorityByEventFlag
+  stores its bool at [r5+5]. It applies sprite_setAnimation, sprite_loadAnimationData and sprite_noShadow,
+  then sprite_setPriority(2). Callee sub_80A82A4 returns a pointer whose halfwords at +0/+2/+4 (likely
+  x/y or x/y/z) are sign-extended into [r5+0xC], [r5+0x10], [r5+0x14]. It stores 4 at [r5+8] (another
+  state/phase byte) and finishes with battleObject_updateSpriteAndMaybeReloadAnim. Notably r4-r7 are saved
+  but only r4 is used, and r5 is expected from the caller, suggesting this is a chunk of an inlined/state-machine
+  initializer rather than a standalone routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80A822C: bl sprite_load with r0=0x80, r1=0x1c, r2=0x56 followed by animation/noShadow/priority-2
+    setup; strb r0,[r5] / strb r0,[r5,#5] / strb r0,[r5,#8] write three state bytes of the r5 entity struct;
+    ldrh/str pairs copy three halfwords from sub_80A82A4''s result into [r5+0xC..0x14], matching position
+    fields; tail sequence calls battleObject_updateSpriteAndMaybeReloadAnim_80A827C, the standard post-setup
+    sprite refresh; callee battleObject_checkSetPriorityByEventFlag gates OAM priority by a map/event-flag
+    pair, consistent with map-object setup'
+  refs:
+  - bn6f/asm/asm29.s:6075
+  - 0x080A82DC battleObject_checkSetPriorityByEventFlag_80A82DC
+  - 0x080A827C battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080A822C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal omits the call to sub_80A8324 (line 7, between sprite_load and battleObject_checkSetPriorityByEventFlag).
+    More critically, the ''sign-extended'' description is wrong: the code uses ldrh + lsl r0,r0,#0x10
+    (lines 18-26), which shifts a zero-extended halfword into the upper 16 bits, a fixed-point format
+    conversion rather than sign-extension. The name ''setupBeastSprite'' is well-supported by the beastsp
+    execution route and the 0x1c/0x56 gfx pair. Everything else (store 3 at [r5], priority 2, noShadow,
+    store 4 at [r5+8], r5-caller convention) matches the asm.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+- maps
+open_questions:
+- No caller is recorded, so what r5 points to and how this routine is dispatched (state machine? spawn
+  table?) is unknown
+- What sub_80A82A4 returns (position table entry?) needs its own disassembly
+- Which sprite sheet indices 0x1c/0x56 and resource 0x80 correspond to in game assets
+- 'The proposal omits the call to sub_80A8324 (line 7, between sprite_load and battleObject_checkSetPriorityByEventFlag).
+  More critically, the ''sign-extended'' description is wrong: the code uses ldrh + lsl r0,r0,#0x10 (lines
+  18-26), which shifts a zero-extended halfword into the upper 16 bits, a fixed-point format conversion
+  rather than sign-extension. The name ''setupBeastSprite'' is well-supported by the beastsp execution
+  route and the 0x1c/0x56 gfx pair. Everything else (store 3 at [r5], priority 2, noShadow, store 4 at
+  [r5+8], r5-caller convention) matches the asm.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A822C -> battleObject_setupBeastSprite
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A822C

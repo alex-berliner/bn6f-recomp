@@ -1,0 +1,57 @@
+name: object_refreshSpriteAnim
+address: '0x08116F60'
+kind: function
+status: probable
+summary: 'Refreshes an object''s sprite: selects animation index 1 when +0xe is zero else 0, reloads animation
+  data, clears the shadow, and only calls sub_81170AC when +4 != 3 and +5 == 0.'
+interface: (r5 = object pointer, no r0 argument) -> r0 clobbered; flags clobbered by calls
+details: Reads the 16-bit field at [r5+0xe] and passes 1 to sprite_setAnimation if it is nonzero, else
+  0, so the flag selects between two animation indices. It then reloads the sprite's animation data via
+  sprite_loadAnimationData and clears the shadow via sprite_noShadow, so this looks like a re-initialization/refresh
+  of an object's visuals rather than a per-frame tick. Finally it skips sub_81170AC when [r5+4] (byte)
+  equals 3 or when [r5+5] (byte) is nonzero, suggesting +4 is an object type/state where 3 means 'skip'
+  and +5 a boolean that also suppresses it. r5 is a global or caller-set object pointer, not a stack argument.
+  The purpose of sub_81170AC is unknown, so the tail of the function's role is only partially characterized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r1,[r5,#0xe]; tst; mov r0,#1 before bl sprite_setAnimation — flag picks animation index
+    0 vs 1; bl sprite_loadAnimationData then bl sprite_noShadow immediately after — sprite data reload
+    + shadow off; ldrb r0,[r5,#4]; cmp #3; beq skip and ldrb r0,[r5,#5]; tst; bne skip — state/type gates
+    the extra call; bl sub_81170AC only in the fall-through case — conditional extra update, callee unknown'
+  refs:
+  - bn6f/asm/asm32.s:17701
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x08116F60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The flag at +0xe being nonzero passes 0 to sprite_setAnimation, and zero passes 1 (tst/bne then
+    mov r0,#1 before bne target). The summary inverts this. The rest — reloadAnimationData, noShadow,
+    skip sub_81170AC when +4==3 or +5!=0 — is correct. No callers known, and the function does no per-frame
+    work, so ''refresh'' is reasonable.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- maps
+- story2
+open_questions:
+- No callers captured, so the object structure behind r5 (fields +4, +5, +0xe) and when this runs are
+  unknown
+- sub_81170AC is undocumented; knowing what it does would settle the conditional tail of this routine
+- The flag at +0xe being nonzero passes 0 to sprite_setAnimation, and zero passes 1 (tst/bne then mov
+  r0,#1 before bne target). The summary inverts this. The rest — reloadAnimationData, noShadow, skip sub_81170AC
+  when +4==3 or +5!=0 — is correct. No callers known, and the function does no per-frame work, so 'refresh'
+  is reasonable.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8116F60 -> object_refreshSpriteAnim
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116F60

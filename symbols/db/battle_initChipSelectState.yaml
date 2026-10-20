@@ -1,0 +1,69 @@
+name: battle_initChipSelectState
+address: '0x080135E8'
+kind: function
+status: probable
+summary: Zero-fills the 0x64-byte in-battle chip-select/custom-screen state block, writes hardcoded defaults
+  (chip count/hand fields, sentinel bytes, and 0x99/0x1F markers), stamps the three parallel HP halfwords
+  from GetNaviStatsHword(1, 0x42), and marks the chip-slot arrays empty with 0xFF.
+interface: (r0 = *state block (within the per-battle buffer)) -> r0 = *same block; flags clobbered by
+  calls
+details: 'Zero-fills 0x64 (100) bytes of the block, then writes hardcoded defaults: counts/sizes 4,5,5,1
+  at +0x09..+0x0C, 0xFF sentinels at +0x05, +0x07, +0x12, 0x99 at +0x0E, and 0x1F at +0x27. It queries
+  GetNaviStatsHword(1, 0x42) and stores the returned halfword to +0x3E, +0x40 and +0x42 (three parallel
+  copies, likely HP-related fields such as base/current/max). Two small loops stamp 0xFF over +0x2E..+0x30
+  and +0x56..+0x5B, consistent with marking chip slot arrays empty (0xFF = no chip). The called-from battle_initBattleStateBuffer
+  context and the slot/count layout point at the in-battle chip hand / custom screen state rather than
+  generic battle data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZeroFillByWord(memBlock=r0, 0x64) clears the whole state block first; counts 4/5/5/1 written
+    to +0x09..+0x0C match chip-hand size/layout constants; 0xFF stamped over byte ranges 0x2E-0x30 and
+    0x56-0x5B looks like empty-chip sentinel fills; GetNaviStatsHword(1, 0x42) result stored to three
+    halfword fields +0x3E/+0x40/+0x42, likely HP triple; sole caller is battle_initBattleStateBuffer_800B144,
+    which sets up per-battle state at the start of a battle
+  refs:
+  - bn6f/asm/asm00_2.s:10499
+  - 0x0800B144 battle_initBattleStateBuffer_800B144
+  - 0x080008E0 ZeroFillByWord
+  - 0x08013740 GetNaviStatsHword
+  reproduce: python3 tools/asmcat.py 0x080135E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s overall behavior is largely correct (zero-fill, defaults, GetNaviStatsHword(1,0x42)
+    stored at +0x3E/+0x40/+0x42, 0xFF slot stamps at +0x2E..0x30 and +0x56..0x5B), but several byte-store
+    details in the proposal are wrong. The hardcoded defaults are not ''4,5,5,1 at +0x09..+0x0C'' — the
+    code stores 4 at +0x09, 5 at +0x0A, 5 at +0x0B, but +0x0C is 0 (with 1 stored at +0x0D). Also +0x18
+    and +0x19 are explicitly cleared to 0, +0x29 is 0x0A, +0x2C and +0x2D are cleared, and the ''0xFF
+    sentinels'' at +0x05 and +0x07 are correct but the proposal omits the +0x4C/+0x4B/+0x44 bytes. Since
+    the function is called once from battle_initBattleStateBuffer and fills a 0x64-byte chip-hand/custom-screen
+    block, battle_initChipSelectState better captures it.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of each defaulted field (e.g. +0x09..+0x0C counts, +0x0E=0x99, +0x4C/+0x4B)
+- whether GetNaviStatsHword(1,0x42) is HP or another navi stat
+- which struct/offset inside dword_203CBE0 this block occupies and what reads these fields during the
+  custom screen
+- The summary's overall behavior is largely correct (zero-fill, defaults, GetNaviStatsHword(1,0x42) stored
+  at +0x3E/+0x40/+0x42, 0xFF slot stamps at +0x2E..0x30 and +0x56..0x5B), but several byte-store details
+  in the proposal are wrong. The hardcoded defaults are not '4,5,5,1 at +0x09..+0x0C' — the code stores
+  4 at +0x09, 5 at +0x0A, 5 at +0x0B, but +0x0C is 0 (with 1 stored at +0x0D). Also +0x18 and +0x19 are
+  explicitly cleared to 0, +0x29 is 0x0A, +0x2C and +0x2D are cleared, and the '0xFF sentinels' at +0x05
+  and +0x07 are correct but the proposal omits the +0x4C/+0x4B/+0x44 bytes. Since the function is called
+  once from battle_initBattleStateBuffer and fills a 0x64-byte chip-hand/custom-screen block, battle_initChipSelectState
+  better captures it.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80135E8 -> battle_initChipSelectState
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80135E8

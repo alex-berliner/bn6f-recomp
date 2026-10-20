@@ -1,0 +1,63 @@
+name: e_initSpawnSprite
+address: '0x080D5D78'
+kind: function
+status: probable
+summary: Battle-object state handler that positions an object at its panel's front offset, loads its battle
+  sprite (shadow, animation, palette, flip) and transitions state to CUR_STATE_UPDATE; returns r0=CUR_STATE_UPDATE.
+interface: (r5 = battle object) -> r0 = 0; sets oBattleObject state field to CUR_STATE_UPDATE
+details: This is an init-phase handler for a battle enemy/object. It recomputes pixel coordinates from
+  the panel grid, then shifts the object's X by frontDirection*10 pixels (toward the enemy side), sets
+  Z to 0x30, and loads sprite resource 0x80 with args 0x10/0x55. It turns on the shadow, sets oObjectHeader_Flags
+  bit 1 (0x2), resets CurAnim and CurAnimCopy to 0, calls sprite_setAnimation(0), loads the animation
+  data, sets palette 0, and applies the object's effective flip. Finally it stores CUR_STATE_UPDATE into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized, ending the init phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'calls object_setCoordinatesFromPanels then adds object_getFrontDirection()*0xa to oBattleObject_X16,
+    positioning at panel front edge; bl sprite_load with r0=0x80 (sprite id) followed by sprite_hasShadow
+    and animation/palette/flip setup; sets oObjectHeader_Flags |= 2 and clears CurAnim/CurAnimCopy before
+    sprite_loadAnimationData; tail behavior: stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+    the standard init->update state transition; callees are all battle-object/sprite subsystem functions,
+    consistent with an enemy spawn/state-init handler'
+  refs:
+  - bn6f/asm/asm31.s:64225
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D5D78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The interface claims r0=0 on return, but the last two instructions are `mov r0, #CUR_STATE_UPDATE`
+    then `str r0, [r5,#...]` followed by `pop {pc}`, so r0 returns CUR_STATE_UPDATE, not 0. The positioning
+    (setCoordinatesFromPanels + frontDirection*0xa), Z=0x30, sprite_load(0x80,0x10,0x55), shadow, flags|=2,
+    anim reset, palette 0, flip, and state=CUR_STATE_UPDATE all match. The name ''e_initSpawnSprite''
+    is acceptable; the prefix ''spawn'' is slightly misleading since the object already exists and this
+    merely initializes its sprite/position, but it''s close enough.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack this specific handler belongs to (sprite id 0x80 and route 'battlesweep' only hint
+  at it)
+- exact meaning of sprite_load's 0x10/0x55 arguments
+- whether flag bit 0x2 in oObjectHeader_Flags is 'visible' or something else
+- 'The interface claims r0=0 on return, but the last two instructions are `mov r0, #CUR_STATE_UPDATE`
+  then `str r0, [r5,#...]` followed by `pop {pc}`, so r0 returns CUR_STATE_UPDATE, not 0. The positioning
+  (setCoordinatesFromPanels + frontDirection*0xa), Z=0x30, sprite_load(0x80,0x10,0x55), shadow, flags|=2,
+  anim reset, palette 0, flip, and state=CUR_STATE_UPDATE all match. The name ''e_initSpawnSprite'' is
+  acceptable; the prefix ''spawn'' is slightly misleading since the object already exists and this merely
+  initializes its sprite/position, but it''s close enough.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5D78 -> e_initSpawnSprite
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5D78

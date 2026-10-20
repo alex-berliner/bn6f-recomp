@@ -1,0 +1,74 @@
+name: ai_chargeAttackLaunch
+address: '0x080BC3B8'
+kind: function
+status: probable
+summary: Teleports the battle object to the charged attack target panel, sets CurAnim=4, computes per-column
+  dash XVelocity/YVelocity from byte tables scaled by facing direction, stores a halfword from byte_810AA30
+  at +0x68, calls sub_80D964E and sub_80BC424, and transitions CurAction from 4 to 8.
+interface: (r0 = battle object (must have CurAction==4), r1 = damage-counter-disabler value, r2 = target
+  panel X, r3 = target panel Y) -> r0 = result of sub_80D964E (also stored to oBattleObject_ExtraVars+0xC);
+  no meaningful flags
+details: Only proceeds when the object's CurAction is 4 (the charging state its caller ai_chargeAttackTick
+  maintains). It stores r1 into oBattleObject_DamageAndStaminaDamageCounterDisabler, writes r2/r3 into
+  both oBattleObject+0x60/0x61 and oBattleObject_PanelX/PanelY, and calls object_setCoordinatesFromPanels
+  so the sprite jumps to the target panel. It sets CurAnim=4, then reads word tables byte_810AA3C/byte_810AA54
+  indexed by PanelX*4, multiplies them by object_getFrontDirection() (+1/-1 by alliance/DirectionFlip),
+  and writes the results to XVelocity/YVelocity — i.e. the dash speed depends on which column the attack
+  starts from. A halfword from byte_810AA30 (indexed PanelX*2) is stored at offset 0x68. It calls sub_80D964E
+  with (r5+9, 4, RelatedObject1Ptr->HP, 1) and saves the result at ExtraVars+0xC, calls sub_80BC424, and
+  finally sets CurAction=8 and clears CurPhaseAndPhaseInitialized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; cmp r0,#4; bne locret — only acts from the charging action
+    set by ai_chargeAttackTick; strb r2,[r5,#oBattleObject_PanelX]; strb r3,[r5,#oBattleObject_PanelY];
+    bl object_setCoordinatesFromPanels — object is placed on the caller-supplied target panel; ldr r2,[r1,r3]
+    (byte_810AA3C, idx PanelX<<2); mul r2,r0 (front direction); str to XVelocity, same for YVelocity from
+    byte_810AA54 — column-dependent dash velocity; ldr r2,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh
+    r2,[r2,#oBattleObject_HP]; bl sub_80D964E; str r0,[r5,#oBattleObject_ExtraVars+0xc] — value derived
+    from the linked object's HP; mov r2,#8; strb r2,[r5,#oBattleObject_CurAction]; strh r2(0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    — hands off to the next attack phase
+  refs:
+  - bn6f/asm/asm31.s:9048
+  - 0x0810A94C ai_chargeAttackTick
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080BC424 sub_80BC424
+  reproduce: python3 tools/asmcat.py 0x080BC3B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: the function sets the target panel coordinates, anim=4, computes
+    per-column dash velocities via the byte tables, stores a halfword from byte_810AA30 at +0x68, calls
+    sub_80D964E and sub_80BC424, and switches CurAction to 8. However, the interface description is wrong:
+    the result of sub_80D964E is stored at oBattleObject_ExtraVars+0xC but the function returns nothing
+    meaningful in r0 (it just pops {r5,pc}); also r1 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler
+    but the name ''damage-counter-disabler value'' is correct. The summary is accurate, but the name ''ai_chargeAttackLaunch''
+    fits well.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D964E computes (the r5+9 argument is an odd in-structure offset, and whether the HP-derived
+  result is damage or a timer is unconfirmed)
+- Which specific enemy/attack this belongs to and what animation 4 and the halfword table at byte_810AA30
+  (offset 0x68) represent
+- What sub_80BC424 does as the transition step before CurAction=8
+- 'The summary is largely correct: the function sets the target panel coordinates, anim=4, computes per-column
+  dash velocities via the byte tables, stores a halfword from byte_810AA30 at +0x68, calls sub_80D964E
+  and sub_80BC424, and switches CurAction to 8. However, the interface description is wrong: the result
+  of sub_80D964E is stored at oBattleObject_ExtraVars+0xC but the function returns nothing meaningful
+  in r0 (it just pops {r5,pc}); also r1 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler
+  but the name ''damage-counter-disabler value'' is correct. The summary is accurate, but the name ''ai_chargeAttackLaunch''
+  fits well.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC3B8 -> ai_chargeAttackLaunch
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC3B8

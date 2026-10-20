@@ -1,0 +1,64 @@
+name: ai_getChargeThroughPanelX
+address: '0x080FCE5C'
+kind: function
+status: probable
+summary: Computes the X coordinate of the panel one step past the attack target along the attacker's facing
+  axis (attacker-side relative offset) and returns it if that panel lies on the 6x3 grid, else 0.
+interface: () -> r0 = target.X - frontDirection if (X,Y) valid, else 0; flags clobbered by bl/tst
+details: Calls object_getFrontDirection to get the attacker's +1/-1 facing multiplier, negates it, and
+  adds it to byte 0x12 of the target object pointed to by oAIAttackVars_TargetObjectPtr (r7), pairing
+  it with the target's byte 0x13 (likely X and Y panel coords, 1-based). It pushes (X', Y') around object_isValidPanel
+  to preserve them across the call, and if the resulting panel is on the grid returns X' in r0; otherwise
+  it returns 0. Since panel coordinates are 1-based, the returned X' is always nonzero when valid, so
+  it doubles as a success flag. The negation means the panel lies behind the target relative to the attacker's
+  advance direction — the cell the attack would reach after passing through the target.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r0,r0 after bl object_getFrontDirection flips the facing multiplier before adding to the
+    target coord; ldrb r1,[r2,#0x12] / ldrb r2,[r2,#0x13] read target object's panel X/Y from oAIAttackVars_TargetObjectPtr;
+    push {r0,r1} ... pop {r0,r1} around object_isValidPanel preserves the computed (X,Y) pair across the
+    call; bne locret skips mov r0,#0, so valid panels return the computed X, invalid return 0; sole caller
+    ai_chargeAttackStep slides an attacker toward a reserved target panel, consistent with probing the
+    panel past the target
+  refs:
+  - bn6f/asm/asm31.s:146396
+  - 0x080FC444 ai_chargeAttackStep
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080FCE5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: getFrontDirection is negated, added to target 0x12 (X), and 0x13 (Y) is paired,
+    validity checked; on false tst branch r0 is set to 0, otherwise the pushed X'' is popped into r0.
+    However the meaning is wrong: the negation of the attacker''s facing multiplier, applied to the *target''s*
+    X, yields the panel *behind the attacker* relative to its facing, not behind the target — and the
+    function is called by ai_chargeAttackStep, which slides the attacker through reserved panels including
+    the one beyond the target. Also, ai_ is the correct prefix but ai_getPanelBehindTarget is misleading
+    since the returned panel sits one step away from the target along the attacker''s advance axis.; run
+    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of object fields 0x12/0x13 (assumed 1-based panel X/Y) and whether the return value is
+  used as a boolean or as the actual column by ai_chargeAttackStep
+- 'The code matches: getFrontDirection is negated, added to target 0x12 (X), and 0x13 (Y) is paired, validity
+  checked; on false tst branch r0 is set to 0, otherwise the pushed X'' is popped into r0. However the
+  meaning is wrong: the negation of the attacker''s facing multiplier, applied to the *target''s* X, yields
+  the panel *behind the attacker* relative to its facing, not behind the target — and the function is
+  called by ai_chargeAttackStep, which slides the attacker through reserved panels including the one beyond
+  the target. Also, ai_ is the correct prefix but ai_getPanelBehindTarget is misleading since the returned
+  panel sits one step away from the target along the attacker''s advance axis.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FCE5C -> ai_getChargeThroughPanelX
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCE5C

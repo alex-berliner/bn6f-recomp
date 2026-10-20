@@ -1,0 +1,67 @@
+name: battle_spawnOffsetCollisionRegion
+address: '0x080CB208'
+kind: function
+status: probable
+summary: Spawns a dimming collision region offset from the source battle object's panel by a signed horizontal
+  step (r0×facing), copying the object's element and Damage field into the new region's Timer.
+interface: (r0 = horizontal panel offset, r1 = ignored/dead) -> r0 = spawned collision-region object or
+  0; r5 must already hold the source battle object; r4/r6/r7 clobbered.
+details: 'Reads the source object at r5 (caller-set, nonstandard register argument). Multiplies r0 by
+  object_getEnemyDirection (±1 by alliance) and adds it to oBattleObject_PanelX, keeps oBattleObject_PanelY,
+  and validates the target with object_isValidPanel; aborts if off-grid. Otherwise calls object_spawnDimmingCollisionRegion
+  with r0=panelX'', r1=panelY, r2=object''s oBattleObject_Element, r3=0, plus literal arguments 0x0A050201
+  (dword_80CB240, likely region flags/size) and 3 (r7). On success it copies the source object''s oBattleObject_DamageAndStaminaDamageCounterDisabler
+  value into the new region''s oBattleObject_Timer. Quirk: the initial ''mov r6, r1'' is dead — r6 is
+  overwritten from the Damage field before use, so r1 is not actually consumed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getEnemyDirection; mul r0, r4; add to [r5,#oBattleObject_PanelX] — target panel is
+    offset in the object's facing direction; bl object_isValidPanel; beq locret — silently does nothing
+    if target panel is outside the 6x3 grid; ldrb r2, [r5,#oBattleObject_Element] passed to object_spawnDimmingCollisionRegion
+    — region inherits attacker's element; strh r6, [r0,#oBattleObject_Timer] with r6 = [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    — lifetime taken from source object; literals dword_80CB240=0x0A050201 and r7=3 passed to the spawn
+    callee define the region's shape/flags
+  refs:
+  - bn6f/asm/asm31.s:41509
+  - 0x080CB184 sub_80CB184
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CB208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''panel(s)'' overstates it: the code spawns exactly one collision region one panel
+    over (r0 is a single ±N offset, signed by getEnemyDirection; not a list). The element/timer copy and
+    dead r1 observation are correct (ldrb r2 from oBattleObject_Element; ldr r6 then strh r6 to oBattleObject_Timer;
+    ''mov r6,r1'' is overwritten before use). The dword_80CB240 value is 0x0A050201, not 0x0A050201 as
+    the proposal mis-quotes; flag interpretation is speculation. Caller sub_80CB184 and routing paths
+    (battlesweep/beastsp) suggest this is a wind/panel-shift attack helper. A tighter name: battle_spawnFacingCollisionRegion
+    is okay but implies one panel.; run wf investigate investigate-20261018-182231; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of r0 (single-panel offset vs. region width) and of the 0x0A050201/r7=3 arguments to object_spawnDimmingCollisionRegion
+- Which caller sub_80CB184 passes and which attack/enemy uses this
+- Why r1 is loaded but dead — possibly an intended vertical offset that was cut
+- 'The summary''s ''panel(s)'' overstates it: the code spawns exactly one collision region one panel over
+  (r0 is a single ±N offset, signed by getEnemyDirection; not a list). The element/timer copy and dead
+  r1 observation are correct (ldrb r2 from oBattleObject_Element; ldr r6 then strh r6 to oBattleObject_Timer;
+  ''mov r6,r1'' is overwritten before use). The dword_80CB240 value is 0x0A050201, not 0x0A050201 as the
+  proposal mis-quotes; flag interpretation is speculation. Caller sub_80CB184 and routing paths (battlesweep/beastsp)
+  suggest this is a wind/panel-shift attack helper. A tighter name: battle_spawnFacingCollisionRegion
+  is okay but implies one panel.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB208 -> battle_spawnOffsetCollisionRegion
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB208

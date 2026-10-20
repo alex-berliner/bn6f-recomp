@@ -1,0 +1,68 @@
+name: battle_beastSpBuildSpriteMaskFromFlagTable
+address: '0x08118658'
+kind: function
+status: probable
+summary: For a beast-out special battle object, looks up a flag table via an AI-dispatch thunk, then scans
+  49 bytes in a 5×49 nested pattern (3-byte stride) and stores a 32-bit mask (bits cleared where each
+  of the first 32 flag bytes is nonzero) into the object's sprite field 0x2c.
+interface: (r6 = battle object; uses [r6+0x38]+[r6+0x3a] and byte [r6+0xe]) -> r0 = 32-bit flag mask stored
+  to sprite+0x2c via sprite_setUnk0x2c; flags clobbered
+details: 'The function indexes word_201DA80 with ([r6+0x38]+[r6+0x3a])*4, reads a halfword, subtracts
+  0x90 to get a dispatch id, and calls battleObject_runAIDispatchTable_813B7A0 with the object''s byte
+  at +0xe; the returned pointer +8 starts a table of 2-byte records. It then scans 0x31 iterations, treating
+  each record as 5 flag bytes (one byte skipped per record): starting from 0xFFFFFFFF, it clears bit i
+  whenever flag byte i is nonzero (bit mask 0x80000000 shifted right each iteration, so effectively only
+  the first 32 bytes affect the result). The resulting mask is passed to sprite_setUnk0x2c, which writes
+  it to field 0x2c of the object''s sprite struct. Only run in the beastsp (beast-out special) route,
+  next to battle_initBeastOutForm.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r6,#0x3a]; ldrh r1,[r6,#0x38]; *4 index into off_81186A4=word_201DA80, sub r0,#0x90
+    -> dispatch id; bl battleObject_runAIDispatchTable_813B7A0 with ldrb r1,[r6,#0xe]; result+8 is the
+    flag-table base; loop to 0x31: tst r3 / bic r0,r2 inverts bits for nonzero bytes, r6 resets at 5 and
+    r7 advances +2 per record (5 flag bytes + 1 skipped byte); bl sprite_setUnk0x2c with r0 = accumulated
+    mask writes it to sprite field 0x2c; caller battle_initBeastOutForm and recorded beastsp route tie
+    it to beast-out special setup'
+  refs:
+  - bn6f/asm/asm32.s:20917
+  - 0x081184C0 battle_initBeastOutForm
+  - 0x081184A8 sub_81184A8
+  - 0x081184EC sub_81184EC
+  - 0x0813B7A0 battleObject_runAIDispatchTable_813B7A0
+  - 0x08002FA6 sprite_setUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x08118658
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mask-building behavior (mvn r0,r0 then bic r0,r2 on nonzero byte) matches ''build sprite mask
+    from flags''. However the proposal mischaracterizes the table structure: the loop is a 5×49 nested
+    pattern with r4 as the outer counter and a 3-byte stride between tested bytes (add r7,#1 always, plus
+    add r7,#2 every 5th iter), not ''5 flag bytes one skipped per record''. Also ''runs its AI dispatch
+    to get a flag table'' is misleading — the call to battleObject_runAIDispatchTable_813B7A0 returns
+    a pointer (+8 starts the table); the AI dispatch is a separate dispatch on the caller, not a per-record
+    call here.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the bits of sprite field 0x2c control (visibility/blend of beast special parts?)
+- contents of word_201DA80 and the four dispatch thunks
+- exact arguments sprite_setUnk0x2c expects (object pointer source is not set in this caller frame)
+- 'The mask-building behavior (mvn r0,r0 then bic r0,r2 on nonzero byte) matches ''build sprite mask from
+  flags''. However the proposal mischaracterizes the table structure: the loop is a 5×49 nested pattern
+  with r4 as the outer counter and a 3-byte stride between tested bytes (add r7,#1 always, plus add r7,#2
+  every 5th iter), not ''5 flag bytes one skipped per record''. Also ''runs its AI dispatch to get a flag
+  table'' is misleading — the call to battleObject_runAIDispatchTable_813B7A0 returns a pointer (+8 starts
+  the table); the AI dispatch is a separate dispatch on the caller, not a per-record call here.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8118658 -> battle_beastSpBuildSpriteMaskFromFlagTable
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118658

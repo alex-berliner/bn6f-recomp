@@ -1,0 +1,70 @@
+name: battle_initSpawnMotion
+address: '0x080D149E'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s spawn velocity and timer per Param4: when nonzero, throws the
+  object in a parabolic arc onto the panel one tile toward its facing side using math_getThrowSpeeds over
+  0xD frames; when zero, falls it straight down at -0x20000 Z with a facing-directed 0x1C000 X slide,
+  computing Timer2 as Z frames-to-landing and rewinding X so it lands on the current X.'
+interface: (r5 = battle object) -> void; sets XVelocity/YVelocity/ZVelocity and Timer2 on the object,
+  may modify PanelX and X
+details: 'Reads oBattleObject_Param4. If nonzero: adds object_getFrontDirection() (+1/-1) to oBattleObject_PanelX
+  (target shifted one panel toward the object''s facing side), converts the target panel to pixel coordinates,
+  sets oBattleObject_Timer2 = 0xD, and calls math_getThrowSpeeds(0x34, 0, x, y, 0, -0x8000-scaled constants)
+  to fill XVelocity/YVelocity/ZVelocity — a parabolic throw onto that panel over 13 frames. If Param4
+  is zero: YVelocity = 0, XVelocity = facing * 0x1C000, ZVelocity = -0x20000 (downward), then SWI 6 (Div)
+  computes Timer2 = Z / |ZVelocity| (frames until the object lands at Z=0) and rewinds X by Timer2 * XVelocity
+  so the slide lands exactly on the object''s current X. No return value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'caller battle_initSpawnState (''loads its fixed sprite at its panel position and sets up HP/animation'')
+    invokes this during spawn setup; ldrb [r5,#oBattleObject_Param4]; beq loc_80D14D2 selects the two
+    spawn-motion variants; branch 1: PanelX += frontDirection, Timer2 = 0xD, then math_getThrowSpeeds
+    results stored to X/Y/ZVelocity; branch 2: svc 6 with r0=[Z], r1=|ZVelocity| gives fall frame count
+    stored to Timer2; X -= quotient*XVelocity lands the slide on the same spot; constants 0x1C000/0xFFFE0000
+    in dwords_80D150C/80D1510 are per-frame fixed-point slide/fall speeds'
+  refs:
+  - bn6f/asm/asm31.s:54631
+  - 0x080D124E battle_initSpawnState
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08001330 math_getThrowSpeeds
+  reproduce: python3 tools/asmcat.py 0x080D149E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The Param4!=0 branch indeed adds front direction to PanelX, sets Timer2=0xD, and calls math_getThrowSpeeds
+    with #0x34, y, z, and 0xFFFF8000-ish args — agrees with the throw-arc story. The Param4==0 branch
+    sets YVelocity=0, XVelocity=facing*0x1C000, ZVelocity=-0x20000, then SWI 6 with oBattleObject_Z as
+    dividend and 0x20000 as divisor to get Timer2, and rewinds X by Timer2*XVelocity — agrees with fall-and-slide.
+    The split choice and motion setup match, but the prefix ''battle_'' is forced by callers (battle_initSpawnState);
+    ''init'' is a valid prefix but ''battle_initSpawnDrop'' misnames it — the function doesn''t ''init
+    spawn drop'' generally, it sets spawn motion per Param4. A name like battle_initSpawnMotion better
+    fits the dual-mode nature.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of Param4 (which enemies use arc vs. straight fall) and what 0x34 (r0 to math_getThrowSpeeds,
+  likely start height) represents
+- 'The Param4!=0 branch indeed adds front direction to PanelX, sets Timer2=0xD, and calls math_getThrowSpeeds
+  with #0x34, y, z, and 0xFFFF8000-ish args — agrees with the throw-arc story. The Param4==0 branch sets
+  YVelocity=0, XVelocity=facing*0x1C000, ZVelocity=-0x20000, then SWI 6 with oBattleObject_Z as dividend
+  and 0x20000 as divisor to get Timer2, and rewinds X by Timer2*XVelocity — agrees with fall-and-slide.
+  The split choice and motion setup match, but the prefix ''battle_'' is forced by callers (battle_initSpawnState);
+  ''init'' is a valid prefix but ''battle_initSpawnDrop'' misnames it — the function doesn''t ''init spawn
+  drop'' generally, it sets spawn motion per Param4. A name like battle_initSpawnMotion better fits the
+  dual-mode nature.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D149E -> battle_initSpawnMotion
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D149E

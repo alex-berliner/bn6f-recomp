@@ -1,0 +1,62 @@
+name: battle_runStartAnimFrame
+address: '0x08033AB0'
+kind: function
+status: probable
+summary: 'Per-frame dispatcher called once per battle-start animation tick: queues one OAM entry, conditionally
+  draws the battle-start overlay, and advances the chip-slot gfx/spin SFX.'
+interface: (r0 = self object, passed through to callees; r1 = frame-index/0 flag per callee) -> r0 = last
+  callee's return; no meaningful flags
+details: A tiny dispatcher run once per frame (self at $r5, frame counter at [self+5] drives the OAM frame
+  table). It first queues one OAM entry via sprite_queueOamByFrameIndex with r0=0, then conditionally
+  draws the battle-start overlay tilemap/sprite, then advances the chip-slot animation (tile cycling through
+  VRAM 0x06017400 with HBlank DMA and spin SFX 0x9A). All three callees receive the same self pointer
+  (r0=0 here is actually reset before each call, so the callees likely read the object from a register
+  or the comment's $r5). The combination — periodic OAM frames + start overlay + chip slot spin — matches
+  the intro sequence shown when a battle begins, as seen in the beastop recorded route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_queueOamByFrameIndex_8033B80 with r0=0: queues one OAM entry per call from a 0x18-entry
+    frame table indexed by [r5+5]; bl battle_drawBattleStartOverlay_8033F80: DMA-loads battle-start overlay
+    and queues its OAM on a game-state flag; bl updateChipSlotGfx_8033C68: cycles chip-slot tiles in VRAM
+    0x06017400 and plays spin SFX 0x9A on cooldown; no branches of its own: pure sequence of three per-frame
+    draw callees, consistent with an intro-animation frame tick; recorded route ''beastsp'' executes it,
+    matching a battle-scene intro phase'
+  refs:
+  - bn6f/asm/asm03_1_0.s:402
+  - 0x08033F80 battle_drawBattleStartOverlay_8033F80
+  - 0x08033B80 sprite_queueOamByFrameIndex_8033B80
+  - 0x08033C68 updateChipSlotGfx_8033C68
+  reproduce: python3 tools/asmcat.py 0x08033AB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callee list and order match the dispatch pattern (OAM queue, overlay draw, chip-slot spin),
+    but the assembly never loads $r5 and $r5 is not a documented calling-convention register here; the
+    object''s true self is loaded inside each callee (e.g., sprite_queueOamByFrameIndex uses [r5+5] per
+    the callee description). The function is purely a per-frame dispatcher, so a more accurate name should
+    reflect that without implying it ''updates start anim GFX'' directly.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No direct caller known in the snapshot set; which battle FSM state invokes this per frame is unconfirmed
+- Whether the three calls are strictly ordered or some are gated elsewhere (callees have their own internal
+  flag checks)
+- The callee list and order match the dispatch pattern (OAM queue, overlay draw, chip-slot spin), but
+  the assembly never loads $r5 and $r5 is not a documented calling-convention register here; the object's
+  true self is loaded inside each callee (e.g., sprite_queueOamByFrameIndex uses [r5+5] per the callee
+  description). The function is purely a per-frame dispatcher, so a more accurate name should reflect
+  that without implying it 'updates start anim GFX' directly.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8033AB0 -> battle_runStartAnimFrame
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033AB0

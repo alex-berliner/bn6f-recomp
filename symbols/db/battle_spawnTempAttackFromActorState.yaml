@@ -1,0 +1,85 @@
+name: battle_spawnTempAttackFromActorState
+address: '0x080EB572'
+kind: function
+status: probable
+summary: Builds a type-1 subtype-5 temp-attack id from actor type (r4 base), AIIndex, caller arg, and
+  a high byte set from NaviStats 0x2c / emotion / AI flag 0x48 / NaviStats 0x10, then spawns via spawn_t1_0x5_tempAttackObject_80B8E30;
+  only zeroes oAIData_TempAttackObjectPtr when actor type is 0 and AIIndex is nonzero.
+interface: (r0 = battle object ptr [also r5 = same object?], r1 = component shifted into bits 16-23) ->
+  r0 = spawned object ptr via spawn_t1_0x5; if actor is not player(0,aiIdx 0) or navi(1), TempAttackObjectPtr
+  in AIData is zeroed instead
+details: 'Reads oBattleObject_AIDataPtr and branches on oAIData_ActorType: type 0 with AIIndex 0 uses
+  the player path, type 1 (opponent/navi) uses base id 0x2b with r6=0xd and variant = AIIndex-1; anything
+  else just clears oAIData_TempAttackObjectPtr and exits. The player path reads NaviStats byte 0x2c (via
+  alliance) - if 0 it falls back to testing AIData+0x48 flag bit 0x200 (r6=0xe) then NaviStats byte 0x10
+  (r6=0x14+value); if nonzero it maps values 0xb/0xc to r6=0xe and 0xd-0x11 to r6=5+value-0xd, with byte
+  0xe OR-ed into the high byte only when possiblyGetBattleEmotion returns emotion 2 (beast-out-like state).
+  The final packed 32-bit id = base(r4) | aiIndex<<8 | callerArg<<16 | extra<<24 is passed to spawn_t1_0x5_tempAttackObject_80B8E30,
+  which links the object to the battle object and copies panel XY/alliance/direction.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r7,#oAIData_ActorType]; branches on 0/1/other decide base id and variant (0x80EB57C-0x80EB5DC);
+    bl GetBattleNaviStatsByte_AllianceFromBattleObject with byte 0x2c and 0x10, and bl callPossiblyGetBattleEmotion
+    with emotion==2 check (0x80EB58A-0x80EB5C2); r4 = base + (aiIndex<<8) + (callerArg<<16) + (extra<<24)
+    built before spawn (0x80EB606-0x80EB612); tail bl spawn_t1_0x5_tempAttackObject_80B8E30 with r7=r8
+    battle object; unsupported actors instead str r0,[r7,#oAIData_TempAttackObjectPtr] (0x80EB5D6, 0x80EB614);
+    Executed on recorded battle, story and menu routes; called from sub_80EB562 directly above it
+  refs:
+  - bn6f/asm/asm31.s:110020
+  - 0x080BCF7A sub_80BCF7A
+  - 0x080BDDCA sub_80BDDCA
+  - 0x080EB562 sub_80EB562
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08015B54 callPossiblyGetBattleEmotion_8015B54
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x080EB572
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the final spawn via spawn_t1_0x5_tempAttackObject_80B8E30 and
+    the id-packing scheme at loc_80EB606, but mischaracterizes the type-1 path: type 1 with AIIndex>=1
+    does NOT zero TempAttackObjectPtr—loc_80EB5DC computes r4=0x2b, r0=AIIndex-1, r6=0xd and falls through
+    to the spawn. Only type 0 with AIIndex!=0 zeros and exits (loc_80EB5D6). Also r5 is just the battle
+    object''s alliance scratch register, not an input.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What gameplay effect the spawned t1/sub5 object is (aura, transformation visual, etc.) - needs the callee's
+  id table or a known caller summary
+- Meaning of NaviStats bytes 0x2c/0x10 and the AIData+0x48 bit 0x200
+- Why r4 (not an argument register) carries the packed id into spawn_t1_0x5 - wrapper may read it from
+  a fixed register or the callee summary is incomplete
+- 'The proposal correctly identifies the final spawn via spawn_t1_0x5_tempAttackObject_80B8E30 and the
+  id-packing scheme at loc_80EB606, but mischaracterizes the type-1 path: type 1 with AIIndex>=1 does
+  NOT zero TempAttackObjectPtr—loc_80EB5DC computes r4=0x2b, r0=AIIndex-1, r6=0xd and falls through to
+  the spawn. Only type 0 with AIIndex!=0 zeros and exits (loc_80EB5D6). Also r5 is just the battle object''s
+  alliance scratch register, not an input.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EB572 -> battle_spawnTempAttackFromActorState
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB572

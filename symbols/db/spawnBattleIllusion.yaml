@@ -1,0 +1,69 @@
+name: spawnBattleIllusion
+address: '0x080EAFC2'
+kind: function
+status: probable
+summary: Spawns an afterimage/illusion battle object for the caller's battle object (r5), computing a
+  packed id from object_getFlip and oBattleObject_NameID with a 0xA2..0xAB range override, calling spawnIllusionObject_80E33FA,
+  then dispatching sub_80E341E with arg 1 or 2 based on GetBattleNaviStatsByte at offset 0x2C for the
+  object's alliance side.
+interface: (r0-r3 = spawn params, reordered to (old r3,r2,r1,r0); r5 = battle object) -> r0 = spawned
+  illusion object or 0
+details: Reads the battle object's effective facing via object_getFlip and the object's NameID; if NameID-0xFF
+  falls in 0xA1..0xAB (a specific form/ID range) the low index becomes 0, otherwise it stays 0xF. It builds
+  a packed id r4 = (flip<<8 | index)<<16 | 0xFF, shuffles its four incoming arguments (r0<->r3, r1<->r2)
+  and calls spawnIllusionObject_80E33FA with r6=0x83E0 and r7=0x1010014-old r3, apparently using the custom
+  r4/r6/r7 side-channel arguments. If an object is returned, it reads NaviStats byte 0x2C for the object's
+  alliance side via GetBattleNaviStatsByte; values 0x0B..0x18 call sub_80E341E(obj,1), anything else sub_80E341E(obj,2).
+  Nearby data (byte table at 80EB028, AIAttackJumptable pointer, 0xFFFF sentinel) suggests this belongs
+  to a Beast/AI attack setup block. Run on the beastsp route, consistent with Beast Out handling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFlip then flip<<8 feeds the packed id in r4; NameID check: sub 0xFF, kept only
+    if 0xA1..0xAB, else index 0xF; bl spawnIllusionObject_80E33FA with r6=0x83E0, r7=0x1010014-old_r3;
+    r0 result returned to caller (0 means nothing spawned); GetBattleNaviStatsByte(Alliance, 0x2C) compared
+    to 0x0B..0x18 selects sub_80E341E(obj,1) vs (obj,2); route ''beastsp'' and adjacent AIAttackJumptable
+    data tie it to Beast Out battle setup'
+  refs:
+  - bn6f/asm/asm31.s:109552
+  - 0x080136CC GetBattleNaviStatsByte
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080EAFC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code calls spawnIllusionObject_80E33FA on a battle object (r5) and then uses GetBattleNaviStatsByte
+    with the object''s alliance side at offset 0x2C; the proposal''s core mechanics (read flip, check
+    NameID range, pack id, swap args, call spawnIllusionObject, dispatch sub_80E341E based on stats) match
+    the assembly accurately. However, ''beastsp'' only tells us it ran in the BeastSP route, not that
+    this code is specifically about Beast Out or ''NaviStats'' as named — the caller''s call site would
+    clarify that, but it''s not in the callers list. A name using the ''spawn'' prefix is fine; ''spawnBeastOutIllusion''
+    embeds an unverified ''BeastOut'' claim, so a more neutral name grounded in callees is safer.; run
+    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the packed r4 id and the r6=0x83E0 / r7=0x1010014-arg arguments to spawnIllusionObject_80E33FA
+- What NaviStats byte 0x2C counts (range 0x0B..0x18 picks variant 1) and what sub_80E341E's 1 vs 2 variants
+  do
+- Which specific NameIDs 0x1A1..0x1AB correspond to
+- The code calls spawnIllusionObject_80E33FA on a battle object (r5) and then uses GetBattleNaviStatsByte
+  with the object's alliance side at offset 0x2C; the proposal's core mechanics (read flip, check NameID
+  range, pack id, swap args, call spawnIllusionObject, dispatch sub_80E341E based on stats) match the
+  assembly accurately. However, 'beastsp' only tells us it ran in the BeastSP route, not that this code
+  is specifically about Beast Out or 'NaviStats' as named — the caller's call site would clarify that,
+  but it's not in the callers list. A name using the 'spawn' prefix is fine; 'spawnBeastOutIllusion' embeds
+  an unverified 'BeastOut' claim, so a more neutral name grounded in callees is safer.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EAFC2 -> spawnBattleIllusion
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EAFC2

@@ -1,0 +1,72 @@
+name: ai_pickRandomPanelTarget
+address: '0x080CED78'
+kind: function
+status: probable
+summary: Battle-AI helper that, if the object's Param2 is clear and its current panel is valid returns
+  that panel, otherwise builds a candidate list of four fixed x,y pairs (x flipped on enemy alliance)
+  plus panels gathered by scanning forward columns via object_getPanelsInColumnFiltered, then uses GetPositiveSignedRNG
+  + svc 6 to pick one entry and returns its x in r1 and y in r0.
+interface: '(r0 implicit: r5 = battle object) -> r0 = panel id (x in high nibble, y in low 3 bits, x mirrored
+  for enemy alliance); flags clobbered.'
+details: 'If the object''s Param2 is clear, it first checks the object''s current panel via object_isCurrentPanelValid
+  (using ExtraVars+0x12/0x13 as coordinates) and, if valid, bails returning that panel. Otherwise it builds
+  a candidate list at sp+0xC: four fixed x,y pairs from byte_80CEE1C (5,1 / 5,3 / 4,2 / 6,2), with x flipped
+  to 7-x when the object is on the enemy alliance, encoded as x<<4|y. It then reads a two-word base from
+  byte_80CEE28 indexed by alliance*8 and repeatedly calls object_getPanelsInColumnFiltered starting at
+  column 3 (ally) or 4 (enemy), stepping the column by the negated front direction and appending encoded
+  panel IDs while the column stays in 1..6. Finally GetPositiveSignedRNG plus svc 6 picks a random entry
+  modulo the list count, and the entry''s low 3 bits (y) and high nibble (x) are returned. The byte_80CEE28
+  table is 0x20,0 for alliance 0 and 0,0x20 pattern shifted for the other side, acting as the scan''s
+  base panel data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop over byte_80CEE1C pairs with ''sub r0, r2, r0'' mirror for nonzero alliance, orr r0, r1<<4
+    encodes x<<4|y; loop calling object_getPanelsInColumnFiltered with r4 = 3/4 by alliance and step =
+    negated object_getFrontDirection result, bounded to 1..6; bl GetPositiveSignedRNG then svc 6 (modulo
+    r6=count) selects a random entry from the sp+0xC buffer; return path masks ''lsr r1,r0,#4 / lsl r0,#0x1d
+    / lsr r0,#0x1d'' splitting the byte into x and 3-bit y; entry shortcut: if Param2==0 and object_isCurrentPanelValid
+    passes, returns immediately with the object''s own panel coordinates'
+  refs:
+  - bn6f/asm/asm31.s:49310
+  - 0x080CEC1A sub_80CEC1A
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080CED78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Overall flow matches (Param2 early-out, four fixed pairs from byte_80CEE1C with x-flip on enemy
+    alliance, column scan starting at 3/4 with negated front-direction step, RNG+svc6 modular pick, final
+    split into r1=x/r0=y via lines near loc_80CEE14). However the detail that ''byte_80CEE28 acts as the
+    scan''s base panel data, 0x20,0 for alliance 0 and 0,0x20 pattern shifted for the other side'' is
+    wrong: both alliance entries appear to carry the same encoded-base byte pattern indexed by lsl r0,r0,#3;
+    no mirror/swap is visible. Also the interface should note r0 returns the encoded byte while the final
+    block re-splits into r1 (x high nibble) and r0 (y low 3 bits).; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What the caller sub_80CEC1A does with the returned panel id (movement/teleport target vs attack anchor)
+  is not shown
+- Exact meaning of the byte_80CEE28 base fields (0x20 word) passed to object_getPanelsInColumnFiltered
+- 'Overall flow matches (Param2 early-out, four fixed pairs from byte_80CEE1C with x-flip on enemy alliance,
+  column scan starting at 3/4 with negated front-direction step, RNG+svc6 modular pick, final split into
+  r1=x/r0=y via lines near loc_80CEE14). However the detail that ''byte_80CEE28 acts as the scan''s base
+  panel data, 0x20,0 for alliance 0 and 0,0x20 pattern shifted for the other side'' is wrong: both alliance
+  entries appear to carry the same encoded-base byte pattern indexed by lsl r0,r0,#3; no mirror/swap is
+  visible. Also the interface should note r0 returns the encoded byte while the final block re-splits
+  into r1 (x high nibble) and r0 (y low 3 bits).'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CED78 -> ai_pickRandomPanelTarget
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CED78

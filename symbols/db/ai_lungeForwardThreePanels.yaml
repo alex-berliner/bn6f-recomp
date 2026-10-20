@@ -1,0 +1,65 @@
+name: ai_lungeForwardThreePanels
+address: '0x080F162C'
+kind: function
+status: probable
+summary: 'AI attack step: attempts to dash/lunge 3 panels forward toward the enemy, reserving the panels
+  and marking the object non-slideable; if movement is blocked it just sets a short step timer.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = 1 on success / 0 on failure; flags set
+  by object_checkPanelParameters and object_reservePanel
+details: First checks object_canMove; if blocked it stores StepTimer=2 and HitElement=0xC into the AI
+  attack vars and returns. Otherwise it computes a target panel 3 tiles in front of the object (getFrontDirection
+  * 3 + own PanelX/PanelY) and validates it with object_checkPanelParameters using mask 0x10 vs 0xF880080
+  (panel-type masks from dword_80F168C). If valid, it stores the target panel into oAIAttackVars_TargetPanelX/Y,
+  reserves the target panel for this object, then reserves the object's own current panel, clears its
+  collision region (freeing the panel it leaves), sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1,
+  and stores StepTimer=2 with HitElement=8. On validation failure it falls through to the same timer but
+  with HitElement=0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove ... beq loc_80F167C: blocked path skips the lunge and only sets the timer;
+    mov r1,#3 / mul r0,r1 after object_getFrontDirection: target is 3 panels ahead in facing direction;
+    ldrb r1,[r5,#oBattleObject_PanelX/Y] then object_checkPanelParameters with masks 0x10/0xF880080: validates
+    the landing panel; object_reservePanel called twice plus object_clearCollisionRegion and OBJECT_FLAGS_CANNOT_SLIDE:
+    reserves source and destination panels for a slide/lunge; strh 2,[r7,#oAIAttackVars_StepTimer] and
+    HitElement 8/0xC: both branches advance the same AI attack state machine, differing only by hit element'
+  refs:
+  - bn6f/asm/asm31.s:122922
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F162C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The control flow and side effects match: object_canMove→beq on failure, getFrontDirection*3 added
+    to PanelX, checkPanelParameters with masks 0x10/0xF880080, store TargetPanelX/Y, two reservePanel
+    calls, clearCollisionRegion, setFlag1 CANNOT_SLIDE, StepTimer=2/HitElement=8 (success) or 0xC (failure).
+    However, the proposed interface claiming ''r0 = 1 on success / 0 on failure'' is wrong: the function
+    never sets a boolean return—on the success path r0=8 and on the failure path r0=0xC (both are the
+    last mov r0 before pop {pc}), so the return value is incidental. The rest of the summary is accurate.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of HitElement values 8 and 0xC (state id vs element) and which beastsp enemy/attack uses
+  this state
+- What the panel mask 0x10 vs 0xF880080 requires (hole/crush/broken panel check?)
+- 'The control flow and side effects match: object_canMove→beq on failure, getFrontDirection*3 added to
+  PanelX, checkPanelParameters with masks 0x10/0xF880080, store TargetPanelX/Y, two reservePanel calls,
+  clearCollisionRegion, setFlag1 CANNOT_SLIDE, StepTimer=2/HitElement=8 (success) or 0xC (failure). However,
+  the proposed interface claiming ''r0 = 1 on success / 0 on failure'' is wrong: the function never sets
+  a boolean return—on the success path r0=8 and on the failure path r0=0xC (both are the last mov r0 before
+  pop {pc}), so the return value is incidental. The rest of the summary is accurate.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F162C -> ai_lungeForwardThreePanels
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F162C

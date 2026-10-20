@@ -1,0 +1,67 @@
+name: battle_bombExplodeAndDestroy
+address: '0x080CD1BE'
+kind: function
+status: probable
+summary: 'On-death handler for a bomb-type battle object: based on ObjectFlags2 bits 0x8000/0x300000 and
+  sub_800F8CE result, either returns early (sub_800F8CE==0), calls sub_800F90E, plays SOUND_HIT_BOMB_1
+  with effect variant 0, or spawns effect variant 0x14 with a z-offset; in all non-early-return paths
+  it then dispatches destroy events, removes from object list, clears collision/panel, and sets CUR_STATE_DESTROY.'
+interface: (r5 = battle object, no register args) -> void; sets object state to CUR_STATE_DESTROY
+details: Reads the object's ObjectFlags2; if bit 0x8000 is clear it plays SOUND_HIT_BOMB_1 and spawns
+  effect type 0 (variant 0) at the object's position fields at +0x34, otherwise if bits 0x300000 are set
+  it calls sub_800F90E(0) and if the sub_800F8CE result distinguishes 0/1/other it picks between no effect,
+  effect variant 0xC, and the sound+effect path. Regardless of branch it then dispatches the destroy sub-events
+  via battle_dispatchDestroyEvents_802EF5C, removes itself from the battle object list, calls sub_80E544C,
+  clears its collision region, releases its reserved panel using FuturePanelX/Y, clears flag bit 1 in
+  oObjectHeader_Flags, and stores CUR_STATE_DESTROY into the state field. The r4 value (0 or 0xC) passed
+  to spawn_t1_0x0_EffectObject selects an explosion-effect variant/offset.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl PlaySoundEffect with mov r0,#SOUND_HIT_BOMB_1 before spawning effect at loc_80CD1FC; ldmia
+    r0!,{r1-r3} from r5+0x34 feeds x/y into spawn_t1_0x0_EffectObject with r4=0 or 0xC; tail does battle_dispatchDestroyEvents_802EF5C,
+    clearEntryOfBattleStateBattleObjectList_800F656, object_clearCollisionRegion, object_removePanelReserve,
+    sets CUR_STATE_DESTROY; object_getFlag2 tested against 0x8000 and 0x300000 selects the sound/effect/no-effect
+    variants; callee summaries (clear list, clear collision region, removePanelReserve) all match object
+    teardown
+  refs:
+  - bn6f/asm/asm31.s:45654
+  - 0x080005CC PlaySoundEffect
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CD1BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal states ''Regardless of branch it then dispatches the destroy sub-events'' but the code
+    at loc_80CD1DC shows that if sub_800F8CE returns 0, execution jumps to locret_80CD234 which pops and
+    returns WITHOUT any destruction (no battle_dispatchDestroyEvents, no unlist, no panel release, no
+    CUR_STATE_DESTROY). The spawn call in the sub_800F8CE path passes r4=0x14 (after the 0xC<<16 z-offset
+    adjustment), not r4=0xC as the proposal claims. The 0x8000-clear → SOUND_HIT_BOMB_1 + spawn path and
+    the destroy sequence (clearEntry, sub_80E544C, object_clearCollisionRegion, object_removePanelReserve,
+    bic flag bit 1, CUR_STATE_DESTROY) are otherwise correctly described.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- chips
+open_questions:
+- exact meaning of ObjectFlags2 bits 0x8000 and 0x300000, and what sub_800F8CE/sub_800F90E return/decide
+- whether this is bomb-specific or shared by other explosive chip objects
+- The proposal states 'Regardless of branch it then dispatches the destroy sub-events' but the code at
+  loc_80CD1DC shows that if sub_800F8CE returns 0, execution jumps to locret_80CD234 which pops and returns
+  WITHOUT any destruction (no battle_dispatchDestroyEvents, no unlist, no panel release, no CUR_STATE_DESTROY).
+  The spawn call in the sub_800F8CE path passes r4=0x14 (after the 0xC<<16 z-offset adjustment), not r4=0xC
+  as the proposal claims. The 0x8000-clear → SOUND_HIT_BOMB_1 + spawn path and the destroy sequence (clearEntry,
+  sub_80E544C, object_clearCollisionRegion, object_removePanelReserve, bic flag bit 1, CUR_STATE_DESTROY)
+  are otherwise correctly described.
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD1BE -> battle_bombExplodeAndDestroy
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD1BE

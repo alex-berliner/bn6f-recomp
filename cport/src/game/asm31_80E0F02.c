@@ -715,7 +715,7 @@ static void battle_object_state_dispatch(void) {
 
     switch (state) {
     case 0:
-        GUEST_CALL(sub_80E1D18);
+        GUEST_CALL(battle_initFlyAnimObject);
         break;
     case 4:
         GUEST_CALL(battle_objectFlyAnimUpdateAndDestroy_80E1D54);

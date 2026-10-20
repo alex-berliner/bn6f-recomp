@@ -1,0 +1,65 @@
+name: ai_attackTelegraphStep
+address: '0x080ED764'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step: on first call (AttackElement==0) it starts animation 0xE, clears the
+  AI attack variable, sets ObjectFlags1 bit 22, zeroes StepTimer, and marks AttackElement=4; on the next
+  frame it plays sound 0xF8; once StepTimer exceeds 4 it writes 4 into HitElement to arm the attack.'
+interface: (r0 = unused/scratch; r7 = battle object with AIData) -> void; no meaningful return
+details: This is an AI attack state-machine step using oAIAttackVars fields as state. If AttackElement
+  is 0 (attack not yet started), it starts animation 0xE via object_setAnimation, clears the AI attack
+  variable, sets ObjectFlags1 bit 22 (probably making the object an active hitbox), zeroes StepTimer,
+  and stores 4 into AttackElement to mark the attack as started. On subsequent frames it skips init, plays
+  sound 0xF8 exactly once when StepTimer reaches 1, and increments StepTimer. Once StepTimer exceeds 4,
+  it writes 4 into HitElement, which likely assigns the hitbox its element/type and arms it after the
+  telegraph delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips init on later frames (attack already
+    started); init block: object_setAnimation(0xE), ai_clearAttackVar, object_setFlag1(bit 22), AttackElement=4;
+    PlaySoundEffect(0xF8) guarded by ''StepTimer == 1'', so it plays once on the frame after startup;
+    after ''StepTimer > 4'', strh 4 into oAIAttackVars_HitElement, arming the hit late by design'
+  refs:
+  - bn6f/asm/asm31.s:114885
+  - 0x080005CC PlaySoundEffect
+  - 0x080EB562 ai_clearAttackVar
+  - 0x0800F2B6 object_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080ED764
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structure: init block at 0x080ED76A-0x080ED784 (animation 0xE,
+    ai_clearAttackVar, object_setFlag1 with bit 22, zero StepTimer, set AttackElement=4), sound 0xF8 at
+    0x080ED78E when StepTimer==1, and HitElement=4 written at 0x080ED79C when StepTimer>4. However, the
+    summary says ''after a 4-frame telegraph the hitbox element is set'' — the sound actually plays at
+    StepTimer=1 (just one frame after init), and HitElement is set when StepTimer reaches 5, so there
+    are roughly 4 frames between sound and hit activation, not 4 frames of telegraph before sound. The
+    ''charging'' connotation is also unsupported: nothing in the code shows a charge buildup, just init
+    → wait → activate.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- which enemy/boss uses this state (no callers captured), and what animation 0xE and sound 0xF8 correspond
+  to
+- exact meaning of ObjectFlags1 bit 22 and whether HitElement=4 means wood element or an internal attack-state
+  id
+- 'The code matches the proposal''s structure: init block at 0x080ED76A-0x080ED784 (animation 0xE, ai_clearAttackVar,
+  object_setFlag1 with bit 22, zero StepTimer, set AttackElement=4), sound 0xF8 at 0x080ED78E when StepTimer==1,
+  and HitElement=4 written at 0x080ED79C when StepTimer>4. However, the summary says ''after a 4-frame
+  telegraph the hitbox element is set'' — the sound actually plays at StepTimer=1 (just one frame after
+  init), and HitElement is set when StepTimer reaches 5, so there are roughly 4 frames between sound and
+  hit activation, not 4 frames of telegraph before sound. The ''charging'' connotation is also unsupported:
+  nothing in the code shows a charge buildup, just init → wait → activate.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED764 -> ai_attackTelegraphStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED764

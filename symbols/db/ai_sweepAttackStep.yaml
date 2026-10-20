@@ -1,0 +1,72 @@
+name: ai_sweepAttackStep
+address: '0x0811095E'
+kind: function
+status: probable
+summary: 'Per-frame AI dash/sweep update: decrements a timer at r5+0x7C while advancing X by velocity;
+  on abort (sub_8110D34 nonzero) restores panels from r5+0x78/0x79, clears flag bit 2, releases reservation,
+  sets collision region 1 and HitElement 0x28; on timer expiry restores from r5+0x7A/PanelY and sets HitElement
+  8; both paths resync panels, set TargetPanelX/Y, and zero AttackElement.'
+interface: (r5 = battle object, r7 = AI attack state; no register args) -> r0 clobbered; no meaningful
+  return
+details: 'r7+0x7C holds a countdown: each frame it is decremented; while still >=0 the object advances
+  by oBattleObject_XVelocity and re-derives its PanelX/PanelY from coordinates. If the check sub_8110D34
+  returns nonzero the attack is aborted: flag bit 2 of oObjectHeader_Flags is cleared, sub_81110C8 and
+  sub_811109C are called with the object''s panel coords (likely panel hit/effect bookkeeping), the AI''s
+  StepTimer is reloaded from oAIAttackVars_Unk_32, the panel pair stored at object offsets 0x78/0x79 is
+  restored as PanelX/PanelY, the object''s panel reservation is released, ExtraVars+0xC is zeroed, collision
+  region is set to 1, and HitElement is set to 0x28. When the timer expires normally (goes negative) the
+  simpler exit restores the backup panels at 0x7A/0x79, resyncs coordinates and collision panels, and
+  sets HitElement=8. Both paths clear AttackElement to 0 and write the chosen panels into oAIAttackVars_TargetPanelX/Y.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x7c]; sub/strh then tst/blt: countdown timer selects move vs. teardown branch
+    (sub_811095E start); ldr r0,[r5,#oBattleObject_X]; add oBattleObject_XVelocity; str: continuous X
+    movement while active; strb [r7,#oAIAttackVars_TargetPanelX/Y] and HitElement/AttackElement writes:
+    r7 is an AI attack-state record; bl object_removePanelReserve after sub_81110C8/sub_811109C: end-of-attack
+    frees the panels the attack occupied; object flags bit 2 cleared, collision region set to 1, and saved
+    panels 0x78/0x79 restored in the aborted path; recorded routes battlesweep/beastsp and the panel-reserve
+    + velocity movement fit a boss sweep/charge attack'
+  refs:
+  - bn6f/asm/asm32.s:5573
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x0811095E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal states ''r7+0x7C holds a countdown'' but the code uses `mov r1, #0x7c; ldrh r0, [r5,r1]`—the
+    timer lives at r5+0x7C (the battle object), not r7+0x7C. The normal-expiry path at loc_811097E reads
+    r5+0x7A and oBattleObject_PanelY (not 0x79); 0x78/0x79 appear only in the abort path at loc_81109A6,
+    so ''restores the backup panels at 0x7A/0x79'' is inaccurate. All other behavior—velocity advance,
+    abort via sub_8110D34 nonzero, flag-bit-2 clear, panel restore, reservation release, collision-region=1,
+    HitElement values—matches the assembly. The name and overall summary fit well.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is known, so the object/state structures and when this state is entered are only inferred
+  from callees.
+- What sub_8110D34 tests (wall reached? target hit?), and what sub_81110C8/sub_811109C do with the panel
+  coords, is unknown.
+- Exact meaning of HitElement values 8 vs 0x28 and of object offsets 0x78-0x7C is unconfirmed.
+- 'The proposal states ''r7+0x7C holds a countdown'' but the code uses `mov r1, #0x7c; ldrh r0, [r5,r1]`—the
+  timer lives at r5+0x7C (the battle object), not r7+0x7C. The normal-expiry path at loc_811097E reads
+  r5+0x7A and oBattleObject_PanelY (not 0x79); 0x78/0x79 appear only in the abort path at loc_81109A6,
+  so ''restores the backup panels at 0x7A/0x79'' is inaccurate. All other behavior—velocity advance, abort
+  via sub_8110D34 nonzero, flag-bit-2 clear, panel restore, reservation release, collision-region=1, HitElement
+  values—matches the assembly. The name and overall summary fit well.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811095E -> ai_sweepAttackStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811095E

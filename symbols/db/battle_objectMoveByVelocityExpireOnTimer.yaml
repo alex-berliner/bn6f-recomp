@@ -1,0 +1,66 @@
+name: battle_objectMoveByVelocityExpireOnTimer
+address: '0x080C84E0'
+kind: function
+status: probable
+summary: 'Per-frame battle-object update: integrates X/Y velocity into position, refreshes panel/collision/facing,
+  highlights the occupied panel, and clears collision + sets CUR_STATE_DESTROY once the lifetime timer
+  reaches zero.'
+interface: (r5 = battle object pointer; r0/r1 unused on entry) -> r0 = destroyed (returns with state CUR_STATE_DESTROY
+  on timer expiry); no meaningful return otherwise
+details: 'Uses r5 as the battle object: adds oBattleObject_XVelocity to oBattleObject_X and oBattleObject_YVelocity
+  to oBattleObject_Y, then recomputes PanelX/PanelY via object_setPanelsFromCoordinates and syncs collision/facing
+  via object_updateCollisionPanels. It calls object_highlightPanel with the object''s PanelX/PanelY to
+  mark the tile it occupies. It decrements oBattleObject_Timer; while it stays positive the object lives
+  for another frame, but once it hits 0 the collision region is cleared with object_clearCollisionRegion
+  and the state word is set to CUR_STATE_DESTROY. This looks like the standard scripted movement routine
+  for projectiles or moving hazards that fly across the field for a fixed number of frames. The register-based
+  r5 ''this'' calling convention matches other battle-object update routines.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds oBattleObject_XVelocity/YVelocity to X/Y then calls object_setPanelsFromCoordinates and
+    object_updateCollisionPanels (lines 2-15); loads PanelX/PanelY and calls object_highlightPanel to
+    mark the current tile (lines 16-19); decrements oBattleObject_Timer and branches back while > 0 (lines
+    20-22); on timer expiry calls object_clearCollisionRegion and stores CUR_STATE_DESTROY into the state
+    field (lines 24-26)
+  refs:
+  - bn6f/asm/asm31.s:35294
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080C84E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code exactly matches the described steps: X+=XVelocity, Y+=YVelocity (lines 2-9), bl object_setPanelsFromCoordinates/object_updateCollisionPanels
+    (lines 10-11), bl object_highlightPanel with PanelX/PanelY (lines 12-14), timer decrement with bgt
+    (lines 15-17), and on expiry bl object_clearCollisionRegion + store CUR_STATE_DESTROY (lines 18-20).
+    The summary and interface are accurate. However, the name ''battle_objectUpdateMoveByVelocity'' undersells
+    the destroy-on-timer logic that is integral to the routine; a name capturing both movement and expiration
+    is clearer. The ''r0 = destroyed'' interface note is slightly off—r0 at return is the decremented
+    timer (non-destroy path) or CUR_STATE_DESTROY (destroy path), neither a true return-value contract.;
+    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so it is unconfirmed which object types use this routine vs. the other movement
+  updates; the meaning of the timer's initial value is set by callers not yet identified
+- 'The code exactly matches the described steps: X+=XVelocity, Y+=YVelocity (lines 2-9), bl object_setPanelsFromCoordinates/object_updateCollisionPanels
+  (lines 10-11), bl object_highlightPanel with PanelX/PanelY (lines 12-14), timer decrement with bgt (lines
+  15-17), and on expiry bl object_clearCollisionRegion + store CUR_STATE_DESTROY (lines 18-20). The summary
+  and interface are accurate. However, the name ''battle_objectUpdateMoveByVelocity'' undersells the destroy-on-timer
+  logic that is integral to the routine; a name capturing both movement and expiration is clearer. The
+  ''r0 = destroyed'' interface note is slightly off—r0 at return is the decremented timer (non-destroy
+  path) or CUR_STATE_DESTROY (destroy path), neither a true return-value contract.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C84E0 -> battle_objectMoveByVelocityExpireOnTimer
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C84E0

@@ -1840,14 +1840,14 @@ static void call_palette_fill_fade(void) {
     GUEST_CALL(palette_fillBufferWithFadeByte_8128260);
 }
 
-/* register form: calls sub_8127E9C outside this file, which has no typed C interface yet */
+/* register form: calls npc_runFlagConditionalText outside this file, which has no typed C interface yet */
 static void call_sub_8127E9C(void) {
-    GUEST_CALL(sub_8127E9C);
+    GUEST_CALL(npc_runFlagConditionalText);
 }
 
-/* register form: calls sub_8128008 outside this file, which has no typed C interface yet */
+/* register form: calls npc_renderEntryRows outside this file, which has no typed C interface yet */
 static void call_sub_8128008(void) {
-    GUEST_CALL(sub_8128008);
+    GUEST_CALL(npc_renderEntryRows);
 }
 
 /* register form: calls bg_ReloadBackgroundRegion_5_3_81281C0 outside this file, which has no typed C interface yet */
@@ -2029,9 +2029,9 @@ static void call_sub_8128318(void) {
     GUEST_CALL(sub_8128318);
 }
 
-/* register form: calls sub_8128008 outside this file, which has no typed C interface yet */
+/* register form: calls npc_renderEntryRows outside this file, which has no typed C interface yet */
 static void call_sub_8128008_sub_8127B18(void) {
-    GUEST_CALL(sub_8128008);
+    GUEST_CALL(npc_renderEntryRows);
 }
 
 /* register form: calls bg_ReloadBackgroundRegion_5_3_81281C0 outside this file, which has no typed C interface yet */
@@ -3522,7 +3522,7 @@ static void dispatch_battle_state(void) {
     case 0: GUEST_CALL(battle_initFullCutscene_81292D8); break;
     case 1: GUEST_CALL(battle_submenuInputUpdate_812933C); break;
     case 2: GUEST_CALL(scene_runFadePopTick_8129400); break;
-    case 3: GUEST_CALL(sub_8129454); break;
+    case 3: GUEST_CALL(menu_yesNoPromptUpdate); break;
     case 4: GUEST_CALL(battle_updateEntitiesAndStartFadeOut); break;
     case 5: GUEST_CALL(sub_812954C); break;
     case 6: GUEST_CALL(battle_frameUpdateAndStopRfuAfterFade); break;

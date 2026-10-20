@@ -1,0 +1,64 @@
+name: battle_spawnObject9BHeader10
+address: '0x080D8B96'
+kind: function
+status: probable
+summary: Spawns a type-0x9B battle object via object_spawnType3, runs BasicBattleObjectInitialize, sets
+  oObjectHeader_Flags bit 0x10, and writes 1 to setFieldBattleObject_800F614 at the object's alliance
+  index.
+interface: (r0-r3, r5 = spawn args; r0 low byte = object type 0x9B) -> r0 = spawned/initialized object
+  or fail; flags from spawn result (beq skips on failure)
+details: Saves the caller's r0-r2/r5, invokes object_spawnType3 with type 0x9B, then takes the new object
+  pointer (left in r5 by the spawner before the pop restores the saved registers), keeping the original
+  arguments in r1-r3. On success it calls BasicBattleObjectInitialize to fill the base battle-object fields
+  (position, element, related object, flags). It then sets bit 0x10 of oObjectHeader_Flags and calls setFieldBattleObject_800F614
+  with (object, [oBattleObject_Alliance], 1), writing 1 into a field indexed by the object's alliance.
+  The whole function is a one-object spawn wrapper; nothing else is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x9b + bl object_spawnType3 — spawns a fixed battle-object type; pop {r1-r3} restores
+    the caller''s spawn args which are passed straight to bl BasicBattleObjectInitialize; orr r1, #0x10
+    / strb to oObjectHeader_Flags — marks the new object with flag 0x10; ldrb r1,[r0,#oBattleObject_Alliance];
+    mov r2,#1; bl setFieldBattleObject_800F614 — sets an alliance-indexed field to 1; beq locret after
+    the spawn call — the initializer/flag writes are skipped when the spawn failed'
+  refs:
+  - bn6f/asm/asm31.s:70380
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080D8B96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it saves r0-r2/r5, calls object_spawnType3 with type 0x9B, beq skips
+    on failure, then BasicBattleObjectInitialize, ORs 0x10 into oObjectHeader_Flags, and calls setFieldBattleObject_800F614
+    with (object, oBattleObject_Alliance, 1). However, ''InitFlagged'' is misleading since the header
+    flag is set after BasicBattleObjectInitialize, and a clearer name would emphasize the 0x9B spawn type.
+    The interface description is mostly correct but r0 low byte being the object type is a bit off — r0
+    is set to 0x9B by the function itself, not from the caller.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which game object type 0x9B is (needs a type-ID table or a caller)
+- Meaning of header flag 0x10 and of the field set to 1 by setFieldBattleObject_800F614
+- Why the object pointer is taken from r5 after object_spawnType3 (callee contract not confirmed)
+- No known callers; only the beastsp recorded route shows it running
+- 'The code matches the proposal: it saves r0-r2/r5, calls object_spawnType3 with type 0x9B, beq skips
+  on failure, then BasicBattleObjectInitialize, ORs 0x10 into oObjectHeader_Flags, and calls setFieldBattleObject_800F614
+  with (object, oBattleObject_Alliance, 1). However, ''InitFlagged'' is misleading since the header flag
+  is set after BasicBattleObjectInitialize, and a clearer name would emphasize the 0x9B spawn type. The
+  interface description is mostly correct but r0 low byte being the object type is a bit off — r0 is set
+  to 0x9B by the function itself, not from the caller.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8B96 -> battle_spawnObject9BHeader10
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8B96

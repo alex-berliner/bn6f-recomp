@@ -1,0 +1,65 @@
+name: object_getPanelRowInColumn
+address: '0x080FB7B4'
+kind: function
+status: probable
+summary: 'Returns the row of a panel in the given column matching flag 1 or 6 (selected via ctx byte +0x16):
+  first checks the stored row with object_checkPanelParameters (returning the flag 1/6 on success), otherwise
+  scans the column, picks one of the matching entries via RNG modulo, and returns its row (low 3 bits);
+  returns 0 if no match.'
+interface: (r0 = object/ctx with row at +0x13, r1 = unused here, r2/r3 = column+coords or masks, r5 =
+  ctx with side flag at +0x16) -> r0 = matched row (0 if none)
+details: 'Reads a row byte from [r0,#0x13] and builds a panel-flag argument: 1 normally, 6 when [r5,#0x16]
+  is nonzero (likely a side/area or panel-state selector). First calls object_checkPanelParameters with
+  that flag plus the stored row and r2/r3; if it succeeds, the flag value (1 or 6) is returned. Otherwise
+  object_getPanelsInColumnIgnoreRowFiltered (same args, output list at sp+0xC) returns a count of matching
+  panels in the column; if zero the function returns 0. If nonzero, GetPositiveSignedRNG plus svc 6 (modulo)
+  selects one entry, and the low 3 bits of that entry byte (the panel''s row) are returned, with the high
+  nibble computed into r1 but not used as the return value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r0,#0x13] / ldrb r1,[r5,#0x16] build flag 1 vs 6 before object_checkPanelParameters;
+    bne loc_80FB80E returns the flag value (1 or 6) when the exact panel already matches; bl object_getPanelsInColumnIgnoreRowFiltered
+    fills a list at sp+0xC; count 0 -> return 0; GetPositiveSignedRNG + svc 6 (modulo count) picks a random
+    entry from the panel list; lsr/lsl 0x1D pair masks the entry byte to low 3 bits (row) which is the
+    return value
+  refs:
+  - bn6f/asm/asm31.s:143470
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CF14 object_getPanelsInColumnIgnoreRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080FB7B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal misidentifies the return value when object_checkPanelParameters succeeds: the code
+    pops r0/r1 from the stack (which holds the flag value 1 or 6 and the stored row byte) and jumps to
+    loc_80FB80E, which returns r0. So on the fast path it returns the flag (1 or 6), not the row byte
+    at +0x13. Only the fallback path returns a row (low 3 bits of the selected entry). The name ''object_pickRandomPanelRowInColumn''
+    also misses the priority-check behavior; something like ''object_findPanelRowPreferStored'' or ''object_getPanelRowInColumn''
+    fits better.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What r5 points to and what the +0x16 flag means (chooses panel flag 1 vs 6, likely panel side or state)
+- Exact meanings of panel flags 1 and 6 in BN6 (e.g. normal vs broken/hole)
+- Which chip or object routine calls this and how r2/r3 encode column/masks
+- 'The proposal misidentifies the return value when object_checkPanelParameters succeeds: the code pops
+  r0/r1 from the stack (which holds the flag value 1 or 6 and the stored row byte) and jumps to loc_80FB80E,
+  which returns r0. So on the fast path it returns the flag (1 or 6), not the row byte at +0x13. Only
+  the fallback path returns a row (low 3 bits of the selected entry). The name ''object_pickRandomPanelRowInColumn''
+  also misses the priority-check behavior; something like ''object_findPanelRowPreferStored'' or ''object_getPanelRowInColumn''
+  fits better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB7B4 -> object_getPanelRowInColumn
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB7B4

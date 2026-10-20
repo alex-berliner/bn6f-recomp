@@ -1,0 +1,70 @@
+name: menu_yesNoPromptUpdate
+address: '0x08129454'
+kind: function
+status: probable
+summary: 'Per-frame update for a yes/no-style eStruct menu prompt, gated on IsScreenFadeActive: moves
+  the 3-state cursor (0↔1 left/right, 2 up/down with >>1 shift), shows the chosen option''s text via chatbox_runScript
+  from table 0x5C5D5D, and on A/B sets state bytes and fades the screen.'
+interface: (r0-r4 = scratch; r5 = menu state struct, r10 = toolkit) -> void; writes state bytes r5+0x01/0x02/0x03,
+  cursor r5+0x0D and mirror r5+0x21, eStruct jump offset, screen fade
+details: 'Reads pressed joypad from the toolkit. If the cursor byte (r5+0xD) differs from 2 it is moved
+  left/right (menu_moveCursorLeftRight_811FA0C, count 2 step 1) and mirrored to r5+0x21; if it equals
+  2 it is moved up/down as cursor>>1 (0 or 1, stored shifted back), and on change a byte from the table
+  0x5C5D5D (0x5D for entry 0, 0x5C for entry 2) is passed to chatbox_runScript_803FD9C_on_eTextScript201BA20
+  as the script index. On A (SOUND_MENU_SELECT): choice >1 sets r5+0x02 = 0x14 (leave via fade); choice
+  0 calls zeroFill_813D960 then eStruct200BC30_setJumpOffset00 with 8 (or 4 when cursor is 0), sets r5+0x01=8
+  and r5+0x02/0x03=0. On B (SOUND_EXIT_SUBMENU) it sets r5+0x02 = 0x18; all three paths call SetScreenFade(0xC,0x10).
+  Each frame it then runs entity_runAllUpdateHandlers and battle_updateEStructSprites, and ends with sub_812B288(0xD).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cursor up/down path indexes dword_8129528 (bytes 5D 5D 5C) and calls chatbox_runScript on eTextScript201BA20
+    — options carry text scripts; A press: SOUND_MENU_SELECT, then either r5+2=0x14 or zeroFill+eStruct200BC30_setJumpOffset00
+    with r5+1=8, both ending in SetScreenFade(0xC,0x10); B press: SOUND_EXIT_SUBMENU, r5+2=0x18, SetScreenFade(0xC,0x10)
+    — standard cancel-out; cursor stored at r5+0xD and mirrored at r5+0x21, with menu_moveCursorLeftRight/UpDown
+    helpers — a 2-item selector; tail calls entity_runAllUpdateHandlers and battle_updateEStructSprites
+    each frame, so this is an eStruct-driven object handler'
+  refs:
+  - bn6f/asm/asm33.s:12552
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x080465F8 battle_updateEStructSprites_80465F8
+  reproduce: python3 tools/asmcat.py 0x08129454
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by hyper/qwen3.8-flash: revise
+    — The code''s very first line is `bl IsScreenFadeActive` / `beq loc_8129514`, meaning input handling
+    (cursor move, A/B) only executes while a screen fade is active; without a fade the function falls
+    through to only entity/sprite updates and sub_812B288(0xD). The proposal omits this gate entirely,
+    calling it a plain ''per-frame update''. Additionally, the cursor has three states (0,1,2) with left/right
+    for 0↔1 and up/down for the 2↔0/2 pair, so ''two-choice'' understates the navigation topology; cursor==2
+    on A selects the ''leave'' branch (0x14), not a third yes/no option. The rest (joypad read, table
+    0x5C5D5D→chatbox_runScript, zeroFill/eStruct200BC30_setJumpOffset00, SetScreenFade(0xC,0x10) on all
+    three exits) matches the asm precisely.; run wf investigate investigate-20261018-145652; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- menus3
+open_questions:
+- which in-game prompt/screen this is (recorded route only says 'menus3')
+- what zeroFill_813D960 clears and what the eStruct jump offsets 8/4 select
+- what sub_812B288(0xD) does at the end of the frame
+- The code's very first line is `bl IsScreenFadeActive` / `beq loc_8129514`, meaning input handling (cursor
+  move, A/B) only executes while a screen fade is active; without a fade the function falls through to
+  only entity/sprite updates and sub_812B288(0xD). The proposal omits this gate entirely, calling it a
+  plain 'per-frame update'. Additionally, the cursor has three states (0,1,2) with left/right for 0↔1
+  and up/down for the 2↔0/2 pair, so 'two-choice' understates the navigation topology; cursor==2 on A
+  selects the 'leave' branch (0x14), not a third yes/no option. The rest (joypad read, table 0x5C5D5D→chatbox_runScript,
+  zeroFill/eStruct200BC30_setJumpOffset00, SetScreenFade(0xC,0x10) on all three exits) matches the asm
+  precisely.
+sources:
+- wf investigate investigate-20261018-145652
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129454 -> menu_yesNoPromptUpdate
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129454

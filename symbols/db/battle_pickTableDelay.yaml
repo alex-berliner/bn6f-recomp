@@ -1,0 +1,72 @@
+name: battle_pickTableDelay
+address: '0x080F5A58'
+kind: function
+status: probable
+summary: Helper that picks one of two word values (30,40,50,60 or 20,25,30,40) from an 8-byte battle table
+  via sub_800FE28 using a half-bit RNG index, then adds 30 if the calling object's flag word has bit 0xA000
+  set, returning the result.
+interface: (r0 = battle object) -> r0 = delay value (0x1E/0x28/0x32/0x3C, or +0x1E); flags clobbered
+details: Gets a positive RNG roll, masks bit 0 and scales by 4 to select one of two words in the 8-byte
+  table at byte_80F5A84 (words 0x1E28323C / 0x14193228, whose low/high bytes are 60/50/40/30 and 30/40/25/20),
+  then calls sub_800FE28 with that pointer to extract a value. It then reads the object's first flag word
+  via object_getFlag and, if flag 0xA000 is set, adds 0x1E (30) to the result before returning it. Given
+  the caller ai_decideAttackPattern uses this while switching between two boss attack routines, the returned
+  value is most plausibly a frame-count delay or interval for the chosen attack. The exact meaning of
+  the 0xA000 flag bits (likely a status such as blind/confusion on the object) is not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetPositiveSignedRNG; and r0,#1; lsl r0,#2 indexes two 4-byte entries of byte_80F5A84 (60/50/40/30-like
+    frame values); bl object_getFlag; tst r0,0xA000; add r4,#0x1E — flag-conditioned +30 frame extension;
+    sole caller ai_decideAttackPattern is the boss per-turn attack chooser switching between two attack
+    routines; table bytes 3C,32,28,1E / 28,1E,19,14 are all small frame-scale counts, consistent with
+    a delay/interval
+  refs:
+  - bn6f/asm/asm31.s:131657
+  - 0x080F594C ai_decideAttackPattern
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F5A58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code (getPositive RNG, mask bit 0, scale by 4 -> pointer into 8-byte table at byte_80F5A84,
+    call sub_800FE28, read object flag via object_getFlag, add 0x1E if bit 0xA000 set) matches the proposed
+    mechanic, so the summary is essentially correct. However the data words are 0x143C2819... wait, bytes
+    are 3C,32,28,1E,28,1E,19,14 -> as little-endian words 0x1E28323C and 0x14191E28; the model misread
+    them as 0x14193228 and 0x1E28323C. More importantly, the name prefix should be battle (since the table
+    is loaded from a battle-table at 0x80F5A84 likely a battle-state look-up) and the function lacks r0
+    context: no battle object is passed in (object_getFlag is called with r0=object from r4? actually
+    no - r0 holds the table lookup result then object_getFlag is called with no explicit arg, suggesting
+    it''s a global/self). The summary''s ''boss AI helper returning a delay'' is plausible but unconfirmed;
+    a safer name reflects the table-lookup + flag-add behavior.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_800FE28 does with the table pointer (byte vs word extract) is unverified
+- which status/behavior flag 0xA000 represents, and whether the value is a frame delay for the attack
+  or something else in the attack routine
+- 'The code (getPositive RNG, mask bit 0, scale by 4 -> pointer into 8-byte table at byte_80F5A84, call
+  sub_800FE28, read object flag via object_getFlag, add 0x1E if bit 0xA000 set) matches the proposed mechanic,
+  so the summary is essentially correct. However the data words are 0x143C2819... wait, bytes are 3C,32,28,1E,28,1E,19,14
+  -> as little-endian words 0x1E28323C and 0x14191E28; the model misread them as 0x14193228 and 0x1E28323C.
+  More importantly, the name prefix should be battle (since the table is loaded from a battle-table at
+  0x80F5A84 likely a battle-state look-up) and the function lacks r0 context: no battle object is passed
+  in (object_getFlag is called with r0=object from r4? actually no - r0 holds the table lookup result
+  then object_getFlag is called with no explicit arg, suggesting it''s a global/self). The summary''s
+  ''boss AI helper returning a delay'' is plausible but unconfirmed; a safer name reflects the table-lookup
+  + flag-add behavior.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5A58 -> battle_pickTableDelay
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5A58

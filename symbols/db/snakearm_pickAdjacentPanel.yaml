@@ -1,0 +1,60 @@
+name: snakearm_pickAdjacentPanel
+address: '0x08114AC4'
+kind: function
+status: probable
+summary: SnakeArm AI helper that picks one of the actor's horizontally adjacent panels (right, left) via
+  panelFlagCheck_8015D80, supplying an alliance-dependent param table that the callee does not consume.
+interface: (implicit r5 = battle object) -> r0 = panelFlagCheck_8015D80 result for the chosen relative
+  offset; flags from callee
+details: Reads the battle object's PanelX/PanelY from r5 and passes them with the object's panel coordinates
+  to GetAllianceDependentPanelParamArgs using table byte_8114C60, so the search behavior depends on the
+  object's alliance/team field. It then calls panelFlagCheck_8015D80 with the candidate list byte_8114AE8,
+  whose entries are relative offsets (1,0) and (-1,0) — i.e. one panel right and one panel left — terminated
+  by 0x7F. That callee transforms the relative offsets by the object's facing and picks a candidate panel
+  passing flag checks. Returns whatever panelFlagCheck_8015D80 yields (picked panel or failure). Only
+  known caller is snakearmAI_81149E0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0/[r5,#oBattleObject_PanelX], ldrb r1/[r5,#oBattleObject_PanelY] then bl GetAllianceDependentPanelParamArgs
+    with table byte_8114C60; bl panelFlagCheck_8015D80 with list byte_8114AE8 = (0x1,0x0),(0xFF,0x0),0x7F
+    terminator = relative +/-1 in x; only caller is snakearmAI_81149E0, placing it in the SnakeArm AI
+    routine set
+  refs:
+  - bn6f/asm/asm32.s:13409
+  - 0x081149E0 snakearmAI_81149E0
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08114AC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The offsets in byte_8114AE8 are (1,0), (-1,0), 0x7F — i.e., right then left, not random or facing-transformed
+    in any obvious way; panelFlagCheck_8015D80 applies facing via object_getEnemyDirection per the callee
+    description, so naming it ''pickAdjacentPanel'' is fine, but the alliance-dependent param args are
+    passed but not really used by this function (r0-r2 may end up unused by the second bl). Suggest a
+    tighter name reflecting just the panel pick. Only caller is snakearmAI_81149E0, matching ''snakearm''
+    prefix.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the alliance-dependent param word/args from byte_8114C60
+- which panel flag filter byte_8114AE8 encodes for panelFlagCheck_8015D80
+- how the return value is consumed by snakearmAI_81149E0
+- The offsets in byte_8114AE8 are (1,0), (-1,0), 0x7F — i.e., right then left, not random or facing-transformed
+  in any obvious way; panelFlagCheck_8015D80 applies facing via object_getEnemyDirection per the callee
+  description, so naming it 'pickAdjacentPanel' is fine, but the alliance-dependent param args are passed
+  but not really used by this function (r0-r2 may end up unused by the second bl). Suggest a tighter name
+  reflecting just the panel pick. Only caller is snakearmAI_81149E0, matching 'snakearm' prefix.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8114AC4 -> snakearm_pickAdjacentPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114AC4

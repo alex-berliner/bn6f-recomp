@@ -1,0 +1,55 @@
+name: sound_queueSfxWithVolume
+address: '0x0800060A'
+kind: function
+status: probable
+summary: Loads byte_2010B90 into r1 (substituting 0xFF when unset), sets r3 to a callback thunk (sound_8000822+1),
+  and tail-calls sound_8000808 to append the r0 SFX to the request queue at dword_200A490.
+interface: (r0 = sound/SSEQ id for sound_8000808, r1 = ignored, overwritten) -> none; r1 = clamped volume
+details: 'The function loads byte_2010B90; if it is nonzero it passes it as r1, otherwise it substitutes
+  0xFF (maximum), then tail-ends into the sound-request queue append sound_8000808 with r0 untouched from
+  the caller. byte_2010B90 thus behaves as a user/system volume or volume-multiplier setting that scales
+  every SFX played through this wrapper. The 0xFF fallback means an uninitialized (zero) volume still
+  plays sounds at full loudness. This is a thin wrapper: no other state is touched and no return value
+  is produced.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1, [byte_2010B90]; cmp #0; mov #0xff — volume byte with max fallback passed as r1; bl
+    sound_8000808 — known callee appends a 16-byte sound request to the queue at dword_200A490; r0 is
+    never modified, so the caller''s first argument is forwarded as the sound id to the queue append'
+  refs:
+  - bn6f/asm/asm00_0.s:88
+  - 0x08086CF4 dead_8086CF4
+  - 0x08086DBC sub_8086DBC
+  - 0x08086DF8 sub_8086DF8
+  - 0x08000808 sound_8000808
+  reproduce: python3 tools/asmcat.py 0x0800060A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x0800060A loads byte_2010B90 into r1, falls back to 0xFF if zero, then sets r3 to `sound_8000822+1`
+    (likely a callback/handler pointer), and tails into sound_8000808 with r0 untouched. The proposal''s
+    claim that it overwrites r1 in the caller (push {r1-r7,lr} restores the caller''s register anyway)
+    is wrong but harmless; the r3 setup matters. Otherwise the summary fits.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Whether byte_2010B90 is a master volume setting or a per-call override set by callers near 0x08086CF4
+- Exact meaning of r1 in the sound_8000808 request (volume vs. track/channel field)
+- The code at 0x0800060A loads byte_2010B90 into r1, falls back to 0xFF if zero, then sets r3 to `sound_8000822+1`
+  (likely a callback/handler pointer), and tails into sound_8000808 with r0 untouched. The proposal's
+  claim that it overwrites r1 in the caller (push {r1-r7,lr} restores the caller's register anyway) is
+  wrong but harmless; the r3 setup matters. Otherwise the summary fits.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800060A -> sound_queueSfxWithVolume
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800060A

@@ -1,0 +1,71 @@
+name: ai_initAttackSelection
+address: '0x080F2BEE'
+kind: function
+status: probable
+summary: 'AI routine that rolls RNG & 0xF and branches: if >=6 selects attack 0xC, else selects attack
+  0xB (probability 10/16 vs 6/16); both paths store AI difficulty tier, attack boost, cycle count, init
+  flag, call sub_80F2DDC(1 or 2), set duration, resolve opposing player via battle_findPlayer as target,
+  and call object_setAttack0; the 0xC path additionally stores a panel-callback (sub_80F3784+1) and r5+0x6C
+  in scratch fields, then clears AIState TurnCounter and ScriptId.'
+interface: (r0 = rng? unused, r5 = BattleObject*, r6 = AIState*, r7 = AIAttackVars*) -> r0 = 0; sets AIState_TurnCounter=0,
+  ScriptId=0
+details: 'Rolls the global RNG (value & 0xF) and branches: if >= 6 it prepares attack 0xB (calling sub_80F2D64/sub_80F2D50/sub_80F2D08
+  for boost, cycle count, and duration, plus sub_80F2DDC(1)); otherwise it prepares attack 0xC (sub_80F2D88/sub_80F2DAC/sub_80F2D2C,
+  sub_80F2DDC(2)) and additionally stores sub_80F3784 as a PanelChooseCallback and an object+0x6C pointer
+  in ScratchVar. Both paths store the AI difficulty tier (from battle_getAiDifficultyTier_800FE36), set
+  InitFlag=1, resolve the opposing side''s player object via battle_findPlayer(Alliance ^ 1) into TargetObjectPtr,
+  and finally select the attack with object_setAttack0(0xB or 0xC). It ends by clearing oAIState_TurnCounter
+  and oAIState_ScriptId on the AI state struct, resetting the AI''s turn/script state for the chosen attack.
+  This looks like a boss/enemy per-turn attack-choice initializer whose probability is 7/16 vs 9/16.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetPositiveSignedRNG; and r0,#0xf; cmp r0,#6; bge loc_80F2C32 — random pick between two
+    branches; both branches: bl object_setAttack0 with r0=0xB or r0=0xC — selects which attack the enemy
+    uses; str r0,[r7,#oAIAttackVars_TargetObjectPtr] after bl battle_findPlayer with Alliance^1 — targets
+    the opposing player; strb r0,[r7,#oAIAttackVars_InitFlag] and strh r0,[r7,#oAIAttackVars_AttackDuration]
+    — initializes AI attack-vars fields; tail: strb r0=0,[r6,#oAIState_TurnCounter]; strb r1=0,[r6,#oAIState_ScriptId]
+    — resets AI turn/script state'
+  refs:
+  - bn6f/asm/asm31.s:125436
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080F2BEE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described structure: RNG & 0xF, branch on >=6, sets AI difficulty tier, boost,
+    cycles, init flag, calls sub_80F2DDC, stores duration, finds opposing player, sets target, and ends
+    by clearing TurnCounter and ScriptId on r6. The callee list confirms sub_80F2D08 and sub_80F2D2C are
+    used. However, the summary overstates: sub_80F2DDC is called with arg 1 in the <6 path and arg 2 in
+    the >=6 path (matching sub_80F2DDC(1)/sub_80F2DDC(2)), but the route probability is 10/16 vs 6/16
+    since >=6 means values 6..15 (10 outcomes) and <6 means 0..5 (6 outcomes), not 7/16 vs 9/16. Also
+    note the off_80F2ECC loads sub_80F3784+1 (thumb+1), not sub_80F3784 directly, so calling it a PanelChooseCallback
+    storage is slightly off. Name is fine; better summary needed.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80F2DDC(1/2), sub_80F2D08/sub_80F2D2C, and the PanelChooseCallback sub_80F3784 do exactly
+- which boss/attack set this belongs to (attack IDs 0xB and 0xC of which enemy)
+- 'The code matches the described structure: RNG & 0xF, branch on >=6, sets AI difficulty tier, boost,
+  cycles, init flag, calls sub_80F2DDC, stores duration, finds opposing player, sets target, and ends
+  by clearing TurnCounter and ScriptId on r6. The callee list confirms sub_80F2D08 and sub_80F2D2C are
+  used. However, the summary overstates: sub_80F2DDC is called with arg 1 in the <6 path and arg 2 in
+  the >=6 path (matching sub_80F2DDC(1)/sub_80F2DDC(2)), but the route probability is 10/16 vs 6/16 since
+  >=6 means values 6..15 (10 outcomes) and <6 means 0..5 (6 outcomes), not 7/16 vs 9/16. Also note the
+  off_80F2ECC loads sub_80F3784+1 (thumb+1), not sub_80F3784 directly, so calling it a PanelChooseCallback
+  storage is slightly off. Name is fine; better summary needed.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F2BEE -> ai_initAttackSelection
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2BEE

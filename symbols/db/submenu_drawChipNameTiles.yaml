@@ -1,0 +1,75 @@
+name: submenu_drawChipNameTiles
+address: '0x0812626C'
+kind: function
+status: probable
+summary: 'Draws one custom-screen chip slot''s two BG tilemap strips: reads chip codes from a 4-byte/entry
+  table, blanking each 0x10-byte strip when the code is zero and clear-mode is set, otherwise decoding
+  chip-name glyphs via TextScriptChipNamesPtrs and text_decodeCharTiles8, with a secondary palette for
+  entries whose +2 byte > 1 and a Submenu-state reset on chip-encryption failure.'
+interface: '(r0 = entry index, r1 = entry-table base (4 bytes/entry: u16 chip code+id, u8 color flag at
+  +2), r2 = tilemap dest strip, r3 = palette A, r4 = palette B, r5 = (entryCount<<4 | clearMode)) -> writes
+  8 halfword tilemap entries per strip per entry; no return value'
+details: Each 4-byte entry is indexed at r1 + r0*4; the low halfword is the chip's packed code/id. If
+  it is zero and the low nibble of r5 is set, both 0x10-byte strips (8 tilemap halfwords each) are zeroed
+  to blank the slot; otherwise a default 'blank/unknown' char (table entry 0, char 4) or the real characters
+  are drawn. The chip halfword is passed through encryption_80070e6; a nonzero result makes the draw fall
+  back to the blank tile and zero the Submenu state (fields 0x58-0x68 and halfwords 0x12-0x3a, plus flag
+  |= 1 at +0x7c). Valid chips index TextScriptChipNamesPtrs by the high byte (<<2) and offset by the low
+  byte<<1 to get a char table, which text_decodeCharTiles8 decodes into both strips. Tilemap halfwords
+  are built as palette<<12 | 0x200 tile base, with the alternate palette r4 used when entry byte +2 exceeds
+  1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Caller 0x08125D10 battle_drawCustFolderSlots paints chip-slot strips with BG tile block 2, matching
+    the 0x200 tile base and palette<<12 halfword construction (lsl r3,#12 / orr 0x200).; ldrh r1,[r5]
+    then bl encryption_80070e6 with beq gating the normal decode path vs blank-tile fallback plus Submenu
+    field zeroing.; lsr r7,r1,#8 / ldr r0,[TextScriptChipNamesPtrs,r7,lsl 2] / ldrh r1,[r0,r1<<1] selects
+    the chip-code char table exactly like the known chip-name decoder.; bl text_decodeCharTiles8 writes
+    8 tilemap halfwords into r2 and r3, each advanced by 0x10 per entry (two strips).; byte [r5,#2] >
+    1 swaps the palette word from [sp] to [sp,#4], a per-entry color/highlight flag.
+  refs:
+  - bn6f/asm/asm33.s:6325
+  - 0x08125D10 battle_drawCustFolderSlots_8125D10
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  - 0x08125D94 sub_8125D94
+  - 0x081263D0 text_decodeCharTiles8_801263D0_81263D0
+  - 0x080070E6 encryption_80070e6
+  reproduce: python3 tools/asmcat.py 0x0812626C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The interface summary is mostly accurate: it reads entries from r1+r0*4, zeroing both strips when
+    the chip halfword is zero and the low nibble of r5 is set (loc_8126304 stores 16 bytes of zero into
+    each 0x10-byte strip), and otherwise either draws the ''?'' blank char (off_81263C4 + 4) when encryption_80070e6
+    returns nonzero (after clobbering Submenu fields 0x58-0x68, halfwords 0x12/0x1c/0x26/0x30/0x3a and
+    ORing +0x7c with 1) or decodes via text_decodeCharTiles8. The palette-switching on byte +2 > 1 (loc_81262E6)
+    is also correct. However the name ''battle_drawChipNameTiles'' overstates it: this is the submenu/custom-screen
+    chip-slot draw routine, not a battle-context one, so ''submenu_drawChipNameTiles'' fits better.; run
+    wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- maps
+- story2
+open_questions:
+- Exact meaning of encryption_80070e6's nonzero result (invalid/placeholder chip? restricted chip?) and
+  why it additionally clears SubmenuPtr fields 0x58-0x7c.
+- Semantic of the r5 low-nibble clearMode flag and of entry byte +2 (color variant vs new/used marker).
+- 'The interface summary is mostly accurate: it reads entries from r1+r0*4, zeroing both strips when the
+  chip halfword is zero and the low nibble of r5 is set (loc_8126304 stores 16 bytes of zero into each
+  0x10-byte strip), and otherwise either draws the ''?'' blank char (off_81263C4 + 4) when encryption_80070e6
+  returns nonzero (after clobbering Submenu fields 0x58-0x68, halfwords 0x12/0x1c/0x26/0x30/0x3a and ORing
+  +0x7c with 1) or decodes via text_decodeCharTiles8. The palette-switching on byte +2 > 1 (loc_81262E6)
+  is also correct. However the name ''battle_drawChipNameTiles'' overstates it: this is the submenu/custom-screen
+  chip-slot draw routine, not a battle-context one, so ''submenu_drawChipNameTiles'' fits better.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812626C -> submenu_drawChipNameTiles
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812626C

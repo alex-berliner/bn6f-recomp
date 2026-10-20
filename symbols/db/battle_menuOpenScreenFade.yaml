@@ -1,0 +1,67 @@
+name: battle_menuOpenScreenFade
+address: '0x08127264'
+kind: function
+status: probable
+summary: Only proceeds when chatbox flag bit 0x20 is SET (cutscene/chatbox context active); otherwise
+  returns 0. Builds a 2-bit mask from EVENT_F2/F7, resolves a target (non-default PET navi → 0xc; both
+  flags set with default navi → chatbox_GetState+1; else r7 as-is), calls SetScreenFade(12,12), and writes
+  8 or 0xc to [r5+2], returning 1.
+interface: (r5 = menu/task work struct; writes screen id to [r5+2]) -> r0 = 1 if a screen change was started,
+  0 if suppressed by chatbox flag 0x20; flags clobbered
+details: 'First gates on bit 0x20 of the chatbox/cutscene flag word (eFlags2009F38): if set, returns 0
+  without doing anything. Otherwise it builds a mask r7 from two event flags (EVENT_F2 -> bit1, EVENT_F7
+  -> bit2). If both are set, it checks GetCurPETNavi: a non-default navi goes straight to the 0xc path;
+  otherwise the target is chatbox_GetState()+1. In all cases it calls SetScreenFade(12,12) to fade out,
+  then stores 8 (when the resolved target is 1, i.e. only F2 set or chatbox state 0) or 0xc into the byte
+  at [r5+2] — evidently the ''next screen/state'' field of the caller''s work struct — and returns 1 to
+  tell the caller (the battle cursor dispatch handler) a state change is pending.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x20 gates the whole routine (loc_81272BE returns r4=0
+    when set); TestEventFlagFromImmediate on EVENT_F2 and EVENT_F7 builds r7 = 1|2 (loc_8127280..loc_812728E);
+    r7==3 path calls GetCurPETNavi and branches between the 0xc and chatbox-state-derived targets (loc_812728E..loc_81272A4);
+    SetScreenFade(0xc,0xc) is called on every taken path before the store, showing it is a screen transition;
+    strb r0,[r5,#2] with r0 = 8 or 0xc and r4=1 return matches the caller 'queues the next battle-object
+    command'
+  refs:
+  - bn6f/asm/asm33.s:8239
+  - 0x08126E10 battle_cursorMoveAndDispatchNext_8126E10
+  - 0x080010B6 GetCurPETNavi
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x08045F4C chatbox_GetState_8045F4C
+  reproduce: python3 tools/asmcat.py 0x08127264
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The gate on bit 0x20 is inverted in the proposal. The code does `mov r0, #0x20; bl chatbox_mask_eFlags2009F38;
+    beq loc_81272BE`—beq branches to the return-0 path when the masked result is zero, meaning the function
+    returns 0 when bit 0x20 is CLEAR (no chatbox active) and proceeds only when it is SET. Everything
+    else (EVENT_F2/F7 mask into r7, GetCurPETNavi default check, chatbox_GetState+1 fallback, SetScreenFade(12,12)
+    on all paths, storing 8 vs 0xc to [r5+2], r4=1 return) matches the asm exactly.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- menus3
+- story2
+open_questions:
+- Which screens the ids 8 and 0xc correspond to in the battle menu state machine
+- The meaning of event flags EVENT_F2 and EVENT_F7 (which menu unlocks or modes they represent)
+- The exact layout of the work struct r5 points to (field +2 and any other fields the caller consumes)
+- 'The gate on bit 0x20 is inverted in the proposal. The code does `mov r0, #0x20; bl chatbox_mask_eFlags2009F38;
+  beq loc_81272BE`—beq branches to the return-0 path when the masked result is zero, meaning the function
+  returns 0 when bit 0x20 is CLEAR (no chatbox active) and proceeds only when it is SET. Everything else
+  (EVENT_F2/F7 mask into r7, GetCurPETNavi default check, chatbox_GetState+1 fallback, SetScreenFade(12,12)
+  on all paths, storing 8 vs 0xc to [r5+2], r4=1 return) matches the asm exactly.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8127264 -> battle_menuOpenScreenFade
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8127264

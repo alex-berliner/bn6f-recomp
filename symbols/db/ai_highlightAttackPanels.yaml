@@ -1,0 +1,63 @@
+name: ai_highlightAttackPanels
+address: '0x080F82B0'
+kind: function
+status: probable
+summary: 'AI attack helper: highlights the target column as a 4-panel region, then walks the actor''s
+  row toward the target, highlighting each panel along the way until reaching the target column.'
+interface: (r0, r1 unused at entry; reads r5 = battle object, r7 = AI attack vars) -> none; flags from
+  loop compare
+details: First calls object_highlightPanelRegion on (r7->TargetPanelX, r5->PanelY, width 4). Then calls
+  object_getFrontDirection to get +1/-1 facing for the object's alliance/DirectionFlip. Loops r6 = 1..5,
+  highlighting panel (obj->PanelX + r6*dir, obj->PanelY) via object_highlightPanel, stopping early when
+  the computed X equals the target panel X at r7+oAIAttackVars_TargetPanelX. Effectively marks the panels
+  between the actor and its target (inclusive of the target column's region) as highlighted, likely as
+  the attack's area telegraph.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_highlightPanelRegion with (TargetPanelX, PanelY, #4) highlights the 4-wide target
+    region first; mov r4, r0 after bl object_getFrontDirection uses the +1/-1 facing as the step multiplier;
+    mul r1, r4 / add r0 = PanelX + r6*dir walks panel X toward the target each iteration; cmp r0, r7->TargetPanelX;
+    beq return stops the walk when the target column is reached; cmp r6, #6; blt loop caps the walk at
+    5 panels ahead'
+  refs:
+  - bn6f/asm/asm31.s:136813
+  - 0x080F7D34 sub_80F7D34
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080F82B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary states ''from the actor up to the target column, then the target region'', but the code
+    first calls object_highlightPanelRegion on the target column (line at 0x80F82B4-0x80F82C0), then loops
+    over the actor''s row toward the target. Also r0 and r1 are not unused — they hold TargetPanelX and
+    PanelY at entry for the first callee. The overall behavior matches (highlights target region plus
+    intermediate row panels), but the order is reversed in the summary.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact attack(s) this belongs to (routes battlesweep/beastsp/chips suggest an advancing sweep attack
+  but the caller sub_80F7D34 is unnamed)
+- whether the region highlight width 4 is centered or anchored at TargetPanelX
+- The summary states 'from the actor up to the target column, then the target region', but the code first
+  calls object_highlightPanelRegion on the target column (line at 0x80F82B4-0x80F82C0), then loops over
+  the actor's row toward the target. Also r0 and r1 are not unused — they hold TargetPanelX and PanelY
+  at entry for the first callee. The overall behavior matches (highlights target region plus intermediate
+  row panels), but the order is reversed in the summary.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F82B0 -> ai_highlightAttackPanels
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F82B0

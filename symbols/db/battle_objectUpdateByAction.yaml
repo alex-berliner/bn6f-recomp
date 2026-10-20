@@ -1,0 +1,59 @@
+name: battle_objectUpdateByAction
+address: '0x080C647C'
+kind: function
+status: probable
+summary: 'Per-frame update dispatcher for a battle object: jumps to the handler for its current action
+  via a 3-entry table, then calls object_updateSprite to advance its sprite animation.'
+interface: (r0 = unused, r5 = battle object ptr) -> r0 = from object_updateSprite; flags from callees
+details: 'Reads oBattleObject_CurAction from the battle object in r5 and jumps through a 3-entry table
+  at off_80C6494: entry 0 = object_landAndClaimPanel, entry 1 = battleObject_PlayHurtAnimAndSetAction8_80C6524,
+  entry 2 = battle_destroyObjectOnFrameFlag_80C6536. After the handler returns it unconditionally calls
+  object_updateSprite to tick the object''s animation. It is the update-state callback assigned by sub_80C6438,
+  which spawns the item pickup (sprite 0x80/0x0C/0x13, hop velocity, SFX 0xA1).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — action-indexed dispatch table;
+    table words: object_landAndClaimPanel+1, ...80C6524+1, battle_destroyObjectOnFrameFlag_80C6536+1;
+    bl object_updateSprite after dispatch — sprite tick always runs; caller sub_80C6438 sets up item pickup
+    and ''hands off to its update state'''
+  refs:
+  - bn6f/asm/asm31.s:30945
+  - 0x080C6438 sub_80C6438
+  - 0x0801BBAC object_updateSprite
+  reproduce: python3 tools/asmcat.py 0x080C647C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher read, table entries, and post-call object_updateSprite all match, and sub_80C6438
+    is indeed the spawner that wires this as the update callback. However, the ''+1'' in the table entries
+    is the standard ARM Thumb interwork trick (bx via low bit), not additional code, so all three entries
+    are just functions (panel-claim, hurt-anim, frame-flag destroy). The name ''battle_itemPickupUpdate''
+    is plausible but the function is generic — it dispatches by CurAction and is registered as the update
+    fn. A safer name is ''battle_objectUpdateByAction''.; run wf investigate investigate-20261018-182231;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+- menus2
+- menus3
+- story2
+open_questions:
+- whether entry 1's handler (hurt anim) is used for any pickup type or only traps-like variants
+- The dispatcher read, table entries, and post-call object_updateSprite all match, and sub_80C6438 is
+  indeed the spawner that wires this as the update callback. However, the '+1' in the table entries is
+  the standard ARM Thumb interwork trick (bx via low bit), not additional code, so all three entries are
+  just functions (panel-claim, hurt-anim, frame-flag destroy). The name 'battle_itemPickupUpdate' is plausible
+  but the function is generic — it dispatches by CurAction and is registered as the update fn. A safer
+  name is 'battle_objectUpdateByAction'.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C647C -> battle_objectUpdateByAction
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C647C

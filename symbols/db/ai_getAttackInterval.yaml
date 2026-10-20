@@ -1,0 +1,58 @@
+name: ai_getAttackInterval
+address: '0x080FEABC'
+kind: function
+status: probable
+summary: Returns an attack interval halfword (180/240/300/360) from a table indexed by AI difficulty tier.
+interface: (r0 = unused) -> r0 = interval halfword from table [180,240,300,360]; flags from the ldrh
+details: Calls battle_getAiDifficultyTier_800FE36 to read the enemy AI data's difficulty byte (tier 0-2
+  for AI version 4), doubles the tier as a halfword index, and loads a 16-bit value from byte_80FEAD0.
+  The table contains 0xB4=180, 0xF0=240, 0x12C=300, 0x168=360, values that look like frame durations increasing
+  with difficulty (though difficulty rising giving shorter waits would suggest the caller subtracts or
+  the ordering needs checking). Its only caller, ai_circusmanInitAttackState (0x080FEB9E), fills attack
+  parameters after picking the player as target, so this value is presumably the wait time before or duration
+  of attack id 0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 then lsl r0,#1 + ldrh [r1,r0] selects a halfword by tier;
+    byte_80FEAD0 holds 180/240/300/360, plausible frame-timer values scaling with difficulty; sole caller
+    ai_circusmanInitAttackState uses it while initializing CircusMan's attack state and launching attack
+    0xC
+  refs:
+  - bn6f/asm/asm31.s:150099
+  - 0x080FEB9E ai_circusmanInitAttackState
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  reproduce: python3 tools/asmcat.py 0x080FEABC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly shows `lsl r0,r0,#1` then `ldrh r0,[r1,r0]`, confirming a halfword table indexed by
+    tier*2 with values {0xB4=180, 0xF0=240, 0x12C=300, 0x168=360}, and the only caller is ai_circusmanInitAttackState
+    at 0x080FEB9E. The name and summary are essentially correct, but the prefix ''ai_circusman'' encodes
+    both subsystem and enemy name; the prescribed prefix is just ''ai'', so the name should drop ''circusman''.
+    The detail about ''faster difficulty = shorter wait needs checking'' is speculative and not settled
+    by the code.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact use in ai_circusmanInitAttackState (countdown before attack vs. attack duration)
+- whether tier can be 3, since the table has four entries but the callee is documented as returning 0-2
+- whether difficulty maps to longer or shorter waits in the caller's arithmetic
+- The assembly shows `lsl r0,r0,#1` then `ldrh r0,[r1,r0]`, confirming a halfword table indexed by tier*2
+  with values {0xB4=180, 0xF0=240, 0x12C=300, 0x168=360}, and the only caller is ai_circusmanInitAttackState
+  at 0x080FEB9E. The name and summary are essentially correct, but the prefix 'ai_circusman' encodes both
+  subsystem and enemy name; the prescribed prefix is just 'ai', so the name should drop 'circusman'. The
+  detail about 'faster difficulty = shorter wait needs checking' is speculative and not settled by the
+  code.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FEABC -> ai_getAttackInterval
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FEABC

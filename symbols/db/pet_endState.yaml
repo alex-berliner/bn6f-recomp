@@ -1,0 +1,63 @@
+name: pet_endState
+address: '0x0809AAB8'
+kind: function
+status: probable
+summary: 'Generic end-of-state cleanup: clears the PET effect, runs two sub_ helpers, reloads text script
+  index 0xA via chatbox_runScript, re-initializes battle-overlay scene records, and clears a flag at [r5+8].'
+interface: (r5 = state struct ptr from caller) -> void; no return value
+details: Queues PET effect index 0 into the eS2011E30 state block via doPETEffect_8033fc0 (effect 0 triggers
+  no sound, only writes the index and clears the pending flag), then calls two unknown helpers sub_8003984/sub_8003AD4.
+  It reloads the chatbox with script index 0xA from the TextScriptArchive at 0x2033404, so the player's
+  textbox returns to a default script. It then re-initializes the battle-overlay scene record array (eStructArr2008450)
+  via battle_resetEStructRecords_8046664, clearing leftover scene ticks. Finally it stores 0 to byte [r5+8]
+  of a caller-provided struct, evidently a mode/active flag that marks the state as ended. The whole sequence
+  reads like the teardown of a transformation or overlay mode rather than a normal scene exit.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0; bl doPETEffect_8033fc0 — queues effect index 0, i.e. cancels/reverts the current
+    PET effect; ldr r0,=eTextScript2033404; mov r1,#0xa; bl chatbox_runScript — restores chatbox text
+    from archive entry 10; bl battle_resetEStructRecords_8046664 — re-inits the battle-overlay eStruct
+    record array; strb r0,[r5,#8] with r0=0 — clears a state byte in a caller-supplied struct, ending
+    the mode; recorded route 'beastsp' — runs in a Beast+ related route, consistent with transformation
+    teardown
+  refs:
+  - bn6f/asm/asm28_0.s:2336
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x08040384 chatbox_runScript
+  - 0x08033FC0 doPETEffect_8033fc0
+  reproduce: python3 tools/asmcat.py 0x0809AAB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does exactly what the summary claims (PET effect 0, the two unknowns, chatbox_runScript
+    with index 0xA, battle_resetEStructRecords_8046664, then strb 0 into [r5+8]). However, the proposed
+    name ''pet_endBeastOut'' is misleading: the function clears PET effect 0, which is the default/clearing
+    PET effect, not specifically Beast Out cleanup. Beast Out in MMBN6 is handled separately, and this
+    routine is more of a generic state-end/PET-clear teardown. A more fitting prefix is ''pet'' but the
+    name should reflect generic end-of-state cleanup rather than Beast Out specifically.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Unknown what sub_8003984 and sub_8003AD4 do; they may confirm or refute the Beast Out teardown reading
+- Which struct r5 points to (its base and what field +8 means) must come from a caller
+- What script index 0xA in the 0x2033404 archive says would confirm the restore context
+- 'The code does exactly what the summary claims (PET effect 0, the two unknowns, chatbox_runScript with
+  index 0xA, battle_resetEStructRecords_8046664, then strb 0 into [r5+8]). However, the proposed name
+  ''pet_endBeastOut'' is misleading: the function clears PET effect 0, which is the default/clearing PET
+  effect, not specifically Beast Out cleanup. Beast Out in MMBN6 is handled separately, and this routine
+  is more of a generic state-end/PET-clear teardown. A more fitting prefix is ''pet'' but the name should
+  reflect generic end-of-state cleanup rather than Beast Out specifically.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809AAB8 -> pet_endState
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809AAB8

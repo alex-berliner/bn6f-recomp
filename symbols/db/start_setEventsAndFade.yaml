@@ -1,0 +1,66 @@
+name: start_setEventsAndFade
+address: '0x08005A28'
+kind: function
+status: probable
+summary: GameState one-shot handler that sets EVENT_1703 and EVENT_1738, triggers a screen fade via SetScreenFade(0xc,0x10),
+  ticks the countdown-timer table, writes 0x3c to FrameCountdown, and sets byte 0x10 into SubsystemIndex
+  to hand off to another subsystem.
+interface: (r5 = * GameState) -> void; sets EVENT_1703 and EVENT_1738, starts fade, reprograms r5.FrameCountdown
+  and r5.SubsystemIndex
+details: 'This is a GameState state routine (r5 = GameState as noted in the header). It first sets two
+  event/story flags via SetEventFlagFromImmediate (EVENT_1703 and EVENT_1738), then calls SetScreenFade(0xc,
+  0x10) to begin a screen fade, and ticks the 32-entry countdown-timer table. It stores 0x3c (60 frames)
+  into GameState.FrameCountdown as a delay, then writes 0x10 into GameState.SubsystemIndex, which per
+  the existing comment triggers overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC
+  on a later frame. Net effect: a one-shot transition state that records story progress, fades the screen,
+  and hands control to the overworld after a one-second delay.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two movflag immediates followed by bl SetEventFlagFromImmediate set story flags EVENT_1703 and
+    EVENT_1738; bl SetScreenFade with r0=0xc, r1=0x10 starts a screen fade; bl timer_tickCountdownTable_8035738
+    ticks the countdown-timer table; str r0(0x3c), [r5,#oGameState_FrameCountdown] arms a 60-frame delay;
+    strb 0x10, [r5,#oGameState_SubsystemIndex] selects subsystem 0x10 (overworld per the cbGameState_80050EC
+    comment)
+  refs:
+  - bn6f/asm/asm00_1.s:5490
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08035738 timer_tickCountdownTable_8035738
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08005A28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm does set EVENT_1703/EVENT_1738, call SetScreenFade(0xc,0x10), tick the timer table, store
+    0x3c to FrameCountdown, and write 0x10 to SubsystemIndex — so the behavioral summary is accurate.
+    However, there are no known callers (Callers: none known) in build-snapshots, so calling this ''start_fadeToOverworld''
+    overstates its role; it is a one-shot GameState handler. The SubsystemIndex=0x10 write (strb, byte)
+    sets a flag rather than fully reprogramming it, and the cbGameState_80050EC trampoline claim is speculative
+    beyond what the code shows. A more neutral name reflecting its event-flag-setting + fade nature fits
+    better.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No callers are known, so which scripted sequence/state dispatch table invokes this state (beastsp route
+  only) is unknown
+- The exact meaning of EVENT_1703/EVENT_1738 and of fade parameters (0xc, 0x10) is not confirmed from
+  this snippet
+- 'The asm does set EVENT_1703/EVENT_1738, call SetScreenFade(0xc,0x10), tick the timer table, store 0x3c
+  to FrameCountdown, and write 0x10 to SubsystemIndex — so the behavioral summary is accurate. However,
+  there are no known callers (Callers: none known) in build-snapshots, so calling this ''start_fadeToOverworld''
+  overstates its role; it is a one-shot GameState handler. The SubsystemIndex=0x10 write (strb, byte)
+  sets a flag rather than fully reprogramming it, and the cbGameState_80050EC trampoline claim is speculative
+  beyond what the code shows. A more neutral name reflecting its event-flag-setting + fade nature fits
+  better.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005A28 -> start_setEventsAndFade
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005A28

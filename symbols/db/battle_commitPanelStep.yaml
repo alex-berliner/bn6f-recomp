@@ -1,0 +1,65 @@
+name: battle_commitPanelStep
+address: '0x080F7CF0'
+kind: function
+status: probable
+summary: 'Once-per-N-frames panel commit: when the step timer in r7 reaches 0, set curAnim=3 on the object
+  in r5, move FuturePanelX/Y into PanelX/Y, call object_removePanelReserve, object_setCoordinatesFromPanels,
+  and object_updateCollisionPanels, then reset the timer and write 8 to the HitElement field.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> void; no meaningful return, flags not used
+details: 'Decrement oAIAttackVars_StepTimer; while it is still positive, just return (a once-per-N-frames
+  ticker). When it reaches zero: set oBattleObject_CurAnim to 3 (walking/step animation), copy oBattleObject_FuturePanelX/Y
+  into PanelX/PanelY, then call object_removePanelReserve to clear the reservation, object_setCoordinatesFromPanels
+  to recompute pixel position from the new grid coords, and object_updateCollisionPanels to sync the collision
+  record and facing. Finally reset oAIAttackVars_StepTimer to 8 (next step begins after 8 frames) and
+  store 8 into the field labeled oAIAttackVars_HitElement, which is clearly being reused here as a second
+  counter/phase value rather than an element id.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1; bgt locret — frame-countdown gate for the
+    whole body; strb FuturePanelX/Y -> PanelX/PanelY followed by removePanelReserve/setCoordinatesFromPanels/updateCollisionPanels
+    — classic commit-reserved-move sequence; mov r0,#3; strb [r5,#oBattleObject_CurAnim] — switches the
+    object to a fixed animation on commit; mov r0,#8; strh [r7,#oAIAttackVars_StepTimer] — reloads the
+    same timer it decrements, so it fires every 8 frames; Callees' known summaries (removePanelReserve,
+    setCoordinatesFromPanels, updateCollisionPanels) exactly match a move-commit step
+  refs:
+  - bn6f/asm/asm31.s:136001
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F7CF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately matches the decrement/bgt branch, the curAnim=3, the future->current panel
+    copy, and the three callees and reset to 8. However, the final strh to oAIAttackVars_HitElement writing
+    8 is a second counter write, and reusing that field without evidence is speculative; it is also odd
+    that HitElement holds an integer 8 rather than an element id. The behavior described is general-purpose
+    panel commit/step and is not inherently an ''AI attack'' step—the callers are unknown and the function
+    only touches oAIAttackVars because that is the struct passed in r7. A more neutral name is warranted.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- No caller captured, so which AI attack/movement state machine owns r7 (oAIAttackVars) and what the 8
+  written into the HitElement-offset field means is unconfirmed
+- The summary accurately matches the decrement/bgt branch, the curAnim=3, the future->current panel copy,
+  and the three callees and reset to 8. However, the final strh to oAIAttackVars_HitElement writing 8
+  is a second counter write, and reusing that field without evidence is speculative; it is also odd that
+  HitElement holds an integer 8 rather than an element id. The behavior described is general-purpose panel
+  commit/step and is not inherently an 'AI attack' step—the callers are unknown and the function only
+  touches oAIAttackVars because that is the struct passed in r7. A more neutral name is warranted.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7CF0 -> battle_commitPanelStep
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7CF0

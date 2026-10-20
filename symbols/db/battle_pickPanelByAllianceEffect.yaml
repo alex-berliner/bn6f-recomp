@@ -1,0 +1,65 @@
+name: battle_pickPanelByAllianceEffect
+address: '0x08110000'
+kind: function
+status: probable
+summary: Wrapper that resolves an alliance-dependent panel-effect parameter set via GetAllianceDependentPanelParamArgs
+  and then tail-calls sub_8015C94 to pick a random panel index from the filtered panel list.
+interface: (r0 = battle object/panel context, r1 = ?) -> r0 = result of sub_8015C94 (picked panel); flags
+  from callee
+details: 'The function loads a pointer (byte_81100A0) that is passed as data to GetAllianceDependentPanelParamArgs,
+  which reads an 8-byte entry from a panel-effect parameter table indexed by the battle object''s alliance
+  field and leaves the param word and an args pointer available (presumably in registers/globals) for
+  the next call. It then tail-calls into the unfiltered random panel picker sub_8015C94, which picks a
+  panel (x = low 3 bits, y = high nibble) from the panel list and, using the prepared args, applies the
+  panel change. Since nothing is done with the return value, this is effectively a wrapper: parameter
+  setup + one random-panel panel-state change. The alliance-dependent table suggests the effect''s panel
+  type or strength differs for player and enemy side, matching scripted battle effects that alter the
+  field per team.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: push/ldr r3, off_8110288 then bl GetAllianceDependentPanelParamArgs sets up table lookup by
+    alliance before any effect (asm lines 2-3); immediately after, bl sub_8015C94 — the known random panel
+    picker — so the only action besides param setup is picking a random panel (asm line 4); result of
+    sub_8015C94 is not used; pop {r4-r7,pc} right after, confirming pure wrapper behavior (asm line 5);
+    caller sub_810FF68 and recorded route 'battlesweep' place it inside battle script/effect dispatch;
+    alliance-indexed panel param table matches per-team field-alteration effects seen in battle scripts
+  refs:
+  - bn6f/asm/asm32.s:4528
+  - 0x0810FF68 sub_810FF68
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015C94 sub_8015C94
+  reproduce: python3 tools/asmcat.py 0x08110000
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the structure: loads table pointer, calls GetAllianceDependentPanelParamArgs,
+    then tail-calls sub_8015C94. However, ''battle_randomPanelEffect'' is misleading because sub_8015C94
+    does not apply any panel-state change here; it merely picks a panel index from a filtered list. The
+    function is a wrapper that prepares alliance-dependent panel-effect args and returns a randomly chosen
+    panel id. A better name reflects the role of selecting a panel based on alliance-dependent effect
+    parameters.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8015C94 actually writes to the picked panel (it consumes the args implicitly, so the concrete
+  panel type applied is inferred, not read)
+- what byte_81100A0's table contains per alliance entry
+- which battle script opcode or chip triggers sub_810FF68
+- 'The proposal correctly identifies the structure: loads table pointer, calls GetAllianceDependentPanelParamArgs,
+  then tail-calls sub_8015C94. However, ''battle_randomPanelEffect'' is misleading because sub_8015C94
+  does not apply any panel-state change here; it merely picks a panel index from a filtered list. The
+  function is a wrapper that prepares alliance-dependent panel-effect args and returns a randomly chosen
+  panel id. A better name reflects the role of selecting a panel based on alliance-dependent effect parameters.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8110000 -> battle_pickPanelByAllianceEffect
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110000

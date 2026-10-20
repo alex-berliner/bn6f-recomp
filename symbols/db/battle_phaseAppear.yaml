@@ -1,0 +1,64 @@
+name: battle_phaseAppear
+address: '0x080CC36C'
+kind: function
+status: probable
+summary: Battle-object phase that snaps the object to its FuturePanel at Z16=0x28 with no shadow and CurAnim=3,
+  plays a ~31-frame appear sequence (switching to CurAnim=0 at frame 25), then ends the action.
+interface: (r0 = battle object pointer, r5 must also hold it) -> r0 = clobbered; sets PhaseInitialized=4,
+  PanelX/Y from FuturePanel, Z=40, CurAnim, Timer, and clears CurAction/CurPhase on expiry
+details: On first entry (PhaseInitialized==0) it latches the object's FuturePanelX/Y into its active PanelX/Y,
+  recomputes pixel coordinates, sets Z16=0x28 (40px, airborne), syncs collision panels/facing, sets CurAnim=3,
+  marks the sprite shadow-less, and loads Timer=0x1E. On subsequent frames it only decrements Timer; at
+  0x19 (25) it switches CurAnim to 0, and once the timer underflows it clears CurAction and CurPhaseAndPhaseInitialized,
+  returning the object to idle. The noShadow + height-40 combination suggests the object flies/drops in
+  rather than walking onto the panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: copies FuturePanelX/Y into PanelX/Y then calls object_setCoordinatesFromPanels (first-entry
+    block); strh 0x28 into Z16 plus bl sprite_noShadow shows an airborne, shadow-less entry; Timer=0x1E
+    with a mid-count anim swap at 0x19 and end-of-phase clear at underflow; clears CurAction and CurPhaseAndPhaseInitialized
+    to 0 when the timer expires, typical phase-handler epilogue; callees object_setCoordinatesFromPanels/object_updateCollisionPanels
+    confirm it is a battle-object placement step
+  refs:
+  - bn6f/asm/asm31.s:43783
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080CC36C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior: it latches FuturePanel into PanelX/Y, sets Z16=0x28, calls
+    sprite_noShadow, sets CurAnim=3, Timer=0x1E, decrements Timer each tick, switches CurAnim to 0 at
+    0x19, and clears CurAction/CurPhaseAndPhaseInitialized on underflow. However, Z=40 + noShadow + short
+    fixed-timer appearance also fits a generic ''appear'' phase; the summary''s ''drops in from air''
+    is speculative since there''s no motion/animation interpolation in this routine. The name ''battle_phaseDropIntoPanel''
+    overstates that this function handles descent. A more accurate name reflecting the actual role is
+    ''battle_phaseAppear''.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- no caller is known, so which object/enemy uses this phase and what anim 3 depicts (fly-in vs warp-in)
+  is unconfirmed
+- the meaning of Z=40 vs other spawn heights could pin down the exact movement style
+- 'The code matches the proposed behavior: it latches FuturePanel into PanelX/Y, sets Z16=0x28, calls
+  sprite_noShadow, sets CurAnim=3, Timer=0x1E, decrements Timer each tick, switches CurAnim to 0 at 0x19,
+  and clears CurAction/CurPhaseAndPhaseInitialized on underflow. However, Z=40 + noShadow + short fixed-timer
+  appearance also fits a generic ''appear'' phase; the summary''s ''drops in from air'' is speculative
+  since there''s no motion/animation interpolation in this routine. The name ''battle_phaseDropIntoPanel''
+  overstates that this function handles descent. A more accurate name reflecting the actual role is ''battle_phaseAppear''.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC36C -> battle_phaseAppear
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC36C

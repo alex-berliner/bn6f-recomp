@@ -1,0 +1,59 @@
+name: battle_updateChipPanelAttackObject
+address: '0x080D79AC'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle-object chip attack: on Timer2==8 spawns a type-2 collision region
+  and calls sub_801BD3C (damage 0x32, flag 0x10, alliance^DirectionFlip); on Timer2==0x14 plays sound
+  0x185; highlights panels on 7-of-8 frames via Timer bit-3 skip; sets phase to 0xC when Timer2 goes negative.'
+interface: (r5 = battle object ptr, no args) -> void; sets oBattleObject_CurPhaseAndPhaseInitialized to
+  0xC when the countdown expires
+details: Runs off the object's oBattleObject_Timer2 countdown. On tick 8 it spawns a collision region
+  (type 2) on the object's own panel and calls sub_801BD3C with the panel X/Y, damage 0x32 (50), flag
+  0x10, and alliance XORed with DirectionFlip — i.e. it strikes panels on the opposite side of the field.
+  On tick 0x14 (20) it plays sound effect 0x85. Each tick it decrements Timer2, and once it goes negative
+  sets the object's phase field to 0xC (teardown). Additionally, every 8 frames (Timer bit 3) it calls
+  highlightPanelIfSomeCondition_8109660 with mode 0x10 to flash the affected panels.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tick 8: object_spawnCollisionRegion(r0=PanelX, r1=PanelY, r2=2, r6 from DamageAndStaminaDamageCounterDisabler,
+    r3=0); tick 8: sub_801BD3C(x, y, r2=0x32, r3=0x10, r4=Alliance^DirectionFlip, r7=0) — 50 damage aimed
+    across the field; tick 0x14: PlaySoundEffect(0x85) (mov #0x86; add #0xff); Timer2 decrement, bge skip;
+    negative -> strh #0xc, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]; Timer lsr #3 carry-gated call
+    to highlightPanelIfSomeCondition_8109660(x, y, 0x10, 0) — periodic panel highlight'
+  refs:
+  - bn6f/asm/asm31.s:67878
+  - 0x080005CC PlaySoundEffect
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  reproduce: python3 tools/asmcat.py 0x080D79AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Sound ID is wrong: code does mov r0,#0x86; add r0,#0xff yielding 0x185, not 0x85. Highlight timing
+    is also misstated: the bcs at loc_80D79FA (bit 3 of Timer) SKIPS the highlight call, so it runs 7
+    of 8 frames, not ''every 8 frames.'' The rest—collision spawn type 2, sub_801BD3C with damage 0x32/flag
+    0x10/alliance^DirectionFlip, Timer2→0xC teardown, interface via r5—all match the asm. Name and overall
+    structure are fine.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- chips
+open_questions:
+- which chip/spawner creates this object (no caller known), so the exact chip identity is unconfirmed
+- meaning of the constant 2 passed to object_spawnCollisionRegion and 0x10 to sub_801BD3C/highlightPanelIfSomeCondition
+- 'Sound ID is wrong: code does mov r0,#0x86; add r0,#0xff yielding 0x185, not 0x85. Highlight timing
+  is also misstated: the bcs at loc_80D79FA (bit 3 of Timer) SKIPS the highlight call, so it runs 7 of
+  8 frames, not ''every 8 frames.'' The rest—collision spawn type 2, sub_801BD3C with damage 0x32/flag
+  0x10/alliance^DirectionFlip, Timer2→0xC teardown, interface via r5—all match the asm. Name and overall
+  structure are fine.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D79AC -> battle_updateChipPanelAttackObject
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D79AC

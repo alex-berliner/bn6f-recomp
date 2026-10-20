@@ -1,0 +1,78 @@
+name: object_orHighCollisionFlagsForMaskedEntities
+address: '0x03007978'
+kind: function
+status: probable
+summary: Reads a 32-bit entity mask from unk_2034F60 indexed by (r0,r1), walks CollisionData array in
+  0xA8 strides shifting the mask left; for each set bit, ORs (SelfCollisionTypeFlags & 0xFFFF0000) into
+  r0; exits when the mask shifts to zero.
+interface: (r0 = word index (0..7) within a 32-byte entry of unk_2034F60, r1 = entry index) -> r0 = OR
+  of (oCollisionData_SelfCollisionTypeFlags >> 16) over all flagged entities; clobbers r1-r3, no flags
+  meaningful.
+details: 'The address (r0 + r1*8)*4 selects one 32-bit mask word from an 8-words-per-entry table at unk_2034F60.
+  It then walks the toolkit''s collision-data array (r10->CollisionDataPtr) in 0xA8-byte strides, shifting
+  the mask left one bit per entity and testing the carry flag: set bit means include that entity. Included
+  entities contribute only the upper 16 bits of oCollisionData_SelfCollisionTypeFlags (lsr 16 / lsl 16),
+  which are OR-accumulated into r0. The loop runs until the remaining mask is zero, so trailing zero bits
+  end the scan early. The result is a combined collision-type field for a group of entities, presumably
+  consumed to derive the effective panel state at a tile. Called twice by _object_updatePanelParameters,
+  likely once per side or per word of the entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r1,#3 / add r0 / lsl r0,#2 / ldr r2,[r0,r1] loads mask word from unk_2034F60 at word r0
+    of entry r1; mov r1,r10; ldr r1,[r1,#oToolkit_CollisionDataPtr] and stride add r1,#0xa8 iterate per-entity
+    collision records; lsl r2,#1 / bcs tests one bitmask bit per collision entry, terminating when r2
+    becomes 0 (beq locret); lsr/lsl #0x10 around SelfCollisionTypeFlags keeps only the high halfword,
+    OR''d into r0; sole callers 0x030078E0/0x03007904 _object_updatePanelParameters fit panel-state recomputation
+    from occupant flags'
+  refs:
+  - bn6f/asm/asm38.s:4337
+  - 0x030078E0 _object_updatePanelParameters
+  - 0x03007904 _object_updatePanelParameters
+  reproduce: python3 tools/asmcat.py 0x03007978
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The beq at locret_300799C exits when the shifted mask r2 equals zero (all bits shifted out), not
+    when a trailing zero is encountered — the scan always runs to the highest set bit. The lsl/lsl isolation
+    of upper 16 bits and OR accumulation are correct. The ''8 words per entry'' claim for unk_2034F60
+    is speculation; the address calc is (r0+r1*8)*4 bytes selecting one 32-bit word, but entry layout
+    isn''t established.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of unk_2034F60 entries (occupant bitmask per tile vs. per-side list)
+- semantic of the high halfword of SelfCollisionTypeFlags vs. the low halfword ignored here
+- which word index each of the two call sites passes and why two are needed
+- The beq at locret_300799C exits when the shifted mask r2 equals zero (all bits shifted out), not when
+  a trailing zero is encountered — the scan always runs to the highest set bit. The lsl/lsl isolation
+  of upper 16 bits and OR accumulation are correct. The '8 words per entry' claim for unk_2034F60 is speculation;
+  the address calc is (r0+r1*8)*4 bytes selecting one 32-bit word, but entry layout isn't established.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3007978 -> object_orHighCollisionFlagsForMaskedEntities
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3007978

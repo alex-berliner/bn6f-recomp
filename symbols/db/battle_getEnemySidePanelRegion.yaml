@@ -1,0 +1,58 @@
+name: battle_getEnemySidePanelRegion
+address: '0x08111D06'
+kind: function
+status: probable
+summary: Reads the battle object's Alliance, XORs it with 1 to get the opposing alliance, then fetches
+  the panel-effect param/args for index (enemyAlliance+3), selector 2. Finally calls object_getPanelRegion
+  with enemyAlliance and r4=0x21, returning the matching panel region for the enemy side.
+interface: (r5 = battle object) -> r0 = result of object_getPanelRegion; clobbers r4, r6, r7
+details: Reads the battle object's Alliance field, computes the opposing alliance as (alliance ^ 1), and
+  calls GetAllianceDependentPanelParamArgs with index (enemyAlliance + 3) and param selector 2 to fetch
+  that team's panel-effect entry and args pointer. It then calls object_getPanelRegion with r6 = enemyAlliance
+  and r4 = 0x21, presumably creating/updating a panel region of that type on the enemy's half of the battlefield.
+  The odd convention of taking the battle object in r5 means the caller must set r5 before calling. The
+  +3 offset and the XOR-1 alliance mirror other alliance-table lookups in the battle system.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; add r0,#3 — selects the parameter-table entry
+    for the opposing team; bl GetAllianceDependentPanelParamArgs with r1=2 fetches an alliance-indexed
+    panel-effect param and args pointer; ldrb r6,[r5,#oBattleObject_Alliance]; eor r6,#1; mov r4,#0x21;
+    bl object_getPanelRegion — applies region type 0x21 to the enemy side; No other game state is touched;
+    the function is purely a two-call wrapper over the alliance field
+  refs:
+  - bn6f/asm/asm32.s:7995
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800D3FE object_getPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08111D06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal: it loads Alliance (ldrb r0,[r5,...]), XORs with 1, adds 3, and calls
+    GetAllianceDependentPanelParamArgs with r1=2. It then moves enemyAlliance into r6, sets r4=0x21, and
+    calls object_getPanelRegion. However, the summary says ''applies... to the opposing team''s side'',
+    but object_getPanelRegion is a getter, not an applier — the function only queries an existing panel
+    region rather than creating/updating one. Name should reflect a query, not an apply.; run wf investigate
+    investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of panel region type 0x21 (which tile state/attack it corresponds to) and what callers
+  passing r5 use this for — knowing the caller would pin the gameplay effect
+- 'The code confirms the proposal: it loads Alliance (ldrb r0,[r5,...]), XORs with 1, adds 3, and calls
+  GetAllianceDependentPanelParamArgs with r1=2. It then moves enemyAlliance into r6, sets r4=0x21, and
+  calls object_getPanelRegion. However, the summary says ''applies... to the opposing team''s side'',
+  but object_getPanelRegion is a getter, not an applier — the function only queries an existing panel
+  region rather than creating/updating one. Name should reflect a query, not an apply.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111D06 -> battle_getEnemySidePanelRegion
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111D06

@@ -1,0 +1,69 @@
+name: object_syncAppearanceFromRelatedAndDispatchAction
+address: '0x080C0FE8'
+kind: function
+status: probable
+summary: Copies sprite appearance (color shader, palette, render info, facing, alpha/mosaic) from RelatedObject1Ptr
+  onto the object, with a hidden-marker early-out that blanks rendering, then dispatches to one of three
+  action handlers indexed by CurAction.
+interface: (r5 = battle object header, r10 = toolkit) -> r0 = result of the dispatched action handler;
+  clobbers r0-r3, lr
+details: Runs each frame for a battle object whose appearance is derived from oBattleObject_RelatedObject1Ptr.
+  If the current action is not 8 and the related object has ExtraVars+0x10 set (an 'invalid/hidden' marker),
+  it zeroes the color shader and clears the final palette so the clone renders blank; otherwise it copies
+  color shader, final palette, render-info high byte/flag10, DirectionFlip (combined with alliance via
+  object_getFlip), and the mosaic/alpha scaling parameters from the related object. In battle mode 6 with
+  battle index 0xC, it additionally clears flag bit 4 on the object header before syncing. Finally it
+  calls an action-specific handler selected from a 3-entry table indexed by oBattleObject_CurAction (actions
+  0-2), invoked via 'mov lr, pc; bx r1' so the handler returns back here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80C1024: sprite_getColorShader/sprite_setColorShader and sprite_getFinalPalette/sprite_setFinalPalette
+    all use [r5,#oBattleObject_RelatedObject1Ptr] as source, r5 as target; loc_80C1014: tst of RelatedObject1''s
+    ExtraVars+0x10 selects sprite_zeroColorShader+sprite_clearFinalPalette instead of the copy; DirectionFlip
+    is loaded from the related object and passed through object_getFlip before sprite_setFlip, and sprite_getMosaicScalingParameters
+    feeds sprite_setAlpha; GetBattleMode==6 && battle index 0xC gates clearing flag bit 4 of oObjectHeader_Flags;
+    off_80C106C jump table indexed by oBattleObject_CurAction dispatches to one of three action handlers'
+  refs:
+  - bn6f/asm/asm31.s:19632
+  - 0x080C0F8C sub_80C0F8C
+  - 0x0802D234 GetBattleMode
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080C0FE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by hyper/qwen3.8-flash: revise
+    — The sync logic matches: mode-6/index-0xC flag-4 clear, ExtraVars+0x10 gating, then copying colorShader/finalPalette/renderInfo+flag10/DirectionFlip/mosaicAlpha
+    from RelatedObject1Ptr, all confirmed by the callee list and the load/store sequence. However the
+    name omits the 3-entry action-dispatch table at off_80C106C (mov lr,pc;bx r1), which is a first-class
+    part of the function''s behavior, not incidental. Also ''mirror/clone'' is an unsupported inference;
+    RelatedObject1Ptr could be any related entity. The DirectionFlip handling copies the raw byte then
+    calls object_getFlip for the effective facing—slightly different from ''combined with alliance via
+    object_getFlip'' as a single step but close enough.; run wf investigate investigate-20261018-145652;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/object uses this update (RelatedObject1's identity) and what actions 0-2 do — the three
+  handlers sub_80C1078/80C1094/80C10AC would confirm
+- What battle mode 6 with index 0xC is, and what flag bit 4 on the object header controls
+- 'The sync logic matches: mode-6/index-0xC flag-4 clear, ExtraVars+0x10 gating, then copying colorShader/finalPalette/renderInfo+flag10/DirectionFlip/mosaicAlpha
+  from RelatedObject1Ptr, all confirmed by the callee list and the load/store sequence. However the name
+  omits the 3-entry action-dispatch table at off_80C106C (mov lr,pc;bx r1), which is a first-class part
+  of the function''s behavior, not incidental. Also ''mirror/clone'' is an unsupported inference; RelatedObject1Ptr
+  could be any related entity. The DirectionFlip handling copies the raw byte then calls object_getFlip
+  for the effective facing—slightly different from ''combined with alliance via object_getFlip'' as a
+  single step but close enough.'
+sources:
+- wf investigate investigate-20261018-145652
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0FE8 -> object_syncAppearanceFromRelatedAndDispatchAction
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0FE8

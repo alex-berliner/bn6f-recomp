@@ -1,0 +1,65 @@
+name: battle_tickHighlightPanelLine
+address: '0x080D55F8'
+kind: function
+status: probable
+summary: Per-frame update that calls sub_80D5634, decrements Timer, destroys the object at 0, and while
+  alive highlights the object's panel, the panel ahead (X+dir), and then a 4-entry row via highlightPanelIfSomeCondition_8109660.
+interface: (r5 = battle object) -> r0 = destroyed(?) via state store; flags from timer compare (ble)
+details: 'First calls sub_80D5634 (likely the object''s animation/step routine), then decrements oBattleObject_Timer;
+  when it reaches 0 the object''s state is set to CUR_STATE_DESTROY and it returns. While alive, it gets
+  the object''s facing multiplier from object_getFrontDirection and highlights three panels along its
+  row: its own PanelX/PanelY, then X+dir (twice, second pass seemingly redundant) before calling highlightPanelIfSomeCondition_8109660
+  with a count of 4 and dy=0 context, which applies a (dx,dy) offset list with the facing sign to highlight
+  further panels on the 6x3 grid. The combination suggests an attack whose hit area spans the object''s
+  own panel and a shaped region ahead (e.g. a wide/long multi-panel hit). The object pointer is expected
+  in r5, so the caller (sub_80D55A4) presumably dispatches per-object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; ble -> CUR_STATE_DESTROY: timed lifetime, self-destruct;
+    bl object_getFrontDirection then add r0,r0,r7 onto PanelX: highlights extend forward relative to facing;
+    push/pop of (PanelX,PanelY) around two object_highlightPanel calls: own panel and next panel are marked;
+    mov r2,#4; mov r3,#0; bl highlightPanelIfSomeCondition_8109660: 4 more offsets from a (dx,dy) list,
+    mirrored by side sign; recorded route ''battlesweep'' and callees object_highlightPanel/highlightPanelIfSomeCondition
+    confirm battle-grid panel marking'
+  refs:
+  - bn6f/asm/asm31.s:63378
+  - 0x080D55A4 sub_80D55A4
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080D55F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the timer-decrement-and-destroy logic (Timer decrement, ble to loc_80D562E
+    setting CUR_STATE_DESTROY) and the front-direction highlighting calls. However, the proposed name
+    ''battle_highlightAttackPanelsUpdate'' is too generic and the summary''s claim of a ''shaped region
+    ahead'' overstates what happens: the code only highlights the object''s own panel, one panel ahead
+    via object_highlightPanel (called twice redundantly on X+dir), and one more via highlightPanelIfSomeCondition_8109660
+    with count=4 — not a clear multi-panel hit area. The two repeated object_highlightPanel calls look
+    like a code quirk rather than intent.; run wf investigate investigate-20261018-182231; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80D5634 does (animation? sound?)
+- which attack/spawner creates this object and what the 4-entry offset list at highlightPanelIfSomeCondition_8109660
+  contains, to pin the exact attack and area shape
+- 'The summary correctly captures the timer-decrement-and-destroy logic (Timer decrement, ble to loc_80D562E
+  setting CUR_STATE_DESTROY) and the front-direction highlighting calls. However, the proposed name ''battle_highlightAttackPanelsUpdate''
+  is too generic and the summary''s claim of a ''shaped region ahead'' overstates what happens: the code
+  only highlights the object''s own panel, one panel ahead via object_highlightPanel (called twice redundantly
+  on X+dir), and one more via highlightPanelIfSomeCondition_8109660 with count=4 — not a clear multi-panel
+  hit area. The two repeated object_highlightPanel calls look like a code quirk rather than intent.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D55F8 -> battle_tickHighlightPanelLine
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D55F8

@@ -1,0 +1,68 @@
+name: ai_attackChargeAtTargetPanel
+address: '0x0810B198'
+kind: function
+status: probable
+summary: 'AI attack step: validates a panel adjacent to the target, locks the attacker in place, sets
+  a 3-cycle charge timer, and spawns a hit-element-4 effect on that panel; returns r0=4 on success or
+  calls exitAttackState on failure.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; r0 = 1 if the attack wound up, else attack
+  state exited
+details: If object_canMove passes, it reads the target object's panel X/Y (fields 0x12/0x13), computes
+  targetX minus the attacker's facing direction (the panel the target faces toward the attacker), and
+  requires that panel to have parameter bit 0x80 via object_checkPanelParameters. On success it stores
+  that panel into oAIAttackVars_TargetPanelX/Y, reserves the panel under the attacker itself (object_reservePanel),
+  ORs OBJECT_FLAGS_CANNOT_SLIDE into the object's flags so it can't slide during the windup, sets oAIAttackVars_ChargeCycles
+  to 3, converts the target panel to pixel coordinates and spawns effect object id 0x15 there (flags 0x10),
+  and sets oAIAttackVars_HitElement to 4. Any failure path (can't move, panel check fails) calls object_exitAttackState
+  instead.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r0, r1, r0 with target object fields 0x12/0x13 and object_getFrontDirection selects the
+    panel in front of the target; bl object_checkPanelParameters with mov r2,#0x10 / byte 0x80 gates the
+    attack on the target panel''s state; bl object_reservePanel then OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1
+    pins the attacker during windup; strh #3 into oAIAttackVars_ChargeCycles and strh #4 into oAIAttackVars_HitElement
+    configure the charged hit; spawn_t1_0x0_EffectObject(r4=0x15) at object_getCoordinatesForPanels(TargetPanelX,TargetPanelY)
+    shows the windup effect on the aimed panel'
+  refs:
+  - bn6f/asm/asm31.s:175159
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x0810B198
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Core logic matches: object_canMove gate, getFrontDirection applied to target''s 0x12/0x13 panel
+    coords, checkPanelParameters (r3=0x80 required, r2=0x10 excluded), store to TargetPanelX/Y, reservePanel
+    on attacker''s own panel, setFlag1 CANNOT_SLIDE, ChargeCycles=3, getCoordinatesForPanels then spawn
+    effect 0x15, HitElement=4, exitAttackState on both failures. However the interface claim ''r0=1 if
+    wound up'' is wrong: after strh of 4 into HitElement, r0=4 at the locret branch, and the effect flags
+    are #0x10 lsl #0x10 (=0x100000), not plain 0x10. The checkPanelParameters also excludes mask 0x10
+    (panel must NOT have that bit), omitted in the proposal.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to and what effect id 0x15 renders (charge glow vs. telegraph marker)
+- What panel-parameter bit 0x80 means (why the panel in front of the target must have it)
+- What element value 4 maps to and how ChargeCycles=3 is consumed by the later attack frames
+- 'Core logic matches: object_canMove gate, getFrontDirection applied to target''s 0x12/0x13 panel coords,
+  checkPanelParameters (r3=0x80 required, r2=0x10 excluded), store to TargetPanelX/Y, reservePanel on
+  attacker''s own panel, setFlag1 CANNOT_SLIDE, ChargeCycles=3, getCoordinatesForPanels then spawn effect
+  0x15, HitElement=4, exitAttackState on both failures. However the interface claim ''r0=1 if wound up''
+  is wrong: after strh of 4 into HitElement, r0=4 at the locret branch, and the effect flags are #0x10
+  lsl #0x10 (=0x100000), not plain 0x10. The checkPanelParameters also excludes mask 0x10 (panel must
+  NOT have that bit), omitted in the proposal.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810B198 -> ai_attackChargeAtTargetPanel
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B198

@@ -1,0 +1,67 @@
+name: ai_attackMoveStepUpdate
+address: '0x081022E4'
+kind: function
+status: probable
+summary: 'Per-frame AI attack movement: adds velocity to pixel coords, snaps to panels while StepTimer==ChargeCycles,
+  ticks an effect when StepTimer matches ScratchVar*2/3 or ScratchVar/3 quotients, and on timer expiry
+  commits FuturePanel to Panel, updates collision, clears 0x40, sets CURRENTLY_MOVING_1, reloads timer
+  from AttackDuration, advances HitElement by 4.'
+interface: (r5 = battle object, r7 = AIAttackVars) -> void; flags from comparisons/svc only
+details: Each frame it adds the object's XVelocity/YVelocity to its X/Y pixel coordinates. While oAIAttackVars_StepTimer
+  equals oAIAttackVars_ChargeCycles it snaps the object to panels (setPanelsFromCoordinates + updateCollisionPanels).
+  It checks ScratchVar*2 and ScratchVar*2+1 (via svc 6 = DivRem by 3) against the step timer, and when
+  matching calls sub_80BFD90(0) (likely a sound/effect tick). The step timer counts down; on hitting -1
+  it commits FuturePanelX/Y into PanelX/Y, releases the panel reservation, recomputes pixel coords and
+  collision panels, clears flag 0x40, sets the CURRENTLY_MOVING_1 flag, sets HasMoved, sets collision
+  region 1, reloads the timer from oAIAttackVars_AttackDuration (the next attack phase length), and advances
+  oAIAttackVars_HitElement by 4 to move to the next attack state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds oBattleObject_XVelocity/YVelocity into X/Y each call (movement update); timer==ChargeCycles
+    branch calls setPanelsFromCoordinates/updateCollisionPanels (aligning with grid); timer expiry copies
+    FuturePanelX/Y to PanelX/Y then object_removePanelReserve (completing a reserved panel move); sets
+    object_setFlag1 bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1 and HasMoved=1 after landing; reloads StepTimer
+    from AttackDuration and adds 4 to HitElement, chaining to the next attack phase
+  refs:
+  - bn6f/asm/asm31.s:156810
+  - 0x081022B0 sub_81022B0
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A066 object_setCollisionPanelsToCurrent
+  reproduce: python3 tools/asmcat.py 0x081022E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The overall interpretation is correct: velocity add (lines 2-7), StepTimer==ChargeCycles snap (cmp+setPanels/updateCollision),
+    FuturePanel→Panel commit with removeReserve/setCoords/setCollisionPanels/clearFlag0x40/setFlag CURRENTLY_MOVING_1/HasMoved/collisionRegion
+    1/timer reload/HitElement+=4 all match the assembly. However, the proposal misdescribes the svc-6
+    checks: the code computes ScratchVar*2 then DivRem by 3 (quotient in r0) and separately computes ScratchVar
+    DivRem by 3 (quotient in r0), comparing each quotient to StepTimer—it is NOT ''ScratchVar*2 and ScratchVar*2+1''.
+    The proposal also lists callees (setPanelsFromCoordinates, updateCollisionPanels) absent from the
+    provided callee table, though the code clearly calls them.; run wf investigate investigate-20261018-155607;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact purpose of sub_80BFD90(0) called on the beat of the step
+- caller sub_81022B0's dispatch table entry that selects this phase is unshown
+- 'The overall interpretation is correct: velocity add (lines 2-7), StepTimer==ChargeCycles snap (cmp+setPanels/updateCollision),
+  FuturePanel→Panel commit with removeReserve/setCoords/setCollisionPanels/clearFlag0x40/setFlag CURRENTLY_MOVING_1/HasMoved/collisionRegion
+  1/timer reload/HitElement+=4 all match the assembly. However, the proposal misdescribes the svc-6 checks:
+  the code computes ScratchVar*2 then DivRem by 3 (quotient in r0) and separately computes ScratchVar
+  DivRem by 3 (quotient in r0), comparing each quotient to StepTimer—it is NOT ''ScratchVar*2 and ScratchVar*2+1''.
+  The proposal also lists callees (setPanelsFromCoordinates, updateCollisionPanels) absent from the provided
+  callee table, though the code clearly calls them.'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81022E4 -> ai_attackMoveStepUpdate
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81022E4

@@ -1,0 +1,58 @@
+name: battleObject_setBeastOutAnim
+address: '0x081171B4'
+kind: function
+status: probable
+summary: If bit 2 of struct+6 is set, writes 0x23 to struct+0; otherwise writes 1. Then calls sprite_update
+  on the same struct.
+interface: (r0 = ignored, r5 = object/sprite struct) -> r0 = sprite_update result; no flag use shown
+details: 'Reads the flag byte at struct+6 and tests bit 0x2: if set it stores 0x23 into byte 0 of the
+  struct, otherwise stores 1. It then calls sprite_update on the same struct so the change takes effect
+  at once. Given the only caller is battleObject_initBeastOut, byte 0 is most plausibly the sprite''s
+  animation/current-state selector, with 0x23 being the beast-out (Falzar-side) animation and 1 the fallback/normal
+  one, and bit 0x2 of byte 6 the ''beast-out active'' flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: tst r1(=[r5,#6]), #2 then strb 0x23 or 1 to [r5] — conditional byte-0 write keyed on a
+    flag; asm: bl sprite_update right after the store, so the byte drives the sprite refresh; caller battleObject_initBeastOut
+    sets sprite/animation setup for beast-out objects and chains to this helper; only callee is sprite_update,
+    which operates on the object''s sprite struct (header + byte2&0xF0)'
+  refs:
+  - bn6f/asm/asm32.s:18047
+  - 0x08117130 battleObject_initBeastOut_8117130
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x081171B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: ldrb r1,[r5,#6] tests bit 2, choosing r0=0x23 (bne) or r0=1, stored
+    to [r5] (byte 0), then bl sprite_update. However the proposal claims r0 is ignored, but the code explicitly
+    moves 0x23 then 1 into r0 before the store, so r0 is the value being written. Also, this writes to
+    byte 0 of the struct, which is more naturally the animation index/frame select than an ''animation/state
+    byte'' described vaguely. The name ''setBeastOutSpriteAnim'' is reasonable but could be tighter.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of struct byte 0 (animation index vs. sprite mode) and byte 6 bit 0x2 in the sprite/object
+  struct
+- whether 0x23 is an animation id specific to the Falzar beast-out sheet or a shared mode value
+- why the helper takes r0 but ignores it — possibly a leftover argument or r5-based calling convention
+  to confirm from more callers
+- 'The code matches the proposal: ldrb r1,[r5,#6] tests bit 2, choosing r0=0x23 (bne) or r0=1, stored
+  to [r5] (byte 0), then bl sprite_update. However the proposal claims r0 is ignored, but the code explicitly
+  moves 0x23 then 1 into r0 before the store, so r0 is the value being written. Also, this writes to byte
+  0 of the struct, which is more naturally the animation index/frame select than an ''animation/state
+  byte'' described vaguely. The name ''setBeastOutSpriteAnim'' is reasonable but could be tighter.'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6021b31
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81171B4 -> battleObject_setBeastOutAnim
+  where: bn6f 0086088f
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81171B4
