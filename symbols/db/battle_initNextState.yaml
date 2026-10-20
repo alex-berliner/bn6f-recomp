@@ -1,0 +1,58 @@
+name: battle_initNextState
+address: '0x08007F2C'
+kind: function
+status: probable
+summary: Waits for the screen fade to clear, then stops the battle BGM, frees type-0x1A objects, and writes
+  oBattleState_Index_00=8 / oBattleState_Index_01=4 with a zeroed phase field to defer into the next battle
+  state.
+interface: (r0 = unused/scratch, r5 = battle state struct pointer set by caller) -> r0 = clobbered; sets
+  battle state fields, no meaningful return
+details: Waits until IsScreenFadeActive reports no fade in progress, then calls the music routine that
+  switches the driver state and marks BGM off, and frees all objects of type 0x1A. It then writes oBattleState_Index_00
+  = 8 and oBattleState_Index_01 = 4 and zeroes oBattleState_StatePhaseAndInitFlag, effectively queueing
+  the next battle state (via battle_main_8007800 / battle_state_tick_8007CA0) with a fresh phase counter.
+  The r5 base is never set inside the function, so the caller must place the battle state struct there.
+  The early return keeps everything deferred while a fade is still running.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne locret only after tst on IsScreenFadeActive result: acts only when fade is done; bl musicGameState_8000784
+    stops/flags BGM off before the state switch; mov r0,#0x1a; bl FreeAllObjectsOfSpecifiedTypes clears
+    one object category; strb #8/[r5,oBattleState_Index_00] and strb #4/[r5,oBattleState_Index_01] set
+    the state IDs the battle main loop dispatches on; strh #0/[r5,oBattleState_StatePhaseAndInitFlag]
+    resets the phase/init field of the same struct'
+  refs:
+  - bn6f/asm/asm00_1.s:10865
+  - 0x08000784 musicGameState_8000784
+  - 0x080035A2 FreeAllObjectsOfSpecifiedTypes
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08007F2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the asm: it polls IsScreenFadeActive, calls musicGameState_8000784,
+    frees type-0x1A objects, then writes oBattleState_Index_00=8 and oBattleState_Index_01=4 and zeros
+    oBattleState_StatePhaseAndInitFlag (lines 4-15). However, the proposed name uses the non-listed ''reset''
+    prefix; a cleaner name using an allowed prefix is more consistent with conventions. The interface
+    description is accurate: r5 is the battle state struct base provided by caller, r0 is a scratch register
+    clobbered, no meaningful return.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which caller sets r5 and what battle state 8/4 actually are (e.g. battle start vs. battle end transition)
+  — a caller context would confirm the exact transition
+- 'The summary''s mechanics match the asm: it polls IsScreenFadeActive, calls musicGameState_8000784,
+  frees type-0x1A objects, then writes oBattleState_Index_00=8 and oBattleState_Index_01=4 and zeros oBattleState_StatePhaseAndInitFlag
+  (lines 4-15). However, the proposed name uses the non-listed ''reset'' prefix; a cleaner name using
+  an allowed prefix is more consistent with conventions. The interface description is accurate: r5 is
+  the battle state struct base provided by caller, r0 is a scratch register clobbered, no meaningful return.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8007F2C -> battle_initNextState
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8007F2C

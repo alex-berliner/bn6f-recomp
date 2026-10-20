@@ -1,0 +1,66 @@
+name: battle_tickChipFolderScreen
+address: '0x08124E24'
+kind: function
+status: probable
+summary: 'Per-frame handler for the in-battle chip-folder/select screen: advances the frame counter (clamping
+  to 0x8E and transitioning to state 0xC), pumps the battle transition and redraws the folder-select and
+  arena-floor tiles, then writes chip-slot animation halfword pairs to up to three pool structs.'
+interface: (r0 = 0 mode passed to the slot-buffer init; r5 = battle context struct) -> r0 = 0/1 status
+  from last callee; mutates r5 state, no meaningful return
+details: 'Increments the frame counter at r5+0x74 each call, clamping at 0x8E (142); when the clamp is
+  first reached it stores 0xC into the state byte r5+2, so this is one state of a battle state machine.
+  Every frame it writes 0xFF to r5+0x70 — the flag that battle_runTransition_8125444 consumes and clears
+  — then runs the transition pump, the folder/chip-select tile redraw, and the arena floor tile draw.
+  Finally it pushes halfword pairs onto up to three structs from the 0x2008450 pool: pair value r5+0x12
+  (or r5+0x26 if r5+0x60==5, the Dark-Chip-team layout selector shared with bg_drawArenaTiles) at r2=4,
+  and r5+0x1C (or r5+0x26''s sibling r5+0x1C guarded by r5+0x5C==0x27) at r2=7, likely slot/icon animation
+  parameters for the three visible slots.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#0x74]; add #2 ... cmp r0,#0x8e; strb 0xC,[r5,#2] — counted intro phase ending in
+    a state change; str 0xFF,[r5,#0x70] immediately before bl battle_runTransition_8125444, whose summary
+    says it clears that flag; bl submenu_redrawFolderScreen + bl bg_drawArenaTiles_8125E78 — draws the
+    chip-select overlay and arena floor each frame; ldr r0,[r5,#0x60]; cmp #5 mirrors the Dark-Chip alliance==5
+    branch documented in bg_drawArenaTiles; two bl sprite_setStructHalfwordPairOnThree_8117084 with r2=4
+    and r2=7 fill pairs on the 0x2008450 struct pool'
+  refs:
+  - bn6f/asm/asm33.s:3654
+  - 0x08126818 battleObject_initChipSpriteSlotBuffer_8126818
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  reproduce: python3 tools/asmcat.py 0x08124E24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does increment a frame counter at r5+0x74 (clamped to 0x8E, setting state byte r5+2 = 0xC
+    when hit), write 0xFF to r5+0x70 before battle_runTransition_8125444, redraw folder/arena tiles, and
+    push halfword pairs to sprite slots — matching the proposal''s mechanics. However, this function clearly
+    is not a ''handshake/intro screen'': the early call to battleObject_initChipSpriteSlotBuffer_8126818
+    with r0=0, plus the submenu_redrawFolderScreen call every frame, indicates this is the per-frame update
+    for an active chip-select/folder screen state, not a transient intro. The ''r2=4'' and ''r2=7'' pairs
+    are the chip-slot animation params set up by the slot-buffer init.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which state-machine index invokes this handler (no known caller) and what state 0xC leads to
+- Exact meaning of the halfword pair slots r2=4 vs r2=7 written to the 0x2008450 structs
+- Why submenu_redrawFolderScreen (chip-folder redraw) is used here instead of a battle-specific drawer
+- 'The code does increment a frame counter at r5+0x74 (clamped to 0x8E, setting state byte r5+2 = 0xC
+  when hit), write 0xFF to r5+0x70 before battle_runTransition_8125444, redraw folder/arena tiles, and
+  push halfword pairs to sprite slots — matching the proposal''s mechanics. However, this function clearly
+  is not a ''handshake/intro screen'': the early call to battleObject_initChipSpriteSlotBuffer_8126818
+  with r0=0, plus the submenu_redrawFolderScreen call every frame, indicates this is the per-frame update
+  for an active chip-select/folder screen state, not a transient intro. The ''r2=4'' and ''r2=7'' pairs
+  are the chip-slot animation params set up by the slot-buffer init.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8124E24 -> battle_tickChipFolderScreen
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8124E24

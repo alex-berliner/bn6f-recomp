@@ -1,0 +1,60 @@
+name: battle_aiStartAttack
+address: '0x0810585C'
+kind: function
+status: probable
+summary: Initializes AI attack-variable block (difficulty tier, init flag 0x20, duration, boost, scratch,
+  target) and launches attack id 0xE on the opposing player.
+interface: (r0 = battle object?, r5 = battle object, r7 = AI attack-vars block) -> r0 = 0xE attack id
+  passed on; sets oAIAttackVars fields
+details: Reads the enemy's difficulty tier into oAIAttackVars_AiDifficultyTier and sets InitFlag to 0x20.
+  Calls battle_aiLoadAttackParams with attack id 4 to fill version-dependent parameters, then gets a duration
+  halfword and boost byte from sub_810574C. Saves oBattleObject_ExtraVars into ScratchVar and stores the
+  player object pointer (battle_findPlayer with inverted alliance bit) into TargetObjectPtr. Finally calls
+  object_setAttack0 with attack id 0xE to actually start the attack. The InitFlag byte suggests a multi-step
+  attack state machine that later steps consume.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 / strb r0,[r7,#oAIAttackVars_AiDifficultyTier] — fills
+    AI vars block; mov r0,#4; bl battle_aiLoadAttackParams — loads attack 4's parameters; bl battle_findPlayer
+    with alliance eor 1, result stored to oAIAttackVars_TargetObjectPtr; mov r0,#0xe; bl object_setAttack0
+    — triggers attack id 0xE at the end; Caller sub_81054D8 gates this with GetPositiveSignedRNG & 0xF
+    < 6, a random attack choice in the AI step
+  refs:
+  - bn6f/asm/asm31.s:165628
+  - 0x081054D8 sub_81054D8
+  - 0x0810588E battle_aiLoadAttackParams
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x0810585C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are mostly correct, but oAIAttackVars_AttackDuration is set from the halfword
+    r0 returned by sub_810574C (not loaded from elsewhere), and r1 (a byte) goes to AttackBoost2 — accurate.
+    However, calling sub_810574C ''get duration halfword and boost byte'' understates it; the function
+    likely computes those together. Also ''ExtraVars into ScratchVar'' and ''player via battle_findPlayer
+    with inverted alliance'' match the asm. The proposed name battle_aiInitAttackVars is fair, but battle_aiStartAttack
+    (id 0xE) more precisely captures that it actually launches the attack.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_810574C computes (likely duration from position/panel data) is unknown
+- Which in-game attack id 0xE / attack-params id 4 corresponds to for Falzar
+- The name and summary are mostly correct, but oAIAttackVars_AttackDuration is set from the halfword r0
+  returned by sub_810574C (not loaded from elsewhere), and r1 (a byte) goes to AttackBoost2 — accurate.
+  However, calling sub_810574C 'get duration halfword and boost byte' understates it; the function likely
+  computes those together. Also 'ExtraVars into ScratchVar' and 'player via battle_findPlayer with inverted
+  alliance' match the asm. The proposed name battle_aiInitAttackVars is fair, but battle_aiStartAttack
+  (id 0xE) more precisely captures that it actually launches the attack.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810585C -> battle_aiStartAttack
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810585C

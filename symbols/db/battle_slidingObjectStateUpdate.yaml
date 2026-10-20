@@ -1,0 +1,61 @@
+name: battle_slidingObjectStateUpdate
+address: '0x080D6C88'
+kind: function
+status: probable
+summary: State handler for a battle object sliding diagonally across panels while leaving a highlighted
+  trail; on completion it tests the current panel's flags against an alliance-keyed mask and conditionally
+  spawns a type-0 effect with extra params before destroying the object.
+interface: (r0 unused on entry, r4 = scratch, r5 = battle object pointer) -> r0 = PlaySoundEffect/spawn
+  return; sets object CurStateActionPhaseAndPhaseInitialized to CUR_STATE_DESTROY when done
+details: 'On phase 0 it sets CurPhase to 4, sets XVelocity to ±0xB0000 based on object_getFrontDirection
+  (alliance + DirectionFlip), ZVelocity to +0xB0000 (moves diagonally, X+=vx, Z-=vz each frame), plays
+  sound effect 0xC4, and sets Timer to 17. Each subsequent frame it moves the object, and every 8th frame
+  (Timer2 bit 2) calls object_highlightPanel on its current PanelX/PanelY, leaving a highlighted trail.
+  When Timer expires it reads the panel status flags at its panel coordinates and tests them against a
+  per-alliance mask word table at byte_80D6D08: alliance 0 → 0x15800010, alliance 1 → 0x2A800010. If the
+  panel matches, it spawns a type-0 effect object using a 12-byte parameter block at object+0x34 (ldmia
+  {r1-r3}) and calls sub_80D6D3E. It then sets CUR_STATE_DESTROY regardless of the panel check.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Phase 0 branch: mul by dword_80D6D7C=0xB0000 into oBattleObject_XVelocity/ZVelocity, PlaySoundEffect(0xC4),
+    Timer=0x11; Phase!=0 branch: X+=XVel, Z-=ZVel, Timer countdown until 0; Timer2>>3 carry test gates
+    object_highlightPanel on the object''s own PanelX/PanelY — highlighted trail while sliding; object_getPanelParameters
+    + tst against word table off_80D6D04 indexed by Alliance<<2 (0x15800010 / 0x2A800010) gates effect
+    spawn; spawn_t1_0x0_EffectObject fed a 12-byte block copied from r5+0x34, then CUR_STATE_DESTROY stored
+    unconditionally'
+  refs:
+  - bn6f/asm/asm31.s:66823
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080D6C88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s diagonal motion (X+=vx, Z-=vz) and ''every 8th frame'' highlight trail are correct:
+    Timer2 += 1, then lsr #3 with bcs skipping highlight means it highlights on frames 0–6 (not every
+    8th). The object_getPanelParameters/Alliance mask/effect spawn/sub_80D6D3E path is correct, and CUR_STATE_DESTROY
+    is set unconditionally. The summary''s panel mask values match byte_80D6D08; only minor wording needs
+    tightening.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack object this belongs to (no known caller) and what the sound effect 0xC4 is
+- What sub_80D6D3E does on the special-panel case (transform, extra effect, etc.)
+- Which panel-type bits 0x15800010/0x2A800010 select (holes, cracked, poison, etc.)
+- 'The summary''s diagonal motion (X+=vx, Z-=vz) and ''every 8th frame'' highlight trail are correct:
+  Timer2 += 1, then lsr #3 with bcs skipping highlight means it highlights on frames 0–6 (not every 8th).
+  The object_getPanelParameters/Alliance mask/effect spawn/sub_80D6D3E path is correct, and CUR_STATE_DESTROY
+  is set unconditionally. The summary''s panel mask values match byte_80D6D08; only minor wording needs
+  tightening.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6C88 -> battle_slidingObjectStateUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6C88

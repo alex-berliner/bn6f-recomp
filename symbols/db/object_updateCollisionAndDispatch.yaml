@@ -1,0 +1,63 @@
+name: object_updateCollisionAndDispatch
+address: '0x080DD438'
+kind: function
+status: probable
+summary: 'Per-frame collision update for a battle object: remove its collision data, spawn a new collision
+  effect, dispatch its CurAction through a 4-entry jump table, re-register it in region 1 if it moved
+  onto a new panel, present this frame''s collision data when its panel is valid, and otherwise run the
+  despawn handler.'
+interface: (r5 = battle object pointer, no args) -> void; r0 = flags/result of callees
+details: 'The routine first removes and respawns the object''s collision data (clearing one-shot hit flags),
+  then, unless time is stopped and the battle is not over, checks collision flags (0x1E800000 mask): if
+  set it clears the object''s collision region and saves its current PanelXY into ExtraVars, apparently
+  marking ''was hit / moved this frame''. It then dispatches through a 4-entry jump table indexed by oBattleObject_CurAction
+  (sub_80DD4B0/4E8/538/584). After the handler, if CurState != 8, the collision region byte is 0, and
+  PanelXY differs from the saved ExtraVars, it re-registers the object in region 1 via object_setCollisionRegion.
+  Finally it validates the current panel; if valid it presents the collision data for this frame, otherwise
+  it calls sub_80DD584, the same handler used when the battle is over — the despawn/removal state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_removeCollisionData / object_spawnCollisionEffect at entry — refresh per-frame collision
+    state; tst r0, r1 with dword_80DD760=0x1e800000 on oCollisionData_FlagsFromCollision gates clearCollisionRegion
+    + PanelXY save; ldr r1,[r1,r0] from off_80DD4A0 indexed by oBattleObject_CurAction — 4-entry state/action
+    dispatch table; cmp PanelXY, ExtraVars + mov r0,#1 bl object_setCollisionRegion — re-registers region
+    only after a panel change; beq loc_80DD496 bl sub_80DD584 on battle over / invalid panel, and sub_80DD584
+    is also jump-table entry 3 — shared teardown path
+  refs:
+  - bn6f/asm/asm31.s:80573
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DD438
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code shows object_removeCollisionData and object_spawnCollisionEffect called, not ''tear down/refresh
+    collision data'' as one combined step; the callee list confirms object_spawnCollisionEffect exists.
+    The ''re-register when moved'' part matches the object_setCollisionRegion path when PanelXY changes
+    vs ExtraVars and region is 0. The despawn-via-sub_80DD584 matches when panel invalid or battle over.
+    The name is fine but the summary misrepresents the spawn step.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the four action handlers sub_80DD4B0/4E8/538/584 each do (only 584 is shared with the teardown
+  path)
+- Exact meaning of the 0x1E800000 collision-flag bits
+- Which object types use this update (no callers known), so the CurAction semantics are inferred
+- The code shows object_removeCollisionData and object_spawnCollisionEffect called, not 'tear down/refresh
+  collision data' as one combined step; the callee list confirms object_spawnCollisionEffect exists. The
+  're-register when moved' part matches the object_setCollisionRegion path when PanelXY changes vs ExtraVars
+  and region is 0. The despawn-via-sub_80DD584 matches when panel invalid or battle over. The name is
+  fine but the summary misrepresents the spawn step.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD438 -> object_updateCollisionAndDispatch
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD438

@@ -1,0 +1,76 @@
+name: battle_stepEventScript
+address: '0x080398DC'
+kind: function
+status: probable
+summary: 'Advances a scripted event sequence on the r5 object: a use-counter at +0x28 gates each pass
+  via sub_803BB80, and when ungated dispatches commands from the cursor at +0x2C (0=init emotion entry
+  with 3 words/advance 0x10; 1=write word to +0x28/advance 8; 2=stop with r0=0; 3=SetScreenFade with 2
+  words/advance 0xC; 4=PlaySoundEffect with 1 word/advance 8), then stores back the cursor and returns
+  r0=1 while active, 0 when stopped.'
+interface: '(r5 = script object; fields: +0x28 value/wait counter, +0x2C command-stream cursor) -> r0
+  = 1 while script still active, 0 when a stop (type 2) command was hit; no flag guarantees'
+details: 'First calls sub_803BB80 on the r5 object; while it reports a use consumed the function exits
+  immediately, so the counter at the object gates execution (a frame/wait countdown) and command type
+  1 refills it via sub_803BB7C writing [r5+0x28]. Once ungated it interprets the command list at [r5+0x2C]:
+  command 0 calls battle_initEmotionTableEntry_8046670 with the next three words (type, fixed-tag param,
+  flags) and advances 0x10; command 3 calls SetScreenFade(word, word) and advances 0xC; command 4 calls
+  PlaySoundEffect(word) and advances 8; command 2 stops. Command 1 stores one word to object+0x28 and
+  exits the pass, leaving r4=1 so the sequence continues next call. The updated cursor is stored back
+  to [r5+0x2C] and r4 is returned as the done/active status. The EmotionData slots live in the 0x58-byte
+  EWRAM array at 0x02008450.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7,[r5,#0x2c] ... str r7,[r5,#0x2c]: field 0x2C is a persistent cursor into a command stream;
+    switch on [r7]: case 0 -> battle_initEmotionTableEntry_8046670([r7+4],[r7+8],[r7+0xC]) with stride
+    0x10; case 3 -> SetScreenFade([r7+4],[r7+8]) stride 0xC; case 4 -> PlaySoundEffect([r7+4]) stride
+    8; case 1 -> sub_803BB7C stores [r7+4] into object+0x28 then exits the loop early; case 2 -> mov r4,#0
+    as the done status; bl sub_803BB80 / beq loc_8039932: while the object''s uses counter still has a
+    use, the call returns without executing commands'
+  refs:
+  - bn6f/asm/asm03_1_1.s:1732
+  - 0x08039888 sub_8039888
+  - 0x080005CC PlaySoundEffect
+  - 0x08046670 battle_initEmotionTableEntry_8046670
+  - 0x0803BB7C sub_803BB7C
+  reproduce: python3 tools/asmcat.py 0x080398DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The interpretation is largely correct: the counter gating via sub_803BB80, command dispatch (0=emotion,
+    1=set counter via sub_803BB7C, 2=stop, 3=SetScreenFade, 4=PlaySoundEffect), and r4/r0 return convention
+    all match the code. Two issues: the proposed name ''battle_stepEventScript'' is acceptable but the
+    more standard ''battle_runScript'' or ''battle_stepEventScript'' is fine; the summary wrongly says
+    sub_803BB80 reporting ''use consumed'' makes the function exit — actually beq to loc_8039932 stores
+    r7 and returns, so it does exit only when a use WAS consumed (counter was decremented from non-zero),
+    which matches. The summary''s claim that command 1 leaves r4=1 is correct. Minor: summary says ''stops
+    until a stop command'' but command 2 sets r4=0 which is the ''stopped'' return; wording slightly off
+    but intent right. Overall close enough that a name tweak suffices.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact semantics of the sub_803BB80 uses counter (frame wait vs. one-shot trigger) and whether it shares
+  the 0x28 field with command 1's stored value
+- which game system owns the r5 object and what command stream data feeds it (identity of the event/cutscene
+  this script drives)
+- meaning of the EmotionData 'type' values and the fixed 0x09 tag written by command 0
+- 'The interpretation is largely correct: the counter gating via sub_803BB80, command dispatch (0=emotion,
+  1=set counter via sub_803BB7C, 2=stop, 3=SetScreenFade, 4=PlaySoundEffect), and r4/r0 return convention
+  all match the code. Two issues: the proposed name ''battle_stepEventScript'' is acceptable but the more
+  standard ''battle_runScript'' or ''battle_stepEventScript'' is fine; the summary wrongly says sub_803BB80
+  reporting ''use consumed'' makes the function exit — actually beq to loc_8039932 stores r7 and returns,
+  so it does exit only when a use WAS consumed (counter was decremented from non-zero), which matches.
+  The summary''s claim that command 1 leaves r4=1 is correct. Minor: summary says ''stops until a stop
+  command'' but command 2 sets r4=0 which is the ''stopped'' return; wording slightly off but intent right.
+  Overall close enough that a name tweak suffices.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80398DC -> battle_stepEventScript
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80398DC

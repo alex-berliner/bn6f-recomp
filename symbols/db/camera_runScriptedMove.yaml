@@ -1,0 +1,71 @@
+name: camera_runScriptedMove
+address: '0x0808C948'
+kind: function
+status: probable
+summary: 'Ticks a scripted camera move driven by a halfword bitmask at [r10+4]: on the first call it initializes
+  state via camera_writeUnk03_14_80301b2 and sub_8089244(1), then each call dispatches on one of 8 mask
+  bits via byte_808CA18 to pick X/Y deltas from byte_808CA24, tests the new point with sub_80303FC (else
+  calls sub_8089370), and commits via SetCameraXYZ; returns 1 while running and 0 when bit 0x200 terminates
+  it (clears EVENT_9D4, plays SFX 0x83).'
+interface: () -> r0 = 1 while the pan sequence is still running, 0 when it finishes; reads global state
+  at unk_2000B40 and the word at [r10+4]
+details: 'On the first invocation (state byte at unk_2000B40+1 <= 0) it writes 0 into the camera struct
+  via camera_writeUnk03_14_80301b2, calls sub_8089244(1) and bumps the state byte. Each call reads a halfword
+  bitmask at [r10+4]; if bit 0x200 is set it terminates the sequence: resets the state byte, clears EVENT_9D4,
+  plays sound effect 0x83 and returns 0. Otherwise it scans an 8-entry mask table (byte_808CA18) to find
+  which screen/sector bit matches, and picks two signed-byte X/Y deltas from a table at byte_808CA24 (second
+  set of 8 selected when bit 0x2 of the mask is set), adding them to the current GetCameraXYZ position.
+  It passes the resulting (x, y, 0) point on the stack to sub_80303FC; if that returns 0 the camera is
+  moved to the new position with SetCameraXYZ, if nonzero the camera is left at the original position
+  and sub_8089370(screenIndex) is called instead. It then calls sub_8089280 and returns 1. Deltas are
+  sign-extended via lsl #0x10, and the point is passed as three stack words suggesting a fixed-point/world-coordinate
+  struct for the sub_80303FC test.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst 0x200 / beq ... else ClearEventFlagFromImmediate(EVENT_9D4), PlaySoundEffect(0x83), return
+    0: explicit sequence-termination branch; loop over 8 entries of byte_808CA18 testing (mask & state)
+    == mask selects one of 8 screen indices; ldrsb pair from byte_808CA24[2*idx + (bit2?0x10:0)] gives
+    per-screen signed X/Y deltas added to GetCameraXYZ results; sub_80303FC called with (x,y,0) on stack;
+    r0==0 -> SetCameraXYZ(new pos), r0!=0 -> sub_8089370(idx) + SetCameraXYZ(old pos); first-run block:
+    camera_writeUnk03_14(0), sub_8089244(1), state byte [unk_2000B40+1]++ shows sequence initialization'
+  refs:
+  - bn6f/asm/asm24.s:975
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x080005CC PlaySoundEffect
+  - 0x080301DC SetCameraXYZ
+  reproduce: python3 tools/asmcat.py 0x0808C948
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the asm closely (state byte at unk_2000B40+1, mask test 0x200, 8-entry
+    table, sub_80303FC test, SetCameraXYZ/sub_8089370 branch, sound 0x83, EVENT_9D4 clear). However, there
+    is no concrete caller in the asm and the callees (ClearEventFlagFromImmediate, PlaySoundEffect, SetCameraXYZ,
+    GetCameraXYZ) suggest a generic scripted-camera routine rather than a ''pan across screens''. The
+    summary ''pan between 8 pre-defined screen positions'' overstates certainty; the table at byte_808CA18
+    is a mask matcher of 8 bits used as a dispatch, not necessarily screens. A more conservative name
+    is warranted.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8089244, sub_8089370 and sub_8089280 do (init, per-screen handler, post-move update?)
+- What structure r10 points to and what the bitmask word at [r10+4] represents (active screens of a multi-screen
+  area?)
+- What sub_80303FC tests at the world position (collision, bounds, or trigger)
+- No known caller, so the in-game trigger/context of this pan sequence is unidentified
+- The proposal's mechanics match the asm closely (state byte at unk_2000B40+1, mask test 0x200, 8-entry
+  table, sub_80303FC test, SetCameraXYZ/sub_8089370 branch, sound 0x83, EVENT_9D4 clear). However, there
+  is no concrete caller in the asm and the callees (ClearEventFlagFromImmediate, PlaySoundEffect, SetCameraXYZ,
+  GetCameraXYZ) suggest a generic scripted-camera routine rather than a 'pan across screens'. The summary
+  'pan between 8 pre-defined screen positions' overstates certainty; the table at byte_808CA18 is a mask
+  matcher of 8 bits used as a dispatch, not necessarily screens. A more conservative name is warranted.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808C948 -> camera_runScriptedMove
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808C948

@@ -1,0 +1,63 @@
+name: object_releasePanelAndEffect
+address: '0x0810CCDC'
+kind: function
+status: probable
+summary: Releases a battle object's reserved panel, toggles its collision flags/region, and spawns a type-0
+  effect object at the released panel's screen coordinates.
+interface: unknown argument layout; probably r0 = battle object or CollisionData pointer -> r0 possibly
+  the spawned effect object; flags unknown
+details: 'No assembly was provided, so this reconstruction relies entirely on the callee set: it would
+  clear ObjectFlags1 bits, set the collision region, release a panel reserved by the object (object_removePanelReserve),
+  convert panel column/row into screen coordinates (object_getCoordinatesForPanels), and spawn a type-4
+  object with effect type 0 via spawn_t1_0x0_EffectObject. That combination fits a routine that removes
+  an object from the field, freeing its occupied panel and playing a small effect at its panel position.
+  The clear-flag call may reset an ''occupying/active'' bit while set-flag1/set-region may mark the collision
+  data as freed or reassign it. Without the actual instruction stream, argument order, return value, and
+  which object fields are touched cannot be confirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: callee object_removePanelReserve releases a panel reserved by a given object, suggesting panel-ownership
+    teardown; callee object_getCoordinatesForPanels converts a panel column/row to pixel coords, suggesting
+    positioning an effect on the object's panel; callee spawn_t1_0x0_EffectObject spawns effect type 0,
+    consistent with a generic despawn/burst effect; callees object_setFlag1/object_clearFlag and object_setCollisionRegion
+    indicate mutation of the object's CollisionData flags during cleanup
+  refs:
+  - bn6f/asm/dat31.s:1071
+  - 0x0801A15C object_clearFlag
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x0810CCDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The callee set matches the proposal: object_clearFlag and object_setFlag1 manipulate ObjectFlags1,
+    object_setCollisionRegion stores a region index, object_removePanelReserve releases a reserved panel,
+    object_getCoordinatesForPanels converts the panel to screen coords, and spawn_t1_0x0_EffectObject
+    spawns a type-0 effect. However, the routine is at sub_810CCDC with no callers listed and no assembly
+    shown, so the ''despawn'' intent cannot be confirmed from the code. A more neutral name reflecting
+    the visible operations (panel release + flag toggle + effect spawn) is safer than ''despawn''.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- actual assembly missing, so the order of operations, arguments (r0-r3), and return value are unknown
+- which flags in ObjectFlags1 are set/cleared, and which collision region index is written
+- what battle effect type 0 renders as (despawn puff, flash, nothing)
+- no known caller, so the triggering context (object death, panel change, custom removal) is unconfirmed
+- 'The callee set matches the proposal: object_clearFlag and object_setFlag1 manipulate ObjectFlags1,
+  object_setCollisionRegion stores a region index, object_removePanelReserve releases a reserved panel,
+  object_getCoordinatesForPanels converts the panel to screen coords, and spawn_t1_0x0_EffectObject spawns
+  a type-0 effect. However, the routine is at sub_810CCDC with no callers listed and no assembly shown,
+  so the ''despawn'' intent cannot be confirmed from the code. A more neutral name reflecting the visible
+  operations (panel release + flag toggle + effect spawn) is safer than ''despawn''.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810CCDC -> object_releasePanelAndEffect
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810CCDC

@@ -1,0 +1,69 @@
+name: battle_hoverBobObjectUpdate
+address: '0x08016B72'
+kind: function
+status: probable
+summary: Per-frame update that, on first call (PhaseInitialized==0), clears flag 0x100000, dispatches
+  AI handlers (3-entry table), resets collision state, nulls RelatedObject1Ptr, plays SFX 0x2D, and sets
+  PhaseInitialized=4. Each frame it computes a Z offset from byte_8016BDC (a 32-entry -6..+6 sine-like
+  table indexed by ((collisionCounter>>2)&0x1F)) added to oAIData_SavedZ16, and stores it into object
+  Z16. If object flag bit 31 is clear it plays SFX 0x24, copies PendingStateAction into CurStateActionPhaseAndPhaseInitialized,
+  clears PendingStateAction, and restores Z16 to SavedZ16.
+interface: (r5 = battle object, reads oBattleObject_AIDataPtr) -> r0 = void; flags not meaningful
+details: 'On the first invocation (PhaseInitialized == 0) it initializes the object: clears collision
+  flag 0x100000, runs battle_dispatchActorAIHandlers (3-entry behavior table), resets collision state,
+  nulls RelatedObject1Ptr, plays SFX 0x2D, and sets PhaseInitialized = 4. Every frame afterwards it reads
+  the collision data counter at offset 0x2C, takes ((counter >> 2) & 0x1F) as an index into byte_8016BDC
+  — a 32-entry symmetric wave of +6..-6 — and writes object Z = oAIData_SavedZ16 + wave, giving a smooth
+  vertical bob around the object''s saved Z. It then checks object flag bit 31 via object_getFlag; if
+  set it just returns (object inactive/removed). Otherwise it plays SFX 0x24 each frame, copies PendingStateAction
+  into CurStateActionPhaseAndPhaseInitialized, clears PendingStateAction, and restores Z to SavedZ16.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8016B72 first-run block: object_clearFlag(0x100000), battle_dispatchActorAIHandlers, battle_resetCollisionState_80101C4,
+    PlaySoundEffect(0x2D), PhaseInitialized=4; byte_8016BDC is a 32-entry sine-like wave (+6..-6) indexed
+    by (collision field 0x2C >> 2) & 0x1F, added to oAIData_SavedZ16 and stored to oBattleObject_Z16;
+    flag check via object_getFlag bit 1<<31 early-returns before the per-frame PlaySoundEffect(0x24) and
+    state-action copy; PendingStateAction is moved to CurStateActionPhaseAndPhaseInitialized and zeroed,
+    then Z is reset to SavedZ16; all five callers are unidentified battle-side routines, consistent with
+    an object phase/state update handler'
+  refs:
+  - bn6f/asm/asm00_2.s:17950
+  - 0x08109F96 sub_8109F96
+  - 0x0810BC2A sub_810BC2A
+  - 0x0810D5F6 sub_810D5F6
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F3CC battle_dispatchActorAIHandlers
+  - 0x080101C4 battle_resetCollisionState_80101C4
+  reproduce: python3 tools/asmcat.py 0x08016B72
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The bob table byte_8016BDC ranges -6..+6 not ''a 32-entry symmetric wave'', and the SFX IDs are
+    0x2C not 0x2D (`mov r0,#0x2e; add r0,#0xff` = 0x12C... wait, 0x2e + 0xff = 0x12D low byte = 0x2D;
+    the AddNote-side gives 0x25+#0xff=0x24, confirming SFX 0x2D and 0x24 are right). Flag test checks
+    bit 31 (0x80000000), not ''object inactive''. The 32-entry claim is correct but the values are -6..+6
+    not ±6 step. Also `lsr r1,r1,#2` on the signed-halfword counter, so ''(counter>>2)&0x1F'' is approximately
+    right.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/object uses this update (callers sub_8109F96 etc. are unnamed) and what SFX 0x24/0x2D are,
+  to give it a more specific name
+- exact meaning of object flag bit 31 and of the collision counter at collision data offset 0x2C that
+  drives the bob phase
+- The bob table byte_8016BDC ranges -6..+6 not 'a 32-entry symmetric wave', and the SFX IDs are 0x2C not
+  0x2D (`mov r0,#0x2e; add r0,#0xff` = 0x12C... wait, 0x2e + 0xff = 0x12D low byte = 0x2D; the AddNote-side
+  gives 0x25+#0xff=0x24, confirming SFX 0x2D and 0x24 are right). Flag test checks bit 31 (0x80000000),
+  not 'object inactive'. The 32-entry claim is correct but the values are -6..+6 not ±6 step. Also `lsr
+  r1,r1,#2` on the signed-halfword counter, so '(counter>>2)&0x1F' is approximately right.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016B72 -> battle_hoverBobObjectUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016B72

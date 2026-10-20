@@ -1,0 +1,68 @@
+name: ai_strikeTwoFrontPanels
+address: '0x080ED470'
+kind: function
+status: probable
+summary: AI attack state that spawns a t1 subtype-5 temp attack object on first entry, then every step
+  when StepTimer==0x20 strikes the panel two tiles in front of the attacker using one of three per-tier
+  helpers, counting them on the spawned object, and finishes by writing HitElement=4 when the step timer
+  elapses.
+interface: (r5 = battle object, r7 = its oAIAttackVars) -> void; no return value
+details: 'On first entry (oAIAttackVars_AttackElement == 0) it starts animation 0xA via object_setAnimation,
+  resets the counter timer to default, spawns a t1 subtype-5 temp attack object (spawn_t1_0x5_tempAttackObject)
+  with subtype varying by oAIAttackVars_AiDifficultyTier (base 0x21, or 0x22 for tiers 2+), sets object
+  flag bit 22, and initializes AttackElement = 4 and StepTimer = 0x2A. Each tick thereafter, when StepTimer
+  == 0x20 it targets the panel frontDirection*2 + PanelX, PanelY, computes damage = oAIAttackVars_Damage
+  + AttackBoost, and calls one of three per-tier strike helpers: sub_80CA0E2 (tiers 0-1), sub_80CA104
+  (tier 2, scaling with countActiveNaviBonuses of the object''s alliance), or sub_80CA19E (tier 3, reading
+  a byte-table row via table_GetByte16Row_203EAE0_800AB3A). After each strike it increments byte 0x10
+  of the spawned temp attack object, counting hits. StepTimer counts down each frame; when it reaches
+  0 the routine stores HitElement = 4, which likely signals the state machine to move on. The AttackElement/HitElement
+  value 4 and the exact visual of the strike are not identified here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bee — first-entry setup branch spawns attack
+    and sets timers; bl spawn_t1_0x5_tempAttackObject_80B8E30 with r4 = 0x21/0x22 + tier — spawns the
+    attack object; add r0,r0,r1 where r0 = object_getFrontDirection()*2 + PanelX — target panel is two
+    tiles ahead; branch on oAIAttackVars_AiDifficultyTier to sub_80CA0E2 / sub_80CA104 (with countActiveNaviBonuses)
+    / sub_80CA19E — per-tier strike variants; locret: strh r0,[r7,#oAIAttackVars_HitElement] with 4 once
+    StepTimer hits 0 — ends the attack'
+  refs:
+  - bn6f/asm/asm31.s:115156
+  - 0x0800FE52 countActiveNaviBonuses_800FE52
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800F2B6 object_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080ED470
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: it spawns a t1/0x5 temp attack object on first entry, strikes the
+    panel two tiles ahead when StepTimer==0x20 using one of three per-tier helpers, increments byte 0x10
+    of the spawned object, and exits by writing 4 to HitElement. However, the name ''ai_attackStrikeFrontPanel''
+    suggests striking the front panel of the enemy, while the code targets panelX + 2*frontDirection of
+    the AI''s own battle object (r5, the enemy using the AI), so the strike hits two tiles in front of
+    the attacker, not the enemy''s front. The ''ai_'' prefix is appropriate.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80CA0E2/sub_80CA104/sub_80CA19E actually spawn or do at the target panel (hit effect vs damage
+  application)
+- What element/attack type value 4 represents (AttackElement and HitElement)
+- What animation 0xA looks like and which enemy/boss uses this attack
+- 'The summary is mostly correct: it spawns a t1/0x5 temp attack object on first entry, strikes the panel
+  two tiles ahead when StepTimer==0x20 using one of three per-tier helpers, increments byte 0x10 of the
+  spawned object, and exits by writing 4 to HitElement. However, the name ''ai_attackStrikeFrontPanel''
+  suggests striking the front panel of the enemy, while the code targets panelX + 2*frontDirection of
+  the AI''s own battle object (r5, the enemy using the AI), so the strike hits two tiles in front of the
+  attacker, not the enemy''s front. The ''ai_'' prefix is appropriate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED470 -> ai_strikeTwoFrontPanels
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED470

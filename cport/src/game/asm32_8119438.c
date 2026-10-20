@@ -92,10 +92,10 @@ static u32 get_chip_filler_high_power(u16 chip_id) {
     return R0;
 }
 
-/* register form: calls sub_8010C76 outside this file, which has no typed C interface yet */
+/* register form: calls getChipScaleOrRaw outside this file, which has no typed C interface yet */
 static u32 get_chip_filler_low_power(u16 chip_id) {
     R0 = chip_id;
-    GUEST_CALL(sub_8010C76);
+    GUEST_CALL(getChipScaleOrRaw);
     return R0;
 }
 

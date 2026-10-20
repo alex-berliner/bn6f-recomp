@@ -1,0 +1,59 @@
+name: battle_drawIntroScene
+address: '0x08125128'
+kind: function
+status: probable
+summary: 'Battle intro scene draw: blits the progressive intro tile graphic, queues an OAM entry, pumps
+  the battle transition (reloading tilemaps when flagged), draws the arena floor, and runs a fixed-arg
+  overlay; when no screen fade is active it writes 8 to the state byte at r5+1 to advance the phase.'
+interface: (r5 = battle-scene/state object) -> r0 = 8 stored to [r5+1] when screen fade finished; no return
+  value otherwise; flags clobbered by bls
+details: 'Runs five drawing/update calls in sequence: sub_812674C (progressive two-part tile blit reveal),
+  sprite_queueBattleOamEntry, battle_runTransition_8125444 (which also reloads static/scene tilemaps when
+  its r5+0x70 flag is set — likely the same object), bg_drawArenaTiles_8125E78, and sub_8126524 (fixed-arg
+  wrapper, probably another overlay draw). It then checks IsScreenFadeActive; while a fade is running
+  it just returns, letting this state repeat each frame. When the fade is done it writes 8 to r5+1, the
+  state/phase byte of the object at r5, moving the sequence to its next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chain: sub_812674C, sprite_queueBattleOamEntry, battle_runTransition_8125444, bg_drawArenaTiles_8125E78,
+    sub_8126524 — all battle-intro/arena drawing steps; bl IsScreenFadeActive + beq locret: state advance
+    is gated on fade completion; mov r0,#8; strb r0,[r5,#1] — writes next state ID 8 into the object''s
+    phase byte; battle_runTransition_8125444 uses the r5+0x70 flag and reloads tilemaps, matching this
+    routine''s transition-role context'
+  refs:
+  - bn6f/asm/asm33.s:4047
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  - 0x081267A8 sprite_queueBattleOamEntry
+  reproduce: python3 tools/asmcat.py 0x08125128
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The structure matches: five draws then IsScreenFadeActive with state advance to 8 in r5+1 fits the
+    code at 0x0812513E-0x08125144. However, r5 is not established in this snippet (no push {r5,...} or
+    mov r5,r6); the proposal''s interface assumes r5 is a callee-preserved object pointer, but the function
+    only pushes lr and pops pc, meaning r5 is a caller-supplied argument or global. Also it is not a ''step''
+    since it has no callers known and runs five full draws — calling it battle_introDrawArenaStep is plausible
+    but speculative.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the enclosing state machine and the meaning of state ID 8 are unconfirmed
+- sub_8126524's fixed 40x12 rect draw is unidentified — what graphic it shows during this phase is unknown
+- 'The structure matches: five draws then IsScreenFadeActive with state advance to 8 in r5+1 fits the
+  code at 0x0812513E-0x08125144. However, r5 is not established in this snippet (no push {r5,...} or mov
+  r5,r6); the proposal''s interface assumes r5 is a callee-preserved object pointer, but the function
+  only pushes lr and pops pc, meaning r5 is a caller-supplied argument or global. Also it is not a ''step''
+  since it has no callers known and runs five full draws — calling it battle_introDrawArenaStep is plausible
+  but speculative.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8125128 -> battle_drawIntroScene
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125128

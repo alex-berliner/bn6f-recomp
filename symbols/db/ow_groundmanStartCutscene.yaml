@@ -1,0 +1,63 @@
+name: ow_groundmanStartCutscene
+address: '0x08143A54'
+kind: function
+status: probable
+summary: 'GroundMan minigame cutscene dispatcher: checks the player may auto-advance, progresses event
+  flags D34/D35, then selects and starts one of several cutscenes (byte_8092DE8/byte_80933B8/dword_8143B1C
+  table/byte_809326C) gated by sub_8143BB0, sub_8143D4C and sub_8143F72, always clearing D34/D35 on exit.'
+interface: '() -> void; flags: event flags D34/D35 modified, ZF from check_playerCanAdvanceForward controls
+  early exit'
+details: 'Runs as an overworld per-tile/per-step event handler: it first checks the player may advance
+  forward, and bails (clearing D34/D35) otherwise. It then reads a field at [r10+0x3c]+0x11 to decide
+  whether to set flags D34 then D35 (a two-stage progression, e.g. approaching then engaging). Once D35
+  is set it calls sub_80357AE / sub_8143DEA / sub_8143EDC / sub_8143EA4 / sub_8143BB0 and picks between
+  cutscripts byte_8092DE8 and byte_80933B8 based on one of those tests. Finally sub_8143D4C and sub_8143F72
+  gate the minigame start, and GetGroundmanMinigameMapIndex selects one of two scripts from the table
+  at dword_8143B1C (or byte_809326C). All exit paths clear both D34 and D35 so the trigger re-arms.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl check_playerCanAdvanceForward_8034C36; beq exit — typical per-step overworld trigger
+    guard; movflag EVENT_D34/EVENT_D35 with Test/Set/ClearEventFlagFromImmediate — two staged story flags
+    for this event; bl GetGroundmanMinigameMapIndex then indexed ldr from dword_8143B1C table of CutsceneScripts;
+    four StartCutscene calls with distinct scripts (8092C78/8092A98, 8092DE8, 80933B8, 809326C) chosen
+    by minigame state; sub_8143D4C result compared (cmp r0,r1) and sub_8143F72 tested to pick between
+    the two minigame-start scripts
+  refs:
+  - bn6f/asm/asm37_1.s:3560
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08036E90 StartCutscene
+  reproduce: python3 tools/asmcat.py 0x08143A54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s detail is largely accurate: it checks player-can-advance, sets D34/D35 in a two-stage
+    progression, then dispatches among cutscenes (byte_8092DE8/byte_80933B8) based on sub_8143BB0 and
+    sub_8143D4C/8143F72 gating, clearing D34/D35 on all exits. However, the name ''ow_groundmanStepForwardEvent''
+    is fine but the summary overstates it as a single overworld per-tile trigger; the function is more
+    accurately the GroundMan minigame cutscene dispatcher (started via call to sub_8143C18), not a generic
+    step-forward event. The branch on [r10+0x3c]+0x11 acts as a prerequisite test, not ''approaching then
+    engaging''.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80357AE/sub_8143D4C/sub_8143F72 test (minigame score/state?) to refine which cutscene plays
+  when
+- Whether this is tied to a specific tile/map trigger table entry
+- 'The proposal''s detail is largely accurate: it checks player-can-advance, sets D34/D35 in a two-stage
+  progression, then dispatches among cutscenes (byte_8092DE8/byte_80933B8) based on sub_8143BB0 and sub_8143D4C/8143F72
+  gating, clearing D34/D35 on all exits. However, the name ''ow_groundmanStepForwardEvent'' is fine but
+  the summary overstates it as a single overworld per-tile trigger; the function is more accurately the
+  GroundMan minigame cutscene dispatcher (started via call to sub_8143C18), not a generic step-forward
+  event. The branch on [r10+0x3c]+0x11 acts as a prerequisite test, not ''approaching then engaging''.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143A54 -> ow_groundmanStartCutscene
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143A54

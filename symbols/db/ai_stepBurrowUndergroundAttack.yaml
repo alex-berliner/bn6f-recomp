@@ -1,0 +1,63 @@
+name: ai_stepBurrowUndergroundAttack
+address: '0x080EED74'
+kind: function
+status: probable
+summary: 'AI attack step that burrows the enemy into its own panel: clears collision, sets OBJECT_FLAGS_CANNOT_SLIDE,
+  reserves its current panel, then after 3 frames spawns an effect object at +0x34 (z += 0x100000), plays
+  sound 0x108, and writes 4 to HitElement.'
+interface: (r0 = attack element byte from [r7+oAIAttackVars_AttackElement] context; r5 = battle object,
+  r7 = AI attack vars) -> r0 = 4 (HitElement written to [r7+oAIAttackVars_HitElement]); r0/r1 clobbered
+details: 'First entry (AttackElement == 0) is the setup phase: plays animation 4, releases the panel reserved
+  at FuturePanelX/Y, clears ObjectFlags1 bit 0x1000, sets OBJECT_FLAGS_CANNOT_SLIDE, copies PanelX/Y into
+  FuturePanelX/Y and reserves that panel via object_reservePanel, clears the collision region so the object
+  stops colliding, calls sub_802CEA6 with the object''s Alliance, sets StepTimer = 3 and marks AttackElement
+  = 4 as a started-latch. On subsequent calls it decrements StepTimer; once it goes negative it spawns
+  an effect object at the object''s coordinate triple at offset 0x34 (z incremented by 0x100000), plays
+  sound effect 0x107, and sets HitElement = 4 (wood) for the caller to apply damage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne gates a one-shot setup phase on first entry;
+    object_reservePanel after copying PanelX/Y->FuturePanelX/Y plus object_clearCollisionRegion = claims
+    own tile and goes intangible; StepTimer==3 then countdown with bge locret; on expiry spawns effect
+    from [r5+0x34] coords and PlaySoundEffect(0x107); strh r0(=4),[r7,#oAIAttackVars_HitElement] records
+    the element the attack deals on hit; Callees are all battle-object primitives (setAnimation, reserve/removePanelReserve,
+    set/clearFlag, clearCollisionRegion), confirming an in-battle AI attack routine
+  refs:
+  - bn6f/asm/asm31.s:118605
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x080EED74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The setup correctly animates, reserves the current panel, clears collision, sets OBJECT_FLAGS_CANNOT_SLIDE
+    and arms StepTimer=3, and the second branch decrements, spawns effect at +0x34 (z += 0x100000), plays
+    sound 0x108, and stores 4 in HitElement. However, the proposal claims HitElement is the wood element;
+    the code just writes the literal 4 with no elemental semantics enforced here, and the spawn type is
+    ''spawn_t1_0x0_EffectObject'' with id 2, not ''ground effect'' specifically. Name is reasonable but
+    summary overstates ''wood'' and ''ground effect''.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_802CEA6(object, alliance) does (likely marks the tile/alliance for the hit check)
+- Which AI state machine calls this and how HitElement=4 is consumed for damage
+- What effect ID spawn_t1_0x0_EffectObject is given via r1-r3 to confirm the visual
+- The setup correctly animates, reserves the current panel, clears collision, sets OBJECT_FLAGS_CANNOT_SLIDE
+  and arms StepTimer=3, and the second branch decrements, spawns effect at +0x34 (z += 0x100000), plays
+  sound 0x108, and stores 4 in HitElement. However, the proposal claims HitElement is the wood element;
+  the code just writes the literal 4 with no elemental semantics enforced here, and the spawn type is
+  'spawn_t1_0x0_EffectObject' with id 2, not 'ground effect' specifically. Name is reasonable but summary
+  overstates 'wood' and 'ground effect'.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EED74 -> ai_stepBurrowUndergroundAttack
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EED74

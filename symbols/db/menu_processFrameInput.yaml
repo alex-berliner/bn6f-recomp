@@ -1,0 +1,66 @@
+name: menu_processFrameInput
+address: '0x0804A3FC'
+kind: function
+status: probable
+summary: 'Per-frame menu input handler: gates on screen fade and two predicates, branches RIGHT into an
+  exit transition with sound 0x9c, otherwise advances sub-state to 4 and calls sub_804AB10; when halfword
+  [r5+0x28] is set, runs the D-pad/mask-7 cursor adjust over range 0..10, then redraws and returns 0.'
+interface: (r5 = menu state struct) -> r0 = 0 always; touches struct bytes [r5+0], [r5+1], [r5+3], halfword
+  [r5+0x28]
+details: 'This is a menu state handler, likely dispatched per frame with the state struct in r5. If a
+  screen fade is active it skips input handling and goes straight to redraw. It queries two unknown predicate
+  functions (sub_804AAA4, sub_804AAD0) whose nonzero results suppress input, then checks RIGHT: on press
+  it plays sound effect 0x9c and sets bytes [r5]=0x18 and [r5+1]=0 (probably starting an exit/transition
+  animation), otherwise it sets state byte [r5+3]=4 and calls sub_804AB10. When halfword [r5+0x28] is
+  nonzero, it passes the low-sensitivity held joypad, mask 7, min 0 and max 10 to menu_adjustCursorOrValue_811F7F8,
+  so the menu''s cursor/value spans 11 positions. Finally it calls sub_804A8F4, menuCopyBackgroundTiles_804A7C0,
+  and two more sub-handlers to redraw, and always returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq loc_804A436 — input only processed after the fade finishes; mov
+    r0, #0x9c; bl PlaySoundEffect; mov r0,#0x18; strb [r5] — confirm/cursor SE plus state transition bytes;
+    ldr r0,[r10,oToolkit_JoypadPtr]...; bl menu_adjustCursorOrValue_811F7F8 with r2=0, r3=0xa — clamped
+    0-10 cursor adjustment from held input; bl menuCopyBackgroundTiles_804A7C0 at end — menu tiles re-uploaded
+    each frame, confirming a menu context; always ''mov r0,#0; pop {pc}'' — typical per-frame handler
+    returning status 0'
+  refs:
+  - bn6f/asm/asm03_2.s:7437
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0811F7F8 menu_adjustCursorOrValue_811F7F8
+  reproduce: python3 tools/asmcat.py 0x0804A3FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but it describes RIGHT as a generic ''confirm'' and the range-0/10
+    clamp as ''cursor'' without justification — the callee name is generic. The code does show a RIGHT-brach
+    sets state byte 0/1 to 0x18/0 (an exit transition) with sound 0x9c, and a non-RIGHT path sets state
+    byte 3=4 and calls sub_804AB10. The mask=7, min=0, max=10 call to menu_adjustCursorOrValue only happens
+    when halfword [r5+0x28] is nonzero (a sub-state gate), which the proposal does not emphasize. Interface
+    claim ''touches [r5+0], [r5+1], [r5+3], halfword [r5+0x28]'' is correct but incomplete — [r5+0x28]
+    is only read, not written here. A name like menu_processFrameInput fits the ''process...Input'' prefix
+    convention better.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which menu this belongs to (callers unknown); the predicates sub_804AAA4/sub_804AAD0 and the meaning
+  of state bytes 0x18/4 in the r5 struct are unidentified
+- What the 0-10 cursor value selects (item list, setting value, etc.)
+- The summary is mostly accurate, but it describes RIGHT as a generic 'confirm' and the range-0/10 clamp
+  as 'cursor' without justification — the callee name is generic. The code does show a RIGHT-brach sets
+  state byte 0/1 to 0x18/0 (an exit transition) with sound 0x9c, and a non-RIGHT path sets state byte
+  3=4 and calls sub_804AB10. The mask=7, min=0, max=10 call to menu_adjustCursorOrValue only happens when
+  halfword [r5+0x28] is nonzero (a sub-state gate), which the proposal does not emphasize. Interface claim
+  'touches [r5+0], [r5+1], [r5+3], halfword [r5+0x28]' is correct but incomplete — [r5+0x28] is only read,
+  not written here. A name like menu_processFrameInput fits the 'process...Input' prefix convention better.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A3FC -> menu_processFrameInput
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A3FC

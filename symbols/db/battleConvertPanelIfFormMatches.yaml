@@ -1,0 +1,59 @@
+name: battleConvertPanelIfFormMatches
+address: '0x080128FC'
+kind: function
+status: probable
+summary: If the object's panel type is 6 and the battle side's NaviStats byte 0x2C is 7 or 0x13, and the
+  chip record (via chip id) has byte+6==3 with bit1 set and bit0 clear, converts the panel to type 2 and
+  returns 1; otherwise returns 0.
+interface: (r0 = battle object/handle (saved, unused here), r1 = chip id) -> r0 = 1 if panel converted
+  to type 2, else 0 via sub_8012956 path; r5 = battle object supplying x/y at +0x12/+0x13
+details: Reads the object's panel coordinates from r5+0x12 and r5+0x13 and fetches the panel record via
+  object_getPanelDataOffset; if none, returns 0. Only panels whose byte at +2 equals 6 proceed. It then
+  reads the battle side's NaviStats byte 0x2C and requires it to be 7 or 0x13 (some cross/beast form id).
+  The caller's chip id is resolved through getChip8021DA8; the 44-byte chip record must have byte+9 with
+  bit1 set and bit0 clear (an element/flag test) and byte+6 equal to 3. When all conditions pass, object_setPanelType(x,
+  y, 2) rewrites the panel and the function returns 1. Otherwise it branches into shared tail sub_8012956,
+  which presumably cleans up/returns 0. r4 holds the first argument but is never read in this body.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r6,[r5,#0x12]/ldrb r7,[r5,#0x13] then bl object_getPanelDataOffset — acts on the object''s
+    own panel; ldrb r1,[r0,#2]; cmp r1,#6 — only panel type 6 is eligible; GetBattleNaviStatsByte_AllianceFromBattleObject
+    with offset 0x2C; cmp r0,#7 / #0x13 — gates on a specific form value; getChip8021DA8([sp]); ldrb r1,[r0,#9]
+    bit1-set/bit0-clear plus ldrb [r0,#6]==3 — chip element/flag and class gate; mov r2,#2; bl object_setPanelType(r6,r7,2);
+    mov r0,#1 — converts the panel and reports success'
+  refs:
+  - bn6f/asm/asm00_2.s:8667
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08021AA4 getChip8021DA8
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x080128FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The form-id check (cmp #7 / cmp #0x13) and the panel convert-to-type-2 only happen when the panel
+    byte at +2 is already 6, matching the proposal; however, no caller is listed, so the chip-use framing
+    is unverified. The name prefix battle_ is fine but ChipConvertPanel... is verbose; ''ConvertPanelIfFormMatches''
+    is clearer.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which panel types 6 and 2 are (grass/ice/holy/etc.) per the panel-type table
+- What NaviStats byte 0x2C encodes and which forms 7 and 0x13 are
+- Meaning of ChipData byte+9 flag bits and byte+6 (element vs chip class)
+- What sub_8012956 does/returns on the failure path
+- 'No known caller: unknown whether r0 is the object pointer and how r5 is established'
+- 'The form-id check (cmp #7 / cmp #0x13) and the panel convert-to-type-2 only happen when the panel byte
+  at +2 is already 6, matching the proposal; however, no caller is listed, so the chip-use framing is
+  unverified. The name prefix battle_ is fine but ChipConvertPanel... is verbose; ''ConvertPanelIfFormMatches''
+  is clearer.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80128FC -> battleConvertPanelIfFormMatches
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80128FC

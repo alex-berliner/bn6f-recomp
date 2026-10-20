@@ -1,0 +1,72 @@
+name: ow_updateEventObjectSprite
+address: '0x08119DE8'
+kind: function
+status: probable
+summary: 'Per-frame update for overworld event object at entry 0 of eStructArr2008450: repositions it
+  from struct+0x2C/+0x2E via sprite_setCoordinates, sets bit 0x80 on the status byte kept only when EVENT_1720
+  or EVENT_1723 is set (otherwise stores 1 to hide it), sets sprite alpha from mosaic params, runs obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  and the loc_8002F02 render-info helper, then calls sprite_update.'
+interface: (r0 = 0 hardcoded entry index; r5 = pointer receiving the object's status byte, likely its
+  own struct+0) -> r0 = sprite_update result; status byte written with bit 0x80 set, or 1 when neither
+  event flag is set
+details: 'Fetches entry 0 of the 0x58-byte struct array at eStructArr2008450 (r6 = struct pointer, [r6]
+  = in-use/status flag). Reads halfwords at struct+0x2C and +0x2E as x/y and passes them to sprite_setCoordinates,
+  so the object''s screen position is driven by its struct fields. Reads the status byte, ORs in 0x80
+  (visible/active), then tests EVENT_1720 and EVENT_1723: if either is set the 0x80-marked byte is kept,
+  otherwise 1 is stored instead — i.e. the object is only shown after that point in the story. It then
+  reads the object''s mosaic/scaling parameters, sets sprite alpha from them, calls the render-info helper
+  at 0x8002F02 via obj_getSpriteFlag10AndRenderInfoHigh, and finishes with sprite_update. The store target
+  r5 is not set in this function, so it must be prepared by the caller (most plausibly equal to r6, writing
+  the status byte back onto the struct).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0; bl getStructFrom2008450 — hardcoded entry 0 of the 0x58-byte OW object struct array;
+    ldrh r0,[r1,#0xC]; ldrh r1,[r1,#0xE]; bl sprite_setCoordinates — x/y taken from struct+0x2C/+0x2E;
+    ldrb r4,[r6]; orr r4,#0x80; TestEventFlagFromImmediate(EVENT_1720/EVENT_1723); strb r4,[r5] — visibility
+    gated on story flags; bl sprite_getMosaicScalingParameters; bl sprite_setAlpha — alpha derived from
+    mosaic/scaling state; bl obj_getSpriteFlag10AndRenderInfoHigh_8002F3E; bl 0x8002F02; bl sprite_update
+    — standard end-of-frame sprite render/update sequence
+  refs:
+  - bn6f/asm/asm32.s:24470
+  - 0x08119D74 sub_8119D74
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x080466C4 getStructFrom2008450
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  reproduce: python3 tools/asmcat.py 0x08119DE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is close. In the assembly, `movflag EVENT_1720` precedes the first TestEventFlagFromImmediate,
+    then a second TestEventFlagFromImmediate with `EVENT_1723` is done, and only if both are unset does
+    r4 fall through to 1; otherwise it keeps the 0x80-marked status byte. The struct offset used by `sprite_setCoordinates`
+    is actually +0x2C/+0x2E (add #0x20 then ldrh at offsets +0xC, +0xE), which matches the proposal. However
+    `sprite_setAlpha` is called explicitly, not implicitly via sprite_getMosaicScalingParameters, and
+    the function reads mosaic params but never uses them beyond the alpha set; the summary''s ''applies
+    alpha/mosaic'' slightly overstates this. Also `r5` write at `strb r4,[r5]` shows r5 is a caller-prepared
+    struct/status pointer — confirmed. Name is accurate.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What caller sub_8119D74 puts in r5 (presumably r6, the struct base, making the store rewrite the status
+  byte) and what event flags 1720/1723 correspond to story-wise
+- What the helper at 0x8002F02 does with the render-info values
+- 'The proposal is close. In the assembly, `movflag EVENT_1720` precedes the first TestEventFlagFromImmediate,
+  then a second TestEventFlagFromImmediate with `EVENT_1723` is done, and only if both are unset does
+  r4 fall through to 1; otherwise it keeps the 0x80-marked status byte. The struct offset used by `sprite_setCoordinates`
+  is actually +0x2C/+0x2E (add #0x20 then ldrh at offsets +0xC, +0xE), which matches the proposal. However
+  `sprite_setAlpha` is called explicitly, not implicitly via sprite_getMosaicScalingParameters, and the
+  function reads mosaic params but never uses them beyond the alpha set; the summary''s ''applies alpha/mosaic''
+  slightly overstates this. Also `r5` write at `strb r4,[r5]` shows r5 is a caller-prepared struct/status
+  pointer — confirmed. Name is accurate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8119DE8 -> ow_updateEventObjectSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8119DE8

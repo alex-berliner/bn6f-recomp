@@ -1,0 +1,71 @@
+name: battle_waitLink
+address: '0x0809CC00'
+kind: function
+status: probable
+summary: 'Per-frame wait step on a battle object: on first call clears IWRAM state, resets battle state,
+  and seeds sub_803F512; subsequently polls link state and ticks a halfword countdown at word_200AD06
+  until ready, then stores a flag at object +0x08, mirrors it into IWRAM via setByte_200AD04, and (if
+  set) queues chatbox script index 0x22 via chatbox_runScript; returns 1 while waiting, 0 once done.'
+interface: (r5 = object/state pointer, r0 unused) -> r0 = 1 while still waiting/initializing, 0 once the
+  script was queued; flags clobbered
+details: 'This is an update-style routine using r5 as an object: field +0x70 acts as an ''initialized''
+  latch — on the first call it sets +0x70=1, zeroes the IWRAM state byte word_200AD04 via clear_e200AD04,
+  calls battle_resetStateForNewBattle, and calls sub_803F512 (which presumably seeds word_200AD04), returning
+  1. On later frames it polls battle_getLinkStateCode: when the state is 0 it proceeds with r4=1, otherwise
+  (link battle active) it keeps r4=0 and decrements the halfword countdown at word_200AD06, returning
+  1 while the timer is still nonzero. When it finally proceeds it stores r4 into the object''s byte at
+  +0x08, writes it back to word_200AD04 via setByte_200AD04_803F4EC, and, if r4!=0, queues chatbox script
+  index 0x22 from the archive pointer in the pool at byte_809CEAC+4. The return value pattern (1 = keep
+  waiting, 0 = done) suggests a state-machine step that holds the object until the link countdown expires.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#0x70]; tst/bne + 'mov r0,#1; str r0,[r5,#0x70]' shows a first-run init latch on
+    the object; bl battle_getLinkStateCode_803F560 with beq/nonzero branches drives the wait logic and
+    r4 flag; ldrh/strh around word_200AD04+2 decrementing to 0 is a frame countdown before proceeding;
+    bl setByte_200AD04_803F4EC and strb r4,[r5,#8] record the resulting state in the IWRAM byte and object
+    field +8; bl chatbox_runScript with idx 0x22 queues the text that ends the wait (returns 0 on that
+    path, 1 otherwise)
+  refs:
+  - bn6f/asm/asm28_0.s:4987
+  - 0x0803F560 battle_getLinkStateCode_803F560
+  - 0x0803F6B0 battle_resetStateForNewBattle_803F6B0
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x0809CC00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function''s structure and callee usage match the proposal: a one-time init (clear_e200AD04,
+    battle_resetStateForNewBattle, sub_803F512) gated by [r5+0x70], a link-state poll via battle_getLinkStateCode,
+    a countdown at word_200AD06, and chatbox_runScript with index 0x22. However the call to chatbox_runScript
+    passes r1=0x22, not the archive pointer from 0x809CEAC+4 as a TextScriptArchive*; r0 is loaded with
+    the raw byte 0x4, which suggests it is being used directly as the archive argument (the label ''byte_809CEAC+4''
+    likely just denotes a small-pool entry, not necessarily an archive struct). The name battle_waitLinkIntroScript
+    is reasonable but the ''intro'' part is not evidenced by code; ''battle'' is correct given all the
+    link/battle callees.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the object layout (fields +0x70 and +0x08) and where this fits in the battle/versus
+  flow are unconfirmed
+- The archive pointer pool entry byte_809CEAC+4 and what script 0x22 says are unidentified
+- Semantics of word_200AD04 (comm/link mode byte) and sub_803F512's role in initializing it are not fully
+  known
+- 'The function''s structure and callee usage match the proposal: a one-time init (clear_e200AD04, battle_resetStateForNewBattle,
+  sub_803F512) gated by [r5+0x70], a link-state poll via battle_getLinkStateCode, a countdown at word_200AD06,
+  and chatbox_runScript with index 0x22. However the call to chatbox_runScript passes r1=0x22, not the
+  archive pointer from 0x809CEAC+4 as a TextScriptArchive*; r0 is loaded with the raw byte 0x4, which
+  suggests it is being used directly as the archive argument (the label ''byte_809CEAC+4'' likely just
+  denotes a small-pool entry, not necessarily an archive struct). The name battle_waitLinkIntroScript
+  is reasonable but the ''intro'' part is not evidenced by code; ''battle'' is correct given all the link/battle
+  callees.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809CC00 -> battle_waitLink
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CC00

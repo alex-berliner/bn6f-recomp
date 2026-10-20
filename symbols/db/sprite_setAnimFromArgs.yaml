@@ -2,27 +2,25 @@ name: sprite_setAnimFromArgs
 address: '0x080A8548'
 kind: function
 status: probable
-summary: Reads two halfword arguments from [r6+0x1a] and [r6+0x1c], passes them to sub_80A8518 to derive
-  a direction/animation index, and updates the sprite animation (via sprite_setAnimation, sprite_loadAnimationData,
-  sprite_noShadow) only when that index differs from the cached value at [r5+4]; caches the new index
-  on change.
-interface: (r5 = object, r6 = object; args taken from [r6+0x1a] and [r6+0x1c]) -> void; r0 = direction
-  index from sub_80A8518
-details: Loads two halfwords from the object at r6+0x1a and r6+0x1c (likely x/y position or velocity fields)
-  and passes them to sub_80A8518, which returns a direction index in r0. It compares that index against
-  a cached value at [r5+4]; if equal, it returns without touching the sprite. Otherwise it calls sprite_setAnimation
-  with the index, sprite_loadAnimationData to load the new frame table, and sprite_noShadow, then caches
-  the index back into [r5+4]. The caching makes it idempotent per direction, so callers can invoke it
-  every tick while the entity moves.
+summary: Reads two halfword arguments from [r6+0x1a] and [r6+0x1c], passes them to sub_80A8518 to derive a direction/animation
+  index, and updates the sprite animation (via sprite_setAnimation, sprite_loadAnimationData, sprite_noShadow) only
+  when that index differs from the cached value at [r5+4]; caches the new index on change.
+interface: (r5 = object, r6 = object; args taken from [r6+0x1a] and [r6+0x1c]) -> void; r0 = direction index from
+  sub_80A8518
+details: Loads two halfwords from the object at r6+0x1a and r6+0x1c (likely x/y position or velocity fields) and
+  passes them to sub_80A8518, which returns a direction index in r0. It compares that index against a cached value
+  at [r5+4]; if equal, it returns without touching the sprite. Otherwise it calls sprite_setAnimation with the index,
+  sprite_loadAnimationData to load the new frame table, and sprite_noShadow, then caches the index back into [r5+4].
+  The caching makes it idempotent per direction, so callers can invoke it every tick while the entity moves.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: ldrh r0,[r6,#0x1a]; ldrh r1,[r6,#0x1c]; bl sub_80A8518 — feeds two coordinate-like fields into
-    a direction-index helper; ldrb r1,[r5,#4]; cmp r0,r1; beq locret — early-exits when the direction
-    index is unchanged, so [r5+4] caches the current animation; bl sprite_setAnimation; bl sprite_loadAnimationData;
-    bl sprite_noShadow — applies the new direction's animation and strips the shadow; strb r4,[r5,#4]
-    — stores the new index into the same cache byte after switching animations; sprite_* callees all operate
-    on the shared object/sprite slot, matching r5/r6 being the same entity record
+  detail: ldrh r0,[r6,#0x1a]; ldrh r1,[r6,#0x1c]; bl sub_80A8518 — feeds two coordinate-like fields into a direction-index
+    helper; ldrb r1,[r5,#4]; cmp r0,r1; beq locret — early-exits when the direction index is unchanged, so [r5+4]
+    caches the current animation; bl sprite_setAnimation; bl sprite_loadAnimationData; bl sprite_noShadow — applies
+    the new direction's animation and strips the shadow; strb r4,[r5,#4] — stores the new index into the same cache
+    byte after switching animations; sprite_* callees all operate on the shared object/sprite slot, matching r5/r6
+    being the same entity record
   refs:
   - bn6f/asm/asm29.s:6501
   - 0x080A83B8 sub_80A83B8
@@ -31,24 +29,23 @@ evidence:
   - 0x08002F90 sprite_noShadow
   - 0x08002DA4 sprite_setAnimation
   reproduce: python3 tools/asmcat.py 0x080A8548
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary correctly captures the caching/idempotent behavior (cmp r0,r1 / beq locret_80A8568 /
-    strb r4,[r5,#4]). However, r6 is not an object pointer: its only use is reading two halfwords at +0x1a/+0x1c
-    which are passed straight to sub_80A8518. There is no evidence these are position-delta fields belonging
-    to the object at r6; they are simply two u16 arguments consumed by a subroutine that computes a direction
-    index. The ''recomputes from position delta'' framing is speculation.; run wf investigate investigate-20261018-182231;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    correctly captures the caching/idempotent behavior (cmp r0,r1 / beq locret_80A8568 / strb r4,[r5,#4]). However,
+    r6 is not an object pointer: its only use is reading two halfwords at +0x1a/+0x1c which are passed straight
+    to sub_80A8518. There is no evidence these are position-delta fields belonging to the object at r6; they are
+    simply two u16 arguments consumed by a subroutine that computes a direction index. The ''recomputes from position
+    delta'' framing is speculation.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 coverage:
 - beastsp
 open_questions:
-- Exact meaning of the [r6+0x1a]/[r6+0x1c] fields (position vs velocity) and what sub_80A8518 computes
-  (presumably atan2-style 8-direction index) — its body was not shown
-- 'The summary correctly captures the caching/idempotent behavior (cmp r0,r1 / beq locret_80A8568 / strb
-  r4,[r5,#4]). However, r6 is not an object pointer: its only use is reading two halfwords at +0x1a/+0x1c
-  which are passed straight to sub_80A8518. There is no evidence these are position-delta fields belonging
-  to the object at r6; they are simply two u16 arguments consumed by a subroutine that computes a direction
-  index. The ''recomputes from position delta'' framing is speculation.'
+- Exact meaning of the [r6+0x1a]/[r6+0x1c] fields (position vs velocity) and what sub_80A8518 computes (presumably
+  atan2-style 8-direction index) — its body was not shown
+- 'The summary correctly captures the caching/idempotent behavior (cmp r0,r1 / beq locret_80A8568 / strb r4,[r5,#4]).
+  However, r6 is not an object pointer: its only use is reading two halfwords at +0x1a/+0x1c which are passed straight
+  to sub_80A8518. There is no evidence these are position-delta fields belonging to the object at r6; they are simply
+  two u16 arguments consumed by a subroutine that computes a direction index. The ''recomputes from position delta''
+  framing is speculation.'
 sources:
 - wf investigate investigate-20261018-182231
 changes:
@@ -60,5 +57,9 @@ changes:
   what: rename sub_80A8548 -> sprite_setAnimFromArgs
   where: bn6f 0086088f
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
 previous_names:
 - sub_80A8548

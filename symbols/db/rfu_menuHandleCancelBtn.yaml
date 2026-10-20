@@ -1,0 +1,58 @@
+name: rfu_menuHandleCancelBtn
+address: '0x0812BF10'
+kind: function
+status: probable
+summary: 'A/B button handler for an RFU/wireless menu state: on press, advances the menu state machine
+  (to handler 0x14, or 0x18 in state 0x11 with an active wireless mode) and tears down the RFU link while
+  fading the screen.'
+interface: (r5 = menu state record) -> void; sets record fields and global screen fade
+details: 'Runs once per frame for some wireless menu. If A or B is newly pressed, it reads the record''s
+  current state at r5+0x10: for state 0x11 it writes next-handler 0x18 into r5+2 (or, when the EWRAM record
+  at 0x200BC30 says no wireless mode is active, defers to sub_8132614''s menu-choice dispatch); for other
+  states it writes handler 0x14. In both exit paths it zeroes r5+3 (a frame/timer counter), calls SetScreenFade(0xC,
+  0x10) to fade out, and — if the 0x200BC30 record''s first byte is nonzero — issues rfu_REQ_stopMode
+  and rfu_waitREQComplete to end the wireless mode before returning. If no button is pressed it simply
+  returns, so the handler is polled each frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: IsButtonPressed(A|B) gate at entry — only acts on a fresh A/B press (sub_812BF10+2..8); strb
+    0x14/0x18 to [r5,#2] and 0 to [r5,#3] — sets the record's next handler index and clears its timer;
+    SetScreenFade(0xC,0x10) called in both exit paths — screen fade-out on leaving; eStruct200BC30_getJumpOffset00
+    result gates rfu_REQ_stopMode+rfu_waitREQComplete — teardown only when wireless mode was running;
+    state 0x11 + zero offset falls through to sub_8132614, the known menu-choice dispatcher
+  refs:
+  - bn6f/asm/asm33.s:18414
+  - 0x0811F7EC IsButtonPressed
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  - 0x08132614 sub_8132614
+  reproduce: python3 tools/asmcat.py 0x0812BF10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches: if A/B pressed and r5+0x10 != 0x11, writes 0x14 at r5+2 and zeros r5+3, sets
+    screen fade 0xC/0x10, and if 0x200BC30 first byte nonzero calls rfu_REQ_stopMode/waitREQComplete.
+    For state 0x11, if the record byte is zero it falls into sub_8132614; otherwise it writes 0x18 at
+    r5+2 (not ''defers to sub_8132614''). The proposal flipped the 0x18 write vs. sub_8132614 paths. Summary
+    otherwise fits. Consider rfu_menuHandleCancelBtn as a slightly clearer name.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which exact menu (state ids 0x11/0x14/0x18) this handler belongs to; no caller is known so the record
+  layout of r5 (fields +2/+3/+0x10) is inferred only from usage
+- 'The assembly matches: if A/B pressed and r5+0x10 != 0x11, writes 0x14 at r5+2 and zeros r5+3, sets
+  screen fade 0xC/0x10, and if 0x200BC30 first byte nonzero calls rfu_REQ_stopMode/waitREQComplete. For
+  state 0x11, if the record byte is zero it falls into sub_8132614; otherwise it writes 0x18 at r5+2 (not
+  ''defers to sub_8132614''). The proposal flipped the 0x18 write vs. sub_8132614 paths. Summary otherwise
+  fits. Consider rfu_menuHandleCancelBtn as a slightly clearer name.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812BF10 -> rfu_menuHandleCancelBtn
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BF10

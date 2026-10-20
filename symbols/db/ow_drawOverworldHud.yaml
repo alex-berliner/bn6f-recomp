@@ -1,0 +1,55 @@
+name: ow_drawOverworldHud
+address: '0x08033B6E'
+kind: function
+status: probable
+summary: 'Overworld HUD wrapper: draws the PET navi HP digits, then the battle-start overlay frame with
+  flag=1, then the current map name.'
+interface: (r0 = self *S2011E30, unused by body) -> r0 = return of RenderMapName_8033EE8; no meaningful
+  flags
+details: 'Sequences three known draw routines: internet_drawHpDigits_8033E0C renders the navi''s 4 HP
+  OAM digits, battle_drawBattleStartOverlay_8033F80 is called with r0=1 (likely an enable/draw-frame flag
+  selecting the overlay variant), and RenderMapName_8033EE8 draws the current area''s name plate. r0 is
+  never reloaded between calls, so the passed pointer is forwarded to each callee, suggesting they share
+  the same scene/state object. The function is a pure wrapper with no logic of its own.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: bl internet_drawHpDigits_8033E0C — HP digit draw in Internet overworld UI; asm: mov r0,#1;
+    bl battle_drawBattleStartOverlay_8033F80 — draws overlay with flag 1; asm: bl RenderMapName_8033EE8
+    — draws area name text; callee summaries confirm all three are overlay/OAM draw routines for overworld/internet
+    UI'
+  refs:
+  - bn6f/asm/asm03_1_0.s:518
+  - 0x08033F80 battle_drawBattleStartOverlay_8033F80
+  - 0x08033E0C internet_drawHpDigits_8033E0C
+  - 0x08033EE8 RenderMapName_8033EE8
+  reproduce: python3 tools/asmcat.py 0x08033B6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it pushes lr, calls internet_drawHpDigits_8033E0C with the incoming
+    r0, sets r0=1 and calls battle_drawBattleStartOverlay_8033F80, then calls RenderMapName_8033EE8 with
+    r0 still 1, and returns via pop {pc}. The callees and ordering match. However, r0 is overwritten to
+    1 before the map name call, so the description that r0 is forwarded unchanged is slightly misleading,
+    though the function is still a pure wrapper.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which caller invokes it and when (scene init vs per-frame redraw) is unknown since no callers are listed
+- meaning of the r0=1 argument to battle_drawBattleStartOverlay is inferred from its summary only
+- 'The code matches the proposal: it pushes lr, calls internet_drawHpDigits_8033E0C with the incoming
+  r0, sets r0=1 and calls battle_drawBattleStartOverlay_8033F80, then calls RenderMapName_8033EE8 with
+  r0 still 1, and returns via pop {pc}. The callees and ordering match. However, r0 is overwritten to
+  1 before the map name call, so the description that r0 is forwarded unchanged is slightly misleading,
+  though the function is still a pure wrapper.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8033B6E -> ow_drawOverworldHud
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033B6E

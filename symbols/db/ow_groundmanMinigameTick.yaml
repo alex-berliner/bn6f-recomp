@@ -1,0 +1,63 @@
+name: ow_groundmanMinigameTick
+address: '0x08143978'
+kind: function
+status: probable
+summary: 'Groundman minigame overworld tick: sets event flags 0x1670..0x169F, returns early if sub_8143C18''s
+  flag is set, updates a coordinate state, spawns overworld map object 0x2B for each per-map grid entry
+  whose flag is unset, and if EVENT_D36 is set starts the cutscene script at byte_8093358 (param 0) before
+  clearing D30/D34/D35/D36.'
+interface: () -> r0 = 0; no flags guaranteed — clears event flags 0x1670..0x169F, D30, D34, D35, D36 and
+  spawns overworld map objects
+details: 'First sets a run of 0x30 consecutive event flags starting at EVENT_1670, then after sub_8143C18
+  tests a flag and returns 0 early if set. It reads a state struct via r10+0x3C: compares bytes at +4
+  vs +0xC and +5 vs +0xD (two coordinate pairs); if they differ it calls sub_8143C30. It indexes a per-map
+  table (off_8143A4C, GetGroundmanMinigameMapIndex) of 4-byte entries {flagByte, paramByte, gridCoords
+  u16}; for each non-0xFF entry it derives a flag via sub_8143B5E, and if not set, clears it and calls
+  SpawnOverworldMapObject(0x2B, ConvertGroundmanMinigameGridCoordsToMapCoords(entry+2)). After the 0xFF
+  terminator, entry+1 goes to sub_8143F58, then sub_8143C88/sub_8143C62 run; if EVENT_D36 is set it starts
+  cutscene script byte_8093358 (param 0), runs sub_8143F38, and clears D36, then clears D30/D34/D35 and
+  returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: SetEventFlagRangeFromImmediate(0x1670, r2=0x30) at top — bulk round-flag reset; asm: loop
+    off_8143A4C[r0*4] entries with 0xFF terminator, ClearEventFlag + SpawnOverworldMapObject(0x2B, ConvertGroundmanMinigameGridCoordsToMapCoords(...));
+    callee GetGroundmanMinigameMapIndex and ConvertGroundmanMinigameGridCoordsToMapCoords identify the
+    Groundman minigame board; asm: EVENT_D36 branch starts cutscene byte_8093358 via StartCutscene then
+    clears D36/D30/D34/D35; early exit: TestEventFlag after sub_8143C18 with ''bne loc_8143A46'' returns
+    0'
+  refs:
+  - bn6f/asm/asm37_1.s:3467
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F17E SetEventFlagRangeFromImmediate
+  reproduce: python3 tools/asmcat.py 0x08143978
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are directionally correct: it resets a run of event flags 0x1670..0x169F (SetEventFlagRangeFromImmediate),
+    spawns overworld map object 0x2B per grid entry whose flag isn''t set, and starts the cutscene at
+    byte_8093358 when D36 is set. However, the summary says it ''clears'' the flag run while the code
+    uses SetEventFlagRangeFromImmediate (which sets them), and it also gets the early return from sub_8143C18''s
+    flag test, not a separate ''TEST and return 0 early'' step. The proposed name is fine but could reflect
+    the cutscene trigger.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the r10+0x3C state fields (+4/+5 vs +0xC/+0xD) and what sub_8143C30/sub_8143F38 do
+- which map/what object id 0x2B represents in-game
+- 'The name and summary are directionally correct: it resets a run of event flags 0x1670..0x169F (SetEventFlagRangeFromImmediate),
+  spawns overworld map object 0x2B per grid entry whose flag isn''t set, and starts the cutscene at byte_8093358
+  when D36 is set. However, the summary says it ''clears'' the flag run while the code uses SetEventFlagRangeFromImmediate
+  (which sets them), and it also gets the early return from sub_8143C18''s flag test, not a separate ''TEST
+  and return 0 early'' step. The proposed name is fine but could reflect the cutscene trigger.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143978 -> ow_groundmanMinigameTick
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143978

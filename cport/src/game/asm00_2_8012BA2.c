@@ -2502,10 +2502,10 @@ static void dispatch_actor_init_low(u8 ai_index) {
     GUEST_CALL(battleObject_incrementCollisionRegion_802D644);
 }
 
-/* register form: calls sub_802D65E outside this file, which has no typed C interface yet */
+/* register form: calls battle_clearObjectIndexedByte outside this file, which has no typed C interface yet */
 static void dispatch_actor_init_high(u8 ai_index) {
     R0 = ai_index;
-    GUEST_CALL(sub_802D65E);
+    GUEST_CALL(battle_clearObjectIndexedByte);
 }
 
 /* register form: calls relatedToIsBattleOver_800A11C outside this file, which has no typed C interface yet */

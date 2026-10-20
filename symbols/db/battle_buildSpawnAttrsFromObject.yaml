@@ -1,0 +1,72 @@
+name: battle_buildSpawnAttrsFromObject
+address: '0x0800F90E'
+kind: function
+status: probable
+summary: 'Packs a spawn parameter word in r4 from the source object: sets bit 0x100 if ObjectFlags2 has
+  0x200000, ORs in currentAnim<<16 and palette<<24, then forwards sprite record word at 0x2c (r0) and
+  three words from obj+0x34 (r1-r3) to sub_80E996E. Relies on caller already having the object pointer
+  in r5.'
+interface: (r0 = source battle object, r5 must also hold the same object pointer) -> spawns via sub_80E996E;
+  r4 carries packed attrs (bit8 from ObjectFlags2&0x200000, anim<<16, palette<<24), r0 = sprite unk0x2c,
+  r1-r3 = [obj+0x34..0x3F]
+details: 'The function packs a parameter word in r4: it tests the object''s ObjectFlags2 (via object_getFlag2)
+  for bit 0x200000 and sets bit 0x100 if present, then ORs the object''s current animation byte shifted
+  into bits 16-23 and its sprite palette byte into bits 24-31. It fetches the sprite record''s word at
+  offset 0x2c (sprite_getUnk0x2c) as the first argument, and copies three consecutive words from the object
+  at offset 0x34 (ldmia {r1-r3}) as the remaining arguments. Finally it calls sub_80E996E, which presumably
+  consumes the packed word in r4 as an extra register argument, spawning a new battle object/effect that
+  visually matches the source. Quirk: r5 is never set inside the function — it relies on callers having
+  already loaded the same object pointer into r5, so the object pointer is effectively passed in both
+  r0 and r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0 with dword_800F960=0x200000 after object_getFlag2, then orr 0x100 into r4 (loc_800F916-921):
+    ObjectFlags2 bit maps to a spawn-param flag bit; ldrb [r5,#oBattleObject_CurAnim] <<16 and sprite_getPalette
+    <<24 orr''d into r4: packed word carries anim+palette of the source object; ldmia r6! (r5+0x34) {r1-r3}
+    then bl sub_80E996E with sprite_getUnk0x2c result in r0: a 4-arg (plus r4) spawn call using fields
+    copied from the object; Caller battle_bombObjectUpdate calls it right before playing the hit sound,
+    spawning the explosion, and cleaning up the bomb — consistent with spawning a visually-matched effect'
+  refs:
+  - bn6f/asm/asm00_2.s:1789
+  - 0x080DA2EC battle_bombObjectUpdate
+  - 0x080CD1BE sub_80CD1BE
+  - 0x080CD700 sub_80CD700
+  - 0x0801A180 object_getFlag2
+  - 0x08002D8C sprite_getPalette
+  - 0x08002FB2 sprite_getUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x0800F90E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the packed word (bit 0x100 flag, anim<<16, palette<<24) and the
+    r5 dependency, matching lines like `orr r4, r0` after the tst and the use of `[r5,#oBattleObject_CurAnim]`.
+    However, the bit tested is `0x200000` from object_getFlag2, not `0x100` (the proposal reverses the
+    description), and the summary says ''inherits the object''s visuals'' but the sprite record''s 0x2c
+    word is just passed through — we don''t actually know it is a visual word. The callee sub_80E996E''s
+    role is also speculative; callers include bomb update and several sub_80CD*** functions, so the name
+    should not imply bombs specifically. A more accurate name emphasizes building spawn attrs from the
+    source object.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_80E996E is unknown — its body would confirm it is the generic effect/object spawn routine and how
+  it interprets r0-r4
+- Exact meaning of ObjectFlags2 bit 0x200000 and sprite unk0x2c field not established
+- The proposal correctly identifies the packed word (bit 0x100 flag, anim<<16, palette<<24) and the r5
+  dependency, matching lines like `orr r4, r0` after the tst and the use of `[r5,#oBattleObject_CurAnim]`.
+  However, the bit tested is `0x200000` from object_getFlag2, not `0x100` (the proposal reverses the description),
+  and the summary says 'inherits the object's visuals' but the sprite record's 0x2c word is just passed
+  through — we don't actually know it is a visual word. The callee sub_80E996E's role is also speculative;
+  callers include bomb update and several sub_80CD*** functions, so the name should not imply bombs specifically.
+  A more accurate name emphasizes building spawn attrs from the source object.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F90E -> battle_buildSpawnAttrsFromObject
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F90E

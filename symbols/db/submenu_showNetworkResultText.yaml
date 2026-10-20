@@ -1,0 +1,56 @@
+name: submenu_showNetworkResultText
+address: '0x0803AAD8'
+kind: function
+status: probable
+summary: Plays SOUND_MENU_SELECT, then displays text script 0x1A if byte_2006772 is zero or 0x18 if nonzero
+  (via sub_803C3E0/sub_803BB2C), and stores 0x10 into byte 1 of the caller's state struct.
+interface: (r0 = unused (clobbered for sound ID), r5 = pointer to state struct, no args in r0) -> r0 =
+  destroyed; writes struct+1 byte
+details: The routine plays SOUND_MENU_SELECT, then calls sub_803C3E0 which reads the flag byte byte_2006772
+  (word_2006770+2) and sets flags. If that flag is nonzero it picks text script id 0x1A, otherwise 0x18,
+  and passes it to sub_803BB2C, which displays a network-related text script chosen per the current main
+  jump-table phase. Finally it stores 0x10 into byte 1 of the state struct pointed to by r5 (r5 is set
+  up by the caller, not here), which is likely the next menu/phase state. The pairing of 0x18/0x1A with
+  a boolean flag strongly suggests success/failure or connected/not-connected message variants. Given
+  the 'network' callee, this is likely part of a network/cable-club menu flow.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl PlaySoundEffect with #SOUND_MENU_SELECT at start — menu-style confirmation sound; bl sub_803C3E0;
+    beq selects 0x1A vs 0x18 — flag byte_2006772 picks between two text scripts; bl sub_803BB2C with 0x18/0x1A
+    — callee known to display network-related text scripts by phase; strb #0x10, [r5,#1] at end — advances
+    a caller-provided state struct''s phase byte to 0x10'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4110
+  - 0x080005CC PlaySoundEffect
+  - 0x0803BB2C sub_803BB2C
+  - 0x0803C3E0 sub_803C3E0
+  reproduce: python3 tools/asmcat.py 0x0803AAD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The beq at loc_803AAEA branches past the ''mov r4,#0x18'', so when sub_803C3E0 returns zero (Z set,
+    flag clear) the kept value is 0x1A; only when nonzero is r4 overwritten to 0x18. The proposal inverts
+    this mapping. The strb [r5,#1] writes 0x10 unconditionally, and r5 is caller-supplied (no r5 load
+    here), consistent with an external state struct.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What menu or state struct r5 points to, and what state 0x10 leads to (no callers known)
+- The exact meaning of flag byte_2006772 and what texts 0x18/0x1A say — a caller and the script table
+  would confirm the success/failure reading
+- The beq at loc_803AAEA branches past the 'mov r4,#0x18', so when sub_803C3E0 returns zero (Z set, flag
+  clear) the kept value is 0x1A; only when nonzero is r4 overwritten to 0x18. The proposal inverts this
+  mapping. The strb [r5,#1] writes 0x10 unconditionally, and r5 is caller-supplied (no r5 load here),
+  consistent with an external state struct.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AAD8 -> submenu_showNetworkResultText
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AAD8

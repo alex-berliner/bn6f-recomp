@@ -1,0 +1,54 @@
+name: battleObject_chipSelectTick
+address: '0x08026E78'
+kind: function
+status: probable
+summary: 'Per-frame tick for the chip-select object: when bit 0x80 of eFlags2009F38 is clear, plays sound
+  0x9E, sets state byte to 0x54 and phase halfword to 0, then always calls battleObject_chipSelectAnimTick_8029C08.'
+interface: (r0 = self, chip-select object at S20364C0) -> r0 = destroyed; calls PlaySoundEffect / chipSelectAnimTick,
+  flags from flag test
+details: Tests bit 0x80 of the event-flag word eFlags2009F38 via chatbox_mask_eFlags2009F38. If the bit
+  is clear (menu not busy/gate not active), it plays sound effect 0x9E, stores 0x54 into byte self+1 (likely
+  a state/animation id) and 0 into halfword self+2 (likely a phase/counter), then always calls battleObject_chipSelectAnimTick_8029C08,
+  which pushes an OAM affine record and walks the pulse phase byte. The flag-gated sound+reset pair suggests
+  this runs each frame while the chip-select object is active, re-arming the pulse state whenever the
+  gate allows.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: lsl/mov r0,#0x80 then bl chatbox_mask_eFlags2009F38 gates everything except the anim tick; mov
+    r0,#0x9e; bl PlaySoundEffect plays a specific SE only when the flag bit is clear; strb 0x54 into [r5,#1]
+    and strh 0 into [r5,#2] reset two state fields of self; bl battleObject_chipSelectAnimTick_8029C08
+    with the same self shows this is a sibling per-frame step of the chip-select object
+  refs:
+  - bn6f/asm/asm03_0.s:1404
+  - 0x080005CC PlaySoundEffect
+  - 0x08029C08 battleObject_chipSelectAnimTick_8029C08
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08026E78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is slightly off: it plays sound and resets fields when bit 0x80 is CLEAR (cmp r0,#0;
+    bne skips it), not when set. The proposed name is fine but ''Open'' isn''t really shown in the code.
+    The function runs each frame, arms the chip-select pulse when the gate allows, and always calls the
+    anim tick.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What event-flag bit 0x80 represents (which cutscene/menu state suppresses the sound)
+- Meaning of state byte 0x54 and the halfword counter at self+2
+- Which scene/sound 0x9E corresponds to in-game; no callers known, so entry context is unconfirmed
+- 'The summary is slightly off: it plays sound and resets fields when bit 0x80 is CLEAR (cmp r0,#0; bne
+  skips it), not when set. The proposed name is fine but ''Open'' isn''t really shown in the code. The
+  function runs each frame, arms the chip-select pulse when the gate allows, and always calls the anim
+  tick.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8026E78 -> battleObject_chipSelectTick
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8026E78

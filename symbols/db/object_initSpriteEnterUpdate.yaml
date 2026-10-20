@@ -1,0 +1,59 @@
+name: object_initSpriteEnterUpdate
+address: '0x080DEE8C'
+kind: function
+status: probable
+summary: Initializes a battle object's sprite (resources 0x80/4/0x1A), sets animation from table dword_80DEEE4
+  indexed by offset 0x6E, applies palette and facing flip, then tail-calls into its update routine via
+  sub_80DEEE8.
+interface: (r0 = battle object, r5 also holding the object pointer) -> void; clobbers r0-r3, calls sprite_setAnimation/sprite_loadAnimationData/sprite_setPalette/sprite_setFlip
+details: Loads sprite resources (0x80, 4, 0x1A) into the object and clears its shadow flag, then clears
+  bit 1 of the object header flags. It reads the object's byte at offset 0x6E (a variant/form index) and
+  uses it to index table dword_80DEEE4, writing the result into both oBattleObject_CurAnim and its copy
+  before calling sprite_setAnimation and sprite_loadAnimationData. It then sets the palette from the object's
+  byte at 0x62 (palette index * 1), calls helper sub_80DF016, and applies the object's facing via object_getFlip/sprite_setFlip.
+  Finally it writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and tail-into
+  sub_80DEEE8, presumably the object's update routine. The single known table entry is 0x509, so the table
+  maps variant index to animation id.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_load with r0=0x80, r1=4, r2=0x1A fixes the resource set being loaded; ldrb r0,[r5,#0x6E];
+    ldr r1,=dword_80DEEE4; ldrb r0,[r1,r0] indexes a variant-to-animation table then stores to oBattleObject_CurAnim(+Copy);
+    mov r0,#1; ldrb r2,[r5,#0x62]; mul r0,r2 passes the object's palette field to sprite_setPalette; str
+    CUR_STATE_UPDATE,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] then bl sub_80DEEE8 hands
+    the object to its update state; callee chain object_getFlip -> sprite_setFlip mirrors the sprite to
+    match the object's alliance/facing
+  refs:
+  - bn6f/asm/asm31.s:84009
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080DEE8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are accurate. The callee sub_80DEEE8 is named in the comment as the tail target
+    after switching state, so ''initSpriteEnterUpdate'' is fitting but ''initObjectSpriteEnterUpdate''
+    would better convey the battle-object scope suggested by oBattleObject offsets and object_getFlip
+    usage. No callers are known so the prefix ''object'' is the best fit per naming conventions.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so which object type(s) use resource id 0x80 is unknown
+- Contents of dword_80DEEE4 beyond the first entry (0x509) and meaning of the 0x6E field
+- Purpose of sub_80DF016 called just before the flip setup
+- The name and summary are accurate. The callee sub_80DEEE8 is named in the comment as the tail target
+  after switching state, so 'initSpriteEnterUpdate' is fitting but 'initObjectSpriteEnterUpdate' would
+  better convey the battle-object scope suggested by oBattleObject offsets and object_getFlip usage. No
+  callers are known so the prefix 'object' is the best fit per naming conventions.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DEE8C -> object_initSpriteEnterUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DEE8C

@@ -1,0 +1,65 @@
+name: object_initDrop
+address: '0x080CCC68'
+kind: function
+status: probable
+summary: Object spawn/state initializer that places a battle object high above its panel (Z=0xC00000),
+  gives it downward ZVelocity (0x80000), snaps X/Y to the panel pixel coordinates, loads its sprite without
+  shadow, plays sound 0xA1 unless Param1 suppresses it, and tails into the fall/update handler sub_80CCCBC.
+interface: (r5 = object header, Param1 pre-set) -> void; object left in CUR_STATE_UPDATE
+details: Uses r5 as the battle object pointer (called as an object-state handler, not a normal r0-arg
+  C function). It sets the object's flag bit 1, loads sprite resource (0x80, 0x0C, 0x13) via sprite_load
+  and makes it shadowless with sprite_noShadow. It resets CurAnim to 0 with CurAnimCopy 0xFF, sets ZVelocity
+  to 0x80000 (downward fall speed in fixed point) and Z to 0xC00000 (well above the field), then converts
+  the object's PanelX/PanelY into pixel coordinates via object_getCoordinatesForPanels and stores them
+  in X/Y. If Param1 is nonzero the spawn sound (0xA1) is skipped, suggesting a silent/variant spawn; finally
+  it sets CurState to CUR_STATE_UPDATE and tails into sub_80CCCBC, presumably the fall/update handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(0x80,0xC,0x13) + sprite_noShadow: assigns this object its sprite, so it is an on-field
+    battle object; Z=0xC00000 with ZVelocity=0x80000 while X/Y come from panel coords: object starts elevated
+    and falls vertically; CurAnim=0, CurAnimCopy=0xFF: resets animation to the sprite''s default frame
+    on spawn; PlaySoundEffect(0xA1) gated on oBattleObject_Param1: optional spawn sound effect; strb CUR_STATE_UPDATE
+    to oBattleObject_CurState then bl sub_80CCCBC: hands the object to its update state'
+  refs:
+  - bn6f/asm/asm31.s:45288
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080CCC68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s description of setting flag bit 2 (0x2), loading sprite (0x80,
+    0x0C, 0x13), calling sprite_noShadow, resetting CurAnim/CurAnimCopy, setting ZVelocity=0x80000, Z=0xC00000,
+    converting PanelX/Y to X/Y, skipping sound 0xA1 when Param1 is nonzero, and tailing into sub_80CCCBC.
+    The proposal''s only real error is the prefix: this is a battle-field object spawn/init function,
+    but it also serves as a state handler entry, so ''init'' is appropriate. However, ''initDroppedFromSky''
+    is slightly inaccurate — ''FromSky'' is interpretive; ''object_initFallOntoPanel'' or simply ''object_initDrop''
+    would more directly describe the fall-from-above behavior.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which attack/obstacle spawns this object is unidentified; a caller or the sprite
+  (0x80,0xC,0x13) would reveal the specific object (falling rock, dropped enemy, etc.)
+- sub_80CCCBC is unnamed — it presumably implements the falling/landing behavior and would confirm the
+  drop interpretation
+- Meaning of Param1 besides sound suppression (variant type?) is unknown
+- 'The code matches the proposal''s description of setting flag bit 2 (0x2), loading sprite (0x80, 0x0C,
+  0x13), calling sprite_noShadow, resetting CurAnim/CurAnimCopy, setting ZVelocity=0x80000, Z=0xC00000,
+  converting PanelX/Y to X/Y, skipping sound 0xA1 when Param1 is nonzero, and tailing into sub_80CCCBC.
+  The proposal''s only real error is the prefix: this is a battle-field object spawn/init function, but
+  it also serves as a state handler entry, so ''init'' is appropriate. However, ''initDroppedFromSky''
+  is slightly inaccurate — ''FromSky'' is interpretive; ''object_initFallOntoPanel'' or simply ''object_initDrop''
+  would more directly describe the fall-from-above behavior.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CCC68 -> object_initDrop
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCC68

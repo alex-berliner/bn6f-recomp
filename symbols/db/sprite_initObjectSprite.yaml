@@ -1,0 +1,61 @@
+name: sprite_initObjectSprite
+address: '0x0811E87C'
+kind: function
+status: probable
+summary: One-shot initializer that sets object type byte 0x23, attaches sprite id 0x65 via loc_8002774,
+  configures default render state (animation 0 with animation data load, no shadow, palette bank 0xF,
+  slot halfword 0x290, sub-record field A 0, OAM priority 0, palette 0), then sets object byte 8 to 4
+  and tail-calls sub_811E8C4.
+interface: (r5 = object pointer, implicit) -> void; r0-r3 clobbered
+details: 'Writes 0x23 to the object''s first byte and 4 to byte 8, then calls loc_8002774 with r0=0x65
+  (almost certainly assigning sprite resource id 0x65 to the object). It then runs the standard sprite-configuration
+  sequence: animation index 0 plus animation-data load, shadow disabled, sub-entry palette bank 0xF, a
+  halfword 0x290 written through the slot-list helper, sub-record field A = 0, OAM priority 0, and palette
+  0. Finally it tail-calls sub_811E8C4, likely the next stage of the same setup. The r5-based object layout
+  (byte 0 = type/state, byte 8, sprite slot bytes) matches the other sprite_* accessors, so this is an
+  object sprite bootstrap rather than a generic helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb 0x23,[r5] and strb 4,[r5,#8] write object header fields before/after the sprite calls;
+    mov r0,#0x65; bl loc_8002774 assigns a fixed sprite id, then sprite_setAnimation(0) + sprite_loadAnimationData
+    attach that sprite; sprite_noShadow, palette bank 0xF, priority 0 and palette 0 are all default render-state
+    setters called back-to-back; slotList_storeHalfwordAndClearField with 0x290 stores a fixed constant,
+    consistent with a fixed object template, not a parameterized routine; every callee is a sprite_* accessor
+    on the same implicit object, so the function is an init of that object's sprite block
+  refs:
+  - bn6f/asm/asm32.s:33755
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811E87C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code sets r5 first byte to 0x23 and byte 8 to 4 only at the very end, after all sprite setup,
+    not before. The summary says ''Writes 0x23 to the object''s first byte and 4 to byte 8, then calls
+    loc_8002774'' — the order and causality are wrong; 0x23 is written before loc_8002774, but the 4 byte
+    write happens after the sprite config calls. Otherwise the rest of the summary matches the asm well.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the object type (overworld NPC, battle object, etc.) and what sprite id 0x65
+  depicts are unidentified
+- loc_8002774 and sub_811E8C4 are unreferenced in the given context; their summaries would confirm the
+  sprite-id assignment and the follow-up setup step
+- The meaning of the constant halfword 0x290 written via the slot list is unknown
+- The code sets r5 first byte to 0x23 and byte 8 to 4 only at the very end, after all sprite setup, not
+  before. The summary says 'Writes 0x23 to the object's first byte and 4 to byte 8, then calls loc_8002774'
+  — the order and causality are wrong; 0x23 is written before loc_8002774, but the 4 byte write happens
+  after the sprite config calls. Otherwise the rest of the summary matches the asm well.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E87C -> sprite_initObjectSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E87C

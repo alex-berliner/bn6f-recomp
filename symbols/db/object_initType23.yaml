@@ -1,0 +1,63 @@
+name: object_initType23
+address: '0x0811E9C4'
+kind: function
+status: probable
+summary: 'Initializes a type-0x23 object in r5: sets kind byte, attaches sprite 0x67, selects animation
+  0, loads its animation data, disables shadow, sets sub-entry palette bank 0xF, stores halfword 0x250
+  into a slot list, clears sub-record field A, sets OAM priority 0 and palette 0, writes 4 to r5+8, then
+  tail-calls sub_811EA0C.'
+interface: (r5 = object struct pointer, preloaded by caller) -> r0 = value from tail-called sub_811EA0C;
+  no meaningful flags
+details: The routine is an object initializer working on the object struct in r5. It first writes 0x23
+  to byte 0 (object type/kind), then calls the shared sprite helper at 0x8002774 with r0=0x67, which in
+  this call pattern sets the sprite/resource index for the object. It then loads the sprite's animation
+  data, selects animation 0, disables the shadow, sets sub-entry palette bank 0xF, clears sub-record field
+  A, sets OAM priority 0 and palette 0 — i.e. a plain default visual setup. It stores the halfword 0x250
+  into a slot list via slotList_storeHalfwordAndClearField_800306C, writes 4 to byte 8 of the object (likely
+  a state/subtype counter), and finally tail-calls sub_811EA0C to continue initialization. No callers
+  are known, so the object's in-game identity (what type 0x23 / sprite 0x67 represents) cannot be confirmed
+  from this site alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] then bl loc_8002774 with r0=0x67: sets object kind byte and sprite index, the
+    standard init pattern; calls sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow, sprite_setPalette(0),
+    sprite_setPriority(0): default sprite configuration; ldr =0x250 + slotList_storeHalfwordAndClearField_800306C:
+    writes constant 0x250 into a slot-list entry; strb #4,[r5,#8]: sets object field 8 to 4 before tail-calling
+    sub_811EA0C'
+  refs:
+  - bn6f/asm/asm32.s:33915
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811E9C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code stores 0x250 (not 4) at r5+8, since byte 8 is written after the slotList call with r0=4,
+    but the 0x250 is passed to the slot helper — the summary reverses these. Also, palette bank is set
+    to 0xF, not 0; OAM priority and palette are both 0. The sprite_setup helper at 0x8002774 is not ''sprite_loadAnimationData'';
+    sprite_loadAnimationData is a separate call. The overall shape is correct but the summary muddles
+    the field writes.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No callers known: which spawn/table dispatches this initializer and what object type 0x23 is in game
+  terms'
+- What sprite 0x67 depicts and what the stored value 0x250 selects in the slot list
+- What sub_811EA0C does after this setup
+- The code stores 0x250 (not 4) at r5+8, since byte 8 is written after the slotList call with r0=4, but
+  the 0x250 is passed to the slot helper — the summary reverses these. Also, palette bank is set to 0xF,
+  not 0; OAM priority and palette are both 0. The sprite_setup helper at 0x8002774 is not 'sprite_loadAnimationData';
+  sprite_loadAnimationData is a separate call. The overall shape is correct but the summary muddles the
+  field writes.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E9C4 -> object_initType23
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E9C4

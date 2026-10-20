@@ -1,0 +1,65 @@
+name: ai_stepShotAttack
+address: '0x080EFC38'
+kind: function
+status: probable
+summary: AI attack state step that initializes shot-style attack (anim 0xE, SFX 0xFF, flags), spawns the
+  attack in front of the object on tick 1, then ends by writing 4 to HitElement after 5 ticks.
+interface: (r7 = AIData, r5 = BattleObject) -> void; sets AttackElement=4, StepTimer counts 0..4
+details: 'Runs once per frame for an AI-controlled battle object. On entry, if AIData AttackElement is
+  0 it initializes: plays animation 0xE, clears the attack var, resets the counter timer to default 0x10,
+  sets ObjectFlags1 bit 22 (1<<22), plays sound effect 0xFF, then stores AttackElement=4 and StepTimer=0.
+  Once running, on StepTimer==1 it reads object_getFrontDirection and calls sub_80DB800(direction + PanelX,
+  PanelY, InitFlag, Damage) — the signature matches spawning a panel-targeted attack/hit with the stored
+  damage. StepTimer increments each frame; after it exceeds 4, HitElement is set to 4, which presumably
+  ends the attack state. The caller is expected to invoke this each frame while the attack is active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — skips init when an attack is already active;
+    bl object_setAnimation(0xe) + PlaySoundEffect(0xff) + object_setFlag1(1<<22) — startup side effects;
+    bl object_getFrontDirection; add r0,PanelX; ...; bl sub_80DB800 — spawns attack at front panel using
+    stored Damage; ldrh/add/strh StepTimer; cmp #4; strh HitElement=#4 — 5-frame attack lifetime ending
+    in HitElement=4; callees ai_clearAttackVar/object_setDefaultCounterTime confirm this is an AI attack
+    routine resetting its state'
+  refs:
+  - bn6f/asm/asm31.s:120501
+  - 0x080005CC PlaySoundEffect
+  - 0x080EB562 ai_clearAttackVar
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080EFC38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanic details match the code: init branch sets animation 0xE, clears attack var,
+    default counter 0x10, flag1 bit 22, SFX 0xFF, AttackElement=4, StepTimer=0; at StepTimer==1 it calls
+    object_getFrontDirection and sub_80DB800(PanelX+dir, PanelY, InitFlag, Damage); StepTimer increments
+    and when >4 it writes 4 to HitElement. However the name ''ai_stepPanelAttack'' is misleading — this
+    isn''t a panel-targeted attack but the BusterShot-style attack state that spawns a projectile/hit
+    from the object''s front panel; a more accurate name is ''ai_stepShotAttack''. The summary''s ''panel
+    in front'' wording is also slightly off since sub_80DB800 spawns the attack entity (e.g., buster shot)
+    rather than merely attacking the panel.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_80DB800 (likely attack-object spawn, but unconfirmed)
+- What element/attack ID 4 corresponds to and what animation 0xE and sound 0xFF look like in game
+- Which caller/state machine invokes this and why no caller is known
+- 'The proposal''s mechanic details match the code: init branch sets animation 0xE, clears attack var,
+  default counter 0x10, flag1 bit 22, SFX 0xFF, AttackElement=4, StepTimer=0; at StepTimer==1 it calls
+  object_getFrontDirection and sub_80DB800(PanelX+dir, PanelY, InitFlag, Damage); StepTimer increments
+  and when >4 it writes 4 to HitElement. However the name ''ai_stepPanelAttack'' is misleading — this
+  isn''t a panel-targeted attack but the BusterShot-style attack state that spawns a projectile/hit from
+  the object''s front panel; a more accurate name is ''ai_stepShotAttack''. The summary''s ''panel in
+  front'' wording is also slightly off since sub_80DB800 spawns the attack entity (e.g., buster shot)
+  rather than merely attacking the panel.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EFC38 -> ai_stepShotAttack
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFC38

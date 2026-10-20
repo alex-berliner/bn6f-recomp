@@ -1,0 +1,65 @@
+name: battle_updateHealEffect
+address: '0x0802C170'
+kind: function
+status: probable
+summary: 'Per-frame handler for the battle HP-recovery effect: counts down a timer, then either fully
+  restores the player''s HP or adds the decoded packed-id index as HP, plays sound 0x8A, copies the new
+  HP into oBattleState_PlayerHPSnapshot, advances state to 4, and on the next frames unconditionally clears
+  the state once the linked sprite''s status halfwords are idle.'
+interface: (r5 = eStruct2035280 effect state) -> void; state field at +3 advances 0 -> 4 -> done (+2 cleared)
+details: When the state byte at +3 is 0, it counts down the timer at +0xB; on reaching zero it decodes
+  the packed 16-bit ID at +0x10 into group/index, fetches the player battle object, and either restores
+  HP to MaxHP (index == 0, i.e. full recovery) or calls object_addHP with the index as the amount. It
+  then plays sound 0x8A (heal), copies the new HP into oBattleState_PlayerHPSnapshot, and sets the state
+  byte to 4. In state 4 it polls flag bits 0 and 3 of two objects pointed to by eStruct +0x18 and +0x20,
+  and once both are clear stores 0 to the halfword at +2 to finish the effect. The struct is the HUD/eStruct2035280
+  block, so the +0x18/+0x20 objects are likely the floating heal-number popup sprites.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl decodePackedIdFields_802C54C on [r5+0x10] yields an index whose zero/nonzero picks full
+    heal vs heal amount; ldrh oBattleObject_MaxHP -> strh oBattleObject_HP on one branch, bl object_addHP
+    on the other; mov r0,#SOUND_UNK_8A; bl PlaySoundEffect plays the recovery sound; strh HP to oBattleState_PlayerHPSnapshot
+    and strb #4 to [r5+3] advance the state machine; state 4 ORs flag bits at [r5+0x18]+4 and +8/+4, then
+    clears halfword [r5+2] when bits 0|3 are clear'
+  refs:
+  - bn6f/asm/asm03_0.s:12686
+  - 0x080005CC PlaySoundEffect
+  - 0x080103EC battle_preUpdateAndGetPlayerObject_80103EC
+  - 0x0802C54C decodePackedIdFields_802C54C
+  reproduce: python3 tools/asmcat.py 0x0802C170
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The state transition 0->4 then store 0 to +2 is correct, and the heal-then-snapshot flow matches
+    the asm (decode packed id, fetch player, branch on r0==0 for MaxHP restore else object_addHP, play
+    0x8A, copy HP into oBattleState_PlayerHPSnapshot). However the +0x18/+0x20 description is wrong: loc_802C1B8
+    loads r7 from [r5,#0x18], reads halfword at +4, advances r7 by +8 then reads halfword at +4 again,
+    ORs them, masks with #9, then unconditionally falls through to store 0 at +2 (loc_802C1C8 has no branch).
+    So it polls a single object''s two halfwords (at +4 and +0xC after the +8 offset), not two distinct
+    objects, and the wait is unconditional rather than ''once both clear''.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so what writes the timer +0xB and packed ID +0x10 (subchip use? recovery chip? custscene)
+  is unconfirmed
+- Exact meaning of the decoded group/index fields and which heal amounts they encode
+- Whether the +0x18/+0x20 objects are the HP popup sprite pair or the HP gauge tiles
+- 'The state transition 0->4 then store 0 to +2 is correct, and the heal-then-snapshot flow matches the
+  asm (decode packed id, fetch player, branch on r0==0 for MaxHP restore else object_addHP, play 0x8A,
+  copy HP into oBattleState_PlayerHPSnapshot). However the +0x18/+0x20 description is wrong: loc_802C1B8
+  loads r7 from [r5,#0x18], reads halfword at +4, advances r7 by +8 then reads halfword at +4 again, ORs
+  them, masks with #9, then unconditionally falls through to store 0 at +2 (loc_802C1C8 has no branch).
+  So it polls a single object''s two halfwords (at +4 and +0xC after the +8 offset), not two distinct
+  objects, and the wait is unconditional rather than ''once both clear''.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802C170 -> battle_updateHealEffect
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802C170

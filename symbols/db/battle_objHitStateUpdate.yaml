@@ -1,0 +1,63 @@
+name: battle_objHitStateUpdate
+address: '0x080DDE82'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object''s hit/damaged state: tears down its collision data, spawns
+  the hit effect, and either moves the object to CUR_STATE_DESTROY (if the battle is over or its RelatedObject1''s
+  CurAction != 9) or, after checking alliance-specific collision flags and optionally clearing the collision
+  region / setting CurAction=8, dispatches via the 3-entry handler table (or calls object_presentCollisionData
+  during time-stop).'
+interface: (r5 = battle object) -> void; sets oBattleObject_CurState/CurAction/CurPhase, may clear collision
+  region
+details: 'Runs each frame for an object in this state: it tears down the object''s collision data and
+  spawns the hit-effect object at its position (with jitter). If the battle is over, or the object''s
+  RelatedObject1Ptr has CurAction 9, it clears its collision region and moves to CUR_STATE_DESTROY (removal).
+  Otherwise it tests the collision flags from the current collision against a per-alliance mask table
+  (byte_80DDEEC, indexed by Alliance<<2); on a match it clears the collision region and sets CurAction=8,
+  CurPhase=0. Unless time-stop is active it then dispatches via off_80DDEDC on CurAction to sub_80DDEF4/sub_80DDF18/sub_80DDF86
+  (note ldr uses byte offsets, so action 8 also lands on sub_80DDF86); during time-stop it instead calls
+  object_presentCollisionData.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Entry calls object_removeCollisionData then object_spawnCollisionEffect, the standard ''object
+    got hit'' teardown pair; cmp r0,#9 on RelatedObject1Ptr''s CurAction plus CUR_STATE_DESTROY store:
+    object dies with the battle or its related object; byte_80DDEEC masks indexed by Alliance<<2 tested
+    against oCollisionData_FlagsFromCollision gate the CurAction=8 transition; off_80DDEDC jump table
+    on oBattleObject_CurAction dispatches three per-action sub-handlers, battle_isTimeStop path routes
+    to object_presentCollisionData instead'
+  refs:
+  - bn6f/asm/asm31.s:81909
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DDE82
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal inverts the CurAction==9 branch: the asm `cmp r0,#9; bne loc_80DDECE` means destroy
+    fires when RelatedObject1''s CurAction is NOT 9 (not when it equals 9). Also the dispatch table off_80DDEDC
+    has only 3 entries (indices 0,1,2 -> sub_80DDEF4/DDF18/DDF86); the proposal''s claim that action 8
+    also lands on sub_80DDF86 is wrong. The name and overall summary direction fit, but the summary needs
+    the CurAction condition corrected.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so which oBattleObject_CurState selects this handler is unconfirmed
+- Exact meaning of CurAction values 0/1/2/8 here depends on the unexamined sub-handlers sub_80DDEF4/sub_80DDF18/sub_80DDF86
+- What the RelatedObject1Ptr is (owner vs. attacker) and what CurAction 9 means for it
+- 'The proposal inverts the CurAction==9 branch: the asm `cmp r0,#9; bne loc_80DDECE` means destroy fires
+  when RelatedObject1''s CurAction is NOT 9 (not when it equals 9). Also the dispatch table off_80DDEDC
+  has only 3 entries (indices 0,1,2 -> sub_80DDEF4/DDF18/DDF86); the proposal''s claim that action 8 also
+  lands on sub_80DDF86 is wrong. The name and overall summary direction fit, but the summary needs the
+  CurAction condition corrected.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DDE82 -> battle_objHitStateUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDE82

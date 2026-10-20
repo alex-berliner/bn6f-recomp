@@ -1,0 +1,63 @@
+name: battle_chaseTowardEnemyPanelPhase
+address: '0x080BF588'
+kind: function
+status: probable
+summary: Phase 3 handler that plays a 1-magnitude 10-frame camera shake, waits 10 frames, then over 16
+  frames dashes the battle object 3 panels toward the enemy side (reaching Z=0) and advances to phase
+  4.
+interface: (r5 = battle object pointer) -> updates oBattleObject_XVelocity/ZVelocity, Timer, CurPhaseAndPhaseInitialized;
+  no return value
+details: On the first invocation (PhaseInitialized==0) it calls camera_initShakeEffect(magnitude 1, duration
+  10), sets Timer=0xA and marks the phase initialized. It then counts the timer down; while >0 it returns
+  without acting. On expiry it reloads Timer=0x10, computes a target panel at PanelX + 3*object_getEnemyDirection,
+  PanelY via object_getCoordinatesForPanels, and derives XVelocity = (targetX − X)/16 and ZVelocity =
+  (−Z)/16 using BIOS divide (svc 6), i.e. a fixed-speed 16-frame dash covering the distance and dropping
+  to the ground (Z→0). It plays sound 0x17F and stores phase 4 into CurPhaseAndPhaseInitialized so the
+  object's state machine advances. No callers are known, so the exact owner object is unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst PhaseInitialized / camera_initShakeEffect(1,10) + Timer=10: one-shot pre-attack camera
+    shake and delay; target = PanelX + 3*object_getEnemyDirection, PanelY via object_getCoordinatesForPanels:
+    dash lands 3 panels in the facing direction; svc 6 (BIOS Div) on (targetX−X) and (−Z) with divisor
+    0x10: per-frame velocity for a 16-frame move; PlaySoundEffect(0x17F) right before storing CurPhase=4:
+    launch sound then phase advance; Timer countdown with bgt early return: this is a periodic per-frame
+    state-machine step, not a one-shot call'
+  refs:
+  - bn6f/asm/asm31.s:15849
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080BF588
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — ... chaseTowardEnemyPanelPhase aligns better: it leaps 3 panels toward the enemy, sets velocity
+    for a 16-frame arc, drops Z, and finishes phase 3. The proposal says ''shake camera, wait 10, then
+    each 16 frames sets velocities'' but the code does a single dash: only one velocity set is performed
+    before storing phase 4 in CurPhaseAndPhaseInitialized, no repeated 16-frame ticks. The camera shake
+    (mag 1, dur 10) is just an intro effect. Also ''lungeTowardFacingPanelPhase'' is wrong because the
+    direction uses object_getEnemyDirection (toward the enemy side), not the facing panel.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle object/enemy uses this handler (no known callers)
+- what phase 4 does next in that object's state machine
+- whether the 10-frame delay is meant to sync with a telegraph animation
+- '... chaseTowardEnemyPanelPhase aligns better: it leaps 3 panels toward the enemy, sets velocity for
+  a 16-frame arc, drops Z, and finishes phase 3. The proposal says ''shake camera, wait 10, then each
+  16 frames sets velocities'' but the code does a single dash: only one velocity set is performed before
+  storing phase 4 in CurPhaseAndPhaseInitialized, no repeated 16-frame ticks. The camera shake (mag 1,
+  dur 10) is just an intro effect. Also ''lungeTowardFacingPanelPhase'' is wrong because the direction
+  uses object_getEnemyDirection (toward the enemy side), not the facing panel.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF588 -> battle_chaseTowardEnemyPanelPhase
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF588

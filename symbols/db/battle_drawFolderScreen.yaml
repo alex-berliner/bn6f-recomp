@@ -1,0 +1,66 @@
+name: battle_drawFolderScreen
+address: '0x081304EC'
+kind: function
+status: probable
+summary: Renders the in-battle chip-select folder panel (chip name, chip gfx, OAM pack, icon slots, chip-pack
+  entries) into background tile block 2 from the current state struct fetched via sub_8130404.
+interface: () -> r0 = destroyed; renders tiles into background tile block 2; uses global state from sub_8130404
+details: Fetches a state struct via sub_8130404; if byte +0xC is 0 it only calls call_sub_3005EBA(8,8,2,0,0xF,0xA)
+  (likely blanking that screen area). Otherwise it indexes a table at dword_8130618 by (byte[+0xC]-1)
+  to pick a halfword field of the struct (offsets like 0x24) — evidently a chip/folder id — and drives
+  five battle_* renderers in sequence into work buffers unk_2023FB0/20243E8/20244C8/2024500/2024538/2024554,
+  copying each result into tile block 2 at fixed positions (name row at 10,8; chip gfx at 8,8; OAM pack
+  at 0x12,8; icon slots at 0x14,8 with 1-wide copy; pack entries at 0x15,8). The VRAM base constants 0x6007200/0x6006B80
+  and tile ids 0x35C/0x216/0x34F are passed as gfx destinations.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: five callees are the known chip-select/folder renderers (drawChipSelectFighterNames, loadFolderChipGfx,
+    buildChipFolderOamPack, loadChipIconSlots, fillChipPackEntries); each callee is followed by CopyBackgroundTiles
+    into which_tile_block 2 at successive x positions 10/8/0x12/0x14/0x15, y=8; ldrb r0,[r7,#0xC] / sub
+    r0,#1 / ldrb r0,[r1,r0] / ldrh r0,[r7,r0] selects a per-folder halfword (chip id) from the state struct;
+    byte[+0xC]==0 path only calls call_sub_3005EBA with the same tile-block-2 region args, i.e. the empty/blank
+    case; callers sub_812F530/812F920/8130084/8130370 sit in the same 0x812Fxxx battle chip-select code
+    cluster
+  refs:
+  - bn6f/asm/asm36.s:634
+  - 0x0812F530 sub_812F530
+  - 0x0812F920 sub_812F920
+  - 0x08130084 sub_8130084
+  - 0x081203E4 battle_buildChipFolderOamPack_81203E4
+  - 0x081200EC battle_drawChipSelectFighterNames_81200EC
+  - 0x081204C4 battle_fillChipPackEntries_81204C4
+  reproduce: python3 tools/asmcat.py 0x081304EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The function clearly renders the in-battle chip-select folder panel: it draws chip names, chip graphic,
+    OAM pack, icon slots, and chip-pack entries into tile block 2, consistent with the callees. However,
+    it does not ''blank'' the area on byte +0xC == 0 — call_sub_3005EBA with args (8,8,2,0,0xF,0xA) is
+    just another render call (not a clear), and the proposal''s claim that it ''only calls call_sub_3005EBA''
+    omits the rest of the logic. Also the proposal says r0 is destroyed, which is trivially true and meaningless;
+    more useful is that r0 actually returns the state pointer. The summary''s overall direction is correct
+    but the blanking detail is wrong.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact layout meaning of sub_8130404's returned struct (folder list vs. cursor state)
+- what call_sub_3005EBA does in the byte==0 branch (blank vs. fade)
+- which caller scenario corresponds to which folder index
+- 'The function clearly renders the in-battle chip-select folder panel: it draws chip names, chip graphic,
+  OAM pack, icon slots, and chip-pack entries into tile block 2, consistent with the callees. However,
+  it does not ''blank'' the area on byte +0xC == 0 — call_sub_3005EBA with args (8,8,2,0,0xF,0xA) is just
+  another render call (not a clear), and the proposal''s claim that it ''only calls call_sub_3005EBA''
+  omits the rest of the logic. Also the proposal says r0 is destroyed, which is trivially true and meaningless;
+  more useful is that r0 actually returns the state pointer. The summary''s overall direction is correct
+  but the blanking detail is wrong.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81304EC -> battle_drawFolderScreen
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81304EC

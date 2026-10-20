@@ -1,0 +1,63 @@
+name: object_stepCollision
+address: '0x080C9D9E'
+kind: function
+status: probable
+summary: 'Per-frame collision step for a battle object in r5: tears down stale collision data, spawns
+  the hit effect, and dispatches an action-specific handler from off_80C9DD4 via oBattleObject_CurAction;
+  if battle_isTimeStop is set, falls back to object_presentCollisionData instead.'
+interface: (r5 = battle object pointer, implicit) -> void; flags from battle_isTimeStop used for branch
+details: Operates on the battle object in r5. It first calls object_removeCollisionData to clear the previous
+  frame's collision state, then object_spawnCollisionEffect to spawn the jittered hit-effect object for
+  the object's last collision. If the battle is not in time-stop (battle_isTimeStop clear), it indexes
+  the table off_80C9DD4 with oBattleObject_CurAction and tail-calls one of three handlers (sub_80C9DE0,
+  sub_80C9E20, sub_80C9E88) via a bl-to-lr/bx-r1 dispatch. When time is stopped it instead calls object_presentCollisionData
+  to just refresh collision state without advancing. One handler tail clears the object's collision region
+  and stores 8 into field [r5,#8], resetting its collision timer/state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'opens with bl object_removeCollisionData then bl object_spawnCollisionEffect: collision teardown
+    + hit-effect spawn; bl battle_isTimeStop; bne loc_80C9DB8 skips the action dispatch when frozen; ldrb
+    r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — jump table off_80C9DD4 with 3 action handlers;
+    time-stop path calls object_presentCollisionData instead of the dispatch; handler tail calls object_clearCollisionRegion
+    and stores 8 to [r5,#8]'
+  refs:
+  - bn6f/asm/asm31.s:39011
+  - 0x080C9D24 sub_80C9D24
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080C9D9E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''unless time is stopped'' tail is flipped: object_presentCollisionData is called
+    in the time-stop branch (loc_80C9DB8) after `bne`, and the action-dispatch runs in the fall-through
+    (time not stopped). The action table indexes oBattleObject_CurAction at [r5,oBattleObject_CurAction]
+    with three +1 (THUMB-bit) entries dispatching sub_80C9DE0/9E20/9E88. The object_clearCollisionRegion
+    + str #8 into [r5,#8] tail handler is unrelated to the main function — it sits past the `pop {r7,pc}`
+    and is dead code (the .word 0, .byte 0,0,0,0 pad confirms it). A cleaner name reflecting per-frame
+    collision stepping is appropriate.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what the three CurAction handlers (sub_80C9DE0/80C9E20/80C9E88) each do, to confirm which object type
+  and which actions are meant
+- caller sub_80C9D24's context would confirm which object class uses this handler
+- 'The summary''s ''unless time is stopped'' tail is flipped: object_presentCollisionData is called in
+  the time-stop branch (loc_80C9DB8) after `bne`, and the action-dispatch runs in the fall-through (time
+  not stopped). The action table indexes oBattleObject_CurAction at [r5,oBattleObject_CurAction] with
+  three +1 (THUMB-bit) entries dispatching sub_80C9DE0/9E20/9E88. The object_clearCollisionRegion + str
+  #8 into [r5,#8] tail handler is unrelated to the main function — it sits past the `pop {r7,pc}` and
+  is dead code (the .word 0, .byte 0,0,0,0 pad confirms it). A cleaner name reflecting per-frame collision
+  stepping is appropriate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9D9E -> object_stepCollision
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9D9E

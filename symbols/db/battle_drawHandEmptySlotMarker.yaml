@@ -1,0 +1,63 @@
+name: battle_drawHandEmptySlotMarker
+address: '0x0801D65C'
+kind: function
+status: probable
+summary: Draws a fixed two-tile OAM marker at the object's projected screen position when its battle hand
+  slot is empty (0xFFFF) and the linked 0x2036120 record has either of two marker halfwords set.
+interface: (r5 = context struct; uses [r5+0x48] object ptr) -> void; queues OAM entries via sprite_queueOamEntry
+details: 'Reads the byte at object+0x16 as a hand index and fetches the hand slot from 0x20349C0 (0x50-byte
+  strides); reads the u16 at offset 2*(slot.field0+1) and bails unless it is 0xFFFF. Then it fetches the
+  same-indexed 0x1D0-stride record from the 0x2036120 array and requires halfwords at +0x36 and +0x38
+  to be nonzero. It projects the position struct at object+0x34 to screen space (projectObjectToScreen)
+  and skips if off-screen. sub_801D6D8 supplies a packed coordinate that is masked to y:9 bits / x:8 bits
+  into r6. It queues two OAM entries: (0x40004000+r6, attr2=0xC7B4) and (x+9, attr2=0xC7B8), i.e. tiles
+  0x3B4/0x3B8 in palette 0xC with 0x4000 shape/size bits, a fixed graphic rather than chip art.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[obj+0x16]; bl getBattleHandAddr_8010018; ldrh entry at (field0+1)*2; cmp r0,0xFFFF
+    gates the whole draw; getEntryPtr_2036120_1D0 with the same index; halfwords [r0+0x36] and [r0+0x38]
+    must be nonzero to continue; bl projectObjectToScreen_800362C on [r5+0x48]+0x34; visibility flag in
+    r2 gates the OAM queueing; sub_801D6D8 result masked to 0x1FF<<16 | 0xFF and packed into r6 as y<<16|x;
+    two sprite_queueOamEntryThunk calls with attrs 0xC7B4 then 0xC7B8 and packed coords 0x40004000+(y<<16|x),
+    second at x+9
+  refs:
+  - bn6f/asm/asm00_2.s:30258
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  - 0x0800362C projectObjectToScreen_800362C
+  reproduce: python3 tools/asmcat.py 0x0801D65C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code and callee behavior match the proposal: it checks hand slot for 0xFFFF, validates two halfwords
+    in the 0x2036120 record, projects position, masks coordinates, and queues two OAM entries (0xC7B4,
+    then 0xC7B8 with x+9). However, the function bails when EITHER halfword at +0x36 or +0x38 is zero
+    (cmp/bne into a fallthrough), not requires both nonzero — the proposal overstates this. Also naming:
+    this is clearly drawing an ''empty'' slot indicator on the battle hand UI, so the name fits, but the
+    summary should drop the wrong ''requires nonzero'' clause.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Identity of the struct behind r5 and the object at [r5+0x48], and what its byte +0x16 indexes
+- Meaning of fields +0x36/+0x38 in the 0x1D0-stride records at 0x2036120
+- What tiles 0x3B4/0x3B8 (palette 0xC) depict, to name the marker precisely
+- No known callers; a caller would confirm whether this is an empty-hand indicator, a target reticle,
+  or another fixed overlay
+- 'The code and callee behavior match the proposal: it checks hand slot for 0xFFFF, validates two halfwords
+  in the 0x2036120 record, projects position, masks coordinates, and queues two OAM entries (0xC7B4, then
+  0xC7B8 with x+9). However, the function bails when EITHER halfword at +0x36 or +0x38 is zero (cmp/bne
+  into a fallthrough), not requires both nonzero — the proposal overstates this. Also naming: this is
+  clearly drawing an ''empty'' slot indicator on the battle hand UI, so the name fits, but the summary
+  should drop the wrong ''requires nonzero'' clause.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D65C -> battle_drawHandEmptySlotMarker
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D65C

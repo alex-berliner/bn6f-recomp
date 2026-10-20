@@ -1,0 +1,69 @@
+name: battle_pickRandomPanelInHalf
+address: '0x080BF192'
+kind: function
+status: probable
+summary: Picks a random valid panel from the battle object's own or enemy field half (selected by alliance,
+  mirrored for facing), filtering out the RelatedObject1's panel and panels failing object_checkPanelParameters
+  with required flag 0x10 and forbidden flags 0xF800000.
+interface: (r0 = direction/x-offset base, r5 = active battle object) -> r0 = panel x (low 3 bits), r1
+  = panel y (high nibble); r0 = 0 if no valid panel was found
+details: Reads oBattleObject_DirectionFlip (XORed with r0) and oBattleObject_Alliance, then object_getFlipDirection
+  turns that into a horizontal flip offset stored at sp+0x1c. The alliance index selects one of two 8-byte
+  entries in off_80BF224 (0x4000000/0 vs 0x8000000/0, i.e. own-half vs enemy-half panel filter) which
+  object_getPanelsFiltered uses to fill a local panel list (x|y<<4 bytes at sp+8, count in r7). Each listed
+  panel is skipped if it matches the RelatedObject1 object's PanelX/PanelY, or if object_checkPanelParameters(x+flip,
+  y, 0x10, 0xF800000) rejects it (requires flag 0x10 set, e.g. normal panel, and flags 0xF800000 clear,
+  e.g. not hole/blocked). If any candidates remain, GetPositiveSignedRNG plus SWI 6 (Div) picks rand %
+  count, and the chosen byte is decoded back into r0 = x (flip already applied) and r1 = y.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#oBattleObject_Alliance]; lsl r0,#3; ldr r1,off_80BF258 selects per-alliance area
+    filter (0x4000000 vs 0x8000000) passed to object_getPanelsFiltered; cmp against ldrb r2,[r3,#oBattleObject_PanelX/PanelY]
+    of oBattleObject_RelatedObject1Ptr skips the related object's own panel; bl object_checkPanelParameters
+    with r2=0x10, r3=0xF800000 filters unusable panels before the candidate is stored; bl GetPositiveSignedRNG
+    followed by svc 6 (Div) computes rand % candidateCount to pick one stored x|y<<4 byte; final lsr/lsl
+    0x1d decode returns r0 = low-3-bit x (with flip offset from object_getFlipDirection) and r1 = high-nibble
+    y
+  refs:
+  - bn6f/asm/asm31.s:15273
+  - 0x080BE8AE sub_80BE8AE
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CE object_getFlipDirection
+  reproduce: python3 tools/asmcat.py 0x080BF192
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: it uses the alliance index to select a panel filter (own-half
+    or enemy-half) from off_80BF224, applies flip, filters out the RelatedObject1''s panel, checks panel
+    flags 0x10 required/0xF800000 cleared via object_checkPanelParameters, then randomly picks one. However,
+    the proposal says ''own field half'' while the table entries 0x4000000 and 0x8000000 actually correspond
+    to enemy and own halves respectively, and ''r0 = 0 if no valid panel was found'' is incorrect since
+    the empty-path falls through to loc_80BF21E returning whatever r0 held (the last decoded x or 0 only
+    by chance). Name is otherwise accurate.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What caller sub_80BE8AE does with the returned x/y (attack target vs movement destination) and what
+  the 0x10 / 0xF800000 panel-flag masks mean exactly in this game's panel state encoding
+- Whether r0's input is really a direction flag or something else, since only its XOR with DirectionFlip
+  is observable
+- 'The code matches the described behavior: it uses the alliance index to select a panel filter (own-half
+  or enemy-half) from off_80BF224, applies flip, filters out the RelatedObject1''s panel, checks panel
+  flags 0x10 required/0xF800000 cleared via object_checkPanelParameters, then randomly picks one. However,
+  the proposal says ''own field half'' while the table entries 0x4000000 and 0x8000000 actually correspond
+  to enemy and own halves respectively, and ''r0 = 0 if no valid panel was found'' is incorrect since
+  the empty-path falls through to loc_80BF21E returning whatever r0 held (the last decoded x or 0 only
+  by chance). Name is otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF192 -> battle_pickRandomPanelInHalf
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF192

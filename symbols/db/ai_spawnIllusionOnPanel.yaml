@@ -1,0 +1,65 @@
+name: ai_spawnIllusionOnPanel
+address: '0x080EE370'
+kind: function
+status: probable
+summary: 'AI attack step: stores HitElement=4, gates on sub_800E5FC and AttackBoost2, reserves a panel,
+  and on success spawns an illusion via spawnIllusionObject_80E33FA then moves the actor onto that illusion''s
+  panel; on failure it plays animation 4 and overwrites HitElement with 0xC.'
+interface: (r5 = battle object, r7 = AI attack vars block) -> r0 = 0/void; writes oAIAttackVars_HitElement
+  (4 -> 0xC on failure), object flags, panel coords
+details: Stores HitElement=4 in the oAIAttackVars struct at r7, then only proceeds if sub_800E5FC passes
+  and AttackBoost2 (r7) is nonzero. It sets OBJECT_FLAGS_CANNOT_SLIDE on the object, copies PanelX/Y into
+  FuturePanelX/Y, and calls object_reservePanel to claim the panel. If sub_8015B00 reports success, it
+  builds a value from object_getFlip<<8 plus sub_800F2AA(0), packs three words from the object at r5+0x34
+  plus constants 0xFFE0 and 0x1010014, and calls spawnIllusionObject_80E33FA; the returned r0/r1 become
+  the object's new PanelX/PanelY, followed by object_setCoordinatesFromPanels and object_updateCollisionPanels.
+  On failure it instead runs object_setAnimation(4) and overwrites HitElement with 0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0(=4),[r7,#oAIAttackVars_HitElement] and later 0xC show it drives an AI attack's pending
+    hit element; object_reservePanel after copying PanelX/Y to FuturePanelX/Y, then new coords from spawn
+    result + object_updateCollisionPanels show the actor relocating to the reserved panel; ldmia r0!,{r1-r3}
+    from r5+0x34 with dword 0x1010014 fed to spawnIllusionObject_80E33FA shows it spawns a battle object
+    using the actor's fields; failure path object_setAnimation(4) marks the attack whiffing/aborting;
+    OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1 prevents the actor from sliding while this attack runs
+  refs:
+  - bn6f/asm/asm31.s:117232
+  - 0x0800E456 object_getFlip
+  - 0x0801BB1C object_reservePanel
+  - 0x0800F2B6 object_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080EE370
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary matches the code flow (stores HitElement=4, gates on sub_800E5FC and AttackBoost2, reserves
+    panel, branches on sub_8015B00, spawns illusion via spawnIllusionObject_80E33FA or sets animation
+    4 and HitElement=0xC). However, the proposal''s interface is wrong: there are no callees for the listed
+    addresses 0x0800E456, 0x0801BB1C, 0x0800F2B6 etc., and the assembly actually calls object_setFlag1,
+    sub_800F2AA (not object_setAnimation), and spawnIllusionObject_80E33FA. Also sub_8015B00 is called
+    and its r0/r1 are pushed, used as new PanelX/Y after spawn returns — consistent. The proposed name
+    is acceptable but ''ai_spawnIllusionOnPanel'' better reflects the actual outcome (object teleports
+    to illusion panel).; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_800E5FC and sub_8015B00 check (attack conditions vs reserve success)
+- What the three words at oBattleObject+0x34 and constants 0xFFE0/0x1010014 mean to spawnIllusionObject_80E33FA
+- Which boss/attack in the game invokes this, to give it a game-accurate name
+- 'The summary matches the code flow (stores HitElement=4, gates on sub_800E5FC and AttackBoost2, reserves
+  panel, branches on sub_8015B00, spawns illusion via spawnIllusionObject_80E33FA or sets animation 4
+  and HitElement=0xC). However, the proposal''s interface is wrong: there are no callees for the listed
+  addresses 0x0800E456, 0x0801BB1C, 0x0800F2B6 etc., and the assembly actually calls object_setFlag1,
+  sub_800F2AA (not object_setAnimation), and spawnIllusionObject_80E33FA. Also sub_8015B00 is called and
+  its r0/r1 are pushed, used as new PanelX/Y after spawn returns — consistent. The proposed name is acceptable
+  but ''ai_spawnIllusionOnPanel'' better reflects the actual outcome (object teleports to illusion panel).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EE370 -> ai_spawnIllusionOnPanel
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE370

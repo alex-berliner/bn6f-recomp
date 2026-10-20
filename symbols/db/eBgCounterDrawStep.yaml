@@ -1,0 +1,72 @@
+name: eBgCounterDrawStep
+address: '0x0801D048'
+kind: function
+status: probable
+summary: 'Per-frame BG counter renderer: DMA-fills tilemap rows, draws a label via the text toolkit and
+  a 2x2 glyph at (14,5) in BG block 3, then renders right-justified hex digit tiles into two 4x2 fields
+  at (9,5) and (17,5); on the final step it sets a done flag and triggers a sub_3005EBA effect.'
+interface: (r7 = state block at byte_2036840) -> r0 = undefined; writes BG map block 3, state+0xE done
+  flag, and scratch at byte_203C4E0
+details: 'r7 points to a state block (base byte_2036840) with a step counter at +0, halfword values at
+  +0xA and +0xC, and a done flag at +0xE. It first runs sub_801CF3C to DMA-fill tile-map rows from this
+  block. If the step counter is >= 8 it does a one-time finish: sets the +0xE done flag and calls call_sub_3005EBA(9,5,3,0,0xC,2).
+  Otherwise it renders TextScript86F0374 through the toolkit text renderer (state buffer byte_203C4E0,
+  VRAM 0x6009360), copies a fixed 2x2 tile table (off_801D18C) to (14,5) in block 3, calls sub_801D12A
+  with [r7+0xC], computes countHexDigits of that halfword, and right-aligns the value''s digit tiles into
+  a 16-byte scratch area built in the saved-register slots ([sp]..[sp+0xC]) by word-shifting for 2-, 3-,
+  or 4-digit counts. It then draws two 4x2 tile runs at (9,5) and (17,5) — an 8-wide digit field split
+  by a gap — and calls sub_801D12A again with [r7+0xA]. Quirk: after each CopyBackgroundTiles it pops
+  {r0-r3} purely to advance sp, so the 16-byte tile buffer is reused from the caller-saved r4-r7 slots
+  pushed in the prologue, and the epilogue pops 16 bytes beyond what was pushed (callee-cleaned stack
+  args convention).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7]; cmp #8 / strb #1,[r7,#0xe] + bl call_sub_3005EBA: 8-step animation ending in
+    a done flag and effect call; bl renderTextGfx_8045F8C with TextScript86F0374, byte_203C4E0 and VRAM
+    0x6009360: draws a text label into BG graphics; bl countHexDigits_8000C5C on halfword [r7+0xC], then
+    word-shifts in [sp..sp+0xC] for 2/3/4 digits: right-justifying digit tiles; two CopyBackgroundTiles
+    calls (9,5) and (0x11,5) 4x2 from the sp buffer: draws the digit field split across two positions;
+    bl sub_801CF3C at entry DMA-fills tile-map rows driven by the same r7 parameter block'
+  refs:
+  - bn6f/asm/asm00_2.s:29472
+  - 0x08000C5C countHexDigits_8000C5C
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x0801CF3C sub_801CF3C
+  reproduce: python3 tools/asmcat.py 0x0801D048
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s description of the 16-byte scratch from [sp] slots and the right-aligned digit tile
+    packing matches the shift/str pattern at loc_801D0C8/0DA/0FE. However, naming it `bgCounterDigitsDrawStep`
+    mixes a literal description with the proposed prefixes; a proper `e_` (effect) prefixed name fits
+    better. Also the proposal claims r7=byte_2036840 from the start, but the code loads r7 from off_801D1D4
+    only after the first sub_801D12A call — r7 is callee-trashed by renderTextGfx and CopyBackgroundTiles
+    and must be reloaded. The summary is otherwise accurate: label via renderTextGfx, 2x2 glyph at (14,5)
+    block 3, digit tiles at (9,5) and (17,5), and the done-flag path at step >= 8.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which game screen/menu this belongs to — no callers are known, so the owner of byte_2036840 is unidentified
+- What the halfwords at state+0xA and +0xC count (a clock HH:MM split would fit the 4+4 digit layout,
+  but this is unconfirmed)
+- What sub_801D12A does with the halfword argument (possibly writes digit tiles into a buffer)
+- What call_sub_3005EBA(9,5,3,0,0xC,2) does on the final step and what TextScript86F0374 says
+- 'The proposal''s description of the 16-byte scratch from [sp] slots and the right-aligned digit tile
+  packing matches the shift/str pattern at loc_801D0C8/0DA/0FE. However, naming it `bgCounterDigitsDrawStep`
+  mixes a literal description with the proposed prefixes; a proper `e_` (effect) prefixed name fits better.
+  Also the proposal claims r7=byte_2036840 from the start, but the code loads r7 from off_801D1D4 only
+  after the first sub_801D12A call — r7 is callee-trashed by renderTextGfx and CopyBackgroundTiles and
+  must be reloaded. The summary is otherwise accurate: label via renderTextGfx, 2x2 glyph at (14,5) block
+  3, digit tiles at (9,5) and (17,5), and the done-flag path at step >= 8.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D048 -> eBgCounterDrawStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D048

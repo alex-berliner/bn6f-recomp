@@ -1,0 +1,63 @@
+name: battle_slideXUpdate
+address: '0x080D6364'
+kind: function
+status: probable
+summary: Battle-object update that slides the object horizontally each frame at a table-driven XVelocity
+  for a fixed Timer, re-registering its collision region (1) on panel crossings and destroying it on expiry
+  or invalid/off-field panel.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_DESTROY on expiry or invalid panel
+details: 'On phase 0 it sets phase 4, looks up a byte via oBattleObject_Alliance from dword_80D63F8 (value
+  7) and indexes byte_80D63E4 by oBattleObject_Param1<<2; the 32-bit entries (0x30000, 0x38000, 0x40000,
+  0x48000, i.e. 3.0–4.5 in 16.16 fixed point) are fed to sub_80D6424 which returns an XVelocity and a
+  frame Timer. Each frame it adds XVelocity to X, and via sub_80D650C detects a panel crossing: it clears
+  the collision region, recomputes PanelX/PanelY from world coords (object_setPanelsFromCoordinates/object_updateCollisionPanels),
+  and either re-registers in region 1 when the panel is valid and PanelX changed, or stays cleared when
+  off-field/invalid. The Timer counts down each frame; when it expires (or sub_80D6544 signals stop),
+  it clears its collision region and switches to CUR_STATE_DESTROY. This matches a short-lived horizontal
+  projectile/hazard that damages via its collision region while crossing panels.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80D6364: phase-0 block stores Param1-table word into sub_80D6424, whose r0/r1 results are
+    stored to oBattleObject_XVelocity and oBattleObject_Timer; loc_80D6386: X += XVelocity each frame,
+    then panel-crossing branch clears region, calls object_setPanelsFromCoordinates/object_updateCollisionPanels/object_isCurrentPanelValid;
+    loc_80D63BA: object_setCollisionRegion(1) only when PanelX changed and panel valid — collision active
+    only on newly entered panels; loc_80D63D4: on timer expiry/stop, object_clearCollisionRegion then
+    CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY; byte_80D63E4 entries 0x30000..0x48000
+    are 16.16 fixed-point magnitudes, fitting a velocity/distance table selected by Param1'
+  refs:
+  - bn6f/asm/asm31.s:65595
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D6364
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Behavior matches: X-velocity from fixed-point table indexed by Param1, per-frame X increment, panel-crossing
+    re-register in region 1 (loc_80D63C0), invalid-panel skip (loc_80D63AE), Timer countdown (loc_80D63C6),
+    and CUR_STATE_DESTROY on expiry or sub_80D650C==0 branch (loc_80D63D4). The name is awkward; ''battle_slideXUpdate''
+    fits the lowercase camel prefix convention better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_80D6424, sub_80D650C and sub_80D6544 are unknown — they would confirm how velocity/timer derive
+  from the table word and what the early-stop condition is
+- No callers known, so which attack/object instantiates this handler (and what Param1 values 0-3 correspond
+  to) is unidentified
+- 'Behavior matches: X-velocity from fixed-point table indexed by Param1, per-frame X increment, panel-crossing
+  re-register in region 1 (loc_80D63C0), invalid-panel skip (loc_80D63AE), Timer countdown (loc_80D63C6),
+  and CUR_STATE_DESTROY on expiry or sub_80D650C==0 branch (loc_80D63D4). The name is awkward; ''battle_slideXUpdate''
+  fits the lowercase camel prefix convention better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6364 -> battle_slideXUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6364

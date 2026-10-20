@@ -1,0 +1,59 @@
+name: battle_falzarInitAttack0A
+address: '0x08105784'
+kind: function
+status: probable
+summary: Sets up the AI attack-vars block to begin Falzar enemy attack id 0xA (clear/init flags, install
+  panel-choose callback, read duration/boost/timer/substep from sub_810565C, store 100+r5 scratch, and
+  switch target to the opposing player before triggering object_setAttack0).
+interface: (r0 = caller-set arg for battle_aiLoadAttackParams; r5 = battle object whose alliance is inverted
+  for targeting) -> r0 = 0xA into object_setAttack0; no meaningful return
+details: Writes the AI difficulty tier into oAIAttackVars_AiDifficultyTier, clears oAIAttackVars_InitFlag,
+  and installs sub_81064C4 as the oAIAttackVars_PanelChooseCallback. Calls battle_aiLoadAttackParams,
+  storing its four results as AttackDuration, AttackBoost2, TimerOrCycles, and SubStepIndex in the AI
+  attack-variable block. Sets oAIAttackVars_ScratchVar to 100 + r5 (r5 appears to be a coordinate/index
+  basis, possibly a panel position). Reads the object's Alliance byte from [r5], flips it, and calls battle_findPlayer
+  to store the opposing player object in oAIAttackVars_TargetObjectPtr. Finally sets attack 0xA via object_setAttack0,
+  handing control to the attack animation/step handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_*] stores into the AI attack-variable block across the whole body;
+    bl battle_aiLoadAttackParams then four stores to AttackDuration/AttackBoost2/TimerOrCycles/SubStepIndex;
+    ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; bl battle_findPlayer selects the opposing player
+    as target; mov r0,#0xa; bl object_setAttack0 starts attack id 0xA; caller sub_81054D8 is a Falzar
+    AI step that gates this call with RNG (GetPositiveSignedRNG & 0xF < 6)
+  refs:
+  - bn6f/asm/asm31.s:165524
+  - 0x081054D8 sub_81054D8
+  - 0x0810588E battle_aiLoadAttackParams
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x08105784
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s name and summary are otherwise accurate, but it misstates the call to battle_aiLoadAttackParams:
+    the code calls sub_810565C with r0=0 (and that function then calls battle_aiLoadAttackParams internally),
+    not battle_aiLoadAttackParams directly. The four stored values come from sub_810565C''s return registers.
+    Additionally, the caller''s gate (GetPositiveSignedRNG & 0xF < 6) is not an AI difficulty tier check
+    but a chance gate.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of r5 (panel coordinate base for ScratchVar = 100 + r5?)
+- what the PanelChooseCallback sub_81064C4 picks and how attack 0xA behaves in-game
+- 'The proposal''s name and summary are otherwise accurate, but it misstates the call to battle_aiLoadAttackParams:
+  the code calls sub_810565C with r0=0 (and that function then calls battle_aiLoadAttackParams internally),
+  not battle_aiLoadAttackParams directly. The four stored values come from sub_810565C''s return registers.
+  Additionally, the caller''s gate (GetPositiveSignedRNG & 0xF < 6) is not an AI difficulty tier check
+  but a chance gate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105784 -> battle_falzarInitAttack0A
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105784

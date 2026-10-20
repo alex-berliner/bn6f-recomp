@@ -2,43 +2,40 @@ name: ai_panelChargeStep
 address: '0x081108E4'
 kind: function
 status: probable
-summary: Boss AI step that winds up via oAIAttackVars_StepTimer, then writes the panel one step toward
-  the target (or a stored backup minus direction) into object fields 0x7A/0x7B, calls sub_8110CC6, resets
-  CurAnim, sets OBJECT_FLAGS_GUARD, and assigns HitElement=4 before clearing AttackElement.
+summary: Boss AI step that winds up via oAIAttackVars_StepTimer, then writes the panel one step toward the target
+  (or a stored backup minus direction) into object fields 0x7A/0x7B, calls sub_8110CC6, resets CurAnim, sets OBJECT_FLAGS_GUARD,
+  and assigns HitElement=4 before clearing AttackElement.
 interface: (r5 = battle object ptr, r7 = AI attack vars struct) -> r0 = 0/void; no meaningful flags
-details: 'State-gated by oAIAttackVars_AttackElement: while 0, it loads oAIAttackVars_AiAttackParam into
-  StepTimer as the wind-up duration, snapshots the object''s own panel (PanelX/PanelY) into backup slots
-  0x82/0x83, and sets AttackElement=1. Each subsequent call decrements StepTimer and returns until it
-  hits zero. Then it takes object_getFrontDirection, reads the target object''s panel coords (fields 0x12/0x13)
-  and steps one tile toward the attacker; if that panel fails object_isValidPanel, it instead uses the
-  backup slots 0x80/0x81 minus direction. The chosen (col,row) is written to object fields 0x7A/0x7B (attack
-  panel coords), sub_8110CC6 is called (likely spawning the charge attack entity/hitbox there), CurAnim
-  is reset to 0, OBJECT_FLAGS_GUARD is ORed into the object''s flags (no flinch while attacking), oAIAttackVars_HitElement
-  is set to 4, and AttackElement returns to 0.'
+details: 'State-gated by oAIAttackVars_AttackElement: while 0, it loads oAIAttackVars_AiAttackParam into StepTimer
+  as the wind-up duration, snapshots the object''s own panel (PanelX/PanelY) into backup slots 0x82/0x83, and sets
+  AttackElement=1. Each subsequent call decrements StepTimer and returns until it hits zero. Then it takes object_getFrontDirection,
+  reads the target object''s panel coords (fields 0x12/0x13) and steps one tile toward the attacker; if that panel
+  fails object_isValidPanel, it instead uses the backup slots 0x80/0x81 minus direction. The chosen (col,row) is
+  written to object fields 0x7A/0x7B (attack panel coords), sub_8110CC6 is called (likely spawning the charge attack
+  entity/hitbox there), CurAnim is reset to 0, OBJECT_FLAGS_GUARD is ORed into the object''s flags (no flinch while
+  attacking), oAIAttackVars_HitElement is set to 4, and AttackElement returns to 0.'
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'ldrb r0,[r7,#AttackElement]; cmp #0 gates one-time init: StepTimer=AiAttackParam, panel stored
-    to 0x82/0x83; ldrh StepTimer; sub #1; strh; bne locret — per-frame tick gate before the attack fires;
-    object_getFrontDirection + target fields 0x12/0x13 minus direction, validated by object_isValidPanel,
-    else fallback to slots 0x80/0x81; chosen coords stored to object 0x7A/0x7B, then bl sub_8110CC6 and
-    strb #0 to CurAnim; mov r0,#OBJECT_FLAGS_GUARD; bl object_setFlag1, HitElement=4, AttackElement reset
-    to 0'
+  detail: 'ldrb r0,[r7,#AttackElement]; cmp #0 gates one-time init: StepTimer=AiAttackParam, panel stored to 0x82/0x83;
+    ldrh StepTimer; sub #1; strh; bne locret — per-frame tick gate before the attack fires; object_getFrontDirection
+    + target fields 0x12/0x13 minus direction, validated by object_isValidPanel, else fallback to slots 0x80/0x81;
+    chosen coords stored to object 0x7A/0x7B, then bl sub_8110CC6 and strb #0 to CurAnim; mov r0,#OBJECT_FLAGS_GUARD;
+    bl object_setFlag1, HitElement=4, AttackElement reset to 0'
   refs:
   - bn6f/asm/asm32.s:5537
   - 0x0800E2CA object_getFrontDirection
   - 0x0800CC72 object_isValidPanel
   - 0x0801A152 object_setFlag1
   reproduce: python3 tools/asmcat.py 0x081108E4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is largely correct: it backs up panel into 0x82/0x83, runs a StepTimer wind-up, then
-    on expiry it prefers the panel one step in front of the attacker toward the target (using backup 0x80/0x81
-    as fallback), writes to 0x7A/0x7B, calls sub_8110CC6, resets CurAnim, sets OBJECT_FLAGS_GUARD via
-    object_setFlag1 (not ORed directly in asm), and sets HitElement=4. However oAIAttackVars_StepTimer
-    is read from r7, not a local StepTimer; minor naming nit. Name ai_chargeAttackStep is fine but ai_panelChargeStep
-    is slightly more precise since the spawn call is opaque.; run wf investigate investigate-20261018-182231;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    is largely correct: it backs up panel into 0x82/0x83, runs a StepTimer wind-up, then on expiry it prefers the
+    panel one step in front of the attacker toward the target (using backup 0x80/0x81 as fallback), writes to 0x7A/0x7B,
+    calls sub_8110CC6, resets CurAnim, sets OBJECT_FLAGS_GUARD via object_setFlag1 (not ORed directly in asm), and
+    sets HitElement=4. However oAIAttackVars_StepTimer is read from r7, not a local StepTimer; minor naming nit.
+    Name ai_chargeAttackStep is fine but ai_panelChargeStep is slightly more precise since the spawn call is opaque.;
+    run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 coverage:
 - battlesweep
 - beastsp
@@ -46,12 +43,12 @@ open_questions:
 - Which boss/attack this belongs to (no known caller; only recorded in battlesweep/beastsp routes)
 - What sub_8110CC6 spawns at the stamped panel (presumed the charge/lunge entity)
 - Meaning of HitElement=4 and the exact semantics of the 0x7A-0x83 object fields
-- 'The summary is largely correct: it backs up panel into 0x82/0x83, runs a StepTimer wind-up, then on
-  expiry it prefers the panel one step in front of the attacker toward the target (using backup 0x80/0x81
-  as fallback), writes to 0x7A/0x7B, calls sub_8110CC6, resets CurAnim, sets OBJECT_FLAGS_GUARD via object_setFlag1
-  (not ORed directly in asm), and sets HitElement=4. However oAIAttackVars_StepTimer is read from r7,
-  not a local StepTimer; minor naming nit. Name ai_chargeAttackStep is fine but ai_panelChargeStep is
-  slightly more precise since the spawn call is opaque.'
+- 'The summary is largely correct: it backs up panel into 0x82/0x83, runs a StepTimer wind-up, then on expiry it
+  prefers the panel one step in front of the attacker toward the target (using backup 0x80/0x81 as fallback), writes
+  to 0x7A/0x7B, calls sub_8110CC6, resets CurAnim, sets OBJECT_FLAGS_GUARD via object_setFlag1 (not ORed directly
+  in asm), and sets HitElement=4. However oAIAttackVars_StepTimer is read from r7, not a local StepTimer; minor
+  naming nit. Name ai_chargeAttackStep is fine but ai_panelChargeStep is slightly more precise since the spawn call
+  is opaque.'
 sources:
 - wf investigate investigate-20261018-182231
 changes:
@@ -63,5 +60,9 @@ changes:
   what: rename sub_81108E4 -> ai_panelChargeStep
   where: bn6f 0086088f
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
 previous_names:
 - sub_81108E4

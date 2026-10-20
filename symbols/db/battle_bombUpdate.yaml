@@ -1,0 +1,65 @@
+name: battle_bombUpdate
+address: '0x080DB3B4'
+kind: function
+status: probable
+summary: 'Per-frame battle-object state: while oBattleObject_Timer > 0 it integrates flight (X += XVelocity,
+  Z -= ZVelocity); when the timer expires it snaps to pixel coords, and if the panel flags word has any
+  of mask 0xF800010 set it spawns a type-4 effect, plays SOUND_HIT_BOMB_1, runs sub_80DB48A(PanelX,PanelY,0xF)
+  and sub_80DB4CE, then sets collision region 1 before transitioning to CurAction=4.'
+interface: (r5 = battle object pointer, set by caller) -> r0 = 0 (via fallthrough of object_setCollisionRegion
+  path); updates object fields
+details: Called each frame with the object in r5 (typical state-handler convention). It decrements oBattleObject_Timer;
+  while the timer is still counting it integrates flight motion (X += XVelocity, Z -= ZVelocity, an arcing
+  hop). When the timer reaches 0 it recomputes pixel coords from panel coords, zeroes Z, and checks the
+  panel status word against mask 0x0F800010; if any of those panel flags are set it spawns an effect object
+  seeded with three dwords copied from object+0x34 (likely explosion visuals/params), plays the bomb-hit
+  sound, calls sub_80DB48A with (PanelX, PanelY, 0xF) to affect the panel area, calls sub_80DB4CE, and
+  sets collision region 1. Finally it sets CurAction=4 and clears CurPhaseAndPhaseInitialized to move
+  the object to its next state; on a hole-like panel it skips straight to that state without exploding.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0,#1 / strh on oBattleObject_Timer then bne loc_80DB404 splits flying vs. landed behavior;
+    flight path adds oBattleObject_XVelocity to X and subtracts oBattleObject_ZVelocity from Z each frame;
+    object_getPanelParameters result is tst'd against dword_80DB418=0x0F800010 before spawning the explosion;
+    spawn_t1_0x0_EffectObject fed {r1-r3} from object+0x34 plus SOUND_HIT_BOMB_1 PlaySoundEffect marks
+    a bomb blast; tail sets oBattleObject_CurAction=4 and clears CurPhaseAndPhaseInitialized, the standard
+    state-transition idiom
+  refs:
+  - bn6f/asm/asm31.s:76350
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DB3B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flight-motion integration is in loc_80DB404 (X += XVelocity, Z -= ZVelocity) which is reached
+    only when the timer is nonzero (bne). Good. The 0xF800010 mask check, spawn, sound, sub_80DB48A(0xF),
+    sub_80DB4CE, and setCollisionRegion(1) match. However, the proposal''s note ''on a hole-like panel
+    it skips straight to that state without exploding'' misreads loc_80DB3FA — the skip is unconditional
+    (always sets CurAction=4 and clears CurPhase), not gated by panel flags; only the explosion steps
+    are skipped when tst fails. Also, the summary implying flight THEN explode is correct but the ''flies
+    through air'' is reasonable.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which bomb/attack object uses this handler is unconfirmed
+- Purpose of sub_80DB48A(x, y, 0xF) (panel damage? panel-state set?) and sub_80DB4CE is unknown
+- Exact meaning of the 0x0F800010 panel flag mask (e.g. hole vs. grass vs. occupied) not established
+- The flight-motion integration is in loc_80DB404 (X += XVelocity, Z -= ZVelocity) which is reached only
+  when the timer is nonzero (bne). Good. The 0xF800010 mask check, spawn, sound, sub_80DB48A(0xF), sub_80DB4CE,
+  and setCollisionRegion(1) match. However, the proposal's note 'on a hole-like panel it skips straight
+  to that state without exploding' misreads loc_80DB3FA — the skip is unconditional (always sets CurAction=4
+  and clears CurPhase), not gated by panel flags; only the explosion steps are skipped when tst fails.
+  Also, the summary implying flight THEN explode is correct but the 'flies through air' is reasonable.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB3B4 -> battle_bombUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB3B4

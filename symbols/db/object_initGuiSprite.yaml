@@ -1,0 +1,66 @@
+name: object_initGuiSprite
+address: '0x0811B9D8'
+kind: function
+status: probable
+summary: 'Initializes a GUI sprite object (resource 0x12): sets state 0x23, configures animation 6/no-shadow/priority
+  3, programs a slot halfword (0x300 or 0x260) selected by byte +3 and gated by byte +4, sets palette
+  bank 0xB (or byte+3+0xB when the flag is set), writes +8=4, +9=4 or 0, +0xC=6, then tail-calls sub_811BA58.'
+interface: (r5 = object struct; no register args) -> void; object state byte set to 0x23, fields +8/+9/+0xC
+  initialized
+details: 'Writes state 0x23 to the object''s first byte, then calls initGuiSprite_8002770(0x12, &unk_2025AE8)
+  to load GUI sprite resource 0x12 into the IWRAM GUI work area. Configures the sprite: animation 6, loads
+  animation data, disables shadow, OAM priority 3, and sets sub-record field A to 1. It then reads object
+  byte +3 (a selector) and byte +4 (a variant flag): depending on the flag it stores either 0x300 or 0x260
+  (table off_811BA4C) into a slot via slotList_storeHalfwordAndClearField_800306C, choosing the table
+  entry with the selector. The palette bank passed to sprite_setSubEntryPaletteBank_800304A is 0xB, or
+  byte+3 plus 0xB when the flag is set. Finally it writes object fields +8=4, +9=4-or-0 (same flag), +0xC=6,
+  and tail-calls unknown sub_811BA58. No callers are known, so the sprite''s in-game identity (what resource
+  0x12 depicts) can''t be confirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x23; strb [r5]; initGuiSprite(0x12, unk_2025AE8): sets object state and loads a GUI
+    sprite resource; sprite_setAnimation(6) / sprite_loadAnimationData / sprite_noShadow / sprite_setPriority(3):
+    standard sprite object configuration chain; off_811BA4C = {0x300, 0x260} indexed by byte +3/byte +4,
+    stored via slotList_storeHalfwordAndClearField_800306C; palette bank = byte+3 + 0xB (flag set) or
+    plain 0xB, via sprite_setSubEntryPaletteBank_800304A; bytes +8=4, +9=flag?4:0, +0xC=6 written to the
+    object struct before sub_811BA58'
+  refs:
+  - bn6f/asm/asm32.s:28279
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811B9D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core flow (state 0x23, GUI sprite 0x12, animation 6, no shadow, priority 3, slot
+    halfword 0x300/0x260, palette bank, +8=4, +9=4/0, +0xC=6, tail-call sub_811BA58) matches the asm exactly.
+    The flag check at [r5+4] selects whether +9 is 4 or 0, and palette bank is 0xB or [r5+3]+0xB, all
+    as described. Minor wording quibble: ''+3 is a selector, +4 is a variant flag'' is correct but the
+    proposal says ''+9=4-or-0 (same flag)'' which misattributes ''+4'' as ''same flag'' only - it''s the
+    +4 flag driving both branches. Name and intent fit; summary is slightly imprecise on the flag field
+    but overall agrees.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sprite resource 0x12 depicts (need callers or the GUI resource table)
+- Meaning of the halfwords 0x300/0x260 stored into the slot list
+- What sub_811BA58 does after initialization
+- Which game context calls this (no callers known)
+- 'The summary''s core flow (state 0x23, GUI sprite 0x12, animation 6, no shadow, priority 3, slot halfword
+  0x300/0x260, palette bank, +8=4, +9=4/0, +0xC=6, tail-call sub_811BA58) matches the asm exactly. The
+  flag check at [r5+4] selects whether +9 is 4 or 0, and palette bank is 0xB or [r5+3]+0xB, all as described.
+  Minor wording quibble: ''+3 is a selector, +4 is a variant flag'' is correct but the proposal says ''+9=4-or-0
+  (same flag)'' which misattributes ''+4'' as ''same flag'' only - it''s the +4 flag driving both branches.
+  Name and intent fit; summary is slightly imprecise on the flag field but overall agrees.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B9D8 -> object_initGuiSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B9D8

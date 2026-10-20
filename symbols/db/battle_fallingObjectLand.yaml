@@ -1,0 +1,69 @@
+name: battle_fallingObjectLand
+address: '0x080D9788'
+kind: function
+status: probable
+summary: 'Per-frame airborne update: drifts X by XVelocity and Z by -ZVelocity, decrements oBattleObject_Timer.
+  On expiry reloads Timer to 10, sets CurAction=4 and phase=0. If the object''s panel has status bit 0x10
+  set, shakes the camera (mag 2, dur 0x18); otherwise sets CUR_STATE_DESTROY and spawns a type-4 effect
+  object copying fields from object+0x34. Either way, spawns an elemental damage collision region on the
+  object''s panel.'
+interface: (r5 = battle object pointer, no register args) -> r0 = clobbered; object Timer reset to 10,
+  CurAction/phase/state updated, effect object and collision region spawned
+details: Called with the object in r5 (caller sub_80D96C8 sets that up). Each tick it applies XVelocity
+  to X and subtracts ZVelocity from Z, then decrements oBattleObject_Timer; while the timer is still >=0
+  it just returns. When the timer goes negative it reloads it with 10, sets CurAction=4 and phase=0, reads
+  the panel status of its PanelX/PanelY via object_getPanelParameters, and tests bit 0x10. If the bit
+  is set it triggers a camera shake (magnitude 2, duration 0x18); otherwise it marks the object CUR_STATE_DESTROY
+  and spawns a type-4 effect object, copying three fields starting at object+0x34 into it. Either way
+  it finishes by spawning a collision region on its panel using its Element and Damage fields and constants
+  0xb050001/0x1180003, so the landing tile becomes an elemental attack hitbox.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'adds oBattleObject_XVelocity into X and subtracts ZVelocity from Z (0x80D978C-0x80D979C): airborne/drifting
+    movement; timer decrement with bge loop, reload #0xA and CurAction=4 on expiry: periodic landing tick;
+    object_getPanelParameters + tst 0x10 branches between camera_initShakeEffect(2,0x18) and destroy +
+    spawn_t1_0x0_EffectObject; object+0x34 ldmia {r1-r3} copied as the effect spawn arguments: impact
+    effect inherits object data; object_spawnCollisionRegion called with PanelX/PanelY, r3=0x10, Element,
+    Damage, and dword constants 0xb050001/0x1180003: landing panel becomes an attack region'
+  refs:
+  - bn6f/asm/asm31.s:72552
+  - 0x080D96C8 sub_80D96C8
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080D9788
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code well: it applies XVelocity/X and subtracts ZVelocity/Z, decrements
+    Timer, on expiry reloads to 0xa, CurAction=4, phase=0, reads panel status and tests bit 0x10 (code:
+    ''tst r0, r1'' with r1=#0x10). However the bit-test branch is inverted in the summary: when bit 0x10
+    is SET it shakes the camera (loc_80D97CE with mag=2, dur=0x18), and when CLEAR it sets CUR_STATE_DESTROY
+    and spawns the type-4 effect copying object+0x34..0x3F. Also the summary says the function ''optionally
+    explodes'' but unconditionally spawns the collision region regardless of branch (loc_80D97D6 is shared).
+    The name is fine but could be clearer.; run wf investigate investigate-20261018-230610; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which attack/terrain event this object belongs to (identity of caller sub_80D96C8's state machine and
+  the CurAction=4 handler)
+- Exact meaning of panel status bit 0x10 (hole vs occupied) and why it selects shake instead of explosion
+- Semantics of the collision-region constants 0xb050001 and 0x1180003
+- 'The proposal matches the code well: it applies XVelocity/X and subtracts ZVelocity/Z, decrements Timer,
+  on expiry reloads to 0xa, CurAction=4, phase=0, reads panel status and tests bit 0x10 (code: ''tst r0,
+  r1'' with r1=#0x10). However the bit-test branch is inverted in the summary: when bit 0x10 is SET it
+  shakes the camera (loc_80D97CE with mag=2, dur=0x18), and when CLEAR it sets CUR_STATE_DESTROY and spawns
+  the type-4 effect copying object+0x34..0x3F. Also the summary says the function ''optionally explodes''
+  but unconditionally spawns the collision region regardless of branch (loc_80D97D6 is shared). The name
+  is fine but could be clearer.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9788 -> battle_fallingObjectLand
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9788

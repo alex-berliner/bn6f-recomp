@@ -1,0 +1,60 @@
+name: network_advanceScriptAfterFade
+address: '0x0803970C'
+kind: function
+status: probable
+summary: State-machine update step gated on IsScreenFadeActive and bit 8 of eFlags2009F38; clears [r5,#0x14],
+  calls sub_803BB2C with phase 0, sets phase 8 at [r5,#1], then unconditionally calls sub_803B880 and
+  sub_803C2F0.
+interface: (r5 = task/state object pointer set by caller) -> r0 = result of sub_803C2F0; flags from last
+  callee
+details: r5 is never set here, so it must be a persistent task/context pointer established by callers.
+  It first calls IsScreenFadeActive and only proceeds when that check passes, then tests bit 8 of the
+  chatbox/cutscene flag word eFlags2009F38 via chatbox_mask_eFlags2009F38; if the bit is clear it skips
+  the body. When the bit is set it clears the byte at [r5,#0x14], calls sub_803BB2C with r0=0 (which selects
+  and displays the network text script for the current jump-table phase), and writes phase value 8 to
+  the state byte [r5,#1]. It then unconditionally calls sub_803B880 and sub_803C2F0 before returning,
+  so those run every invocation regardless of the gated body.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl IsScreenFadeActive + beq loc_803972A gates the body on the fade state; mov r0,#8; bl chatbox_mask_eFlags2009F38;
+    beq — body only runs when eFlags2009F38 bit 8 is set; strb r0,[r5,#0x14] with 0 and strb r0,[r5,#1]
+    with 8 reset/advance fields of a caller-owned state object; mov r0,#0; bl sub_803BB2C matches its
+    known role of displaying the network text script for the current phase; tail calls sub_803B880 and
+    sub_803C2F0 run unconditionally each invocation
+  refs:
+  - bn6f/asm/asm03_1_1.s:1485
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803BB2C sub_803BB2C
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x0803970C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body correctly matches: IsScreenFadeActive then bit 8 mask, then clears [r5,#0x14], calls sub_803BB2C,
+    writes 8 to [r5,#1], and unconditional sub_803B880/sub_803C2F0 after. However, strb r0,[r5,#0x14]
+    and strb r0,[r5,#1] are 0 and 8, and sub_803BB2C is called with r0=0 selecting phase 0, not ''next''.
+    Better summary reflects phase 0 reset then phase 8 advance.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the structure behind r5 (what offsets 0x1 and 0x14 mean) and which task owns this
+  update are unconfirmed
+- The exact polarity of IsScreenFadeActive's Z return (fade active vs inactive) determines whether the
+  body runs during or after the fade
+- What phases 0 and 8 of the sub_803BB2C jump table represent
+- 'The body correctly matches: IsScreenFadeActive then bit 8 mask, then clears [r5,#0x14], calls sub_803BB2C,
+  writes 8 to [r5,#1], and unconditional sub_803B880/sub_803C2F0 after. However, strb r0,[r5,#0x14] and
+  strb r0,[r5,#1] are 0 and 8, and sub_803BB2C is called with r0=0 selecting phase 0, not ''next''. Better
+  summary reflects phase 0 reset then phase 8 advance.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803970C -> network_advanceScriptAfterFade
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803970C

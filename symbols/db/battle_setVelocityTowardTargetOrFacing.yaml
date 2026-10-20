@@ -1,0 +1,61 @@
+name: battle_setVelocityTowardTargetOrFacing
+address: '0x080D3058'
+kind: function
+status: probable
+summary: Sets a battle object's X/Y velocity to unit speed (1.0 in 16.16), either straight along its facing
+  direction (when ExtraVars[0..3] == 0xFFFFFFFF is false / mode indicates facing) or toward a target panel
+  read from ExtraVars+4.
+interface: (r5 = battle object; target panel in ExtraVars+4) -> r0/r1 undefined; writes oBattleObject_XVelocity
+  and oBattleObject_YVelocity
+details: 'Converts the object''s own panel column/row to screen coordinates via object_getCoordinatesForPanels
+  and stores them on the stack. If the byte at ExtraVars equals 0xFF, it calls object_getFrontDirection
+  and multiplies by 0x100000 (fixed-point 1.0), leaving Y velocity 0 — a straight move in the facing direction.
+  Otherwise it reads the target panel coords from ExtraVars+4, converts them the same way, takes the delta
+  (target minus self), gets its angle via calcAngle_800117C, and math_getPolarVector(angle, 0x100000)
+  yields a unit direction vector. The resulting dx,dy are stored into the object''s XVelocity/YVelocity
+  fields, so the object moves one panel-distance worth of speed toward the target. ExtraVars here acts
+  as a small parameter block: mode byte plus target panel x/y.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX]/PanelY + bl object_getCoordinatesForPanels: converts own
+    panel to pixels; cmp r0,#0xff / bl object_getFrontDirection / mul r0,0x100000: facing-direction mode
+    writes front*speed, y=0; ldr r1,[r5,#ExtraVars+4] + second object_getCoordinatesForPanels + sub: delta
+    from own to target panel; bl calcAngle_800117C / bl math_getPolarVector with 0x100000: unit vector
+    toward the target; str r0/r1,[r5,#oBattleObject_XVelocity/YVelocity]: results stored as the object''s
+    velocity'
+  refs:
+  - bn6f/asm/asm31.s:58792
+  - 0x080D2EDC sub_80D2EDC
+  - 0x0800117C calcAngle_800117C
+  - 0x080011A0 math_getPolarVector
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080D3058
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior closely, but the ExtraVars+0 check is a word compare (`ldr`
+    then `cmp r0, #0xff`), not a byte compare. More importantly, only one branch uses a ''target'' panel;
+    the 0xFF branch moves straight in the facing direction, so ''TowardTargetPanel'' misnames the function.
+    The two-mode behavior deserves a name that reflects the facing-vs-target choice.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Caller sub_80D2EDC is unknown, so what sets ExtraVars and when this movement mode triggers (which object/AI
+  behavior) is unclear
+- Exact fixed-point scale of XVelocity/YVelocity relative to per-frame movement is unconfirmed
+- 'The code matches the proposal''s behavior closely, but the ExtraVars+0 check is a word compare (`ldr`
+  then `cmp r0, #0xff`), not a byte compare. More importantly, only one branch uses a ''target'' panel;
+  the 0xFF branch moves straight in the facing direction, so ''TowardTargetPanel'' misnames the function.
+  The two-mode behavior deserves a name that reflects the facing-vs-target choice.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3058 -> battle_setVelocityTowardTargetOrFacing
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3058

@@ -1,0 +1,69 @@
+name: battle_renderChipPackScreenTilemap
+address: '0x0812D3E4'
+kind: function
+status: probable
+summary: Renders six sections (folder chips, folder OAM pack, icon slots, pack entries, panel entries,
+  plus a header) into tilemap buffers and copies each into BG tile block 2 as 2-column x 14-row strips
+  (columns 3,1,0xB,0xD,0xE,0x10), then calls sub_812D5EC.
+interface: () -> r0 = 0 via callees; reads screen-state struct from sub_812D6F8, writes tilemap data buffers
+  at 202DFA0..202E144 and copies them into BG tile block 2
+details: 'Calls sub_812D6F8 to get a state struct, then for each of six sections repeats the same pattern:
+  pass the halfword at [state+0x2e] plus word_2023FA0 as r1 and a section buffer as r2 to a builder (loadFolderChipGfx
+  with a 0x6007600 base tile, buildChipFolderOamPack with 0x6006B80/0x35C, loadChipIconSlots with 0x9000|0x216,
+  fillChipPackEntries with 0x8000|0x34F, sub_8120618 with 0xA000|0x200 for panel entries), then CopyBackgroundTiles
+  that buffer into tile block 2 at a fixed column (j = 3, 1, 0xB, 0xD, 0xE, 0x10) with j_size=2, i_size=0xE.
+  Each section therefore occupies a 2-column x 14-row strip; the r3 values are palette-or''ed base tile
+  indices for the builder. The halfword at +0x2e is forwarded as r0 to every builder, suggesting it selects
+  which folder/entry set to render. Ends with sub_812D5EC.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Six identical builder+CopyBackgroundTiles pairs at fixed columns (j=3,1,0xB,0xD,0xE,0x10), block
+    2, 2x14 each (asm throughout 0x812D3E4); Callees battle_loadFolderChipGfx_8120390 and battle_buildChipFolderOamPack_81203E4
+    are documented folder-chip GFX/OAM builders (per project summaries); battle_loadChipIconSlots_8120458
+    and battle_fillChipPackEntries_81204C4 handle per-battle chip icon slots and chip-pack entries; sub_8120618
+    converts 0x20-byte battle-grid panel entries into packed BCD tilemap words, giving the last strip
+    (base tile 0x200, palette 0xA); Six callers clustered at 0x812C3BC-0x812D164 (screen modes) all share
+    this render, and sub_812D6F8's +0x2e halfword is passed to every builder as r0
+  refs:
+  - bn6f/asm/asm34.s:68
+  - 0x0812C3BC sub_812C3BC
+  - 0x0812C7B4 sub_812C7B4
+  - 0x0812CA84 sub_812CA84
+  - 0x081203E4 battle_buildChipFolderOamPack_81203E4
+  - 0x081204C4 battle_fillChipPackEntries_81204C4
+  - 0x08120458 battle_loadChipIconSlots_8120458
+  reproduce: python3 tools/asmcat.py 0x0812D3E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function calls sub_8120194 first (not battle_loadFolderChipGfx) for the first section with r3=0xa
+    (no tile-base OR). The summary''s ''r3 values are palette-or''ed base tile indices'' is wrong: r3
+    holds a count/cap for sub_8120194 and sub_8120618, but for the four chip builders it is a base tile
+    index with palette+flip bits (0x6007600, 0x6006B80, 0xA216, 0x834F). Otherwise the section/strip pattern
+    and CopyBackgroundTiles into block 2 with j_size=2, i_size=0xe matches. The first section''s j=3,
+    i_size=0xe, j_size=8 (not 2) is also unique — likely an oddity worth noting.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of the [state+0x2e] halfword forwarded to all builders (folder index? cursor? mode?)
+- Exact layout/identity of the six 2x14 strips (which UI element each column pair shows)
+- What sub_812D6F8 returns and what word_2023FA0 holds
+- Which of the six caller states each section belongs to
+- 'The function calls sub_8120194 first (not battle_loadFolderChipGfx) for the first section with r3=0xa
+  (no tile-base OR). The summary''s ''r3 values are palette-or''ed base tile indices'' is wrong: r3 holds
+  a count/cap for sub_8120194 and sub_8120618, but for the four chip builders it is a base tile index
+  with palette+flip bits (0x6007600, 0x6006B80, 0xA216, 0x834F). Otherwise the section/strip pattern and
+  CopyBackgroundTiles into block 2 with j_size=2, i_size=0xe matches. The first section''s j=3, i_size=0xe,
+  j_size=8 (not 2) is also unique — likely an oddity worth noting.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812D3E4 -> battle_renderChipPackScreenTilemap
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D3E4

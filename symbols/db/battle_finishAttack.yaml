@@ -1,0 +1,65 @@
+name: battle_finishAttack
+address: '0x080FBCA2'
+kind: function
+status: probable
+summary: 'Tears down a battle object''s attack state: clears ObjectFlags1 bit 0x40, calls sub_801DC7C(0,0),
+  updates collision data with args (r1=1,r2=2,r3=3), sets collision region 1, copies DamageAndStaminaDamageCounterDisabler
+  into the collision record (low half -> SelfDamage, high byte -> StaminaDamageCounterDisabler), syncs
+  sprite flip, releases the AIDataPtr+0xA0 target panel, and clears ExtraVars+4 if nonzero.'
+interface: () -> void; reads r5 = battle object pointer, no arguments or return value
+details: Operating on the battle object in r5, it clears ObjectFlags1 bit 0x40 via object_clearFlag, calls
+  sub_801DC7C with r0=r1=0, then writes 1/2/3 into object_updateCollisionData's args. It takes oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  stores its low half into oCollisionData_SelfDamage and its high byte into oCollisionData_StaminaDamageCounterDisabler,
+  then sets collision region 1. It copies object_getFlip's result into sprite_setFlip (mask 0x30 in sprite
+  bytes 0x13/0x16). Using the AI data pointer +0xA0, it reads oAIAttackVars_TargetPanelX/Y and releases
+  the panel with object_removePanelReserve. Finally, if oBattleObject_ExtraVars+4 is nonzero it is cleared
+  to 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_clearFlag(0x40) and object_updateCollisionData(1,2,3) reset collision/flag state at function
+    start; low/high split of DamageAndStaminaDamageCounterDisabler written to oCollisionData_SelfDamage
+    and oCollisionData_StaminaDamageCounterDisabler; object_getFlip result passed to sprite_setFlip, keeping
+    the sprite mirroring in sync with facing; TargetPanelX/Y from AI attack vars at AIData+0xA0 fed to
+    object_removePanelReserve — cleanup of a panel reserved for an attack; clearing oBattleObject_ExtraVars+4
+    last suggests it resets one-shot per-attack scratch data
+  refs:
+  - bn6f/asm/asm31.s:145048
+  - 0x0801A15C object_clearFlag
+  - 0x0800E456 object_getFlip
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080FBCA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: flag 0x40 cleared, sub_801DC7C(0,0) called, collision region 1 set,
+    sprite flip synced via object_getFlip/sprite_setFlip, reserved panel released via AIDataPtr+0xA0,
+    and ExtraVars+4 cleared. However, the description of object_updateCollisionData args (1/2/3) is wrong
+    — the code sets r1=1, r2=2, r3=3 and calls object_updateCollisionData, so r0 is missing; the proposal
+    also incorrectly describes the oBattleObject_DamageAndStaminaDamageCounterDisabler split (it splits
+    a 32-bit word into low half for SelfDamage and high byte for StaminaDamageCounterDisabler). A clearer
+    name would be battle_finishAttack since it tears down the attack state.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so it is unclear exactly when this runs (attack end, AI cleanup, or object reset)
+  and what sub_801DC7C(0,0) does
+- The meaning of ObjectFlags1 bit 0x40 and of ExtraVars+4 is not established
+- 'The summary is largely correct: flag 0x40 cleared, sub_801DC7C(0,0) called, collision region 1 set,
+  sprite flip synced via object_getFlip/sprite_setFlip, reserved panel released via AIDataPtr+0xA0, and
+  ExtraVars+4 cleared. However, the description of object_updateCollisionData args (1/2/3) is wrong —
+  the code sets r1=1, r2=2, r3=3 and calls object_updateCollisionData, so r0 is missing; the proposal
+  also incorrectly describes the oBattleObject_DamageAndStaminaDamageCounterDisabler split (it splits
+  a 32-bit word into low half for SelfDamage and high byte for StaminaDamageCounterDisabler). A clearer
+  name would be battle_finishAttack since it tears down the attack state.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FBCA2 -> battle_finishAttack
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBCA2

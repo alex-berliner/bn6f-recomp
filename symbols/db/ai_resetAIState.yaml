@@ -1,0 +1,59 @@
+name: ai_resetAIState
+address: '0x080143B4'
+kind: function
+status: probable
+summary: Clears transient AI flags (Flags1 bit 0x200000, Flags2 bit 0x200) on the battle object and zeros
+  AIData.Anger and AIScriptCounter, used as end-of-AI-step cleanup by AI scripts.
+interface: (r0 = battle object, r5 = same object) -> r0 = 0; sets flags via object_clearFlag/object_clearFlag2
+details: Takes a battle object and clears bit 0x200000 of its ObjectFlags1 and bit 0x200 of ObjectFlags2
+  in the collision data, then loads the object's AIData pointer (r5+oBattleObject_AIDataPtr) and stores
+  0 into Anger (halfword) and AIScriptCounter (word). Bit 0x200000 in Flags1 and 0x200 in Flags2 are presumably
+  transient flags set while the attack is active (e.g. intangible/no-contact during emerge or rush). Both
+  known callers are AI attack routines that call this after their ~30-frame wait, right before clearing
+  their own AI-flags and leaving the attack state, so it serves as the common 'attack finished' cleanup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: bl object_clearFlag with r0=0x200000 then object_clearFlag2 with r0=0x200 on the object;
+    asm: ldr r1,[r5,#oBattleObject_AIDataPtr]; strh 0,[r1,#oAIData_Anger]; str 0,[r1,#oAIData_AIScriptCounter];
+    caller 0x0801562C ai_attackEmergeAtTargetPanel invokes it after the 30-frame wait, before releasing
+    AI flags; caller 0x08015766 ai_attackRushForward invokes it at the same end-of-attack point'
+  refs:
+  - bn6f/asm/asm00_2.s:12671
+  - 0x0801562C ai_attackEmergeAtTargetPanel
+  - 0x08015766 ai_attackRushForward
+  - 0x0802D9B0 sub_802D9B0
+  - 0x0801A15C object_clearFlag
+  - 0x0801A176 object_clearFlag2
+  reproduce: python3 tools/asmcat.py 0x080143B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function correctly clears bit 0x200000 in Flags1 (mov r0,#1; lsl r0,#0x15 = 0x200000) via object_clearFlag
+    and 0x200 in Flags2 via object_clearFlag2, then writes 0 to AIData.Anger (strh) and AIScriptCounter
+    (str). So the operations match. However, ''ai_clearAttackState'' is too specific: it also zeroes AIScriptCounter
+    and Anger, not just attack flags, and the callers (ai_attackEmergeAtTargetPanel, ai_attackRushForward,
+    plus two sub_ callers) aren''t exclusively attack-end sites. A more neutral name like ai_resetAIState
+    fits better.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of ObjectFlags1 bit 0x200000 and ObjectFlags2 bit 0x200 (likely attack-time intangibility/no-contact)
+- what sub_802D9B0/sub_802DB80 (unidentified callers) use it for — could confirm or extend the 'attack
+  cleanup' reading
+- 'The function correctly clears bit 0x200000 in Flags1 (mov r0,#1; lsl r0,#0x15 = 0x200000) via object_clearFlag
+  and 0x200 in Flags2 via object_clearFlag2, then writes 0 to AIData.Anger (strh) and AIScriptCounter
+  (str). So the operations match. However, ''ai_clearAttackState'' is too specific: it also zeroes AIScriptCounter
+  and Anger, not just attack flags, and the callers (ai_attackEmergeAtTargetPanel, ai_attackRushForward,
+  plus two sub_ callers) aren''t exclusively attack-end sites. A more neutral name like ai_resetAIState
+  fits better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80143B4 -> ai_resetAIState
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80143B4

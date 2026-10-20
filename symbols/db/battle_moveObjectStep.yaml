@@ -1,0 +1,66 @@
+name: battle_moveObjectStep
+address: '0x080F0D64'
+kind: function
+status: probable
+summary: Advances a battle object one step along X or Y by its velocity, checks the target panel with
+  mask {set:0x10010, clear:0x800000}, and commits the move or snaps it back and stores HitElement=0xC
+  on full block.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0xC stored to HitElement when blocked; object
+  X/Y, PanelX/Y and collision updated
+details: Computes the object's new pixel position from XVelocity/YVelocity, then uses convertXYToPanelXY_800E258
+  to get the panel under that position and object_checkPanelParameters with mask {set:0x10010, clear:0x800000}
+  (must be a normal walkable panel, not a hole/special panel). A bit in oAIAttackVars_AttackBoost2 (bit
+  shifted into carry) selects whether the movement axis is X (new x) or Y (new y); that coordinate is
+  remembered in r4 for the axis-change comparison. If the target panel is valid and the moved axis coordinate
+  differs from the target panel coordinate, sub_800E708 checks the span from old to new panel; on failure
+  it snaps the object back with object_setCoordinatesFromPanels and calls sub_80F0EC0, and if that also
+  reports blocked it sets oAIAttackVars_HitElement = 0xC (hit/stop state). Otherwise the move is committed
+  via object_setPanelsFromCoordinates and object_updateCollisionPanels. dword_80F0DE4/0x80F0DE8 are a
+  static panel-flag descriptor (0x10010 required, 0x800000 forbidden).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: adds XVelocity/X and YVelocity/Y into X/Y, then convertXYToPanelXY_800E258 on the new position
+    (sub_80F0D64 +0x12..+0x1E); object_checkPanelParameters called with ldr r3, off_80F0DE0 = {0x10010,
+    0x800000} panel-flag masks; carry from lsr r6,r6,#1 on oAIAttackVars_AttackBoost2 picks axis coordinate
+    r4 (X vs Y) both before and after the panel check; failure paths converge on mov r0,#0xC; strh r0,[r7,#oAIAttackVars_HitElement]
+    (loc_80F0DDA); success path calls object_setPanelsFromCoordinates then object_updateCollisionPanels
+    (loc_80F0DD0)
+  refs:
+  - bn6f/asm/asm31.s:122742
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080F0D64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly right but inverted in one key detail: in the code at loc_80F0DAE the `beq
+    loc_80F0DD0` falls through to object_setPanelsFromCoordinates (commit), and the `bne loc_80F0DDA`
+    only branches to the hit-state when sub_80F0EC0 returns nonzero — i.e., the move is *committed* when
+    the target panel matches the object''s previous-axis coordinate (r4==r6), and *rejected* when it differs
+    and sub_80F0EC0 also fails. Naming is reasonable but ''Checked'' is vague; ''battle_moveObjectStep''
+    more directly describes the function.; run wf investigate investigate-20261018-223614; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose of sub_800E708 (span/intermediate panel check?) and sub_80F0EC0 (secondary blocked test?)
+- exact meaning of the 0x10010/0x800000 panel flag masks
+- which movement states/attacks invoke this, since no callers are known
+- semantics of the AttackBoost2 bit selecting the movement axis
+- 'The summary is mostly right but inverted in one key detail: in the code at loc_80F0DAE the `beq loc_80F0DD0`
+  falls through to object_setPanelsFromCoordinates (commit), and the `bne loc_80F0DDA` only branches to
+  the hit-state when sub_80F0EC0 returns nonzero — i.e., the move is *committed* when the target panel
+  matches the object''s previous-axis coordinate (r4==r6), and *rejected* when it differs and sub_80F0EC0
+  also fails. Naming is reasonable but ''Checked'' is vague; ''battle_moveObjectStep'' more directly describes
+  the function.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0D64 -> battle_moveObjectStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0D64

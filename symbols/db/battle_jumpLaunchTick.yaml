@@ -1,0 +1,80 @@
+name: battle_jumpLaunchTick
+address: '0x080DD5E2'
+kind: function
+status: probable
+summary: 'Per-frame enemy jump-launch dispatcher: based on Param3 (0 idle/return, 1 aim-at-player, >=2
+  wait-for-panel) it picks either a diagonal player-panel target or a facing-relative panel via panelFlagCheck_8015D80,
+  then on launch writes YVelocity/XVelocity from byte_80DD6A8/byte_80DD6D0 indexed by Param1, sets Param4=5,
+  and clears Param3.'
+interface: (r5 = battle object) -> r0 = 0; writes oBattleObject_XVelocity/YVelocity, Param4, and clears
+  Param3
+details: 'r5 (set by the caller) is a battle object; Param3 is a small state: 0 = idle (return), 1 = armed,
+  >=2 = waiting. In the armed state it reads the player''s panel via object_getEnemyPlayerPanels and only
+  launches when |dx| == |dy| (diagonal alignment), using the sign-extraction trick (lsr #30 / bic 1) to
+  get absolute deltas. In the waiting state it first checks whether the object still stands on a panel
+  with flag 0x20 (its alliance side); once the battle is over it instead picks a target panel with panelFlagCheck_8015D80
+  over relative candidates {+1,-1,+2,-2, end} transformed by facing. On launch it sets YVelocity = YvelTable[Param1]
+  * (-signed byte at r5+5) (or +YvelTable[Param1] when jumping from row 1 in the armed path), XVelocity
+  = XvelTable[Param1] * object_getFrontDirection(), sets Param4 = 5 (movement/animation state) and clears
+  Param3. Velocity tables byte_80DD6A8/byte_80DD6D0 are indexed by Param1<<2, so Param1 selects the jump
+  power variant.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp Param3 #0/#1 dispatch: 0 returns, 1 goes to the diagonal-alignment branch, else waits for
+    a condition; loc_80DD63A: object_getEnemyPlayerPanels + |dx|==|dy| comparison gates the launch; loc_80DD60C:
+    panelFlagCheck_8015D80 with candidate list byte_80DD6E8 {1,0xFF,2,0xFE,0x7F} picks the target panel;
+    loc_80DD688: stores table[Param1] values into oBattleObject_YVelocity and oBattleObject_XVelocity
+    (scaled by object_getFrontDirection), sets Param4=5, Param3=0; callee battle_isBattleOver gates the
+    flee/target-pick path to battle end'
+  refs:
+  - bn6f/asm/asm31.s:80798
+  - 0x080DD4E8 sub_80DD4E8
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080DD5E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s general flow: Param3 0 returns, 1 takes the ''armed'' diagonal-alignment
+    path via object_getEnemyPlayerPanels (loc_80DD63A), and >=2 takes the waiting path that checks panel
+    flag 0x20 then calls panelFlagCheck_8015D80. The ''|dx|==|dy|'' trick at loc_80DD63A and the velocity-table
+    indexing (Param1<<2 into byte_80DD6A8 / byte_80DD6D0) with Param4=5 and Param3 cleared all match.
+    However, the proposal''s armed-state ''YVelocity * -signed byte'' is wrong for that path: loc_80DD63A
+    only computes the Y-velocity when PanelY==1 it falls through to loc_80DD688 with r1 positive, and
+    otherwise multiplies by -1, while the waiting-state path (loc_80DD628) always negates the signed byte.
+    Also the Param1 tables are not ''jump power variants'' in the usual sense — byte_80DD6A8 is a set
+    of small signed halfwords, and the Y-velocity is the product of that table entry with the object''s
+    signed byte (oBattleObject_Height/SpriteYOffset-like), not a pure sign-extracted velocity. A better
+    summary should reflect that this is an enemy jump-launch state machine, not specifically a ''leap
+    toward target'' routine.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/attack uses this jump (caller sub_80DD4E8 is unnamed)
+- meaning of the signed byte at r5+5 that flips the Y velocity
+- exact semantics of Param1 (jump variant index) and Param4=5 target state
+- what GetAllianceDependentPanelParamArgs2/panelFlagCheck write back and where the chosen target coords
+  are stored
+- 'The code matches the proposal''s general flow: Param3 0 returns, 1 takes the ''armed'' diagonal-alignment
+  path via object_getEnemyPlayerPanels (loc_80DD63A), and >=2 takes the waiting path that checks panel
+  flag 0x20 then calls panelFlagCheck_8015D80. The ''|dx|==|dy|'' trick at loc_80DD63A and the velocity-table
+  indexing (Param1<<2 into byte_80DD6A8 / byte_80DD6D0) with Param4=5 and Param3 cleared all match. However,
+  the proposal''s armed-state ''YVelocity * -signed byte'' is wrong for that path: loc_80DD63A only computes
+  the Y-velocity when PanelY==1 it falls through to loc_80DD688 with r1 positive, and otherwise multiplies
+  by -1, while the waiting-state path (loc_80DD628) always negates the signed byte. Also the Param1 tables
+  are not ''jump power variants'' in the usual sense — byte_80DD6A8 is a set of small signed halfwords,
+  and the Y-velocity is the product of that table entry with the object''s signed byte (oBattleObject_Height/SpriteYOffset-like),
+  not a pure sign-extracted velocity. A better summary should reflect that this is an enemy jump-launch
+  state machine, not specifically a ''leap toward target'' routine.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD5E2 -> battle_jumpLaunchTick
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD5E2

@@ -1,0 +1,62 @@
+name: object_initKind23Entity
+address: '0x0811E938'
+kind: function
+status: probable
+summary: 'Initializes a kind-0x23 object: writes kind byte, calls loc_8002774 with 0x66, runs the standard
+  sprite init block (animation 0, load anim data, no shadow, palette bank 0xF, subrecord A=0, priority
+  0, palette 0), stores selector 0x2A8 via slotList, and sets byte [r5+8]=4 before tail-calling sub_811E980.'
+interface: (r5 = object ptr, clobbers r0) -> r0 = result of last callee; object fields at [r5], [r5+8]
+  written
+details: 'Writes 0x23 to byte 0 of the object struct at r5 (the entity/kind ID) and calls loc_8002774
+  with r0=0x66, likely a shared sprite-resource or sub-ID setup. It then performs the standard sprite
+  initialization block: sprite_setAnimation(0), sprite_loadAnimationData(), sprite_noShadow(), palette
+  bank 0xF via sprite_setSubEntryPaletteBank_800304A, subrecord field A = 0, OAM priority 0 and palette
+  0. It stores a caller-table halfword using selector 0x2A8 via slotList_storeHalfwordAndClearField_800306C,
+  sets byte [r5+8] to 4, and finally calls sub_811E980 before returning. The mix of generic sprite defaults
+  with two magic constants (0x23 kind, 0x66, 0x2A8) marks this as the init routine of one specific object
+  type.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] then bl loc_8002774 with r0=0x66: kind-ID write followed by shared object setup,
+    the standard init prologue shape; sequence sprite_setAnimation(0) / sprite_loadAnimationData / sprite_noShadow
+    / setPaletteBank(0xF) / setPriority(0) / setPalette(0): full sprite default configuration; ldr r0,=0x2A8
+    + slotList_storeHalfwordAndClearField_800306C: writes an entity-specific halfword into the slot table;
+    strb #4,[r5,#8]: sets another object-struct field, consistent with an initializer not a runtime updater;
+    sprite_* callees all operate on the object at r5, confirming r5 is the object being constructed'
+  refs:
+  - bn6f/asm/asm32.s:33844
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811E938
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mentions palette bank 0xF and priority 0, which match the code (mov r0,#0xf; bl sprite_setSubEntryPaletteBank_800304A
+    and the two mov r0,#0 calls). However the proposed name ''object_initSpriteEntity'' is generic; the
+    function is called from no known caller but uses kind 0x23 and selector 0x2A8 which are object-specific.
+    The summary also misses that sprite_setPalette is called (it is, with r0=0). A more accurate name
+    reflecting the kind byte 0x23 would be better.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which entity kind 0x23 / sprite resource 0x66 corresponds to in-game (no callers known to confirm context)
+- What loc_8002774 and sub_811E980 do
+- Meaning of the 0x2A8 slot-list key and the byte at [r5+8]
+- The summary mentions palette bank 0xF and priority 0, which match the code (mov r0,#0xf; bl sprite_setSubEntryPaletteBank_800304A
+  and the two mov r0,#0 calls). However the proposed name 'object_initSpriteEntity' is generic; the function
+  is called from no known caller but uses kind 0x23 and selector 0x2A8 which are object-specific. The
+  summary also misses that sprite_setPalette is called (it is, with r0=0). A more accurate name reflecting
+  the kind byte 0x23 would be better.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E938 -> object_initKind23Entity
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E938

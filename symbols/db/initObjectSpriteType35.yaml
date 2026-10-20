@@ -1,0 +1,62 @@
+name: initObjectSpriteType35
+address: '0x0811E6E4'
+kind: function
+status: probable
+summary: 'Initializes an object''s sprite state for type 0x23: sets type byte, calls loc_8002774 with
+  0x63, animation 0 with data loaded, no shadow, palette bank 0xB, slot halfword 0x1F0, sub-record cleared,
+  OAM priority 0, palette 0, byte 8 = 4, then calls sub_811E72C before returning.'
+interface: (r5 = object pointer, implicit) -> void; r0 clobbered
+details: 'Follows the standard BN6 object-init pattern that operates on the object in r5: it stores 0x23
+  into byte 0 (the object''s type/ID) and calls the helper at 0x8002774 with 0x63 (likely a per-type parameter
+  such as a size or class code). It then performs the usual sprite bring-up: animation index 0 via sprite_setAnimation,
+  animation data load, disables the shadow, sets sub-entry palette bank 0xB, stores halfword 0x1F0 through
+  slotList_storeHalfwordAndClearField_800306C (a per-type constant, possibly a tile/slot descriptor),
+  zeroes the sub-record field and OAM priority and palette, and writes 4 to byte 8 of the object. Finally
+  it calls sub_811E72C, almost certainly the object''s per-type update/state setup, before returning.
+  Without callers or the target of the 0x63 call, the specific entity being spawned cannot be identified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] then bl 8002774 with r0=0x63: per-type object header setup on r5; sprite_setAnimation(0)
+    + sprite_loadAnimationData + sprite_noShadow: standard sprite bring-up sequence; ldr r0,=0x1F0; bl
+    slotList_storeHalfwordAndClearField_800306C: per-type constant stored into the object''s slot list;
+    sprite_setPriority(0), sprite_setPalette(0), strb #4,[r5,#8]: default render state and an object flag;
+    final bl sub_811E72C before pop: chained per-type init, characteristic of spawn initializer routines'
+  refs:
+  - bn6f/asm/asm32.s:33560
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811E6E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mostly matches the code: byte 0 = 0x23, sprite_setAnimation(0), sprite_loadAnimationData,
+    sprite_noShadow, palette bank 0xB, slotList_storeHalfwordAndClearField_800306C with 0x1F0, priority
+    0, palette 0, byte 8 = 4, then b sub_811E72C. However the proposal claims it tail-calls a follow-up
+    init — the code uses ''bl sub_811E72C'' then ''pop {pc}'', so it''s a call+ret, not a tail-call. Also
+    the callee is described as sprite_setSubEntryPaletteBank_800304A and sprite_setSubRecordFieldA_8003060,
+    not the names implied.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which entity has type/ID 0x23 (or parameter 0x63) — no callers known to confirm the spawned object
+- What loc_8002774 does with r0=0x63 (hitbox size, class, or another setter)
+- Meaning of the 0x1F0 halfword in the slot list and of byte 8 = 4
+- What sub_811E72C sets up (likely the object's state handler table)
+- 'The summary mostly matches the code: byte 0 = 0x23, sprite_setAnimation(0), sprite_loadAnimationData,
+  sprite_noShadow, palette bank 0xB, slotList_storeHalfwordAndClearField_800306C with 0x1F0, priority
+  0, palette 0, byte 8 = 4, then b sub_811E72C. However the proposal claims it tail-calls a follow-up
+  init — the code uses ''bl sub_811E72C'' then ''pop {pc}'', so it''s a call+ret, not a tail-call. Also
+  the callee is described as sprite_setSubEntryPaletteBank_800304A and sprite_setSubRecordFieldA_8003060,
+  not the names implied.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E6E4 -> initObjectSpriteType35
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E6E4

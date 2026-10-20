@@ -1,0 +1,61 @@
+name: submenu_refreshChipListLine
+address: '0x0801EB18'
+kind: function
+status: probable
+summary: Builds/updates unk_2036850 from pt_801EF84[0x50], calls chip_renderListEntry with the chip id,
+  writes a 0x3C value, then sets request bit 0x10000 on eStruct2035280 and dispatches it via dispatch_801DA48(1).
+interface: (r0 = chip id/index) -> r0 clobbered by calls; writes unk_2036850+0x2/+0x7/+0x8, ORs bit 0x1
+  into eStruct2035280+0x40 request dword, then dispatch_801DA48(1); flags not meaningful
+details: It indexes the pointer table pt_801EF84 at offset 0x50 to fetch a per-chip data pointer, copying
+  its halfword at +0 into unk_2036850+0x2 and its byte at +2 into unk_2036850+0x8. It then calls chip_renderListEntry
+  with r0 (the chip id from callers), r3 = that data pointer, and r4 = 1, which builds the name-plus-code
+  display line into the same state block. Afterwards it stores 0x3C (60, likely a frame timer or line
+  count) into unk_2036850+0x7. Finally it ORs request bit 1 into the eStruct2035280 request dword (dword_20352C0)
+  and calls dispatch_801DA48 with 1, so the prepared popup gets rendered/handled on the next pass. Callers
+  in playerAI and the chip-list routines (0x801056A/0x80105F2) fit showing a chip's info/description entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r3,[pt_801EF84+0x50] then ldrh/strh and ldrb/strb copy two fields of the fetched record
+    into unk_2036850+2/+8; bl chip_renderListEntry with r3 = table record and r4 = 1 matches the known
+    'queue one chip name+code line' callee; strb 0x3C into byte_2036857 right after the render call suggests
+    a 60-frame timer/state for the popup; bl eStruct2035280_SetRequestBits_801BECC with mask 1 arms the
+    request dword that drives later processing; callers 0x801056A/0x80105F2 sit in the chip-list screen
+    code, consistent with a per-chip info display
+  refs:
+  - bn6f/asm/asm00_2.s:33272
+  - 0x080F0354 playerAI_sub_80F0354
+  - 0x0801056A sub_801056A
+  - 0x080105F2 sub_80105F2
+  - 0x0801E95C chip_renderListEntry
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801EB18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee chip_renderListEntry already builds the chip-list line; this function only seeds unk_2036850,
+    kicks a render, and pulses two request bits (0x10000) for eStruct2035280 and dispatch_801DA48. The
+    0x3C is stored as a byte at +0x7 (timer/state), and the function is called from playerAI and chip-list
+    code — not chip-description popups. A better name reflects ''prepare/refresh chip list line'' rather
+    than a description popup.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the pt_801EF84+0x50 record fields (text id? palette?) and of unk_2036850+0x7 = 60
+- Whether dispatch_801DA48(1) is a text-window dispatcher or a generic per-frame task dispatch
+- The callee chip_renderListEntry already builds the chip-list line; this function only seeds unk_2036850,
+  kicks a render, and pulses two request bits (0x10000) for eStruct2035280 and dispatch_801DA48. The 0x3C
+  is stored as a byte at +0x7 (timer/state), and the function is called from playerAI and chip-list code
+  — not chip-description popups. A better name reflects 'prepare/refresh chip list line' rather than a
+  description popup.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801EB18 -> submenu_refreshChipListLine
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801EB18

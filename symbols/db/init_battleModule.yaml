@@ -1,0 +1,60 @@
+name: init_battleModule
+address: '0x0804986E'
+kind: function
+status: probable
+summary: Initializes the battle module (battle_moduleInit_803A820), and when no screen fade is active,
+  additionally primes the caller-supplied r5 work structure with bytes 4 and 0 via sub_8049CBC.
+interface: () -> r0 = 0 result of battle_moduleInit_803A820; no meaningful flags
+details: First it calls IsScreenFadeActive and only when no fade is active does it call sub_8049CBC, which
+  loads two 0x20-byte data blocks plus palette-mapped bytes from the global ROM table at 0x02001800 into
+  the structure addressed by r5; it then stores 4 at [r5] and 0 at [r5+1], so state 4 likely means 'battle
+  starting / fresh entry'. The battle module init battle_moduleInit_803A820 is called unconditionally
+  afterwards. r5 is expected to already point at the battle-state/work structure by the caller (it is
+  only pushed/popped here), which is why no caller is yet known. The fade check suggests this is invoked
+  from a menu or flow handler that must not double-start a battle during a transition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl IsScreenFadeActive / beq loc_8049882 gates the data reload on fade state (lines 2-4); sub_8049CBC
+    fills the r5 structure with battle data; mov r0,#4 / strb r0,[r5] sets state byte 4 (lines 5-8); bl
+    battle_moduleInit_803A820 runs unconditionally before the epilogue, tying this to battle startup;
+    callee summary of sub_8049CBC (ROM table at 0x02001800, palette-mapped bytes) matches battle resource
+    loading
+  refs:
+  - bn6f/asm/asm03_2.s:5898
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08049CBC sub_8049CBC
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x0804986E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly reads the asm: IsScreenFadeActive gates the sub_8049CBC path, which writes
+    4 then 0 to [r5]/[r5+1], and battle_moduleInit_803A820 is called unconditionally after. However, since
+    the final state byte stays 0 (the 4 written is at the next byte''s offset after the second store,
+    leaving state 0 as the effective value), and this is plainly a battle entry initializer for the battle
+    module, ''battle_startInit'' is too generic — prefer ''init_battleModule'' which better reflects that
+    battle_moduleInit_803A820 is the core action and the structure init is a side effect.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No callers known: need the caller to confirm what r5 points to (battle work struct?) and when this
+  runs (battle start vs retry).'
+- Exact meaning of state byte 4 and the loaded 0x20-byte blocks in sub_8049CBC is unconfirmed.
+- 'The proposal correctly reads the asm: IsScreenFadeActive gates the sub_8049CBC path, which writes 4
+  then 0 to [r5]/[r5+1], and battle_moduleInit_803A820 is called unconditionally after. However, since
+  the final state byte stays 0 (the 4 written is at the next byte''s offset after the second store, leaving
+  state 0 as the effective value), and this is plainly a battle entry initializer for the battle module,
+  ''battle_startInit'' is too generic — prefer ''init_battleModule'' which better reflects that battle_moduleInit_803A820
+  is the core action and the structure init is a side effect.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804986E -> init_battleModule
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804986E

@@ -1,0 +1,64 @@
+name: battle_objectAirborneUpdate
+address: '0x080CB3A0'
+kind: function
+status: probable
+summary: 'Per-frame airborne update for a battle object: clears its collision region, integrates vertical
+  Z-velocity into a height accumulator (ExtraVars+8, upper half stored in Timer2) while the flight timer
+  is positive, then resyncs panel coordinates, facing, and collision region, highlighting the panel below,
+  and destroys the object when the timer expires.'
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY when oBattleObject_Timer
+  reaches 0
+details: First it removes the object from its collision region (clearing oCollisionData_FlagsFromCollision),
+  i.e. it is airborne/uncollidable. Each frame it decrements oBattleObject_Timer and, while positive,
+  adds oBattleObject_ZVelocity (16.16 fixed-point) into the accumulator at ExtraVars+8, storing the upper
+  half into Timer2 (the Z/height value). It saves PanelX/PanelY, calls an unknown helper sub_80CB45C,
+  then recomputes PanelX/PanelY from world coords, syncs collision panels and facing, and highlights the
+  panel currently underneath (shadow/telegraph). If the panel under the object changed, it assigns collision
+  region 1 via object_setCollisionRegion. When the timer hits 0 the object's state is set to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'prologue calls object_clearCollisionRegion and zeroes oCollisionData_FlagsFromCollision — object
+    leaves its collision region while moving; oBattleObject_ZVelocity added to ExtraVars+8 with lsr #16
+    into Timer2 — fixed-point vertical position integration; saves PanelX/Y, calls sub_80CB45C, object_setPanelsFromCoordinates
+    + object_updateCollisionPanels — repositions object over the field each frame; object_highlightPanel
+    called with current PanelX/PanelY each frame, and region 1 set only when the panel changed; timer
+    <= 0 branch stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:41969
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CB3A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: clears collision region, decrements Timer, integrates ZVelocity into ExtraVars+8
+    storing upper half in Timer2, calls sub_80CB45C, recomputes panels, updates collision, highlights
+    panel, and re-sets collision region 1 on panel change, finally setting CUR_STATE_DESTROY on expiry.
+    However, the name implies movement toward a destination, but the function is a generic airborne update
+    hook; ''battle_objectAirborneUpdate'' is more accurate than ''AirborneMoveUpdate'' since it just integrates
+    Z-velocity (a hop/bounce) without directional travel logic.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80CB45C does (likely X/Y drift or arc calculation) — no caller or known summary available
+- What collision region index 1 means and why it is only assigned on panel change
+- Which enemies/objects use this state, to confirm whether it is a hop, flight, or launched projectile
+- 'The code matches: clears collision region, decrements Timer, integrates ZVelocity into ExtraVars+8
+  storing upper half in Timer2, calls sub_80CB45C, recomputes panels, updates collision, highlights panel,
+  and re-sets collision region 1 on panel change, finally setting CUR_STATE_DESTROY on expiry. However,
+  the name implies movement toward a destination, but the function is a generic airborne update hook;
+  ''battle_objectAirborneUpdate'' is more accurate than ''AirborneMoveUpdate'' since it just integrates
+  Z-velocity (a hop/bounce) without directional travel logic.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB3A0 -> battle_objectAirborneUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB3A0

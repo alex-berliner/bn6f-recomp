@@ -1,0 +1,64 @@
+name: battle_waitChatboxThenInit
+address: '0x08049844'
+kind: function
+status: probable
+summary: Waits for chatbox to become idle (or skip if bit 0x80 set), kicks off a screen fade, writes the
+  next state (0xC while waiting, 0x14 after fade), then calls battle_moduleInit_803A820.
+interface: (-, r5 = state struct ptr) -> void; stores next state byte at [r5+1] (0xC wait, 0x14 after
+  fade start); calls battle_moduleInit_803A820 before returning
+details: 'The handler first tests bit 0x80 of the chatbox/event flag word eFlags2009F38; if that bit is
+  set it skips the wait entirely. Otherwise it reads the chatbox state selector (low 3 bits): while it
+  is nonzero it writes state 0xC to the byte at [r5,#1] and keeps waiting. Once the chatbox is idle it
+  calls SetScreenFade(0xC, 0x10) to begin a fade and writes state 0x14 instead. In all paths it then invokes
+  the battle module initializer (which registers battle sub-modules 10/0x26 and 11/0x27 and starts the
+  main init with arg 0). r5 points to a per-mode/context struct whose +1 byte is the next state; it is
+  set up by the (unknown) caller rather than passed in r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x80; bl chatbox_mask_eFlags2009F38 / bne loc_8049868 skips the wait when event flag
+    bit 0x80 is set; bl chatbox_GetState_8045F4C; cmp r0,#0; beq — loops state 0xC into [r5,#1] while
+    chatbox state is nonzero; bl SetScreenFade with r0=0xC, r1=0x10, then strb 0x14,[r5,#1] — fade-in
+    trigger plus state advance; bl battle_moduleInit_803A820 unconditionally before return — battle init
+    always runs from this state handler
+  refs:
+  - bn6f/asm/asm03_2.s:5875
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08049844
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary closely match the code: bit 0x80 skip, wait loop writing 0xC, fade write 0x14,
+    then battle_moduleInit_803A820. However, the proposed name ''battle_startInitAfterChatbox'' suggests
+    this *initiates* battle, whereas the function itself just gates the transition and the actual init
+    is delegated to the battle_moduleInit callee. Also the summary says ''stores next state byte at [r5+1]''
+    but never explains r5 meaning — the function never loads r5, so it must be set up by the caller, which
+    is reasonable but worth noting. The name ''battle_startInitAfterChatbox'' does follow the prefix rules
+    (battle) and captures the intent reasonably.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Caller unknown, so the identity/meaning of the r5 struct and its state values 0xC/0x14 is inferred only
+  from the store pattern
+- Exact semantics of SetScreenFade(0xC,0x10) (fade direction/palette) not confirmed
+- What flag bit 0x80 of eFlags2009F38 represents (skip-wait condition) is unstated
+- 'The name and summary closely match the code: bit 0x80 skip, wait loop writing 0xC, fade write 0x14,
+  then battle_moduleInit_803A820. However, the proposed name ''battle_startInitAfterChatbox'' suggests
+  this *initiates* battle, whereas the function itself just gates the transition and the actual init is
+  delegated to the battle_moduleInit callee. Also the summary says ''stores next state byte at [r5+1]''
+  but never explains r5 meaning — the function never loads r5, so it must be set up by the caller, which
+  is reasonable but worth noting. The name ''battle_startInitAfterChatbox'' does follow the prefix rules
+  (battle) and captures the intent reasonably.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049844 -> battle_waitChatboxThenInit
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049844

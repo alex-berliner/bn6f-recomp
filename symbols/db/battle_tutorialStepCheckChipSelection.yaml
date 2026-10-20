@@ -1,0 +1,72 @@
+name: battle_tutorialStepCheckChipSelection
+address: '0x0812A76C'
+kind: function
+status: probable
+summary: Tutorial-battle step that polls the chip-selection screen each tick and, when the player picks
+  chips matching the singleton's required chip (compared against sub_803EF74's record terminated by 0xFFFFFFFF),
+  fires the success chatbox and sets the singleton flag; on sub_803EAE4==4 or counter expiry at [r5+0x28]>=0x168,
+  fires the timeout chatbox.
+interface: (r0 = battle/step entity, r5 = its state struct) -> r0 = step result; updates state fields
+  [r5+0x01/02/03/0x10/0x26/0x28/0x2a]
+details: Runs a chatbox script (0x28) from eTextScript201BA20 each frame while polling sub_803EAE4's status
+  (4 = timeout, giving script 0x24 after a 0x168-frame counter at [r5+0x28] expires). When bit 8 of the
+  status is clear it fetches a two-entry record via sub_803EF74/sub_81323B0 (entries of 0x10 bytes with
+  a word at +4 and halfword at +2, 0xFFFFFFFF sentinel) and compares each against fields 0x1c/0xa of the
+  sub_803E8F8 singleton; only if both entries match both fields (r3 shifted down to 1) does it advance
+  to the success path (script 0x25, mode 2, sets singleton +0xa to 0x2000). On success it dispatches the
+  menu state via menu_dispatchStateHandler, accepts states 0x18/0x1c, classifies sub_81325F4([r5+0x12])
+  into 0/1/2, packs sub_81209DC's two-byte result into [r5+0x2a], and reissues script 0x28. [r5+0x10]
+  acts as a 0/1/2 phase flag, [r5+1] a timer, [r5+2]/[r5+3] sub-state flags. Ends by stepping the battle
+  frame via battle_stepWaitForStateRunUpdate and, when the global mode (eStruct200BC30 byte 0) is nonzero,
+  driving the custom-screen chip cursor with battleObject_setupCustomChipCursorState(0xDA, 2), else sprite_drawIfFlagSet_812B504.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: three chatbox_runScript_803FD9C_on_eTextScript201BA20 calls with scripts 0x28 (instruction),
+    0x25 (success), 0x24 (timeout) drive dialogue for this step; loop over two 0x10-byte records from
+    sub_81323B0 compares +4/+2 against sub_803E8F8 singleton +0x1c/+0xa; both fully matching (r3==1) triggers
+    the success branch at loc_812A842; counter [r5+0x28] compared to 0x168 and sub_803EAE4 status 4 both
+    route to timeout script 0x24 with [r5+1]=0x3c; menu_dispatchStateHandler result checked for 0x18/0x1c
+    (custom-screen states), then sub_81209DC result stored to [r5+0x2a] before re-running script 0x28;
+    tail calls battle_stepWaitForStateRunUpdate and battleObject_setupCustomChipCursorState(0xDA,2), tying
+    the step to the battle custom-screen cursor
+  refs:
+  - bn6f/asm/asm33.s:15296
+  - 0x081291D8 sub_81291D8
+  - 0x0803C59C battleObject_setupCustomChipCursorState_803C59C
+  - 0x0812B26C battle_stepWaitForStateRunUpdate
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x0812A76C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x812A776 sets [r5,#0x10]=0, then 0x812A7A2 sets it to 1, and only on the success path
+    at 0x812A85A sets it to 2 — [r5+0x10] is a 3-phase flag, not a phase index used for all paths. The
+    proposal''s ''phase flag'' framing is acceptable but the summary implies a fixed sequence (instruction
+    → success → timeout) whereas the code actually loops between sub_803EAE4 polling each frame and only
+    branches to timeout (0x24) or success (0x25). Also the ''two-entry record'' is bounded by a 0xFFFFFFFF
+    sentinel and iterates while r0<=r7, so it can be more than two entries; ''two-entry'' is inaccurate.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact tutorial scenario and wording of scripts 0x24/0x25/0x28 in eTextScript201BA20
+- meaning of sub_803EAE4's status bits 0x8/0x10 and of sub_81325F4/sub_81209DC return values
+- identity of the sub_803E8F8 singleton (likely custom-screen chip selection state) and the semantic of
+  fields 0xa/0x1c
+- The code at 0x812A776 sets [r5,#0x10]=0, then 0x812A7A2 sets it to 1, and only on the success path at
+  0x812A85A sets it to 2 — [r5+0x10] is a 3-phase flag, not a phase index used for all paths. The proposal's
+  'phase flag' framing is acceptable but the summary implies a fixed sequence (instruction → success →
+  timeout) whereas the code actually loops between sub_803EAE4 polling each frame and only branches to
+  timeout (0x24) or success (0x25). Also the 'two-entry record' is bounded by a 0xFFFFFFFF sentinel and
+  iterates while r0<=r7, so it can be more than two entries; 'two-entry' is inaccurate.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A76C -> battle_tutorialStepCheckChipSelection
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A76C

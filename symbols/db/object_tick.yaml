@@ -1,0 +1,59 @@
+name: object_tick
+address: '0x080CDDFC'
+kind: function
+status: probable
+summary: 'Per-frame battle-object tick: clears prior-frame palette nibble and hit reaction, dispatches
+  the object''s current action handler via jump table, then refreshes collision and sprite.'
+interface: (r5 = battle object pointer, no args in r0-r3) -> r0 = handler-dependent; no meaningful return
+  flags
+details: Operates on the battle object in r5. First calls sprite_clearFinalPalette (clears the high nibble
+  of the sprite final-palette byte) and object_finishCollisionHitReaction_801AD12 to finish the previous
+  frame's hit reaction (shield flag 0x100, damage recompute, hit spark). It then loads oBattleObject_CurAction,
+  doubles it as a word index into the handler table at off_80CDE20, and tail-calls the handler via 'mov
+  lr, pc; bx r1'. After the handler returns it calls object_presentCollisionData (per-frame collision
+  refresh) and object_updateSprite (animation tick). The 9-entry table covers actions including a local
+  handler at sub_80CDE68, battle_ResetObjectActionState_80165B8, and battleObject_initAndRunAI_8016B02.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; lsl r0,r0,#2; ldr r1,[r1,r0]; mov lr,pc; bx r1 — dispatch
+    on the object's current action field; jump table off_80CDE20 includes battle_ResetObjectActionState_80165B8
+    and battleObject_initAndRunAI_8016B02, i.e. known battle action handlers; calls object_presentCollisionData
+    and object_updateSprite after the handler, the standard per-frame object update tail; leads with object_finishCollisionHitReaction_801AD12,
+    which is the known 'wind down after a hit' collision teardown; single caller sub_80CDD64 sits directly
+    before it, consistent with a per-object update entry invoked from the object loop
+  refs:
+  - bn6f/asm/asm31.s:47580
+  - 0x080CDD64 sub_80CDD64
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801BBAC object_updateSprite
+  reproduce: python3 tools/asmcat.py 0x080CDDFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name fits the code, but ''runCurrentAction'' is misleading: this function doesn''t
+    just run the current action—it clears prior-frame collision, dispatches the action handler, then refreshes
+    collision and sprite. A more accurate name reflecting the per-frame orchestration is ''object_runFrame''
+    or ''object_tick''. Also note the +1 entries are Thumb addresses so the table holds function pointers
+    to the action handlers.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of each of the 9 CurAction values and the identity of the local handlers sub_80CDE68/sub_80CDE44/sub_80CDEC8
+- whether r0 is expected to hold anything on entry for specific action handlers
+- 'The proposed name fits the code, but ''runCurrentAction'' is misleading: this function doesn''t just
+  run the current action—it clears prior-frame collision, dispatches the action handler, then refreshes
+  collision and sprite. A more accurate name reflecting the per-frame orchestration is ''object_runFrame''
+  or ''object_tick''. Also note the +1 entries are Thumb addresses so the table holds function pointers
+  to the action handlers.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CDDFC -> object_tick
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDDFC

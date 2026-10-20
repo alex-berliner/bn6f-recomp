@@ -1,0 +1,65 @@
+name: object_initVariantRowSprite
+address: '0x0811B4CC'
+kind: function
+status: probable
+summary: Initializes an object as type 0x23 with sprite resource 0x25; variant index in [r5+4] (0-8) selects
+  a halfword from a 9-entry table passed to slotList_storeHalfwordAndClearField_800306C, a palette bank
+  from the same index, and a y-coordinate from a 9-entry table for sprite_setCoordinates with x=0xB0.
+interface: (r5 = object ptr, [r5+4] = variant index 0-8) -> r0 = 0; sets sprite, palette, coordinates
+  and state fields on the object
+details: Writes type 0x23 to the object's first byte and builds its sprite from resource 0x25 in table
+  unk_2024290 via initGuiSprite_8002770, then sets animation 1, loads animation data, disables the shadow,
+  and sets OAM priority 3. The variant index [r5+4] selects a word from off_811B530 (nine entries 0x240,0x1F8,...,0
+  stepping down by 0x48) that is passed to slotList_storeHalfwordAndClearField_800306C, and also selects
+  a palette bank of 0 via sprite_setSubEntryPaletteBank. It sets state fields [r5+8]=4, [r5+9]=[r5+0xA]=0,
+  then takes a coordinate halfword from byte_811B55C (nine entries 2,0x14,...,0x92 stepping up by 0x12)
+  into [r5+0x14] and calls sprite_setCoordinates with r0=0xB0 and that table value. The nine evenly spaced
+  positions suggest this spawns one instance of a row/column of nine identical objects; the exact game
+  entity is not identifiable from this code alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] + initGuiSprite_8002770(0x25, unk_2024290) assign the object type and its sprite
+    resource; sprite_setAnimation(1)/loadAnimationData/noShadow/setPriority(3) configure the freshly attached
+    sprite; off_811B530: nine words 0x240..0 (step -0x48) indexed by ldrb [r5,#4]<<2, fed to slotList_storeHalfwordAndClearField_800306C;
+    byte_811B55C: nine halfwords 2..0x92 (step 0x12) indexed by [r5+4]<<1, stored to [r5+0x14] and passed
+    with 0xB0 to sprite_setCoordinates; stores [r5+8]=4, [r5+9]=0, [r5+0xA]=0 initialize per-instance
+    state after sprite setup'
+  refs:
+  - bn6f/asm/asm32.s:27657
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811B4CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms most details (type 0x23, resource 0x25, initGuiSprite_8002770, anim 1, noShadow,
+    priority 3, the nine entry tables at off_811B530 and byte_811B55C, and state bytes). However the proposal
+    claims palette bank 0 via sprite_setSubEntryPaletteBank, but the assembly actually calls sprite_setSubEntryPaletteBank_800304A
+    with r0=[r5+4] (the variant index) and r1=0, so r0 is the variant index, not zero. Also the variant
+    index is added with `add r0, r0, r1` (where r1=0), not passed as a separate palette argument. The
+    name is reasonable but the palette detail is wrong.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which in-game object/entity type 0x23 and sprite resource 0x25 represent (no callers known)
+- Meaning of the halfword 0x240-0x48*i stored through slotList_storeHalfwordAndClearField_800306C
+- Whether 0xB0 is the x or y argument to sprite_setCoordinates and what coordinate space it uses
+- The code confirms most details (type 0x23, resource 0x25, initGuiSprite_8002770, anim 1, noShadow, priority
+  3, the nine entry tables at off_811B530 and byte_811B55C, and state bytes). However the proposal claims
+  palette bank 0 via sprite_setSubEntryPaletteBank, but the assembly actually calls sprite_setSubEntryPaletteBank_800304A
+  with r0=[r5+4] (the variant index) and r1=0, so r0 is the variant index, not zero. Also the variant
+  index is added with `add r0, r0, r1` (where r1=0), not passed as a separate palette argument. The name
+  is reasonable but the palette detail is wrong.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B4CC -> object_initVariantRowSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B4CC

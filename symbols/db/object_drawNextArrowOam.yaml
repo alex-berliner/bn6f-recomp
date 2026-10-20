@@ -1,0 +1,62 @@
+name: object_drawNextArrowOam
+address: '0x0802AE84'
+kind: function
+status: probable
+summary: Object update that draws a two-tile 'next/advance' arrow OAM icon; when the chatbox is still
+  active it either waits or starts a dialog script and stores a state value in the object.
+interface: (r5 = object ptr, r0 clobbered) -> r0 = ?; sets object->state byte at [r5,#1], queues OAM entries
+details: 'The function treats r5 as an object whose byte at offset 1 is a state/timer field. It first
+  tests flag 0x80 of the chatbox/cutscene flag word eFlags2009F38; if that flag (presumably ''dialog finished'')
+  is clear, it checks the chatbox state: nonzero means the message is still playing, so it writes 4 to
+  [r5,#1] and waits; otherwise it runs battle text script 1 via RunTextScriptBattleRunDialog and writes
+  0x20 to [r5,#1]. When flag 0x80 is already set (dialog done), it skips that block and falls through
+  to the drawing path. It then queues OAM via sub_802B15C with tile indices 0x10 and 0x11 (likely the
+  two halves/frames of an advance-arrow icon) and finally queues one more OAM entry for object r5 via
+  object_queueOamEntryFromBase. So the routine is the per-frame update of a dialog-attached object that
+  shows a ''next text'' arrow once the message ends.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80, bne loc_802AEA6 skips the dialog block when that
+    flag is set (asm lines 2-4); bl chatbox_GetState_8045F4C then strb #4,[r5,#1] — waits with state 4
+    while text is running; bl RunTextScriptBattleRunDialog with r0=1, then strb #0x20,[r5,#1] — launches
+    dialog script 1 and marks state 0x20; bl sub_802B15C twice with r0=0x10 and 0x11, then bl object_queueOamEntryFromBase
+    — queues the icon''s OAM tiles; Chatbox calls tie this to battle text display; the OAM queueing ties
+    it to a visible object (r5)'
+  refs:
+  - bn6f/asm/asm03_0.s:10416
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0802B270 object_queueOamEntryFromBase
+  reproduce: python3 tools/asmcat.py 0x0802AE84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: if chatbox flag 0x80 is clear, it either waits (state==0, writes 4) or runs the
+    dialog script and writes 0x20. If flag 0x80 is set, it skips directly to the OAM drawing. The proposal''s
+    summary is essentially correct, but the function''s primary purpose is the OAM arrow drawing, not
+    ''running a text dialog'' - it only runs dialog in one branch when state==0. A cleaner name focusing
+    on the advance arrow OAM draw is more accurate.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of sub_802B15C (presumably a queueOamEntry variant taking a tile index in r0) and what
+  tiles 0x10/0x11 depict
+- Which text script id 1 is (which dialog string this object shows)
+- Which object/structure r5 points to and who spawns it
+- 'The flow matches: if chatbox flag 0x80 is clear, it either waits (state==0, writes 4) or runs the dialog
+  script and writes 0x20. If flag 0x80 is set, it skips directly to the OAM drawing. The proposal''s summary
+  is essentially correct, but the function''s primary purpose is the OAM arrow drawing, not ''running
+  a text dialog'' - it only runs dialog in one branch when state==0. A cleaner name focusing on the advance
+  arrow OAM draw is more accurate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802AE84 -> object_drawNextArrowOam
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802AE84

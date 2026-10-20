@@ -1,0 +1,65 @@
+name: object_initDefaults
+address: '0x080F9DF2'
+kind: function
+status: probable
+summary: 'Re-initializes a battle object to a neutral default state: clears two ObjectFlags1 bits (0x40
+  and 0x400000), claims its status-UI slot with name 0/HP 0, enables sprite shadow, zeroes Z, refreshes
+  collision with hardcoded (0,1,2,3) and selects region 1, then writes the low halfword of DamageAndStaminaDamageCounterDisabler
+  into both SelfDamage and StaminaDamageCounterDisabler of the collision record.'
+interface: (r5 = battle object) -> void; no return value
+details: 'Uses r5 as the battle object pointer. It clears ObjectFlags1 bit 0x40 and bit 0x400000, then
+  calls the status-list claim routine with (0,0), which empties the object''s slot in the battle status
+  UI at 0x203EB50 (name ID 0, HP 0). It turns the sprite''s shadow on, zeroes the object''s Z halfword,
+  and refreshes collision with hardcoded values (r0=0, r1=1, r2=2, r3=3), then selects collision region
+  1. Finally it reads the DamageAndStaminaDamageCounterDisabler word: the low halfword is stored as SelfDamage
+  in the collision record and the low byte again as StaminaDamageCounterDisabler, while the high halfword
+  is discarded after being extracted. This looks like a ''reset/deactivate object'' step, likely run when
+  an object is recycled or returned to a blank state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two object_clearFlag calls with 0x40 and 0x400000 wipe object flag bits (asm loc_80F9DF4); sub_801DC7C
+    called with r0=0,r1=0 zeroes the object's status-list entry per that callee's summary; sprite_hasShadow
+    re-enables the shadow, consistent with resetting sprite state; object_updateCollisionData(0,1,2,3)
+    and object_setCollisionRegion(1) install neutral collision values; self-damage fields are reloaded
+    from the object's own DamageAndStaminaDamageCounterDisabler word, not zeroed, preserving configured
+    damage
+  refs:
+  - bn6f/asm/asm31.s:141109
+  - 0x0801A15C object_clearFlag
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080F9DF2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes clearing flags 0x40 and 0x400000, calling the status-list claim
+    with (0,0), enabling shadow, zeroing Z, and refreshing collision with the hardcoded params, followed
+    by extracting low halfword of DamageAndStaminaDamageCounterDisabler. However, the summary''s claim
+    of ''selects collision region 1'' and ''discards high halfword'' is slightly misrepresented — object_setCollisionRegion(1)
+    is indeed called, and only the high halfword is unused, which fits. The bigger issue is the name:
+    ''object_resetDefaults'' is reasonable but ''init'' is the standard prefix for such neutral-state
+    initialization in this codebase.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the trigger context (object despawn, recycle, or phase reset) is unconfirmed
+- Exact meaning of the hardcoded updateCollisionData arguments (0,1,2,3) and collision region 1
+- Whether the high halfword of DamageAndStaminaDamageCounterDisabler is meant to be dropped or stored
+  elsewhere
+- 'The proposal correctly describes clearing flags 0x40 and 0x400000, calling the status-list claim with
+  (0,0), enabling shadow, zeroing Z, and refreshing collision with the hardcoded params, followed by extracting
+  low halfword of DamageAndStaminaDamageCounterDisabler. However, the summary''s claim of ''selects collision
+  region 1'' and ''discards high halfword'' is slightly misrepresented — object_setCollisionRegion(1)
+  is indeed called, and only the high halfword is unused, which fits. The bigger issue is the name: ''object_resetDefaults''
+  is reasonable but ''init'' is the standard prefix for such neutral-state initialization in this codebase.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9DF2 -> object_initDefaults
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9DF2

@@ -1,0 +1,81 @@
+name: ai_dashAttackUpdate
+address: '0x080F6ABC'
+kind: function
+status: probable
+summary: 'Per-frame AI dash/tackle update: on first call sets element 4, anim 0x11, plays sound 0xE4,
+  picks direction via sub_80F70E0 using alliance and difficulty tier, stores the returned word as XVelocity
+  and halfword as StepTimer. Each frame adds XVelocity to X, refreshes panel/collision region, clears
+  the region on flag intersection, sets region 1 on PanelX change. Sub_80F7514(ScratchVar)+deactivate
+  finishes at 5 cycles (HitElement=0x18); sub_80F71A8==0 early-exits with HitElement=0x1c; intervening
+  step boundaries deactivate, flip movement flags and write HitElement=4.'
+interface: (r0 = AttackElement byte read via r7 = AI attack vars, r5 = battle object) -> r0 = 0; writes
+  HitElement (0x18 done, 0x1c out-of-range) into [r7]
+details: 'If AttackElement is 0, the attack initializes: sets element 4, animation 0x11, plays sound 0xE4,
+  then calls sub_80F70E0 with a byte from dword_80F6B84 indexed by the object''s alliance and a word from
+  byte_80F6B70 indexed by AiDifficultyTier*4 (values 8,9,10,11), storing the result as XVelocity and the
+  returned halfword as StepTimer. Each frame it adds XVelocity to X, then sub_80F71A8 checks progress:
+  zero means the rush ended (HitElement=0x1c, no deactivate). Otherwise it re-derives collision panels
+  (setPanelsFromCoordinates/updateCollisionPanels), clears the collision region if collision flags (byte_80F6B8C
+  per alliance) intersect, and sets region 1 when PanelX changed. When StepTimer expires it increments
+  TimerOrCycles; below 5 it calls battle_deactivateObject, clears flag 0x40, sets CURRENTLY_MOVING_1,
+  clears bit 0x16, and returns HitElement=4 to continue stepping; at 5 it calls sub_80F7514(ScratchVar),
+  deactivates, and sets HitElement=0x18.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / strb #4: only initializes when element unset, then
+    fixes element 4 for the attack; byte_80F6B70 tier table {8,9,A,B} indexed by AiDifficultyTier<<2 stored
+    as oBattleObject_XVelocity: speed scales with difficulty; X += XVelocity each frame plus object_setPanelsFromCoordinates/object_updateCollisionPanels:
+    continuous horizontal panel-crossing movement; StepTimer countdown with TimerOrCycles capped at 5
+    and battle_deactivateObject: multi-segment rush that ends after 5 segments; HitElement set to 0x1c
+    on early exit, 0x18 after final segment, 4 while stepping: communicates attack outcome to the AI state
+    machine'
+  refs:
+  - bn6f/asm/asm31.s:134627
+  - 0x080005CC PlaySoundEffect
+  - 0x080F7140 battle_deactivateObject
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F6ABC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s direction, sound/animation IDs (0x11/0xE4), element=4, scaling with AiDifficultyTier,
+    XVelocity addition, and the 0x18 termination at 5 cycles all match the asm. However several details
+    are wrong: sub_80F70E0 is described as returning a halfword stored as StepTimer, but the code stores
+    r1 as a halfword (strh) and r0 as a word (str) into XVelocity — fine. The DifficultyTier table is
+    shown as 4 entries (8,9,10,11) via *4 indexing, but the byte table at 0x80F6B70 contains {0,8,0,9,0,10,0,11},
+    indexed by AiDifficultyTier*2 (lsl #2 then ldr word reads 4 bytes), giving tier-indexed words 0x00080000,
+    0x00090000, 0x000A0000, 0x000B0000 — the actual comparison values are in the high half. Also the proposal
+    claims it calls sub_80F7514 with ScratchVar at cycle 5 (correct), and clears bit 0x16 / sets CURRENTLY_MOVING_1
+    / clears 0x40 when stepping (correct). The deactivation path actually runs *during* stepping (before
+    cycle 5), not at the end — and the function does NOT set HitElement=4 to continue; only the panel-change
+    path returns 0. Name ai_dashAttackUpdate is reasonable but flags are off.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which boss/AI uses this attack and which attack slot it occupies is unconfirmed
+- sub_80F70E0, sub_80F71A8, and sub_80F7514 are undocumented; their exact semantics (velocity/direction
+  computation, range check, final action) are inferred from register use only
+- Meaning of HitElement values 0x18/0x1c/4 in the AI state machine is not visible from this function
+- 'The summary''s direction, sound/animation IDs (0x11/0xE4), element=4, scaling with AiDifficultyTier,
+  XVelocity addition, and the 0x18 termination at 5 cycles all match the asm. However several details
+  are wrong: sub_80F70E0 is described as returning a halfword stored as StepTimer, but the code stores
+  r1 as a halfword (strh) and r0 as a word (str) into XVelocity — fine. The DifficultyTier table is shown
+  as 4 entries (8,9,10,11) via *4 indexing, but the byte table at 0x80F6B70 contains {0,8,0,9,0,10,0,11},
+  indexed by AiDifficultyTier*2 (lsl #2 then ldr word reads 4 bytes), giving tier-indexed words 0x00080000,
+  0x00090000, 0x000A0000, 0x000B0000 — the actual comparison values are in the high half. Also the proposal
+  claims it calls sub_80F7514 with ScratchVar at cycle 5 (correct), and clears bit 0x16 / sets CURRENTLY_MOVING_1
+  / clears 0x40 when stepping (correct). The deactivation path actually runs *during* stepping (before
+  cycle 5), not at the end — and the function does NOT set HitElement=4 to continue; only the panel-change
+  path returns 0. Name ai_dashAttackUpdate is reasonable but flags are off.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6ABC -> ai_dashAttackUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6ABC

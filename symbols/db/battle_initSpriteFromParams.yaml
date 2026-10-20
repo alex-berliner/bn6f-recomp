@@ -1,0 +1,62 @@
+name: battle_initSpriteFromParams
+address: '0x080E5C4C'
+kind: function
+status: probable
+summary: Loads a battle object's sprite via Param1-indexed lookup into dword_80E5C28, sets up animation
+  0 with no-shadow, applies flip and palette from object fields, marks sprite loaded, and enters the UPDATE
+  state before tail-calling sub_80E5CA0.
+interface: (r0 = sprite-load arg (0x80 flag), r5 = battle object) -> r0 = sub_80E5CA0 result; object state
+  set to CUR_STATE_UPDATE
+details: Indexes the table at dword_80E5C28 with Param1*2 and reads a two-byte entry (resource id plus
+  a second byte) which it passes to sprite_load along with 0x80. It then loads the animation data, forces
+  no-shadow, resets CurAnimAndCurAnimCopy to 0 and sets animation 0, refreshes animation data and the
+  sprite, and applies the horizontal flip from object_getFlip via sprite_setFlip. Palette comes from oBattleObject_Param2
+  via sprite_setPalette. Finally it zeroes Timer2, sets bit 1 of oObjectHeader_Flags (likely 'sprite loaded/visible'),
+  writes CUR_STATE_UPDATE into CurStateActionPhaseAndPhaseInitialized, and tail-calls sub_80E5CA0 before
+  returning. This reads as a state-machine handler that performs the one-time sprite setup for a battle
+  object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; add r0,r0 doubled into dword_80E5C28 table; result bytes
+    feed sprite_load; bl sprite_load/sprite_loadAnimationData/sprite_noShadow then anim 0 via strh 0 +
+    sprite_setAnimation; bl object_getFlip -> sprite_setFlip and ldrb [r5,#Param2] -> sprite_setPalette
+    tie rendering to object fields; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#CurStateActionPhaseAndPhaseInitialized]
+    shows it is a state handler handing off to the update state; all callees are known sprite/object helpers,
+    matching a sprite-initialization role
+  refs:
+  - bn6f/asm/asm31.s:99300
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E5C4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mostly matches: Param1 lookup into dword_80E5C28, sprite_load with 0x80, no-shadow,
+    set anim 0, sprite_update, object_getFlip->sprite_setFlip, Param2->sprite_setPalette, Timer2=0, flags|=2,
+    CurState=UPDATE, tail-call sub_80E5CA0. Minor inaccuracies: strh at oBattleObject_CurAnimAndCurAnimCopy
+    is halfword (not byte), and the second sprite_loadAnimationData call appears before sprite_setAnimation/sprite_update,
+    but the role is correct. Also ''switching state to UPDATE'' is right.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'exact contents of the dword_80E5C28 table entries (second byte meaning: animation id vs resource index)'
+- what sub_80E5CA0 does after the state switch
+- which callers/states dispatch into this handler
+- 'The summary mostly matches: Param1 lookup into dword_80E5C28, sprite_load with 0x80, no-shadow, set
+  anim 0, sprite_update, object_getFlip->sprite_setFlip, Param2->sprite_setPalette, Timer2=0, flags|=2,
+  CurState=UPDATE, tail-call sub_80E5CA0. Minor inaccuracies: strh at oBattleObject_CurAnimAndCurAnimCopy
+  is halfword (not byte), and the second sprite_loadAnimationData call appears before sprite_setAnimation/sprite_update,
+  but the role is correct. Also ''switching state to UPDATE'' is right.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5C4C -> battle_initSpriteFromParams
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5C4C

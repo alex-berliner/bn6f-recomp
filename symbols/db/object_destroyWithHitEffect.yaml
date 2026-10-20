@@ -1,0 +1,56 @@
+name: object_destroyWithHitEffect
+address: '0x080D19C0'
+kind: function
+status: probable
+summary: 'Battle object teardown: removes collision data, spawns the collision hit effect, clears the
+  collision region, then frees the object via the generic destructor.'
+interface: (r5 = battle object pointer) -> r0 = destroyed/free object or status; no flags of note
+details: 'This is a battle-object teardown sequence run on r5: it first tears down the object''s collision
+  data (object_removeCollisionData), then spawns the standard hit-effect object at the object''s last
+  collision position with the usual RNG jitter (object_spawnCollisionEffect), clears the object''s collision-region
+  byte so it leaves its region (object_clearCollisionRegion), and finally releases panel tile reserves,
+  collision data and the object memory via the generic destructor (object_genericDestroy). It is the shared
+  ''die and show hit effect'' epilogue for battle objects; the object pointer is passed implicitly in
+  r5 by the callees'' convention rather than in r0. No caller is known, so which entities invoke it is
+  unresolved.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnCollisionEffect at 0x080D19C6 spawns the hit effect for r5's object before teardown;
+    bl object_genericDestroy at end frees reserves/collision/memory, confirming full object destruction;
+    bl object_clearCollisionRegion removes the object from its collision region before the destructor;
+    ordering effect-then-destroy matches a death/impact cleanup, not a plain despawn
+  refs:
+  - bn6f/asm/asm31.s:55674
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08016C8A object_genericDestroy
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D19C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callees match the proposed summary closely: removeCollisionData, spawnCollisionEffect, clearCollisionRegion,
+    genericDestroy are exactly the four calls in the body. The r5 argument convention is the standard
+    battle-object teardown pattern. The only issue is the proposed name ''object_destroySpawnHitEffect''
+    is awkward; a cleaner lowerCamel name would be ''object_destroyWithHitEffect'' or similar following
+    the ''object_'' prefix convention.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known caller, so which object types use this destroy path is unconfirmed
+- whether r5 (not r0) is the input register convention here should be verified from a caller
+- 'The callees match the proposed summary closely: removeCollisionData, spawnCollisionEffect, clearCollisionRegion,
+  genericDestroy are exactly the four calls in the body. The r5 argument convention is the standard battle-object
+  teardown pattern. The only issue is the proposed name ''object_destroySpawnHitEffect'' is awkward; a
+  cleaner lowerCamel name would be ''object_destroyWithHitEffect'' or similar following the ''object_''
+  prefix convention.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D19C0 -> object_destroyWithHitEffect
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D19C0

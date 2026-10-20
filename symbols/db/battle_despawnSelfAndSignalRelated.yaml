@@ -1,0 +1,63 @@
+name: battle_despawnSelfAndSignalRelated
+address: '0x080C3994'
+kind: function
+status: probable
+summary: 'Despawns the current battle object: reads a position triple at offset 0x34, spawns a small type-0
+  effect (param 0x12) offset on the z-axis, forces its RelatedObject1Ptr into state/action phase 8, clears
+  a flag at XVelocity''s target, and frees its own object slot.'
+interface: (r5 = own battle object pointer, r0-r4 clobbered) -> r0 = 0 from object_freeMemory; no meaningful
+  return
+details: Reads three words from the object's data at offset 0x34 (r1-r3), bumps the third by 0x100000
+  (one unit of fixed-point position, i.e. +1 pixel/unit), and passes them with r0=0x12 to spawn_t1_0x0_EffectObject,
+  which creates a type-4 effect object (effect type 0, parameter 0x12). It then loads the object's RelatedObject1Ptr
+  and writes 8 into that object's state/action-phase field via battle_setObjectStateActionPhase8, stores
+  0 as a byte at the object's XVelocity field, and finally calls object_freeMemory on itself (r5 still
+  holding the object pointer). The 0x34 field block looks like a stored spawn/impact position triple (x,
+  y, z). The byte store at XVelocity is quirky and likely touches an adjacent flag rather than the full
+  velocity word.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldmia r0!, {r1-r3} from r5+0x34 loads a position-like triple passed to the effect spawner;
+    add r3, r3, r4 with r4=0x10<<16 offsets the third coordinate by one fixed-point unit; mov r0, #0x12
+    then bl spawn_t1_0x0_EffectObject spawns a type-4 effect object; ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]
+    + bl battle_setObjectStateActionPhase8 advances a linked object to phase 8; tail bl object_freeMemory
+    with r5 intact shows the object releases its own slot'
+  refs:
+  - bn6f/asm/asm31.s:25381
+  - 0x080C46B0 battle_setObjectStateActionPhase8
+  - 0x08003458 object_freeMemory
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C3994
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed summary is largely accurate: it reads three words from offset 0x34, adds 0x100000 to
+    the z-like value, calls spawn_t1_0x0_EffectObject with r0=0x12, sets phase 8 on RelatedObject1Ptr,
+    and frees itself. However, the strb 0 into [r5,#oBattleObject_XVelocity] is not ''0 as a byte at XVelocity''
+    but rather writes 0 to a pointer-typed field (XVelocity is loaded into r1 as a pointer), so the byte
+    store likely clears a flag byte inside whatever XVelocity points to, not the velocity itself. A slightly
+    more accurate name should reflect that this function despawns the current object.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object type uses this as its despawn/expiry handler (no callers known), and what effect parameter
+  0x12 renders
+- Exact meaning of the 0x34 field triple (position vs. offset) and the byte written at XVelocity
+- 'The proposed summary is largely accurate: it reads three words from offset 0x34, adds 0x100000 to the
+  z-like value, calls spawn_t1_0x0_EffectObject with r0=0x12, sets phase 8 on RelatedObject1Ptr, and frees
+  itself. However, the strb 0 into [r5,#oBattleObject_XVelocity] is not ''0 as a byte at XVelocity'' but
+  rather writes 0 to a pointer-typed field (XVelocity is loaded into r1 as a pointer), so the byte store
+  likely clears a flag byte inside whatever XVelocity points to, not the velocity itself. A slightly more
+  accurate name should reflect that this function despawns the current object.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3994 -> battle_despawnSelfAndSignalRelated
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3994

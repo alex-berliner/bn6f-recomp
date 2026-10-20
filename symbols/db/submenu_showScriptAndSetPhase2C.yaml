@@ -1,0 +1,55 @@
+name: submenu_showScriptAndSetPhase2C
+address: '0x0803ADB8'
+kind: function
+status: probable
+summary: Plays SOUND_MENU_SELECT, displays text script 0x1B (or 0x19 when flag byte_2006772 is non-zero)
+  via sub_803BB2C, then writes 0 to the r5 struct's +3 and 0x2C to its +1 menu-state field.
+interface: (r5 = menu/task state struct, not passed in r0) -> r0 = 0; writes state+1 = 0x2C, state+3 =
+  0
+details: Plays SOUND_MENU_SELECT, then calls sub_803C3E0 to test byte_2006772; picks script 0x1B when
+  the flag is zero and 0x19 otherwise, and displays it via sub_803BB2C. It then stores 0 at [r5,#3] and
+  0x2C at [r5,#1] of a struct whose pointer lives only in r5, which is never loaded inside the function
+  — the caller must set it up beforehand. The two script IDs likely correspond to a failure and a success
+  message for the same network action. No return value is meaningful (r0 ends as the last store value
+  0x2C).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl PlaySoundEffect with r0 = #SOUND_MENU_SELECT at the top; bl sub_803C3E0; beq picks r4 =
+    0x1b vs 0x19, the two script IDs; bl sub_803BB2C with r0 = script id, whose known summary is displaying
+    network-related text scripts; strb #0,[r5,#3] and strb #0x2c,[r5,#1] set next state fields with no
+    r5 setup in this routine'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4526
+  - 0x080005CC PlaySoundEffect
+  - 0x0803BB2C sub_803BB2C
+  - 0x0803C3E0 sub_803C3E0
+  reproduce: python3 tools/asmcat.py 0x0803ADB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: SOUND_MENU_SELECT is played (line 3), sub_803C3E0 is called and the
+    BEQ picks 0x1B when flag is zero / 0x19 otherwise, sub_803BB2C displays it, and r5-based state is
+    set to phase 0x2C with sub-field 0. However, the prefix "net_" is not in the allowed list; no network-specific
+    prefix exists, so a more compliant name should drop "net_".; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which structure r5 points to and what phases 0x2C / the cleared byte mean — needs a caller or the state
+  machine table
+- What byte_2006772 records (e.g. connection failed vs. succeeded) to know which script is which
+- 'The code matches the summary: SOUND_MENU_SELECT is played (line 3), sub_803C3E0 is called and the BEQ
+  picks 0x1B when flag is zero / 0x19 otherwise, sub_803BB2C displays it, and r5-based state is set to
+  phase 0x2C with sub-field 0. However, the prefix "net_" is not in the allowed list; no network-specific
+  prefix exists, so a more compliant name should drop "net_".'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803ADB8 -> submenu_showScriptAndSetPhase2C
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803ADB8

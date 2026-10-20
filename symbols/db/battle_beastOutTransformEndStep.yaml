@@ -1,0 +1,58 @@
+name: battle_beastOutTransformEndStep
+address: '0x0811857C'
+kind: function
+status: probable
+summary: 'Final step of the beast-out transformation: clear byte [r5+0xC], pick next state 1 or 0x23 based
+  on cutscene flag bit 0x80 (set→1, clear→0x23), set sprite alpha 0xA, reset color shader, advance the
+  scrolling strips, refresh palette from the 0x0201DA80 table, and return sub_8118658''s result.'
+interface: (r0 = work struct in r5, r0 = flag mask 0x80 passed to mask_eFlags2009F38) -> r0 = result of
+  sub_8118658; writes [r5]=next state (1 or 0x23), [r5+0xC]=0
+details: Tests bit 0x80 of the cutscene event flag word at 0x2009F38; if clear it uses 0x23 as the value
+  written to byte [r5] instead of 1, so the flag selects which state the beast-out sequence goes to next.
+  It clears byte [r5+0xC] to 0, calls sprite_setAlpha with level 0xA (alpha-blend mode 4 on the object
+  in r0/r5 context), and sprite_zeroColorShader to clear the palette-effect halfword. It then calls battle_beastOutScrollStep
+  to advance the two beast-out scroll strips, battleObject_setPaletteFromOffsetTable to set the sprite
+  palette from the 0x0201DA80 offset table, and finally sub_8118658 (unknown) whose return is passed through.
+  r5 acts as the transformation's work/state struct; byte [r5] is a state or step id and [r5+0xC] a sub-counter
+  or flag. This looks like the closing/finish step of the beast-out animation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne after chatbox_mask_eFlags2009F38(0x80) chooses 1 vs 0x23 for [r5] — flag-dependent next
+    state; bl sprite_setAlpha_8002c7a with r0=0xA and bl sprite_zeroColorShader reset the sprite's blend/shader
+    state; bl battle_beastOutScrollStep ties it to the beast-out scrolling strips; bl battleObject_setPaletteFromOffsetTable_81185E4
+    refreshes the object palette from the 0x0201DA80 table; strb r1,[r5,#0xc] / strb r4,[r5] show r5 is
+    a state struct with step id at +0
+  refs:
+  - bn6f/asm/asm32.s:21232
+  - 0x081185E4 battleObject_setPaletteFromOffsetTable_81185E4
+  - 0x081186A8 battle_beastOutScrollStep
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0811857C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The call sequence, r5 work struct, [r5]=state/[r5+0xC]=0, alpha=0xA, color-shader reset, scroll
+    step, palette offset table, and sub_8118658 tail call all match. The details invert the flag polarity:
+    ''bne loc_811858A'' after chatbox_mask_eFlags2009F38(0x80) means when the 0x80 bit IS set r4 stays
+    1, and only when the bit is clear does r4 become 0x23 — opposite of the proposal.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of event flag bit 0x80 (beast-out vs beast-over/which beast?); no caller is known to disambiguate
+- Layout of the r5 work struct and what states 1 and 0x23 route to; contents of sub_8118658 are unknown
+- 'The call sequence, r5 work struct, [r5]=state/[r5+0xC]=0, alpha=0xA, color-shader reset, scroll step,
+  palette offset table, and sub_8118658 tail call all match. The details invert the flag polarity: ''bne
+  loc_811858A'' after chatbox_mask_eFlags2009F38(0x80) means when the 0x80 bit IS set r4 stays 1, and
+  only when the bit is clear does r4 become 0x23 — opposite of the proposal.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811857C -> battle_beastOutTransformEndStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811857C

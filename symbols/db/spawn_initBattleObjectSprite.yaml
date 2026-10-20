@@ -1,0 +1,59 @@
+name: spawn_initBattleObjectSprite
+address: '0x080E3FFC'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s sprite: syncs PanelX/PanelY from world coords, sprite_load(0x10,0x2A,0x80),
+  animation 6, palette 0, no shadow, marks sprite-loaded flag (bit1 of oObjectHeader_Flags), applies object_getFlip,
+  and sets state to CUR_STATE_UPDATE.'
+interface: (r0 = battle object header) -> r0 = CUR_STATE_UPDATE stored to object state; r0 return value
+  unspecified
+details: r5 holds the object (ObjectHeader/BattleObject) pointer set before the shown code. It first calls
+  object_setPanelsFromCoordinates to sync PanelX/PanelY with the object's world position, then sprite_load
+  with what appear to be resource id arguments (0x10, 0x2A, 0x80) and sprite_loadAnimationData. sprite_noShadow
+  clears the shadow-render flag; oObjectHeader_Flags gets bit 1 (0x2) ORed in. Animation index 6 is written
+  to both oBattleObject_CurAnim and CurAnimCopy and passed to sprite_setAnimation, then sprite_loadAnimationData
+  runs again, palette 0 and the flip from object_getFlip/sprite_setFlip are applied, and the state field
+  is set to CUR_STATE_UPDATE so the object's normal update logic takes over.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setPanelsFromCoordinates immediately repositions the object on the battle grid; sprite_load
+    with (0x10, 0x2A, 0x80) followed by two sprite_loadAnimationData calls loads and re-syncs the sprite;
+    ldrb/orr 0x2/strb on oObjectHeader_Flags plus sprite_noShadow configure render flags; mov r0,#6 stored
+    to both oBattleObject_CurAnim and CurAnimCopy then bl sprite_setAnimation fixes the initial animation;
+    final 'mov r0,#CUR_STATE_UPDATE; str r0,[r5,state]' transitions the object into its update phase
+  refs:
+  - bn6f/asm/asm31.s:95224
+  - 0x0800E456 object_getFlip
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E3FFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name fits the code (it initializes/spawns the battle object''s sprite and sets CUR_STATE_UPDATE),
+    and the summary captures most details correctly. However, it omits sprite_setPalette and the final
+    state write target: str r0, [r5,#oBattleObject_CurStateActionPhaseAndInitialized] (with CUR_STATE_UPDATE
+    = 1). Also, bit 1 (0x2) being ORed into oObjectHeader_Flags isn''t really a ''flip'' flag — it likely
+    marks the sprite as initialized/loaded. Minor wording fix.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which specific enemy/object this spawns (id 0x2A resource and animation 6 not identified)
+- No callers known, so the exact spawn context and object type are unconfirmed
+- 'The proposed name fits the code (it initializes/spawns the battle object''s sprite and sets CUR_STATE_UPDATE),
+  and the summary captures most details correctly. However, it omits sprite_setPalette and the final state
+  write target: str r0, [r5,#oBattleObject_CurStateActionPhaseAndInitialized] (with CUR_STATE_UPDATE =
+  1). Also, bit 1 (0x2) being ORed into oObjectHeader_Flags isn''t really a ''flip'' flag — it likely
+  marks the sprite as initialized/loaded. Minor wording fix.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3FFC -> spawn_initBattleObjectSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3FFC

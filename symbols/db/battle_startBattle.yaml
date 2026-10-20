@@ -1,0 +1,61 @@
+name: battle_startBattle
+address: '0x0812B768'
+kind: function
+status: probable
+summary: Loads battle settings via getBattleSettingsFromList1/copyBattleSettingsTo_200AF60, conditionally
+  applies stage flag-mask from table 0x812B7AC and background, then fades screen, turns off music, and
+  plays SOUND_BATTLE_START to begin the battle.
+interface: (r0 = battleSettings list index, r1 = background/stage id) -> r0 = PlaySoundEffect result;
+  r5[0x12]/r5[0x13] index the flag-mask table
+details: Loads the BattleSettings for r0 via getBattleSettingsFromList1 and copies it to 0x200AF60. Computes
+  (r5[0x12]<<1)+r5[0x13] as a word index into the table at 0x812B7AC (masks like 0x200, 0x204, 0x200200)
+  and, if the mask is nonzero, calls battleSettings_setFlags_unkSettings with it, then battleSettings_setBackground
+  with the r1 background id. It then calls SetScreenFade(0x2C, 0x10), turns music state off via musicGameState_8000784,
+  and plays SOUND_BATTLE_START. This is the battle-start transition that stages terrain/flags and the
+  backdrop before fade-in.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl getBattleSettingsFromList1 + bl copyBattleSettingsTo_200AF60: settings entry r0 is loaded
+    into the working battle settings; ldrb r0,[r5,#0x12]; ldrb r1,[r5,#0x13]; ldr r0,[off_812B7A8+r0*4]:
+    stage-dependent flag mask from table at 0x812B7AC; bl battleSettings_setFlags_unkSettings / battleSettings_setBackground(r1
+    from stack): applies stage flags and background; bl SetScreenFade(0x2C,0x10) + bl musicGameState_8000784
+    + PlaySoundEffect(SOUND_BATTLE_START): screen fade and battle-start audio; sole caller sub_812B608
+    is itself unknown, so selection source (r5 fields) is unconfirmed'
+  refs:
+  - bn6f/asm/asm33.s:17458
+  - 0x0812B608 sub_812B608
+  - 0x080005CC PlaySoundEffect
+  - 0x08000784 musicGameState_8000784
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0812B768
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate but the proposed name ''battle_startApplyStageSettings'' is misleading:
+    this function applies stage flag masks and background only conditionally (when the mask is nonzero),
+    and the order is reverse — background is set second. The unconditional tail (SetScreenFade, music
+    off, PlaySoundEffect SOUND_BATTLE_START) is the actual ''start battle'' transition. A name like ''battle_startBattle''
+    better captures the function''s primary purpose.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What r5 is and what r5[0x12]/r5[0x13] encode (stage selection state?) — the unknown caller sub_812B608
+  would show it
+- Exact meaning of each flag mask in the 0x812B7AC table and how many entries it has
+- 'The summary is accurate but the proposed name ''battle_startApplyStageSettings'' is misleading: this
+  function applies stage flag masks and background only conditionally (when the mask is nonzero), and
+  the order is reverse — background is set second. The unconditional tail (SetScreenFade, music off, PlaySoundEffect
+  SOUND_BATTLE_START) is the actual ''start battle'' transition. A name like ''battle_startBattle'' better
+  captures the function''s primary purpose.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812B768 -> battle_startBattle
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B768

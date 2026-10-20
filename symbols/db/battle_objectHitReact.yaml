@@ -1,0 +1,68 @@
+name: battle_objectHitReact
+address: '0x080C65EE'
+kind: function
+status: probable
+summary: 'Per-frame handler for a battle object whose current collision is a hit: removes old collision,
+  spawns hit effect, transitions CurAction to 4 (calling sub_80C673A to set up the hit reaction), then
+  either runs its per-action handler via off_80C6648 and object_presentCollisionData, or, if the battle
+  is over, clears the collision region, clears bit 2 of Flags, and marks the object CUR_STATE_DESTROY.'
+interface: (r5 = battle object) -> void; destroys the object (state = CUR_STATE_DESTROY, present bit cleared)
+  if the battle is over
+details: 'Starts each frame by removing the object''s old collision data and spawning a hit-effect object
+  at the last collision point. If the collision flags (oCollisionData_FlagsFromCollision) are nonzero:
+  when CurAction is already 4 it only clears the collision region (stop colliding while hurt); otherwise
+  it calls sub_80C673A and sets CurAction=4 with phase 0, entering the hit reaction. If battle_isBattleOver
+  says the battle continues, it dispatches via off_80C6648 indexed by CurAction (only entries 0→sub_80C6650
+  and 1→sub_80C667C) and then calls object_presentCollisionData to run the shared collision processing
+  for this frame. On battle end it clears the collision region, clears bit 2 of oObjectHeader_Flags (present/active),
+  and stores CUR_STATE_DESTROY into the state field. r5 is the object pointer throughout; the dispatch
+  table has only two entries, so an action-4 dispatch reads past the table (word at 0x080C6658, inside
+  sub_80C6650''s code), which looks like an unguarded edge case or implies callers never reach dispatch
+  with action 4.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry: per-frame collision teardown
+    + hit spark; cmp r0,#4 / strb #4 to oBattleObject_CurAction with phase 0: entering (or already in)
+    hit action; ldr r1,[r1,r0] off_80C6648 with bx: jump table dispatch on CurAction to sub_80C6650/sub_80C667C;
+    bl object_presentCollisionData before pop: shared per-frame collision processing; battle-over path:
+    clear region, bic bit 2 of oObjectHeader_Flags, store CUR_STATE_DESTROY'
+  refs:
+  - bn6f/asm/asm31.s:31280
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080C65EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and flow are accurate (removes collision, spawns hit effect, branches on flags, action
+    4 transition, battle-over destroys object, otherwise dispatches via off_80C6648). However, naming
+    it battle_objectHitUpdate implies a generic per-frame updater, whereas the function only runs while
+    the object is in a collision (collision data ptr is loaded and presented) and its sole known entry
+    is the hit branch. A more accurate prefix would reflect that it''s tied to the in-collision hit processing.
+    Also, the dispatch reads past the table when CurAction>=2, so this is not strictly ''object update''.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object type(s) use this handler (no callers known); the two action handlers sub_80C6650/sub_80C667C
+  would show what actions 0/1 do
+- What sub_80C673A sets up before entering action 4
+- How action 4 avoids the out-of-range jump-table dispatch (word at 0x080C6658)
+- The summary and flow are accurate (removes collision, spawns hit effect, branches on flags, action 4
+  transition, battle-over destroys object, otherwise dispatches via off_80C6648). However, naming it battle_objectHitUpdate
+  implies a generic per-frame updater, whereas the function only runs while the object is in a collision
+  (collision data ptr is loaded and presented) and its sole known entry is the hit branch. A more accurate
+  prefix would reflect that it's tied to the in-collision hit processing. Also, the dispatch reads past
+  the table when CurAction>=2, so this is not strictly 'object update'.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C65EE -> battle_objectHitReact
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C65EE

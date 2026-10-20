@@ -1,0 +1,64 @@
+name: object_updateChatboxProgressSprites
+address: '0x0809A6A4'
+kind: function
+status: probable
+summary: 'Per-frame object update: bumps a step byte at [r5+4] by 0x10 up to 0x60, then on reaching the
+  cap snapshots the chatbox''s 0x4C halfword/0x50 byte into [r5+6]/[r5+5], slides three sprites at id
+  (counter-0x30), runs entity/sprite updates plus sub_809A80C on [r5+0x74], and returns 0 until EVENT_F5
+  is set (1 after).'
+interface: (r5 = object record, preloaded by caller) -> r0 = 0 while EVENT_F5 clear, 1 once set; no other
+  outputs
+details: 'Reads the byte at [r5+4], adds 0x10, and caps it at 0x60, storing it back — a frame counter
+  incremented in steps of 16 up to 96. While below the cap it copies chatbox fields: halfword [chatbox+0x4C]
+  -> [r5+6] and byte [chatbox+0x50] -> [r5+5] (looks like the chatbox''s current text-render progress).
+  It then computes firstId = counter - 0x30 and calls sprite_setPositionForIdRange3 to move three consecutive
+  sprite-table entries from that id (negative ids simply have no entries and are skipped, so the window
+  effectively starts at id 0 once counter >= 0x30). It then runs the global entity/sprite pipeline (entity_runAllUpdateHandlers,
+  battle_updateEStructSprites) and calls sub_809A80C with [r5+0x74]. Finally it tests EVENT_F5, the usual
+  ''script step finished'' flag, returning 0 until it is set and 1 after — the standard ''keep waiting''
+  update-handler contract.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#4]; add #0x10; cmp #0x60; ble -> capped step-16 counter stored at [r5+4]; ldr
+    r6,[r10,#oToolkit_ChatboxPtr]; ldr [r6,#0x4C]/[#0x50] -> strh/strb into [r5+6]/[r5+5] snapshots chatbox
+    text progress; ldr r1,=0xFFFFFFD0; add r0,r0,r1; bl sprite_setPositionForIdRange3 moves ids counter-0x30
+    .. counter-0x2C; bl entity_runAllUpdateHandlers / battle_updateEStructSprites keeps the entity+sprite
+    pipeline ticking during the wait; movflag EVENT_F5; TestEventFlagFromImmediate; return 0/1 — ends
+    when the story flag signals completion'
+  refs:
+  - bn6f/asm/asm28_0.s:1834
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x080465F8 battle_updateEStructSprites_80465F8
+  - 0x080465BC entity_runAllUpdateHandlers_80465BC
+  reproduce: python3 tools/asmcat.py 0x0809A6A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The chatbox copy is one-shot when the counter first exceeds 0x60 (the fall-through path), not ''while
+    below the cap'' as stated; the `ble loc_809A6BC` skips it. Also, since no caller is known, claiming
+    r5 is ''preloaded by caller'' is speculative. The rest (counter step 0x10, cap 0x60, firstId = counter-0x30,
+    three sprites, pipeline calls, F5 wait) matches the asm.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_809A80C does with [r5+0x74] (unknown callee) — likely drives the actual visual effect or sound
+  tied to this step
+- No known caller, so the exact cutscene/script and the meaning of the sprite trio (which on-screen object
+  slides) are unconfirmed
+- Exact meaning of chatbox fields 0x4C/0x50 (chars printed vs line position) not verified
+- The chatbox copy is one-shot when the counter first exceeds 0x60 (the fall-through path), not 'while
+  below the cap' as stated; the `ble loc_809A6BC` skips it. Also, since no caller is known, claiming r5
+  is 'preloaded by caller' is speculative. The rest (counter step 0x10, cap 0x60, firstId = counter-0x30,
+  three sprites, pipeline calls, F5 wait) matches the asm.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A6A4 -> object_updateChatboxProgressSprites
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A6A4

@@ -1860,7 +1860,7 @@ Next zeroFill_0xA000Words_811FF6C(void) {
  *
  * Classifies a chip based on its element flags (byte at offset 9 of the chip data):
  *   - bit 0x10 set: r0 = r2 = 1, r1 = 1
- *   - bit 0x02 set, chip id > 0x3E7: r0 = r2 = sub_8010C76(which_chip), r1 = 0
+ *   - bit 0x02 set, chip id > 0x3E7: r0 = r2 = getChipScaleOrRaw(which_chip), r1 = 0
  *   - bit 0x02 set, chip id <= 0x3E7: r0 = r2 = chip_id, r1 = 0
  *   - neither: r0 = r2 = 5, r1 = 0
  */
@@ -1891,7 +1891,7 @@ Next sub_811FF80(void) {
         u16 chip_id = LD16(chip + 0x1A);
         if ((s32)chip_id > 0x3E7) {
             R0 = which_chip;
-            GUEST_CALL(sub_8010C76);
+            GUEST_CALL(getChipScaleOrRaw);
             r2 = R0;
         } else {
             r2 = chip_id;

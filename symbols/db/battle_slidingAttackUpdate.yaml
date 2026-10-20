@@ -1,0 +1,62 @@
+name: battle_slidingAttackUpdate
+address: '0x080DCBCC'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle attack object: on phase 0 plays sound 0xC4, looks up a per-Param1
+  word velocity and 16-frame duration from two tables, applies signed X velocity and Z velocity each frame,
+  decrements a timer, and periodically highlights the panel row; when the timer expires, calls sub_80DCC96,
+  spawns a type-4/0 effect copying 3 words at object+0x34, shakes the camera (mag 2, dur 0xF), and self-destructs.'
+interface: (r5 = battle object pointer, called as a phase/state handler; r0 unused on entry) -> mutates
+  object fields; sets CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY when finished; flags
+  set by timer countdown
+details: On phase 0 it sets CurPhase = 4, plays sound effect 0xC4, reads Param1 as an index into two 4-entry
+  tables (byte_80DCC4C gives velocity 0 or 0xC, byte_80DCC60 gives a timer of 0x10 frames), multiplies
+  the X velocity by object_getFrontDirection() and stores both velocities. Each later frame it adds XVelocity
+  to X, subtracts ZVelocity from Z, decrements Timer, and every 8th Timer2 tick calls object_highlightPanel
+  on the object's panel. When the timer hits zero it calls sub_80DCC96, spawns a type-0 effect copying
+  3 words from offset 0x34 of the object (likely sprite/animation data for the impact), triggers a camera
+  shake (magnitude 2, duration 0xF) and destroys itself via CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / strb r1 (4) sets up the move phase and plays sound 0xC4
+    once; mul r0,r4 with object_getFrontDirection result then stored to oBattleObject_XVelocity/ZVelocity
+    shows directional sliding motion; X += XVelocity, Z -= ZVelocity, Timer countdown ending at zero gates
+    the burst sequence; on expiry: spawn_t1_0x0_EffectObject with ldmia from r5+0x34, camera_initShakeEffect(2,0xF),
+    then CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY; Timer2 lsr #3 with bcs drives object_highlightPanel
+    every 8 frames along the path'
+  refs:
+  - bn6f/asm/asm31.s:79584
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DCBCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The core behavior (slide along a row, highlight panels, time-out effect+shake+destroy) is correct,
+    but Timer2 tick check is `lsr r0, #3; bcs` meaning highlight fires every 8th tick after Timer2 wraps
+    past 0 — not exactly ''every 8th tick''. Also byte_80DCC4C stores words (4-byte entries 0/0xC) loaded
+    with `ldr r4,[r1,r0]`, so they are velocity words not bytes. The name and prefix are fine but summary
+    is slightly off on these details.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which attack/weapon spawns this object and what Param1 selects (speed variant 0
+  vs 0xC) is unconfirmed
+- sub_80DCC96's behavior and the meaning of the copied offset-0x34 words are unknown
+- 'The core behavior (slide along a row, highlight panels, time-out effect+shake+destroy) is correct,
+  but Timer2 tick check is `lsr r0, #3; bcs` meaning highlight fires every 8th tick after Timer2 wraps
+  past 0 — not exactly ''every 8th tick''. Also byte_80DCC4C stores words (4-byte entries 0/0xC) loaded
+  with `ldr r4,[r1,r0]`, so they are velocity words not bytes. The name and prefix are fine but summary
+  is slightly off on these details.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCBCC -> battle_slidingAttackUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCBCC

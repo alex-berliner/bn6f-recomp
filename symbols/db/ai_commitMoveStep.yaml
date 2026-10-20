@@ -1,0 +1,59 @@
+name: ai_commitMoveStep
+address: '0x080F0AB6'
+kind: function
+status: probable
+summary: Commits a battle object's movement onto its target panel (animation switch, panel/flag updates,
+  coord/collision sync, optional sub-effect) and on later calls signals completion by writing 0xC to oAIAttackVars_HitElement.
+interface: (r5 = battle object, r7 = AI attack vars, implicit) -> updates AttackElement/StepTimer/HitElement
+  in the AI attack vars and the object's panel/flag state; no return value used
+details: 'First call (AttackElement == 0): stores element 4 into oAIAttackVars_AttackElement, switches
+  the object to animation 3, copies FuturePanelX/Y into PanelX/Y, releases the reserved panel, recomputes
+  pixel coordinates and collision panels, clears ObjectFlags bit 0x40 and bit 0x400000, sets the ''currently
+  moving'' flag (1<<1), sets StepTimer to 3, and calls sub_80E3FC4 if oAIAttackVars_ScratchVar is nonzero.
+  Subsequent calls (AttackElement != 0) are the wait phase: they decrement StepTimer and, when it expires,
+  store 0xC into oAIAttackVars_HitElement to signal the hit phase of the same attack state machine. The
+  scratch-variable branch suggests an optional extra effect (likely a sound or sub-effect) at move commit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: branch on AttackElement zero/nonzero splits the function into a commit phase and a countdown
+    phase; commit phase copies FuturePanelX/Y to PanelX/Y then calls object_removePanelReserve/object_setCoordinatesFromPanels/object_updateCollisionPanels
+    to land the move; sets 'currently moving' ObjectFlags1 bit via object_setFlag1 and clears bits 0x40
+    and 1<<0x16 via object_clearFlag; sets oBattleObject_CurAnim = 3 and StepTimer = 3, then counts StepTimer
+    down to 0 before storing HitElement = 0xC
+  refs:
+  - bn6f/asm/asm31.s:122370
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080F0AB6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The first branch sets it as a byte (`strb r0, [r7,#oAIAttackVars_StepTimer]` followed by `strh`
+    in the second branch), and the hit-element store is `strh` of 0xC, indicating HitElement is halfword,
+    not byte. More importantly, the code does not actually ''attack''—it commits a move to a panel and
+    flags an animation. The summary''s ''attack routine'' / ''attack as hitting'' is interpretive. A more
+    accurate name would be `ai_commitMoveStep`.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of AttackElement value 4 and HitElement value 0xC in the AI attack state machine
+- what sub_80E3FC4 does when ScratchVar is set
+- which AI enemy/attack scripts call this (no caller identified)
+- The first branch sets it as a byte (`strb r0, [r7,#oAIAttackVars_StepTimer]` followed by `strh` in the
+  second branch), and the hit-element store is `strh` of 0xC, indicating HitElement is halfword, not byte.
+  More importantly, the code does not actually 'attack'—it commits a move to a panel and flags an animation.
+  The summary's 'attack routine' / 'attack as hitting' is interpretive. A more accurate name would be
+  `ai_commitMoveStep`.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0AB6 -> ai_commitMoveStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0AB6

@@ -1,0 +1,62 @@
+name: battle_stepCrossNetBattleStart
+address: '0x08008C7C'
+kind: function
+status: probable
+summary: Battle step state machine that on first entry dispatches effect 0x54 and clears flag bits 0x4C43,
+  then polls comm_checkCrossNetBattleReady and writes 4 to r5+2 while the linked partner is not ready,
+  returning once the partner is ready.
+interface: (no args; r5 = battle step/state struct) -> r0 clobbered; writes state fields and returns when
+  partner ready or not, flags from tst/cmp
+details: r5 points to a battle sub-state struct. If the state byte at r5+3 is still 0 (first entry), it
+  calls dispatch_801DACC with 0x4C43 (same constant then cleared as bits in the flags word at dword_20352C0
+  via flags_clearBits_eStruct2035280_801BED6), triggers battle sub-effect 0x54 via battle_dispatchKindEffect_801E792,
+  zeroes the halfword at r5+8, and advances the state byte r5+3 to 4. On every pass it then calls comm_checkCrossNetBattleReady_801E754;
+  while the linked session is not ready (result 0) it writes 4 to the halfword at r5+2, and it simply
+  returns once the partner is ready, letting the outer step loop move on.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'state guard ''ldrb r0,[r5,#3]; tst; bne loc_8008C9E'' plus ''strb #4,[r5,#3]'' shows a one-shot
+    init then steady-state poll pattern; constant 0x4C43 is both dispatched (dispatch_801DACC) and cleared
+    as flag bits (flags_clearBits_eStruct2035280_801BED6); mov r0,#0x54; bl battle_dispatchKindEffect_801E792
+    launches a battle intro/effect kind; bl comm_checkCrossNetBattleReady_801E754; cmp r0,#0; bne return
+    shows it waits for link-battle readiness; strh #4,[r5,#2] only when not ready marks r5+2 as a wait/progress
+    status field'
+  refs:
+  - bn6f/asm/asm00_1.s:12698
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  - 0x0801BED6 flags_clearBits_eStruct2035280_801BED6
+  reproduce: python3 tools/asmcat.py 0x08008C7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: first entry checks r5+3, calls dispatch_801DACC with 0x4C43, clears
+    those bits via flags_clearBits_801BED6, dispatches effect 0x54, clears r5+8, sets r5+3=4, then loops
+    on comm_checkCrossNetBattleReady. The mistake is at the end: bne locret_8008CAA means it exits when
+    the partner IS ready (non-zero result), not when not ready. While ready==0 it stores 4 into r5+2 and
+    continues. So the state field it writes on the polling path is r5+2 (a halfword), not r5+3. Name is
+    fine; summary should reflect that it loops while partner is NOT ready and exits when ready.; run wf
+    investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of dispatch argument 0x4C43 (window/text vs other dispatch id)
+- what effect kind 0x54 renders (assumed intro/countdown)
+- full layout of the r5 struct and what value r5+2 holds when the partner is ready
+- 'The proposal is largely correct: first entry checks r5+3, calls dispatch_801DACC with 0x4C43, clears
+  those bits via flags_clearBits_801BED6, dispatches effect 0x54, clears r5+8, sets r5+3=4, then loops
+  on comm_checkCrossNetBattleReady. The mistake is at the end: bne locret_8008CAA means it exits when
+  the partner IS ready (non-zero result), not when not ready. While ready==0 it stores 4 into r5+2 and
+  continues. So the state field it writes on the polling path is r5+2 (a halfword), not r5+3. Name is
+  fine; summary should reflect that it loops while partner is NOT ready and exits when ready.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008C7C -> battle_stepCrossNetBattleStart
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008C7C

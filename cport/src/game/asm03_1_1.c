@@ -480,7 +480,7 @@ Next chipSelect_dispatchState_803AD20(void) {
     /* Tail-dispatch to the handler chosen by the state byte. */
     switch (state) {
     case 0x3F: GUEST_CALL(handleMenuAction90_803AD80); break;
-    case 0x40: GUEST_CALL(sub_803ADB8); break;
+    case 0x40: GUEST_CALL(submenu_showScriptAndSetPhase2C); break;
     case 0x3C: GUEST_CALL(sub_803ADDA); break;
     case 0x3A: GUEST_CALL(battle_tryConfirmAction); break;
     case 0x3B: GUEST_CALL(sub_803AE2A); break;

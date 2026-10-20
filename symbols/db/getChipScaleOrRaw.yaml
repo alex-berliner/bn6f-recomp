@@ -1,0 +1,74 @@
+name: getChipScaleOrRaw
+address: '0x08010C76'
+kind: function
+status: probable
+summary: Returns the raw halfword at ChipData+0x1A for normal chips; for special chips (field >= 0x3E9),
+  maps a per-chip counter through packed-BCD thresholds (0x10..0x28) to a rank 0..10 and returns the corresponding
+  halfword from a per-chip rank table.
+interface: '(r0 = *ChipData) -> r0 = halfword: table entry [rank][chipIndex] if field 0x1A >= 0x3E9, else
+  field 0x1A raw; flags clobbered'
+details: Reads the halfword at ChipData+0x1A; values below 0x3E9 (1001) are returned as-is. Otherwise
+  the value minus 1001 indexes unk_20018C0 (u16 array, one counter per special chip). That counter is
+  converted to packed BCD by memory_bcd_8000D84, then the loop walks byte_8010CB8, a table of ten thresholds
+  0x10,0x12,...,0x28 (decimal 10-28 step 2), taking the first threshold >= the value to get rank 0-10
+  (values above 0x28 fall through to rank 10). The result is a halfword from byte_8020E54 at offset 22*(chipIndex)
+  + 2*rank, i.e. an 11-entry halfword table per special chip, so the returned value scales with the counter's
+  rank. The BCD step implies the thresholds are meant as decimal 10..28. Called by the chip-selection
+  panel renderer and a chip classifier, so the returned value feeds chip display/classification for the
+  affected chips.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r1,[r0,#0x1a]; cmp r1,#0x3e9; blt loc_8010CB0 (raw fallback return); r4 = 2*(field-0x3e9);
+    ldrh r0,[unk_20018C0+r4] — per-chip u16 counter table; bl memory_bcd_8000D84 then scan of byte_8010CB8
+    thresholds 0x10..0x28 gives rank 0..10; mul r0,r4 by 11 plus 2*rank; ldrh r0,[byte_8020E54 + ...]
+    — 11 halfwords per chip entry; callers chipPanel_renderChipGfxAndText_8119438 and sub_811FF80 both
+    operate on chip records
+  refs:
+  - bn6f/asm/asm00_2.s:4592
+  - 0x08119438 chipPanel_renderChipGfxAndText_8119438
+  - 0x0811FF80 sub_811FF80
+  - 0x0813802C sub_813802C
+  - 0x08021AA4 getChip8021DA8
+  - 0x08000D84 memory_bcd_8000D84
+  reproduce: python3 tools/asmcat.py 0x08010C76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described logic: reads halfword at +0x1A, returns raw if <0x3E9, otherwise
+    uses (val-0x3E9) as index into unk_20018C0, converts via memory_bcd_8000D84, and walks the threshold
+    table at byte_8010CB8 (which is 11 word-sized entries storing little-endian values 0x10, 0x12, ...,
+    0x28, not 10 entries). The threshold table has 11 entries (rank 0-10), confirmed by `cmp r1, #0xa`
+    followed by fall-through to rank 0xB (11). The returned byte/halfword index uses `mul r0, #0xb` and
+    `add r1, r1` (2-byte stride), so it indexes 11 halfwords per chip. Only minor inaccuracy: thresholds
+    are listed as ten values but are actually 0x10,0x12,...,0x28 = 10 stepping-by-2 values, matching 11-rank
+    (0-10) search. Name is acceptable; a slightly clearer name would be getChipScaleOrRaw since it returns
+    a scaled value for special chips and the raw field otherwise.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What unk_20018C0 actually counts (its writers are unknown)
+- What the halfwords in byte_8020E54 mean (damage, cost, display value?) and which chips have field 0x1A
+  >= 1001
+- Which game feature the rank thresholds 10-28 correspond to; cross-references to unk_20018C0 and byte_8020E54
+  would settle it
+- 'The code matches the described logic: reads halfword at +0x1A, returns raw if <0x3E9, otherwise uses
+  (val-0x3E9) as index into unk_20018C0, converts via memory_bcd_8000D84, and walks the threshold table
+  at byte_8010CB8 (which is 11 word-sized entries storing little-endian values 0x10, 0x12, ..., 0x28,
+  not 10 entries). The threshold table has 11 entries (rank 0-10), confirmed by `cmp r1, #0xa` followed
+  by fall-through to rank 0xB (11). The returned byte/halfword index uses `mul r0, #0xb` and `add r1,
+  r1` (2-byte stride), so it indexes 11 halfwords per chip. Only minor inaccuracy: thresholds are listed
+  as ten values but are actually 0x10,0x12,...,0x28 = 10 stepping-by-2 values, matching 11-rank (0-10)
+  search. Name is acceptable; a slightly clearer name would be getChipScaleOrRaw since it returns a scaled
+  value for special chips and the raw field otherwise.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8010C76 -> getChipScaleOrRaw
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010C76

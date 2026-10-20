@@ -1,0 +1,59 @@
+name: e_setupE5rbSceneAfterFade
+address: '0x08131FC4'
+kind: function
+status: probable
+summary: 'Event phase that waits for the screen fade to finish (ZF set), then sets up the E5RB scene:
+  initialises camera/screen block, writes tag ''E5RB''/0x2000 into eLinkState, dispatches via sub_81322E8,
+  advances state to phase 4, and sets the main jumptable index to 0x28.'
+interface: (r5 = event state record) -> r0 = 0; writes state+0x03 = 4, state+0x0C = 0, sets *mainJumptableIndexPtr
+  = 0x28
+details: 'Gate is IsScreenFadeActive: with ZF set (no fade) it returns immediately, so this phase only
+  proceeds once a fade is running. It then calls sub_813D90C(1)/sub_8147F98, initializes a camera/screen
+  layout block via sub_803DCE8(0xC,3,2,0), and stores the 4-byte tag ''E5RB'' (0x42523545) plus value
+  0x2000 into the global eLinkState via sub_803DCD8, followed by a sub_81322E8 dispatch and a zero-filled
+  0x100 work buffer from sub_803EF60. It advances its own state record: byte +0x03 = 4 (next phase), byte
+  +0x0C = 0 (phase counter). sub_803CB00(1) re-enables something, initSaveStateBlock(0) zeroes the E-Save
+  block (eS200A290) as a checkpoint, and the main jumptable index is set to 0x28 (0x30 from the init call
+  is immediately overwritten). No known callers; r5 must be set up by whoever branches here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq locret after bl IsScreenFadeActive: whole body only runs while a screen fade is active;
+    bl sub_803DCD8 with r0=''E5RB'' (0x42523545), r1=0x2000: writes a tagged link-state configuration
+    into eLinkState; strb #4,[r5,#3] / strb #0,[r5,#0xC]: advances the event state record to the next
+    phase; bl initSaveStateBlock_8048F9C with r0=0 zeroes the E-Save block before handoff; strb #0x28,[mainJumptableIndexPtr]:
+    switches the main loop to jumptable entry 0x28 after setup'
+  refs:
+  - bn6f/asm/asm36.s:3836
+  - 0x08048F9C initSaveStateBlock_8048F9C
+  - 0x0803DCD8 sub_803DCD8
+  - 0x0803DCE8 sub_803DCE8
+  reproduce: python3 tools/asmcat.py 0x08131FC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate to the assembly (screens fade gate, camera init, tag+value into eLinkState,
+    sub_81322E8 dispatch, work buffer, state+0x03=4, state+0x0C=0, sub_803CB00(1), e-Save reinit, jumptable
+    index=0x28). However the name should reflect this is an e-event/menu step rather than ''link scene'';
+    ''E5RB'' is just a 4CC tag literal with no ''link'' meaning. A clearer lowerCamel name is e_setupE5rbSceneAfterFade.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of the 'E5RB' tag and 0x2000 argument to sub_803DCD8 — which scene/link event this identifies
+- What sub_813D90C, sub_8147F98, sub_81322E8 and sub_803CB00 do exactly
+- Which event object owns this state record (r5) and what phase 4 does next; no callers known
+- The summary is accurate to the assembly (screens fade gate, camera init, tag+value into eLinkState,
+  sub_81322E8 dispatch, work buffer, state+0x03=4, state+0x0C=0, sub_803CB00(1), e-Save reinit, jumptable
+  index=0x28). However the name should reflect this is an e-event/menu step rather than 'link scene';
+  'E5RB' is just a 4CC tag literal with no 'link' meaning. A clearer lowerCamel name is e_setupE5rbSceneAfterFade.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8131FC4 -> e_setupE5rbSceneAfterFade
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131FC4

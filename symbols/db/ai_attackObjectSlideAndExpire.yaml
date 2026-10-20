@@ -1,0 +1,76 @@
+name: ai_attackObjectSlideAndExpire
+address: '0x080F67B6'
+kind: function
+status: probable
+summary: AI attack handler that on first entry initializes element/animation and picks a difficulty-scaled
+  X velocity and step count, then each tick slides the object by its X velocity, re-panels/regions it
+  (or stamps HitElement=0xC) until the step timer expires, at which point it runs sub_80F7514, deactivates
+  the battle object, clears flag 0x40, sets CURRENTLY_MOVING bit 1, clears bit 0x16, and exits the attack
+  state.
+interface: (r5 = battle object, r7 = AIAttackVars for the current attack; r0 ignored) -> void
+details: On first entry (AttackElement == 0) it latches element 4, plays animation 0xF, fetches a frame-count
+  (byte table indexed by Alliance) into StepTimer, and picks an XVelocity from word table byte_80F685C
+  indexed by AiDifficultyTier*4 (values ~0x25000–0x40000, faster at higher difficulty). Each tick it adds
+  XVelocity to X, then calls sub_80F716E; while it returns 0 the object keeps moving (and sets HitElement
+  = 0xC via sub_80F7520). When the movement check passes, it uses the Alliance-indexed byte_80F6878 table
+  tested against CollisionData_FlagsFromCollision to clear its collision region when touching the opposing
+  side's panels, then re-updates panels/region after moving (setting region 1 if PanelX changed). When
+  StepTimer reaches 0 it calls sub_80F7514 with the ScratchVar, battle_deactivateObject, clears flag 0x40
+  and bit 22, sets ObjectFlags1 'currently moving' bit 1, and exits the attack state — i.e. the attack
+  object lives for a fixed number of steps then despawns.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: velocity picked from byte_80F685C by AiDifficultyTier, applied to oBattleObject_X each tick
+    (loc_80F67E4); StepTimer loaded from Alliance-indexed table and decremented; at expiry battle_deactivateObject
+    + object_exitAttackState run; object_clearCollisionRegion / setCollisionRegion(1) with alliance-flag
+    table byte_80F6878 show side-dependent panel interaction while crossing; first-entry block sets AttackElement=4
+    and CurAnim=0xF before movement begins; known callee battle_deactivateObject summary matches the despawn-on-timeout
+    behavior
+  refs:
+  - bn6f/asm/asm31.s:134250
+  - 0x080F7140 battle_deactivateObject
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x080F67B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal captures the gist: init on first entry (element 4, anim 0xF, sub_80F7500, XVelocity
+    from byte_80F685C scaled by difficulty, step timer from dword_80F6870 indexed by Alliance), advance
+    X by XVelocity each tick, call sub_80F716E and either re-panel/region-update or set HitElement=0xC
+    via sub_80F7520, and on StepTimer underflow call sub_80F7514 then deactivate. Minor corrections: byte_80F685C
+    is a byte table loaded as a word (ldr [r2,r1]), sub_80F716E returning nonzero causes the panel/region
+    update branch while zero causes HitElement=0xC (proposal inverted). dword_80F6870 is a single-word
+    table with one entry (0x7) indexed by Alliance, not a multi-entry byte table; sub_80F70E0 splits into
+    r0/r1 (XVelocity, StepTimer). Also the object_clearFlag 0x40 happens after deactivation (order slightly
+    off). The proposed name ''ai_attackObjectAdvanceAcrossField'' is reasonable but a clearer name emphasizing
+    the timed slide and deactivation would fit better.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_80F716E / sub_80F7520 test (reaching far edge of field vs. hitting something)
+- which enemy/attack this belongs to — no callers known, so the identity of the element-4 attack object
+  is unconfirmed
+- exact units of XVelocity and the meaning of ScratchVar passed to sub_80F7514
+- 'The proposal captures the gist: init on first entry (element 4, anim 0xF, sub_80F7500, XVelocity from
+  byte_80F685C scaled by difficulty, step timer from dword_80F6870 indexed by Alliance), advance X by
+  XVelocity each tick, call sub_80F716E and either re-panel/region-update or set HitElement=0xC via sub_80F7520,
+  and on StepTimer underflow call sub_80F7514 then deactivate. Minor corrections: byte_80F685C is a byte
+  table loaded as a word (ldr [r2,r1]), sub_80F716E returning nonzero causes the panel/region update branch
+  while zero causes HitElement=0xC (proposal inverted). dword_80F6870 is a single-word table with one
+  entry (0x7) indexed by Alliance, not a multi-entry byte table; sub_80F70E0 splits into r0/r1 (XVelocity,
+  StepTimer). Also the object_clearFlag 0x40 happens after deactivation (order slightly off). The proposed
+  name ''ai_attackObjectAdvanceAcrossField'' is reasonable but a clearer name emphasizing the timed slide
+  and deactivation would fit better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F67B6 -> ai_attackObjectSlideAndExpire
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F67B6

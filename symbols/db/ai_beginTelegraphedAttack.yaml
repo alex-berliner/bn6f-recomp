@@ -1,0 +1,60 @@
+name: ai_beginTelegraphedAttack
+address: '0x080EE7EC'
+kind: function
+status: probable
+summary: 'AI routine that begins a telegraphed enemy attack: starts animation 0xF on the battle object,
+  locks it in place, spawns the attack via sub_80D8F98 using difficulty-tier and damage from oAIAttackVars,
+  plays sound 0x111, and arms StepTimer=0x46 and HitElement=4 in oAIAttackVars.'
+interface: (r0 = working battle object, r1/r2/r3/r7 = context with r7 = oAIAttackVars) -> r0 = clobbered;
+  sets ObjectFlags1 bit 22 and CANNOT_SLIDE, animation 0xF, StepTimer 0x46, HitElement 4
+details: Early-outs if the object already has ObjectFlags bits 0x1040 set, so it only fires in the right
+  state. It starts animation 0xF and resets the counter timer, then sets flag bit (1<<22) and OBJECT_FLAGS_CANNOT_SLIDE
+  on the object so it cannot move during the attack. It reads the object's PanelX/PanelY, adds object_getFrontDirection
+  to the X to target the panel in front of it, and calls sub_80D8F98 with (targetX, targetY, oAIAttackVars_InitFlag,
+  -4*oAIAttackVars_AiDifficultyTier, damage=oAIAttackVars_Damage) — the difficulty tier scales one argument,
+  so sub_80D8F98 likely spawns/registers the attack with difficulty-dependent speed or count. Finally
+  it plays sound 0x111, stores 0x46 (70 frames) into oAIAttackVars_StepTimer and element 4 into oAIAttackVars_HitElement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0, 0x1040 early return gates the routine to a specific object-flag state; object_setAnimation
+    0xF + object_setDefaultCounterTime + CANNOT_SLIDE flag = start attack windup while immobilized; add
+    r0, frontDirection, PanelX then sub_80D8F98(r0,r1=PanelY,r2=InitFlag,r3=-4*AiDifficultyTier,r6=Damage)
+    looks like spawning the attack toward the panel ahead; PlaySoundEffect 0x111 and StepTimer=0x46, HitElement=4
+    store the attack's frame counter and element in oAIAttackVars
+  refs:
+  - bn6f/asm/asm31.s:117860
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A166 object_getFlag
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080EE7EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes object_setFlag bit test 0x1040, animation 0xF, OBJECT_FLAGS_UNK_BIT_22
+    + CANNOT_SLIDE, the panel calc with object_getFrontDirection, and the sub_80D8F98 call. However the
+    proposal''s interface claims StepTimer 0x46 and HitElement 4 are set on the object, but the asm stores
+    them into [r7,#...] which is oAIAttackVars, not the object. Also the sound ID is 0x12+0xFF = 0x111.
+    The proposed name and summary are plausible but the summary misattributes StepTimer/HitElement location.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose/signature of sub_80D8F98 (likely the AI attack-spawn helper) is unknown, so the exact attack
+  spawned and the meaning of the -4*difficulty argument are not confirmed
+- no callers known, so which enemy/AI state invokes this handler is unidentified
+- The proposal correctly describes object_setFlag bit test 0x1040, animation 0xF, OBJECT_FLAGS_UNK_BIT_22
+  + CANNOT_SLIDE, the panel calc with object_getFrontDirection, and the sub_80D8F98 call. However the
+  proposal's interface claims StepTimer 0x46 and HitElement 4 are set on the object, but the asm stores
+  them into [r7,#...] which is oAIAttackVars, not the object. Also the sound ID is 0x12+0xFF = 0x111.
+  The proposed name and summary are plausible but the summary misattributes StepTimer/HitElement location.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EE7EC -> ai_beginTelegraphedAttack
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE7EC

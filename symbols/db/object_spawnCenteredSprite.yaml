@@ -1,0 +1,57 @@
+name: object_spawnCenteredSprite
+address: '0x0811D5F8'
+kind: function
+status: probable
+summary: Decompresses a sprite resource into a static buffer, initializes it as a GUI sprite with resource
+  0x8F, sets animation 0, disables shadow, and positions it at (0x80, 0x80) on screen.
+interface: () -> void; r7 clobbered
+details: 'LZ77-decompresses comp_82FCA14 into the static buffer unk_201AA00, then calls initGuiSprite_8002770
+  with unk_201AA00+4 and resource id 0x8F to initialize sprite slot 0. It then sets the slot''s animation
+  to index 0, loads its animation data, and clears the shadow flag so the sprite renders without a shadow.
+  Finally it positions the object at (0x80, 0x80) via sprite_setCoordinates — the exact center of the
+  160x128 GBA screen. This is a one-shot setup routine: spawn a fixed GUI/cutscene sprite dead-center
+  with no movement.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl SWI_LZ77UnCompReadNormalWrite8bit with src=comp_82FCA14, dest=unk_201AA00 decompresses the
+    resource; bl initGuiSprite_8002770(r7+4, 0x8F) initializes sprite slot from the decompressed data;
+    bl sprite_setAnimation(0); bl sprite_loadAnimationData; bl sprite_noShadow configure slot 0's sprite;
+    mov r0,#0x80; mov r1,#0x80; bl sprite_setCoordinates places it at screen center; only caller sub_811CDF4
+    invokes it as a standalone setup step
+  refs:
+  - bn6f/asm/asm32.s:31527
+  - 0x0811CDF4 sub_811CDF4
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x0811D5F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the LZ77 decompression of comp_82FCA14 into unk_201AA00, the initGuiSprite_8002770
+    call with resource 0x8F, animation 0, and (0x80, 0x80) coordinates. However, the line `bl sub_811DC00`
+    is missing from the summary — it''s a real call between the coordinate setup and sprite_setCoordinates.
+    Also, ''shadow-less sprite object at slot 0'' and ''no movement'' are inferences not strictly confirmed;
+    the code just sets up a sprite. The core function name and intent fit, so a minor summary tweak suffices.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sprite comp_82FCA14 depicts and what sub_811CDF4 uses it for (cutscene object vs GUI overlay)
+- the meaning of initGuiSprite_8002770's 0x8F argument beyond being a resource/sprite id
+- The proposal correctly identifies the LZ77 decompression of comp_82FCA14 into unk_201AA00, the initGuiSprite_8002770
+  call with resource 0x8F, animation 0, and (0x80, 0x80) coordinates. However, the line `bl sub_811DC00`
+  is missing from the summary — it's a real call between the coordinate setup and sprite_setCoordinates.
+  Also, 'shadow-less sprite object at slot 0' and 'no movement' are inferences not strictly confirmed;
+  the code just sets up a sprite. The core function name and intent fit, so a minor summary tweak suffices.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D5F8 -> object_spawnCenteredSprite
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D5F8

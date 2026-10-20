@@ -1,0 +1,68 @@
+name: battle_effectWaitDispatch
+address: '0x080087D8'
+kind: function
+status: probable
+summary: Battle-state handler that, on first entry dispatches battle sub-effect kind 0x1C and arms a ~102-frame
+  counter (phase 4), then waits while the cross-net partner is not ready; once the wait elapses it branches
+  on GetBattleEffects bit 0x400 to either route to next state 8/0xC via sub_800AF50's result, or write
+  phase 3 to [r5+4] and the battle-end substate.
+interface: (r5 = battle state struct {+0 next-state word, +3 phase byte, +4 phase byte, +8 frame counter
+  halfword}; r10 = toolkit) -> writes next state; flags unused
+details: 'On first entry (byte [r5+3] == 0) it sets flag word 0x824C43 in the eStruct2035280 flag block
+  via dispatch_801DACC then clears the same bits, loads the frame counter [r5+8] with 0x66 (102), marks
+  phase 4, and dispatches battle sub-effect kind 0x1C (battle_dispatchKindEffect_801E792). Each subsequent
+  call decrements [r5+8] and exits while the counter is still positive; it also stalls until comm_checkCrossNetBattleReady_801E754
+  reports the linked partner ready. Once the wait lapses it reads GetBattleEffects and tests bit 0x400:
+  if set, it calls sub_800AF50 whose result 1/2 picks next-state 8 or 0xC stored at [r5+0] (likely player-vs-enemy
+  deletion outcome), otherwise it writes phase 3 to [r5+4] and to GameState.oGameState_BattleEndSubState,
+  entering the battle-end sequence.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_dispatchKindEffect_801E792 with r0=0x1C after setting [r5+8]=0x66 and [r5+3]=4; ldrh
+    r0,[r5,#8]; sub r0,#1 plus tst/blt loop-gate is a frame-count wait; bl GetBattleEffects; tst r0,r1
+    with r1=0x400 gates the alternate outcome path; mov r0,#3; strb r0,[r1,#oGameState_BattleEndSubState]
+    routes into the battle-end state; bl comm_checkCrossNetBattleReady_801E754; bne locret blocks progress
+    until link battle is synced
+  refs:
+  - bn6f/asm/asm00_1.s:12054
+  - 0x0802D246 GetBattleEffects
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x080087D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: first entry sets phase 4, loads counter with 0x66, dispatches effect
+    kind 0x1C, loop stalls on comm_checkCrossNetBattleReady==0, and bit 0x400 of GetBattleEffects gates
+    the sub_800AF50 call whose results 1/2 map to next states 8/0xC while elsewhere it writes phase 3
+    to [r5+4] and BattleEndSubState. However, the proposal names ''deletionEffectWait'' when the code
+    only dispatches effect kind 0x1C via battle_dispatchKindEffect_801E792; nothing in this function confirms
+    it is a deletion effect specifically, and [r5+3] is the phase byte being written to 4, not [r5+4].
+    The next-state word at [r5+0] is 32-bit, consistent with the proposal. The name overreaches the evidence;
+    a more neutral name fits the wait-and-route pattern.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of battle effect kind 0x1C and effects bit 0x400
+- semantics of sub_800AF50's 0/1/2 return values (deletion/finish判定?)
+- which battle state id selects this handler and the full layout of the r5 battle-state struct
+- 'The proposal is largely correct: first entry sets phase 4, loads counter with 0x66, dispatches effect
+  kind 0x1C, loop stalls on comm_checkCrossNetBattleReady==0, and bit 0x400 of GetBattleEffects gates
+  the sub_800AF50 call whose results 1/2 map to next states 8/0xC while elsewhere it writes phase 3 to
+  [r5+4] and BattleEndSubState. However, the proposal names ''deletionEffectWait'' when the code only
+  dispatches effect kind 0x1C via battle_dispatchKindEffect_801E792; nothing in this function confirms
+  it is a deletion effect specifically, and [r5+3] is the phase byte being written to 4, not [r5+4]. The
+  next-state word at [r5+0] is 32-bit, consistent with the proposal. The name overreaches the evidence;
+  a more neutral name fits the wait-and-route pattern.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80087D8 -> battle_effectWaitDispatch
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80087D8

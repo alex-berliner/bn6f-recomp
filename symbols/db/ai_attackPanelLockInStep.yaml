@@ -1,0 +1,59 @@
+name: ai_attackPanelLockInStep
+address: '0x080FB2A4'
+kind: function
+status: probable
+summary: 'AI attack step: on first call commits the reserved panel to the object''s current panel, releases
+  the reserve, refreshes coordinates/collision, raises the moving flag, and arms a 10-frame timer; when
+  it elapses writes 8 to HitElement to trigger the strike.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; on entry with AttackElement==0 commits the
+  pending panel move and sets up, then counts down StepTimer until HitElement is set to 8.
+details: 'On the first invocation (AttackElement == 0) it tags the attack as element 4 (wood), switches
+  the object to animation 3, copies FuturePanelX/Y into PanelX/Y, releases the reserved panel, recomputes
+  pixel coordinates and collision panels from the new grid position, clears flag 0x40, and sets the ObjectFlags1
+  ''currently moving'' bit, then starts a 10-frame StepTimer. On later invocations it just decrements
+  StepTimer; when it reaches zero it writes 8 into HitElement, which downstream attack logic presumably
+  reads to apply the attack. This is a classic AI attack state machine step: move onto the target tile,
+  telegraph, then fire. Element/hit values 4 and 8 suggest a specific enemy attack rather than a generic
+  helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #4, [r7,#oAIAttackVars_AttackElement] only when AttackElement==0 — one-shot setup guarded
+    by tst/bne; strb FuturePanelX/Y -> PanelX/Y then object_removePanelReserve + object_setCoordinatesFromPanels
+    + object_updateCollisionPanels — commits the panel move; object_setFlag1 with bit (1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)
+    marks the object as mid-move; strh #0xa, [r7,#oAIAttackVars_StepTimer] then loop decrementing it,
+    on expiry strh #8, [r7,#oAIAttackVars_HitElement] — 10-frame telegraph before the hit; operates entirely
+    on oAIAttackVars/oBattleObject fields of r7/r5, matching an AI attack state step'
+  refs:
+  - bn6f/asm/asm31.s:143749
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FB2A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (panel commit on AttackElement==0, 10-frame timer, HitElement=8)
+    but the proposed summary''s ''wood-element attack'' is not in the code; the asm only stores 4 into
+    AttackElement and 8 into HitElement, with no elemental mapping shown. The name is fine but the summary
+    overstates it.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack uses this step (element 4 = wood, HitElement 8) — needs the dispatch table or caller
+- What HitElement 8 means downstream in the attack-resolution code
+- Meaning of ObjectFlags1 bit 0x40 that is cleared here
+- The code matches the proposal's mechanics (panel commit on AttackElement==0, 10-frame timer, HitElement=8)
+  but the proposed summary's 'wood-element attack' is not in the code; the asm only stores 4 into AttackElement
+  and 8 into HitElement, with no elemental mapping shown. The name is fine but the summary overstates
+  it.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB2A4 -> ai_attackPanelLockInStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB2A4

@@ -1,0 +1,68 @@
+name: object_stepRunCameraScriptOnLastActor
+address: '0x080899F2'
+kind: function
+status: probable
+summary: Step that, when only one actor remains alive on team 0 (battleScenarioEffect_isActive_814216E
+  returns 1), runs camera_startCutsceneScript and writes 0x18 into the byte at r5; otherwise does nothing;
+  always returns 1.
+interface: (r5 = cutscene/camera object pointer, fields read/written via [r5]) -> r0 = 1 always; sets
+  [r5] = 0x18 and launches camera script when counts match, else nothing.
+details: Counts alive battle actors on team 0 (r0=0 passed to battle_countAliveActorsOnTeam_8142C20),
+  then reads battleScenarioEffect_isActive_814216E, which returns the scenario-effect counter at eScenarioEffectState2000780+0xE.
+  If the two values differ, the function just returns 1; if they are equal, it calls camera_startCutsceneScript
+  and stores 0x18 into the byte at [r5], evidently the step/state field of the cutscene-object whose pointer
+  the caller left in r5. Always returns 1, indicating a per-frame step that keeps the object alive. The
+  comparison suggests the scenario-effect state tracks a countdown/count of the same team's actors, so
+  the camera script fires once that count is reached.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_countAliveActorsOnTeam_8142C20 with r0=0 counts alive actors on team 0; bl battleScenarioEffect_isActive_814216E
+    returns the counter at eScenarioEffectState2000780+0xE, compared against that count; bne loc_8089A0C
+    skips the camera call unless count == effect value; bl camera_startCutsceneScript then strb 0x18,[r5]
+    writes the next step id into the caller's object; mov r0,#1 before pop gives a constant true/continue
+    return typical of step handlers
+  refs:
+  - bn6f/asm/asm23.s:1379
+  - 0x0814216E battleScenarioEffect_isActive_814216E
+  - 0x08142C20 battle_countAliveActorsOnTeam_8142C20
+  - 0x08089CDC camera_startCutsceneScript
+  reproduce: python3 tools/asmcat.py 0x080899F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the structure described, but the function is never associated with a ''camera''
+    object: r5 is just a caller-saved pointer to a small object whose byte 0x18 is written, and there
+    are no known callers in this dump. The prefix ''camera'' is plausible only because camera_startCutsceneScript
+    is called; a safer name uses the ''object'' or ''sub'' prefix. The summary''s phrase ''per-team alive
+    actor count equals the scenario-effect state value'' matches the cmp r0,r4 after both return counts
+    (aliveActors vs non-zero-flag-as-0/1). However, since eScenarioEffectState2000780+0xE is described
+    as a counter and battleScenarioEffect_isActive_814216E returns r0=1 when non-zero, the comparison
+    is actorCount==1, not actorCount==counter. So ''equals the scenario-effect state value'' is misleading;
+    really it fires when exactly 1 actor remains on team 0.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No caller known: r5''s structure and the meaning of step 0x18 are inferred, not confirmed'
+- Whether team 0 means player or enemy side, and what the +0xE scenario-effect counter counts down, is
+  not visible here
+- 'The code matches the structure described, but the function is never associated with a ''camera'' object:
+  r5 is just a caller-saved pointer to a small object whose byte 0x18 is written, and there are no known
+  callers in this dump. The prefix ''camera'' is plausible only because camera_startCutsceneScript is
+  called; a safer name uses the ''object'' or ''sub'' prefix. The summary''s phrase ''per-team alive actor
+  count equals the scenario-effect state value'' matches the cmp r0,r4 after both return counts (aliveActors
+  vs non-zero-flag-as-0/1). However, since eScenarioEffectState2000780+0xE is described as a counter and
+  battleScenarioEffect_isActive_814216E returns r0=1 when non-zero, the comparison is actorCount==1, not
+  actorCount==counter. So ''equals the scenario-effect state value'' is misleading; really it fires when
+  exactly 1 actor remains on team 0.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80899F2 -> object_stepRunCameraScriptOnLastActor
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80899F2

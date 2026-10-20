@@ -1,0 +1,65 @@
+name: battle_waitFadeThenInit
+address: '0x0803AF90'
+kind: function
+status: probable
+summary: If the screen fade is still active, jumps straight to battle_moduleInit_803A820; otherwise snapshots
+  the link flag and a fresh RNG session token, runs a few helpers, writes state 8/step 0 into the work
+  struct, then falls through to battle_moduleInit_803A820.
+interface: (r5 = battle work struct pointer, set by caller) -> r0 = 0; no return value; clobbers r0-r3
+  and flags
+details: If IsScreenFadeActive reports a fade still running, the function does nothing except call battle_moduleInit_803A820
+  and return, so this is a per-frame state handler that only proceeds once the transition fade completes.
+  When the fade is done, it reads byte_2006772 via sub_803C3E0 and stores 1/0 into work+4 (sub_803C40C
+  then draws a fresh RNG value whose low halfword lands in word_2006770, a link-session token). After
+  three more helper calls (sub_803C3E8, sub_803C3D8, sub_803F9E4), it writes state 8 to work+0 and 0 to
+  work+1, then falls into battle_moduleInit_803A820, which registers entries 10/0x26 and 11/0x27 and starts
+  the main battle init with argument 0. The use of r5 (not r0) for the work pointer implies the caller
+  keeps it pinned in a register across the state dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl IsScreenFadeActive / beq skips the whole setup block, so this is a wait-for-fade gate (lines
+    2-3); sub_803C3E0 reads byte_2006772 and its result is strb'd to [r5,#4] as a 0/1 flag; sub_803C40C
+    stores a fresh RNG halfword at word_2006770, matching the documented link-session-token callee; mov
+    r0,#8 / strb r0,[r5] and strb r0=0,[r5,#1] set a two-byte state pair before init; tail call battle_moduleInit_803A820
+    registers battle entries 10/0x26 and 11/0x27 and starts main init
+  refs:
+  - bn6f/asm/asm03_1_1.s:4797
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x0803C3E0 sub_803C3E0
+  - 0x0803C40C sub_803C40C
+  reproduce: python3 tools/asmcat.py 0x0803AF90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Asm shows IsScreenFadeActive is checked first; if NZ (fade active), it skips EVERYTHING and just
+    calls battle_moduleInit_803A820. The proposal reverses this: it says when fade is active the function
+    does nothing except call init, which matches but understates that all the state writes are skipped.
+    The state init (writing 8/0, calling helpers, storing flag) only runs when fade is NOT active (beq
+    loc_803AFBC). Also bl sub_803F9E4 is called, not sub_803F9E4 — callees list confirms it. The name
+    is fine but should reflect that this waits for fade-out then advances state.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so the identity of the r5 work struct and who pins it is inferred only from field
+  layout
+- The meaning of state byte 8 in [r5] and the roles of sub_803C3E8/sub_803C3D8/sub_803F9E4 are undocumented
+- Whether byte_2006772 is a link-battle flag or some other condition is only inferred from the RNG-token
+  callee
+- 'Asm shows IsScreenFadeActive is checked first; if NZ (fade active), it skips EVERYTHING and just calls
+  battle_moduleInit_803A820. The proposal reverses this: it says when fade is active the function does
+  nothing except call init, which matches but understates that all the state writes are skipped. The state
+  init (writing 8/0, calling helpers, storing flag) only runs when fade is NOT active (beq loc_803AFBC).
+  Also bl sub_803F9E4 is called, not sub_803F9E4 — callees list confirms it. The name is fine but should
+  reflect that this waits for fade-out then advances state.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AF90 -> battle_waitFadeThenInit
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AF90

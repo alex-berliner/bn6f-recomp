@@ -1,0 +1,65 @@
+name: npc_chipTraderStep
+address: '0x0809A7B0'
+kind: function
+status: probable
+summary: 'Per-frame step handler for the Chip Trader NPC object: counts down obj+0xC by tick while updating
+  an animation counter at obj+0x70 and stepping sub_809A80C; once expired, waits for chatbox bit 0x20
+  to clear, then runs the Chip Trader text script, clears EVENT_1725, sets state byte 8 at obj+0x84, and
+  returns 0.'
+interface: (r5 = chip trader object) -> r0 = 0 when it just started/finished the chatbox interaction,
+  1 while still waiting; no flags of use
+details: Decrements the u16 at obj+0xC; while it is still >= 0 it also subtracts the byte at obj+0xF from
+  the counter at obj+0x70 (likely a spin/slot animation tick) and calls sub_809A80C(obj+0x74) before returning
+  1. Once the countdown expires it polls chatbox flag 0x20 via chatbox_mask_eFlags2009F38 and exits until
+  it is clear. With chatbox state 0 it calls sub_809A80C on obj+0x74, zeroes the byte at obj+0x9, runs
+  TextScriptChipTrader86C580C via chatbox_runScript, clears EVENT_1725, stores state 8 into obj+0x84,
+  and returns 0. If the chatbox state is nonzero it instead calls chatbox_8040818 (likely closing/resetting
+  the box), sets obj+0x9 = 1, and returns 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_809A894 // =TextScriptChipTrader86C580C + bl chatbox_runScript: it triggers the
+    Chip Trader dialogue; bl ClearEventFlagFromImmediate with EVENT_1725: clears the trader''s one-shot
+    story flag after running the script; countdown at r5+0xC (ldrh/sub #1/strh) gates the whole block
+    until it goes negative; chatbox_mask_eFlags2009F38(0x20) + chatbox_GetState check waits for the chatbox
+    to be free before talking; state field obj+0x84 set to 8 and byte obj+0x9 toggled 0/1 match the object
+    state-machine pattern seen in sibling step handlers'
+  refs:
+  - bn6f/asm/asm28_0.s:1972
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0809A7B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and most field offsets are correct, but the proposal swaps the meaning of r0: when the
+    countdown expires and the chatbox check returns 0 (chatbox not busy), it returns r0=0 and writes state
+    8 to obj+0x84; when still counting down, it returns r0=1. Also, the chatbox flag test is the opposite
+    of stated: it `beq loc_809A802` (returns early with 1) when the chatbox flag bit 0x20 is clear, meaning
+    it waits until chatbox is clear. The function name and prefix are reasonable; minor wording adjustment
+    only.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_809A80C does to obj+0x74 (sprite/animation update for the trader machine?) is unknown
+- Exact meaning of the obj+0x70 -= obj+0xF tick and the countdown value's source (set by an earlier state)
+  is not shown
+- No caller is known, so how this object is spawned/configured (and whether obj+0x84 = 8 selects the next
+  step) needs confirmation
+- 'The summary and most field offsets are correct, but the proposal swaps the meaning of r0: when the
+  countdown expires and the chatbox check returns 0 (chatbox not busy), it returns r0=0 and writes state
+  8 to obj+0x84; when still counting down, it returns r0=1. Also, the chatbox flag test is the opposite
+  of stated: it `beq loc_809A802` (returns early with 1) when the chatbox flag bit 0x20 is clear, meaning
+  it waits until chatbox is clear. The function name and prefix are reasonable; minor wording adjustment
+  only.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A7B0 -> npc_chipTraderStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A7B0

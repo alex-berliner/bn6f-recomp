@@ -1,0 +1,63 @@
+name: battle_fadeInCountdownObjectUpdate
+address: '0x080CBCB0'
+kind: function
+status: probable
+summary: Per-frame update that fades a battle object in via alpha blending, and on timer expiry disables
+  alpha, sets action 8, calls sub_80CC006, optionally enables collision region 1, frees its reserved FuturePanel,
+  and runs a Param1-gated follow-up handler.
+interface: (r5 = battle object) -> r0 = 0; touches oBattleObject_Timer2 (alpha level), oBattleObject_Timer
+  (lifetime), oBattleObject_CurAction, FuturePanelX/Y, Param1
+details: Each call increments Timer2 and passes it to sprite_setAlpha, so the object's alpha level ramps
+  up over its lifetime (fade-in). It then decrements Timer; while Timer stays >= 0 the routine returns.
+  When the countdown expires it calls sprite_disableAlpha, writes action 8 to oBattleObject_CurAction
+  and zeroes a halfword at a fixed low address, then calls sub_80CC006; if that returns nonzero it sets
+  collision region 1 via object_setCollisionRegion and releases the panel reserved at FuturePanelX/FuturePanelY
+  via object_removePanelReserve. Finally, if oBattleObject_Param1 is nonzero it calls sub_80CBF8C, presumably
+  to spawn or transition to another behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer2]; add #1; bl sprite_setAlpha_8002c7a — alpha level tracks
+    the incrementing Timer2 (fade-in); ldrh r0,[r5,#oBattleObject_Timer]; sub #1; bge locret — Timer is
+    a frame countdown gating the end-of-life path; bl sprite_disableAlpha; mov r0,#8; strb r0,[r5,#oBattleObject_CurAction]
+    — on expiry the object leaves the fading state via action 8; bl object_setCollisionRegion (r0=1) +
+    bl object_removePanelReserve with FuturePanelX/Y — expiry makes the object solid and frees its reserved
+    panel; ldrb r0,[r5,#oBattleObject_Param1]; bl sub_80CBF8C — optional post-expiry behavior keyed off
+    Param1'
+  refs:
+  - bn6f/asm/asm31.s:43173
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002C7A sprite_setAlpha_8002c7a
+  reproduce: python3 tools/asmcat.py 0x080CBCB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s fade-in / timer-expiry / collision / panel-free flow matches the asm: Timer2 increments
+    and is passed to sprite_setAlpha, Timer is decremented and the bge branch returns, then sprite_disableAlpha,
+    action 8 write, sub_80CC006, object_setCollisionRegion #1, object_removePanelReserve, and conditional
+    sub_80CBF8C via Param1 all line up. The write to oBattleObject_CurAction is strb (one byte), not strh;
+    likewise the fixed-address zero is a halfword write (strh), not a byte — minor wording. A better name
+    emphasizes the countdown aspect: battle_fadeInCountdownObjectUpdate.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80CC006 tests (condition for becoming collidable) and what sub_80CBF8C does on the Param1 path
+- Which battle object/spawn uses this handler, and what Param1 selects; no callers known
+- 'The summary''s fade-in / timer-expiry / collision / panel-free flow matches the asm: Timer2 increments
+  and is passed to sprite_setAlpha, Timer is decremented and the bge branch returns, then sprite_disableAlpha,
+  action 8 write, sub_80CC006, object_setCollisionRegion #1, object_removePanelReserve, and conditional
+  sub_80CBF8C via Param1 all line up. The write to oBattleObject_CurAction is strb (one byte), not strh;
+  likewise the fixed-address zero is a halfword write (strh), not a byte — minor wording. A better name
+  emphasizes the countdown aspect: battle_fadeInCountdownObjectUpdate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBCB0 -> battle_fadeInCountdownObjectUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBCB0

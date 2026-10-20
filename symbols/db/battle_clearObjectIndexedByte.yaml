@@ -1,0 +1,63 @@
+name: battle_clearObjectIndexedByte
+address: '0x0802D65E'
+kind: function
+status: probable
+summary: During battle object teardown, zeros a single byte inside the fixed table at byte_203EAE0 entry
+  0xA at byte offset = id, gated by EVENT_1D8, per-id flag 0x196+id being clear, and id not being 0xA
+  or 0xD.
+interface: (r0 = object id/byte index, uses r4) -> r0 = clobbered; returns without writing if EVENT_1D8
+  clear, flag 0x196+r0 set, or id is 10/13.
+details: Takes an id in r0. First it requires global event flag EVENT_1D8 to be set, else does nothing.
+  Then it tests event flag 0x196+id (per-id flag) and bails if that flag is set. Ids 0xD and 0xA are explicitly
+  excluded. Otherwise it writes value 0 to byte r0 of table entry 0xA in byte_203EAE0 via setIndexedTableByte
+  (r0=0 value, r1=0xA entry, r2=byte offset). Called from the battle object teardown routine, so r0 is
+  most likely the battle object index whose byte is reset; the flag gate suggests the clear only happens
+  in a specific story/version state and only for objects whose per-id condition flag isn't already raised.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl TestEventFlagFromImmediate (EVENT_1D8) then beq locret: whole action gated on one story
+    flag; ldr r1, =0x196; add r1,r0; bl TestEventFlag; bne locret: per-id flag suppresses the write; cmp
+    r4,#0xd / cmp r4,#0xa with beq: ids 10 and 13 are exempt; mov r0,#0; mov r1,#0xA; mov r2,r4; bl setIndexedTableByte:
+    clears byte r4 of 16-byte entry 0xA in byte_203EAE0; sole caller battle_teardownObject_80165F8 runs
+    during battle object teardown'
+  refs:
+  - bn6f/asm/asm03_0.s:15800
+  - 0x080165F8 battle_teardownObject_80165F8
+  - 0x0802F168 TestEventFlag
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0800AB2E setIndexedTableByte
+  reproduce: python3 tools/asmcat.py 0x0802D65E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms: gate by EVENT_1D8 via TestEventFlagFromImmediate at the movflag, then test flag
+    0x196+id via TestEventFlag, skip ids 0xD and 0xA, and call setIndexedTableByte(r0=0,r1=0xA,r2=id)
+    which writes byte_203EAE0. However the proposed name ''battle_clearObjectTableByte'' and the phrasing
+    ''clears one byte of table entry 0xA'' inverts r0/r1: r1 is the entry index (0xA) and r2 is the byte
+    offset (the id), so it''s clearing the id-th byte within the fixed entry 0xA, which is better captured
+    by the chosen setIndexedTableByte idiom.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What table entry 0xA of byte_203EAE0 represents (written/read elsewhere) and what the cleared bytes
+  mean per object id
+- What EVENT_1D8 and flags 0x196+id correspond to in the game, and why ids 10 and 13 are excluded
+- Whether r0 is truly a battle object index or some other id enum
+- 'The code confirms: gate by EVENT_1D8 via TestEventFlagFromImmediate at the movflag, then test flag
+  0x196+id via TestEventFlag, skip ids 0xD and 0xA, and call setIndexedTableByte(r0=0,r1=0xA,r2=id) which
+  writes byte_203EAE0. However the proposed name ''battle_clearObjectTableByte'' and the phrasing ''clears
+  one byte of table entry 0xA'' inverts r0/r1: r1 is the entry index (0xA) and r2 is the byte offset (the
+  id), so it''s clearing the id-th byte within the fixed entry 0xA, which is better captured by the chosen
+  setIndexedTableByte idiom.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D65E -> battle_clearObjectIndexedByte
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D65E

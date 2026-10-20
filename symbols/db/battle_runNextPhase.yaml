@@ -1,0 +1,66 @@
+name: battle_runNextPhase
+address: '0x0802A934'
+kind: function
+status: probable
+summary: 'Battle phase step: sets AliveAllianceCount from AliveActorTurnIndex, copies the turn-order tail
+  from battleState+0x80 to +0xD0 (skipping at index 0), dispatches 0x820080 via dispatch_801DA48, ORs
+  it into eStruct2035280+0x40 request bits, calls dispatch_801DACC with flags 4, zeros BG2ScrollX, and
+  writes 1 to caller object byte +4.'
+interface: (r0 = unused?, r5 = caller object/state with byte flag at +4) -> r0 = 1 stored to [r5+4]; no
+  return value
+details: Reads the battle state via the toolkit (r10 -> BattleStatePtr) and copies AliveActorTurnIndex
+  into AliveAllianceCount, effectively rewinding the turn queue to be processed again. It then copies
+  AliveActorTurnIndex*4 bytes from battleState+0x80 to battleState+0xD0 via BIOS CpuSet, skipping the
+  copy entirely if the index is 0. It dispatches data pointer 0x820080 through dispatch_801DA48, ORs 0x820080
+  into the request dword eStruct2035280+0x40 (likely a script/event id to run for the new round), and
+  calls dispatch_801DACC with flags 4 (likely a battle-phase/state change). Finally it zeroes RenderInfo->BG2ScrollX
+  (undoing any camera/BG shift) and stores 1 into the caller object's byte at +4 (likely an 'active/done'
+  flag).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r2,[r1,#oBattleState_AliveAllianceCount] after ldrb from AliveActorTurnIndex: turn counter
+    is reset/rewound; CopyWords(state+0x80, state+0xD0, turnIndex<<2), skipped when index==0: per-actor
+    turn data is restored for the new cycle; SetRequestBits(0x820080) plus dispatch_801DA48(0x820080)
+    and dispatch_801DACC(4): queued script/phase request tied to the round transition; BG2ScrollX cleared
+    in RenderInfo: battle field scroll is reset, consistent with a round/screen transition; strb r0=1,[r5,#4]:
+    caller-state flag set at the end, typical of a battle state handler finishing its step'
+  refs:
+  - bn6f/asm/asm03_0.s:9713
+  - 0x0800093C CopyWords
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0802A934
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary overstates what the copy does: it copies AliveActorTurnIndex*4 bytes from battleState+0x80
+    to battleState+0xD0 (turn-order data), not a ''rewinding to be processed again''. The dispatch calls
+    and request-bits OR with 0x820080 are accurate. However the proposed name battle_resetTurnCycle is
+    misleading; this looks like a battle loop continuation that fires a phase/script request and marks
+    an ''active'' flag, with no true reset. Also r5 is the caller object per its offset, so ''+4 active
+    flag'' is plausible.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the identity of r5 (which object's +4 flag is set) and the trigger moment in the
+  battle loop are unconfirmed
+- Exact meaning of request id 0x820080 and of dispatch_801DACC's flag 4 (round-end script? phase 4?) is
+  inferred, not verified
+- The 4-byte entries copied from battleState+0x80 to +0xD0 are assumed to be turn-order/actor entries;
+  the field layout there is not documented
+- 'The summary overstates what the copy does: it copies AliveActorTurnIndex*4 bytes from battleState+0x80
+  to battleState+0xD0 (turn-order data), not a ''rewinding to be processed again''. The dispatch calls
+  and request-bits OR with 0x820080 are accurate. However the proposed name battle_resetTurnCycle is misleading;
+  this looks like a battle loop continuation that fires a phase/script request and marks an ''active''
+  flag, with no true reset. Also r5 is the caller object per its offset, so ''+4 active flag'' is plausible.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802A934 -> battle_runNextPhase
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A934

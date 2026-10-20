@@ -1,0 +1,79 @@
+name: object_setHazeCoverGfx
+address: '0x080E23E8'
+kind: function
+status: probable
+summary: 'Battle-object phase that initializes per-side haze/cover graphics: writes 0x1E0/0x438 into the
+  0x1D0-stride entry at offsets 0x3A/0x3C (toggled by Param1), updates NaviStatusGfxIdx via battle_setEnemyCountFromNaviStats_801DF8C,
+  may mirror to the opposing Alliance entry when battle flag 0x40 set and battle-effects bit 8 clear,
+  then queue-transfers 0x100 bytes from 86E55FC to 0x6017940 and 0x20 bytes from 86E56FC to 0x30016F0,
+  ticks Timer from 0x46 (calling sub_800AE90(0x78,0xC) each tick unless battle_networkInvert skips it
+  on the same flag/bit pair), and advances to CurAction 0xC with PhaseInitialized cleared.'
+interface: (r0 = unused?, r5 = battle object) -> r0 = 0; sets oBattleObject_CurAction=0xC and clears oBattleObject_CurPhaseAndPhaseInitialized
+  when the timer expires
+details: 'On first run (PhaseInitialized==0) it stores a value 0x10/0x20/0x40 looked up from navi stats,
+  then uses the object''s Alliance field as the index into the 0x1D0-stride array at 2036120 and writes
+  0x1E0 into offset 0x3A or 0x3C of that entry (0 into the other, choice toggled by Param1). If battle
+  flag 0x40 is set and battle effect bit 8 is clear, it does the same for the Alliance^1 entry with value
+  0x438. It then queues two GFX transfers: 0x100 bytes from 86E55FC to VRAM 0x6017940 and 0x20 bytes from
+  86E56FC to 0x30016F0, sets Timer=0x46 and PhaseInitialized=4. On later runs, if flag 0x40 and effect
+  bit 8 are set it calls battle_networkInvert and skips the sub_800AE90 call, otherwise calls sub_800AE90(0x78,
+  0xC) every frame; when the timer runs out it moves the object to CurAction 0xC with a fresh phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'push/pop with r5-relative oBattleObject_* fields and Timer/CurAction writes: standard phase-handler
+    shape (loc_80E2460..locret_80E2494); getEntryPtr_2036120_1D0_802E070 called with Alliance (and Alliance^1),
+    then strh 0x1E0/0x438 and 0 into offsets 0x3A/0x3C; two QueueEightWordAlignedGFXTransfer calls with
+    (86E55FC, 0x6017940, 0x100) and (86E56FC, 0x30016F0, 0x20); mov r0,#0x46 / strh r0,[r5,#Timer] then
+    countdown loop ending in CurAction=0xC, phase cleared; battle_setEnemyCountFromNaviStats_801DF8C called
+    with 0x10 vs 0x40 selected by oBattleObject_Param1'
+  refs:
+  - bn6f/asm/asm31.s:91377
+  - 0x0802D246 GetBattleEffects
+  - 0x0800A9EC battle_networkInvert
+  - 0x0801DF8C battle_setEnemyCountFromNaviStats_801DF8C
+  reproduce: python3 tools/asmcat.py 0x080E23E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s functional description matches: writes into 0x1D0-stride entries at offsets 0x3A/0x3C
+    (per Param1 toggle, confirmed by the two strh branches), queues the two GFX transfers (0x100 and 0x20
+    bytes to 0x6017940/0x30016F0), sets Timer=0x46, and at expiry sets CurAction=0xC and CurPhaseAndPhaseInitialized=0
+    (ldr r0,#0xc strb at 0x80E248C, then mov r0,#0 strh — which also clears PhaseInitialized). The "0x10/0x20/0x40"
+    claim and Param1 behavior (mov r0,#0x10 … beq 0xE23FA, then mov r0,#0x40, so only 0x10 vs 0x40 are
+    passed) and inversion/branch on flag 0x40 & effect bit 8 are all correct. The chosen function name
+    is far off from a clean lowerCamel: "object_phaseQueueAttackGfx" reads awkwardly, "AttackGfx" doesn''t
+    describe the body (no attack animation queues; it''s opening/closing a status GFX and exposing the
+    haze-like 0x1E0/0x438 region), and the callee battle_setEnemyCountFromNaviStats stores into NaviStatusGfxIdx
+    offset 0x22 — far more like a chip-status/turn-effect setup, not an attack. Better to lean on what
+    it actually sets up: the per-battle-object haze/coverfield graphics.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which boss/object script invokes this phase and what attack it belongs to is unknown
+- Meaning of offsets 0x3A/0x3C in the 0x1D0-byte records at 2036120 (positions, HP, or some per-entry
+  parameter) is not established
+- What Param1 and Alliance encode for this object, and what the 0x10/0x20/0x40 value actually controls
+- What sub_800AE90(0x78, 0xC) does each frame while waiting
+- 'The proposal''s functional description matches: writes into 0x1D0-stride entries at offsets 0x3A/0x3C
+  (per Param1 toggle, confirmed by the two strh branches), queues the two GFX transfers (0x100 and 0x20
+  bytes to 0x6017940/0x30016F0), sets Timer=0x46, and at expiry sets CurAction=0xC and CurPhaseAndPhaseInitialized=0
+  (ldr r0,#0xc strb at 0x80E248C, then mov r0,#0 strh — which also clears PhaseInitialized). The "0x10/0x20/0x40"
+  claim and Param1 behavior (mov r0,#0x10 … beq 0xE23FA, then mov r0,#0x40, so only 0x10 vs 0x40 are passed)
+  and inversion/branch on flag 0x40 & effect bit 8 are all correct. The chosen function name is far off
+  from a clean lowerCamel: "object_phaseQueueAttackGfx" reads awkwardly, "AttackGfx" doesn''t describe
+  the body (no attack animation queues; it''s opening/closing a status GFX and exposing the haze-like
+  0x1E0/0x438 region), and the callee battle_setEnemyCountFromNaviStats stores into NaviStatusGfxIdx offset
+  0x22 — far more like a chip-status/turn-effect setup, not an attack. Better to lean on what it actually
+  sets up: the per-battle-object haze/coverfield graphics.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E23E8 -> object_setHazeCoverGfx
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E23E8

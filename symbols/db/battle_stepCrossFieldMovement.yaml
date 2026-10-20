@@ -1,0 +1,64 @@
+name: battle_stepCrossFieldMovement
+address: '0x080CA834'
+kind: function
+status: probable
+summary: Per-tick movement step that adds XVelocity to X, re-derives PanelX/PanelY and collision panels,
+  optionally registers a new collision state when reaching the far column, and on Timer expiry snaps coordinates
+  to panels then advances CurAction to 4.
+interface: (r5 = battle object pointer, no args) -> void; no meaningful return value or flags
+details: Adds oBattleObject_XVelocity to oBattleObject_X and re-derives the object's PanelX/PanelY and
+  collision panel position from the new pixel coordinates. On the first call where PanelX equals (Alliance^1)*5+1
+  (column 1 for player-side objects, column 6 for enemy-side objects — the far edge), sets ExtraVars+4
+  = 1 as a one-shot flag and calls object_updateCollisionData(1, 6, 5, 1), likely registering it as a
+  full-field collision state. Each call also decrements oBattleObject_Timer; when it reaches 0 it snaps
+  pixel coordinates back from the panel position, reloads Timer with 8, or 16 if Param3 is nonzero, and
+  sets CurAction = 4 with CurPhaseAndPhaseInitialized = 0 to move to the next scripted phase. The 8/16
+  timer split suggests the object moves at different speeds depending on Param3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_XVelocity]; add/str to oBattleObject_X then bl object_setPanelsFromCoordinates
+    + object_updateCollisionPanels — one-panel movement step; mov r1,#1; eor; mov r1,#5; mul; add #1;
+    cmp with PanelX — checks arrival at column 1 or 6 depending on Alliance; str r0,[r5,#oBattleObject_ExtraVars+4]
+    guards the one-shot object_updateCollisionData(1,6,5,1) call at loc_80CA86C entry; Timer decrement,
+    bne skip, then bl object_setCoordinatesFromPanels and Timer reload 8/0x10 based on Param3 — periodic
+    step pacing; CurAction = 4 and phase cleared only when Timer expires — end-of-move state transition'
+  refs:
+  - bn6f/asm/asm31.s:40366
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CA834
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name are reasonable—the code does integrate XVelocity into X, recompute panels/collision,
+    and on Timer==0 snap to panel coordinates and set CurAction=4. However, the call sequence is object_setPanelsFromCoordinates
+    then object_updateCollisionPanels, not the other way around, and it calls object_updateCollisionData(1,6,5,1)
+    only when PanelX first equals (Alliance^1)*5+1, registering a wider/different collision state, not
+    a ''full-field'' one. Also, there are no known callers, so the ''toward opponent''s back edge'' interpretation
+    is plausible but unverified by the code; the cleaner name matches code behavior more directly.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the object using this handler (and thus what it represents in-game) is unidentified
+- The exact meaning of object_updateCollisionData's arguments (1, 6, 5, 1) and of CurAction = 4 in this
+  object's action table are unknown
+- Whether XVelocity direction is fixed per Alliance or set externally before this runs is not shown
+- The summary and name are reasonable—the code does integrate XVelocity into X, recompute panels/collision,
+  and on Timer==0 snap to panel coordinates and set CurAction=4. However, the call sequence is object_setPanelsFromCoordinates
+  then object_updateCollisionPanels, not the other way around, and it calls object_updateCollisionData(1,6,5,1)
+  only when PanelX first equals (Alliance^1)*5+1, registering a wider/different collision state, not a
+  'full-field' one. Also, there are no known callers, so the 'toward opponent's back edge' interpretation
+  is plausible but unverified by the code; the cleaner name matches code behavior more directly.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA834 -> battle_stepCrossFieldMovement
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA834

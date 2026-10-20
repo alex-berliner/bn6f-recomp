@@ -1,0 +1,63 @@
+name: battle_redrawChipSelectScrollColumn
+address: '0x08125F5C'
+kind: function
+status: probable
+summary: After a chip-select scroll step, redraws the BG tile block 2 column strips (3-wide left strip,
+  an 8-wide right strip, a 2x14 middle strip and a 3x14 patch) and reloads up to 7 chip icon GFX plus
+  the 7 selection-slot structs; chooses between a standard and a 0xF/15-variant tile-offset layout.
+interface: (r5 = chip-select screen work struct; r0-r4 clobbered) -> r0 = destroyed; no return value
+details: Reads [r5+0x64]; returns immediately if 0, uses the special offset layout if it equals 0xF, otherwise
+  the normal one. Uses [r5+0x36] as an argument to the tile-draw helpers (likely a BG map/page id) and
+  [r5+0x74] as a base tile offset (0x5F is subtracted, then small column offsets are added), writing everything
+  into BG tile block 2 via byte_2017A00. In both branches it calls battle_loadChipIconSprites_8126430
+  with dword_201F420, byte_8124A4C and VRAM dest 0x6007800 to load up to 7 chip icons, and packSelectionSlots_8126494
+  to fill the 7 chip-selection slot structs. The two branches differ only in the tile offsets added to
+  the base (1/6/4/0xE vs 3/1/4/0xB), i.e. scroll up vs scroll down.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq/bne on [r5+0x64] vs 0 and 0 selects the two offset layouts or an early return; calls bg_drawTileStrip3Wide
+    / bg_drawTileStripTileBlock2_8126404 with r2=byte_2017A00 and offsets from [r5+0x74]-0x5F; calls battle_loadChipIconSprites_8126430
+    with dword_201F420 and VRAM 0x6007800 (dword_812610C); calls packSelectionSlots_8126494 with [r5+0x36]
+    and the same buffers, matching the 7-slot selection UI; six nearby callers at 0x8124ED4-0x812514C
+    all call this in sequence, consistent with scroll-step handlers
+  refs:
+  - bn6f/asm/asm33.s:5960
+  - 0x08124ED4 sub_8124ED4
+  - 0x08124F30 sub_8124F30
+  - 0x08124F8C sub_8124F8C
+  - 0x08126430 battle_loadChipIconSprites_8126430
+  - 0x081264E4 bg_copyTilePatchBlock2_81264E4
+  - 0x08126484 bg_drawTileRegion2x14_8126484
+  reproduce: python3 tools/asmcat.py 0x08125F5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the two branches (0xF vs non-0xF offset layouts), the use of [r5+0x36],
+    [r5+0x74], byte_2017A00, dword_201F420, and the VRAM dest 0x6007800, plus all five callees. However
+    the tiling offset sequence in the proposal is wrong: the first (0xF) branch uses column offsets 0x1,
+    0x6, 0x4, 0xE and the second (normal) branch uses 0x3, 0x1, 0x4, 0xB (the proposal swaps these). Also,
+    the 0xF branch additionally calls sub_81261FC which is not mentioned. Function name and summary are
+    acceptable but the offsets description is reversed.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the 0xF value in [r5+0x64] (likely a scroll-state id) and of [r5+0x36]/[r5+0x74] fields
+- which of the two branches corresponds to scrolling up vs down
+- 'The proposal correctly identifies the two branches (0xF vs non-0xF offset layouts), the use of [r5+0x36],
+  [r5+0x74], byte_2017A00, dword_201F420, and the VRAM dest 0x6007800, plus all five callees. However
+  the tiling offset sequence in the proposal is wrong: the first (0xF) branch uses column offsets 0x1,
+  0x6, 0x4, 0xE and the second (normal) branch uses 0x3, 0x1, 0x4, 0xB (the proposal swaps these). Also,
+  the 0xF branch additionally calls sub_81261FC which is not mentioned. Function name and summary are
+  acceptable but the offsets description is reversed.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8125F5C -> battle_redrawChipSelectScrollColumn
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125F5C

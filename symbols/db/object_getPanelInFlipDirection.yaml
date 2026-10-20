@@ -1,0 +1,67 @@
+name: object_getPanelInFlipDirection
+address: '0x0800D4D0'
+kind: function
+status: probable
+summary: From a starting battle panel, scans along a direction keyed by the second entity's facing through
+  a 2-entry {dx,dy} table, applies a flip-direction offset, and validates the resulting panel against
+  the 6x3 grid.
+interface: (r0 = facing flag A (also direction-table index), r1 = facing flag B, r2 = starting panel)
+  -> r0 = resulting panel (0 if none/check fails); Z flag = object_isValidPanel result
+details: 'Computes -object_getFlipDirection(r0, r1) and passes it as the 4th argument to object_getFirstPanelInDirectionFiltered,
+  so the scan direction is mirrored relative to the two entities'' facing. Uses r0 as an index into the
+  2-entry table byte_800D52C (each entry is an 8-byte {dx, dy} pair: {0,0x20} vertical, {0x20,0x horizontal),
+  i.e. 32-pixel panel steps). sub_800D53C is called first as a gate — if it returns 0 the function returns
+  0 immediately. If a panel is found, the raw object_getFlipDirection value (+1/-1) is added to it, producing
+  a panel one step further along the flip axis, and object_isValidPanel checks the 6x3 grid bounds. Quirk:
+  the validity check''s flags survive to the caller while r0 is reloaded with the adjusted panel, so callers
+  must read both.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r0 after object_getFlipDirection; result passed in r4 to object_getFirstPanelInDirectionFiltered
+    (mirrored scan); off_800D528 table indexed by r0<<3 yields {0,0x20} or {0x20,0} — one-panel pixel
+    step vectors for vertical vs horizontal scan; found panel at [sp,#8] gets object_getFlipDirection
+    added, then object_isValidPanel(r0, r2) bounds-checks it; caller object_getEdgePanelMatchingRow fits
+    a 'find panel along a row toward the edge' use; beq loc_800D524 after both sub_800D53C and the scan
+    return 0, so failure propagates as r0=0
+  refs:
+  - bn6f/asm/object.s:4127
+  - 0x0800D4C2 object_getEdgePanelMatchingRow
+  - 0x080E2C08 sub_80E2C08
+  - 0x080E650A sub_80E650A
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x0800D4D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm shows r0 is used as index into the direction table (lsl r2,r2,#3; add r1,r1,r2) and the
+    table has entries {dx,dy} with 0x20 steps. object_getFlipDirection is negated and passed as 4th arg,
+    then added to the found panel. However, the direction table is indexed by r1 (the second facing flag),
+    not r0 as stated. Also r0 is the facing flag A, r1 is facing flag B, r2 is starting panel. The proposed
+    name captures the essence but misses that r1 indexes the table.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_800D53C validates or filters (likely the starting panel or a panel type) — its body would clarify
+  the gate condition
+- Exact meaning of the 4th argument (-flip direction) to object_getFirstPanelInDirectionFiltered (filter
+  vs owner)
+- What sub_80E2C08 and sub_80E650A use the result for, to confirm the gameplay context
+- The asm shows r0 is used as index into the direction table (lsl r2,r2,#3; add r1,r1,r2) and the table
+  has entries {dx,dy} with 0x20 steps. object_getFlipDirection is negated and passed as 4th arg, then
+  added to the found panel. However, the direction table is indexed by r1 (the second facing flag), not
+  r0 as stated. Also r0 is the facing flag A, r1 is facing flag B, r2 is starting panel. The proposed
+  name captures the essence but misses that r1 indexes the table.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800D4D0 -> object_getPanelInFlipDirection
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D4D0

@@ -1,0 +1,60 @@
+name: init_saveFresh
+address: '0x08000F86'
+kind: function
+status: probable
+summary: When the save work area is reported invalid, sets EVENT_E00 and EVENT_1001, stores the incoming
+  r0 at toolkit->S2001c04+0x18, and commits the 0x6710-byte EWRAM save buffer to SRAM via save_writeAndVerifyEWRAMToSRAM_803F79E.
+interface: (r0 = value stored into toolkit->S2001c04->field_0x18, likely a save/option word) -> r0 = clobbered;
+  flags from callees; returns early (bne) if init reports the existing save as valid
+details: Takes r0, first calls toolkit_initAndVerifyWorkArea_0803F838; if that leaves Z clear the routine
+  returns without touching anything, so the body only runs on the invalid/first-boot path. It then sets
+  event flags EVENT_E00 and EVENT_1001 via SetEventFlagFromImmediate, evidently resetting story-progress
+  state for a fresh start. It loads the toolkit pointer at oToolkit_S2001c04_Ptr (r10-relative), stores
+  the incoming r0 at offset 0x18 of that structure, and finally calls save_writeAndVerifyEWRAMToSRAM_803F79E
+  to mirror the 0x6710-byte EWRAM save buffer to SRAM with checksum verification (which also toggles EVENT_1704).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne locret_8000FAA right after toolkit_initAndVerifyWorkArea makes the flag-setting/save body
+    conditional on init outcome; two SetEventFlagFromImmediate calls with EVENT_E00 and EVENT_1001 look
+    like new-game/story-reset flags; str r4, [r0,#0x18] via oToolkit_S2001c04_Ptr writes the caller's
+    r0 into the save structure; trailing bl save_writeAndVerifyEWRAMToSRAM_803F79E commits the work area
+    to Game Pak SRAM
+  refs:
+  - bn6f/asm/asm00_0.s:1880
+  - 0x08138730 sub_8138730
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0803F79E save_writeAndVerifyEWRAMToSRAM_803F79E
+  - 0x0803F838 toolkit_initAndVerifyWorkArea_0803F838
+  reproduce: python3 tools/asmcat.py 0x08000F86
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches: r4=r0 is preserved, toolkit_initAndVerifyWorkArea_0803F838 is called and bne jumps
+    to locret_8000FAA when Z clear (existing save valid). On the invalid path, EVENT_E00 and EVENT_1001
+    are set via SetEventFlagFromImmediate, then r0 is reloaded via r10+oToolkit_S2001c04_Ptr and r4 is
+    stored at offset 0x18, finally save_writeAndVerifyEWRAMToSRAM_803F79E is called. The summary''s ''reset
+    story-progress'' framing is speculative; the function is more precisely ''reset the in-memory work
+    area and persist it, used by a fresh-save / new-game path called from sub_8138730''. A clearer name
+    is init.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what r0 (stored at S2001c04+0x18) means — caller sub_8138730 is undocumented
+- exact semantics of EVENT_E00 and EVENT_1001 in the story-flag table
+- 'The asm matches: r4=r0 is preserved, toolkit_initAndVerifyWorkArea_0803F838 is called and bne jumps
+  to locret_8000FAA when Z clear (existing save valid). On the invalid path, EVENT_E00 and EVENT_1001
+  are set via SetEventFlagFromImmediate, then r0 is reloaded via r10+oToolkit_S2001c04_Ptr and r4 is stored
+  at offset 0x18, finally save_writeAndVerifyEWRAMToSRAM_803F79E is called. The summary''s ''reset story-progress''
+  framing is speculative; the function is more precisely ''reset the in-memory work area and persist it,
+  used by a fresh-save / new-game path called from sub_8138730''. A clearer name is init.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8000F86 -> init_saveFresh
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8000F86

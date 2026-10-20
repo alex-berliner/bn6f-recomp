@@ -1,0 +1,61 @@
+name: objectPerFrameUpdate
+address: '0x080DD7FC'
+kind: function
+status: probable
+summary: 'Per-frame driver for a battle object: tears down its collision data, destroys it if the battle
+  is over, otherwise dispatches to its CurAction handler and refreshes sprite and collision state.'
+interface: (r0 = battle object pointer (also cached in r5)) -> r0 = destroyed? (state set to CUR_STATE_DESTROY)
+  / handler result; calls object_removeCollisionData, battle_isBattleOver, action jump table, object_updateSprite,
+  object_presentCollisionData
+details: The function first calls object_removeCollisionData, then if the collision data's FlagsFromCollision
+  word is nonzero it also calls object_clearCollisionRegion to detach the object from its region. If battle_isBattleOver
+  returns true, it clears the collision region again and writes CUR_STATE_DESTROY into oBattleObject_CurState,
+  ending the object's life. Otherwise it indexes off_80DD838 with oBattleObject_CurAction (4 entries)
+  and tail-calls the selected handler via mov lr,pc; bx r1, after which it unconditionally runs object_updateSprite
+  and object_presentCollisionData for the frame. This is the standard per-frame driver for this object
+  class; the action handlers at sub_80DD848/87C/8D2/8F0 implement the object's four behaviors.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_removeCollisionData then optional bl object_clearCollisionRegion at top — per-frame
+    collision teardown; beq on battle_isBattleOver writes CUR_STATE_DESTROY to oBattleObject_CurState
+    — battle end destroys the object; ldr r1,[r1,r0] off off_80DD838 indexed by oBattleObject_CurAction
+    with mov lr,pc;bx r1 — action dispatcher; falls through to bl object_updateSprite and bl object_presentCollisionData
+    — sprite/collision refresh each frame; Callee summaries (object_updateSprite, object_presentCollisionData)
+    confirm a battle-object frame tick
+  refs:
+  - bn6f/asm/asm31.s:81061
+  - 0x080DD784 sub_80DD784
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DD7FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and call ordering match the code: it removes collision data (bl object_removeCollisionData),
+    conditionally clears collision region (tst r0,r0; beq loc_80DD80E), checks battle_isBattleOver, dispatches
+    via off_80DD838 (4 entries) using mov lr,pc/bx r1, then updates sprite and present collision data.
+    However the function itself is just the per-frame driver for the BattleObject struct, not a generic
+    ''battle object'', so a clearer name is objectPerFrameUpdate to match the existing object_* callee
+    style.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the four action handlers (sub_80DD848/87C/8D2/8F0) do, to name the object class specifically
+- What object class this is (caller sub_80DD784's role) — could refine name to e.g. battle_<objectType>Update
+- 'The summary and call ordering match the code: it removes collision data (bl object_removeCollisionData),
+  conditionally clears collision region (tst r0,r0; beq loc_80DD80E), checks battle_isBattleOver, dispatches
+  via off_80DD838 (4 entries) using mov lr,pc/bx r1, then updates sprite and present collision data. However
+  the function itself is just the per-frame driver for the BattleObject struct, not a generic ''battle
+  object'', so a clearer name is objectPerFrameUpdate to match the existing object_* callee style.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD7FC -> objectPerFrameUpdate
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD7FC

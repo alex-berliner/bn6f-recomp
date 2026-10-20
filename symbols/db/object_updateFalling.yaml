@@ -1,0 +1,66 @@
+name: object_updateFalling
+address: '0x080C7E6C'
+kind: function
+status: probable
+summary: Per-frame update for an object that falls under gravity; on landing it either hits solid ground
+  (calls sub_80C7EC8) or spawns a type-1 effect using three words at offset 0x34 as spawn parameters,
+  then clears its collision region, decrements its ExtraVars refcount, and destroys itself.
+interface: (r0 = unused/destroyed object ptr, r5 = battle object) -> r0 = 0; object state set to CUR_STATE_DESTROY
+  on landing
+details: In phase 0 the object waits while its height (oBattleObject_Z16) is under 0x1E, stores collision
+  region 1 via object_setCollisionRegion, and advances to phase 4. Afterwards each frame adds 0x2000 to
+  oBattleObject_ZVelocity and subtracts it from oBattleObject_Z, falling until Z <= 0. On landing it calls
+  object_isCurrentPanelSolid; if the panel is solid it calls sub_80C7EC8 (probably panel-crack or damage
+  handling), otherwise it spawns a type-1 effect object, copying three words from offset 0x34 of the object
+  as spawn parameters. It then clears its collision region, decrements the word pointed to by oBattleObject_ExtraVars
+  if set (reference count shared with the spawned effect), and sets its state to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'gravity: ldr r1,[ZVelocity]; add r1,#0x2000; Z -= ZVelocity, loop while positive (loc_80C7E86);
+    phase 0 gate on Z16 < 0x1E with object_setCollisionRegion(1) and phase := 4; landing branches on object_isCurrentPanelSolid
+    to sub_80C7EC8 or spawn_t1_0x0_EffectObject with ldmia r0!={r1-r3} from obj+0x34; cleanup: object_clearCollisionRegion,
+    decrement [ExtraVars], state := CUR_STATE_DESTROY'
+  refs:
+  - bn6f/asm/asm31.s:34635
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C7E6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it waits while Z16 < 0x1E in phase 0, sets collision
+    region 1 and advances to phase 4, then each frame adds 0x2000 to ZVelocity and subtracts it from Z.
+    On landing (Z <= 0), if the panel is solid it calls sub_80C7EC8, otherwise it spawns a type-1 effect
+    with three words from r5+0x34 as params. It then clears the collision region, decrements a refcount
+    via ExtraVars, and sets CUR_STATE_DESTROY. However, the callee is spawn_t1_0x0_EffectObject which
+    spawns a type-1 (not type-4) battle object, and the summary should reflect that it copies spawn params
+    from offset 0x34 of r5 (not ''the object''). The function takes (r5 = object) and returns nothing
+    meaningful, not r0=0. Also, r0 is clobbered by the call to sub_80C7EC8, not set to 0. Better name:
+    object_updateFalling.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which attack spawns this object (no callers known), so the exact game identity (meteor, debris, etc.)
+  is unconfirmed
+- what sub_80C7EC8 does on the solid-panel path
+- meaning of the word at object+0x34..0x3C passed to the spawned effect
+- 'The code matches the proposal''s behavior: it waits while Z16 < 0x1E in phase 0, sets collision region
+  1 and advances to phase 4, then each frame adds 0x2000 to ZVelocity and subtracts it from Z. On landing
+  (Z <= 0), if the panel is solid it calls sub_80C7EC8, otherwise it spawns a type-1 effect with three
+  words from r5+0x34 as params. It then clears the collision region, decrements a refcount via ExtraVars,
+  and sets CUR_STATE_DESTROY. However, the callee is spawn_t1_0x0_EffectObject which spawns a type-1 (not
+  type-4) battle object, and the summary should reflect that it copies spawn params from offset 0x34 of
+  r5 (not ''the object''). The function takes (r5 = object) and returns nothing meaningful, not r0=0.
+  Also, r0 is clobbered by the call to sub_80C7EC8, not set to 0. Better name: object_updateFalling.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7E6C -> object_updateFalling
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7E6C

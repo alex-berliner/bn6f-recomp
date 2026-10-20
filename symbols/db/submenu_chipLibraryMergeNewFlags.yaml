@@ -1,0 +1,69 @@
+name: submenu_chipLibraryMergeNewFlags
+address: '0x0812BC38'
+kind: function
+status: probable
+summary: Merges per-chip 'newly obtained' flags (0x2020) into the 'registered' flag block (0x2220), snapshots/restores
+  0x2020, scans chips to detect newly registered entries (state 0x12) vs none (state 0x11), clears 0x2020
+  for invalid chips, then recomputes save checksum (and conditionally triggers sub_803F798 when nothing
+  new was found).
+interface: (r5 = menu/task object with state byte at +0x10) -> r0 = next state in [r5+0x10] (0x11 = no
+  new chips, 0x12 = new chips); writes [r5+0xC]=8, [r5+0x28]=0x96
+details: 'Early-out if the object state is already 0xF (sets state 0x11-like path). It ORs the whole 0x40-byte
+  event-flag block starting at flag 0x2020 (new-obtained chips, one bit per chip) into the block at 0x2220
+  (registered chips), sets flag EVENT_2020, then restores the 0x2020 block from a saved snapshot at unk_2033C00.
+  It then loops the 0x200 chip slots via getChip8021DA8: for chips whose ChipData byte 9 has bit 0x40
+  (valid/library-eligible chip), if flag 0x2020+i is set but 0x1E20+i (seen/registered?) is clear and
+  0x2220+i is set, a ''new chip'' is detected and the result state stays 0x12; otherwise it falls to 0x11.
+  A second loop clears flag 0x2020+i for chips lacking bit 0x40. Finally it calls the save-data checksum
+  routine encryption_80070bc, and if the result was 0x11 (no new chips) also calls sub_803F798.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_812BC70 loop: ORs flag block 0x2020 into block 0x2220 over 0x40 bytes, then SetEventFlagFromImmediate(EVENT_2020);
+    CopyByEightWords(unk_2033C00, flagbase+0x2020/8, 0x40) restores the snapshot into the 0x2020 flag
+    block; Main loop tests 0x2020+i, 0x1E20+i, 0x2220+i for each of 0x200 chips with ChipData byte9 bit
+    0x40, choosing r7=0x12 vs 0x11; Second loop ClearEventFlag(0x2020+i) for chips without bit 0x40, then
+    encryption_80070bc (save checksum); State machine writes: [r5+0xC]=8, [r5+0x10]=r7, [r5+0x28]=0x96,
+    conditional bl sub_803F798'
+  refs:
+  - bn6f/asm/asm33.s:18096
+  - 0x0802F130 ClearEventFlag
+  - 0x08000950 CopyByEightWords
+  - 0x0802F110 SetEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0812BC38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior: it early-outs if state is 0xF, ORs the 0x2020 chip-flag
+    block into 0x2220 (registered), sets EVENT_2020, restores 0x2020 from unk_2033C00 via CopyByEightWords,
+    scans 0x200 chip slots to detect newly-registered chips (bit 0x40 valid, 0x2020+i set, 0x1E20+i clear,
+    0x2220+i set), clears 0x2020+i for invalid chips, calls encryption_80070bc, and conditionally calls
+    sub_803F798. However, the name ''menu_libraryCheckNewChips'' implies it''s menu-specific, but no callers
+    are known and the function writes to the global event-flag block, suggesting a more general save/library
+    role. A better prefix would be ''submenu'' given it deals with the chip library menu, but since callers
+    are unknown the name is uncertain.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the identity of r5's object (library menu vs some save-load task) and the meaning
+  of states 0xF/0x11/0x12 are inferred, not confirmed
+- Exact semantics of the three flag families (0x1E20 seen vs 0x2020 newly-obtained vs 0x2220 registered)
+  and of ChipData byte9 bit 0x40 are guessed from the flag arithmetic
+- 'The code matches the proposed behavior: it early-outs if state is 0xF, ORs the 0x2020 chip-flag block
+  into 0x2220 (registered), sets EVENT_2020, restores 0x2020 from unk_2033C00 via CopyByEightWords, scans
+  0x200 chip slots to detect newly-registered chips (bit 0x40 valid, 0x2020+i set, 0x1E20+i clear, 0x2220+i
+  set), clears 0x2020+i for invalid chips, calls encryption_80070bc, and conditionally calls sub_803F798.
+  However, the name ''menu_libraryCheckNewChips'' implies it''s menu-specific, but no callers are known
+  and the function writes to the global event-flag block, suggesting a more general save/library role.
+  A better prefix would be ''submenu'' given it deals with the chip library menu, but since callers are
+  unknown the name is uncertain.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812BC38 -> submenu_chipLibraryMergeNewFlags
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BC38

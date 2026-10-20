@@ -1,0 +1,68 @@
+name: battle_dispatchHandSlotChip
+address: '0x0802DED8'
+kind: function
+status: probable
+summary: Reads the selected hand slot index (r5+0x16), looks up its per-slot record and hand entry, skips
+  empty slots (chipID==0xFFFF), adds two record-based bonuses to a hand-stored u16 when chip-data byte
+  9 has bits 0x2/0x4 set, then calls battle_chipEffectDispatcher_80109A4 and returns chipID, dispatcher
+  result, adjusted value, and the ChipData pointer.
+interface: (r5 = struct with u8 selected slot index at +0x16; r0 unused) -> r0 = chip ID, r1 = chip-effect
+  handler result, r2 = adjusted damage value, r3 = *ChipData
+details: 'Reads the slot index at [r5+0x16] and fetches both the 0x1D0-stride per-slot record at 0x2036120
+  (via getEntryPtr_2036120_1D0) and the 0x50-stride hand slot at 0x20349C0. From the hand slot it takes
+  chipID (+0x02), and two u16 fields (+0x0E and +0x1A, the latter used as a base value in r7). If chipID
+  == 0xFFFF (empty slot) it returns immediately. Otherwise it looks up the 44-byte ChipData record; when
+  byte 9 has bit 0x2 set it adds record+0x36 to the base value, and when bit 0x4 is set it also adds record+0x38,
+  i.e. two conditional damage/amount bonuses stored in the per-slot record. It then calls battle_chipEffectDispatcher_80109A4
+  with r0=chipID, r1=slot index, re-fetches ChipData, and returns chipID, the dispatcher result, the adjusted
+  value, and the ChipData pointer. Quirk: r5 is never initialized here, so the caller must pre-load it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x16] used for both getEntryPtr_2036120_1D0 and getBattleHandAddr — slot-indexed
+    selection; cmp r0,0xFFFF / beq locret — empty hand slot short-circuits before any effect runs; ldrb
+    r0,[r4,#9]; tst #2/#4 add [r6+0x36]/[r6+0x38] — conditional bonuses from the 0x1D0 record added to
+    the hand slot''s +0x1A value; push/pop shuffling around battle_chipEffectDispatcher_80109A4 passes
+    (chipID, slot index) and preserves r0/r2 as return values; getChip8021DA8 called twice on the same
+    chipID, second result returned in r3 for the caller'
+  refs:
+  - bn6f/asm/asm03_0.s:16798
+  - 0x080109A4 battle_chipEffectDispatcher_80109A4
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x0802DED8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate (reads slot index from r5+0x16, fetches per-slot record and hand
+    slot, applies two conditional bonuses from record+0x36/0x38 to the base value from hand+0x1A, dispatches
+    via battle_chipEffectDispatcher_80109A4, and returns chipID/effect-result/adjusted-value/ChipData
+    pointer). However the function does not actually use hand+0x02 as a chipID; the only chipID read is
+    later re-popped for the dispatcher call. Also the proposed name `battle_useHandSlotChip` is fine,
+    but a more descriptive `battle_dispatchHandSlotChip` better captures that it computes adjusted damage
+    then calls the effect dispatcher.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the identity of the r5 struct and why r5 (not r0) carries it is unconfirmed
+- Exact meaning of ChipData byte 9 bits 0x2/0x4 and of the 0x1D0-record fields +0x36/+0x38 (bonus damage
+  sources?) not proven
+- What the +0x0E and +0x1A hand-slot fields are (element/code vs base damage) needs cross-references from
+  hand-handling code
+- The summary is mostly accurate (reads slot index from r5+0x16, fetches per-slot record and hand slot,
+  applies two conditional bonuses from record+0x36/0x38 to the base value from hand+0x1A, dispatches via
+  battle_chipEffectDispatcher_80109A4, and returns chipID/effect-result/adjusted-value/ChipData pointer).
+  However the function does not actually use hand+0x02 as a chipID; the only chipID read is later re-popped
+  for the dispatcher call. Also the proposed name `battle_useHandSlotChip` is fine, but a more descriptive
+  `battle_dispatchHandSlotChip` better captures that it computes adjusted damage then calls the effect
+  dispatcher.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802DED8 -> battle_dispatchHandSlotChip
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DED8

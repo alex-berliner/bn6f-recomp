@@ -1,0 +1,59 @@
+name: battle_objFallAndShatter
+address: '0x080DB7B2'
+kind: function
+status: probable
+summary: Phase handler that makes a battle object play a falling animation, spawn a child effect at frame
+  20, and on expiry crack its current panel with a camera shake (mag 2, dur 0x14) and sound 0xC0 if the
+  panel is solid, then transition to destroy state.
+interface: (r5 = battle object struct) -> r0 = destroy-state value written on expiry; sets object fields
+details: On first entry (PhaseInitialized == 0) it marks the phase initialized (4), sets CurAnim to 0x1A
+  and Timer to 0x1E, then returns. Each tick decrements Timer; when it reaches 0x1A it calls sub_80DB890
+  (likely an intermediate effect/spawn). When Timer hits 0 it checks object_isCurrentPanelSolid; if the
+  panel is solid it triggers a camera shake (magnitude 2, duration 0x14), plays sound effect 0xC0 (impact/crack),
+  cracks the object's panel (PanelX/PanelY), and finally sets CurState to CUR_STATE_DESTROY. So the object
+  appears for ~30 frames, does something at frame 20, and on expiry breaks the tile it occupies.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: init branch sets oBattleObject_CurAnim=0x1A and Timer=0x1E, typical of a timed phase handler;
+    sub_80DB890 call at Timer==0x1A is the only other action before expiry; on Timer<=0 it calls object_isCurrentPanelSolid
+    and only acts when solid; solid case chains camera_initShakeEffect(2,0x14), PlaySoundEffect(0xC0),
+    object_crackPanel(PanelX,PanelY); it then stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+    ending the object
+  refs:
+  - bn6f/asm/asm31.s:76881
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080DB7B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name ''battle_objDropImpactPhase'' is reasonable but the code shows the side chain
+    (shake/sound/crack) triggers when Timer==0x19 after decrement, not when Timer==0; on Timer==0 it just
+    sets CUR_STATE_DESTROY. Also sub_80DB890 is called unconditionally before the solid-panel check, so
+    the summary''s ''does something at frame 20'' is correct but the cracking is conditional on panel
+    being solid. A simpler name fits the fall-and-shatter behavior better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80DB890 does (likely the visual/spawn half of the same attack, e.g. the falling body or warning
+  shadow)
+- Which in-game attack or obstacle owns this object — no caller is known, so the exact identity (meteor,
+  falling block, etc.) is unconfirmed
+- The proposed name 'battle_objDropImpactPhase' is reasonable but the code shows the side chain (shake/sound/crack)
+  triggers when Timer==0x19 after decrement, not when Timer==0; on Timer==0 it just sets CUR_STATE_DESTROY.
+  Also sub_80DB890 is called unconditionally before the solid-panel check, so the summary's 'does something
+  at frame 20' is correct but the cracking is conditional on panel being solid. A simpler name fits the
+  fall-and-shatter behavior better.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB7B2 -> battle_objFallAndShatter
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB7B2

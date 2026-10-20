@@ -2,48 +2,44 @@ name: submenu_dispatchPendingSelection
 address: '0x0802C0A4'
 kind: function
 status: probable
-summary: 'After a per-frame countdown at r5+0xb expires, dispatches the packed selection ID at r5+0x10
-  by group: group 0 validates a chip against the chip DB and calls sub_802C75C with sound 0x96; group
-  1 opens a text dialog (sub_802C5B0) with 0x95; group 2 calls sub_802C646 with 0x95 and re-arms the counter
-  to 0x1e while writing state 8/0 at [r5+2]/[r5+3]; group 3 calls sub_802C5E6 with 0x95; finally zeroes
-  the halfword at [r5+2].'
-interface: '(r5 = menu state struct; no register args) -> r0 clobbered by calls; updates struct: [r5+0xb]
-  counter, [r5+0x10] pending ID cleared to 0xFFFF path via [r5+2]=0, [r5+2]/[r5+3] state for group 2'
-details: 'r5 is a screen/task state struct passed via the frame register. Each call decrements the byte
-  at r5+0xb; the body only runs when it hits 0. It then reads the 16-bit packed selection ID at r5+0x10
-  (0xFFFF = nothing pending) and decodes it with decodePackedIdFields into a 2-bit group plus index fields.
-  Group 0 is chip-related: if [r5+4] != 2, it looks up the chip ID (bounded by 0x136) in the chip database
-  and compares the first four bytes of the 44-byte ChipData record against the decoded sub-index (skipping
-  the action if none match), then calls sub_802C75C with (index, subindex, 1, ...) and sound 0x96. Group
-  1 opens a text dialog via textWindow_openDialog_802C5B0 with sound 0x95; group 2 calls sub_802C646,
-  plays 0x95, and reloads the counter with 0x1e while setting [r5+2]=8, [r5+3]=0 as a new screen state;
-  group 3 calls sub_802C5E6 with sound 0x95. In all other paths it stores 0 to halfword [r5+2], ending
-  the current state.'
+summary: 'After a per-frame countdown at r5+0xb expires, dispatches the packed selection ID at r5+0x10 by group:
+  group 0 validates a chip against the chip DB and calls sub_802C75C with sound 0x96; group 1 opens a text dialog
+  (sub_802C5B0) with 0x95; group 2 calls sub_802C646 with 0x95 and re-arms the counter to 0x1e while writing state
+  8/0 at [r5+2]/[r5+3]; group 3 calls sub_802C5E6 with 0x95; finally zeroes the halfword at [r5+2].'
+interface: '(r5 = menu state struct; no register args) -> r0 clobbered by calls; updates struct: [r5+0xb] counter,
+  [r5+0x10] pending ID cleared to 0xFFFF path via [r5+2]=0, [r5+2]/[r5+3] state for group 2'
+details: 'r5 is a screen/task state struct passed via the frame register. Each call decrements the byte at r5+0xb;
+  the body only runs when it hits 0. It then reads the 16-bit packed selection ID at r5+0x10 (0xFFFF = nothing pending)
+  and decodes it with decodePackedIdFields into a 2-bit group plus index fields. Group 0 is chip-related: if [r5+4]
+  != 2, it looks up the chip ID (bounded by 0x136) in the chip database and compares the first four bytes of the
+  44-byte ChipData record against the decoded sub-index (skipping the action if none match), then calls sub_802C75C
+  with (index, subindex, 1, ...) and sound 0x96. Group 1 opens a text dialog via textWindow_openDialog_802C5B0 with
+  sound 0x95; group 2 calls sub_802C646, plays 0x95, and reloads the counter with 0x1e while setting [r5+2]=8, [r5+3]=0
+  as a new screen state; group 3 calls sub_802C5E6 with sound 0x95. In all other paths it stores 0 to halfword [r5+2],
+  ending the current state.'
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'ldrb r0,[r5,#0xb]; sub r0,#1; strb ...; bne locret — one-shot deferred action gated by a countdown;
-    ldrh r0,[r5,#0x10] vs 0xFFFF then bl decodePackedIdFields_802C54C — pending packed selection ID with
-    ''none'' sentinel; group 0: bl getChip8021DA8, compares ChipData bytes 0-3 to decoded field r4, then
-    bl sub_802C75C and PlaySoundEffect(0x96); group 1: bl textWindow_openDialog_802C5B0 then PlaySoundEffect(0x95)
-    — an in-game dialog action; group 2: bl sub_802C646, PlaySoundEffect(0x95), strb 0x1e [r5,#0xb], strb
-    8 [r5,#2] — transitions to a new timed state'
+  detail: 'ldrb r0,[r5,#0xb]; sub r0,#1; strb ...; bne locret — one-shot deferred action gated by a countdown; ldrh
+    r0,[r5,#0x10] vs 0xFFFF then bl decodePackedIdFields_802C54C — pending packed selection ID with ''none'' sentinel;
+    group 0: bl getChip8021DA8, compares ChipData bytes 0-3 to decoded field r4, then bl sub_802C75C and PlaySoundEffect(0x96);
+    group 1: bl textWindow_openDialog_802C5B0 then PlaySoundEffect(0x95) — an in-game dialog action; group 2: bl
+    sub_802C646, PlaySoundEffect(0x95), strb 0x1e [r5,#0xb], strb 8 [r5,#2] — transitions to a new timed state'
   refs:
   - bn6f/asm/asm03_0.s:12495
   - 0x080005CC PlaySoundEffect
   - 0x0802C54C decodePackedIdFields_802C54C
   - 0x08021AA4 getChip8021DA8
   reproduce: python3 tools/asmcat.py 0x0802C0A4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and most details match the code: the counter decrement at r5+0xb, decodePackedIdFields,
-    group 0 chip lookup against 0x136 (dword_802C16C) comparing first 4 bytes, group 1 dialog with sound
-    0x95, group 3 sub_802C5E6 with 0x95, and the strh 0 at [r5+2] tail all check out. However, group 2
-    plays 0x95 (not 0x95 as stated — wait, that''s correct) but the proposal says ''two sub-screens''
-    while group 2 calls only sub_802C646 (one). Also the claim that [r5+0x10] is ''cleared to 0xFFFF path
-    via [r5+2]=0'' is misleading: only [r5+2] is zeroed, [r5+0x10] is never cleared. Minor wording: ''sub-screens''
-    is overreach since only sub_802C646 is called for group 2.; run wf investigate investigate-20261018-155607;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    and most details match the code: the counter decrement at r5+0xb, decodePackedIdFields, group 0 chip lookup
+    against 0x136 (dword_802C16C) comparing first 4 bytes, group 1 dialog with sound 0x95, group 3 sub_802C5E6 with
+    0x95, and the strh 0 at [r5+2] tail all check out. However, group 2 plays 0x95 (not 0x95 as stated — wait, that''s
+    correct) but the proposal says ''two sub-screens'' while group 2 calls only sub_802C646 (one). Also the claim
+    that [r5+0x10] is ''cleared to 0xFFFF path via [r5+2]=0'' is misleading: only [r5+2] is zeroed, [r5+0x10] is
+    never cleared. Minor wording: ''sub-screens'' is overreach since only sub_802C646 is called for group 2.; run
+    wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 coverage:
 - battles1
 - battles2
@@ -57,18 +53,17 @@ coverage:
 - story8
 - story9
 open_questions:
-- Which screen owns the r5 struct (folder/library/edit-deck/help menu?) — no caller is recorded, so the
-  owner is unknown
+- Which screen owns the r5 struct (folder/library/edit-deck/help menu?) — no caller is recorded, so the owner is
+  unknown
 - Purpose of sub_802C75C, sub_802C5E6 and sub_802C646, which would pin down the exact action of each group
-- Meaning of [r5+4]==2 bypassing the chip-record byte comparison, and what the compared ChipData bytes
-  0-3 represent (element/type vs a related-ID list)
-- 'The summary and most details match the code: the counter decrement at r5+0xb, decodePackedIdFields,
-  group 0 chip lookup against 0x136 (dword_802C16C) comparing first 4 bytes, group 1 dialog with sound
-  0x95, group 3 sub_802C5E6 with 0x95, and the strh 0 at [r5+2] tail all check out. However, group 2 plays
-  0x95 (not 0x95 as stated — wait, that''s correct) but the proposal says ''two sub-screens'' while group
-  2 calls only sub_802C646 (one). Also the claim that [r5+0x10] is ''cleared to 0xFFFF path via [r5+2]=0''
-  is misleading: only [r5+2] is zeroed, [r5+0x10] is never cleared. Minor wording: ''sub-screens'' is
-  overreach since only sub_802C646 is called for group 2.'
+- Meaning of [r5+4]==2 bypassing the chip-record byte comparison, and what the compared ChipData bytes 0-3 represent
+  (element/type vs a related-ID list)
+- 'The summary and most details match the code: the counter decrement at r5+0xb, decodePackedIdFields, group 0 chip
+  lookup against 0x136 (dword_802C16C) comparing first 4 bytes, group 1 dialog with sound 0x95, group 3 sub_802C5E6
+  with 0x95, and the strh 0 at [r5+2] tail all check out. However, group 2 plays 0x95 (not 0x95 as stated — wait,
+  that''s correct) but the proposal says ''two sub-screens'' while group 2 calls only sub_802C646 (one). Also the
+  claim that [r5+0x10] is ''cleared to 0xFFFF path via [r5+2]=0'' is misleading: only [r5+2] is zeroed, [r5+0x10]
+  is never cleared. Minor wording: ''sub-screens'' is overreach since only sub_802C646 is called for group 2.'
 sources:
 - wf investigate investigate-20261018-155607
 changes:
@@ -80,5 +75,9 @@ changes:
   what: rename sub_802C0A4 -> submenu_dispatchPendingSelection
   where: bn6f 0086088f
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
 previous_names:
 - sub_802C0A4

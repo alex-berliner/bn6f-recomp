@@ -1,0 +1,68 @@
+name: snakearm_initMoveToFrontPanel
+address: '0x080DECBC'
+kind: function
+status: probable
+summary: 'Initializes a snake-arm battle object to move toward the panel in front of it: reads per-index
+  table data into 0x78/0x7a and 0x6c, sets DirectionFlip=1, computes the front panel and stores it at
+  0x60/0x61, derives screen-coordinate velocity via object_getCoordinatesForPanels and battleCoordCalc_8114F6A,
+  clears Z/0x64/0x68/0x6a, sets CurAnim=1 and 0x63=1, then calls sub_80DED80.'
+interface: (r0-r3 unused; r5 = battle object) -> void; sets X/Y/ZVelocity, target panel fields, animation
+  state
+details: Reads an index from oBattleObject+0x62 and looks up byte_80DEA70[index*4], storing the two halfwords
+  into fields 0x78/0x7a (purpose unknown). Sets DirectionFlip=1, calls object_getFrontDirection, and sets
+  the target panel to (PanelX+frontDir, PanelY), copying it into fields 0x60/0x61. A second table byte_80DEA50[index*2]
+  supplies a speed value stored to 0x6c and copied to 0x66. It converts the target panel to screen coords
+  via object_getCoordinatesForPanels, then calls battleCoordCalc_8114F6A with the object's position (r5+0x34),
+  the speed, and 0, storing the result as X/Y/ZVelocity. It zeroes Z, the 0x68 counter and 0x64, sets
+  CurAnim=1 and field 0x63=1, then calls sub_80DED80 — a launch/move setup for a projectile-like object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'panelX+frontDirection stored to 0x60 and PanelY to 0x61: target panel directly ahead (front-direction
+    call); byte_80DEA50 indexed by field 0x62*1 loaded into 0x6c, passed as r4 speed to battleCoordCalc_8114F6A;
+    battleCoordCalc output stored to oBattleObject_X/Y/ZVelocity — a velocity toward the converted panel
+    coordinates; CurAnim (0x62 offset? no, 0x63) set to 1 and Z/timer fields cleared: fresh movement state
+    for a spawned object; sole caller snakearmRelated_80DEAA8 groups it with the snake-arm attack code'
+  refs:
+  - bn6f/asm/asm31.s:83911
+  - 0x080DEAA8 snakearmRelated_80DEAA8
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08114F6A battleCoordCalc_8114F6A
+  reproduce: python3 tools/asmcat.py 0x080DECBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function clearly reads byte_80DEA70[index*4] into 0x78/0x7a and byte_80DEA50[index*2] into 0x6c/0x66,
+    sets target panel to front-adjacent panel via object_getFrontDirection, computes velocity via battleCoordCalc_8114F6A,
+    sets CurAnim=1 and 0x63=1, then calls sub_80DED80. This matches a snake-arm object''s move initialization.
+    The proposed name is fine but the prefix list does not include ''snakearm'' for ''init'' verbs — however
+    the rules say snakearm is an allowed prefix, so ''snakearm_initMoveToFrontPanel'' is acceptable. The
+    summary slightly overstates: it says ''fly'' and ''projectile-like'' which the asm doesn''t prove;
+    the fields 0x78/0x7a are called ''purpose unknown'' but could be target/destination panel-coords like
+    the other table write. A more neutral summary is better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- meaning of the index at +0x62 and the two tables byte_80DEA70/byte_80DEA50 (what 0x78/0x7a hold)
+- what sub_80DED80 does after setup
+- exact semantics of battleCoordCalc_8114F6A's arguments (r3=0)
+- 'The function clearly reads byte_80DEA70[index*4] into 0x78/0x7a and byte_80DEA50[index*2] into 0x6c/0x66,
+  sets target panel to front-adjacent panel via object_getFrontDirection, computes velocity via battleCoordCalc_8114F6A,
+  sets CurAnim=1 and 0x63=1, then calls sub_80DED80. This matches a snake-arm object''s move initialization.
+  The proposed name is fine but the prefix list does not include ''snakearm'' for ''init'' verbs — however
+  the rules say snakearm is an allowed prefix, so ''snakearm_initMoveToFrontPanel'' is acceptable. The
+  summary slightly overstates: it says ''fly'' and ''projectile-like'' which the asm doesn''t prove; the
+  fields 0x78/0x7a are called ''purpose unknown'' but could be target/destination panel-coords like the
+  other table write. A more neutral summary is better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DECBC -> snakearm_initMoveToFrontPanel
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DECBC

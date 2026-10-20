@@ -1,0 +1,64 @@
+name: initSpawnedObject
+address: '0x081177A4'
+kind: function
+status: probable
+summary: 'Initializer handler for an object: sets type/state byte to 0x23, attaches sprite 0xF from byte_202FA04
+  via initGuiSprite, clears field +0xC, configures sprite (setAnimation, loadAnimationData, noShadow,
+  palette bank 8, sub-record field A = 1, OAM priority 0), stores halfword 0x40 into a slot, sets field
+  +8 = 4, then tail-calls sub_81177EC.'
+interface: (r5 = current object struct) -> void; calls initGuiSprite with (0xF, &byte_202FA04) to attach
+  sprite data
+details: 'This looks like a spawn/init handler running with the object pointer in r5. It writes 0x23 to
+  the object''s first byte (type/state ID), then calls initGuiSprite with sprite-resource pointer byte_202FA04,
+  resets the object field at +0xC to 0, and runs the standard sprite setup: sprite_setAnimation, sprite_loadAnimationData,
+  sprite_noShadow, palette bank 8 on the selected sub-entry, sub-record field A = 1, and OAM priority
+  0. It also stores halfword 0x40 into a slot list entry via slotList_storeHalfwordAndClearField, and
+  sets byte +8 = 4 before tail-calling an unknown sub_81177EC (likely the object''s first update/behavior
+  step). No callers are known, so whether 0x23/0x40/4 correspond to a specific game entity is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] sets the object''s type/state byte before any sprite setup; ldr r1,=byte_202FA04
+    + bl initGuiSprite_8002770 attaches the sprite resource block to the object; sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow/palette
+    bank 8/priority 0 form the standard sprite-init sequence; bl slotList_storeHalfwordAndClearField_800306C
+    with r0=0x40 writes a value into a 16-byte slot keyed by the object''s byte +2; mov r0,#4; strb r0,[r5,#8]
+    and tail-call sub_81177EC suggest handoff to per-type behavior'
+  refs:
+  - bn6f/asm/asm32.s:19267
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x081177A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary mostly fit: writes 0x23 to type byte, calls initGuiSprite with (0xF, byte_202FA04),
+    clears +0xC, sets up sprite (animation, no shadow, palette bank 8, priority 0), stores 0x40 via slotList,
+    byte +8 = 4, then tail-calls sub_81177EC. However, `initGuiSprite` is called with a1=0xF which is
+    an object ID, not just a flag, and r5 is the current object; also sprite_setSubRecordFieldA is called
+    with r0=1, not A=1 in the summary. The name should emphasize ''spawn'' less and ''init'' more clearly,
+    since this looks like the standard object initializer pattern (type byte + sprite attach + sub_81177EC
+    tail-call suggests an OnInit handler).; run wf investigate investigate-20261018-223614; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- identity of the object with type 0x23 and what byte_202FA04's sprite depicts
+- what sub_81177EC does after init
+- meaning of the 0x40 halfword written into the slot list
+- 'The name and summary mostly fit: writes 0x23 to type byte, calls initGuiSprite with (0xF, byte_202FA04),
+  clears +0xC, sets up sprite (animation, no shadow, palette bank 8, priority 0), stores 0x40 via slotList,
+  byte +8 = 4, then tail-calls sub_81177EC. However, `initGuiSprite` is called with a1=0xF which is an
+  object ID, not just a flag, and r5 is the current object; also sprite_setSubRecordFieldA is called with
+  r0=1, not A=1 in the summary. The name should emphasize ''spawn'' less and ''init'' more clearly, since
+  this looks like the standard object initializer pattern (type byte + sprite attach + sub_81177EC tail-call
+  suggests an OnInit handler).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81177A4 -> initSpawnedObject
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81177A4

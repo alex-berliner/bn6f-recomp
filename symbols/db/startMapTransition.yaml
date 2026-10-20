@@ -1,0 +1,55 @@
+name: startMapTransition
+address: '0x08005EA2'
+kind: function
+status: probable
+summary: 'Starts a map warp: snapshots the current map group and player position into game state, triggers
+  a screen fade, and sets the subsystem index so the next reload restores the destination scene.'
+interface: () -> void; no args or return
+details: Reads the game state via the toolkit pointer, copies oGameState_MapGroup into oGameState_LastMapGroup
+  so the old map is remembered, then calls updatePlayerGameState_800107A to stash the player's X/Y/Z and
+  facing for the return trip. It starts a screen fade with SetScreenFade(0xc, 0x10) and finally writes
+  0x2c into oGameState_SubsystemIndex, which per the trigger comment routes through cbGameState_80050EC
+  to pet_tickSceneAndReloadOnFade, i.e. the next main-loop state reloads the scene once the fade completes.
+  This is the standard 'warp to another map' entry, invoked from a chatbox/script command at 0x080425A0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oGameState_MapGroup]; strh r0,[r5,#oGameState_LastMapGroup] — saves current map
+    for return; bl updatePlayerGameState_800107A — known to snapshot overworld player position/facing
+    into game state; bl SetScreenFade with (0xc,0x10) — initiates the fade-out of the transition; strb
+    #0x2c,[r5,#oGameState_SubsystemIndex] with cbGameState_80050EC tickSceneAndReloadOnFade comment —
+    hands control to the reload-on-fade subsystem; caller 0x080425A0 chatbox_80425A0 — invoked from a
+    chatbox/script context, consistent with a warp script command'
+  refs:
+  - bn6f/asm/asm00_1.s:6206
+  - 0x080425A0 chatbox_80425A0
+  - 0x0800107A updatePlayerGameState_800107A
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08005EA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code copies MapGroup into LastMapGroup, calls updatePlayerGameState_800107A, starts SetScreenFade(0xc,0x10),
+    then writes 0x2c to SubsystemIndex to route through cbGameState_80050EC and reload the scene after
+    the fade. This matches a map-transition / warp entry exactly. The name ''start_mapTransition'' is
+    reasonable but uses an underscore; lowerCamel per the rules would be ''startMapTransition''.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of SetScreenFade arguments 0xc/0x10
+- what subsystem index 0x2c is named elsewhere in the project
+- The code copies MapGroup into LastMapGroup, calls updatePlayerGameState_800107A, starts SetScreenFade(0xc,0x10),
+  then writes 0x2c to SubsystemIndex to route through cbGameState_80050EC and reload the scene after the
+  fade. This matches a map-transition / warp entry exactly. The name 'start_mapTransition' is reasonable
+  but uses an underscore; lowerCamel per the rules would be 'startMapTransition'.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005EA2 -> startMapTransition
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005EA2

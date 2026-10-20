@@ -1,0 +1,66 @@
+name: object_copySpriteFromRelated
+address: '0x080E895C'
+kind: function
+status: probable
+summary: Overwrites this battle object's sprite fields (resource IDs at +0x34) with copies of RelatedObject1's,
+  reloads the sprite and animation data, applies noShadow, palette 0x10, the related object's flip and
+  visibility bit 2, then advances to the update phase.
+interface: (r0 = this object, r5 = this object in practice) -> r0 = state-phase constant CUR_STATE_UPDATE
+  written to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: It first copies three words from RelatedObject1+0x34 into this object+0x34 (likely the source's
+  sprite/resource identifiers). It then calls sprite_load with (0x80, 8, 0x14), loads the animation data,
+  and marks the sprite shadowless. It temporarily sets flag bit 2 in oObjectHeader_Fields, copies oBattleObject_Param1
+  into both oBattleObject_CurAnim and oBattleObject_CurAnimCopy, sets that animation, reloads animation
+  data, sets palette 0x10, and applies the flip returned by object_getFlip. Finally it clears its own
+  flag bit 2 and re-ORs it with the related object's bit 2, so the clone's visibility mirrors the source,
+  and stores CUR_STATE_UPDATE into the state/phase field, which is the standard tail of a battle state-action
+  handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia/stmia of {r1-r3} between RelatedObject1+0x34 and r5+0x34 copies the source's sprite-related
+    fields; bl sprite_load with r0=0x80,r1=8,r2=0x14 followed by sprite_loadAnimationData and sprite_noShadow
+    rebuilds the sprite; ldrb r0,[r5,#oBattleObject_Param1]; strb to CurAnim/CurAnimCopy plus sprite_setAnimation
+    copies the source's current animation; object_getFlip -> sprite_setFlip and flag bit-2 copy from RelatedObject1
+    mirror the source's facing and visibility; mov r0,#CUR_STATE_UPDATE; str to CurStateActionPhaseAndPhaseInitialized
+    ends it like other state handlers
+  refs:
+  - bn6f/asm/asm31.s:105535
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E895C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code copies RelatedObject1+0x34''s three words into this object+0x34, then calls sprite_load
+    with (0x80, 8, 0x14), loads animation, sets noShadow, copies Param1 to CurAnim/CurAnimCopy, sets animation,
+    reloads, sets palette 0x10, applies flip from object_getFlip, syncs flag bit 2 with related object,
+    and writes CUR_STATE_UPDATE. The proposal''s mechanics match, but the name implies ''inherit'' as
+    in inheriting class — this is really copying/overwriting its own sprite fields from the related object.
+    A name like ''object_copySpriteFromRelated'' better reflects that the function overwrites this object''s
+    sprite fields rather than an OO-style inheritance.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the object type and gameplay context (e.g. clone/illusion spawn) are unconfirmed
+- The meaning of sprite_load's arguments (0x80, 8, 0x14) and of the three words copied from RelatedObject1+0x34
+  is not fully pinned down
+- The code copies RelatedObject1+0x34's three words into this object+0x34, then calls sprite_load with
+  (0x80, 8, 0x14), loads animation, sets noShadow, copies Param1 to CurAnim/CurAnimCopy, sets animation,
+  reloads, sets palette 0x10, applies flip from object_getFlip, syncs flag bit 2 with related object,
+  and writes CUR_STATE_UPDATE. The proposal's mechanics match, but the name implies 'inherit' as in inheriting
+  class — this is really copying/overwriting its own sprite fields from the related object. A name like
+  'object_copySpriteFromRelated' better reflects that the function overwrites this object's sprite fields
+  rather than an OO-style inheritance.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E895C -> object_copySpriteFromRelated
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E895C

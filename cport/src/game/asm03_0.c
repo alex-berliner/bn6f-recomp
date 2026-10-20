@@ -202,7 +202,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, battleObject_chipSelectStateTick, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
  * sub_8027406, sub_802753E, battleObject_chipSelectUpdate, sub_80275EC, battleObject_chipSelectAnimTick_802770C,
- * sub_8027834, battle_customScreenChipUseAnimStep, sub_802794A, sub_8026E78, sub_8027A58) outside
+ * sub_8027834, battle_customScreenChipUseAnimStep, sub_802794A, battleObject_chipSelectTick, sub_8027A58) outside
  * this file; they have no typed C interface yet */
 static void run_state_handler(u32 state_offset, u32 self) {
     u32 handler = LD32(A_off_8026AA4 + state_offset);
@@ -237,7 +237,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x4C: GUEST_CALL(sub_8027834); break;
     case 0x50: GUEST_CALL(battle_customScreenChipUseAnimStep); break;
     case 0x54: GUEST_CALL(sub_802794A); break;
-    case 0x58: GUEST_CALL(sub_8026E78); break;
+    case 0x58: GUEST_CALL(battleObject_chipSelectTick); break;
     case 0x5C: GUEST_CALL(sub_8027A58); break;
     default: break; /* unreachable: the state byte is always a table offset */
     }

@@ -2,39 +2,37 @@ name: ai_tickCharge
 address: '0x08111B88'
 kind: function
 status: probable
-summary: Per-frame AI attack tick that telegraphs when ChargeCycles == 0x11, decrements the timer each
-  frame, and on expiry invokes sub_8111BDE with the difficulty tier, plays sound 0x80, and sets hit element
-  8.
+summary: Per-frame AI attack tick that telegraphs when ChargeCycles == 0x11, decrements the timer each frame, and
+  on expiry invokes sub_8111BDE with the difficulty tier, plays sound 0x80, and sets hit element 8.
 interface: (r7 = pointer to the acting object's oAIAttackVars) -> r0 = 0; no meaningful return
-details: Runs as a per-frame AI attack update. While ChargeCycles is exactly 0x11 it schedules a 0x14-frame
-  counter via object_setCounterTime (a warning/telegraph phase). It then decrements ChargeCycles each
-  call; once it goes negative (past 0), it calls sub_8111BDE with the object's AiDifficultyTier (likely
-  choosing the attack's strength/target from the tier), plays sound 0x80 via PlaySoundEffect (the release/fire
-  sound), and writes hit element 8 into oAIAttackVars_HitElement. The state lives in the shared AI attack-vars
-  struct reached through r7, matching the game's object-loop calling convention.
+details: Runs as a per-frame AI attack update. While ChargeCycles is exactly 0x11 it schedules a 0x14-frame counter
+  via object_setCounterTime (a warning/telegraph phase). It then decrements ChargeCycles each call; once it goes
+  negative (past 0), it calls sub_8111BDE with the object's AiDifficultyTier (likely choosing the attack's strength/target
+  from the tier), plays sound 0x80 via PlaySoundEffect (the release/fire sound), and writes hit element 8 into oAIAttackVars_HitElement.
+  The state lives in the shared AI attack-vars struct reached through r7, matching the game's object-loop calling
+  convention.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
   detail: 'ldrh r0,[r7,#oAIAttackVars_ChargeCycles]; cmp #0x11; bne — special-case frame triggers object_setCounterTime(0x14);
-    sub r0,#1 / strh back to ChargeCycles / bge skip — body only runs once the count drops below zero;
-    ldrb r0,[AiDifficultyTier]; bl sub_8111BDE — difficulty tier feeds the attack-setup helper; mov r0,#0x81;
-    add r0,#0xff; bl PlaySoundEffect — plays sound 0x80 at release; strh r0,#8 into oAIAttackVars_HitElement
-    — sets the attack''s hit element after release'
+    sub r0,#1 / strh back to ChargeCycles / bge skip — body only runs once the count drops below zero; ldrb r0,[AiDifficultyTier];
+    bl sub_8111BDE — difficulty tier feeds the attack-setup helper; mov r0,#0x81; add r0,#0xff; bl PlaySoundEffect
+    — plays sound 0x80 at release; strh r0,#8 into oAIAttackVars_HitElement — sets the attack''s hit element after
+    release'
   refs:
   - bn6f/asm/asm32.s:7837
   - 0x080005CC PlaySoundEffect
   - 0x0800E9DC object_setCounterTime
   - 0x08111BDE sub_8111BDE
   reproduce: python3 tools/asmcat.py 0x08111B88
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary''s behavior matches the code: it checks ChargeCycles == 0x11 and calls object_setCounterTime(0x14),
-    then decrements ChargeCycles. The release path reads AiDifficultyTier into r0 and calls sub_8111BDE,
-    plays sound 0x80 (since 0x81+0xff = 0x80), and stores hit element 8. However, `r0` is loaded with
-    8 and stored via `strh`, but no explicit `mov r0, #0` is visible; the function returns whatever r0
-    holds (likely 8 from the prior store into strh''s source). The name ai_chargeAttackStep is reasonable
-    but `ai_tickCharge` is slightly more precise since it''s a per-frame tick that fires once on expiry.;
-    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary''s
+    behavior matches the code: it checks ChargeCycles == 0x11 and calls object_setCounterTime(0x14), then decrements
+    ChargeCycles. The release path reads AiDifficultyTier into r0 and calls sub_8111BDE, plays sound 0x80 (since
+    0x81+0xff = 0x80), and stores hit element 8. However, `r0` is loaded with 8 and stored via `strh`, but no explicit
+    `mov r0, #0` is visible; the function returns whatever r0 holds (likely 8 from the prior store into strh''s
+    source). The name ai_chargeAttackStep is reasonable but `ai_tickCharge` is slightly more precise since it''s
+    a per-frame tick that fires once on expiry.; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 coverage:
 - battlesweep
 - beastsp
@@ -43,11 +41,11 @@ open_questions:
 - what element/attack id 8 and sound 0x80 correspond to in game terms
 - which boss or AI script registers this as its attack step
 - 'The summary''s behavior matches the code: it checks ChargeCycles == 0x11 and calls object_setCounterTime(0x14),
-  then decrements ChargeCycles. The release path reads AiDifficultyTier into r0 and calls sub_8111BDE,
-  plays sound 0x80 (since 0x81+0xff = 0x80), and stores hit element 8. However, `r0` is loaded with 8
-  and stored via `strh`, but no explicit `mov r0, #0` is visible; the function returns whatever r0 holds
-  (likely 8 from the prior store into strh''s source). The name ai_chargeAttackStep is reasonable but
-  `ai_tickCharge` is slightly more precise since it''s a per-frame tick that fires once on expiry.'
+  then decrements ChargeCycles. The release path reads AiDifficultyTier into r0 and calls sub_8111BDE, plays sound
+  0x80 (since 0x81+0xff = 0x80), and stores hit element 8. However, `r0` is loaded with 8 and stored via `strh`,
+  but no explicit `mov r0, #0` is visible; the function returns whatever r0 holds (likely 8 from the prior store
+  into strh''s source). The name ai_chargeAttackStep is reasonable but `ai_tickCharge` is slightly more precise
+  since it''s a per-frame tick that fires once on expiry.'
 sources:
 - wf investigate investigate-20261018-200615
 changes:
@@ -59,5 +57,9 @@ changes:
   what: rename sub_8111B88 -> ai_tickCharge
   where: bn6f f9d9fc39
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
 previous_names:
 - sub_8111B88

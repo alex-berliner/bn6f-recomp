@@ -1,0 +1,54 @@
+name: battle_recoverFromHit
+address: '0x0800EADA'
+kind: function
+status: probable
+summary: Ends the object's hit/stun/status state by clearing the 0x301FE ObjectFlags2 collision bits,
+  zeroing the 14-byte status block at CollisionDataPtr+0x80, and resetting HitStunTimer and StatusEffectTimer1
+  to 0.
+interface: (r0 = scratch; uses r5 = battle object pointer from caller) -> r0 = destroyed; flags clobbered
+details: Clears a fixed mask of ObjectFlags2 bits (0x301FE, i.e. all collision-related flag bits except
+  bit 0) on the battle object in r5, then zeroes 0xE halfwords at CollisionDataPtr+0x80 (a scratch/status
+  block of the collision data). Finally it stores 0 to oCollisionData_HitStunTimer and oCollisionData_StatusEffectTimer1.
+  This collectively resets everything that tracks being hit or status-afflicted, so the object is no longer
+  stunned or status-effected and its hit-related collision flags are reset. Called from the virus/enemy
+  per-frame update, so it runs as part of the enemy AI frame step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_clearFlag2 with r0=0x301FE clears ObjectFlags2 collision bits on the r5 object; ZeroFillByHalfword(CollisionDataPtr+0x80,
+    0xE) wipes a 28-byte block of the collision struct; strh 0 to oCollisionData_HitStunTimer and oCollisionData_StatusEffectTimer1
+    directly resets the hit timers; caller 0x08108F74 is the per-frame virus/enemy update that special-cases
+    NameIDs before AI table dispatch
+  refs:
+  - bn6f/asm/object.s:6124
+  - 0x08108F74 battle_8108F74
+  - 0x0801A176 object_clearFlag2
+  - 0x080008C0 ZeroFillByHalfword
+  reproduce: python3 tools/asmcat.py 0x0800EADA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The mask is 0x301FE, not 0x301FE with bit 0 excluded — bit 0x00001 is included in the mask passed
+    to object_clearFlag2. The function zeros 0xE bytes (7 halfwords), not 0xE halfwords; the mov r1, #0xe
+    sets a byte size. Everything else matches: clears ObjectFlags2 bits, zeros a block at CollisionDataPtr+0x80,
+    then resets HitStunTimer and StatusEffectTimer1. A better name captures the hit-recovery role.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact gameplay meaning of the ObjectFlags2 bits in mask 0x301FE
+- which NameID/condition paths in battle_8108F74 invoke this hook (e.g. only on death/recovery?)
+- 'The mask is 0x301FE, not 0x301FE with bit 0 excluded — bit 0x00001 is included in the mask passed to
+  object_clearFlag2. The function zeros 0xE bytes (7 halfwords), not 0xE halfwords; the mov r1, #0xe sets
+  a byte size. Everything else matches: clears ObjectFlags2 bits, zeros a block at CollisionDataPtr+0x80,
+  then resets HitStunTimer and StatusEffectTimer1. A better name captures the hit-recovery role.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800EADA -> battle_recoverFromHit
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EADA

@@ -1,0 +1,58 @@
+name: battle_chatboxWaitAndFade
+address: '0x0803AF46'
+kind: function
+status: probable
+summary: 'Battle transition step: if the chatbox event bit (0x80) is set, returns after calling battle_moduleInit;
+  otherwise if chatbox state is nonzero, writes step 0x28 and returns; once cleared, calls SetScreenFade(0xC,
+  0x10), writes step 0x3C, and always calls battle_moduleInit_803A820.'
+interface: (r5 = work/context struct, byte at +1 = step field) -> void; sets flags via chatbox bit test
+details: 'Reads the chatbox/event flag word (eFlags2009F38) testing bit 0x80: if still set, it only runs
+  battle_moduleInit_803A820 and returns. Otherwise it checks the chatbox state selector; while it is nonzero
+  it writes step 0x28 into the work struct''s step byte (r5+1). Once the chatbox is done it calls SetScreenFade(0xC,
+  0x10) to fade the screen, writes step 0x3C to the same field, and finally always invokes battle_moduleInit_803A820.
+  The 0x28/0x3C byte values look like state/step IDs of the caller''s task loop, with 0x28 meaning ''chatbox
+  still running'' and 0x3C ''proceed with fade''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80 then bne skip — waits on a chatbox/cutscene flag
+    bit; beq loc_803AF5E after chatbox_GetState_8045F4C; nonzero path stores 0x28 to [r5,#1] — step byte
+    of a work struct; bl SetScreenFade with (0xC, 0x10) then stores 0x3C to [r5,#1] — triggers a fade
+    and advances the step; bl battle_moduleInit_803A820 before the pop — hands off to battle initialization
+    every call
+  refs:
+  - bn6f/asm/asm03_1_1.s:4756
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0803AF46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the chatbox bit 0x80 check, the state check via chatbox_GetState_8045F4C,
+    the SetScreenFade(0xC,0x10) call, and the step writes of 0x28/0x3C to r5+1, plus the unconditional
+    battle_moduleInit_803A820 tail. However, the summary says ''while it is nonzero'' but the code only
+    does a single cmp/beq check (not a loop), so it should say ''if''. The name ''battle_beginTransitionUpdate''
+    is reasonable but could be more descriptive.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the identity of the r5 work struct and the meaning of step values 0x28/0x3C are
+  inferred from the pattern, not confirmed
+- Which game flow invokes this (which pre-battle cutscene it pairs with) is unverified
+- The proposal correctly identifies the chatbox bit 0x80 check, the state check via chatbox_GetState_8045F4C,
+  the SetScreenFade(0xC,0x10) call, and the step writes of 0x28/0x3C to r5+1, plus the unconditional battle_moduleInit_803A820
+  tail. However, the summary says 'while it is nonzero' but the code only does a single cmp/beq check
+  (not a loop), so it should say 'if'. The name 'battle_beginTransitionUpdate' is reasonable but could
+  be more descriptive.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AF46 -> battle_chatboxWaitAndFade
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AF46

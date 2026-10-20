@@ -1,0 +1,62 @@
+name: submenu_chatboxInputHandler
+address: '0x081336C4'
+kind: function
+status: probable
+summary: 'Handles input for a chatbox-driven submenu: guards on eFlags2009F38 bit 0x80, adjusts a 0..7
+  selection via menu_adjustCursorOrValue, and on A/B runs eTextScript2028A20 scripts 0xD, 0xA or 0x1B
+  while updating r5+0x68 state and r5+3 flag.'
+interface: (r0 = joypad held mask source via r10 toolkit, r5 = screen object) -> r0 = none; updates r5+0x68
+  state, r5+0x03 flag, runs chatbox scripts
+details: 'Guards on event-flag bit 0x80 of eFlags2009F38 and returns early if set. Calls menu_adjustCursorOrValue_811F7F8
+  with mask 7, min 0, max 7 on r5''s joypad, and aborts when the value changed. Field r5+0x5c holds a
+  selection id where 0xFFFF means ''none'': with a selection, A stores state 4 at r5+0x68 (0 if none);
+  with none, B runs closing script 0xA (0x1B if another submenu is open via submenu_isOpen_81355D8), clears
+  byte r5+0x3 and the state word; with a selection, B plays SOUND_EXIT_SUBMENU, runs script 0xD and stores
+  state 8. All scripts come from the eTextScript2028A20 archive via chatbox_runScript_803FD9C. Reads the
+  low-sensitivity held joypad word through oToolkit_JoypadPtr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'chatbox_mask_eFlags2009F38(0x80)+bne: early-out on a cutscene/chatbox flag; menu_adjustCursorOrValue_811F7F8
+    with r1=7,r2=0,r3=0 plus tst/bne: cursor stepping over 0..7 aborts further handling; IsButtonPressed(JOYPAD_A)
+    then str 0/4 -> [r5,#0x68]: A branches the screen state by whether r5+0x5c==0xFFFF; IsButtonPressed(JOYPAD_B)+PlaySoundEffect(SOUND_EXIT_SUBMENU)+runScript
+    0xA/0x1B/0xD: B closes or re-shows text depending on r5+0x5c; strb 0,[r5,#3] and str 0,[r5,#0x68]
+    on the no-selection close path: state reset of the screen object'
+  refs:
+  - bn6f/asm/asm36.s:6923
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x081336C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and details largely fit the code: the event-flag guard at 0x081336C8, adjust-cursor with
+    mask 7/min 0/max 7 at 0x081336D6, A-branch storing 0 or 4 to r5+0x68 at 0x081336FA, and B-branch running
+    script 0xD (0xA/0x1B when selection is 0xFFFF) at 0x0813720 are all correct. The summary''s claim
+    ''clears byte r5+0x3'' matches strb r0,[r5,#3] at 0x0813732, and the sound/script/state writes are
+    accurate. No callers are known, so a more descriptive name is appropriate since ''submenu_textScreen_updateInput''
+    is vague.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so which menu/screen owns the r5 object and the eTextScript2028A20 archive is unidentified
+- Meaning of the state values 0/4/8 written to r5+0x68 (other handlers of the same object would confirm
+  the state machine)
+- Purpose of the byte at r5+0x03 cleared on close
+- 'The name and details largely fit the code: the event-flag guard at 0x081336C8, adjust-cursor with mask
+  7/min 0/max 7 at 0x081336D6, A-branch storing 0 or 4 to r5+0x68 at 0x081336FA, and B-branch running
+  script 0xD (0xA/0x1B when selection is 0xFFFF) at 0x0813720 are all correct. The summary''s claim ''clears
+  byte r5+0x3'' matches strb r0,[r5,#3] at 0x0813732, and the sound/script/state writes are accurate.
+  No callers are known, so a more descriptive name is appropriate since ''submenu_textScreen_updateInput''
+  is vague.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81336C4 -> submenu_chatboxInputHandler
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81336C4

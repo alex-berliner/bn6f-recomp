@@ -1,0 +1,67 @@
+name: battle_homingPanelBoostChip
+address: '0x080E667C'
+kind: function
+status: probable
+summary: 'Homing battle object: flies toward a target panel (XVelocity grows by 0x4000 each tick), and
+  on arrival boosts Param2 into the alliance''s hand chip halfword (or into the 0x2036120 entry''s 0x36
+  if the opposite player is invincible), plays SFX 0x8C, clears flags, and destroys itself.'
+interface: (r0 unused; r5 = BattleObject*, Param2 = amount, Param3/Param4 = target panel x/y) -> r0 =
+  new state; object destroyed on arrival.
+details: 'Converts target panel coords (Param3,Param4) via object_getCoordinatesForPanels, computes the
+  angle from the object''s position to that point with calcAngle, and moves using math_getPolarVector
+  with XVelocity as magnitude, updating X/Y and re-deriving panel coords. When the resulting panel matches
+  Param3/Param4, it looks up the opposing player (battle_findPlayer by inverted alliance): if that player''s
+  AIData+0xA0 IsInvincible byte is 0, it resolves the player''s battle hand slot for the object''s alliance
+  (0x20349C0, 0x50-byte strides), reads the current chip halfword (skipping if 0xFFFF empty), checks the
+  chip database record byte 9 bit 1, and adds Param2 to the halfword at hand+0x18; if invincible, it instead
+  adds Param2 to the halfword at offset 0x36 of the 0x1D0-stride entry at 0x2036120 for that alliance.
+  Finally it plays sound 0x8C, clears the related object''s flags byte, and sets its state to CUR_STATE_DESTROY.
+  Until arrival, XVelocity grows by 0x4000 each call, so the approach accelerates.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calcAngle_800117C + math_getPolarVector on (target - position) drives movement toward the target
+    panel (first ~15 instrs); cmp of object_setPanelsFromCoordinates result vs Param3/Param4 branches
+    to the arrival-only effect block; battle_findPlayer + oAIAttackVars_IsInvincible at AIData+0xA0 selects
+    between hand-slot path and getEntryPtr_2036120 path; getChip8021DA8 record byte 9 bit 1 (tst r1,#2)
+    gates the add of Param2 to [r4+0x18]; empty slot 0xFFFF skips; PlaySoundEffect(0x8C), clear of RelatedObject1Ptr
+    flags, and CUR_STATE_DESTROY write are the terminal actions
+  refs:
+  - bn6f/asm/asm31.s:100699
+  - 0x080005CC PlaySoundEffect
+  - 0x0800117C calcAngle_800117C
+  - 0x08010018 getBattleHandAddr_8010018
+  reproduce: python3 tools/asmcat.py 0x080E667C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s phrase ''on the enemy player''s hand chip (or their active-chip record if they''re
+    invincible)'' is misleading: the hand-chip lookup uses the object''s own alliance via getBattleHandAddr,
+    not the enemy. The AIData IsInvincible byte is read from the player returned by battle_findPlayer(Alliance),
+    and when 0 it indexes the hand at 0x20349C0 with the same Alliance value, confirming it boosts the
+    *same* alliance''s hand chip. Only the 0x2036120 fallback uses offset 0x36. Behavior matches otherwise
+    (calcAngle/polar move, +0x4000 to XVelocity per tick, SFX 0x8C, clear flags, CUR_STATE_DESTROY).;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which chip/enemy spawns this object — no callers known, so the in-game identity (e.g. a chip-steal or
+  chip-drain effect) is unconfirmed
+- Exact meaning of the halfword at hand offset 0x18 and at 0x2036120-entry offset 0x36 that Param2 increments
+- What the 0x1D0-stride records at 0x2036120 represent and why the invincible case writes there instead
+- 'The summary''s phrase ''on the enemy player''s hand chip (or their active-chip record if they''re invincible)''
+  is misleading: the hand-chip lookup uses the object''s own alliance via getBattleHandAddr, not the enemy.
+  The AIData IsInvincible byte is read from the player returned by battle_findPlayer(Alliance), and when
+  0 it indexes the hand at 0x20349C0 with the same Alliance value, confirming it boosts the *same* alliance''s
+  hand chip. Only the 0x2036120 fallback uses offset 0x36. Behavior matches otherwise (calcAngle/polar
+  move, +0x4000 to XVelocity per tick, SFX 0x8C, clear flags, CUR_STATE_DESTROY).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E667C -> battle_homingPanelBoostChip
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E667C

@@ -1,0 +1,62 @@
+name: ai_attackEmergeSetNaviStatsFlag
+address: '0x080158CC'
+kind: function
+status: probable
+summary: 'Called during the enemy attack-emerge step. Sets NaviStats byte 0xE to 0x80 for the object''s
+  alliance, then if battle mode != 1 checks NaviStats byte 0x2C: values 0xB–0x16 clear the AI counter-hit
+  chain, values > 0x16 call sub_8014466, values < 0xB do nothing.'
+interface: (uses caller's r5 = battle object; no register args) -> r0/r1 clobbered, no return value
+details: 'The function looks up the NaviStats table entry for the battle object''s alliance and stores
+  0x80 into its byte at offset 0xE, presumably a per-side state/counter used while the enemy is emerging
+  for an attack. It then re-reads the battle mode and returns immediately if mode == 1, so the follow-up
+  only happens in the other modes. Otherwise it reads NaviStats byte 0x2C for the same side (via the byte
+  getter that takes the object in r5) and range-checks it: values 0xB–0x16 lead to ai_clearCounterHitChainFlag
+  (chain reset to the 0xFFFF ''none'' sentinel), values above 0x16 go to the unknown sub_8014466, and
+  values below 0xB do nothing further. Byte 0x2C behaves like a character/enemy ID selector, with 0xB–0x16
+  naming one class of fighters and higher values another, but the field meanings of both 0xE and 0x2C
+  are not established by this snippet.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_Alliance]; bl GetBattleNaviStatsAddr; mov r1,#0x80; strb r1,[r0,#0xe]
+    — writes 0x80 into NaviStats+0xE for the object''s side; bl GetBattleMode; cmp r0,#1; beq locret_80158F8
+    — rest is skipped in battle mode 1; mov r1,#0x2c; bl GetBattleNaviStatsByte_AllianceFromBattleObject;
+    cmp 0xB / 0x16 — branches on the side''s byte 0x2C; 0xB..0x16 -> bl ai_clearCounterHitChainFlag; >0x16
+    -> bl sub_8014466 — counter-hit chain reset vs. unknown alternate path; sole caller 0x0801562C ai_attackEmergeAtTargetPanel:
+    runs right after the emerge/warp-and-white-flash attack step'
+  refs:
+  - bn6f/asm/asm00_2.s:15475
+  - 0x0801562C ai_attackEmergeAtTargetPanel
+  - 0x0802D234 GetBattleMode
+  - 0x08013682 GetBattleNaviStatsAddr
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x080158CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary matches the code well, but the name should probably be revised. The function is called
+    from ai_attackEmergeAtTargetPanel and uses battle-object context (r5), touching NaviStats fields after
+    writing 0x80 at offset 0xE. The proposal''s prefix ''ai_'' and ''attackEmerge'' capture this, but
+    a slightly more precise name reflecting the NaviStats write would be clearer.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of NaviStats byte 0xE and why it is set to 0x80 here (invulnerability/cooldown/state flag?)
+- Meaning of NaviStats byte 0x2C (character/enemy ID?) and what ID ranges 0xB–0x16 vs >0x16 denote
+- What sub_8014466 does for IDs above 0x16 (presumably the non-counter-hit branch)
+- Whether other callers besides the emerge step exist and confirm the 0xE=0x80 meaning
+- The summary matches the code well, but the name should probably be revised. The function is called from
+  ai_attackEmergeAtTargetPanel and uses battle-object context (r5), touching NaviStats fields after writing
+  0x80 at offset 0xE. The proposal's prefix 'ai_' and 'attackEmerge' capture this, but a slightly more
+  precise name reflecting the NaviStats write would be clearer.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80158CC -> ai_attackEmergeSetNaviStatsFlag
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80158CC

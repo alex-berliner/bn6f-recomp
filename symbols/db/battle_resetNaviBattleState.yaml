@@ -1,0 +1,54 @@
+name: battle_resetNaviBattleState
+address: '0x08014080'
+kind: function
+status: probable
+summary: Guarded by NaviStats byte 0x29, clears several ObjectFlags1 bits (0x20000, 0x20, 0x40000, 0x10),
+  zeros NaviStats bytes 0x23/0x1b/0x1d/0x1c, sets byte 0x07 to 0xFF, refreshes collision data passing
+  the Custom+ flag result, and if byte 0x2C is zero stores 0xFF into the object's AIData BLeftAbility.
+interface: (r0 = battle object) -> void; destroys r0-r3
+details: The function reads NaviStats byte 0x29 first and returns without touching anything if it is nonzero.
+  Otherwise it clears ObjectFlags1 bits 0x20000 and 0x40000, zeroes NaviStats bytes 0x23, 0x1b, 0x1d and
+  0x1c, clears flag bits 0x20 and 0x10, sets byte 0x07 to 0xff, and refreshes the collision data via object_updateCollisionData
+  (args 1,2). Finally it re-reads byte 0x2c and only if it is zero stores 0xff into the object's AIData
+  BLeftAbility byte. The BLeftAbility name plus the 0x29/0x2c guards strongly suggest BeastOut/BeastOver-related
+  teardown of temporary battle state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: early exit when GetBattleNaviStatsByte_AllianceFromBattleObject(0x29) != 0 guards the whole
+    reset; sequence of object_clearFlag calls with bits 0x20000, 0x40000, 0x20, 0x10 on the object's collision
+    flags; SetBattleNaviStatsByte_AllianceFromBattleObject zeroes bytes 0x23,0x1b,0x1d,0x1c and sets byte
+    0x07 to 0xff; object_updateCollisionData is called to re-evaluate the refreshed collision record;
+    final guard on NaviStats byte 0x2c before storing 0xff to AIData oAIData_BLeftAbility
+  refs:
+  - bn6f/asm/asm00_2.s:12226
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080107C0 battle_IsNoCustomPlusActive_80107C0
+  reproduce: python3 tools/asmcat.py 0x08014080
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name fits and the guard/clear/write pattern is right, but the summary omits the call to battle_IsNoCustomPlusActive_80107C0
+    and wrongly describes object_updateCollisionData as called with constant args 1,2 — in the code its
+    r1 holds the Custom+ check result. Also note r5 is read for the AIData pointer, so ''destroys r0-r3''
+    understates register use.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- meaning of NaviStats bytes 0x29 and 0x2c (guards) and 0x07/0x1b-0x23 (fields being reset)
+- which caller invokes this and when in the battle turn lifecycle (BeastOut end vs navi removal)
+- The name fits and the guard/clear/write pattern is right, but the summary omits the call to battle_IsNoCustomPlusActive_80107C0
+  and wrongly describes object_updateCollisionData as called with constant args 1,2 — in the code its
+  r1 holds the Custom+ check result. Also note r5 is read for the AIData pointer, so 'destroys r0-r3'
+  understates register use.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014080 -> battle_resetNaviBattleState
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014080

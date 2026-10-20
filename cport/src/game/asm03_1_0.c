@@ -222,10 +222,10 @@ static void call_sub_8033B5C(u32 self) {
     GUEST_CALL(ow_drawHudOverlays);
 }
 
-/* register form: calls sub_8033B6E outside this file, which has no typed C interface yet */
+/* register form: calls ow_drawOverworldHud outside this file, which has no typed C interface yet */
 static void call_sub_8033B6E(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033B6E);
+    GUEST_CALL(ow_drawOverworldHud);
 }
 
 /* Run the real-world handler for the table byte offset `slot`

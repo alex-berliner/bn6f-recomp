@@ -1962,7 +1962,7 @@ Next state_dispatchHandler_801CF0E(void) {
     R7 = A_byte_2036840;
 
     /* off_801CF28: entries 0-2 share sub_801CF3C, 3 is sub_801CF9E,
-     * 4 is sub_801D048. */
+     * 4 is eBgCounterDrawStep. */
     switch (state) {
     case 0:
     case 1:
@@ -1973,7 +1973,7 @@ Next state_dispatchHandler_801CF0E(void) {
         GUEST_CALL(sub_801CF9E);
         break;
     case 4:
-        GUEST_CALL(sub_801D048);
+        GUEST_CALL(eBgCounterDrawStep);
         break;
     }
 

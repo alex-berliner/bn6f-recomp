@@ -1,0 +1,78 @@
+name: battle_updateSlideAttackObject
+address: '0x080E4F18'
+kind: function
+status: probable
+summary: 'Per-frame battle object update: slides the object using X/Z velocities, decrements its timer,
+  and on timeout either spawns a collision hit and an effect (CUR_STATE_DESTROY) on a normal panel, or
+  triggers a camera shake, plays sounds 0xC0/0x10D, cracks the current panel (and adjacent rows when Param4==1)
+  on flagged panels, then sets Timer=0x2d, CurAction=0xC.'
+interface: (r5 = battle object pointer, uses oBattleObject fields) -> void; object state set to CUR_STATE_DESTROY
+  or CurAction=12 with Timer=0x2d
+details: Each frame the object moves by adding XVelocity to X and subtracting ZVelocity from Z, then decrements
+  Timer; while Timer is nonzero it just calls sub_80E4FE8 and returns. On timeout it reads the panel status
+  flags at (PanelX,PanelY) via object_getPanelParameters and tests bit 0x10. If the bit is clear it builds
+  an attack from the object's own fields — passing PanelX/Y, Element, the dword_80E50BC damage/flags word
+  (0x1505ff01), the DamageAndStaminaDamageCounterDisabler field, and r7=3 to object_spawnCollisionRegion
+  — copies three words from object+0x34 into a spawned type-0 effect object, and sets the object's state
+  to CUR_STATE_DESTROY. If the bit is set it instead calls sub_80E5050, shakes the camera (magnitude 2,
+  duration 0x1e), plays sound effects 0xC0 and 0x10D, and cracks the current panel via object_crackPanelDup1,
+  plus the panels one row above and below when Param4==1; it then sets Timer=0x2d and CurAction=0xC to
+  continue in a later phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm 0x80E4F18-0x80E4F26: X += XVelocity, Z -= ZVelocity, Timer-- each call (movement phase);
+    asm 0x80E4F3C: bl object_getPanelParameters; tst r0,#0x10; bne loc_80E4F66 splits the two behaviors;
+    asm 0x80E4F4A-0x80E4F5A: object_spawnCollisionRegion with dword_80E50BC=0x1505ff01, Element and Damage
+    fields, then spawn_t1_0x0_EffectObject and CUR_STATE_DESTROY; asm 0x80E4F66-0x80E4F86: camera_initShakeEffect(2,0x1e),
+    PlaySoundEffect(0xC0) and (0x10D), object_crackPanelDup1 on panel and Y±1 when Param4==1; asm 0x80E4FA8-0x80E4FB6:
+    Timer=0x2d, CurAction=0xC, tail-call sub_80E4FE8 every frame'
+  refs:
+  - bn6f/asm/asm31.s:97334
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080E4F18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s core mechanics (slide X/Z, timer countdown, branch on panel bit 0x10) match the
+    asm. However, ''step'' implies a per-frame routine that runs on every tick; the function only branches
+    to sub_80E4FE8 after the timer handling block, so sub_80E4FE8 runs every frame and the slide/timer
+    logic also runs each tick — that''s consistent but ''step'' is slightly misleading. More importantly,
+    the quake branch only cracks adjacent panels (subY/subY+1) and the own panel when Param3!=0, while
+    the proposal says ''panels one row above and below when Param4==1'' — this is correct but inverted
+    from Param3 gating the whole cracking and Param4 gating the row. Also, Element is read from the object,
+    r7=3 is correct, damage word 0x1505ff01 is correct, but the proposal omits that the spawned type-0
+    effect object copies 3 words from object+0x34 (matches ''ldmia r0!, {r1-r3}'' at 0x80E4F5C). Sound
+    0x10D is correct (mov r0,#0xe add r0,#0xff = 0x10D at 0x80E4F80). The name ''battle_stepSlideAttackObject''
+    is acceptable; ''battle_updateSlideAttackObject'' is more descriptive and conventional.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- meaning of panel status bit 0x10 (hole vs cracked vs other) decides which branch is the 'exception'
+  case
+- identity of sub_80E4FE8 and sub_80E5050 and what CurAction=0xC continues into
+- which attack/spawner creates this object (no callers known), so the exact in-game attack name is unconfirmed
+- The proposal's core mechanics (slide X/Z, timer countdown, branch on panel bit 0x10) match the asm.
+  However, 'step' implies a per-frame routine that runs on every tick; the function only branches to sub_80E4FE8
+  after the timer handling block, so sub_80E4FE8 runs every frame and the slide/timer logic also runs
+  each tick — that's consistent but 'step' is slightly misleading. More importantly, the quake branch
+  only cracks adjacent panels (subY/subY+1) and the own panel when Param3!=0, while the proposal says
+  'panels one row above and below when Param4==1' — this is correct but inverted from Param3 gating the
+  whole cracking and Param4 gating the row. Also, Element is read from the object, r7=3 is correct, damage
+  word 0x1505ff01 is correct, but the proposal omits that the spawned type-0 effect object copies 3 words
+  from object+0x34 (matches 'ldmia r0!, {r1-r3}' at 0x80E4F5C). Sound 0x10D is correct (mov r0,#0xe add
+  r0,#0xff = 0x10D at 0x80E4F80). The name 'battle_stepSlideAttackObject' is acceptable; 'battle_updateSlideAttackObject'
+  is more descriptive and conventional.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4F18 -> battle_updateSlideAttackObject
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4F18

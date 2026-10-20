@@ -1,0 +1,66 @@
+name: object_adoptSpriteFromRelated
+address: '0x080E77B8'
+kind: function
+status: probable
+summary: Copies the sprite descriptor from RelatedObject1Ptr+0x34 into the object's own slot, loads sprite
+  0x80/0x10/0x4f with animation 0 and palette 0, mirrors the related object's visibility bit 1 and effective
+  facing, then enters CUR_STATE_UPDATE.
+interface: (r5 = battle object, oBattleObject_RelatedObject1Ptr set) -> void; sets object state to CUR_STATE_UPDATE
+details: First it copies 12 bytes (3 words) from RelatedObject1Ptr+0x34 into the object's own +0x34 block
+  — almost certainly the sprite slot descriptor the sprite_* helpers operate on. It then loads the sprite
+  (r0=0x80, r1=0x10, r2=0x4f), calls sprite_loadAnimationData, forces no-shadow, clears animation index
+  0 into both CurAnim and CurAnimCopy, calls sprite_setAnimation(0) and reloads animation data, sets palette
+  0, and applies sprite_setFlip from object_getFlip() so the clone faces like the source. Finally it clears
+  bit 1 of its oObjectHeader_Flags and re-inserts bit 1 read from the related object's flags, mirroring
+  the source's visibility/active bit, and stores CUR_STATE_UPDATE into CurStateActionPhaseAndPhaseInitialized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia/add 0x34 block copies 3 words from [RelatedObject1Ptr+0x34] to [r5+0x34], the sprite slot
+    the sprite_* callees use; call chain sprite_load -> sprite_loadAnimationData -> sprite_noShadow ->
+    setAnimation(0) -> setPalette(0) -> object_getFlip -> sprite_setFlip rebuilds the whole sprite from
+    the copied slot; flag dance ANDs out bit 1 of own oObjectHeader_Flags then ORs in bit 1 of the related
+    object's flags, copying a per-object render flag; tail write of CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    transitions the object to its update state
+  refs:
+  - bn6f/asm/asm31.s:103067
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E77B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate but has errors. The code copies 12 bytes from RelatedObject1Ptr+0x34
+    into the object''s +0x34 block (agrees). However, it does NOT force no-shadow and clear animation
+    independently — it sets bit 1 of oObjectHeader_Flags first (orr with 2), then clears anim, calls sprite_setAnimation(0),
+    and reloads animation data (agrees). It sets palette 0 and applies flip from object_getFlip (agrees).
+    Finally it clears bit 1 of flags and re-inserts it from the related object''s flags (agrees). The
+    summary''s ''enter its update state'' is correct as it stores CUR_STATE_UPDATE. However, the name
+    ''cloneFromRelatedObject'' is slightly misleading — this also affects flags and isn''t purely a sprite
+    clone; a name like ''sprite_adoptFromRelatedObject'' or ''object_adoptSpriteFromRelated'' is better.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- meaning of sprite_load's arguments 0x80/0x10/0x4f and the exact layout of the +0x34 sprite slot
+- which game context instantiates objects with RelatedObject1Ptr pointing at a sprite donor (no callers
+  known)
+- The proposal is mostly accurate but has errors. The code copies 12 bytes from RelatedObject1Ptr+0x34
+  into the object's +0x34 block (agrees). However, it does NOT force no-shadow and clear animation independently
+  — it sets bit 1 of oObjectHeader_Flags first (orr with 2), then clears anim, calls sprite_setAnimation(0),
+  and reloads animation data (agrees). It sets palette 0 and applies flip from object_getFlip (agrees).
+  Finally it clears bit 1 of flags and re-inserts it from the related object's flags (agrees). The summary's
+  'enter its update state' is correct as it stores CUR_STATE_UPDATE. However, the name 'cloneFromRelatedObject'
+  is slightly misleading — this also affects flags and isn't purely a sprite clone; a name like 'sprite_adoptFromRelatedObject'
+  or 'object_adoptSpriteFromRelated' is better.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E77B8 -> object_adoptSpriteFromRelated
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E77B8

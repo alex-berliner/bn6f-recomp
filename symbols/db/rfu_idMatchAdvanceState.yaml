@@ -1,0 +1,61 @@
+name: rfu_idMatchAdvanceState
+address: '0x08049164'
+kind: function
+status: probable
+summary: 'RFU link state step: calls rfu_checkIdMatch, stores phase 0xC on success or fades screen and
+  shows text 0x13 then stores phase 0x10 on failure, then tail-calls sub_803A1B0.'
+interface: (r5 = connection/state struct, byte at r5+1 is the phase field) -> r0 = return of sub_803A1B0;
+  byte [r5+1] set to 0xC or 0x10
+details: This is a small main-loop state step for the wireless (RFU) link flow. It calls rfu_checkIdMatch
+  to verify both adapters report the same game ID; on failure it triggers a screen fade via SetScreenFade(8,
+  0x10), plays network script 0x13 through sub_803BB2C (which picks a network text script by phase), and
+  stores phase 0x10 into the state byte at r5+1. On success it simply stores phase 0xC. It then tail-calls
+  sub_803A1B0, presumably the shared per-frame network-state dispatcher. The r5 pointer is not set up
+  here, so this is a leaf state callback invoked with r5 already pointing at the link-session struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl rfu_checkIdMatch followed by beq splits the two state transitions (loc_8049180 vs fallthrough);
+    mov r0,#0x13; bl sub_803BB2C — network script selector keyed by phase, so 0x13 is a specific connection
+    message; strb r0,[r5,#1] writes 0xC or 0x10 to a byte-sized state/phase field of the caller's struct;
+    bl SetScreenFade (8, 0x10) before the error script, typical fade-out before leaving a connection screen;
+    final bl sub_803A1B0 before pop makes it a state-step pattern used by the main loop's jump table
+  refs:
+  - bn6f/asm/asm03_2.s:4996
+  - 0x0813D648 rfu_checkIdMatch
+  - 0x0803BB2C sub_803BB2C
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08049164
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described flow: rfu_checkIdMatch is called, and on BEQ (zero/TRUE return meaning
+    IDs match) the code jumps to loc_8049180 which stores 0xC and falls through to sub_803A1B0; on failure
+    it triggers a fade (8, 0x10), shows script 0x13 via sub_803BB2C, stores 0x10, then also tail-calls
+    sub_803A1B0. However, sub_803A1B0 is called unconditionally by both paths, so it is not ''presumably''
+    a dispatcher—it''s clearly a shared per-frame tail. Also, sub_803BB2C is passed 0x13 as the script/text
+    argument, not 0x13 as a network script. A more accurate name reflects it as an rfu phase transition
+    on ID match result.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which caller invokes this with r5 (which menu/state struct) is unknown, so the exact screen (trade?
+  Union Room? NetBattle setup?) is not confirmed
+- Meaning of phases 0xC and 0x10 in the parent state machine, and whether script 0x13 is a version-mismatch
+  error, needs the surrounding state table
+- 'The code matches the described flow: rfu_checkIdMatch is called, and on BEQ (zero/TRUE return meaning
+  IDs match) the code jumps to loc_8049180 which stores 0xC and falls through to sub_803A1B0; on failure
+  it triggers a fade (8, 0x10), shows script 0x13 via sub_803BB2C, stores 0x10, then also tail-calls sub_803A1B0.
+  However, sub_803A1B0 is called unconditionally by both paths, so it is not ''presumably'' a dispatcher—it''s
+  clearly a shared per-frame tail. Also, sub_803BB2C is passed 0x13 as the script/text argument, not 0x13
+  as a network script. A more accurate name reflects it as an rfu phase transition on ID match result.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049164 -> rfu_idMatchAdvanceState
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049164

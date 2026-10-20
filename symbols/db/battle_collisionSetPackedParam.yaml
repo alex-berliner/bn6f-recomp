@@ -1,0 +1,57 @@
+name: battle_collisionSetPackedParam
+address: '0x0801A4D0'
+kind: function
+status: probable
+summary: Writes (r1<<8)|r0 as a packed halfword into collision-data field +0x12 of the battle object in
+  r5; used by spawn/init handlers to stamp a two-byte param tag (e.g. high type, low sub-param) onto a
+  new collision block.
+interface: (r0 = low byte param, r1 = high byte param; r5 = battle object) -> r0 = 0x12; no flag significance
+details: Loads r5's collision-data pointer (oBattleObject_CollisionDataPtr), computes (r1<<8)|r0, and
+  strh's it at collisionData+0x12, then returns r0=0x12 (the mov r0,#0x12 doubles as the return value).
+  All known callers are battle-object spawn/initialization routines (snake-arm spawn, chained-collision
+  init, table-defined move/hazard init), so this field is set once at object creation from per-object
+  definition data. The packed high/low byte layout suggests two small fields sharing a halfword (e.g.
+  a type/id plus a sub-param). It touches only that one collision-data halfword; no other object state
+  is modified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r3,[r5,#oBattleObject_CollisionDataPtr] + strh r1,[r3,#0x12] shows it writes collision data
+    field 0x12 of the r5 object; lsl r1,#8; add r1,r0 packs r0 into the low byte and r1 into the high
+    byte of the stored halfword; callers 0x080D6A44/0x080D80B4/0x080D6952 are all object spawn/init handlers
+    setting collision params from definition tables; mov r0,#0x12 left in place means the function returns
+    the field offset in r0
+  refs:
+  - bn6f/asm/asm00_2.s:23300
+  - 0x080D6A44 battleObject_snakeArmSpawn_80D6A44
+  - 0x080C52D0 battleObject_stepInitializeChainedCollision_80C52D0
+  - 0x080D80B4 battle_initMoveObjectFromTable
+  reproduce: python3 tools/asmcat.py 0x0801A4D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r0/r1 are combined as a packed halfword, stored at collisionData+0x12, with r5
+    holding the battle object. Callers confirm battle-object init/spawn contexts. However, ''collisionSetParam12''
+    implies a single value being set; the code clearly composes (r1<<8)|r0 into a packed pair, so a name
+    reflecting the packed/both-bytes nature is more accurate.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- semantic meaning of the low vs high byte (element? faction? hit type?) needs confirmation from how the
+  collision step/update code reads field +0x12
+- which caller passes which values for r0/r1 needs per-caller check to name the two subfields
+- 'The code matches: r0/r1 are combined as a packed halfword, stored at collisionData+0x12, with r5 holding
+  the battle object. Callers confirm battle-object init/spawn contexts. However, ''collisionSetParam12''
+  implies a single value being set; the code clearly composes (r1<<8)|r0 into a packed pair, so a name
+  reflecting the packed/both-bytes nature is more accurate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801A4D0 -> battle_collisionSetPackedParam
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A4D0

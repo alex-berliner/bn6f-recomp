@@ -1,0 +1,68 @@
+name: battle_spawnObjectFromPanelList
+address: '0x080D3770'
+kind: function
+status: probable
+summary: Spawns battle object type 3/9 at the next panel from a caller-built list (or at the opposite-side
+  far column if the list is empty); when GetPositiveSignedRNG's low 3 bits are 1 or 5, it instead picks
+  a random reachable panel via an alliance-indexed param table.
+interface: (r5 = source battle object; stack buffer at sp filled by sub_80D37F4 with packed panel bytes,
+  count in r6) -> r0 = new object; no flags used by caller
+details: sub_80D37F4 fills a 16-byte stack buffer with packed panel coordinates (low 3 bits = x, bits
+  4-6 = y) and returns the list length in r6. If r6 is 0, the spawn panel is computed directly as x =
+  (Alliance^1)*5+1 with y = the source object's PanelY, i.e. the far column of the opposite side. Otherwise
+  the object's ExtraVars+8 counter indexes the list (wrapping to 0 past the end) and is then incremented;
+  the selected byte is unpacked into x/y. When the low 3 bits of a fresh GetPositiveSignedRNG value are
+  1 or 5, the packed byte's y (>>4) plus a param from the alliance-indexed table at byte_80D37E4 (0x20
+  or 0x00) is fed to GetRandomRelativePanelFiltered to pick a random reachable panel instead. Finally
+  sub_80C5F2C spawns the object with r2=r3=0, r4=0x20600, and the source object's DamageAndStaminaDamageCounterDisabler
+  copied into r6, inheriting the source's alliance and flipped direction.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80D3790-: ExtraVars+8 used as a wrapping index into the stack buffer, byte split via lsr
+    #4 / lsl #0x1d into x,y panel coords; loc_80D3790 fallthrough at 80D379A: cmp r0,r6 with wrap to 0
+    shows r6 from sub_80D37F4 is the list length; r6==0 branch: eor Alliance,#1 then mul #5, add #1 with
+    y=PanelY gives the opposite team''s far column; cmp r2,#1 / #5 branches into GetAllianceDependentPanelParamArgs(byte_80D37E4)
+    + GetRandomRelativePanelFiltered, the random-panel path; tail: ldr r4,=0x20600 and r6 from DamageAndStaminaDamageCounterDisabler
+    then bl sub_80C5F2C, the known type-3/subtype-9 spawn helper'
+  refs:
+  - bn6f/asm/asm31.s:59741
+  - 0x080D369E sub_80D369E
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  reproduce: python3 tools/asmcat.py 0x080D3770
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: sub_80D37F4 builds a list, r6 is the count, index from ExtraVars+8
+    wraps at >=r6, RNG low bits 1/5 trigger the alliance-table path via GetAllianceDependentPanelParamArgs
+    + GetRandomRelativePanelFiltered, and sub_80C5F2C spawns with r4=0x20600 and copies the counter into
+    r6. The summary''s ''or at a random panel on the alliance-dependent side'' understates it: the fallback
+    isn''t random, it''s the deterministic far-column x = (Alliance^1)*5+1, y = source PanelY. Also the
+    packed byte decode is r0 low3=x, bits4-6=y (mask 0x7), not bits 4-6 only — the proposal''s ''y (>>4)''
+    wording is imprecise.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object spawn type 3 subtype 9 actually is (which enemy/attack object) would identify the
+  move this belongs to
+- What sub_80D37F4 is and what attack/context builds the panel list (caller sub_80D369E is also unnamed)
+- Exact meaning of the 0x20600 word passed as r4 to the spawner (element/param packing)
+- 'The proposal is mostly correct: sub_80D37F4 builds a list, r6 is the count, index from ExtraVars+8
+  wraps at >=r6, RNG low bits 1/5 trigger the alliance-table path via GetAllianceDependentPanelParamArgs
+  + GetRandomRelativePanelFiltered, and sub_80C5F2C spawns with r4=0x20600 and copies the counter into
+  r6. The summary''s ''or at a random panel on the alliance-dependent side'' understates it: the fallback
+  isn''t random, it''s the deterministic far-column x = (Alliance^1)*5+1, y = source PanelY. Also the
+  packed byte decode is r0 low3=x, bits4-6=y (mask 0x7), not bits 4-6 only — the proposal''s ''y (>>4)''
+  wording is imprecise.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3770 -> battle_spawnObjectFromPanelList
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3770

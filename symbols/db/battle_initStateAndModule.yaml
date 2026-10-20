@@ -1,0 +1,59 @@
+name: battle_initStateAndModule
+address: '0x0803AC78'
+kind: function
+status: probable
+summary: Tests bit 0x80 of the chatbox event flag word; if clear, zeroes [r5+0x13], repairs a halfword
+  table's free slots with sub_803C0BE, counts entries with sub_803C132 into [r5+0x10], and writes 0xC
+  to [r5+1]; then unconditionally calls battle_moduleInit_803A820.
+interface: (r0 = flag bit to test = 0x80; r4-r5/r6/r7 = caller context, r5 = state struct ptr) -> r0 =
+  result of battle_moduleInit_803A820; flags NZ from flag test
+details: 'Tests bit 0x80 of the chatbox/cutscene event flag word via chatbox_mask_eFlags2009F38. If the
+  bit is clear, it zeroed a byte at [r5+0x13], calls sub_803C0BE(0x10,0x30) which repairs trailing free
+  slots of a halfword table into 0xE5 0xE5 pairs, then sub_803C132(0x10,0x30) to count entries up to the
+  end marker, storing the count at [r5+0x10], and writes 0xC to [r5+1] (likely a state/mode field). Whether
+  the flag is set or not, it finishes by calling battle_moduleInit_803A820, which registers battle module
+  entries (IDs 10/0x26 and 11/0x27) and starts the main init. So this is a pre-init wrapper: skip the
+  state reset when some cutscene/flag is active, but always launch the battle module.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80 and bne skip — state reset only when cutscene flag
+    bit clear; strb r0,[r5,#0x13] / strb r0,[r5,#0x10] / strb r0(0xC),[r5,#1] — resets fields of a per-instance
+    state struct; sub_803C0BE(0x10,0x30) and sub_803C132(0x10,0x30) — repair and count the same halfword
+    entry table; unconditional bl battle_moduleInit_803A820 before pop — the actual battle init always
+    runs
+  refs:
+  - bn6f/asm/asm03_1_1.s:4355
+  - 0x0803A820 battle_moduleInit_803A820
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x0803AC78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed summary: flag test on 0x80, conditional zero of [r5+0x13], sub_803C0BE(0x10,0x30)
+    repairing trailing 0xE5 pairs, sub_803C132(0x10,0x30) writing count to [r5+0x10], setting [r5+1]=0xC,
+    then unconditionally calling battle_moduleInit_803A820. The only nit is the name is verbose; a cleaner
+    lowerCamel name with the ''init'' prefix fits better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the purpose (which battle flow this gates) and the identity of the r5 struct are
+  unconfirmed
+- Meaning of the (0x10,0x30) arguments to the list-repair/count helpers and which global table they index
+- What bit 0x80 of eFlags2009F38 represents (which cutscene/skip condition)
+- 'The code matches the proposed summary: flag test on 0x80, conditional zero of [r5+0x13], sub_803C0BE(0x10,0x30)
+  repairing trailing 0xE5 pairs, sub_803C132(0x10,0x30) writing count to [r5+0x10], setting [r5+1]=0xC,
+  then unconditionally calling battle_moduleInit_803A820. The only nit is the name is verbose; a cleaner
+  lowerCamel name with the ''init'' prefix fits better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AC78 -> battle_initStateAndModule
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AC78

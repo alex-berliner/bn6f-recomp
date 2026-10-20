@@ -1,0 +1,68 @@
+name: ai_chargedAttackSpawnFollowup
+address: '0x080EDB14'
+kind: function
+status: probable
+summary: 'AI charged-attack driver: on first call sets ObjectFlags1 bit 22, plays anim 0xA and SFX 0xF8,
+  spawns a temp attack object (ID 7+AiDifficultyTier), arms StepTimer=6 and marks AttackElement=4; on
+  later calls counts down StepTimer, reloads it from a per-difficulty table (0x3C/0x5A/0x78/0x78), advances
+  the temp object''s charge counter, then spawns a follow-up battle object via sub_80E5D12 (param from
+  byte_80EDBB8[tier*2+alliance*8], facing*0x50, object+0x4C) into oBattleObject_RelatedObject1Ptr and
+  sets HitElement=4.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = spawned/related object ptr stored to oBattleObject_RelatedObject1Ptr;
+  r0..r4 clobbered
+details: On the first invocation (oAIAttackVars_AttackElement == 0) it sets ObjectFlags1 bit 22, plays
+  animation 0xA, resets the counter timer, plays sound effect 0xF8, spawns a temp attack object with ID
+  7 + AiDifficultyTier via spawn_t1_0x5_tempAttackObject_80B8E30, sets StepTimer=6 and marks AttackElement=4
+  as 'in progress'. On later calls it counts StepTimer down; when it expires it reloads StepTimer from
+  a per-difficulty byte table (0x3C/0x5A/0x78/0x78 frames) and stores timer-0x14 as ChargeCycles, incrementing
+  a counter at +0x10 of the temp attack object (its charge state). It then reads NaviStats byte 0x22 for
+  the object's alliance, selecting r1=8 when nonzero, and loads a halfword parameter from byte_80EDBB8
+  at tier*2+r1. That parameter is passed with facing-direction*0x50 and an object-relative offset of 0x4C
+  to sub_80E5D12, whose result becomes oBattleObject_RelatedObject1Ptr, and oAIAttackVars_HitElement is
+  set to 4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'AttackElement==0 branch: setFlag1 bit22, object_setAnimation(0xA), PlaySoundEffect(0xF8), spawn_t1_0x5_tempAttackObject(7+tier),
+    sets StepTimer=6/AttackElement=4; Second branch decrements oAIAttackVars_StepTimer and reloads it
+    from byte table dword_80EDBC8 indexed by AiDifficultyTier (0x3C,0x5A,0x78,0x78); ChargeCycles = StepTimer
+    - 0x14 and TempAttackObjectPtr[0x10]++ show a charge-counter mechanic tied to the spawned attack object;
+    byte_80EDBB8 halfword table indexed by tier*2 + (8 if NaviStats byte 0x22 nonzero) supplies the object
+    parameter passed to sub_80E5D12; object_getFrontDirection()*0x50 and r7 offset 0x4C passed to sub_80E5D12,
+    result stored to oBattleObject_RelatedObject1Ptr'
+  refs:
+  - bn6f/asm/asm31.s:116080
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080EDB14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate, but the name ''ai_attackSpawnObject'' understates the per-call
+    flow: it actually drives a multi-phase charged attack by setting flag bit 22, anim 0xA, sound 0xF8,
+    spawning a temp attack object (ID 7+tier) via spawn_t1_0x5_tempAttackObject_80B8E30, ticking a StepTimer
+    with per-difficulty reload, then spawning a child battle object. Also ''SpawnObject'' is misleading
+    since the actual spawn is the temp attack object on the first call; the later spawn goes through sub_80E5D12
+    into RelatedObject1Ptr.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What exact object sub_80E5D12 spawns and which boss/enemy AI this attack belongs to (no callers known);
+  semantics of NaviStats byte 0x22 and the byte_80EDBB8 parameter values
+- 'The summary and interface are accurate, but the name ''ai_attackSpawnObject'' understates the per-call
+  flow: it actually drives a multi-phase charged attack by setting flag bit 22, anim 0xA, sound 0xF8,
+  spawning a temp attack object (ID 7+tier) via spawn_t1_0x5_tempAttackObject_80B8E30, ticking a StepTimer
+  with per-difficulty reload, then spawning a child battle object. Also ''SpawnObject'' is misleading
+  since the actual spawn is the temp attack object on the first call; the later spawn goes through sub_80E5D12
+  into RelatedObject1Ptr.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EDB14 -> ai_chargedAttackSpawnFollowup
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDB14

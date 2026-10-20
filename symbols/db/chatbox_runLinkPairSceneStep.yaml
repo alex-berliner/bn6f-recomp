@@ -1,0 +1,68 @@
+name: chatbox_runLinkPairSceneStep
+address: '0x0812AAC0'
+kind: function
+status: probable
+summary: Per-frame chatbox-driven scene step that polls chatbox flags, runs scenario text scripts based
+  on flag/state, then compares two 0x10-byte entries against eLinkState fields (+0x1c, +0xa) to dispatch
+  menu/script actions and update state bytes.
+interface: (r0 = unused (0 written), r5 = scene state record) -> r0 = preserved-ish; writes state byte
+  [r5+0x10], sub-state [r5+0x11], halfword [r5+0x26], bytes [r5+1..3]; runs chatbox scripts
+details: 'r5 is a state-machine record (state at +0x10, byte at +0x11, halfword 4/8/0x10 at +0x26, bytes
+  +1..+3). It first polls chatbox/cutscene flags at eFlags2009F38 (bits 0x80, 0x10, 0x20) and, when the
+  chatbox is in state 0, runs text script 0x23 from eTextScript2 and clears +0x11, storing 4 or 8 into
+  [r5+0x26]. It then gets the eLinkState global via sub_803E8F8 and a 2-entry array (0x10-byte stride)
+  from sub_81323B0, requiring each entry''s word at +4 to equal eLinkState+0x1c and counting halfword
+  matches of [+2] vs eLinkState+0xa by shifting r3=8 right per match: both match -> sub_8132430 decides
+  (<=2: bytes 0x38/0 and state 4, script 0x2a if ==2; else state 3/4 with scripts 0x29/0x2a based on [r5+0x26]==8;
+  ==4: menu_dispatchStateHandler, result stored to [r5+1], SetScreenFade(0xc,0x10) if >=0x28), exactly
+  one match -> state 2 and script 0x25, otherwise exit silently. Every path ends by tail-calling battle_stepWaitForStateRunUpdate,
+  so this runs once per frame while a state transition waits.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'chatbox_mask_eFlags2009F38 with 0x80/0x10/0x20 plus chatbox_GetState_8045F4C gate the early
+    script 0x23 run; loop at 812AB48: cmp [r0+4] vs [r6+0x1c] (word must match or exit) and [r0+2] vs
+    [r6+0xa], r3=8 lsr''d per halfword match, 2 entries of stride 0x10; r3==1 (one halfword match) ->
+    strb 2,[r5+0x10] and chatbox_runScript 0x25; r3==0 (full match) -> sub_8132430 path with scripts 0x29/0x2a;
+    sub_8132430()==4 -> menu_dispatchStateHandler, result to [r5+1], SetScreenFade(0xc,0x10) when >=0x28
+    (screen change); tail bl battle_stepWaitForStateRunUpdate confirms a per-frame state-step handler'
+  refs:
+  - bn6f/asm/asm33.s:15729
+  - 0x0812B26C battle_stepWaitForStateRunUpdate
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0812AAC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the summary: clears [r5+0x10], polls chatbox flags 0x80/0x10/0x20, runs script 0x23,
+    stores 4/8 to [r5+0x26], calls sub_803EAE4 (not sub_81323B0 directly for the table), loops 2 entries
+    at 0x10 stride matching eLinkState+0x1c/+0xa with r3=8 counting shifts, then dispatches by match count
+    calling menu_dispatchStateHandler and SetScreenFade(0xc,0x10). The name ''stepPairMatchVsLinkState''
+    is awkward; a clearer chatbox/link-themed name fits better.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which scene/quest this belongs to (script indices 0x23/0x25/0x29/0x2a of eTextScript2 and state values
+  0x28/0x34/0x38 are scenario-specific)
+- What sub_81323B0 and sub_8132430 return (the 2-entry array source and the 0..0xff result code) — a caller
+  or their bodies would pin the mechanic
+- Meaning of eLinkState+0x1c (word) and +0xa (halfword) being matched against the entries
+- Correct subsystem prefix; the r5 record layout (state +0x10, halfword +0x26) resembles a task struct
+  but which t-prefix family is unconfirmed
+- 'Code matches the summary: clears [r5+0x10], polls chatbox flags 0x80/0x10/0x20, runs script 0x23, stores
+  4/8 to [r5+0x26], calls sub_803EAE4 (not sub_81323B0 directly for the table), loops 2 entries at 0x10
+  stride matching eLinkState+0x1c/+0xa with r3=8 counting shifts, then dispatches by match count calling
+  menu_dispatchStateHandler and SetScreenFade(0xc,0x10). The name ''stepPairMatchVsLinkState'' is awkward;
+  a clearer chatbox/link-themed name fits better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c652f19
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812AAC0 -> chatbox_runLinkPairSceneStep
+  where: bn6f 73926dff
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812AAC0
