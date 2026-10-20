@@ -491,6 +491,39 @@ Next cutscene_dispatchEventFlags_8142618(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetSoulWeaponCursorCameraOffsetForMap ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_GetSoulWeaponsMapIndex_result;
+/* register form: generated wrapper: GetSoulWeaponsMapIndex has no typed C interface yet */
+static inline call_GetSoulWeaponsMapIndex_result call_GetSoulWeaponsMapIndex(void) {
+    GUEST_CALL(GetSoulWeaponsMapIndex);
+    return (call_GetSoulWeaponsMapIndex_result){ R0 };
+}
+
+/* Per-map camera offsets for the soul-weapon cursor. Each entry is two signed
+ * bytes: X offset, Y offset. Indexed by GetSoulWeaponsMapIndex(). */
+extern const s8 SoulWeaponMapBasedCameraOffsets[];
+
+#define SOUL_WEAPON_OFFSET_TABLE A_SoulWeaponMapBasedCameraOffsets
+
+/* Look up the cursor camera offset for the current soul-weapon map.
+ * out_x = X offset (signed), out_y = Y offset (signed). */
+static void get_soul_weapon_cursor_camera_offset(s32 *out_x, s32 *out_y) {
+    call_GetSoulWeaponsMapIndex_result idx = call_GetSoulWeaponsMapIndex();
+    const u8 *entry = (const u8 *)SOUL_WEAPON_OFFSET_TABLE + (idx.r0 << 1);
+    *out_x = LDS8((u32)entry + 0);
+    *out_y = LDS8((u32)entry + 1);
+}
+
+/* r10 in (unchanged on return), r0/r1 out: cursor X/Y camera offset for the soul-weapon map */
+Next GetSoulWeaponCursorCameraOffsetForMap(void) {
+    s32 x, y;
+    get_soul_weapon_cursor_camera_offset(&x, &y);
+    R0 = (u32)x;
+    R1 = (u32)y;
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_getPlayerTileMapIndex_8142990 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; } call_ReadOWPlayerObjectCoords_result;

@@ -1748,6 +1748,66 @@ Next gameState_getProtectedBugfrags_803D0F4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GiveNaviCustPrograms ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_803D148_result_GiveNaviCustPrograms;
+/* register form: generated wrapper: sub_803D148 has no typed C interface yet */
+static inline call_sub_803D148_result_GiveNaviCustPrograms call_sub_803D148_GiveNaviCustPrograms(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_803D148);
+    return (call_sub_803D148_result_GiveNaviCustPrograms){ R0, R2, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7, r8, r9, r10, r11, r12; } call_GiveItem_result;
+/* register form: generated wrapper: GiveItem has no typed C interface yet */
+static inline call_GiveItem_result call_GiveItem(u32 r0, u32 r1, u32 r5, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(GiveItem);
+    return (call_GiveItem_result){ R0, R1, R2, R3, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* GiveNaviCustPrograms (0x0803D108): resolve which NaviCust program to give
+ * via sub_803D148, then hand it to the player through GiveItem. The original
+ * stages r2 in r4 across the two calls (both preserve r4) and restores the
+ * caller's r4 with pop {r4,pc} on return. Every other outgoing register
+ * (r0-r3, r5-r12) is whatever GiveItem leaves behind. */
+
+static u32 give_navi_cust_programs(u32 lookup_r0, u32 lookup_r1,
+                                    u32 give_r1, u32 saved_r4,
+                                    u32 ctx_r5, u32 ctx_r7,
+                                    u32 ctx_r8, u32 ctx_r9,
+                                    u32 ctx_r11, u32 ctx_r12) {
+    /* Resolve the program/item to hand out. */
+    call_sub_803D148_result_GiveNaviCustPrograms found = call_sub_803D148_GiveNaviCustPrograms(lookup_r0, lookup_r1);
+
+    /* Hand it to the player; its r1 is the value the original staged in r4.
+     * Its results stay in the guest registers for the caller. */
+    call_GiveItem(found.r0, give_r1, found.r5, found.r7,
+                  ctx_r8, ctx_r9, ctx_r11, ctx_r12);
+
+    return saved_r4;
+}
+
+Next GiveNaviCustPrograms(void) {
+    /* Save the original's incoming r4 + r2; only r4 needs to come back. */
+    u32 saved_r4 = R4;
+    u32 give_r1 = R2;
+
+    u32 new_r4 = give_navi_cust_programs(R0, R1, give_r1, saved_r4,
+                                         R5, R7, R8, R9, R11, R12);
+
+    R4 = new_r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_checkKeyItemTrampoline_803D138 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_803D148_result;

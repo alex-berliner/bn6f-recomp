@@ -407,6 +407,74 @@ Next ExitReqBBSMenu813F590(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_813F6F8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r6, r7; bool v; } call_reqBBS_813FEB0_result_reqBBS_813F6F8;
+/* register form: generated wrapper: reqBBS_813FEB0 has no typed C interface yet */
+static inline call_reqBBS_813FEB0_result_reqBBS_813F6F8 call_reqBBS_813FEB0_reqBBS_813F6F8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813FEB0);
+    return (call_reqBBS_813FEB0_result_reqBBS_813F6F8){ R2, R3, R4, R5, R6, R7, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_reqBBS_813F8F0_result_reqBBS_813F6F8;
+/* register form: generated wrapper: reqBBS_813F8F0 has no typed C interface yet */
+static inline call_reqBBS_813F8F0_result_reqBBS_813F6F8 call_reqBBS_813F8F0_reqBBS_813F6F8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813F8F0);
+    return (call_reqBBS_813F8F0_result_reqBBS_813F6F8){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* reqBBS_813F6F8
+ *
+ * Called from the BBS request handler. Performs a small animation/state update
+ * on the toolkit's two scratch objects (offsets 0x9740 and 0xF3A0) and, when
+ * the per-request counter at r5+8 drops to zero or below, marks the request
+ * as finished (writes 4 at r5+0) and runs the BBS finishing sequence.
+ *
+ * Inputs:  r5 = request state pointer, r10 = toolkit pointer (and the LR for the call)
+ * Outputs: r10 = toolkit pointer (unchanged), r11 unchanged
+ */
+static void reqBBS_813F6F8_impl(u32 r5, u32 r10) {
+    u32 ptr9740 = LD32(r10 + oToolkit_Unk2009740_Ptr);
+    u32 obj9740_6 = (u32)LD8(ptr9740 + 6) - 8;
+    ST8(ptr9740 + 6, (u8)obj9740_6);
+    ST8(ptr9740 + 4, (u8)(obj9740_6 >> 4));
+
+    u32 ptrF3A0 = LD32(r10 + oToolkit_Unk200f3a0_Ptr);
+    ST8(ptrF3A0 + 9, 0x1B);
+
+    ST8(ptrF3A0 + 7, (u8)((u32)LD8(ptrF3A0 + 7) + 8));
+    ST8(ptrF3A0 + 6, (u8)((u32)LD8(ptrF3A0 + 6) - 8));
+
+    s32 count = (s32)LD8(r5 + 8) - 1;
+    ST8(r5 + 8, (u8)count);
+    if (count > 0) {
+        call_reqBBS_813F8F0_reqBBS_813F6F8(r5);
+        return;
+    }
+
+    ST8(r5, 4);
+    call_reqBBS_813FEB0_reqBBS_813F6F8(r5);
+
+    ptrF3A0 = LD32(r10 + oToolkit_Unk200f3a0_Ptr);
+    ST8(ptrF3A0 + 9, 0x3F);
+    ST8(ptrF3A0 + 10, 0x3F);
+    ST8(ptrF3A0 + 3, 0xFF);
+    ST8(ptrF3A0 + 2, 0);
+    ST8(ptrF3A0 + 7, 0xFF);
+    ST8(ptrF3A0 + 6, 0);
+
+    call_reqBBS_813F8F0_reqBBS_813F6F8(r5);
+}
+
+Next reqBBS_813F6F8(void) {
+    reqBBS_813F6F8_impl(R5, R10);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_813F754 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n, v; } call_IsScreenFadeActive_result_reqBBS_813F754;
@@ -523,6 +591,82 @@ Next reqBBS_813F7B0(void) {
     bbs_request_setup(R10, R5);
     R0 = 0;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_813F868 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result call_chatbox_mask_eFlags2009F38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r5; } call_chatbox_8040818_result;
+/* register form: generated wrapper: chatbox_8040818 has no typed C interface yet */
+static inline call_chatbox_8040818_result call_chatbox_8040818(void) {
+    GUEST_CALL(chatbox_8040818);
+    return (call_chatbox_8040818_result){ R2, R5 };
+}
+
+typedef struct { u32 r2, r3, r5; bool v; } call_SetScreenFade_result_reqBBS_813F868;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_reqBBS_813F868 call_SetScreenFade_reqBBS_813F868(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_reqBBS_813F868){ R2, R3, R5, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_reqBBS_813F8F0_result_reqBBS_813F868;
+/* register form: generated wrapper: reqBBS_813F8F0 has no typed C interface yet */
+static inline call_reqBBS_813F8F0_result_reqBBS_813F868 call_reqBBS_813F8F0_reqBBS_813F868(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813F8F0);
+    return (call_reqBBS_813F8F0_result_reqBBS_813F868){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Some BBS / chip / map system message: bump a counter, then ask chatbox whether to start
+ * the chatbox/screen-fade transition, doing it if needed, then drive reqBBS_813F8F0 and
+ * return 0. Preserves r10/r11 to its caller (r10 is the toolkit, r5 holds r10 on return).
+ */
+static void reqBBS_813F868_typed(u32 r5_host, u32 toolkit_ptr) {
+    /* The chip-page counter sits at oToolkit_Unk2009740_Ptr + 6; if it's still under 0x40
+     * advance it, write the page index to the field at +4, and prime the music state
+     * pointer's +9 with 0x1B. */
+    u32 unk2009740 = LD32(toolkit_ptr + oToolkit_Unk2009740_Ptr);
+    u32 page_counter = LD8(unk2009740 + 6);
+    if ((s32)page_counter < 0x40) {
+        page_counter += 8;
+        ST8(unk2009740 + 6, (u8)page_counter);
+        ST8(unk2009740 + 4, (u8)(page_counter >> 4));
+        u32 unk200f3a0 = LD32(toolkit_ptr + oToolkit_Unk200f3a0_Ptr);
+        ST8(unk200f3a0 + 9, 0x1B);
+    }
+
+    /* chatbox_mask_eFlags2009F38: returns nz that the original tests as r0 != 8. When the
+     * chatbox is allowed, run its transition: mark r5 with 0x24, set the music byte to 0x1F,
+     * store 5 at r5+8, and call SetScreenFade(0x10, 8). */
+    call_chatbox_mask_eFlags2009F38_result mask_r = call_chatbox_mask_eFlags2009F38(8);
+    if (!mask_r.z) {
+        (void)call_chatbox_8040818();
+        ST8(r5_host + 0, 0x24);
+        u32 unk200f3a0 = LD32(toolkit_ptr + oToolkit_Unk200f3a0_Ptr);
+        ST8(unk200f3a0 + 9, 0x1F);
+        ST8(r5_host + 8, 5);
+        (void)call_SetScreenFade_reqBBS_813F868(0x10, 8);
+    }
+
+    (void)call_reqBBS_813F8F0_reqBBS_813F868(r5_host);
+}
+
+Next reqBBS_813F868(void) {
+    u32 r5 = R5;
+    u32 r10 = R10;
+    reqBBS_813F868_typed(r5, r10);
+    R10 = r10;
     RETURN_TO_CALLER();
 }
 

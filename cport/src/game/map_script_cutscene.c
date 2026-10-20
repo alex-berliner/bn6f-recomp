@@ -452,6 +452,135 @@ Next MapScriptCmd_jump_if_coord_interaction_value_not_equal(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCmd_jump_if_player_z_equals ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_equals;
+/* register form: generated wrapper: ReadMapScriptSignedHalfword has no typed C interface yet */
+static inline call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_equals call_ReadMapScriptSignedHalfword_MapScriptCmd_jump_if_player_z_equals(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptSignedHalfword);
+    return (call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_equals){ R4, R7 };
+}
+
+typedef struct { u32 r4, r6; } call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_equals;
+/* register form: generated wrapper: ReadMapScriptWord has no typed C interface yet */
+static inline call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_equals call_ReadMapScriptWord_MapScriptCmd_jump_if_player_z_equals(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptWord);
+    return (call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_equals){ R4, R6 };
+}
+
+/* MapScriptCmd_jump_if_player_z_equals:
+ *   Map-script opcode: jump to a target if the overworld player's Z
+ *   coordinate equals a signed halfword operand in the script.
+ *   inputs:  r7 (map-script PC), r10 (toolkit ptr)
+ *   outputs: nz, r7 (next script position; r0 ends as 1)
+ *   clobbers: c, v, r0, r4, r6, lr
+ */
+static u32 map_script_jump_if_player_z(u32 toolkit, u32 script_pc) {
+    u32 game     = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player   = LD32(game + oGameState_OverworldPlayerObjectPtr);
+    s32 player_z = (s32)LD32(player + oOWPlayerObject_Z) >> 16;
+
+    /* Read the signed halfword operand from the script (r6=1: halfword).
+     * Returns { r4 = operand, r7 = advanced PC } */
+    call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_equals half =
+        call_ReadMapScriptSignedHalfword_MapScriptCmd_jump_if_player_z_equals(/*r6*/1, script_pc);
+    s32 operand = (s32)half.r4;
+    u32 pc      = half.r7;
+
+    if (player_z != operand) {
+        /* Not equal: opcode(1) + halfword(2) + 4 bytes skipped = 7 */
+        pc = script_pc + 7;
+    } else {
+        /* Equal: opcode(1) + halfword(2) + word(4) read -> new PC in r4.
+         * r6=3: 1 byte for the opcode + 2 for the halfword just consumed = 3
+         * remaining bytes of header before the 4-byte target word. */
+        call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_equals w = call_ReadMapScriptWord_MapScriptCmd_jump_if_player_z_equals(/*r6*/3, pc);
+        pc = w.r4;
+    }
+    return pc;
+}
+
+Next MapScriptCmd_jump_if_player_z_equals(void) {
+    u32 pc = map_script_jump_if_player_z(R10, R7);
+    R7 = pc;
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCmd_jump_if_player_z_not_equal ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_not_equal;
+/* register form: generated wrapper: ReadMapScriptSignedHalfword has no typed C interface yet */
+static inline call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_not_equal call_ReadMapScriptSignedHalfword_MapScriptCmd_jump_if_player_z_not_equal(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptSignedHalfword);
+    return (call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_not_equal){ R4, R7 };
+}
+
+typedef struct { u32 r4, r6; } call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_not_equal;
+/* register form: generated wrapper: ReadMapScriptWord has no typed C interface yet */
+static inline call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_not_equal call_ReadMapScriptWord_MapScriptCmd_jump_if_player_z_not_equal(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptWord);
+    return (call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_not_equal){ R4, R6 };
+}
+
+/* MapScriptCmd_jump_if_player_z_not_equal: 08035BFE-08035C26 THUMB, bn6f map_script_cutscene.s:608
+ *
+ * Map script opcode: compare the overworld player's Z (high 16 bits, the cell/Z-coordinate)
+ * against a signed halfword operand from the script; if they differ, read a 32-bit jump
+ * target and put it into the script cursor (r7). On a match, advance r7 past the 7 bytes
+ * of this 2-operand instruction.
+ *
+ * Register contract:
+ *   inputs:  r7 r10 lr
+ *   outputs: nz r7
+ *   clobbers: c v r0 r4 r6 lr
+ */
+
+static u32 read_player_z_cell(u32 toolkit_ptr) {
+    u32 game_state_ptr = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+    u32 player_obj_ptr = LD32(game_state_ptr + oGameState_OverworldPlayerObjectPtr);
+    /* Player Z is a fixed-point coordinate; the script compares its high half as signed. */
+    return (u32)((s32)LD32(player_obj_ptr + oOWPlayerObject_Z) >> 16);
+}
+
+Next MapScriptCmd_jump_if_player_z_not_equal(void) {
+    u32 r10 = R10;
+    u32 r7  = R7;
+
+    u32 player_z = read_player_z_cell(r10);
+
+    /* ReadMapScriptSignedHalfword: r6 r7 -> r4 r7. r6=1 selects a 2-byte signed operand. */
+    call_ReadMapScriptSignedHalfword_result_MapScriptCmd_jump_if_player_z_not_equal signed_h =
+        call_ReadMapScriptSignedHalfword_MapScriptCmd_jump_if_player_z_not_equal(1, r7);
+    u32 cmp_value = signed_h.r4;
+    u32 r7_after_signed = signed_h.r7;
+
+    if (player_z != cmp_value) {
+        /* Not equal: consume the 4-byte jump target. ReadMapScriptWord: r6 r7 -> r4 r6. */
+        call_ReadMapScriptWord_result_MapScriptCmd_jump_if_player_z_not_equal w = call_ReadMapScriptWord_MapScriptCmd_jump_if_player_z_not_equal(3, r7_after_signed);
+        /* register form: relies on ReadMapScriptWord leaving r6 (= r7_after_signed + 4) in r6 */
+        R7 = w.r4;
+    } else {
+        /* Equal: skip past this 7-byte instruction. */
+        R7 = r7_after_signed + 7;
+    }
+
+    /* Last flag-setting instruction is `mov r0, #1` in both paths; set nz accordingly. */
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCmd_jump_if_map_group_compare_last_map_group ── */
 /* MapScriptCmd_jump_if_map_group_compare_last_map_group: 08035C6E-08035CA0 THUMB, bn6f map_script_cutscene.s:675
  *   inputs:  r7 r10 lr

@@ -3625,6 +3625,16 @@ Next chatbox_formatBcdNumber_8042A14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_FE_numberinput ── */
+Next chatbox_FE_numberinput(void) {
+    /* register form: the original does `mov lr, pc; bx r0` through a jump
+     * table, with no register context the adapter could set up before
+     * invoking the target - r4..r12 and the flags must reach the handler
+     * (and come back from it) exactly as the BX would have left them. */
+    GUEST_CALL_ADDR(LD32(A_jt_8042D0C + (u32)LD8(R4 + 1) * 4));
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_entryMatchesBuffer_8042EE8 ── */
 /* Compare one chatbox entry against a byte buffer.
  * r0 selects the entry (index * 8 into the table at byte_8045CCC),

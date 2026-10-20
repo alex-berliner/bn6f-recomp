@@ -2351,6 +2351,41 @@ Next BasicBattleObjectInitialize(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── calledOnBAtkProbInit_8011764 ── */
+/* register form: B-button attack handlers are reached via a computed-address bx from a jump
+ * table. They have no typed C signature of their own; the caller pops r6/r7 from the stack on
+ * return, so the adapter must leave the stack as it found it (no SP change here) and the typed
+ * helper just performs the bx on our behalf. */
+static u32 bx_handler(u32 handler, u32 battle_obj, u32 ai_data, u32 attack_vars, u32 ctx) {
+    R5 = battle_obj;
+    R6 = ai_data;
+    R7 = attack_vars;
+    R10 = ctx;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* B-button attack handler dispatch.
+ *
+ * Loads the battle object's AI data pointer and the B-button handler index, picks a handler
+ * from a 4-entry jump table, and tail-calls it. r6/r7/r10 are set up for the callee; r6/r7
+ * are caller-saved across this function (the caller pops them on return). */
+static u32 dispatch_b_button_attack(u32 battle_obj, u32 ctx) {
+    const u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
+    const u32 attack_vars = ai_data + oAIData_AttackVars;
+    const u8 b_button_idx = LD8(ai_data + oAIData_BButton);
+    const u32 jump_table = A_off_80117D4;
+    const u32 handler = LD32(jump_table + ((u32)b_button_idx << 2));
+
+    return bx_handler(handler, battle_obj, ai_data, attack_vars, ctx);
+}
+
+/* calledOnBAtkProbInit_8011764(r5 = battle object, r10 = attack proc ctx) -> r0 */
+Next calledOnBAtkProbInit_8011764(void) {
+    R0 = dispatch_b_button_attack(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchBPwrAtkHandler ── */
 /* Battle "B+power attack" AI dispatcher.
  *
