@@ -1,0 +1,85 @@
+name: MapScriptCmd_jump_if_player_z_equals
+address: '0x08035BD6'
+kind: function
+status: confirmed
+summary: 'Map-script opcode: read a signed halfword and jump to a 4-byte target if the overworld player''s Z coordinate
+  equals it.'
+interface: '// r10 = oToolkit*, r7 = current map script PC
+
+  // returns r7 = next script PC; r0 = 1; NZ flags reflect r0
+
+  // clobbers r0, r4, r6, lr; flags c/v
+
+  void MapScriptCmd_jump_if_player_z_equals(u32 /*r10*/ toolkit, u32 /*in/out r7*/ scriptPc);
+
+  '
+details: 'Follows oToolkit_GameStatePtr -> oGameState_OverworldPlayerObjectPtr and reads
+
+  oOWPlayerObject_Z (a fixed-point world Z; shifted right 16 to get integer Z).
+
+  Calls ReadMapScriptSignedHalfword(r6=1) to fetch a signed-halfword operand and
+
+  advance past opcode + 2 bytes. If player Z != operand, advances PC by 7
+
+  (1 opcode + 2 halfword + 4 unused trailing bytes). If equal, calls
+
+  ReadMapScriptWord(r6=3) to consume the trailing 4 bytes as the jump target,
+
+  returning its value as the new PC. Always returns 1 in r0 and sets NZ on r0.
+
+  Mirrors the companion opcodes (`MapScriptCmd_jump_if_player_y_*`, etc.).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c MapScriptCmd_jump_if_player_z_equals
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_equals
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_equals --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_equals
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_equals --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_equals
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_equals --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^08035bd6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- Why is the non-equal path's operand-and-padding 7 bytes (opcode+halfword+u32) but the equal path passes r6=3 (opcode+halfword
+  remaining) to ReadMapScriptWord? Confirm equal vs not-equal encoding layout.
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

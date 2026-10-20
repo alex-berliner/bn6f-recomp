@@ -1,0 +1,77 @@
+name: calledOnBAtkProbInit_8011764
+address: '0x08011764'
+kind: function
+status: confirmed
+summary: Dispatches an active battle object's B-button attack to the handler selected by its AI configuration.
+interface: u32 calledOnBAtkProbInit_8011764(struct BattleObject *battleObj /* r5 */, void *attackProcCtx /* r10
+  */); returns the selected handler's result in r0; r5, r8-r12 are outputs, while nz, c, and v are clobbered and
+  r1-r4, lr, and r6-r7 are not preserved.
+details: 'Reads the battle object''s AIDataPtr, computes the address of AIData_AttackVars, reads the u8 AIData_BButton
+  selector, and uses it to index a four-entry handler table. The selected handler is invoked by a computed-address
+  bx with r5 retaining the battle object, r6 pointing to AIData, r7 pointing to AttackVars, and r10 retaining the
+  attack-procedure context. The jump-table range is reached through the pointer stored at off_80117D0. There is
+  no normal C-level cleanup after dispatch: the handler is responsible for returning through the stack frame arranged
+  by this adapter. No direct values are written beyond register setup and the jump.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c calledOnBAtkProbInit_8011764
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function calledOnBAtkProbInit_8011764
+
+    ./wf verify --function calledOnBAtkProbInit_8011764 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function calledOnBAtkProbInit_8011764
+
+    ./wf verify --function calledOnBAtkProbInit_8011764 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 74 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function calledOnBAtkProbInit_8011764
+
+    ./wf verify --function calledOnBAtkProbInit_8011764 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, story2, story9.'
+  reproduce: grep -l '^08011764 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- story2
+- story9
+open_questions:
+- What are the names and exact behaviors of the four B-button attack handlers?
+- Is the BButton byte validated as 0..3 before table indexing, or can corrupted AI data produce an out-of-range
+  dispatch?
+- What are the precise semantics of AIData_AttackVars for each handler?
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

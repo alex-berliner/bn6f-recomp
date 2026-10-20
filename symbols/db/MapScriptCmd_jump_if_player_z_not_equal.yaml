@@ -1,0 +1,65 @@
+name: MapScriptCmd_jump_if_player_z_not_equal
+address: '0x08035BFE'
+kind: function
+status: confirmed
+summary: Map-script opcode that jumps to a 32-bit script address when the overworld player's signed Z cell differs
+  from a signed halfword operand, otherwise skips the 7-byte instruction.
+interface: 'void MapScriptCmd_jump_if_player_z_not_equal(void); inputs: r7 = script cursor, r10 = Toolkit pointer,
+  lr = return address; outputs: r7 = updated script cursor, r0 = 1, NZ flag reflecting r0; clobbers: r0, r4, r6,
+  lr, flags NZ/C/V'
+details: Reads Toolkit->GameStatePtr, then GameState->OverworldPlayerObjectPtr, and treats the high 16 bits of OverworldPlayerObject->Z
+  as a signed map cell coordinate. Reads a 2-byte signed comparison operand from the script and reads a 4-byte jump
+  target only when the coordinates differ. On mismatch, the jump target becomes the new r7 cursor; on equality,
+  r7 advances by 7 bytes from the post-operand cursor, skipping the complete instruction. The script cursor is supplied
+  through r7 to both map-script readers, with r6 set to 1 for the signed halfword and 3 for the following word.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c MapScriptCmd_jump_if_player_z_not_equal
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_not_equal
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_not_equal --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_not_equal
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_not_equal --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCmd_jump_if_player_z_not_equal
+
+    ./wf verify --function MapScriptCmd_jump_if_player_z_not_equal --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^08035bfe ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+- maps
+open_questions: []
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

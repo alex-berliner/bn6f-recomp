@@ -1,0 +1,70 @@
+name: reqBBS_813F6F8
+address: '0x0813F6F8'
+kind: function
+status: confirmed
+summary: Per-frame BBS request tick that animates two scratch sprites on the toolkit and, when the request's counter
+  expires, marks it finished and runs the closing sequence.
+interface: void tickBBSRequest_813F6F8(u32 r5 /* request state */, u32 r10 /* toolkit ptr */, u32 lr); clobbers
+  r0-r4,r6,r7,r12,lr and N/Z/C/V; preserves r5,r8,r9; returns r10 unchanged, r0:=0 then flags NZ.
+details: 'Reads the toolkit''s two scratch objects via oToolkit_Unk2009740_Ptr and oToolkit_Unk200f3a0_Ptr. On object
+  0x9740: byte[6] -= 8 then byte[4] = (byte[6]>>4) (interpreted as an animation frame derived from a 240-tick counter).
+  On object 0xF3A0: byte[9]=0x1B always; byte[7]+=8; byte[6]-=8. Then decrements the request''s counter at r5+8
+  and, while it is still >0 (signed `bgt`), calls reqBBS_813F8F0(r5) and returns 0. When the counter drops to <=0,
+  it writes 4 to r5+0 (state "finished"), calls reqBBS_813FEB0(r5) to play the BBS finish sequence, then resets
+  object 0xF3A0: byte[9]=byte[10]=0x3F, byte[3]=0xFF, byte[2]=0, byte[7]=0xFF, byte[6]=0, and finally calls reqBBS_813F8F0(r5).
+  The leading `push {lr}` and trailing `mov r0,#0 / pop {pc}` show this is the thunk called by the BBS request dispatcher
+  each frame; the .balign + thumb_func_end suggest it''s a leaf in the thumb vector.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c reqBBS_813F6F8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_813F6F8
+
+    ./wf verify --function reqBBS_813F6F8 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_813F6F8
+
+    ./wf verify --function reqBBS_813F6F8 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 4 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_813F6F8
+
+    ./wf verify --function reqBBS_813F6F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813f6f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- What does byte 4 vs byte 6 on object 0x9740 actually drive (appears to be a hi/lo byte of a width/height fade
+  or position counter)?
+- Which BBS request state value 4 at r5+0 represents (finished vs cancelled) and which state 0x813FEB0 handles?
+- Is r11 truly unused/output, or is it set indirectly via 0x813F8F0?
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

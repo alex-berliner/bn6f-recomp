@@ -1,0 +1,65 @@
+name: chatbox_FE_numberinput
+address: '0x08042CF8'
+kind: function
+status: confirmed
+summary: Dispatches a FE number-input operation according to the chatbox state byte.
+interface: void chatbox_FE_numberinput(struct chatbox *chatbox /* r4 */); unspecified additional register inputs
+  and outputs follow the original ARM call context; all r4-r12 and flags are preserved across the jump-table dispatch
+details: Reads the chatbox state at byte offset 1, multiplies it by four, indexes the 32-entry pointer table at
+  0x08042D0C, and tail-calls the selected handler. Implemented states include 0, 1, 2, 3, 4, 5, 14, 15, 18, 19,
+  and 20; the remaining table entries are NULL. The indirect jump is performed with `mov lr, pc` followed by `bx
+  r0`, so the selected handler continues at the caller of chatbox_FE_numberinput rather than returning through an
+  ordinary BL/ BX link.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c chatbox_FE_numberinput
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_FE_numberinput
+
+    ./wf verify --function chatbox_FE_numberinput --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_FE_numberinput
+
+    ./wf verify --function chatbox_FE_numberinput --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 16 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_FE_numberinput
+
+    ./wf verify --function chatbox_FE_numberinput --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08042cf8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- beastsp
+open_questions:
+- The semantics of the byte at chatbox offset +1 are not established beyond its use as the FE number-input state
+  selector.
+- NULL entries indicate unsupported or unreachable states, but no failure behavior is encoded in this dispatcher.
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

@@ -1,0 +1,82 @@
+name: reqBBS_813F868
+address: '0x0813F868'
+kind: function
+status: hypothesis
+summary: 'BBS chip-trading message request: advance page counter, run a chatbox/screen-fade transition if open,
+  then hand off to the BBS driver.'
+interface: void reqBBS_813F868(u32 r5_hostState, u32 toolkit_ptr /* r10 */) -> void; flags z/c/v clobbered
+details: 'Uses r10 (preserved through) as the toolkit pointer and r5 as a host-side state block.
+
+  Pointer at oToolkit_Unk2009740_Ptr holds the chip-page counter; if value at +6 < 0x40
+
+  it is +=8 and the page index (>>4) is written to +4. The music-state pointer
+
+  (oToolkit_Unk200f3a0_Ptr) has 0x1B written to its +9 byte after the bump.
+
+  Tests chatbox_mask_eFlags2009F38(8): if it is set (Z clear), the transition block
+
+  runs - chatbox_8040818 (chatbox start/setup), r5[0]=0x24, unk200f3a0+9=0x1F,
+
+  r5[8]=5, then SetScreenFade(0x10, 8).
+
+  Always tails into reqBBS_813F8F0(r5) and returns 0.
+
+  The "BBS" prefix suggests this is part of the chip-trade / BBS top-level message
+
+  driver; "req" hints it is dispatched from a message-request state machine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c reqBBS_813F868
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_813F868
+
+    ./wf verify --function reqBBS_813F868 --snapshots build-snapshots'
+  result: 'captured calls: 23 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_813F868
+
+    ./wf verify --function reqBBS_813F868 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 1 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_813F868
+
+    ./wf verify --function reqBBS_813F868 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0813f868 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What the unk2009740/+4 and +6 fields really represent (chip page index vs counter).
+- Exact meaning of the 0x24 / 5 bytes stored into r5 state.
+- Why the music-state byte is set to 0x1B before the transition and then rewritten to 0x1F.
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6

@@ -1,0 +1,71 @@
+name: GetSoulWeaponCursorCameraOffsetForMap
+address: '0x0814283C'
+kind: function
+status: confirmed
+summary: Returns the (X, Y) cursor camera offset for the player's current soul-weapon map by indexing a per-map
+  table with the result of GetSoulWeaponsMapIndex.
+interface: void getSoulWeaponCursorCameraOffsetForMap(void) -> r0 x_offset (s32, signed byte), r1 y_offset (s32,
+  signed byte); preserved r4-r7; clobbers nz,cv,r3,lr; r10 passed in/out unchanged
+details: 'Calls GetSoulWeaponsMapIndex() (return value in r0, no typed C interface available) to obtain a map index,
+  then shifts that index left by 1 to index into the 16-entry signed-byte table SoulWeaponMapBasedCameraOffsets
+  at 0x08142854. Each entry is a pair of s8 values (X, Y). The two bytes are loaded with ldrsb into r0 and r1 (sign-extended
+  to 32 bits) and returned as the cursor''s X and Y camera offset. The table pairs observed at 0x08142854 are (0,0),
+  (8,-8), (-8,8), (8,8), (8,8), (16,0), (12,4), (4,-4). Frame is push r4-r7,lr / pop r4-r7,pc.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by minimax/MiniMax-M3 through the convert workflow (6 attempt(s), run convert-20261020-184851);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 120' --file leaves_farm_120.c GetSoulWeaponCursorCameraOffsetForMap
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetSoulWeaponCursorCameraOffsetForMap
+
+    ./wf verify --function GetSoulWeaponCursorCameraOffsetForMap --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-184851-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetSoulWeaponCursorCameraOffsetForMap
+
+    ./wf verify --function GetSoulWeaponCursorCameraOffsetForMap --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-184851-verify-6)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetSoulWeaponCursorCameraOffsetForMap
+
+    ./wf verify --function GetSoulWeaponCursorCameraOffsetForMap --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-184851-verify-6)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0814283c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 7e9d2c6
+  tool: tools/wf convert (minimax/MiniMax-M3)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 74ad2358
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- How many entries does SoulWeaponMapBasedCameraOffsets actually contain? The pool only commits 8 of what the surrounding
+  code suggests may be 16 entries; the readable C only references 8 pairs.
+- Which map index each table row corresponds to (mapping of GetSoulWeaponsMapIndex values to per-map offsets) is
+  not annotated in the source.
+- Exact use site of the returned offsets by the caller is unknown; whether they are applied to the cursor sprite's
+  camera register, a scroll offset, or a layer transform has to be inferred from the caller.
+sources:
+- tools/wf run convert-20261020-184851
+- recomp 7e9d2c6
