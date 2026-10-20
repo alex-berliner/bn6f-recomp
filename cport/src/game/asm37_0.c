@@ -25,14 +25,14 @@ Next toolkit_resetToolState_813B768(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813B920 ── */
+/* ── storeWorkByte_813B920 ── */
 /* Store a byte into the work buffer at 0x20096D8. r0 is the value;
  * r1 ends up holding the buffer address, as the original leaves it. */
 static void store_byte_20096D8(u32 value) {
     ST8(A_byte_20096D8, value);
 }
 
-Next sub_813B920(void) {
+Next storeWorkByte_813B920(void) {
     store_byte_20096D8(R0);
     R1 = A_byte_20096D8;
     RETURN_TO_CALLER();

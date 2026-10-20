@@ -3496,7 +3496,7 @@ Next chatbox_resetCounterIfFlag80Clear_8137368(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81374C4 ── */
+/* ── chatbox_store74IfFlag80Clear_81374C4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81374C4;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3506,7 +3506,7 @@ static inline call_chatbox_mask_eFlags2009F38_result_sub_81374C4 call_chatbox_ma
     return (call_chatbox_mask_eFlags2009F38_result_sub_81374C4){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
-/* sub_81374C4: if chatbox flag 0x80 is clear (mask test returns zero),
+/* chatbox_store74IfFlag80Clear_81374C4: if chatbox flag 0x80 is clear (mask test returns zero),
  * store the byte 0x74 to the address passed in r5. No register results. */
 static void check_chatbox_flag_and_store(u32 dest_addr) {
     /* chatbox_mask_eFlags2009F38 sets Z when the tested flag is clear */
@@ -3514,12 +3514,12 @@ static void check_chatbox_flag_and_store(u32 dest_addr) {
         ST8(dest_addr, 0x74);
 }
 
-Next sub_81374C4(void) {
+Next chatbox_store74IfFlag80Clear_81374C4(void) {
     check_chatbox_flag_and_store(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813759C ── */
+/* ── chatbox_queueCmd8C_ifFlag80Clear_813759C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_813759C;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3538,8 +3538,8 @@ static void sub_813759C_impl(u32 dest_addr)
         ST8(dest_addr, 0x8C);
 }
 
-/* sub_813759C(r5 = destination byte pointer) -> r0 */
-Next sub_813759C(void) {
+/* chatbox_queueCmd8C_ifFlag80Clear_813759C(r5 = destination byte pointer) -> r0 */
+Next chatbox_queueCmd8C_ifFlag80Clear_813759C(void) {
     sub_813759C_impl(R5);
     RETURN_TO_CALLER();
 }

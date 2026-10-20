@@ -8,8 +8,8 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_81418AA ── */
-/* sub_81418AA: raise the "event struct active" flag byte (0x200101D <- 1) and
+/* ── eventStruct_setActiveFlag_81418AA ── */
+/* eventStruct_setActiveFlag_81418AA: raise the "event struct active" flag byte (0x200101D <- 1) and
  * return 0 with Z set (the final Thumb "mov r0,#0" sets N/Z).
  * r4/r5/r7 are pushed and popped unchanged, so the caller's values survive. */
 static void set_event_struct_flag(void) {
@@ -18,14 +18,14 @@ static void set_event_struct_flag(void) {
     ST8(A_dword_200101C + 1, 1);
 }
 
-Next sub_81418AA(void) {
+Next eventStruct_setActiveFlag_81418AA(void) {
     set_event_struct_flag();
     SET_FLAGS_NZ(0);   /* mov r0, #0: Z set, N clear */
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81418B6 ── */
-/* sub_81418B6 clears one status byte in the fixed struct at 0x2001010:
+/* ── clear_eStruct2001010_flagByte0D_81418B6 ── */
+/* clear_eStruct2001010_flagByte0D_81418B6 clears one status byte in the fixed struct at 0x2001010:
  * the byte at offset 0x0D (labelled dword_200101C+1 in the disassembly)
  * is written with zero. The pushed r4-r7 are popped back untouched, and
  * the final "mov r0, #0" leaves Z set and N clear for the caller. */
@@ -43,8 +43,8 @@ static SavedRegs clear_struct_flag_byte(u32 r4, u32 r5, u32 r7) {
     return kept;
 }
 
-/* sub_81418B6() -> nz, r4, r5, r7 (r0 clobbered) */
-Next sub_81418B6(void) {
+/* clear_eStruct2001010_flagByte0D_81418B6() -> nz, r4, r5, r7 (r0 clobbered) */
+Next clear_eStruct2001010_flagByte0D_81418B6(void) {
     SavedRegs kept = clear_struct_flag_byte(R4, R5, R7);
     R4 = kept.r4;
     R5 = kept.r5;
@@ -53,7 +53,7 @@ Next sub_81418B6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81420B0 ── */
+/* ── battle_getShiftedEnemyTableByte_81420B0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_sub_8142080_result;
 /* register form: generated wrapper: battle_getEnemyIndexFromMapGroup_8142080 has no typed C interface yet */
@@ -69,14 +69,14 @@ static u32 pick_shifted_table_entry(u32 index_source) {
     return (u32)LD8(A_dword_81420C4 + index) << 16;
 }
 
-/* sub_81420B0: r10 -> r0 (r4-r7 preserved) */
-Next sub_81420B0(void) {
+/* battle_getShiftedEnemyTableByte_81420B0: r10 -> r0 (r4-r7 preserved) */
+Next battle_getShiftedEnemyTableByte_81420B0(void) {
     R0 = pick_shifted_table_entry(R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8142178 ── */
-/* sub_8142178: bump the scenario effect step counter (byte at 0x200078E).
+/* ── scenarioEffectAdvanceStep_8142178 ── */
+/* scenarioEffectAdvanceStep_8142178: bump the scenario effect step counter (byte at 0x200078E).
  * Increments the counter by one and stores it back; the byte store wraps
  * naturally at 8 bits. r4-r7 are untouched (the original only pushes/pops
  * them), and r0/flags are clobbered. */
@@ -86,8 +86,8 @@ static void scenario_effect_advance_step(void) {
     ST8(A_byte_200078E, counter + 1);
 }
 
-/* sub_8142178() -> nothing (r4-r7 preserved) */
-Next sub_8142178(void) {
+/* scenarioEffectAdvanceStep_8142178() -> nothing (r4-r7 preserved) */
+Next scenarioEffectAdvanceStep_8142178(void) {
     scenario_effect_advance_step();
     RETURN_TO_CALLER();
 }
@@ -107,7 +107,7 @@ Next getField0x18OfScenarioEffectState2000780_81421e0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8142990 ── */
+/* ── ow_getPlayerTileMapIndex_8142990 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; } call_ReadOWPlayerObjectCoords_result;
 /* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
@@ -125,7 +125,7 @@ static inline call_sub_8142816_result call_sub_8142816(u32 r0, u32 r1) {
     return (call_sub_8142816_result){ R0 };
 }
 
-/* sub_8142990: fetch the overworld player object's coordinates, then hand the
+/* ow_getPlayerTileMapIndex_8142990: fetch the overworld player object's coordinates, then hand the
  * first two of them to ow_getCursorMapTileIndex and return its result.
  * r4-r7 are only saved/restored around the calls, so they end unchanged. */
 static u32 get_player_coords_and_process(void) {
@@ -133,8 +133,8 @@ static u32 get_player_coords_and_process(void) {
     return call_sub_8142816(coords.r0, coords.r1).r0;
 }
 
-/* sub_8142990(r10 = context) -> r0; r4-r7 preserved */
-Next sub_8142990(void) {
+/* ow_getPlayerTileMapIndex_8142990(r10 = context) -> r0; r4-r7 preserved */
+Next ow_getPlayerTileMapIndex_8142990(void) {
     R0 = get_player_coords_and_process();
     RETURN_TO_CALLER();
 }
