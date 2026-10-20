@@ -1,0 +1,60 @@
+name: SubtractCustGauge
+address: '0x0801DFD0'
+kind: function
+previous_names:
+- sub_801DFD0
+- battle_hudSubtractValueAt20
+status: probable
+summary: Subtracts r0 from the custom gauge (eStruct2035280+0x20), clamping at zero.
+interface: (r0 = amount to subtract) -> custom gauge updated; r0-r2 clobbered
+details: The subtract counterpart of AddCustGauge on the custom gauge halfword; no direct callers in the
+  disassembly (it may be reached through a pointer table).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r2, off_801E0D8 loads eStruct2035280, the battle HUD state struct; ldrh r1,[r2,#0x20]; sub
+    r1,r1,r0; strh r1,[r2,#0x20] — read-modify-write of the +0x20 halfword by r0; bge loc_801DFDC / mov
+    r1,#0 — result is saturated at zero, typical of HP/counter drain; symdb ties eStruct2035280 to the
+    HP box's shown HP, redraw and request bits
+  refs:
+  - bn6f/asm/asm00_2.s:31853
+  reproduce: python3 tools/asmcat.py 0x0801DFD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'eStruct2035280+0x20 is the custom gauge: ClearCustGauge (confirmed) zeroes it, SetCustGauge
+    clamps what it stores there to 0x4000, battle_fillCustGauge fills it with SetCustGauge(0x4000), and
+    battle_dispatchNextPhase adds 13 to it each frame the battle is not time-stopped. The +0x20 halfword
+    is the gauge, not the HP box''s shown HP (that is +0x24, as the earlier entry noted).'
+  refs:
+  - bn6f/asm/asm00_2.s:32241
+  - bn6f/asm/asm00_2.s:32189
+  reproduce: python3 tools/asmcat.py 0x0801DFD0
+  result: same field and struct as ClearCustGauge / SetCustGauge
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801DFD0 -> battle_hudSubtractValueAt20
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename battle_hudSubtractValueAt20 -> SubtractCustGauge
+  where: bn6f abfc4a89
+  tool: tools/rename_symbol.py
+related:
+- ClearCustGauge
+- SetCustGauge
+- battle_fillCustGauge
+open_questions:
+- 'No callers found by name: what subtracts from the gauge.'
+sources:
+- wf investigate investigate-20261019-052112
+- claude session_01WFp8UePQ4NMHsiu16Siidk

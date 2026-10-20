@@ -1,0 +1,71 @@
+name: AddCustGauge
+address: '0x0801DFB8'
+kind: function
+previous_names:
+- sub_801DFB8
+- battle_addHudField20
+status: probable
+summary: Adds r0 to the custom gauge (eStruct2035280+0x20), saturating at its 0x4000 maximum.
+interface: (r0 = amount to add) -> custom gauge updated; r0-r2 clobbered
+details: Read-modify-write of the custom gauge halfword with a clamp at 0x4000, the same maximum SetCustGauge
+  enforces. Its caller battle_dispatchNextPhase calls it with r0 = 13 once per frame unless time is stopped,
+  so the gauge goes from empty to 0x4000 in 1261 frames (about 21 s at 60 fps) when nothing else changes
+  it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r1,[r2,#0x20]; add r0,r0,r1; strh r0,[r2,#0x20] — read-modify-write of the HUD halfword
+    at +0x20; cmp r0,r1(=0x4000); ble skip; mov r0,r1 — saturating clamp at 0x4000; ldr r2,off_801E0D8
+    = eStruct2035280 — operates on the battle HUD struct whose +0x24 holds shown HP; sole caller battle_dispatchNextPhase
+    routes cust-gauge phase advance, matching a gauge fill/adjust helper
+  refs:
+  - bn6f/asm/asm00_2.s:31662
+  - 0x0800855E battle_dispatchNextPhase
+  reproduce: python3 tools/asmcat.py 0x0801DFB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it reads the halfword at eStruct2035280+0x20, adds the
+    signed r0 delta, clamps to 0x4000, and stores back. The name prefix ''battle_'' is fine, but ''CustGauge''
+    is speculative; the field''s purpose isn''t established as a custom gauge by the code or symdb. A
+    more neutral name like ''battle_addHudField20'' better reflects what the code actually does without
+    guessing semantics.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'eStruct2035280+0x20 is the custom gauge: ClearCustGauge (confirmed) zeroes it, SetCustGauge
+    clamps what it stores there to 0x4000, battle_fillCustGauge fills it with SetCustGauge(0x4000), and
+    battle_dispatchNextPhase adds 13 to it each frame the battle is not time-stopped. This is the add
+    half of SetCustGauge / ClearCustGauge: same struct, field and 0x4000 clamp.'
+  refs:
+  - bn6f/asm/asm00_2.s:32220
+  - bn6f/asm/asm00_2.s:32189
+  - bn6f/asm/asm00_2.s:32200
+  - bn6f/asm/asm00_1.s:11913
+  reproduce: python3 tools/asmcat.py 0x0801DFB8
+  result: 'the caller passes r0 = 13 (mov r0, #0xd) after battle_isTimeStop; 0x4000 / 13 = 1261 frames'
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801DFB8 -> battle_addHudField20
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename battle_addHudField20 -> AddCustGauge
+  where: bn6f abfc4a89
+  tool: tools/rename_symbol.py
+related:
+- ClearCustGauge
+- SetCustGauge
+- battle_fillCustGauge
+open_questions:
+- Whether the HUD shows the gauge as full at 0x4000 or earlier, and the in-game fill time (not checked
+  at runtime).
+sources:
+- wf investigate investigate-20261019-015108
+- claude session_01WFp8UePQ4NMHsiu16Siidk

@@ -1,0 +1,79 @@
+name: battle_isCustGaugeFull_800A21C
+address: '0x0800A21C'
+kind: function
+previous_names:
+- sub_800A21C
+- battle_shouldPlayDeathAnim_800A21C
+status: probable
+summary: Returns 1 when the custom gauge is at its 0x4000 maximum and the battle is running (not time-stopped,
+  not over); otherwise 0.
+interface: () -> r0 = 1 if the custom gauge is full, else 0
+details: Calls battle_isTimeStop and battle_isBattleOver, then compares GetCustGauge with 0x4000, the
+  maximum SetCustGauge / AddCustGauge clamp to. The 0x4000 it compares against is the gauge value, not
+  an animation state. Callers (battle_dispatchNextPhase and two similar flow steps) pause the battle and
+  switch the flow state to 0x14 when it returns 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isTimeStop` then `bne loc_800A23A` → on time-stop, r0 = 0 is returned (time-stop
+    case at 0x800A23A loads r0 with 0). - `bl battle_isBattleOver` then `tst r0, r0` + `bne loc_800A23A`
+    → on non-zero r0 (battle over), returns 0. - `bl sub_801DFE4` then `ldr r1, dword_800A240 // =0x4000`
+    and `cmp r0, r1` `bne loc_800A23A` → equality with 0x4000 is required. - Success path: `mov r0, #1`
+    then `pop {pc}` returns 1; fall-through failure path at loc_800A23A `mov r0, #0` `pop {pc}` returns
+    0. - dword_800A240 lives right after the function (`.word 0x4000`), used only by this cmp.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A21C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800a21c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'eStruct2035280+0x20 is the custom gauge: ClearCustGauge (confirmed) zeroes it, SetCustGauge
+    clamps what it stores there to 0x4000, battle_fillCustGauge fills it with SetCustGauge(0x4000), and
+    battle_dispatchNextPhase adds 13 to it each frame the battle is not time-stopped. The function reads
+    that field through GetCustGauge and tests == 0x4000.'
+  refs:
+  - bn6f/asm/asm00_1.s:16265
+  - bn6f/asm/asm00_1.s:11915
+  - bn6f/asm/asm00_1.s:12574
+  - bn6f/asm/asm00_1.s:13154
+  reproduce: python3 tools/asmcat.py 0x0800A21C
+  result: cmp r0, 0x4000 on the custom gauge; callers PauseBattle and set state 0x14
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800A21C -> battle_shouldPlayDeathAnim_800A21C
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename battle_shouldPlayDeathAnim_800A21C -> battle_isCustGaugeFull_800A21C
+  where: bn6f abfc4a89
+  tool: tools/rename_symbol.py
+related:
+- ClearCustGauge
+- SetCustGauge
+- battle_fillCustGauge
+open_questions:
+- What flow state 0x14 is (the custom screen opening is the likely reading).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+- claude session_01WFp8UePQ4NMHsiu16Siidk
