@@ -1,0 +1,66 @@
+name: copy_updateAnimatedStrip
+address: '0x0801D2A4'
+kind: function
+status: probable
+summary: Loads context via [caller_r5+0x48]; copies a 28x2 tile strip from byte_801D9B4 into BG block
+  0 at (0,0x12), then uploads three tilemap chunks (0,0x280→0x200,0x500→0x400) bracketed by sub_802E440/44A/454
+  calls. Increments a frame counter and every 32 frames redraws a 9x2 segment at y=0x12 using segment
+  index (state-1)*10+1.
+interface: '(r0-r3 unused; context pointer expected in caller''s r5: +0x16 = buffer/BG id, +0x1a = segment
+  selector, +0x30 = frame counter) -> r0 = clobbered; no meaningful return'
+details: First copies tiles from byte_801D9B4 via CopyBackgroundTiles (y=0x12, block 0, 28 wide, 2 tall).
+  It then reads byte [r5+0x16], calls sub_802E066 to get a value saved on the stack (likely a buffer/VRAM
+  pointer), and calls sub_801D344 three times with (srcOff,dstOff) pairs (0,0), (0x280,0x200), (0x500,0x400),
+  bracketed by calls to sub_802E440/sub_802E44A/sub_802E454 on the same id byte — most plausibly chunked
+  tilemap/palette upload setup and teardown. It then increments a frame counter at [r5+0x30]; every 32
+  frames (bit 0x20 test) it calls sub_3005EBA with r0=(byte[r5+0x1a]-1)*10+1, r1=0x12, r4=9, r5=2, which
+  resembles redrawing a 9x2 segment at the same row using a segment index derived from the state byte.
+  The use of the caller's r5 as a context pointer without a parameter suggests a fixed-register convention
+  in this module.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: CopyBackgroundTiles(r0=1, r1=0x12, r2=0, r3=byte_801D9B4, r4=0x1c, r5=2) copies a 28x2 tile
+    strip; three sub_801D344 calls use source/dest offsets 0/0, 0x280/0x200, 0x500/0x400 with the value
+    from sub_802E066([r5+0x16]); counter at [r5+0x30] incremented, action taken only when (counter & 0x20)
+    != 0, i.e. every 32 frames; periodic call r0=(b[r5+0x1a]-1)*10+1 with r1=0x12 matching the strip's
+    row, r4=9, r5=2 segment dimensions
+  refs:
+  - bn6f/asm/asm00_2.s:29889
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x080018D0 call_sub_3005EBA
+  - 0x0801D344 sub_801D344
+  reproduce: python3 tools/asmcat.py 0x0801D2A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: CopyBackgroundTiles is called with 0x1c (28) wide and 2 tall, and
+    the frame-counter increment plus every-32-frame redraw of a 9x2 segment at row 0x12 matches. However
+    the caller''s r5 is loaded from [r5+0x48] (so +0x16/+0x1a/+0x30 are offsets into a struct pointed
+    to by [caller_r5+0x48], not directly caller r5), and the periodic call uses r0 = (state-1)*10+1, r4=9,
+    r5=2 with r1=0x12 — r1 is row 0x12 (y), not x. Also sub_802E454 is used, not sub_802E454 missing in
+    callees list. The name prefix should reflect BG/tilemap redraw work, not ''bg'' (use ''copy'' or ''init'').;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose of sub_801D344 (chunked copy? which structures r1/r2 index)
+- what sub_802E066/802E440/802E44A/802E454 do with the id byte at [ctx+0x16]
+- what sub_3005EBA draws or copies and what byte [ctx+0x1a] counts
+- identity of the r5 context structure and which game screen calls this
+- 'The summary is mostly correct: CopyBackgroundTiles is called with 0x1c (28) wide and 2 tall, and the
+  frame-counter increment plus every-32-frame redraw of a 9x2 segment at row 0x12 matches. However the
+  caller''s r5 is loaded from [r5+0x48] (so +0x16/+0x1a/+0x30 are offsets into a struct pointed to by
+  [caller_r5+0x48], not directly caller r5), and the periodic call uses r0 = (state-1)*10+1, r4=9, r5=2
+  with r1=0x12 — r1 is row 0x12 (y), not x. Also sub_802E454 is used, not sub_802E454 missing in callees
+  list. The name prefix should reflect BG/tilemap redraw work, not ''bg'' (use ''copy'' or ''init'').'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801D2A4 -> copy_updateAnimatedStrip
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D2A4

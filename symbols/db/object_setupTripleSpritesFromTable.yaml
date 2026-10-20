@@ -1,0 +1,63 @@
+name: object_setupTripleSpritesFromTable
+address: '0x0804A574'
+kind: function
+status: probable
+summary: Looks up a 0x20-byte entry in unk_202A3E0 using two halfwords from the caller's object struct,
+  splits the entry's +0x1c word into two 7-bit values, configures three consecutive sprite-table entries
+  (ids 0xFFFFFFD8..0xFFFFFFDA) with those values plus zero fields, repositions the trio to (0x58, 0),
+  then sets the object's state to 4 and clears its frame counter.
+interface: '(r0 = unused on entry; r5 = object struct: +0x2a/+0x2e halfword table index, +0x01 state byte,
+  +0x18 halfword counter) -> r0 = 0; sets [r5+1]=4, [r5+0x18]=0'
+details: The function indexes unk_202A3E0 by ([r5+0x2a]+[r5+0x2e])*0x20, so that table holds 0x20-byte
+  entries (likely per-room or per-object data). It loads the entry's word at +0x1c and splits it into
+  bits 9-15 and bits 0-6, passing them with r2=r3=0 to setFieldsInThreeTableEntries_811980C, which writes
+  a byte and two halfwords into three consecutive structs rooted at 0x2008450 (skipping missing entries)
+  — plausibly sprite ids/attributes for a three-part object. It then calls sprite_setPositionForIdRange3_8119854
+  with first id 0xFFFFFFD8 (-40, likely a signed base id the callee offsets) at position (0x58, 0). Finally
+  it stores state 4 into [r5+1] and clears the halfword at [r5+0x18], i.e. it is one state in an object's
+  update handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r1,#0x20 after adding [r5+0x2a]+[r5+0x2e] indexes the 0x20-byte-entry table at unk_202A3E0;
+    lsl/lsr by 9 and ''and 0x7f'' unpack two 7-bit fields from the entry word at +0x1c before bl setFieldsInThreeTableEntries_811980C;
+    sprite_setPositionForIdRange3_8119854 is called with r0=0xFFFFFFD8, r1=0x58, r2=0 to move the three
+    sprite entries; ''strb #4,[r5,#1]'' and ''strh #0,[r5,#0x18]'' are a typical object state-machine
+    transition; no known caller, so the r5 struct and the meaning of unk_202A3E0 are inferred only from
+    callees'
+  refs:
+  - bn6f/asm/asm03_2.s:7632
+  - 0x0811980C setFieldsInThreeTableEntries_811980C
+  - 0x08119854 sprite_setPositionForIdRange3_8119854
+  reproduce: python3 tools/asmcat.py 0x0804A574
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: indexes unk_202A3E0 by (r5+0x2a + r5+0x2e)*0x20, extracts
+    two 7-bit fields from the +0x1c word and feeds them with r2=r3=0 to the field-setting callee, repositions
+    sprite ids 0xFFFFFFD8..0xFFFFFFDA to (0x58, 0), sets [r5+1]=4 and zeros [r5+0x18]. The proposed name
+    captures the gist, but ''TriSpriteFromRoomEntry'' implies the indices are a room entry, while +0x2e
+    is just another halfword field; ''object_setupTripleSpritesFromTable'' is more accurate.; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which object/state machine calls this and what the r5 struct is (needed to confirm the state transition)
+- the exact layout of the 0x20-byte entries at unk_202A3E0 and what the +0x1c packed word encodes
+- how sprite_setPositionForIdRange3_8119854 interprets the negative first id 0xFFFFFFD8, and what the
+  byte/halfword fields written by setFieldsInThreeTableEntries_811980C mean
+- 'The code matches the proposal''s mechanics: indexes unk_202A3E0 by (r5+0x2a + r5+0x2e)*0x20, extracts
+  two 7-bit fields from the +0x1c word and feeds them with r2=r3=0 to the field-setting callee, repositions
+  sprite ids 0xFFFFFFD8..0xFFFFFFDA to (0x58, 0), sets [r5+1]=4 and zeros [r5+0x18]. The proposed name
+  captures the gist, but ''TriSpriteFromRoomEntry'' implies the indices are a room entry, while +0x2e
+  is just another halfword field; ''object_setupTripleSpritesFromTable'' is more accurate.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A574 -> object_setupTripleSpritesFromTable
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A574

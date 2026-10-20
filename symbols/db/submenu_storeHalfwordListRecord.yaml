@@ -1,0 +1,63 @@
+name: submenu_storeHalfwordListRecord
+address: '0x0802B6F2'
+kind: function
+status: probable
+summary: 'Zero-fills 0x20 bytes at word_2036660, stores a header halfword, two bytes, and a 0xFFFF-terminated
+  halfword list (with count: 0xFF = empty) into the record at base+0x14, for the custom-screen chip-confirm
+  command queue.'
+interface: (r0 = header halfword, r1 = byte for +6, r2 = byte for +7, r3 = ptr to 0xFFFF-terminated halfword
+  array) -> r0 clobbered; no return value
+details: Zero-fills 0x20 bytes at word_2036660 (saving r0-r3 across the call, since ZeroFillByWord is
+  allowed to clobber them), then writes r0 as a halfword to +4 and r1/r2 as bytes to +6/+7. It copies
+  halfwords from the array at r3 into base+0x14, OR-ing each entry with r7, until it reads 0xFFFF, which
+  terminates the list and is also stored as the last entry. The entry count is kept in r4 (starts 0xFF,
+  so 0xFF means 'empty list') and written to byte +8. The r7 flag is 0x1C<<9 = 0xE000 only when r6 !=
+  0, but r6 is hard-set to 0 at entry, so the OR is dead code here — likely a version-shared routine (Gregar/Falzar)
+  where the other version sets the flag. The record exceeds the 0x20 zeroed bytes if the list is longer
+  than ~5 entries, so the tail of the buffer beyond +0x20 is used unwritten/zeroed by the fill.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: pop {r0-r3} after ZeroFillByWord preserves the four original arguments (ZeroFillByWord may clobber
+    r0-r3); strh r0,[r5,#4] / strb r1 / strb r2 store header fields into the freshly zeroed record at
+    word_2036660; loc_802B720 loop copies ldrsh r0,[r3,r2], orr r0,r7, strh into +0x14 until the value
+    equals -1 (0xFFFF); r4 counts entries from 0xFF and is stored to byte_2036668 as the list length;
+    sole caller custMenu_confirmAndProcessSelectedChips_8029110 runs this in the custom-screen chip-confirm
+    flow
+  refs:
+  - bn6f/asm/asm03_0.s:11412
+  - 0x08029110 custMenu_confirmAndProcessSelectedChips_8029110
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x0802B6F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name mostly match the code: it zero-fills 0x20 bytes at word_2036660, writes header/bytes,
+    copies a 0xFFFF-terminated halfword list to base+0x14 with OR-r7 (where r7=0 due to r6=0 making the
+    flag-branch dead), and stores the entry count (0xFF if empty) at +8. The proposal''s claim that ''r6
+    != 0'' would set the flag is misleading — r6 is set to 0 and never reassigned, so the branch at loc_802B6F6
+    is unconditionally taken (r7 stays 0) and the OR is genuinely dead. Name should use the allowed ''submenu''
+    prefix instead of ''custMenu''.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact game meaning of the halfword entries (chip IDs, char codes, or tile-map data) — needs the consumer
+  of word_2036660 identified
+- meaning of the header halfword (+4) and the two bytes (+6/+7)
+- whether other BN6 builds enter with r6 != 0 to apply the 0xE000 OR mask, and what that mask selects
+- 'The summary and name mostly match the code: it zero-fills 0x20 bytes at word_2036660, writes header/bytes,
+  copies a 0xFFFF-terminated halfword list to base+0x14 with OR-r7 (where r7=0 due to r6=0 making the
+  flag-branch dead), and stores the entry count (0xFF if empty) at +8. The proposal''s claim that ''r6
+  != 0'' would set the flag is misleading — r6 is set to 0 and never reassigned, so the branch at loc_802B6F6
+  is unconditionally taken (r7 stays 0) and the OR is genuinely dead. Name should use the allowed ''submenu''
+  prefix instead of ''custMenu''.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802B6F2 -> submenu_storeHalfwordListRecord
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B6F2

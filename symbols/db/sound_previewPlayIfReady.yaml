@@ -1,0 +1,60 @@
+name: sound_previewPlayIfReady
+address: '0x0802BA34'
+kind: function
+status: probable
+summary: 'Chip-preview UI task hook: if byte 7 of the task struct at word_2036660 is non-zero, calls the
+  IWRAM sound routine at 0x03005EBA with no arguments; otherwise returns immediately.'
+interface: () -> r0 = result of the 0x3005EBA call; r6 clobbered; returns immediately if [word_2036660+7]
+  == 0
+details: 'Loads the task struct pointer word_2036660, reads byte_2036667 (offset 7), and if it is non-zero
+  calls call_sub_3005EBA — an IWRAM (0x03005EBA) routine invoked with no register arguments, so it must
+  act on globals such as this task struct. It then returns unconditionally. Its only named caller is chip_previewShowSelectedChip,
+  whose known summary says it draws the selected chip''s art, name and sound, which points at this being
+  the per-frame hook that actually plays/updates the preview sound once the flag at +7 enables it. The
+  rest of the ''function'' span is pure data: two tables (off_802BCB0 with ~44 entries and off_802BC60
+  with 20) of pointers to 10-byte records of the form {type, len, id, three shorts}, unrelated lookup
+  tables adjacent to the routine. The flag at +7 is presumably set by a sibling function that loads the
+  selected chip''s sound; this routine never clears it, so gating depends on who writes byte_2036667.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r6,[r6,#0x7]; cmp/beq — call is gated solely by byte_2036667 of the chip-preview task struct;
+    bl call_sub_3005EBA — no r0-r3 setup before the call, so the callee works on shared/global state (likely
+    IWRAM sound code); caller chip_previewShowSelectedChip 'draws art, name and sound' matches a conditional
+    sound kickoff; byte_802BA48..byte_802BC56 and off_802BC60/off_802BCB0 are data tables embedded after
+    the routine, not executed code
+  refs:
+  - bn6f/asm/asm03_0.s:11890
+  - 0x0802B920 chip_previewShowSelectedChip
+  - 0x0802B8E0 sub_802B8E0
+  - 0x080018D0 call_sub_3005EBA
+  reproduce: python3 tools/asmcat.py 0x0802BA34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x0802BA34 just checks byte_2036667 and conditionally calls call_sub_3005EBA; the rest
+    of the function span (off_802BC60, off_802BCB0 and their byte records) is pure data, not part of the
+    function. The proposal correctly identifies the logic and that it''s a sound playback gate, but the
+    name and summary should reflect a sound prefix and just describe the gate, not the unrelated adjacent
+    data tables.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what call_sub_3005EBA (0x03005EBA in IWRAM) actually does — sound play vs sound engine tick — and whether
+  it reads word_2036660 itself
+- which function writes byte_2036667 (offset 7), and whether the flag means 'sound loaded' or 'one-shot
+  pending'
+- The code at 0x0802BA34 just checks byte_2036667 and conditionally calls call_sub_3005EBA; the rest of
+  the function span (off_802BC60, off_802BCB0 and their byte records) is pure data, not part of the function.
+  The proposal correctly identifies the logic and that it's a sound playback gate, but the name and summary
+  should reflect a sound prefix and just describe the gate, not the unrelated adjacent data tables.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802BA34 -> sound_previewPlayIfReady
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802BA34

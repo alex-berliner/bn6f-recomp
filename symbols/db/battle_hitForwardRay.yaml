@@ -1,0 +1,63 @@
+name: battle_hitForwardRay
+address: '0x080BB8B0'
+kind: function
+status: probable
+summary: 'Shoots a 5-panel attack ray from the battle object''s facing direction using a dx,dy table indexed
+  by the ExtraVars+4 selector (0..2: up/diag, straight, down/diag), calling sub_80DDA5A on each valid
+  panel and aborting on the first off-grid panel.'
+interface: (r5 = battle object) -> r0 = ?; calls sub_80DDA5A per panel, returns early if a target panel
+  is off-grid
+details: 'For distance d = 1..5, it takes the object''s facing via object_getFrontDirection, reads a signed
+  (dx,dy) pair from byte_80BB908 indexed by the object''s ExtraVars+4 field (0..2 selects ray slope: (1,-1),(1,0),(1,1)),
+  scales both components by d and facing, and computes panelX+dx, panelY+dy. If object_isValidPanel accepts
+  the panel, it calls sub_80DDA5A with x, y, the object''s Element, ExtraVars+4 forced to include 0x3C00
+  (and cleared low bits), and the object''s DamageAndStaminaDamageCounterDisabler value. ExtraVars+4 thus
+  doubles as both the ray-slope selector (low bits) and an attack-parameter word passed on with the 0x3C00
+  flag set. Quirk: the first off-grid panel aborts the whole loop rather than skipping that ray step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: byte_80BB908 holds three (dx,dy) pairs (1,-1),(1,0),(1,1) indexed by ldr r1,[r5,#ExtraVars+4];
+    lsl r1,#1; mul r0,r6 with object_getFrontDirection result orients dx by facing; loop r6=1..5 (add
+    r6,#1; cmp r6,#5; ble) scales offsets by distance; ldrb PanelX/PanelY plus offsets, then object_isValidPanel
+    bounds-checks the 6x3 grid before each hit; orr r4,0x3C00 on ExtraVars+4 and ldr of DamageAndStaminaDamageCounterDisabler
+    feed sub_80DDA5A along with x, y, Element; caller sub_80BB79A invokes this on a battle object, consistent
+    with a chip/enemy attack routine
+  refs:
+  - bn6f/asm/asm31.s:7575
+  - 0x080BB79A sub_80BB79A
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080DDA5A sub_80DDA5A
+  reproduce: python3 tools/asmcat.py 0x080BB8B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal fits the code well: the dx,dy table at byte_80BB908 (1,-1),(1,0),(1,1) is right, the
+    loop scales by d (1..5), facing only affects dx, sub_80DDA5A is called per valid panel with element
+    and the 0x3C00 flag OR''d into ExtraVars+4, and the first invalid panel bails. However, only dx is
+    multiplied by facing (`mul r1, r0` for dx vs `mul r2, r6` for dy), so dy is not ''scaled by d and
+    facing'' — it''s just scaled by d. That''s a minor inaccuracy worth noting; a more accurate name reflecting
+    ''forward diagonal/line ray'' is fine.; run wf investigate investigate-20261019-010606; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80DDA5A actually does with (x, y, element, param|0x3C00, damage word) — damage application
+  vs. effect spawning is inferred, not proven
+- Exact meaning of the 0x3C00 bits and the low bits of ExtraVars+4 in that parameter word
+- 'The proposal fits the code well: the dx,dy table at byte_80BB908 (1,-1),(1,0),(1,1) is right, the loop
+  scales by d (1..5), facing only affects dx, sub_80DDA5A is called per valid panel with element and the
+  0x3C00 flag OR''d into ExtraVars+4, and the first invalid panel bails. However, only dx is multiplied
+  by facing (`mul r1, r0` for dx vs `mul r2, r6` for dy), so dy is not ''scaled by d and facing'' — it''s
+  just scaled by d. That''s a minor inaccuracy worth noting; a more accurate name reflecting ''forward
+  diagonal/line ray'' is fine.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BB8B0 -> battle_hitForwardRay
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB8B0

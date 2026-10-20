@@ -1,0 +1,62 @@
+name: spawnBattleObjectType3Kind7
+address: '0x080C5B76'
+kind: function
+status: probable
+summary: Spawns a type-3 battle object (kind 7) via object_spawnType3 and, on success, writes the caller's
+  panel X/Y, element, and damage (r6) into the new object's fields.
+interface: (r0 = arg stored to PanelX, r1 = arg stored to PanelY, r2 = arg stored to Element, r6 = arg
+  stored to DamageAndStaminaDamageCounterDisabler; r0=7 passed to spawn) -> r0 = spawned object or failure;
+  flags from spawn success
+details: 'The routine saves the caller''s arguments with push {r0-r2,r5}, calls object_spawnType3 with
+  r0=7, and on success pops the saved args into r1-r3 and stores them as oBattleObject_PanelX, oBattleObject_PanelY,
+  and oBattleObject_Element, plus r6 as oBattleObject_DamageAndStaminaDamageCounterDisabler. If the spawn
+  fails (beq), it skips the field stores and just returns. So the spawned object is fully parameterized
+  by the panel state machine: where it sits, what element it has, and how much damage it deals. The trailing
+  literal pools (0xFFFF0000, 0x1000, 0x3800000, 0x10000, byte table) appear to belong to the surrounding
+  code rather than this wrapper itself.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: push {r0-r2,r5} / pop {r1-r3,r5} around the bl shows caller args are forwarded into the new
+    object's fields; mov r0,#7 before bl object_spawnType3 fixes the spawned kind/subtype; beq locret
+    after the call skips strb r1/[PanelX], r2/[PanelY], r3/[Element], str r6/[Damage] when spawn failed;
+    sole caller panelObject_update_800C380 (panel tile state machine with timed trigger) supplies the
+    panel coords and damage
+  refs:
+  - bn6f/asm/asm31.s:29950
+  - 0x0800C380 panelObject_update_800C380
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C5B76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: push {r0-r2,r5}, spawn kind 7, pop r1-r3,r5, then store
+    PanelX/PanelY/Element/DamageAndStaminaDamageCounterDisabler. However the interface description lists
+    r6 as an argument, but r6 is never pushed/popped — it is read live from the caller (consistent with
+    the panel state machine). Also, the name ''panel_spawnType3WithStats'' is misleading: there are no
+    ''stats'' here, just position/element/damage. A tighter name reflecting a type-3 kind-7 spawn parameterized
+    with panel coords and damage would be clearer.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What kind-7 type-3 object represents in game terms (hazard, trap, panel effect) — the initializer inside
+  object_spawnType3 would show it
+- Exact argument order at the call site in panelObject_update_800C380, since the push/pop shuffle makes
+  the original register mapping partly inferred
+- 'The code matches the proposal''s behavior: push {r0-r2,r5}, spawn kind 7, pop r1-r3,r5, then store
+  PanelX/PanelY/Element/DamageAndStaminaDamageCounterDisabler. However the interface description lists
+  r6 as an argument, but r6 is never pushed/popped — it is read live from the caller (consistent with
+  the panel state machine). Also, the name ''panel_spawnType3WithStats'' is misleading: there are no ''stats''
+  here, just position/element/damage. A tighter name reflecting a type-3 kind-7 spawn parameterized with
+  panel coords and damage would be clearer.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C5B76 -> spawnBattleObjectType3Kind7
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5B76

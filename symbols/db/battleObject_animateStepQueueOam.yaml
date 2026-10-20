@@ -1,0 +1,75 @@
+name: battleObject_animateStepQueueOam
+address: '0x08138104'
+kind: function
+status: probable
+summary: 'Ticks one frame of a battle object''s OAM animation: computes an OAM tile address from a base
+  pointer plus a halfword-indexed offset, queues one OAM entry with the low nibble as row index, then
+  decrements the high-nibble frame timer and advances the row index via advanceAnimTableBy0xFF when the
+  timer hits zero.'
+interface: (r0 = attr/high bits, r1 = frame data base, r2 = offset of anim state byte in object (r5),
+  r3 = offset of halfword index in object, r4 = u16 OAM row table, r5 = object, r6 = 5th arg to queueOamFromTableRow,
+  r7 = next-frame table) -> queues one OAM entry; rewrites state byte [r5+r2]; no return value
+details: 'The state byte at [r5+r2] packs a frame timer in the high nibble and the current frame''s row
+  index in the low nibble. Each call it builds a value (r0<<16)|(r1 + halfword[r5+r3]*0x10) and calls
+  battleObject_queueOamFromTableRow with fixed attribute word 0x20002 (dword_8138164), the low nibble
+  as row index, r4 as the u16 table and r6 passed through. It then decrements the timer nibble; when the
+  timer reaches 1 it calls battleObject_advanceAnimTableBy0xFF with r0 = the row index returned by queueOamFromTableRow
+  and r1 = r7, storing the result (0xFF wraps to the table''s first entry) as the new frame index in the
+  low nibble. Both branches rewrite the byte as (timer-1)<<4 | frameIndex, so the high nibble is a frame-duration
+  countdown. The 16-byte stride (mul #0x10) suggests each animation row is 8 halfwords, matching one OAM-sized
+  entry. r5/r7 are used without being saved, so callers pass up to eight arguments — an extended-register
+  calling habit in this area of the ROM.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battleObject_queueOamFromTableRow_811FAF4 with r1 = dword_8138164 (0x20002), r2 = byte[r5+r2]&0xF,
+    r3 = r4, r4 = r6 — queues the current frame''s sprite; state byte handled as two nibbles: ''and r2,#0xF''
+    for the row index, ''lsr r1,#4'' / ''lsl r1,#4'' with decrement for the timer; high nibble == 1 path
+    calls battleObject_advanceAnimTableBy0xFF_8120CC8 (r1 = r7, 0xFF-wrap table) and stores the result
+    back: ''strb r0,[r5,r2]''; ldrh r2,[r5,r3]; mul r2,#0x10; add r1,r2 — table row selected by a halfword
+    stored in the object, 16 bytes per row; three call sites inside sub_81380B0 plus sub_81380E0 — consistent
+    with a per-object, per-frame animation update'
+  refs:
+  - bn6f/asm/asm36.s:16981
+  - 0x081380B0 sub_81380B0
+  - 0x081380C8 sub_81380B0
+  - 0x081380D0 sub_81380B0
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x08138104
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: low nibble is row index, high nibble is frame-delay
+    countdown, 0x10 stride, calls queueOamFromTableRow then conditionally advanceAnimTableBy0xFF. However
+    the proposal''s interface is wrong about r0 being ''attr/high bits''; r0 is shifted left 0x10 then
+    OR''d with r1+offset, so it is a u32 base pointer built at runtime. Also it lists ''r1 = frame data
+    base, r2 = offset of anim state byte'' but the code stores args via sp and the offsets are sp-relative,
+    not r5-relative except for the final strb. The 0x10 stride is 16 bytes, which would be 8 halfwords,
+    but an OAM tile+attr entry is typically 8 bytes (4 halfwords), so the stride detail is suspect.; run
+    wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the composed r0 ((r0<<16)|(r1+idx*16)) — pointer assembled from split halves vs OAM
+  attribute word
+- what r6 (passed as 4th arg to battleObject_queueOamFromTableRow) points to, likely the OAM queue/object
+- structure of the r7 next-frame table beyond the 0xFF wrap
+- what sub_81380B0/sub_81380E0 are, to confirm the tick context
+- 'The code matches the proposal''s mechanics: low nibble is row index, high nibble is frame-delay countdown,
+  0x10 stride, calls queueOamFromTableRow then conditionally advanceAnimTableBy0xFF. However the proposal''s
+  interface is wrong about r0 being ''attr/high bits''; r0 is shifted left 0x10 then OR''d with r1+offset,
+  so it is a u32 base pointer built at runtime. Also it lists ''r1 = frame data base, r2 = offset of anim
+  state byte'' but the code stores args via sp and the offsets are sp-relative, not r5-relative except
+  for the final strb. The 0x10 stride is 16 bytes, which would be 8 halfwords, but an OAM tile+attr entry
+  is typically 8 bytes (4 halfwords), so the stride detail is suspect.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8138104 -> battleObject_animateStepQueueOam
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138104

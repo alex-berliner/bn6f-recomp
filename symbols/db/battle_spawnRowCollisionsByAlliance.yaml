@@ -1,0 +1,71 @@
+name: battle_spawnRowCollisionsByAlliance
+address: '0x080F20A0'
+kind: function
+status: probable
+summary: Iterates columns 1..6 on the owner's row and spawns a collision region via object_spawnCollisionRegion
+  (args 0x1E05FF01, 0x10) on each panel that passes object_checkPanelParameters using the alliance-indexed
+  required/forbidden masks from the table at byte_80F20E0.
+interface: (r4 = x column loop value 1..6 implicitly, r5 = battle object -> r0 = void; calls object_checkPanelParameters
+  per column)
+details: 'Loops x from 1 to 6, reading the battle object''s PanelY (r5+oBattleObject_PanelY) and Alliance
+  (r5+oBattleObject_Alliance). The alliance (shifted left 3) indexes a 16-byte table at byte_80F20E0 into
+  two 8-byte entries of two words: alliance 0 gets required-mask 0x20 / forbidden-mask 0, alliance 1 gets
+  required 0 / forbidden 0x20 — i.e. each side only acts on panels with panel flag 0x20 set (and the other
+  side only on panels without it). For every panel where object_checkPanelParameters passes, it calls
+  object_spawnCollisionRegion with fixed arguments 0x1E05FF01 (lifetime/params packed word, e.g. 0x1E
+  = 30-frame duration, 0x5 element/power bits) and 0x10, at the current column and the object''s row.
+  So this places per-panel collision hitboxes along the owner''s row, but only on panels of one type per
+  alliance.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop `add r4,#1; cmp r4,#6; ble` iterates x columns 1..6 against the object's fixed PanelY;
+    alliance<<3 selects a two-word (required, forbidden) panel-flag mask pair from byte_80F20E0 (0x20/0
+    vs 0/0x20); object_checkPanelParameters is called per column with those masks and gates the spawn
+    (`tst r0,r0; beq skip`); object_spawnCollisionRegion is called with constants dword_80F20F0=0x1E05FF01
+    and 0x10 on each matching panel; the only caller sub_80F1FC0 is itself undocumented, so no higher-level
+    context confirms the attack identity
+  refs:
+  - bn6f/asm/asm31.s:126322
+  - 0x080F1FC0 sub_80F1FC0
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F20A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop logic, alliance-indexed mask table at 0x80F20E0, object_checkPanelParameters call, and
+    object_spawnCollisionRegion call with args 0x1E05FF01 and 0x10 at column/row all match the proposal.
+    However, the byte table is just two dwords (0x20,0 / 0,0x20,0,0,0,0,0), meaning each alliance uses
+    one required and one forbidden mask; alliance 0 requires 0x20 and forbids 0, alliance 1 requires 0
+    and forbids 0x20. The proposal''s wording about ''only on panels of one type per alliance'' is slightly
+    off — it''s really ''each alliance acts on a different subset of panels determined by a required/forbidden
+    pair''. Also, the fixed arguments are not ''packed'' as claimed; r2 and r3 are both zero, so only
+    the collision region type/duration word and the 0x10 param matter. A simpler name better reflects
+    this: spawn row-wide collision regions filtered by alliance panel type.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what panel state flag 0x20 denotes (hole, grass, ice, ...) to name the affected terrain
+- which attack or object calls sub_80F1FC0, i.e. whose hitboxes these are
+- meaning of the packed spawn argument 0x1E05FF01 (duration/element/damage fields)
+- 'The loop logic, alliance-indexed mask table at 0x80F20E0, object_checkPanelParameters call, and object_spawnCollisionRegion
+  call with args 0x1E05FF01 and 0x10 at column/row all match the proposal. However, the byte table is
+  just two dwords (0x20,0 / 0,0x20,0,0,0,0,0), meaning each alliance uses one required and one forbidden
+  mask; alliance 0 requires 0x20 and forbids 0, alliance 1 requires 0 and forbids 0x20. The proposal''s
+  wording about ''only on panels of one type per alliance'' is slightly off — it''s really ''each alliance
+  acts on a different subset of panels determined by a required/forbidden pair''. Also, the fixed arguments
+  are not ''packed'' as claimed; r2 and r3 are both zero, so only the collision region type/duration word
+  and the 0x10 param matter. A simpler name better reflects this: spawn row-wide collision regions filtered
+  by alliance panel type.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F20A0 -> battle_spawnRowCollisionsByAlliance
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F20A0

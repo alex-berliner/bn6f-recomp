@@ -1,0 +1,66 @@
+name: ai_attackFirstFrontPanel
+address: '0x081010DA'
+kind: function
+status: probable
+summary: 'AI attack routine: scans panels ahead of the battle object (1 for alliance 0, 6 for the other),
+  filtering for own-side panels via byte_810111C, then invokes sub_80E6F10 with the AI attack-vars struct
+  (r7) if a target panel is found, preserving the caller''s r0 panel pointer and r7 across the call.'
+interface: (r0 = battle object ptr, r5 = battle object ptr, r7 = AI attack-vars struct) -> r0 = preserved
+  panel ptr or original; calls attack executor
+details: 'Reads oBattleObject_Alliance from the object at r5 and picks a scan count: 1 panel for alliance
+  0, 6 for the other side. Calls object_getFrontDirection for the facing multiplier, then object_getFirstPanelInDirectionFiltered
+  with a per-alliance filter table byte_810111C (alliance*8 offset; each side filters for panels of value
+  0x20 — its own side) plus PanelY. If a panel is found, saves r0/r7, loads InitFlag/AttackBoost2/Damage/TargetObjectPtr
+  from the AI attack-vars struct in r7, and calls sub_80E6F10 with r0 = found panel and r7 = attack vars,
+  then restores r0/r7 for the caller. The push/pop pair only preserves the caller''s panel pointer and
+  struct pointer across the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r6,#1 / mov r6,#6 keyed on oBattleObject_Alliance sets the panel scan distance per side;
+    ldr r3,off_8101118 + alliance*8 indexes a per-alliance panel-filter word pair (0x20 = own-side panel
+    filter); bl object_getFirstPanelInDirectionFiltered returns the panel to attack; beq skips the attack
+    when none found; fields oAIAttackVars_InitFlag/AttackBoost2/Damage/TargetObjectPtr loaded from r7
+    and passed to sub_80E6F10 with r0 = panel — an attack-execution call; push {r0,r7} ... pop {r0,r7}
+    preserves caller state across the attack call, implying a dispatcher caller (0x08100E26)
+  refs:
+  - bn6f/asm/asm31.s:157374
+  - 0x08100E26 sub_8100E26
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  - 0x080E6F10 sub_80E6F10
+  reproduce: python3 tools/asmcat.py 0x081010DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match the code: r5 is used for Alliance/PanelY, scan count is 1 vs 6, filter
+    byte_810111C is loaded with alliance*8 offset, and sub_80E6F10 is called with AI attack-vars from
+    r7. However, r0 is set to #1/#6 (the scan count, not the object ptr) before the call to object_getFirstPanelInDirectionFiltered,
+    and r0 is the caller-provided panel pointer returned by the caller — the interface description (''r0
+    = battle object ptr'') is wrong. The function name ''ai_attackFirstFrontPanel'' fits well; the name
+    is fine but the summary should not call r0 a battle object pointer.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_80E6F10's behavior is unknown — it likely executes the actual attack/hit at the panel; knowing it
+  would confirm whether this is a charge, lunge, or direct hit
+- exact meaning of scan count 1 vs 6 (single-step attack vs long-range search) needs the other AI attack
+  variants for comparison
+- meaning of filter value 0x20 in the panel array (own-side panel marker) is inferred, not confirmed
+- 'The summary and behavior match the code: r5 is used for Alliance/PanelY, scan count is 1 vs 6, filter
+  byte_810111C is loaded with alliance*8 offset, and sub_80E6F10 is called with AI attack-vars from r7.
+  However, r0 is set to #1/#6 (the scan count, not the object ptr) before the call to object_getFirstPanelInDirectionFiltered,
+  and r0 is the caller-provided panel pointer returned by the caller — the interface description (''r0
+  = battle object ptr'') is wrong. The function name ''ai_attackFirstFrontPanel'' fits well; the name
+  is fine but the summary should not call r0 a battle object pointer.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81010DA -> ai_attackFirstFrontPanel
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81010DA

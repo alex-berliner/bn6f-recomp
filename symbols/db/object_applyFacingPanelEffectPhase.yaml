@@ -1,0 +1,64 @@
+name: object_applyFacingPanelEffectPhase
+address: '0x080E6000'
+kind: function
+status: probable
+summary: 'Object phase handler: on first call, computes the panel in front of the object via alliance-based
+  facing and tests it with a per-alliance mask; if the panel matches, calls sub_80D49CC to apply the action''s
+  effect, then waits 60 frames before ending the action.'
+interface: (r0 = ignored, r5 = battle object) -> r0 = 0/1 result discarded; sets oBattleObject_Timer,
+  PhaseInitialized, CurAction, CurPhase
+details: 'Standard phase-runner pattern: if PhaseInitialized is 0 it runs the init branch once, otherwise
+  falls through to the timer countdown. Init gets the object''s facing step via object_getEnemyDirection
+  (alliance-based +1/-1), adds it to PanelX, and calls object_checkPanelParameters with the adjusted coordinates
+  and a per-alliance mask pair from byte_80E6054 (set mask 0x00000010, clear mask 0x0F880080 — two 8-byte
+  entries, one per alliance). If the panel matches, it calls sub_80D49CC passing Element, 0, Params, and
+  the DamageAndStaminaDamageCounterDisabler fields, presumably to apply the action''s effect to that panel/target.
+  It then sets Timer=60 and PhaseInitialized=4; each subsequent call decrements the timer, and on expiry
+  sets CurAction=0x0C and CurPhase=0, ending the action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getEnemyDirection + add r0,r0,PanelX: the checked panel is one tile ahead in the
+    alliance-facing direction; ldr r2/r3 from off_80E6054[Alliance*8] then bl object_checkPanelParameters:
+    per-side panel-flag mask pair (0x10 set, 0x0F880080 clear); beq skip + bl sub_80D49CC with r2=Element,
+    r4=Params, r6=DamageAndStamina...: effect only fires on matching panel; mov r0,#0x3C; strh [Timer];
+    PhaseInitialized=4; countdown; on 0 sets CurAction=0x0C, CurPhase=0: 60-frame one-shot phase handler'
+  refs:
+  - bn6f/asm/asm31.s:100536
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080D49CC sub_80D49CC
+  reproduce: python3 tools/asmcat.py 0x080E6000
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s flow: it checks the panel in front of the object with object_checkPanelParameters
+    and calls sub_80D49CC if matching, then sets Timer=0x3C (60) and PhaseInitialized=4, with the second
+    branch decrementing the timer and ending at CurAction=0x0C, CurPhase=0. However the proposal''s name
+    has a ''battle_'' prefix issue — these object phase handlers typically use an ''object_'' prefix (matching
+    object_getEnemyDirection, object_checkPanelParameters callees), and the function is not specifically
+    a ''CheckFacing'' test since it also applies an effect via sub_80D49CC when the panel matches; ''Apply''
+    or ''Effect'' better captures this dual role.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_80D49CC does with Element/Params (damage vs panel-state change), which panel flag bit 0x10
+  denotes, and which in-game object/chip routes its action here (no callers known)
+- 'The code matches the proposal''s flow: it checks the panel in front of the object with object_checkPanelParameters
+  and calls sub_80D49CC if matching, then sets Timer=0x3C (60) and PhaseInitialized=4, with the second
+  branch decrementing the timer and ending at CurAction=0x0C, CurPhase=0. However the proposal''s name
+  has a ''battle_'' prefix issue — these object phase handlers typically use an ''object_'' prefix (matching
+  object_getEnemyDirection, object_checkPanelParameters callees), and the function is not specifically
+  a ''CheckFacing'' test since it also applies an effect via sub_80D49CC when the panel matches; ''Apply''
+  or ''Effect'' better captures this dual role.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E6000 -> object_applyFacingPanelEffectPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6000

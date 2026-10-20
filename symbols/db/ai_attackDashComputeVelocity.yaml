@@ -1,0 +1,57 @@
+name: ai_attackDashComputeVelocity
+address: '0x080F146E'
+kind: function
+status: probable
+summary: Sets the AI object's dash X-velocity to traverse |target_col - current_panel| * 40px / duration
+  panels in |duration| frames facing-aware, and stores the duration as the advance-step timer.
+interface: (r0 = dash duration in frames, r5 = battle object, r7 = AI attack vars) -> r0 = velocity (16.16
+  fixed point) stored to oBattleObject_XVelocity; r0 also stored halfword to oAIAttackVars_StepTimer;
+  flags from division
+details: Gets the facing multiplier via object_getFrontDirection and multiplies it into the velocity,
+  so the sign of the input frames (or front direction) picks slide direction. Target column is 7 for an
+  Alliance==0 (player-side) object, else 0; the distance is |target - oBattleObject_PanelX|. That distance
+  is scaled by 0x28<<16 (40 pixels per panel in 16.16 fixed point) and divided (SWI 6) by the input frame
+  count, giving a per-frame velocity that reaches the far edge of the field exactly when the timer expires.
+  The same frame count is saved into oAIAttackVars_StepTimer so the dash advance step knows when to stop
+  sliding.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection then mul r0,r4 and str to oBattleObject_XVelocity sets signed per-frame
+    velocity; ldrb Alliance; mov r0,#7 / #0 minus PanelX with abs computes distance to column 7 or 0;
+    r2 = 0x28<<16; mul r0,r2 converts distance to 16.16 fixed-point pixels (40 px/panel); svc 6 with r1=r4
+    divides scaled distance by the frame-count argument; strh r0,[r7,#oAIAttackVars_StepTimer] stores
+    the duration used by ai_attackDashAdvanceStep'
+  refs:
+  - bn6f/asm/asm31.s:124334
+  - 0x080F11BC ai_attackDashAdvanceStep
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F146E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The target column logic is inverted in the proposal: with Alliance==0 the code sets r0=7 via mov,
+    then if non-zero it overwrites with 0, meaning Alliance==0 (player side) targets column 0 and Alliance!=0
+    targets column 7. Otherwise the velocity/timer computation matches. Also the function only stores
+    halfword to StepTimer, not r0 again — fix the summary.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Whether r0 is guaranteed unsigned frames or the sign from object_getFrontDirection alone sets direction
+  (r4=0 would fault the SWI div)
+- Exact meaning of oAIAttackVars_StepTimer semantics in the dash step beyond being a countdown
+- 'The target column logic is inverted in the proposal: with Alliance==0 the code sets r0=7 via mov, then
+  if non-zero it overwrites with 0, meaning Alliance==0 (player side) targets column 0 and Alliance!=0
+  targets column 7. Otherwise the velocity/timer computation matches. Also the function only stores halfword
+  to StepTimer, not r0 again — fix the summary.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F146E -> ai_attackDashComputeVelocity
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F146E

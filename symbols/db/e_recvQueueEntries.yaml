@@ -1,0 +1,63 @@
+name: e_recvQueueEntries
+address: '0x0812B97C'
+kind: function
+status: probable
+summary: 'State-machine step that dispatches via sub_803EAE4 (mode 4 -> sub_812C24C, mode 1 -> exit),
+  sets state r5+0x10=6, calls sub_812C0CC on bit 0x10, then drains a queue entry via get_eLinkStateUnk38/sub_81323B0:
+  on a tag match (halfword at entry+2 == 0x8888 + r5+0x2e) CopyWords moves 8 words into unk_2033C00 +
+  r5+0x3c, advances the cursor, and calls sub_812C160; when the cursor reaches r5+0x34 it sets r5+0x2=8.'
+interface: (r0-r3 unused; r5 = global transfer-state struct) -> r0 clobbered; writes state byte r5+0x10=6,
+  cursor r5+0x3c, completion byte r5+0x2=8, buffer unk_2033C00
+details: 'First dispatches via sub_803EAE4 on the eStruct200BC30 mode byte: mode 4 goes to sub_812C24C,
+  mode 1 exits, otherwise it stores 6 into the state byte at r5+0x10 and tests state bits 0x10/8 (bit
+  0x10 calls sub_812C0CC, bit 8 aborts). It then fetches eLinkState+0x38 via get_eLinkStateUnk38, passes
+  it to sub_81323B0, and exits if the result is -1 (no pending data). Otherwise sub_803DD60 validates
+  the entry; on failure the entry pointer is advanced by 0x10. A valid entry is identified by the halfword
+  at entry+2 equaling 0x8888 + [r5+0x2e], after which CopyWords copies 8 words from entry+4 into unk_2033C00
+  + [r5+0x3c] and advances the write cursor by 8 words; sub_812C160 is called after each copy. When the
+  cursor [r5+0x3c] reaches [r5+0x34] (expected total), the completion byte r5+0x2 is set to 8. Entry header
+  is 4 bytes (halfword tag at +2), payload 32 bytes, so entries are 0x14 bytes in a queue.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803EAE4 dispatch on mode byte and state stores (mov r0,#6; strb [r5,#0x10]) show an e-link
+    transfer state machine; cmp r1, 0x8888+[r5+0x2e] at 0x812B9C4 validates a queue entry tag before copying;
+    CopyWords call with dest unk_2033C00+[r5+0x3c], size 8, then [r5+0x3c]+=8 is the incremental payload
+    copy; cmp [r5+0x34],[r5+0x3c]; strb #8,[r5+0x2] marks completion when cursor meets expected count;
+    get_eLinkStateUnk38 + -1 check ties the routine to the link/eLinkState subsystem'
+  refs:
+  - bn6f/asm/asm33.s:17780
+  - 0x0800093C CopyWords
+  - 0x0803EF74 get_eLinkStateUnk38
+  - 0x0803EAE4 sub_803EAE4
+  reproduce: python3 tools/asmcat.py 0x0812B97C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics (state machine, copying 8 words, completion flag, sub_812C0CC/sub_812C160
+    callers) match the assembly closely. However, the payload is 8 words = 32 bytes, not 32-byte entries
+    of 0x14 bytes, and it copies 8 words at unk_2033C00 + r5+0x3c, advancing the cursor by 8 words per
+    entry. Also, the proposed name ''eLink_recvQueueEntries'' is reasonable but ''e_recvQueueEntries''
+    would match the ''e'' prefix convention better.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the game feature using this transfer (trade, library download, etc.) is unknown
+- What buffer unk_2033C00 ultimately holds and who consumes it after completion byte r5+0x2 is set
+- Meaning of the state bits 0x10/8 at r5+0x10 and what sub_812C0CC/sub_812C24C do in those branches
+- The proposal's mechanics (state machine, copying 8 words, completion flag, sub_812C0CC/sub_812C160 callers)
+  match the assembly closely. However, the payload is 8 words = 32 bytes, not 32-byte entries of 0x14
+  bytes, and it copies 8 words at unk_2033C00 + r5+0x3c, advancing the cursor by 8 words per entry. Also,
+  the proposed name 'eLink_recvQueueEntries' is reasonable but 'e_recvQueueEntries' would match the 'e'
+  prefix convention better.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812B97C -> e_recvQueueEntries
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B97C

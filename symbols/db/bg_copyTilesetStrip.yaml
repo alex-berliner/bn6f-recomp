@@ -1,0 +1,66 @@
+name: bg_copyTilesetStrip
+address: '0x08138890'
+kind: function
+status: probable
+summary: Copies a 2-row-tall horizontal strip of tile ids from a per-style tileset (0xd000 + 0x30*[r5+0xd]
+  base, [r6+3] tiles wide) into BG tile block 1 at ([r6+2],[r5+0xc]&0x1F), after preparing the 0xd300
+  attribute buffer via call_sub_3005EBA.
+interface: (r0..r2 unused here; r5 = style/pos struct, r3->r6 = placement struct) -> r0 = ?; builds tile-id
+  array on stack and issues two BG-map writes
+details: 'Computes a base tile id as 0xd000 + 0x30 * [r5+0xd] (each source element is 48 tiles apart)
+  and fills a stack array with two rows of consecutive ids: base+0..w-1 and base+w..base+2w-1, where w
+  = [r6+3]; the loop steps two tiles at a time, so odd widths would break it. It then calls call_sub_3005EBA(0,
+  [r5+0xc]&0x1F, 1, 0xd300, 0x20, 2, index) — apparently a second BG write from the 0xd300 buffer, likely
+  attribute/palette data — then CopyBackgroundTiles(j=[r6+2], i=[r5+0xc]&0x1F, 1, sp_array, w, 2) to write
+  the tile ids into tile block 1. The 0xa0 add before the 0x1F mask is a no-op on the low 5 bits. r5+0xc
+  is the vertical position, r5+0xd selects which 48-tile-wide source element, r6+2 is the horizontal start,
+  r6+3 the strip width.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0,r1 with r1=#0x30 and ldr r1,=0xd000: base tile = 0xd000 + 48*style index (asm start);
+    loop at loc_81388AA writes r0..r0+3 into two stack rows and advances r0 by 4 until r3 (width) counts
+    to 0 by 2; call_sub_3005EBA with r3=0xd300, r4=0x20, r5=2 and the masked [r5+0xc] as i plus stack
+    arg; CopyBackgroundTiles called with which_tile_block=1, tile_ids=sp (the built array), j_size=[r6+3],
+    i_size=2; 0xa0 add then (<<24 >>27) mask leaves [r5+0xc]&0x1F, a BG-row coordinate clamp'
+  refs:
+  - bn6f/asm/asm36.s:18007
+  - 0x08138478 sub_8138478
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x080018D0 call_sub_3005EBA
+  reproduce: python3 tools/asmcat.py 0x08138890
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: it builds a stack array of tile ids starting at 0xd000 + 0x30*[r5+0xd],
+    advances two pairs at a time (r3 -= 2), then calls call_sub_3005EBA (0, [r5+0xc]&0x1F, 1, 0xd300,
+    0x20, 2, index) followed by CopyBackgroundTiles([r6+2], [r5+0xc]&0x1F, 1, sp, [r6+3], 2). However,
+    the callee writes the buffer at 0xd300 itself; this function does not issue ''two BG-map writes''—only
+    the call_sub_3005EBA does, and CopyBackgroundTiles uses the built stack array. The ''bg_blit'' prefix
+    is fine but ''TileRowPair'' is misleading since it actually fills a 2-tile-tall strip whose height
+    in BG-map writes is 2 rows (i_size=2) regardless of w.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What structure r5/r6 belong to (window/message-frame state?) and what call_sub_3005EBA writes via 0xd300
+  (tile ids vs attributes)
+- Caller sub_8138478 is unknown, so the in-game context (which window or background element is being drawn)
+  is unconfirmed
+- 'The summary is mostly correct: it builds a stack array of tile ids starting at 0xd000 + 0x30*[r5+0xd],
+  advances two pairs at a time (r3 -= 2), then calls call_sub_3005EBA (0, [r5+0xc]&0x1F, 1, 0xd300, 0x20,
+  2, index) followed by CopyBackgroundTiles([r6+2], [r5+0xc]&0x1F, 1, sp, [r6+3], 2). However, the callee
+  writes the buffer at 0xd300 itself; this function does not issue ''two BG-map writes''—only the call_sub_3005EBA
+  does, and CopyBackgroundTiles uses the built stack array. The ''bg_blit'' prefix is fine but ''TileRowPair''
+  is misleading since it actually fills a 2-tile-tall strip whose height in BG-map writes is 2 rows (i_size=2)
+  regardless of w.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8138890 -> bg_copyTilesetStrip
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138890

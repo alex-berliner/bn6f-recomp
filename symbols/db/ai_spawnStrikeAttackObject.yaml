@@ -1,0 +1,62 @@
+name: ai_spawnStrikeAttackObject
+address: '0x080D9130'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x9E via object_spawnType3 using r0 as the type hint and r1-r3
+  as the remaining spawn args, returns the source object pointer (r5) in r0, and on success writes PanelX,
+  PanelY, Element, Damage and AllianceAndDirectionFlip into the newly spawned object from the saved call
+  args and the source object.
+interface: (r0 = panel x, r1 = panel y, r2 = element, r3/r5 = spawn args, r5 = source battle object, r6
+  = damage) -> r0 = spawned object or 0 on failure
+details: Saves r0-r2 and r5, calls object_spawnType3 with type 0x9E (keeping r1-r3 as the remaining spawn
+  args), then uses a push/pop trick to shift the saved caller args back into r1-r3. On success it writes
+  PanelX and PanelY from the first two original args, Element from the third, the Damage field from r6,
+  and copies AllianceAndDirectionFlip from the object passed in r5 (the attacking enemy). The beq after
+  the call skips all field writes when the spawn returned NULL. Effectively a convenience wrapper that
+  fully configures a type-0x9E strike/temp-attack object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: push {r0-r2,r5} / pop {r1-r3,r5} remaps the caller's args so r0..r2 land in r1..r3 after the
+    spawn call; strb r1,[r0,#PanelX] / strb r2,[r0,#PanelY] / strb r3,[r0,#Element] fill the spawned object's
+    position and element; str r6,[r0,#oBattleObject_Damage...] sets the damage from a non-argument register
+    passed by the caller; ldrh/strh on AllianceAndDirectionFlip copies it from the r5 source object; caller
+    ai_attackStrikeFrontPanel spawns a linked temp attack then strikes the front panel with its element-4
+    damage
+  refs:
+  - bn6f/asm/asm31.s:71941
+  - 0x080ED82C ai_attackStrikeFrontPanel
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D9130
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does spawn type 0x9E via object_spawnType3 and fills in PanelX/PanelY/Element/Damage and
+    AllianceAndDirectionFlip, matching the summary. However the interface is misread: after the spawn,
+    r0 is overwritten with r5 before the pop, so r0 becomes the saved r5 (source object pointer), and
+    r1-r3 get the saved r0-r2. The proposal claims r0 = spawned object or 0, but actually r0 = source
+    object after the swap; the spawned object pointer is not preserved in any register. Also r6 isn''t
+    a direct caller arg (push only saves r0-r2,r5), so it likely comes from the caller. Name should reflect
+    the AI/attack convention.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of object type 0x9E and the second/third spawn arguments (r1/r2 as seen by object_spawnType3)
+- which caller register supplies damage (r6 set before this call) and whether the element arg is a raw
+  element id or an attack property index
+- 'The code does spawn type 0x9E via object_spawnType3 and fills in PanelX/PanelY/Element/Damage and AllianceAndDirectionFlip,
+  matching the summary. However the interface is misread: after the spawn, r0 is overwritten with r5 before
+  the pop, so r0 becomes the saved r5 (source object pointer), and r1-r3 get the saved r0-r2. The proposal
+  claims r0 = spawned object or 0, but actually r0 = source object after the swap; the spawned object
+  pointer is not preserved in any register. Also r6 isn''t a direct caller arg (push only saves r0-r2,r5),
+  so it likely comes from the caller. Name should reflect the AI/attack convention.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D9130 -> ai_spawnStrikeAttackObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9130

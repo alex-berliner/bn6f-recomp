@@ -1,0 +1,60 @@
+name: copy_update
+address: '0x080BC56E'
+kind: function
+status: probable
+summary: 'Per-frame update dispatcher for the mirror/copy battle effect object: loads oBattleObject_CurAction,
+  indexes jump table off_80BC588 (currently one entry, sub_80BC58C+1) and bx-jumps to the chosen handler.
+  The trailing ''mov r0,#8; strb r0,[r5,#8]'' is dead code reachable only when no handler is dispatched.'
+interface: (r0 = battle object pointer (also in r5)) -> r0 = handler return; flags preserved via call
+details: 'Standard battle-object update dispatcher: it loads the object''s oBattleObject_CurAction byte,
+  indexes a jump table at off_80BC588 with it, and calls the selected handler with lr set to the return
+  address (mov lr, pc / bx r1). The table at 80BC588 currently holds a single entry, sub_80BC58C+1, so
+  the effect only ever has action 0. The caller copy_initFromRelatedObject sets up a sprite-mirroring
+  effect object and enters this update routine. The ''mov r0,#8 / strb r0,[r5,#8]'' sequence after the
+  call is unreachable filler, suggesting the handler is expected to replace the object''s update or the
+  code is vestigial.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0]: dispatch indexed by the object''s
+    current action; off_80BC588 contains only sub_80BC58C+1: single action handler, so only action 0 is
+    valid; mov lr, pc / bx r1: long-call pattern typical of battle object update dispatchers; caller copy_initFromRelatedObject
+    ''enters its update ...'' — this function is that update entry; unreachable mov r0,#8 / strb r0,[r5,#8]
+    after the call site'
+  refs:
+  - bn6f/asm/asm31.s:9375
+  - 0x080BC524 copy_initFromRelatedObject
+  reproduce: python3 tools/asmcat.py 0x080BC56E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (load oBattleObject_CurAction, indirect jump via off_80BC588,
+    single entry sub_80BC58C+1). However, the proposal misreads the flow: ''mov r0,#8 / strb r0,[r5,#8]''
+    is not unreachable filler — control reaches it only when the called handler returns with the Thumb
+    bit clear, then bx r1 is skipped via the b locret_80BC580 path, so that strb is dead code but not
+    ''after the call''. Better description: it''s a vestigial store. Name ''copy_update'' is reasonable
+    given the caller copy_initFromRelatedObject, but a clearer prefix-based name is ''copy_update'' —
+    fine as-is; summary should drop the misleading ''unreachable filler'' wording.; run wf investigate
+    investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80BC58C actually does (the mirror effect's per-frame behavior)
+- whether the unreachable store to object field 8 was meant for another action case
+- 'The code matches the proposal''s mechanics (load oBattleObject_CurAction, indirect jump via off_80BC588,
+  single entry sub_80BC58C+1). However, the proposal misreads the flow: ''mov r0,#8 / strb r0,[r5,#8]''
+  is not unreachable filler — control reaches it only when the called handler returns with the Thumb bit
+  clear, then bx r1 is skipped via the b locret_80BC580 path, so that strb is dead code but not ''after
+  the call''. Better description: it''s a vestigial store. Name ''copy_update'' is reasonable given the
+  caller copy_initFromRelatedObject, but a clearer prefix-based name is ''copy_update'' — fine as-is;
+  summary should drop the misleading ''unreachable filler'' wording.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BC56E -> copy_update
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC56E

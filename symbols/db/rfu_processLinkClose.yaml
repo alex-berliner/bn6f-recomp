@@ -1,0 +1,64 @@
+name: rfu_processLinkClose
+address: '0x08147228'
+kind: function
+status: probable
+summary: 'Handles RFU link close: on status 0x26 with matching +0x2C/+0x1A checksum, clears the slot,
+  writes state 3, and dispatches a table entry callback; otherwise (mismatch or status 0x27) clears the
+  slot and writes state 4.'
+interface: (r0 = *u8 out state, r1 = connection struct) -> r0 = clobbered; writes 3 (clean close) or 4
+  (failed/error) to *r0
+details: It indexes the IWRAM array dword_2010CB0 with the slot id byte_2010328 to get a connection record,
+  and reads that record's status word at +0x00. If the status is 0x26, it checks a byte at +0x2C against
+  the byte at +0x1A (XOR as a checksum/verify), calls rfu_clearSlot(slot, 4), and on a match writes state
+  3 and calls sub_813D78C with the entry pointer for table entry byte[r1+1] from getTableEntryPtr32_802D064;
+  on mismatch it writes state 4. Status 0x27 also clears the slot and reports state 4. States 0x26/0x27
+  therefore look like 'connection closed / link lost' codes, and this function translates them into a
+  caller-facing status.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[byte_2010328]; ldr r1,[dword_2010CB0 + slot*4] selects the per-slot connection record;
+    ldrh r0,[r1]; cmp 0x26/0x27 branches treat record status words as disconnect codes; bl rfu_clearSlot
+    with (slot, 4) frees the wireless slot in both paths; eor r4,[r1+0x2C],[r1+0x1A]; cmp 0 picks out-state
+    3 (match) vs 4 (mismatch); Called from six sites in sub_81472F8, a polling loop for this state machine
+  refs:
+  - bn6f/asm/libs.s:6899
+  - 0x081472F8 sub_81472F8
+  - 0x08147328 sub_81472F8
+  - 0x0814732C sub_81472F8
+  - 0x0802D064 getTableEntryPtr32_802D064
+  - 0x0814A934 rfu_clearSlot
+  - 0x0813D78C sub_813D78C
+  reproduce: python3 tools/asmcat.py 0x08147228
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x08147228 indexes dword_2010CB0 by byte_2010328, checks status 0x26/0x27, XORs bytes
+    at +0x2C and +0x1A, calls rfu_clearSlot, and writes 3/4 to *r0. However, the proposal misreads the
+    success branch: it writes state 3 only on XOR match and calls sub_813D78C with the entry pointer for
+    index byte[r6+1] (not byte[r1+1]), and calls getTableEntryPtr32 with r0=0 not r0=r4. The name ''rfu_pollDisconnectState''
+    is reasonable but ''rfu_processLinkClose'' better reflects the close/finalize semantics driven by
+    status 0x26/0x27.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of out-states 3 vs 4 (clean shutdown vs error)
+- what sub_813D78C does with the fetched table entry
+- which game feature this link belongs to (trade? vs battle? secret net?) — needs caller context from
+  sub_81472F8
+- 'The code at 0x08147228 indexes dword_2010CB0 by byte_2010328, checks status 0x26/0x27, XORs bytes at
+  +0x2C and +0x1A, calls rfu_clearSlot, and writes 3/4 to *r0. However, the proposal misreads the success
+  branch: it writes state 3 only on XOR match and calls sub_813D78C with the entry pointer for index byte[r6+1]
+  (not byte[r1+1]), and calls getTableEntryPtr32 with r0=0 not r0=r4. The name ''rfu_pollDisconnectState''
+  is reasonable but ''rfu_processLinkClose'' better reflects the close/finalize semantics driven by status
+  0x26/0x27.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8147228 -> rfu_processLinkClose
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8147228

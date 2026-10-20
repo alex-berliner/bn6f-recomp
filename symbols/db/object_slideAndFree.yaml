@@ -1,0 +1,61 @@
+name: object_slideAndFree
+address: '0x080E0D38'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: slides it horizontally at -8.0 * facing (flipped when ExtraVars+8
+  has bits 0x14 set) with a small upward Y velocity of -2.5 for 20 frames, then unlinks and frees it via
+  object_freeMemory.'
+interface: (r5 = battle object, no args) -> void; destroys the object via object_freeMemory when the timer
+  expires
+details: On the first call (oBattleObject_PhaseInitialized == 0) it sets XVelocity = object_getFrontDirection()
+  * 0xFFF80000 (-8.0 in fixed point), negated when oBattleObject_ExtraVars+8 has any of bits 0x14 set,
+  and YVelocity = 0xFFFD8000 (-2.5), increments oBattleObject_CurAnim, sets oBattleObject_Timer = 0x14,
+  and stores 4 into PhaseInitialized. Each call then adds the velocities to oBattleObject_X/Y and decrements
+  the timer. Once the timer reaches 0 it clears flag 0x2 in oObjectHeader_Flags, nulls the pointer at
+  oBattleObject_ExtraVars+4 if it still points back at this object (list unlink), and calls object_freeMemory.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection + mul with 0xfff80000 stores into oBattleObject_XVelocity (entry
+    block); strb PhaseInitialized=4 and Timer=0x14 after setting velocities/anim show a one-time phase
+    setup; X += XVelocity, Y += YVelocity each frame, then ''sub r0,#1; bgt'' on Timer is the movement/countdown
+    loop; on timeout: bic flag 0x2 in oObjectHeader_Flags, self-pointer check on [ExtraVars+4], then bl
+    object_freeMemory; callees are only object_getFrontDirection and object_freeMemory, both battle-object
+    lifecycle routines'
+  refs:
+  - bn6f/asm/asm31.s:88644
+  - 0x08003458 object_freeMemory
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080E0D38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match: X velocity is frontDirection * -8.0 (negated when bits 0x14 set
+    in ExtraVars+8), Y velocity is -2.5, timer is 20 frames, and on expiry flag 0x2 is cleared, the list
+    pointer unlinked, and object_freeMemory called. However, PhaseInitialized is set to 4, not a boolean
+    init flag; and ''fly off screen'' is misleading since Y velocity is small (-2.5) and X dominates,
+    so it more accurately slides horizontally off-screen. The name prefix ''battle_object'' is not in
+    the allowed list (should be ''object'' or ''battle'' alone).; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so which enemy/attack spawns this object and what ExtraVars+8 bits 0x14 mean (e.g.
+  fly left vs right) is unconfirmed
+- What the object's CurAnim index being incremented selects (animation name) is unknown
+- 'The summary and behavior match: X velocity is frontDirection * -8.0 (negated when bits 0x14 set in
+  ExtraVars+8), Y velocity is -2.5, timer is 20 frames, and on expiry flag 0x2 is cleared, the list pointer
+  unlinked, and object_freeMemory called. However, PhaseInitialized is set to 4, not a boolean init flag;
+  and ''fly off screen'' is misleading since Y velocity is small (-2.5) and X dominates, so it more accurately
+  slides horizontally off-screen. The name prefix ''battle_object'' is not in the allowed list (should
+  be ''object'' or ''battle'' alone).'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E0D38 -> object_slideAndFree
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0D38

@@ -1,0 +1,59 @@
+name: object_stepVelocityAndPanels
+address: '0x080DD538'
+kind: function
+status: probable
+summary: 'Per-frame battle object update: adds XVelocity/YVelocity to X/Y, then when Timer hits zero advances
+  PanelX by object_getFrontDirection and PanelY by ±1 chosen from the sign of YVelocity, syncs collision
+  panels, and reloads Timer to 10-2*Param1.'
+interface: (r0..r4 = battle object, r5 = object pointer) -> r0 = result of sub_80DD5C8; no meaningful
+  flags out
+details: Each call adds oBattleObject_XVelocity to X and YVelocity to Y, then decrements Timer. When Timer
+  reaches 0, it advances PanelX by object_getFrontDirection (facing/alliance-based ±1) and PanelY by ±1
+  chosen from the sign of YVelocity (carry from `lsl r1,#1` on bit31), then calls object_updateCollisionPanels
+  to sync the collision record. Timer is reloaded with 10 - 2*Param1, so Param1 controls how fast the
+  object crosses panels (higher Param1 = faster). Every frame it also calls sub_80DD5C8, likely animation/visual
+  upkeep. The object appears to be a free-moving entity that also snaps to the panel grid periodically.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: velocity adds to X and Y fields each frame (asm lines 3-10); Timer decrement with `bne` skip
+    shows periodic panel-step block (lines 11-13); object_getFrontDirection result added to PanelX, sign
+    of YVelocity picks PanelY ±1 (lines 15-26); object_updateCollisionPanels called after panel change
+    (line 27); Timer reloaded as 10 - 2*Param1, Param1 scales step interval (lines 29-33)
+  refs:
+  - bn6f/asm/asm31.s:81315
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x080DD5C8 sub_80DD5C8
+  reproduce: python3 tools/asmcat.py 0x080DD538
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the code: XVelocity/YVelocity are added to X/Y (lines 4-10), Timer
+    decremented (lines 11-13), and on zero it adds object_getFrontDirection to PanelX (lines 14-18) and
+    a ±1 derived from the sign of YVelocity via `lsl r1,#1` (lines 19-23), then calls object_updateCollisionPanels
+    (line 25) and reloads Timer to 10-2*Param1 (lines 26-29). The interface claim is wrong though: r5
+    is a battle object passed in, not an output, and r0 is not really a ''result of sub_80DD5C8'' since
+    sub_80DD5C8 is called via bl not returned; the proposal misstates the signature.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80DD5C8 and sub_80DD6F4 do (likely visual/animation setup) is unknown
+- No known caller, so which entity uses this update (enemy, obstacle, moving object) is unidentified
+- 'The summary''s mechanics match the code: XVelocity/YVelocity are added to X/Y (lines 4-10), Timer decremented
+  (lines 11-13), and on zero it adds object_getFrontDirection to PanelX (lines 14-18) and a ±1 derived
+  from the sign of YVelocity via `lsl r1,#1` (lines 19-23), then calls object_updateCollisionPanels (line
+  25) and reloads Timer to 10-2*Param1 (lines 26-29). The interface claim is wrong though: r5 is a battle
+  object passed in, not an output, and r0 is not really a ''result of sub_80DD5C8'' since sub_80DD5C8
+  is called via bl not returned; the proposal misstates the signature.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DD538 -> object_stepVelocityAndPanels
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD538

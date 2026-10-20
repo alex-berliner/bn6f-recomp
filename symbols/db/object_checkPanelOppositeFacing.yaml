@@ -1,0 +1,65 @@
+name: object_checkPanelOppositeFacing
+address: '0x080F61E4'
+kind: function
+status: probable
+summary: Returns the adjusted panel reference if the panel one tile opposite the object's horizontal facing
+  step has panel-state value 2, otherwise returns 0.
+interface: (r0 = panel/object reference used for both the direction lookup and the panel test) -> r0 =
+  unchanged input value if the adjacent panel matches state 2, else 0; Z flag from the callee's test is
+  consumed internally
+details: 'The routine saves r0/r2/r3, calls object_getEnemyDirection to get the ±1 horizontal step implied
+  by the object''s alliance, negates it, and adds it to r0, producing a reference one column in the direction
+  opposite the returned step. It then pushes this adjusted value together with the constant 2 as stack
+  arguments to object_checkPanelParameters, which is known to test a panel against required flag state.
+  The result is tested with tst before pop {r0,r1} restores the pre-call r0, so on success the function
+  returns the adjusted input value itself, and on failure it explicitly sets r0 = 0 — the return value
+  is effectively ''the panel reference if it qualifies, else 0''. Quirk: the return value on the success
+  path is the caller''s (adjusted) input, not the callee''s 1/0 result, so callers must treat nonzero
+  as ''panel is of state 2''. Whether r0 is a raw x-coordinate or a pointer stepped by ±1 into per-column
+  panel data is not resolvable from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getEnemyDirection; neg r1,r1 — takes the alliance-based ±1 step and reverses it;
+    add r0,r0,r1 then push {r0,r1(=2)}; bl object_checkPanelParameters — tests the adjacent panel against
+    required state 2 via stack args; tst r0,r0 placed before pop {r0,r1}: branch decision uses the callee
+    result but the returned r0 is the restored input on success; mov r0,#0 fallthrough — explicit 0 return
+    when the panel check fails; callee summaries: object_checkPanelParameters tests a panel''s flag state;
+    object_getEnemyDirection returns ±1 by alliance'
+  refs:
+  - bn6f/asm/asm31.s:134234
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080F61E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: object_getEnemyDirection gives ±1, it''s negated, added to r0, then object_checkPanelParameters
+    is called with the adjusted value and 2; on nonzero result the function returns the adjusted input,
+    else 0. However, calling this ''checkPanelBehind'' is misleading — it checks the panel *opposite*
+    the facing step only because the direction is negated before being added, and it tests for panel state
+    2 specifically. The name should reflect the negation and the state test.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Is r0 an x-coordinate or a pointer into panel data (i.e., does ±1 step a byte per column)?
+- What panel state value 2 denotes (hole, grass, broken, etc.) — needs the panel-flag constants or checkPanelParameters
+  internals
+- No known caller, so the intended semantic (panel behind vs. in front) and how the returned value is
+  consumed are unconfirmed
+- 'The flow matches: object_getEnemyDirection gives ±1, it''s negated, added to r0, then object_checkPanelParameters
+  is called with the adjusted value and 2; on nonzero result the function returns the adjusted input,
+  else 0. However, calling this ''checkPanelBehind'' is misleading — it checks the panel *opposite* the
+  facing step only because the direction is negated before being added, and it tests for panel state 2
+  specifically. The name should reflect the negation and the state test.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F61E4 -> object_checkPanelOppositeFacing
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F61E4

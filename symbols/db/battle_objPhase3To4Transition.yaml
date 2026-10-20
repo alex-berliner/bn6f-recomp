@@ -1,0 +1,58 @@
+name: battle_objPhase3To4Transition
+address: '0x080BF3CC'
+kind: function
+status: probable
+summary: 'Battle-object phase transition: on first call sets CurAnim=1, Timer=30, plays SFX 0x10, marks
+  phase initialized; each call invokes sub_80BF402 and decrements Timer; when it expires sets sprite palette
+  to 4 and advances CurPhaseAndPhaseInitialized to 4.'
+interface: (r0 = timer value passed to sub_80BF402; r5 = battle object struct, implicit) -> void; sets
+  oBattleObject_CurAnim, Timer, PhaseInitialized, CurPhaseAndPhaseInitialized
+details: On first run (PhaseInitialized == 0) it sets CurAnim = 1, Timer = 30 (0x1e), plays sound effect
+  0x10 (0x11 + -1), and stores 4 into PhaseInitialized. Every call then invokes sub_80BF402 with the current
+  Timer in r0, decrements Timer, and returns while it is still positive. When the timer reaches 0 it calls
+  sprite_setPalette(4) and writes phase 4 into CurPhaseAndPhaseInitialized, ending the phase. The palette
+  change plus countdown pattern suggests a flashing/telegraph step of some battle object or boss part.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized / bne shows one-time init block guarded per phase; strh #0x1e into oBattleObject_Timer
+    then ''sub r0,#1 / bgt'' implements a 30-frame countdown; PlaySoundEffect called with 0x11+0xff =
+    0x10 during the init block; sprite_setPalette(4) and CurPhaseAndPhaseInitialized = 4 fire exactly
+    when the timer expires; r5 offsets oBattleObject_* mark this as a battle object phase routine, not
+    a generic helper'
+  refs:
+  - bn6f/asm/asm31.s:15620
+  - 0x080005CC PlaySoundEffect
+  - 0x08002D80 sprite_setPalette
+  - 0x080BF402 sub_80BF402
+  reproduce: python3 tools/asmcat.py 0x080BF3CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s pattern is correct: PhaseInitialized gate sets CurAnim=1, Timer=30, plays PlaySoundEffect
+    with 0x10 (0x11+0xff), calls sub_80BF402, decrements Timer, and when it hits 0 calls sprite_setPalette(4)
+    and writes 4 into CurPhaseAndPhaseInitialized. The only issue is the proposed name and summary imply
+    a countdown-driven phase, but a 30-frame timer with a single palette swap at expiry and no other work
+    is more naturally a ''phase 3 → phase 4 transition'' handler; a clearer name reflects the transition.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object or boss uses this phase (no callers known), so the in-game meaning of anim 1, SFX 0x10
+  and palette 4 is unconfirmed
+- What sub_80BF402 does with the timer (likely per-frame animation/effects for the countdown)
+- 'The summary''s pattern is correct: PhaseInitialized gate sets CurAnim=1, Timer=30, plays PlaySoundEffect
+  with 0x10 (0x11+0xff), calls sub_80BF402, decrements Timer, and when it hits 0 calls sprite_setPalette(4)
+  and writes 4 into CurPhaseAndPhaseInitialized. The only issue is the proposed name and summary imply
+  a countdown-driven phase, but a 30-frame timer with a single palette swap at expiry and no other work
+  is more naturally a ''phase 3 → phase 4 transition'' handler; a clearer name reflects the transition.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BF3CC -> battle_objPhase3To4Transition
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF3CC

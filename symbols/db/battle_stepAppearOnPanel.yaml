@@ -1,0 +1,56 @@
+name: battle_stepAppearOnPanel
+address: '0x080C2D56'
+kind: function
+status: probable
+summary: Per-frame battle-object step that on first entry starts animation 3, applies sprite flip from
+  r7+0xC, copies FuturePanelX/Y into PanelX/Y, recomputes pixel coordinates, and arms a 3-tick timer;
+  once the timer expires, advances CurPhaseAndPhaseInitialized to 0x10.
+interface: (r5 = battle object, r7 = per-object data struct) -> void; updates object phase/state in place
+details: On first entry (PhaseInitialized byte == 0) it sets CurAnim to 3 (likely the materialize/appear
+  animation), calls sprite_setFlip with byte 0xC of the r7 data struct to mirror the sprite, sets Timer
+  to 3, copies FuturePanelX/Y into PanelX/Y and recomputes pixel coordinates via object_setCoordinatesFromPanels,
+  then stores 4 into PhaseInitialized. On subsequent frames it decrements Timer until it expires, then
+  writes 0x10 into CurPhaseAndPhaseInitialized, moving the object to the next phase. This is the classic
+  BN6 enemy 'appear on a panel' startup state before entering its main AI phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized]; bne skip: one-time init guarded by the phase-initialized
+    flag; mov r0,#3; strb [r5,#oBattleObject_CurAnim] plus sprite_setFlip([r7,#0xc]): sets appear animation
+    and facing; FuturePanelX/Y copied to PanelX/Y then bl object_setCoordinatesFromPanels: object materializes
+    at its assigned panel; Timer decremented each frame until <=0, then strh #0x10 -> CurPhaseAndPhaseInitialized:
+    fixed 3-frame wait before phase 0x10'
+  refs:
+  - bn6f/asm/asm31.s:23758
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002F5C sprite_setFlip
+  reproduce: python3 tools/asmcat.py 0x080C2D56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function sets CurAnim=3 (appear anim), flips sprite from r7[0xc], sets Timer=3, copies FuturePanelX/Y
+    to PanelX/Y, recomputes coords, and on expiry writes 0x10 into CurPhaseAndPhaseInitialized. The proposal''s
+    summary and name are essentially correct, but CurAnim 3 isn''t clearly ''materialize'' and the timer
+    also fires when it goes <=0 (since bgt falls through on zero), so ''waits 3 frames'' is slightly off
+    — it counts down from 3 and exits when <=0. The phase transition is to 0x10, matching.; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No callers known: which enemy/object kinds use this step and what phase 0x10 leads to is unconfirmed'
+- Meaning of anim 3 and of r7+0xC (facing/flip source byte) not verified from data
+- The function sets CurAnim=3 (appear anim), flips sprite from r7[0xc], sets Timer=3, copies FuturePanelX/Y
+  to PanelX/Y, recomputes coords, and on expiry writes 0x10 into CurPhaseAndPhaseInitialized. The proposal's
+  summary and name are essentially correct, but CurAnim 3 isn't clearly 'materialize' and the timer also
+  fires when it goes <=0 (since bgt falls through on zero), so 'waits 3 frames' is slightly off — it counts
+  down from 3 and exits when <=0. The phase transition is to 0x10, matching.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2D56 -> battle_stepAppearOnPanel
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2D56

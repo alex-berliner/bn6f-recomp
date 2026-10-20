@@ -1,0 +1,60 @@
+name: npc_showTextByStoryFlag
+address: '0x0812469C'
+kind: function
+status: probable
+summary: Saves r0 into the NPC struct at +0x10, then based on EVENT_1709 sets animation/state bytes at
+  +2 and +3 and copies the byte into the chatbox at +0x4C, running text script 7 (flag clear) or 11 (flag
+  set) from archive eTextScript201C100.
+interface: (r0 = byte value (e.g. text/variant id), r5 = object struct, r10 = toolkit) -> r0 = script-runner
+  result; sets struct fields and chatbox text
+details: Saves r0 into the struct at r5+0x10, then branches on event flag EVENT_1709. If the flag is clear,
+  it writes 12 into both struct fields at r5+0x2 and r5+0x3, copies the saved byte into the chatbox struct
+  at +0x4C, and runs text script 7 from archive 201C100. If the flag is set, it writes only 8 to r5+0x2
+  (leaving r5+0x3 unchanged) and runs script 11 instead. The chatbox pointer comes from the toolkit (r10)
+  at oToolkit_ChatboxPtr, so this runs in an object/NPC update context.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0, [r5,#0x10] then ldrb r0, [r5,#0x10]; str r0, [r4,#0x4c] — saved byte is forwarded to
+    the chatbox struct; TestEventFlagFromImmediate EVENT_1709 with bne — the only branch, picks between
+    the two text paths; writes 12,12 to [r5+2]/[r5+3] on the flag-clear path vs 8 to [r5+2] only on the
+    flag-set path — state fields differing per branch; chatbox_runScript201C100 with 7 vs 0xb — two alternative
+    texts from the same archive; chatbox ptr fetched from r10 oToolkit_ChatboxPtr — normal in-game NPC/textbox
+    usage
+  refs:
+  - bn6f/asm/asm33.s:2916
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0812474C chatbox_runScript201C100_812474C
+  reproduce: python3 tools/asmcat.py 0x0812469C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it stores r0 to r5+0x10 (strb), branches on EVENT_1709, sets r5+2/r5+3,
+    copies the byte to chatbox ptr at +0x4C, and runs script 7 or 0xB. However the summary says script
+    7 or 11 — 11 is written as #0xb (decimal 11), so that wording is fine. A better name should reflect
+    that it''s an NPC interaction that runs a chatbox script tied to EVENT_1709; ''npc_showTextByStoryFlag''
+    is reasonable. The summary is mostly correct but the proposal says ''writes 12 into both struct fields''
+    which conflates the two stores; minor clarity issue.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which NPC/object owns the r5 struct (fields +2/+3/+0x10) and what the values 12 and 8 mean as states
+- Meaning of the byte stored to chatbox+0x4C (text variant, color, or speaker id?)
+- What EVENT_1709 tracks and which NPC scripts 7 and 11 of archive 201C100 contain
+- 'The code matches the proposal: it stores r0 to r5+0x10 (strb), branches on EVENT_1709, sets r5+2/r5+3,
+  copies the byte to chatbox ptr at +0x4C, and runs script 7 or 0xB. However the summary says script 7
+  or 11 — 11 is written as #0xb (decimal 11), so that wording is fine. A better name should reflect that
+  it''s an NPC interaction that runs a chatbox script tied to EVENT_1709; ''npc_showTextByStoryFlag''
+  is reasonable. The summary is mostly correct but the proposal says ''writes 12 into both struct fields''
+  which conflates the two stores; minor clarity issue.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812469C -> npc_showTextByStoryFlag
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812469C

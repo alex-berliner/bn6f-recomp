@@ -2,56 +2,53 @@ name: ai_naviAttackStep
 address: '0x080EEB68'
 kind: function
 status: probable
-summary: 'Per-frame navi AI attack step: on first entry resets counter, plays anim 5, SFX 0xB0, and spawns
-  a type-1 subtype-5 attack object with a navi-id-derived param, then sets ObjectFlags1 bit 22; on the
-  frame the StepTimer (init 0x15) equals 0xC it iterates the four opposing actors calling sub_80EEC08;
-  finally the timer is decremented and when it underflows HitElement is set to 4 to terminate.'
-interface: () -> void; reads/writes oAIAttackVars (AttackElement, StepTimer, HitElement) via the current
-  object context in r5/r7
-details: Runs on a shared AI-attack variable block (r7/r5 point to oAIAttackVars; r10 holds the toolkit
-  with the battle state). On first entry (AttackElement == 0) it resets the object counter timer, plays
-  animation 5 and sound effect 0xB0, then builds a parameter word (naviId from battle_getNaviIdFromActor,
-  shifted <<8, combined with a value from sub_80EBB34) and spawns a type-1 subtype-5 temp attack object
-  via spawn_t1_0x5_tempAttackObject_80B8E30; it also sets ObjectFlags1 bit 0x400000, stores StepTimer
-  = 0x15 and marks AttackElement = 4. Each subsequent frame, when the timer hits 0xC it loads the AliveBattleActors
-  array, and for the four slots of the opposite alliance (Alliance byte XOR 1, stride 0x10) calls sub_80EEC08
-  on each actor pointer. The timer then counts down; when it would go negative the attack ends by writing
-  HitElement = 4.
+summary: 'Per-frame navi AI attack step: on first entry resets counter, plays anim 5, SFX 0xB0, and spawns a type-1
+  subtype-5 attack object with a navi-id-derived param, then sets ObjectFlags1 bit 22; on the frame the StepTimer
+  (init 0x15) equals 0xC it iterates the four opposing actors calling sub_80EEC08; finally the timer is decremented
+  and when it underflows HitElement is set to 4 to terminate.'
+interface: () -> void; reads/writes oAIAttackVars (AttackElement, StepTimer, HitElement) via the current object
+  context in r5/r7
+details: Runs on a shared AI-attack variable block (r7/r5 point to oAIAttackVars; r10 holds the toolkit with the
+  battle state). On first entry (AttackElement == 0) it resets the object counter timer, plays animation 5 and sound
+  effect 0xB0, then builds a parameter word (naviId from battle_getNaviIdFromActor, shifted <<8, combined with a
+  value from sub_80EBB34) and spawns a type-1 subtype-5 temp attack object via spawn_t1_0x5_tempAttackObject_80B8E30;
+  it also sets ObjectFlags1 bit 0x400000, stores StepTimer = 0x15 and marks AttackElement = 4. Each subsequent frame,
+  when the timer hits 0xC it loads the AliveBattleActors array, and for the four slots of the opposite alliance
+  (Alliance byte XOR 1, stride 0x10) calls sub_80EEC08 on each actor pointer. The timer then counts down; when it
+  would go negative the attack ends by writing HitElement = 4.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'sub_80EEB68: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips the init block, so the
-    routine is a re-entering state step; init block: PlaySoundEffect(0xB0), object_setAnimation(5), spawn_t1_0x5_tempAttackObject_80B8E30
+  detail: 'sub_80EEB68: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips the init block, so the routine
+    is a re-entering state step; init block: PlaySoundEffect(0xB0), object_setAnimation(5), spawn_t1_0x5_tempAttackObject_80B8E30
     with (sub_80EBB34() | naviId<<8); timer==0xC block: Alliance byte XOR 1 * 0x10 indexes oBattleState_AliveBattleActors
-    and calls sub_80EEC08 on 4 opposing actor pointers; tail: StepTimer 0x15 decrement, on negative store
-    oAIAttackVars_HitElement = 4 — the state machine hand-off to the hit phase'
+    and calls sub_80EEC08 on 4 opposing actor pointers; tail: StepTimer 0x15 decrement, on negative store oAIAttackVars_HitElement
+    = 4 — the state machine hand-off to the hit phase'
   refs:
   - bn6f/asm/asm31.s:118320
   - 0x080005CC PlaySoundEffect
   - 0x080EBAE8 battle_getNaviIdFromActor
   - 0x0800F2B6 object_setAnimation
   reproduce: python3 tools/asmcat.py 0x080EEB68
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposed name and summary are close but slightly off. AttackElement is set to 4 (not 5, that''s
-    the animation ID); the timer is stored as 0x15 and the loop fires when it equals 0xC, then counts
-    down, and on underflow HitElement is set to 4 (word strh, but it''s the same byte/word field alias).
-    The spawn is type-1 subtype-5 attack object inheriting alliance/direction. The proposed name ''ai_naviAttackStep''
-    is fine; the summary should mention HitElement terminator instead of ''marks AttackElement = 4''.
-    Actually a better summary: per-frame navi attack step that spawns a type-1 attack object once and
-    ends by writing HitElement=4 after the timer expires.; run wf investigate investigate-20261018-223614;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposed
+    name and summary are close but slightly off. AttackElement is set to 4 (not 5, that''s the animation ID); the
+    timer is stored as 0x15 and the loop fires when it equals 0xC, then counts down, and on underflow HitElement
+    is set to 4 (word strh, but it''s the same byte/word field alias). The spawn is type-1 subtype-5 attack object
+    inheriting alliance/direction. The proposed name ''ai_naviAttackStep'' is fine; the summary should mention HitElement
+    terminator instead of ''marks AttackElement = 4''. Actually a better summary: per-frame navi attack step that
+    spawns a type-1 attack object once and ends by writing HitElement=4 after the timer expires.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
 open_questions:
 - what sub_80EEC08 does per opposing actor (likely spawns the actual hit/attack on each enemy)
-- which navi/attack this is — AttackElement/HitElement value 4's meaning and what sub_80EBB34 contributes
-  to the spawn parameter word
-- 'The proposed name and summary are close but slightly off. AttackElement is set to 4 (not 5, that''s
-  the animation ID); the timer is stored as 0x15 and the loop fires when it equals 0xC, then counts down,
-  and on underflow HitElement is set to 4 (word strh, but it''s the same byte/word field alias). The spawn
-  is type-1 subtype-5 attack object inheriting alliance/direction. The proposed name ''ai_naviAttackStep''
-  is fine; the summary should mention HitElement terminator instead of ''marks AttackElement = 4''. Actually
-  a better summary: per-frame navi attack step that spawns a type-1 attack object once and ends by writing
-  HitElement=4 after the timer expires.'
+- which navi/attack this is — AttackElement/HitElement value 4's meaning and what sub_80EBB34 contributes to the
+  spawn parameter word
+- 'The proposed name and summary are close but slightly off. AttackElement is set to 4 (not 5, that''s the animation
+  ID); the timer is stored as 0x15 and the loop fires when it equals 0xC, then counts down, and on underflow HitElement
+  is set to 4 (word strh, but it''s the same byte/word field alias). The spawn is type-1 subtype-5 attack object
+  inheriting alliance/direction. The proposed name ''ai_naviAttackStep'' is fine; the summary should mention HitElement
+  terminator instead of ''marks AttackElement = 4''. Actually a better summary: per-frame navi attack step that
+  spawns a type-1 attack object once and ends by writing HitElement=4 after the timer expires.'
 sources:
 - wf investigate investigate-20261018-223614
 changes:
@@ -63,5 +60,9 @@ changes:
   what: rename sub_80EEB68 -> ai_naviAttackStep
   where: bn6f 73926dff
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
 previous_names:
 - sub_80EEB68

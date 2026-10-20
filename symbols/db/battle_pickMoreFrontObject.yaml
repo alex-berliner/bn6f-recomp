@@ -1,0 +1,67 @@
+name: battle_pickMoreFrontObject
+address: '0x0802F006'
+kind: function
+status: probable
+summary: Given two battle objects and a third object's alliance as orientation reference, returns whichever
+  of the two inputs sits further 'in front' relative to that side (signed PanelX distance using object_getEnemyDirection's
+  ±1 step, then |PanelY| distance, then raw PanelY).
+interface: (r0 = BattleObject A, r1 = BattleObject B; r5 = BattleObject whose alliance defines the reference
+  side, not saved) -> r0 = pointer to the more 'in front' object; flags clobbered
+details: Flips the alliance bit read from [r5+oBattleObject_Alliance] and calls battle_findPlayer to locate
+  the opposing (player) object; if absent it returns r0 (object A). It adds object_getEnemyDirection's
+  ±1 facing step to the player's PanelX and computes each input's dx = PanelX − (playerX+step), negating
+  both when the r5 object's alliance is nonzero. It returns A if its dx is smaller, else B (i.e., the
+  object nearer the player's front). On an X tie it compares |PanelY − playerY| of both, and on a further
+  tie returns the object with the lower raw PanelY. r4–r7 are saved, but r5 doubles as an implicit input
+  that the caller must set before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: eor r0,#1; bl battle_findPlayer — resolves the player-side object from the caller-supplied r5
+    object's alliance; bl object_getEnemyDirection; add to [r5+PanelX] — establishes the facing-relative
+    X origin for comparison; cmp r0,r1 / bcc return r6, bhi return r7 — returns whichever input has the
+    smaller front-relative dx; fallback compares |PanelY − playerY| then raw PanelY with bge → return
+    r7 — Y-based tiebreakers; sole caller sub_802EF74 sets r5 before the call, explaining the unsaved
+    r5 register
+  refs:
+  - bn6f/asm/asm03_0.s:19127
+  - 0x0802EF74 sub_802EF74
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x0802F006
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: dx = PanelX − (playerX+step) with ±step from object_getEnemyDirection,
+    negated when r5''s alliance is nonzero; A wins on strictly smaller dx (bcc at loc_802F034), else Y-tiebreak
+    via |PanelY−playerY| (bge/neg/blt), else raw PanelY tiebreak (bge at loc_802F05A) returning whichever
+    PanelY is lower. The r0==r1 (null) case returns r6 (object A), matching ''if absent it returns r0''.
+    However the proposed name ''battle_pickObjectInFrontOfPlayer'' implies a player-side reference, but
+    the function actually uses [r5+#oBattleObject_Alliance] to flip orientation—so it can compare from
+    either side, not just the player''s. A more accurate name reflects the generic ''which object is more
+    frontward'' comparison.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_802EF74 does with the selected object (targeting vs. draw ordering) is not shown
+- Exact meaning of the alliance negation branch (loc_802F034) for enemy-side callers
+- Whether 'player' here means the MegaMan object or any opposite-alliance object, per battle_findPlayer's
+  convention
+- 'The code matches the proposal''s mechanics: dx = PanelX − (playerX+step) with ±step from object_getEnemyDirection,
+  negated when r5''s alliance is nonzero; A wins on strictly smaller dx (bcc at loc_802F034), else Y-tiebreak
+  via |PanelY−playerY| (bge/neg/blt), else raw PanelY tiebreak (bge at loc_802F05A) returning whichever
+  PanelY is lower. The r0==r1 (null) case returns r6 (object A), matching ''if absent it returns r0''.
+  However the proposed name ''battle_pickObjectInFrontOfPlayer'' implies a player-side reference, but
+  the function actually uses [r5+#oBattleObject_Alliance] to flip orientation—so it can compare from either
+  side, not just the player''s. A more accurate name reflects the generic ''which object is more frontward''
+  comparison.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802F006 -> battle_pickMoreFrontObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802F006

@@ -1,0 +1,63 @@
+name: sprite_setPaletteFromObject
+address: '0x0811BB30'
+kind: function
+status: probable
+summary: Looks up a battle-object descriptor via an index derived from r6+0x3c and r6+0x3e into word_2023FA0
+  (with a 0x90 bias), decrements the descriptor's byte 3 by 1, and stores the result as the current sprite's
+  palette via sprite_setPalette.
+interface: (none; object struct in r6) -> r0 = new palette index-1 passed to sprite_setPalette; flags
+  from pops/subs
+details: 'Reads two halfword fields at r6+0x3c and r6+0x3e (likely a base index and a selection/counter),
+  adds them and uses the sum as an index with stride 4 into the halfword table at word_2023FA0 (lsl #2
+  before ldrh, so every other halfword slot is used). The table value has 0x90 subtracted to turn it into
+  a battle-object slot index, which is resolved through battleObject_getByIndex against StructArr_813944C.
+  Byte 3 of the resulting 0x10-byte descriptor is treated as a palette identifier, decremented by 1, and
+  handed to sprite_setPalette, which stores it in the sprite struct''s palette field. The 0x90 bias suggests
+  the table stores object IDs in a range starting at 0x90 rather than raw slot indices. The whole routine
+  is a palette-selection step driven by whatever table word_2023FA0 holds at that moment.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r6,#0x3e]/ldrh r1,[r6,#0x3c]/lsl #2/ldrh r0 -> halfword lookup in word_2023FA0 (sub_811BB30
+    lines 2-8); sub r0,#0x90 then bl battleObject_getByIndex_813B780 converts table entry to a StructArr_813944C
+    slot (lines 9-10); ldrb r0,[r0,#3]; sub r0,#1 reads the descriptor''s palette byte and decrements
+    it (lines 11-12); bl sprite_setPalette applies the value as the sprite''s palette index (line 13)'
+  refs:
+  - bn6f/asm/asm32.s:28560
+  - 0x0811BA88 sub_811BA88
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x0811BB30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanics match the code exactly — ldrh r0,[r6,#0x3e] + ldrh r1,[r6,#0x3c], lsl #2 to index
+    word_2023FA0, sub #0x90, battleObject_getByIndex, ldrb [r0,#3], sub #1, sprite_setPalette. However,
+    ''sprite_setPaletteForObjectEntry'' is misleading: the function isn''t applying a palette to a battle-object
+    entry; it''s selecting the current sprite''s palette based on a battle-object entry''s palette byte.
+    The caller sub_811BA88 is the relevant context (likely a sprite/animation step in battle), so the
+    sprite_ prefix is fine but the suffix should reflect setting the sprite''s palette from an object
+    lookup.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What r6 points to and what fields 0x3c/0x3e mean (base index vs selection) — caller sub_811BA88 context
+  would confirm
+- What populates word_2023FA0 and why its entries are biased by 0x90
+- Why byte 3 of the battle-object descriptor is decremented before use (1-based palette list?)
+- 'The mechanics match the code exactly — ldrh r0,[r6,#0x3e] + ldrh r1,[r6,#0x3c], lsl #2 to index word_2023FA0,
+  sub #0x90, battleObject_getByIndex, ldrb [r0,#3], sub #1, sprite_setPalette. However, ''sprite_setPaletteForObjectEntry''
+  is misleading: the function isn''t applying a palette to a battle-object entry; it''s selecting the
+  current sprite''s palette based on a battle-object entry''s palette byte. The caller sub_811BA88 is
+  the relevant context (likely a sprite/animation step in battle), so the sprite_ prefix is fine but the
+  suffix should reflect setting the sprite''s palette from an object lookup.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811BB30 -> sprite_setPaletteFromObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811BB30

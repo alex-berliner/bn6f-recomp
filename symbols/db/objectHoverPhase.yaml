@@ -1,0 +1,62 @@
+name: objectHoverPhase
+address: '0x080BBC2C'
+kind: function
+status: probable
+summary: 'Battle-object phase: on first entry sets CurPhase=4, CurAnim=3, plays SFX 0x94, sets oObjectHeader_Flags
+  bit 1, loads Timer=9; decrements Timer until zero, then reads the panel status word and, if it matches
+  mask 0x10010 (bits 4 and 16), sets CurAction=4, else CurAction=0x10, and resets CurPhaseAndPhaseInitialized
+  to restart the next action.'
+interface: (r0 = clobbered; r5 = battle object header) -> r0 = clobbered; updates CurPhase, CurAnim, Timer,
+  CurAction, oObjectHeader_Flags
+details: Uses r5 as a battle object struct. Phase 0 writes CurPhase=4, CurAnim=3, plays sound effect 0x94,
+  sets bit 1 of oObjectHeader_Flags (likely 'untargetable/intangible'), and loads Timer with 9. On later
+  calls it decrements Timer and returns until it hits zero; it then calls object_getPanelParameters with
+  the object's PanelX/PanelY and tests the result against mask 0x10010. If both bits 4 and 16 of the panel
+  status are set, it sets CurAction=4; otherwise CurAction=0x10; either way it zeroes CurPhaseAndPhaseInitialized
+  so the new action's phase machine restarts. Called with r5 preset, so it's dispatched from an object
+  update table rather than a normal call site.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'phase 0 branch: ''strb r1,[r5,#oBattleObject_CurPhase]'' (phase=4), CurAnim=3, PlaySoundEffect(0x94),
+    sets oObjectHeader_Flags bit 1, Timer=9; second branch decrements oBattleObject_Timer and returns
+    while >0; bl object_getPanelParameters with r0/r1 = oBattleObject_PanelX/PanelY, then ''and r0,r1''
+    against dword 0x10010; both outcomes write oBattleObject_CurAction (4 or 0x10) and zero CurPhaseAndPhaseInitialized
+    to restart the state machine'
+  refs:
+  - bn6f/asm/asm31.s:8057
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080BBC2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately describes the phase-0 setup (CurPhase=4, CurAnim=3, sound 0x94, flag bit
+    1, Timer=9) and the dispatch-by-panel-test. Minor issues: Timer is 32-bit (`str r0, [r5,#oBattleObject_TimerAndTimer2]`)
+    and decremented as 16-bit (`ldrh`/`strh`), not the size claimed; also `object_getPanelParameters`
+    is called with r5''s PanelX/PanelY but the proposal''s interface says r0/r1 which matches. The ''intangible''
+    interpretation of flag bit 1 is speculation. Name ''battle_objectHoverPhase'' is reasonable (phase
+    4 of a hovering object) but the prefix could just be ''object'' since it''s generic.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle object/virus dispatches this handler (no callers known)
+- exact meaning of panel status bits 0x10 and 0x10000 (hole? cracked? occupied?)
+- what actions 4 and 0x10 do in this object's state machine
+- 'The summary accurately describes the phase-0 setup (CurPhase=4, CurAnim=3, sound 0x94, flag bit 1,
+  Timer=9) and the dispatch-by-panel-test. Minor issues: Timer is 32-bit (`str r0, [r5,#oBattleObject_TimerAndTimer2]`)
+  and decremented as 16-bit (`ldrh`/`strh`), not the size claimed; also `object_getPanelParameters` is
+  called with r5''s PanelX/PanelY but the proposal''s interface says r0/r1 which matches. The ''intangible''
+  interpretation of flag bit 1 is speculation. Name ''battle_objectHoverPhase'' is reasonable (phase 4
+  of a hovering object) but the prefix could just be ''object'' since it''s generic.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BBC2C -> objectHoverPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBC2C

@@ -1,0 +1,64 @@
+name: battle_spawnIllusionObjects
+address: '0x080BDA7C'
+kind: function
+status: probable
+summary: Spawns one or two illusion/decoy battle objects from the caller's argument (r0) and the source
+  object's (r5) facing; if r0==5, spawns a first decoy at coords from sub_80B8E62(0x11), then always spawns
+  a second at (x=8, y=0xb), both using graphic 0x8318 with distinct behavior words.
+interface: (r0 = selector/argument (spawns an extra object if == 5), r5 = source object) -> r0 = ?; spawns
+  via spawnIllusionObject_80E33FA
+details: The argument is stored on the stack; if it equals 5, the routine first calls object_getFlip and
+  builds a packed coordinate value r4 = (flip, 0xb, r1, r0) where r0/r1 come from sub_80B8E62 called with
+  0x11, then calls spawnIllusionObject_80E33FA with r6=0x8318 (sprite/resource id) and r7=0x1e (behavior/type
+  word). Unconditionally afterwards it builds r4 = (flip, arg, 0xb, 8) from object_getFlip and the saved
+  argument and spawns a second illusion object with r6=0x8318 and r7=0x101001e. The r4 value looks like
+  four 8-bit fields (flip, x-tile, y-tile, counter/param) consumed by the spawner. Both spawns use the
+  same graphic 0x8318 but different behavior words, suggesting a pair of visual decoys whose placement
+  mirrors the owner's facing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r0, #5 / bne loc_80BDAAC gates the first spawn on the argument; object_getFlip result is
+    shifted into the packed coordinate r4 in both branches; both branches ldmia r0!, {r1-r3} from r5+0x34
+    and pass r6=0x8318 to spawnIllusionObject_80E33FA; second spawn uses r7=0x101001e vs first r7=0x1e,
+    differing only in high bits (type/flags); both callers sub_80BD644/sub_80BD6B6 are undocumented, so
+    the triggering context is unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:12207
+  - 0x080BD644 sub_80BD644
+  - 0x080BD6B6 sub_80BD6B6
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  - 0x080B8E62 sub_80B8E62
+  reproduce: python3 tools/asmcat.py 0x080BDA7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: arg==5 branches into a path using sub_80B8E62(0x11)
+    for tile coords and spawns with r7=0x1e, then unconditionally spawns a second via the saved arg with
+    r7=0x101001e. However the r4 packing is (flip, y, x, param) since the asm builds flip<<24 | y<<16
+    | x<<8 | param, not ''(flip, arg, 0xb, 8)'' as stated. The name and overall summary are reasonable,
+    but the field order in details is inverted.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the four packed r4 fields (tile x/y vs pixel offsets vs lifetime) — needs spawnIllusionObject_80E33FA's
+  parameter decode
+- what sub_80B8E62(0x11) returns and why it only feeds the arg==5 spawn
+- which boss/enemy AI calls this (both callers are undocumented) and what graphic 0x8318 depicts
+- 'The code matches the proposal''s mechanics: arg==5 branches into a path using sub_80B8E62(0x11) for
+  tile coords and spawns with r7=0x1e, then unconditionally spawns a second via the saved arg with r7=0x101001e.
+  However the r4 packing is (flip, y, x, param) since the asm builds flip<<24 | y<<16 | x<<8 | param,
+  not ''(flip, arg, 0xb, 8)'' as stated. The name and overall summary are reasonable, but the field order
+  in details is inverted.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BDA7C -> battle_spawnIllusionObjects
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDA7C

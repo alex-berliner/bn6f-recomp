@@ -1,0 +1,57 @@
+name: object_freeAndClearExtraVars
+address: '0x080BE3C4'
+kind: function
+status: probable
+summary: 'Conditional cleanup for a battle object: if Param1 is 0, runs a version-specific hook (sub_8011044
+  with r2=1) using the enemy''s {version, actor type, AI index}, clears the ExtraVars flag byte if present,
+  then frees the object slot via object_freeMemory.'
+interface: (r5 = battle object ptr, r0-r3 scratch) -> object freed via object_freeMemory; r0 = result
+  of object_freeMemory
+details: Reads the object's Param1 (oBattleObject_Param1) and, only when it is zero, loads oBattleObject_NameID
+  and calls unpackVerActorTyAndAIIdx_800F29C to get the enemy's {version, actor type, AI index}, then
+  calls sub_8011044 with r2 = 1 — an extra action tied to that enemy's identity (likely a defeat/removal
+  hook). It then checks oBattleObject_ExtraVars; if non-null it zeroes the byte at [ExtraVars], resetting
+  the object's custom state. Finally it tail-follows with object_freeMemory, which clears flags, frees
+  the sprite bitmap slot, unlinks the object from the active list, and resets sprite scaling. No callers
+  are known, so it is most plausibly a per-object-type delete/on-removal handler passed as a function
+  pointer. The Param1 != 0 path skips the version-specific hook entirely.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; bne skips the hook — only clean removal runs it; ldrh r0,[r5,#oBattleObject_NameID];
+    bl unpackVerActorTyAndAIIdx_800F29C identifies the enemy before bl sub_8011044 (r2=1); tst r0,r0 /
+    strb r1,[r0] zeroes the first byte of the object's ExtraVars block; bl object_freeMemory before pop
+    — the function ends by releasing the battle object slot
+  refs:
+  - bn6f/asm/asm31.s:13457
+  - 0x08003458 object_freeMemory
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BE3C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The Param1==0 hook via sub_8011044 with r2=1 and the tail-call to object_freeMemory match. However,
+    the ExtraVars handling is a single strb #0 (clearing one flag byte), not ''resetting custom state'',
+    and the function is not necessarily enemy-specific (no enemy identifier check). A more neutral name
+    fits better.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8011044 does with {version, actorType, AIIdx} and r2=1 (defeat bookkeeping, reward, or event
+  trigger?)
+- Which object type(s) install this as their destructor and why Param1 selects between the two paths
+- 'The Param1==0 hook via sub_8011044 with r2=1 and the tail-call to object_freeMemory match. However,
+  the ExtraVars handling is a single strb #0 (clearing one flag byte), not ''resetting custom state'',
+  and the function is not necessarily enemy-specific (no enemy identifier check). A more neutral name
+  fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BE3C4 -> object_freeAndClearExtraVars
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE3C4

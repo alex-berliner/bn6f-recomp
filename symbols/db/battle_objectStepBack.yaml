@@ -1,0 +1,61 @@
+name: battle_objectStepBack
+address: '0x080BBC80'
+kind: function
+status: probable
+summary: Per-frame handler that backs a battle object away from the player at -0x8000 X-velocity for ~26
+  frames, changes animation and plays sound 0xE6 near the end, then transitions to action 8.
+interface: (r0 unused; r5 = battle object struct) -> void; updates CurPhase, CurAnim, XVelocity, X, Timer,
+  CurAction
+details: 'On entry (CurPhase 0) it sets CurPhase=4, CurAnim=0, computes XVelocity = -object_getFrontDirection()
+  * 0x8000 (a half-pixel/frame backward step in fixed point) and sets Timer to 0x28 (40 frames). During
+  phase 4, while the timer is between 10 and 25 it adds XVelocity to X each frame, so the object slides
+  backward for that window. When the timer reaches 25 it changes CurAnim to 0x11 and plays sound effect
+  0xE6, presumably a wind-up or recovery cue. When the timer counts down to 0 it sets CurAction=8 and
+  clears CurPhaseAndPhaseInitialized so the next action starts fresh. Fields touched are the standard
+  oBattleObject layout: CurPhase, CurAnim, X, XVelocity, Timer, CurAction.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / tst / bne: two-phase state machine on the battle object
+    struct; bl object_getFrontDirection; neg; mul by 0x8000; str [r5,#oBattleObject_XVelocity]: backward-move
+    velocity computed from facing; timer window cmp #0x19 / cmp #0xa gates the X += XVelocity update in
+    phase 4; timer==0x19 branch sets CurAnim=0x11 and calls PlaySoundEffect(0xE6); timer<=0 sets CurAction=8
+    and zeroes CurPhaseAndPhaseInitialized to advance the action list'
+  refs:
+  - bn6f/asm/asm31.s:8105
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BBC80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: phase 0 init sets CurPhase=4, CurAnim=0, XVelocity =
+    -frontDir*0x8000, Timer=0x28; phase 4 adds XVelocity to X while 0xA <= Timer <= 0x19; at Timer=0x1A
+    after decrement (i.e. was 0x1B=27) it sets CurAnim=0x11 and plays sound 0xE6; at Timer=0 it sets CurAction=8
+    and clears phase. Minor inaccuracy: the sound/anim change fires when Timer hits 0x1A after decrement
+    (was 0x1B=27), not 0x19=25, and the proposal says it ''switches animation partway through'' but actually
+    X-update window is Timer 0x1A-0x0B (26..11) before decrement. A better name would emphasize the step-back
+    rather than ''Update'' suffix.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack script invokes this routine (no callers known), so the flavor of anim 0x11 and SFX
+  0xE6 (attack wind-up vs. recoil) is unconfirmed
+- What action 8 does next, to confirm the intended narrative of the step-back
+- 'The code matches the proposal''s mechanics: phase 0 init sets CurPhase=4, CurAnim=0, XVelocity = -frontDir*0x8000,
+  Timer=0x28; phase 4 adds XVelocity to X while 0xA <= Timer <= 0x19; at Timer=0x1A after decrement (i.e.
+  was 0x1B=27) it sets CurAnim=0x11 and plays sound 0xE6; at Timer=0 it sets CurAction=8 and clears phase.
+  Minor inaccuracy: the sound/anim change fires when Timer hits 0x1A after decrement (was 0x1B=27), not
+  0x19=25, and the proposal says it ''switches animation partway through'' but actually X-update window
+  is Timer 0x1A-0x0B (26..11) before decrement. A better name would emphasize the step-back rather than
+  ''Update'' suffix.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BBC80 -> battle_objectStepBack
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBC80

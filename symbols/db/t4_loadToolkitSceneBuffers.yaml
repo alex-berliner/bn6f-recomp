@@ -1,0 +1,60 @@
+name: t4_loadToolkitSceneBuffers
+address: '0x0813BAC4'
+kind: function
+status: probable
+summary: t4 scene step that copies two fixed ROM blobs (0x100 and 0x620 bytes) into toolkit-held buffers
+  at offsets Unk200414c_Ptr and Unk2004190_Ptr.
+interface: () -> r0,r1 clobbered; copies data into [*oToolkit_Unk200414c_Ptr + 0x100] and [*oToolkit_Unk2004190_Ptr
+  + 0x620]
+details: 'The function takes no arguments: it fetches two pointers from the toolkit struct (fields Unk200414c_Ptr
+  and Unk2004190_Ptr via r10), then uses BIOS CopyWords twice to fill them from fixed data. The first
+  copy is 0x40 words (0x100 bytes) from byte_201BC40; the second is 0x188 words (0x620 bytes) from byte_201BC80.
+  Both sources are static addresses, so the destination buffers are being (re)initialized with canned
+  default content each time the step runs. Its only known caller is the t4 cutscene step t4_waitChatboxThenFadeScene,
+  so this is part of the t4 scene-script machinery, likely (re)loading scene/script state after a fade.
+  It returns nothing and sets no flags of interest.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_813BAC4 loads dest from [r10,#oToolkit_Unk200414c_Ptr] and copies 0x40 words from byte_201BC40;
+    sub_813BAC4 loads dest from [r10,#oToolkit_Unk2004190_Ptr] and copies 0x188 words from byte_201BC80
+    via off_813BAE8; both copies go through CopyWords (SWI 5 CpuSet wrapper), so the data is bulk-initialized,
+    not modified; caller 0x08135AF8 t4_waitChatboxThenFadeScene runs it as part of a chatbox/fade scene
+    step
+  refs:
+  - bn6f/asm/asm37_0.s:587
+  - 0x08135AF8 t4_waitChatboxThenFadeScene
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x0813BAC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function name''s t4_ prefix is justified by the single caller being t4_waitChatboxThenFadeScene,
+    and the body matches: two CopyWords calls loading 0x100 bytes from byte_201BC40 into [*r10 + oToolkit_Unk200414c_Ptr]
+    and 0x620 bytes from byte_201BC80 into [*r10 + oToolkit_Unk2004190_Ptr]. However, calling these ''default
+    buffers'' is speculative; the code only shows ROM-to-RAM copies with no indication the buffers are
+    ''default'' or that this is a fade-reload. A tighter name focusing on the actual action (loading two
+    ROM blobs into toolkit buffers) is preferable.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the structures at *oToolkit_Unk200414c_Ptr (0x100 bytes) and *oToolkit_Unk2004190_Ptr (0x620 bytes)
+  represent — more t4 callers or consumers of these buffers would identify them
+- Whether byte_201BC40/byte_201BC80 are script, object-layout, or rendering data for the scene
+- 'The function name''s t4_ prefix is justified by the single caller being t4_waitChatboxThenFadeScene,
+  and the body matches: two CopyWords calls loading 0x100 bytes from byte_201BC40 into [*r10 + oToolkit_Unk200414c_Ptr]
+  and 0x620 bytes from byte_201BC80 into [*r10 + oToolkit_Unk2004190_Ptr]. However, calling these ''default
+  buffers'' is speculative; the code only shows ROM-to-RAM copies with no indication the buffers are ''default''
+  or that this is a fade-reload. A tighter name focusing on the actual action (loading two ROM blobs into
+  toolkit buffers) is preferable.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813BAC4 -> t4_loadToolkitSceneBuffers
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BAC4

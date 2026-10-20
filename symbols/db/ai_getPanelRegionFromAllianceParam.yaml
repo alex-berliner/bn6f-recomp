@@ -1,0 +1,64 @@
+name: ai_getPanelRegionFromAllianceParam
+address: '0x08111D46'
+kind: function
+status: probable
+summary: AI state step that looks up alliance-dependent panel args (alliance*5+1, column 2) from byte_8111D80
+  via GetAllianceDependentPanelParamArgs and then calls object_getPanelRegion with region id 0x23.
+interface: (r5 = battle object) -> r0 = result of object_getPanelRegion; reads oBattleObject_Alliance
+  from r5
+details: Loads the battle object's alliance field, computes alliance*5+1 as a row index, and calls GetAllianceDependentPanelParamArgs
+  with the table at byte_8111D80 and column index 2, yielding a param word and an args pointer. It then
+  preserves the args pointer in r7, sets region id 0x23 in r4, reloads the alliance into r6, and calls
+  object_getPanelRegion, which presumably marks/changes the requested panel region using those args. The
+  hardcoded table and fixed region id suggest a scripted boss/attack setup that changes tiles depending
+  on the acting object's team. Its address appears in the state-handler dispatch table off_8111DC0 alongside
+  ai_beginNewTurn, battle_objectUpdateDispatchPhase and other AI step functions, so it runs as one step
+  of a battle object's state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#5; mul r0,r1; add r0,#1 — row index is derived
+    from the object's alliance; bl GetAllianceDependentPanelParamArgs with r3=byte_8111D80 and r1=2 —
+    reads param word + args pointer from an alliance-indexed table, column 2; mov r4,#0x23; bl object_getPanelRegion
+    with r6=alliance and r7=args — applies a fixed panel region using the fetched args; .word sub_8111DFC+1
+    ... off_8111DC0 listing including this function's neighbors — it is registered as a state-handler
+    step in the battle object dispatch table; No other callers known; behavior is only reachable via the
+    dispatch table entry
+  refs:
+  - bn6f/asm/asm32.s:8314
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800D3FE object_getPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08111D46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code loads Alliance, calls GetAllianceDependentPanelParamArgs with alliance*5+1 and column 2
+    from byte_8111D80, then calls object_getPanelRegion with region 0x23 — matching the proposal. However,
+    the function is listed in off_8111DC0 among AI state-handler entries (ai_beginNewTurn, ai_dispatchAttackStep,
+    etc.), so ''battle'' is the wrong prefix; ''ai_'' fits better. Also, it doesn''t just ''apply'' the
+    panel: it retrieves args via GetAllianceDependentPanelParamArgs and passes region 0x23 to object_getPanelRegion,
+    so the summary should mention fetching args and getting panel region rather than applying it.; run
+    wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact semantics of object_getPanelRegion's arguments (r4=0x23, r6, r7) and what panel type region 0x23
+  corresponds to
+- Which attack/boss uses this state step, and what byte_8111D80's per-alliance entries select in game
+  terms
+- 'The code loads Alliance, calls GetAllianceDependentPanelParamArgs with alliance*5+1 and column 2 from
+  byte_8111D80, then calls object_getPanelRegion with region 0x23 — matching the proposal. However, the
+  function is listed in off_8111DC0 among AI state-handler entries (ai_beginNewTurn, ai_dispatchAttackStep,
+  etc.), so ''battle'' is the wrong prefix; ''ai_'' fits better. Also, it doesn''t just ''apply'' the
+  panel: it retrieves args via GetAllianceDependentPanelParamArgs and passes region 0x23 to object_getPanelRegion,
+  so the summary should mention fetching args and getting panel region rather than applying it.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8111D46 -> ai_getPanelRegionFromAllianceParam
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111D46

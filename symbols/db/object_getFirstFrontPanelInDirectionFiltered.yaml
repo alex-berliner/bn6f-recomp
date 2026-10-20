@@ -1,0 +1,69 @@
+name: object_getFirstFrontPanelInDirectionFiltered
+address: '0x08102F5C'
+kind: function
+status: probable
+summary: Reads [r0,#0x13] and [r5,#0x16], pushes ([r5,#0x16]*5+1, r0_value) and calls object_getFrontDirection
+  into r4; then uses [r5,#0x16] to index a 2-entry 8-byte record table at byte_8102F84 for the filter
+  params (r2/r3), restores r0/r1 and tail-calls object_getFirstPanelInDirectionFiltered.
+interface: (r0 = battle object ptr (field +0x13 read), r5 = battle object ptr (field +0x16 read)) -> r0
+  = whatever object_getFirstPanelInDirectionFiltered returns (first matching panel/handle); calls are
+  tail-ish (result returned in r0)
+details: 'The function reads [r0,#0x13] and computes [r5,#0x16]*5+1, saving both as the first two arguments
+  for the final call. It first calls object_getFrontDirection to obtain the +1/-1 facing multiplier (kept
+  in r4), consistent with that callee''s known alliance/DirectionFlip behavior. It then uses [r5,#0x16]
+  as an index into byte_8102F84, an array of 8-byte records (lsl #3), loading a word pair into r2/r3:
+  record 0 = {0x10, 0x0F8800A0}, record 1 = {0x30, 0x0F880080} — the second word''s high half (0x0F88)
+  is identical in both, so these look like packed parameters rather than pointers. Finally it restores
+  the saved r0/r1 and tail-calls object_getFirstPanelInDirectionFiltered(r0, r1, r2, r3, r4=direction).
+  Only indices 0/1 are valid given the 2-entry table, so field +0x16 is effectively a small variant/type
+  selector. No known callers, so the exact meaning of the r2/r3 pair and of the *5+1 computation is inferred
+  from the callee summaries only.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection; mov r4,r0 — facing ±1 is computed and held in r4 for the second
+    call; ldrb r0,[r5,#0x16]; lsl r0,#3; ldr r1,off_8102F94 — selects one of two 8-byte records at byte_8102F84;
+    ldr r2,[r0]; ldr r3,[r0,#4] — record words {0x10,0x0F8800A0} / {0x30,0x0F880080} become r2/r3 of the
+    filtered scan; push {r0,r1} ... pop {r0,r1} — args ([r5,#0x16]*5+1, [r0,#0x13]) are saved across the
+    direction call and passed to object_getFirstPanelInDirectionFiltered; callee summaries (facing multiplier;
+    first panel in direction with a filter) match a front-panel search for a battle object
+  refs:
+  - bn6f/asm/asm31.s:161106
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x08102F5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does match the described control flow: it reads [r0,#0x13] and [r5,#0x16], computes [r5,#0x16]*5+1
+    pushed with r0,r1, calls object_getFrontDirection into r4, loads an 8-byte record from byte_8102F84
+    via [r5,#0x16]*8 into r2/r3, restores r0/r1, and tail-calls object_getFirstPanelInDirectionFiltered(r0,r1,r2,r3,r4).
+    However the proposed name ''object_getFirstFrontPanelFiltered'' is reasonable but omits ''InDirection''
+    that appears in the callee; a closer fit is ''object_getFirstFrontPanelInDirectionFiltered''. The
+    summary''s ''choosing between two hardcoded filter parameter sets based on the object''s type field''
+    matches the 2-entry table indexed by [r5,#0x16].; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- meaning of r2/r3 (the {0x10/0x30, 0x...00A0/0x0080} records) passed to object_getFirstPanelInDirectionFiltered
+- what fields +0x13 and +0x16 of the two object structures contain and why +0x16 is multiplied by 5 and
+  incremented
+- which objects/attacks call this (no callers found) and where 0x08102F5C sits in the overlay layout
+- 'The code does match the described control flow: it reads [r0,#0x13] and [r5,#0x16], computes [r5,#0x16]*5+1
+  pushed with r0,r1, calls object_getFrontDirection into r4, loads an 8-byte record from byte_8102F84
+  via [r5,#0x16]*8 into r2/r3, restores r0/r1, and tail-calls object_getFirstPanelInDirectionFiltered(r0,r1,r2,r3,r4).
+  However the proposed name ''object_getFirstFrontPanelFiltered'' is reasonable but omits ''InDirection''
+  that appears in the callee; a closer fit is ''object_getFirstFrontPanelInDirectionFiltered''. The summary''s
+  ''choosing between two hardcoded filter parameter sets based on the object''s type field'' matches the
+  2-entry table indexed by [r5,#0x16].'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8102F5C -> object_getFirstFrontPanelInDirectionFiltered
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102F5C

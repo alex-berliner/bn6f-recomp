@@ -1,0 +1,62 @@
+name: spawnIllusionAtFeet
+address: '0x080E5024'
+kind: function
+status: probable
+summary: Spawns an illusion/effect object (id 0x83E0, param 0xE) one tile below the battle object's feet,
+  preserving its horizontal facing.
+interface: (r5 = battle object) -> r0 = spawned illusion object; r1-r3 and r4-r7 clobbered via helper
+details: Reads the object's effective horizontal facing via object_getFlip and packs it with the constant
+  0x33010 (facing flags ORed with what looks like an object/property id, 0x330 + 0x10) into r4. It loads
+  the object's X and Z unchanged, but adds 0x40000 to Y, i.e. shifts the spawn point down from the object's
+  center toward its tile's ground line. Constants 0x83E0 and 0xE are passed as the effect's resource/animation
+  id and parameter to spawnIllusionObject_80E33FA, which creates the object. The function is a thin parameterized
+  wrapper; r5 is caller-set and never reloaded inside, so it is only valid as an in-context helper for
+  one known battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFlip then orr r4, r0 with dword_80E504C =0x33010 packs facing into the spawn descriptor;
+    ldr r2,[r5,#oBattleObject_Y]; add r2,r2,#0x40000-equivalent (dword_80E50C0) offsets spawn to the tile's
+    lower/ground part; X and Z are copied unchanged from oBattleObject_X/oBattleObject_Z, so the effect
+    stays on the object's tile; ldr r6=0x83E0, r7=0xE immediately before bl spawnIllusionObject_80E33FA
+    supply the effect id and parameter; only callee besides the flip getter is spawnIllusionObject_80E33FA,
+    confirming this is purely an effect-spawn wrapper
+  refs:
+  - bn6f/asm/asm31.s:97990
+  - 0x080E4EC8 sub_80E4EC8
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080E5024
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but the proposed name spawnObjectGroundShadow overcommits — the
+    code does not establish that this is specifically a ''ground shadow'' rather than a generic shadow/illusion
+    effect (e.g., an afterimage or silhouette). Constants 0x83E0 and 0xE are loaded into r6/r7 and passed
+    to spawnIllusionObject_80E33FA, which is correctly noted. The facing/X/Z handling and the +0x40000
+    Y offset are correct. Since the proposal says ''fixed illusion/effect object'', a name like spawnIllusionAtFeet
+    better reflects the code without overclaiming.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the packed constant 0x33010 (object id vs property flags) needs spawnIllusionObject_80E33FA's
+  descriptor layout
+- what effect resource 0x83E0 renders and what parameter 0xE selects
+- which caller sub_80E4EC8 is (what battle event triggers this ground effect) to confirm the in-game purpose
+- The summary is mostly accurate, but the proposed name spawnObjectGroundShadow overcommits — the code
+  does not establish that this is specifically a 'ground shadow' rather than a generic shadow/illusion
+  effect (e.g., an afterimage or silhouette). Constants 0x83E0 and 0xE are loaded into r6/r7 and passed
+  to spawnIllusionObject_80E33FA, which is correctly noted. The facing/X/Z handling and the +0x40000 Y
+  offset are correct. Since the proposal says 'fixed illusion/effect object', a name like spawnIllusionAtFeet
+  better reflects the code without overclaiming.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E5024 -> spawnIllusionAtFeet
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5024

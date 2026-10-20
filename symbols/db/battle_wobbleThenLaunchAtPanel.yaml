@@ -1,0 +1,66 @@
+name: battle_wobbleThenLaunchAtPanel
+address: '0x080180A8'
+kind: function
+status: probable
+summary: 'Per-frame wobble for a battle object: jitters its XYZ by a small random offset each frame while
+  the hold timer is nonzero, and when it expires restores the original position, sets the landing panel,
+  lobs the object there, plays sfx 0xFFF3, and blocks animation.'
+interface: (r0 unused entry, r5 = battle object ptr) -> r0 = launch result / sfx id, clobbered; no meaningful
+  flags out
+details: This runs on a battle object that is pausing before a lob launch. Each call it takes the object's
+  saved position, stored in the oBattleObject_ChipID and oBattleObject_Z16Save fields (reused as temporaries),
+  jitters both by a centered random offset (mask 3, in the fixed-point high halves) via AddRandomVarianceToTwoCoords,
+  and stores the three jittered results (r1-r3) to the struct at r5+0x34 (render/display X/Y/Z block).
+  It then decrements oBattleObject_WobbleOrEffectTimer; while it is nonzero the function just returns.
+  When the timer reaches zero it copies ChipID back into X16 and Z16Save back into Z16 (removing the jitter
+  from the logical position), copies oBattleObject_ContactPanelOffsetX and ContactOffsetY into FuturePanelX/Y
+  to pick the landing panel, calls battle_launchObjectAtPanel to lob the object there (result stored back
+  into the timer byte), plays sound effect 0xFFF3 (id -13), and sets PreventAnim = 0x10.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r1,[r5,#oBattleObject_ChipID] / ldrh r3,[r5,#oBattleObject_Z16Save] passed as base coords
+    to AddRandomVarianceToTwoCoords with mask 3, results stored via stmia r7! to r5+0x34; sub r0,#1 on
+    oBattleObject_WobbleOrEffectTimer with bne locret: everything else only runs on timer expiry; on expiry:
+    ChipID -> X16 and Z16Save -> Z16, undoing the temporary reuse as jitter bases; ContactPanelOffsetX/ContactOffsetY
+    copied to FuturePanelX/Y then bl battle_launchObjectAtPanel (known lob-at-panel helper); mov r0,#0xd;
+    add r0,#0xff (0xFFF3) then PlaySoundEffect, and PreventAnim = 0x10 afterwards'
+  refs:
+  - bn6f/asm/asm00_2.s:20806
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F768 battle_launchObjectAtPanel
+  reproduce: python3 tools/asmcat.py 0x080180A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it ldrh ChipID/Z16Save, jitters via AddRandomVarianceToTwoCoords
+    with mask 3, writes r1-r3 to r5+0x34, decrements the wobble timer, then on expiry restores X16/Z16
+    from the saved fields, copies ContactPanelOffsetX/Y into FuturePanelX/Y, calls battle_launchObjectAtPanel,
+    stores the result back, plays sfx 0xFFF3, and sets PreventAnim=0x10. Only nit: the summary is long
+    and the name overstates; the per-frame jitter stored at +0x34 isn''t a ''render coords'' block per
+    se, it''s three consecutive fixed-point words (X/Y/Z).; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so which chip/object uses this hold state (e.g. a thrown or hovering chip entity)
+  is unconfirmed
+- Exact meaning of the fields written at r5+0x34 (render vs. physics coords) and the return value of battle_launchObjectAtPanel
+  stored back into the timer byte
+- 'The code matches the proposal: it ldrh ChipID/Z16Save, jitters via AddRandomVarianceToTwoCoords with
+  mask 3, writes r1-r3 to r5+0x34, decrements the wobble timer, then on expiry restores X16/Z16 from the
+  saved fields, copies ContactPanelOffsetX/Y into FuturePanelX/Y, calls battle_launchObjectAtPanel, stores
+  the result back, plays sfx 0xFFF3, and sets PreventAnim=0x10. Only nit: the summary is long and the
+  name overstates; the per-frame jitter stored at +0x34 isn''t a ''render coords'' block per se, it''s
+  three consecutive fixed-point words (X/Y/Z).'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80180A8 -> battle_wobbleThenLaunchAtPanel
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80180A8

@@ -1,0 +1,70 @@
+name: object_queueChoiceOam
+address: '0x0813064C'
+kind: function
+status: probable
+summary: Queues a single OAM sprite whose source halfword within the scene struct is chosen from a 3-entry
+  offset table indexed by struct field 0xC (0 = skip).
+interface: (r5 = scene/choice struct via callees, no args passed in) -> r0 = OAM queue result; r0 on entry
+  unused; struct field 0xC selects entry (0 = draw nothing).
+details: It first calls sub_8130404 and sub_8130250 (likely returning the active scene struct and refreshing
+  its state into r5). If the byte at [r5,#0xC] is zero it returns without drawing, so that field is a
+  selection index that is 0 when no choice is active. Otherwise it subtracts 1 and uses it to index the
+  byte table at 0x8130688 (bytes 0x24, 0x2E, 0x38), loading a halfword from the struct at that offset
+  — i.e. one of three 2-byte entries spaced 10 bytes apart, plausibly X/Y coordinates or a tile parameter
+  for choice 1-3. It then calls object_computeAndQueueOamEntry_811FA98 with fixed packed parameters (r0=0xBA003D,
+  r1=0x20002, r2=0x1E, r3=chosen halfword, r4=5, r6=0xC24C, r7=0x46) to emit exactly one OAM entry. The
+  three-way table plus one-shot OAM queue strongly suggests a cursor/arrow highlighting one of three on-screen
+  options in a t4 overlay cutscene.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xC]; tst/beq: field 0xC is a 0-when-inactive selection index gating the draw;
+    table dword_8130688 = 0x382E24 gives byte offsets 0x24/0x2E/0x38 for index 1-3, ldrh r3,[r5,r0] picks
+    one of three struct entries; single bl object_computeAndQueueOamEntry_811FA98 with constants 0xBA003D/0x20002/0x1E/5/0xC24C/0x46
+    queues exactly one sprite; caller t4_sceneInit (0x08130084) is the overlay cutscene initializer, matching
+    a scene-local cursor draw; two callee calls whose results feed r5 show it operates on a scene-state
+    struct, not raw arguments'
+  refs:
+  - bn6f/asm/asm36.s:829
+  - 0x08130084 t4_sceneInit
+  - 0x0812F190 sub_812F190
+  - 0x0812F2D0 sub_812F2D0
+  - 0x0811FA98 object_computeAndQueueOamEntry_811FA98
+  - 0x08130250 sub_8130250
+  - 0x08130404 sub_8130404
+  reproduce: python3 tools/asmcat.py 0x0813064C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it calls sub_8130404, then sub_8130250 to get r5, checks [r5,#0xC]==0 for early
+    return, subtracts 1, uses byte table at 0x8130688 (bytes 0x24,0x2E,0x38) as offsets into r5 to load
+    a halfword, and queues one OAM via object_computeAndQueueOamEntry_811FA98. However the prefix ''t4_''
+    is too specific (callers include sub_81307F4 and others beyond t4_sceneInit); the callee prefix convention
+    suggests ''object_'' or similar, and the OAM-target role better fits the ''object'' or ''sprite''
+    family. The fixed 0xBA003D/0xC24C parameters look like a sub-palette/shape setup, not a cursor — but
+    no certainty. Name revised to reflect the OAM-queueing action with a choice index.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the halfword at offsets 0x24/0x2E/0x38 (coordinates vs. tile id) needs the scene struct
+  layout
+- Which cutscene(s) call this and what the three choices are; sub_8130404/sub_8130250 and the parameter
+  encoding of object_computeAndQueueOamEntry would confirm the cursor interpretation
+- 'The code matches: it calls sub_8130404, then sub_8130250 to get r5, checks [r5,#0xC]==0 for early return,
+  subtracts 1, uses byte table at 0x8130688 (bytes 0x24,0x2E,0x38) as offsets into r5 to load a halfword,
+  and queues one OAM via object_computeAndQueueOamEntry_811FA98. However the prefix ''t4_'' is too specific
+  (callers include sub_81307F4 and others beyond t4_sceneInit); the callee prefix convention suggests
+  ''object_'' or similar, and the OAM-target role better fits the ''object'' or ''sprite'' family. The
+  fixed 0xBA003D/0xC24C parameters look like a sub-palette/shape setup, not a cursor — but no certainty.
+  Name revised to reflect the OAM-queueing action with a choice index.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813064C -> object_queueChoiceOam
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813064C

@@ -1,0 +1,55 @@
+name: object_unlinkExtraListAndFree
+address: '0x080CEA88'
+kind: function
+status: probable
+summary: Unlinks the battle object from the front of a linked list rooted in oBattleObject_ExtraVars+4
+  if it is the head node, then frees its collision data and object slot.
+interface: (r0 = battle object pointer, also kept in r5) -> r0 = destroyed; frees collision slot and object
+  slot
+details: Loads a list-head pointer from oBattleObject_ExtraVars+4 of the object; if the object itself
+  is the first node ([head] == object), it writes NULL to that head, unlinking it from the front of the
+  list. It then calls object_freeCollisionData to release the object's collision slot and clear its bit
+  in the active-collision bitfield, and object_freeMemory to release the object slot entirely (flags,
+  bitmap, list unlink, sprite scaling reset). The ExtraVars list is presumably something like afterimages/trail
+  nodes owned by the object that must not dangle after free. No known callers, so the exact meaning of
+  the ExtraVars+4 list is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r7,[r5,#oBattleObject_ExtraVars+4]; cmp r5,r6 / str 0,[r7] — removes object from front of
+    a list rooted in its ExtraVars field; bl object_freeCollisionData — releases the object's collision
+    slot like other teardown paths; bl object_freeMemory — final release of the battle object slot, confirming
+    destructor role
+  refs:
+  - bn6f/asm/asm31.s:49481
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CEA88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it loads a list head from oBattleObject_ExtraVars+4, unlinks the front node if
+    it is r5 (the object), then calls object_freeCollisionData and object_freeMemory. The proposed name
+    is awkward (''freeWithExtraListUnlink'' is unidiomatic). A cleaner lowerCamel name following the object_
+    prefix would be object_destroyWithExtraListUnlink or just object_unlinkExtraAndFree.; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the game context and the meaning of the ExtraVars+4 linked list (afterimages? chained
+  effects?) are unconfirmed; a caller showing when objects with non-empty ExtraVars lists die would settle
+  it
+- 'The code matches: it loads a list head from oBattleObject_ExtraVars+4, unlinks the front node if it
+  is r5 (the object), then calls object_freeCollisionData and object_freeMemory. The proposed name is
+  awkward (''freeWithExtraListUnlink'' is unidiomatic). A cleaner lowerCamel name following the object_
+  prefix would be object_destroyWithExtraListUnlink or just object_unlinkExtraAndFree.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CEA88 -> object_unlinkExtraListAndFree
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEA88

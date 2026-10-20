@@ -1,0 +1,64 @@
+name: battle_delayedKillLinkedObject
+address: '0x080C49A4'
+kind: function
+status: probable
+summary: Battle-object handler that waits 30 frames, clears its visible flag, notifies sub_8011044 about
+  the linked enemy's version/actor/AI, kills the linked object (RelatedObject1) via battle_killObjectWithDependents,
+  zeroes its ExtraVars byte, and destroys itself.
+interface: (r5 = battle object, set up by caller) -> r0 = 0; object's CurState set to CUR_STATE_DESTROY
+  on completion
+details: On first invocation it seeds oBattleObject_Timer with 0x1E (30 frames) and marks the phase initialized
+  (PhaseInitialized=4), so this is a one-shot timed state. Each frame it decrements the timer; when it
+  expires it clears bit 1 of oObjectHeader_Flags (likely a visible/active bit, making the object vanish).
+  It then reads oBattleObject_RelatedObject1Ptr, takes that object's oBattleObject_NameID, unpacks it
+  via unpackVerActorTyAndAIIdx_800F29C into {version, actor type, AI index}, and passes the result (r2=1)
+  to sub_8011044. It kills the linked object with battle_killObjectWithDependents, zeroes the first byte
+  of its ExtraVars block (likely a counter/flag), and finally sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY. The pattern fits a mirage/clone-style enemy whose copy vanishes after a delay,
+  notifying something about the linked enemy before both are removed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'push block: Timer=0x1E and PhaseInitialized=4 set only once (loc_80C49A4) — one-shot 30-frame
+    delay; bgt locret_80C49E2: all teardown waits on the decremented Timer reaching 0; ldr r4,[r5,#oBattleObject_RelatedObject1Ptr]
+    then bl unpackVerActorTyAndAIIdx_800F29C: resolves the linked object''s identity record; bl battle_killObjectWithDependents
+    on RelatedObject1Ptr: deletes the partner object and its dependents; mov r0,#CUR_STATE_DESTROY; str
+    r0,[r5,#...CurStateActionPhaseAndPhaseInitialized]: ends the object''s own lifecycle'
+  refs:
+  - bn6f/asm/asm31.s:27692
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080C49A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structure: it seeds Timer=0x1E, clears bit 1 of Flags on expiry,
+    reads RelatedObject1Ptr''s NameID, unpacks via unpackVerActorTyAndAIIdx_800F29C with r2=1, calls sub_8011044,
+    then battle_killObjectWithDependents on the related object, zeros the first byte of its ExtraVars,
+    and sets CUR_STATE_DESTROY. However the function operates on RelatedObject1 (r4=loaded from oBattleObject_RelatedObject1Ptr,
+    used for the unpack and kill), not itself, so ''despawn LinkedObject'' is backwards — it kills the
+    linked object while destroying itself. The name should reflect that it kills the linked object after
+    a delay.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8011044 does with the unpacked {version, actorType, AIIdx} and r2=1 (spawn? registry update?)
+  — unknown without its body
+- Which enemy/feature uses this state (which script/state table dispatches to it) — no known caller
+- 'The code matches the proposal''s structure: it seeds Timer=0x1E, clears bit 1 of Flags on expiry, reads
+  RelatedObject1Ptr''s NameID, unpacks via unpackVerActorTyAndAIIdx_800F29C with r2=1, calls sub_8011044,
+  then battle_killObjectWithDependents on the related object, zeros the first byte of its ExtraVars, and
+  sets CUR_STATE_DESTROY. However the function operates on RelatedObject1 (r4=loaded from oBattleObject_RelatedObject1Ptr,
+  used for the unpack and kill), not itself, so ''despawn LinkedObject'' is backwards — it kills the linked
+  object while destroying itself. The name should reflect that it kills the linked object after a delay.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C49A4 -> battle_delayedKillLinkedObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C49A4

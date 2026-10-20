@@ -1,0 +1,64 @@
+name: object_advanceOnTimerExpired
+address: '0x0811CFEC'
+kind: function
+status: probable
+summary: 'State-machine step (r5 = object struct): decrements byte at +0xC; if still >0 stores it back
+  and returns, otherwise clears the sprite''s color shader (0xFFFF), sets halfword +0xE = 0x1F, transitions
+  state byte +0 to 0x23, reloads timer +0xC = 3, sets +9 = 8, and plays sound 0x194.'
+interface: (r5 = object/work struct pointer, no args in r0-r3) -> r0 = sound id 0x194 passed to PlaySoundEffect;
+  no meaningful return, flags from the bne on the decremented counter
+details: Runs against an object struct in r5 (this is a state-machine step, not a standalone call with
+  r0 args). It loads the byte at +0xC, decrements it, and if it is still >0 stores it back and returns
+  without doing anything else (early-exit at locret only when the counter did not reach zero). When the
+  counter reaches 0 or is already <=0, it calls sprite_setColorShader with 0xFFFF (the project's known
+  'clear/no shader' value), writes 0x1F to halfword +0xE, sets the state byte at +0 to 0x23, reloads the
+  counter at +0xC with 3, sets byte +9 to 8, and plays sound effect 0x194. The bne placement means the
+  non-expiry path also returns immediately, so this is a once-per-tick countdown with a one-shot transition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xC]; sub r0,#1; ble loc_811CFF8 / strb r0,[r5,#0xC]; bne locret: decrement-and-early-exit
+    countdown on struct field +0xC; ldr r0,dword_811D018 (=0xFFFF); bl sprite_setColorShader: clears the
+    object''s color shader on expiry; mov r1,#0x23; strb r1,[r5] plus strh 0x1F,[r5,#0xE] and strb 8,[r5,#9]:
+    state byte set to 0x23 with new timer/param values; ldr r0,off_811D01C (=0x194); bl PlaySoundEffect:
+    plays SFX 0x194 exactly on the transition tick; counter is reloaded with 3 after expiry, so the effect
+    repeats every 3 ticks while in this state'
+  refs:
+  - bn6f/asm/asm32.s:30899
+  - 0x080005CC PlaySoundEffect
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x0811CFEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body matches the summary: ldrb r0,[r5,#0xc]; sub r0,#1; ble loc_811CFF8 (zero/negative path),
+    and bne locret_811D014 (positive path). At loc_811CFF8, ldr 0xffff into r0 and bl sprite_setColorShader,
+    mov #0x1f strh to +0xe, mov #0x23 strb to +0, mov #3 strh to +0xc, mov #8 strb to +9, then ldr #0x194
+    bl PlaySoundEffect. So the summary is accurate; only the name ''object_timerExpireNextState'' is fine.
+    Minor note: the new state field is at +0 (not +0xE); +0xE gets 0x1F. I''ll revise name to be more
+    descriptive.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object/state machine this belongs to — no callers known, so the object type and what state 0x23
+  means are unidentified
+- Meaning of the 0x1F written to halfword +0xE and the 8 written to byte +9 (blink/flash timer? HP? palette
+  index?)
+- What sound 0x194 is (would identify the event, e.g. an alarm, roar, or recovery)
+- Whether the decrement starts from a value set by a previous state handler, which would pin down the
+  countdown length
+- 'The body matches the summary: ldrb r0,[r5,#0xc]; sub r0,#1; ble loc_811CFF8 (zero/negative path), and
+  bne locret_811D014 (positive path). At loc_811CFF8, ldr 0xffff into r0 and bl sprite_setColorShader,
+  mov #0x1f strh to +0xe, mov #0x23 strb to +0, mov #3 strh to +0xc, mov #8 strb to +9, then ldr #0x194
+  bl PlaySoundEffect. So the summary is accurate; only the name ''object_timerExpireNextState'' is fine.
+  Minor note: the new state field is at +0 (not +0xE); +0xE gets 0x1F. I''ll revise name to be more descriptive.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811CFEC -> object_advanceOnTimerExpired
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CFEC

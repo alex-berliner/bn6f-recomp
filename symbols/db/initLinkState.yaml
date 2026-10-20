@@ -1,0 +1,59 @@
+name: initLinkState
+address: '0x0803DDA4'
+kind: function
+status: probable
+summary: Initializes four fields of eLinkState (byte0=0x10, byte1=0x0C, byte8=0, halfword+0xC=0x10) with
+  constants; called from battle and from sub_812AC1A.
+interface: () -> void; writes eLinkState byte0=0x10, byte1=0x0C, halfword at +0xC=0x10, byte8=0; no return
+  value, flags not meaningful
+details: 'The function loads the address of eLinkState and stores four constants: 0x10 into the first
+  byte (likely a link/connection status or phase counter), 0x0C into the second byte, 0x0010 into the
+  halfword at offset 0xC, and 0 into the byte at offset 0x8 (probably a counter or flag cleared). It is
+  called from the battle state-machine stepper at the point where battle advances to state 4, so it appears
+  to (re)initialize link-state fields used during that battle phase. The struct symbol overlap with eCamera
+  at 0x20099d0 shown in the annotations is just the base-address label; all writes target eLinkState via
+  off_803DDBC. No reads, no other effects, and no callees.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r7, off_803DDBC / strb r0,[r7]... — all four stores target the single global eLinkState;
+    Caller battle_stepSubstateToState4_8007C14 calls it while advancing the battle state machine to state
+    4, matching a per-phase link-state init; Byte 8 is cleared to 0 while others get fixed constants,
+    suggesting reset of a counter/flag within the same struct; Function is pure global-state writes (push/pop
+    only), typical of a small init helper
+  refs:
+  - bn6f/asm/asm03_1_1.s:9807
+  - 0x08007C14 battle_stepSubstateToState4_8007C14
+  - 0x0812AC1A sub_812AC1A
+  - 0x0812AC2A sub_812AC1A
+  reproduce: python3 tools/asmcat.py 0x0803DDA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed interface and summary match the writes exactly (byte0=0x10, byte1=0xC, halfword at
+    +0xC=0x10, byte8=0) and it has no callees. However, only one of the three callers is the battle stepper;
+    the two at 0x0812AC1A/0x0812AC2A from sub_812AC1A suggest a non-battle use as well, so naming it `battle_`
+    is premature. The prefix `init` fits and `e` is also valid for writing to a global state struct; `init`
+    is more descriptive.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of each eLinkState field (0x10/0x0C values) — would need the struct definition or other
+  writers/readers of eLinkState to confirm semantics
+- What sub_812AC1A does at its two call sites (0x0812AC1A/0x0812AC2A) to confirm whether this is a per-connection
+  reset
+- The proposed interface and summary match the writes exactly (byte0=0x10, byte1=0xC, halfword at +0xC=0x10,
+  byte8=0) and it has no callees. However, only one of the three callers is the battle stepper; the two
+  at 0x0812AC1A/0x0812AC2A from sub_812AC1A suggest a non-battle use as well, so naming it `battle_` is
+  premature. The prefix `init` fits and `e` is also valid for writing to a global state struct; `init`
+  is more descriptive.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803DDA4 -> initLinkState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803DDA4

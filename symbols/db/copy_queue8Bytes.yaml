@@ -1,0 +1,59 @@
+name: copy_queue8Bytes
+address: '0x0802B9FE'
+kind: function
+status: probable
+summary: Queues an 8-byte transfer from a ROM table entry (indexed by r0) to the fixed buffer unk_3001AA0
+  via QueueEightWordAlignedGFXTransfer.
+interface: (r0 = entry index into table byte_802BA48) -> r0 = clobbered? (r0-r3,lr saved/restore pattern
+  suggests void); no flags used
+details: Takes an index, multiplies it by 8, and adds it to the base of table byte_802BA48 to select one
+  8-byte record. It then calls QueueEightWordAlignedGFXTransfer with that record as source, unk_3001AA0
+  as destination, and size 8, so each call copies exactly one table entry into the same fixed buffer slot.
+  The 8-byte granularity (two rows of a 4bpp 8x8 tile, or one 8x8 2bpp tile row pair) suggests it streams
+  small graphics pieces — tile slices or glyph data — from a compressed or packed table into VRAM staging
+  space. The buffer at 0x3001AA0 is written by every call, so callers presumably flush or consume it between
+  calls. Both callers (sub_802B7A0, sub_802B9E4) sit immediately before it, implying a small cluster of
+  queueing helpers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl r0, r0, #3 + add r0, r0, r1 over byte_802BA48: indexed lookup of 8-byte records; mov r2,
+    #8 passed as queued_size to QueueEightWordAlignedGFXTransfer: fixed 8-byte copy per call; ldr r1,
+    off_802BA14 (=unk_3001AA0): single fixed destination buffer reused each call; only callee is QueueEightWordAlignedGFXTransfer
+    and it touches no other state: pure queueing wrapper'
+  refs:
+  - bn6f/asm/asm03_0.s:11871
+  - 0x0802B7A0 sub_802B7A0
+  - 0x0802B9E4 sub_802B9E4
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0802B9FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads 8 bytes from a ROM table and queues a transfer to unk_3001AA0, matching the summary.
+    However, the name ''sprite_queueGfxChunk'' is speculative: callers sub_802B7A0 and sub_802B9E4 are
+    generic helpers with no sprite-specific evidence. A more neutral name like ''copy_queueTile'' (8 bytes
+    is a 4bpp 8x8 tile) or simply reflecting the ''8-byte copy'' nature is more honest.; run wf investigate
+    investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What buffer unk_3001AA0 is (VRAM staging, OAM-adjacent GFX slot, or glyph scratch) — callers' handling
+  of it would tell
+- Whether byte_802BA48 is a font/tile table and what the index means (tile id, glyph id, or animation
+  frame)
+- Which caller passes which indices and when this runs relative to rendering
+- 'The function reads 8 bytes from a ROM table and queues a transfer to unk_3001AA0, matching the summary.
+  However, the name ''sprite_queueGfxChunk'' is speculative: callers sub_802B7A0 and sub_802B9E4 are generic
+  helpers with no sprite-specific evidence. A more neutral name like ''copy_queueTile'' (8 bytes is a
+  4bpp 8x8 tile) or simply reflecting the ''8-byte copy'' nature is more honest.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802B9FE -> copy_queue8Bytes
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B9FE

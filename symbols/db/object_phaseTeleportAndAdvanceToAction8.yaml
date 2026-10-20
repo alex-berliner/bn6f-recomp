@@ -1,0 +1,65 @@
+name: object_phaseTeleportAndAdvanceToAction8
+address: '0x080D6164'
+kind: function
+status: probable
+summary: Phase routine that on phase 0 snaps the object's PanelX from an Alliance-indexed table and PanelY
+  from RelatedObject1Ptr, syncs coords/collision, waits 3 frames via Timer, then sets CurAction=8 and
+  clears the phase field.
+interface: (r0 = battle object ptr, also in r5) -> void; sets CurPhase=4, PanelX/PanelY, Timer=3; later
+  sets CurAction=8 and clears phase
+details: On entry with CurPhase==0 it stores phase 4, reads the object's Alliance and indexes the 2-byte
+  table off_80D61A4 (alliance 0 -> 0, alliance 1 -> 7) to pick the back-edge panel X, and copies PanelY
+  from RelatedObject1Ptr, so it appears aligned with that object's row on its own side of the field. It
+  then calls object_setCoordinatesFromPanels and object_updateCollisionPanels to sync pixel position and
+  collision data, and sets Timer=3. Subsequent phase entries just decrement Timer; when it hits 0 the
+  object's CurAction is set to 8 and CurPhaseAndPhaseInitialized is cleared to 0, handing control to the
+  action-8 handler. It is a per-frame phase/state routine, not a one-shot initializer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne splits phase 0 setup from the timer-wait path;
+    ldrb r0,[r5,#oBattleObject_Alliance]; ldrb r0,[r1,r0] with table bytes 00 07 (off_80D61A4: 0x700)
+    selects panel X 0 or 7 by team; ldrb r1,[RelatedObject1Ptr,#oBattleObject_PanelY]; strb r1,[r5,#oBattleObject_PanelY]
+    aligns the row to the related object; bl object_setCoordinatesFromPanels then bl object_updateCollisionPanels
+    sync pixel pos and collision after the teleport; Timer=3 then dec-and-branch, on expiry CurAction=8
+    and CurPhaseAndPhaseInitialized=0'
+  refs:
+  - bn6f/asm/asm31.s:65731
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080D6164
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: CurPhase==0 stores phase 4, picks PanelX from a 2-byte table via Alliance (0x0700
+    little-endian -> alliance 0 = 0x00, alliance 1 = 0x07), copies PanelY from RelatedObject1Ptr, syncs
+    coordinates/collision, sets Timer=3; on subsequent entries it decrements Timer and at 0 sets CurAction=8
+    and clears the phase field. The table is actually off_80D61A4 containing 0x00000700, not alliance
+    1->7 only, so the summary''s ''back edge'' interpretation isn''t directly confirmed by the code. Since
+    there is no known caller and the routine is a phase handler tied to action 8, a better name reflects
+    the phase behavior rather than guessing ''back edge''.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the owning object/action context is unknown; what action 8 means and which object
+  (boss-summoned entity, trap, etc.) uses this handler
+- What RelatedObject1 represents here (target, summoner) and why the object spawns on its own side's edge
+  in that row
+- 'The code matches: CurPhase==0 stores phase 4, picks PanelX from a 2-byte table via Alliance (0x0700
+  little-endian -> alliance 0 = 0x00, alliance 1 = 0x07), copies PanelY from RelatedObject1Ptr, syncs
+  coordinates/collision, sets Timer=3; on subsequent entries it decrements Timer and at 0 sets CurAction=8
+  and clears the phase field. The table is actually off_80D61A4 containing 0x00000700, not alliance 1->7
+  only, so the summary''s ''back edge'' interpretation isn''t directly confirmed by the code. Since there
+  is no known caller and the routine is a phase handler tied to action 8, a better name reflects the phase
+  behavior rather than guessing ''back edge''.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D6164 -> object_phaseTeleportAndAdvanceToAction8
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6164

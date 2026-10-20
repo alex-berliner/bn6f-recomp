@@ -1,0 +1,57 @@
+name: battle_setPhase4RevealExtraVarsOrDestroy
+address: '0x080CEA24'
+kind: function
+status: probable
+summary: Battle-object handler that sets Timer=8 and phase=4, copies ExtraVars+0xC into ExtraVars to reveal
+  a delayed value, and destroys the object via CUR_STATE_DESTROY + clearCollisionRegion if the copied
+  value is zero.
+interface: (r5 = battle object ptr, implicit) -> void; sets object Timer=8, phase=4; on zero var sets
+  state CUR_STATE_DESTROY and clears collision region
+details: Acts as a phase/state handler for a battle object (uses oBattleObject_Timer, oBattleObject_ExtraVars,
+  oBattleObject_CurPhaseAndPhaseInitialized). It stores 8 into the object's Timer and 4 into the current
+  phase field, then copies the word at ExtraVars+0xC into ExtraVars itself — a delayed-value reveal pattern.
+  If the copied value is zero (tst r0,r0), the object's state is set to CUR_STATE_DESTROY and object_clearCollisionRegion
+  removes it from collision. If nonzero, the object survives with Timer 8 and phase 4, presumably to be
+  processed again next frame. Likely referenced through a handler function-pointer table, since no direct
+  callers are known.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh r0,#8 into oBattleObject_Timer and #4 into CurPhase at 80CEA26-80CEA34 set a short timed
+    phase; ldr/str pair copies ExtraVars+0xc into ExtraVars, a delayed-transfer of an object variable;
+    tst r0,r0 + mov #CUR_STATE_DESTROY destroys the object only when the transferred variable is zero;
+    bl object_clearCollisionRegion pairs with the destroy state to detach the object from collision'
+  refs:
+  - bn6f/asm/asm31.s:49647
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CEA24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s described behavior: sets Timer=8, copies ExtraVars+0xC into ExtraVars,
+    sets phase=4, and on zero sets CUR_STATE_DESTROY + calls object_clearCollisionRegion. However, the
+    name ''battle_phaseSwapExtraVarsOrDestroy'' uses ''phaseSwap'' which is misleading (phase 4 is set,
+    not swapped). Note also the CurState field is actually oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+    a combined state/phase field; CUR_STATE_DESTROY overwrites the whole word.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which object/AI uses this handler (no callers or function-table reference known)
+- what ExtraVars+0xC holds and why the zero case destroys instead of surviving
+- what phase 4 with Timer 8 leads to in the object's state machine
+- 'The code matches the proposal''s described behavior: sets Timer=8, copies ExtraVars+0xC into ExtraVars,
+  sets phase=4, and on zero sets CUR_STATE_DESTROY + calls object_clearCollisionRegion. However, the name
+  ''battle_phaseSwapExtraVarsOrDestroy'' uses ''phaseSwap'' which is misleading (phase 4 is set, not swapped).
+  Note also the CurState field is actually oBattleObject_CurStateActionPhaseAndPhaseInitialized, a combined
+  state/phase field; CUR_STATE_DESTROY overwrites the whole word.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CEA24 -> battle_setPhase4RevealExtraVarsOrDestroy
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEA24

@@ -1,0 +1,57 @@
+name: startFadeStep
+address: '0x08027580'
+kind: function
+status: probable
+summary: 'Per-frame step (r5 = state struct): after 16 frames elapses on the [r5+0x40] counter, zeros
+  the counter, kicks off SetScreenFade(4, 0x20) and sets the halfword state field [r5+2] to 8.'
+interface: (r5 = state/task struct) -> void; updates [r5+0x40] counter, on expiry sets halfword [r5+2]
+  = 8 and calls SetScreenFade(4, 0x20)
+details: This is a per-frame update function whose state struct is in r5. Each call it increments the
+  32-bit frame counter at [r5+0x40]; while the count is below 0x10 it simply returns. On the 16th frame
+  it zeroes the counter, calls SetScreenFade with mode 4 and parameter 0x20 (a screen fade-in/out of ~32
+  frames), and writes 8 into the halfword state/id field at [r5+2], switching the owning object to its
+  next state. The [r5+2] field acting as a small state selector and the short counter-then-transition
+  pattern is the standard per-state step idiom in these state machines. The r5 base and the meaning of
+  fade mode 4 come from the callee's signature and convention, not this function itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'add/str on [r5,#0x40] with cmp #0x10: a 16-frame wait counter; mov r0,#4 / mov r1,#0x20 / bl
+    SetScreenFade: triggers a fade with speed 0x20; strh r0(=8),[r5,#2]: writes a new state id, so [r5+2]
+    is the state selector; counter reset to 0 before transitioning, keeping the step reusable; thumb_func_end
+    with no other callees: the whole body is wait-then-transition'
+  refs:
+  - bn6f/asm/asm03_0.s:2455
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08027580
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function counter-then-transition pattern is correct, but it''s specifically tied to screen fading
+    via SetScreenFade, so an ''object'' or generic prefix isn''t ideal — ''start'' would fit since it
+    starts a fade. It also doesn''t ''wait then fade step'' generically; it initializes/starts a fade
+    after a 16-frame wait. The argument is r5 not stored, so ''r5-based state step'' is accurate. Name
+    should reflect both waiting and fade-starting.; run wf investigate investigate-20261019-015108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which subsystem's state machine owns this struct (and thus a proper prefix) is
+  unknown
+- The meaning of SetScreenFade mode 4 (fade direction/color) and the semantics of state 8 are not shown
+  here
+- The function counter-then-transition pattern is correct, but it's specifically tied to screen fading
+  via SetScreenFade, so an 'object' or generic prefix isn't ideal — 'start' would fit since it starts
+  a fade. It also doesn't 'wait then fade step' generically; it initializes/starts a fade after a 16-frame
+  wait. The argument is r5 not stored, so 'r5-based state step' is accurate. Name should reflect both
+  waiting and fade-starting.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8027580 -> startFadeStep
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027580

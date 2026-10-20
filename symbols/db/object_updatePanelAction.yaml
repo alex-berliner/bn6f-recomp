@@ -1,0 +1,60 @@
+name: object_updatePanelAction
+address: '0x080E01EE'
+kind: function
+status: probable
+summary: Per-frame check that selects a battle object's next action (0xC if panel became non-solid, else
+  4 if sub_80E02AC returns 0 or ExtraVars+0x10 counter reaches 3); falling into a hole clears collision.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurAction to 0xC or 4 and zeroes oBattleObject_CurPhaseAndPhaseInitialized
+  in the taken branches
+details: 'Reads the object''s occupied panel X/Y from its CollisionDataPtr and calls object_isPanelSolid.
+  If the panel is NOT solid, it clears the object''s collision region (removing it from panel collision,
+  consistent with falling into a hole), sets CurAction to 0xC and phase to 0. If the panel is still solid,
+  it calls sub_80E02AC with the object''s own PanelX/PanelY and additionally compares ExtraVars+0x10 against
+  3: if that sub returns 0 or the counter is >= 3, it instead sets CurAction to 4 and phase to 0, otherwise
+  it returns without changing state. The exact meanings of actions 0xC and 4 and of sub_80E02AC''s test
+  are not established from this code alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_isPanelSolid then fall-through path calls object_clearCollisionRegion and stores action
+    0xC (asm after 0x080E01FA); both branches store 0 to oBattleObject_CurPhaseAndPhaseInitialized, i.e.
+    they (re)start a new action phase; solid-panel path calls sub_80E02AC(PanelX, PanelY) and tst's its
+    result before choosing action 4; ExtraVars+0x10 is compared to 3 with blt, gating the action-4 branch;
+    callees object_isPanelSolid / object_clearCollisionRegion match the hole/fall interpretation of panel
+    solidity
+  refs:
+  - bn6f/asm/asm31.s:87113
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCB2 object_isPanelSolid
+  - 0x080E02AC sub_80E02AC
+  reproduce: python3 tools/asmcat.py 0x080E01EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: not-solid panel → clearCollisionRegion + CurAction=0xC, else sub_80E02AC + ExtraVars+0x10
+    >= 3 check leads to CurAction=4. However the proposal''s description of sub_80E02AC semantics (''returns
+    0'' meaning action=4) is inverted: `tst r0,r0; beq loc_80E021C` means if sub_80E02AC returns 0, action=4
+    is set. Also ''sets CurAction to 0xC or 4'' omits the no-op return path when sub_80E02AC returns nonzero
+    AND counter < 3. Name and summary are reasonable but should reflect the dual-action behavior.; run
+    wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the trigger context (which AI/state machine runs this) is unconfirmed
+- Meaning of CurAction values 0xC and 4 in the battle action table is unknown
+- What sub_80E02AC(x, y) tests (panel type? another object?) and what ExtraVars+0x10 counts
+- 'The flow matches: not-solid panel → clearCollisionRegion + CurAction=0xC, else sub_80E02AC + ExtraVars+0x10
+  >= 3 check leads to CurAction=4. However the proposal''s description of sub_80E02AC semantics (''returns
+  0'' meaning action=4) is inverted: `tst r0,r0; beq loc_80E021C` means if sub_80E02AC returns 0, action=4
+  is set. Also ''sets CurAction to 0xC or 4'' omits the no-op return path when sub_80E02AC returns nonzero
+  AND counter < 3. Name and summary are reasonable but should reflect the dual-action behavior.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E01EE -> object_updatePanelAction
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E01EE

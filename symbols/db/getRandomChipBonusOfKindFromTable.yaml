@@ -1,0 +1,63 @@
+name: getRandomChipBonusOfKindFromTable
+address: '0x080AAD04'
+kind: function
+status: probable
+summary: Scans chip IDs 1..0x13F for the r1-th whose chip record byte 5 matches r0, then picks a random
+  nonzero entry from that chip's 4-byte bonus table at dword_2033000 and returns the chip ID plus the
+  chipRecord[chosen] value.
+interface: (r0 = kind byte matched against chipRecord[5], r1 = 0-based match index) -> r0 = chip ID, r1
+  = chipRecord[random table byte]; clobbers r4-r7
+details: 'Iterates chip IDs 1..0x13F, fetching each 44-byte chip record via getChip8021DA8 and testing
+  byte +5 against r0; the r1-th (0-based) match is taken, otherwise the scan runs to the 0x140 limit.
+  For the matched chip it reads the EWRAM table entry at dword_2033000 + id*0xC: the first dword is tested
+  for nonzero (the check loop aliases it as dword_203300C) and the same 4 bytes double as a list of values,
+  compacted to consecutive indices on the stack. GetPositiveSignedRNG advanced through svc 6 (SWI Div)
+  yields rand % count to pick one nonzero value. Returns the chip ID in r0 and chipRecord[selectedValue]
+  in r1, i.e. the table bytes are offsets into the chip record. If no chip matches, it returns whatever
+  r0/r5 held from the last loop iteration (a stale/garbage path).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: getChip8021DA8 called per id with ldrb r1,[r0,#5]; cmp r1,r7 — match test on chip-record byte
+    5 (asm loc_80AAD10); sub r4,#1; blt loc_80AAD30 — selects the r1-th (0-based) matching chip; ldr r6,=dword_2033000;
+    mul r0,r5,#0xC — per-chip-ID 12-byte EWRAM table, dword_203300C is the same entry aliased for the
+    nonzero check; loop over ldrb [r6,r3] r3=0..3 builds the nonzero-value list, then GetPositiveSignedRNG
+    + svc 6 (Div) indexes it randomly; ldrb r1,[r7,r1] with r7 = saved chip-record pointer — final byte
+    read from the chip record at the randomly chosen table value
+  refs:
+  - bn6f/asm/asm29.s:12138
+  - 0x080AAC8C sub_80AAC8C
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x080AAD04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callees (getChip8021DA8 for chip record, GetPositiveSignedRNG) and the byte-5 kind match in
+    loc_80AAD10 match the proposal, but the table access starts at dword_2033000 (first 4 bytes of each
+    0xC entry serve as the table, as the loop loads bytes 0..3 at loc_80AAD42), and r1 returns chipRecord[selectedValue],
+    not chipRecord[random table byte]. The ''random table byte'' framing mischaracterizes it; better described
+    as selecting a random bonus from a chip''s bonus table.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what chip-record byte 5 means (class? category?) and what kind values the caller passes
+- what fills the EWRAM table at 0x2033000 and what its per-chip 4 bytes (offsets into the chip record)
+  represent
+- what sub_80AAC8C does with the returned (chip ID, byte) pair — that would pin down the game feature
+- The callees (getChip8021DA8 for chip record, GetPositiveSignedRNG) and the byte-5 kind match in loc_80AAD10
+  match the proposal, but the table access starts at dword_2033000 (first 4 bytes of each 0xC entry serve
+  as the table, as the loop loads bytes 0..3 at loc_80AAD42), and r1 returns chipRecord[selectedValue],
+  not chipRecord[random table byte]. The 'random table byte' framing mischaracterizes it; better described
+  as selecting a random bonus from a chip's bonus table.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80AAD04 -> getRandomChipBonusOfKindFromTable
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AAD04

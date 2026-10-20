@@ -1,0 +1,62 @@
+name: battle_phaseInitRelatedNaviAndWaitParam2
+address: '0x080E4954'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on first entry initializes itself and its related Navi object (sets
+  Timer=0x3C, PhaseInitialized=4), then on each frame returns until Param2 clears; when Param2 is 0, sets
+  CurAction=0xC and resets the phase field. The related-Navi alliance byte at offset 0x21 selects between
+  sub_8014446 and ai_clearCounterHitChainFlag.'
+interface: (r5 = battle object pointer, set by caller) -> void; r4/r6 preserved, r0-r3/r7 clobbered
+details: 'A per-frame state handler for a battle object whose state lives in r5. If PhaseInitialized is
+  0 it runs one-time init: calls sub_80C4AEC with r0=r5+5 (some sub-object/field base), calls sub_80E49C4
+  and sub_801E658 on RelatedObject1Ptr, then reads NaviStats byte 0x21 for the related object''s side;
+  if nonzero it calls sub_8014446, otherwise ai_clearCounterHitChainFlag — i.e. the counter-hit chain
+  field is reset either way, via different paths. It then sets Timer=0x3C (60 frames) and marks PhaseInitialized=4.
+  On subsequent frames it just checks Param2: if nonzero it returns and keeps waiting; once Param2 is
+  0 it sets CurAction=0xC and CurPhaseAndPhaseInitialized=0, finishing the state. This is the classic
+  BN6 battle ''wait for condition, then move to next action'' pattern; the exact meaning of Param2 (likely
+  a flag set elsewhere when some event occurs) is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'PhaseInitialized==0 guard with init body then strb #4, [PhaseInitialized]: one-shot init then
+    steady state; mov r0,#0x3C; strh [oBattleObject_Timer]: 60-frame delay is the state''s purpose; push
+    {r5}; ldr r5,[r5,#oBattleObject_RelatedObject1Ptr]; bl GetBattleNaviStatsByte_AllianceFromBattleObject:
+    acts on the linked Navi object''s side; both branches of the byte-0x21 test end in clearing the counter-hit
+    chain (sub_8014446 / ai_clearCounterHitChainFlag); tail: if Param2==0 -> CurAction=0xC, CurPhaseAndPhaseInitialized=0:
+    transition out of the state'
+  refs:
+  - bn6f/asm/asm31.s:97266
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0801443C ai_clearCounterHitChainFlag
+  - 0x08014446 sub_8014446
+  reproduce: python3 tools/asmcat.py 0x080E4954
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The call sequence operates on the *related* Navi object (r5 is reloaded from oBattleObject_RelatedObject1Ptr
+    before the GetBattleNaviStatsByte_Alliance call at ldr r5,[r5,...]; mov r1,#0x21), so the alliance
+    check is on the related Navi, not the battle object''s side. Also only the r0==0 path calls ai_clearCounterHitChainFlag;
+    the nonzero path calls the unknown sub_8014446, so ''reset either way'' is wrong. Name and overall
+    summary direction are reasonable.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80C4AEC, sub_80E49C4 and sub_801E658 do (they would pin down the init's exact effect)
+- What sets Param2 to nonzero/zero, i.e. what condition ends the 60-frame wait
+- What CurAction 0xC means in the battle action table
+- The call sequence operates on the *related* Navi object (r5 is reloaded from oBattleObject_RelatedObject1Ptr
+  before the GetBattleNaviStatsByte_Alliance call at ldr r5,[r5,...]; mov r1,#0x21), so the alliance check
+  is on the related Navi, not the battle object's side. Also only the r0==0 path calls ai_clearCounterHitChainFlag;
+  the nonzero path calls the unknown sub_8014446, so 'reset either way' is wrong. Name and overall summary
+  direction are reasonable.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4954 -> battle_phaseInitRelatedNaviAndWaitParam2
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4954

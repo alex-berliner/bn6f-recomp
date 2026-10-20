@@ -1,0 +1,61 @@
+name: object_runBehaviorAndTick
+address: '0x080C48FC'
+kind: function
+status: probable
+summary: 'Per-frame battle object handler: sets oObjectHeader_Flags bit 0x2 (cleared if an enemy is blinded),
+  dispatches via oBattleObject_Param1 to one of three Thumb sub-behaviors in off_80C4930, then advances
+  the sprite via object_updateSpriteTimestop.'
+interface: (r4/r5 = object header of the object being updated) -> r0 = result of object_updateSpriteTimestop;
+  modifies oObjectHeader_Flags bit 0x2
+details: The routine first sets bit 0x2 in the object's oObjectHeader_Flags, then calls battle_findPlayerByAlliance
+  with the object's oBattleObject_Alliance; that helper returns 0 when the opposing alliance has a blinded
+  player, and in that case bit 0x2 is cleared again, so the bit stays set only when the enemy is NOT blinded.
+  It then uses oBattleObject_Param1 (masked to 0-2 by the 3-entry table at off_80C4930) to pick one of
+  three handlers (sub_80C493C/sub_80C49E4/sub_80C4A52) and calls it via 'mov lr,pc; bx r1', a Thumb long-call
+  that returns to the bl below. Finally it calls object_updateSpriteTimestop to advance the sprite unless
+  paused/time-stopped, and returns. The overall shape (flag tweak + variant dispatch + sprite tick) is
+  a standard battle-object update handler; the exact meaning of flag bit 0x2 and what the three variants
+  do is not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: orr/bic of bit 0x2 on [r5,#oObjectHeader_Flags] around the blind check shows conditional flag
+    toggling; bl battle_findPlayerByAlliance_800EB6C with the object's Alliance field; fall-through (r0==0,
+    enemy blinded) clears the bit; ldr r1,[r1,r0] with Param1*4 into off_80C4930's 3 words, called via
+    'mov lr,pc; bx r1' — table-dispatched sub-behavior; bl object_updateSpriteTimestop after the dispatch
+    is the standard sprite-advance tail of an object update; single caller sub_80C4848 is itself unnamed,
+    so no higher-level context is available
+  refs:
+  - bn6f/asm/asm31.s:27601
+  - 0x080C4848 sub_80C4848
+  - 0x0800EB6C battle_findPlayerByAlliance_800EB6C
+  - 0x0801BBF4 object_updateSpriteTimestop
+  reproduce: python3 tools/asmcat.py 0x080C48FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow agrees (set bit 0x2, blind check clears it, Param1 dispatch, object_updateSpriteTimestop),
+    but naming ''object_updateWithBlindCheck'' implies the blind check is the routine''s purpose rather
+    than the config. A name like ''object_runBehaviorAndTick'' better captures the dispatch+sprite-update
+    shape. Also the proposal mentions r4 but r4 is not used here; it''s r5.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- semantic of oObjectHeader_Flags bit 0x2 (visibility? targetable? state flag?)
+- what sub_80C493C/sub_80C49E4/sub_80C4A52 (the three Param1 variants) do, to identify the object type
+- what sub_80C4848 is and which in-game entity registers objects with this update handler
+- The flow agrees (set bit 0x2, blind check clears it, Param1 dispatch, object_updateSpriteTimestop),
+  but naming 'object_updateWithBlindCheck' implies the blind check is the routine's purpose rather than
+  the config. A name like 'object_runBehaviorAndTick' better captures the dispatch+sprite-update shape.
+  Also the proposal mentions r4 but r4 is not used here; it's r5.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C48FC -> object_runBehaviorAndTick
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C48FC

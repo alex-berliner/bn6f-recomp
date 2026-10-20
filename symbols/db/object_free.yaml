@@ -1,0 +1,49 @@
+name: object_free
+address: '0x080CCD42'
+kind: function
+status: probable
+summary: Direct tail-call to object_freeMemory that just forwards r0; no setup, no post-processing.
+interface: (r0 = battle object pointer) -> r0 = object_freeMemory return value; flags per callee
+details: The entire function saves lr, branches to object_freeMemory, and returns with the same r0 passed
+  through. object_freeMemory clears the object's flags, frees its type's bitmap slot, unlinks it from
+  the active-object list, and resets sprite scaling, so this routine is simply the standard 'destroy/remove
+  object' entry point. No argument setup or post-processing is done, so r0 (the object) is forwarded unchanged.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80CCD42 body is only push {lr}; bl object_freeMemory; pop {pc} — no other work; callees
+    list: object_freeMemory at 0x08003458 releases a battle object''s slot and unlinks it from the active-object
+    list; r0 is untouched before the call, so the wrapper takes the same object-pointer argument as object_freeMemory'
+  refs:
+  - bn6f/asm/asm31.s:45632
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CCD42
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code is just push {lr}, bl object_freeMemory, pop {pc} — a trivial tail-call wrapper. The name
+    ''object_free'' is fine, but the summary claims it ''returns with the same r0 passed through'' which
+    contradicts the ''flags per callee'' note (flags are modified by object_freeMemory). More importantly,
+    this isn''t a separate ''destroy object'' routine — it''s a useless wrapper around object_freeMemory.
+    Callers are ''none known'', which is suspicious. The name could simply reflect that it is a direct
+    passthrough, e.g. object_free.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so it is unclear which subsystems invoke this wrapper versus calling object_freeMemory
+  directly
+- The code is just push {lr}, bl object_freeMemory, pop {pc} — a trivial tail-call wrapper. The name 'object_free'
+  is fine, but the summary claims it 'returns with the same r0 passed through' which contradicts the 'flags
+  per callee' note (flags are modified by object_freeMemory). More importantly, this isn't a separate
+  'destroy object' routine — it's a useless wrapper around object_freeMemory. Callers are 'none known',
+  which is suspicious. The name could simply reflect that it is a direct passthrough, e.g. object_free.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CCD42 -> object_free
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCD42

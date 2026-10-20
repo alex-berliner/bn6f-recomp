@@ -1,0 +1,67 @@
+name: battle_findNearestColumnInFront
+address: '0x080BA1D6'
+kind: function
+status: probable
+summary: Starting from the far edge of the object's facing side (col 6 for alliance 0, col 1 otherwise),
+  steps toward the object and returns the first column whose panels yield a nonzero object_getPanelsInColumnFiltered
+  result, or 0 if none before reaching the object's own column.
+interface: (r5 = battle object ptr, r0-r3 unused on entry) -> r0 = column index (1-6) of first matching
+  column, or 0; r5 preserved by caller convention
+details: 'Uses r5 as a battle object (reads oBattleObject_Alliance and oBattleObject_PanelX without saving
+  r5, so the caller must hold the object there). It computes the search direction as -object_getFrontDirection
+  (alliance 0 starts at column 6 and steps -1; non-zero alliance starts at column 1 and steps +1). Each
+  iteration calls object_getPanelsInColumnFiltered with r0 = candidate column, r1 = the object''s PanelX,
+  and a per-alliance 8-byte parameter pair from byte_80BA228 (alliance 0: 0x00010000/0x0F8800A0, alliance
+  1: 0x00010020/0x0F880080) plus buffer at sp+4; a nonzero return (at least one panel passed object_checkPanelParameters)
+  ends the search and that column index is returned. Otherwise the column steps by the negated facing
+  direction, clamped to 1..6, until it reaches the object''s own PanelX column, which yields 0. In game
+  terms this finds the nearest valid panel in front of an object, likely for AI target selection.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection; neg r0,r0; str r0,[sp] — search steps opposite the object''s facing;
+    mov r4,#6 / mov r4,#1 after tst alliance — start column depends on alliance side; ldr r2,[r1]; ldr
+    r3,[r1,#4] off byte_80BA228 indexed by alliance*8 — per-side filter parameters; bl object_getPanelsInColumnFiltered;
+    tst r0,r0; bne loc_80BA218 — nonzero panel count returns current column; add r4,r4,r0; cmp r4,#1 /
+    #6; cmp r0 (r4), PanelX beq -> return 0 — clamp and stop at object''s own column'
+  refs:
+  - bn6f/asm/asm31.s:4370
+  - 0x080BA054 sub_80BA054
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080BA1D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s core behavior matches the asm: starting column 6 or 1 by alliance (lines 7-12),
+    stepping by -frontDirection (lines 17, 23-24), bounded 1..6 (lines 25-28), terminating at object''s
+    PanelX with 0 (line 19, 28, 30). However, the claim that the function returns ''column index (1-6)''
+    and that byte_80BA228 values are ''0x00010000'' etc. is mis-parsed: the 16 bytes at 0x80BA228 are
+    loaded as two words per alliance (lsl r1,#3 into r1, then ldr r2,[r1]; ldr r3,[r1,#4]), giving alliance
+    0 = {0x00010000, 0x0F8800A0} and alliance 1 = {0x00010020, 0x0F880080}, which does match. Name ''battle_findFirstFilteredColumn''
+    is reasonable but doesn''t convey the ''nearest in front of object'' intent.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Caller sub_80BA054 is undocumented, so the game-level use (which AI/attack selects a target column this
+  way) is unconfirmed
+- Exact meaning of the byte_80BA228 parameter words passed to object_getPanelsInColumnFiltered (filter
+  flags vs. encoded IDs) is not decoded
+- 'The proposal''s core behavior matches the asm: starting column 6 or 1 by alliance (lines 7-12), stepping
+  by -frontDirection (lines 17, 23-24), bounded 1..6 (lines 25-28), terminating at object''s PanelX with
+  0 (line 19, 28, 30). However, the claim that the function returns ''column index (1-6)'' and that byte_80BA228
+  values are ''0x00010000'' etc. is mis-parsed: the 16 bytes at 0x80BA228 are loaded as two words per
+  alliance (lsl r1,#3 into r1, then ldr r2,[r1]; ldr r3,[r1,#4]), giving alliance 0 = {0x00010000, 0x0F8800A0}
+  and alliance 1 = {0x00010020, 0x0F880080}, which does match. Name ''battle_findFirstFilteredColumn''
+  is reasonable but doesn''t convey the ''nearest in front of object'' intent.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA1D6 -> battle_findNearestColumnInFront
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA1D6

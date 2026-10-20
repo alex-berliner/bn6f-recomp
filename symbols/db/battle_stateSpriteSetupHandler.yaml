@@ -1,0 +1,64 @@
+name: battle_stateSpriteSetupHandler
+address: '0x0811B594'
+kind: function
+status: probable
+summary: 'Battle-object state handler: on first call delays 4 frames (stores 4 into [r5+0xa]); afterwards
+  runs sub_811B6E0, sub_811B71C, sub_811B7D4, battle_setupObjectSpriteFromEntry, sprite_applyStateSpriteTransform,
+  then advances [r5+0x9] to 4 and clears [r5+0xa].'
+interface: (r5 = battle object/work struct pointer, set by caller) -> r0 = 0 clobbered; writes [r5+0x9]
+  = 4 (next state) and [r5+0xa] = 0 (step reset) on completion
+details: 'Uses byte [r5+0xa] as a step/delay counter for this state: if it is 0 the handler stores 4 and
+  returns without doing anything (a one-shot 4-frame wait, or marking the state as initialized), otherwise
+  it runs a fixed sequence of five calls. The three unknown helpers (sub_811B6E0/71C/7D4) presumably advance
+  a step counter or compute per-frame parameters, then battle_setupObjectSpriteFromEntry picks an entry
+  from the word_2023FA0 table and configures the object''s sprite (shadow flag, animation, animation data),
+  and sprite_applyStateSpriteTransform applies the per-frame position/scale transform and stores the next
+  step delay. When the sequence finishes it writes 4 into [r5+0x9], the object''s next-state byte, and
+  clears [r5+0xa]. No arguments are passed in registers; the caller must have r5 pointing at the object
+  struct, suggesting it is dispatched from a state-handler table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xa] / tst / bne: byte 0xa gates the state, stored 4 when zero (loc_811B5A2 vs
+    early return); bl battle_setupObjectSpriteFromEntry then bl sprite_applyStateSpriteTransform: sprite
+    is configured from table entry, then transformed per frame; strb r0=4,[r5,#0x9] and strb r0=0,[r5,#0xa]
+    before return: writes the object''s next-state byte and clears the step counter; callee summaries
+    for 0x0811B814 and 0x0811B914 describe sprite setup from word_2023FA0 and state-byte-driven transform
+    on the object''s sprite; no register arguments and heavy r5 use imply r5-based dispatch from a state
+    handler table'
+  refs:
+  - bn6f/asm/asm32.s:27870
+  - 0x0811B814 battle_setupObjectSpriteFromEntry
+  - 0x0811B914 sprite_applyStateSpriteTransform
+  - 0x0811B6E0 sub_811B6E0
+  reproduce: python3 tools/asmcat.py 0x0811B594
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal swaps r5+0xa and r5+0x9: the asm stores 4 into [r5,#0xa] on the early return and stores
+    4 into [r5,#9] on completion, then clears [r5,#0xa] — opposite of the proposal''s claims. Also the
+    handler writes [r5+0xa]=4 as a one-shot ''wait 4'' and uses it as step counter afterward (a common
+    pattern), so the summary text describing the sequence is okay but the interface summary misidentifies
+    which byte is which.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_811B6E0, sub_811B71C and sub_811B7D4 each do (step advance vs. per-frame parameter computation)
+- Which object field or state selects the word_2023FA0 entry passed down to battle_setupObjectSpriteFromEntry
+- No known caller, so which state value leads into this handler and what state 4 means in the object state
+  machine
+- 'The proposal swaps r5+0xa and r5+0x9: the asm stores 4 into [r5,#0xa] on the early return and stores
+  4 into [r5,#9] on completion, then clears [r5,#0xa] — opposite of the proposal''s claims. Also the handler
+  writes [r5+0xa]=4 as a one-shot ''wait 4'' and uses it as step counter afterward (a common pattern),
+  so the summary text describing the sequence is okay but the interface summary misidentifies which byte
+  is which.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B594 -> battle_stateSpriteSetupHandler
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B594

@@ -1,0 +1,60 @@
+name: t3_tickCrows
+address: '0x08143294'
+kind: function
+status: probable
+summary: 'Per-frame loop over 8 Cybercrow lesson records at byte_2000D20: for each active slot, marks
+  +1 = 8 when the player is within 0xFA<<16 hypot distance of the crow''s position, then calls sub_81432FA(i,
+  1) for every active slot.'
+interface: (void) -> void; touches byte_2000D20 slots (+0 state read, +1 written 8 when player near),
+  calls sub_81432FA(i, 1) per active slot
+details: Iterates 8 records of 0x14 bytes at byte_2000D20 using r5 as cursor and r4 as slot index. Skips
+  records whose state byte at +0 is zero. For active records it reads the player overworld object via
+  gameState->overworldPlayerObject, takes the player's X/Y at +0x1C/+0x20, subtracts the record's position
+  at +8/+0xC, and calls calc_hypotFixed12 for the distance. If distance < 0xFA<<16 (threshold in the hypot's
+  fixed-point scale), it stores 8 into the record's +1 byte (likely a state/animation selector for the
+  crow reacting to the player). The 'mov r1,#3' before that store is dead — r1 is never read afterwards.
+  Finally it calls sub_81432FA(r4, 1) for every active slot, presumably the per-slot crow update/tick
+  with an argument flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop: ldr r5, off_8143398 = byte_2000D20; add r5,#0x14 / cmp r4,#8 — 8 records of 0x14 bytes;
+    ldrb r0,[r5]; tst/beq — only records with nonzero +0 state are processed; ldr r2,[r0,#0x20]/ldr r3,[r0,#0x1c]
+    from GameState->overworldPlayerObject vs [r5,#0xc]/[r5,#8], then bl calc_hypotFixed12 — player-to-crow
+    distance; cmp r0,r2 (0xFA<<16); bge skip; strb r0(=8),[r5,#1] — proximity threshold sets +1 flag to
+    8; unconditional bl sub_81432FA with r4=slot index, r1=1 for each active slot; caller 0x0808C378 is
+    the Cybercrow pecked cutscene helper'
+  refs:
+  - bn6f/asm/asm37_1.s:2979
+  - 0x0808C378 sub_808C378
+  - 0x080014D4 calc_hypotFixed12
+  - 0x081432FA sub_81432FA
+  reproduce: python3 tools/asmcat.py 0x08143294
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate but the name ''crow_checkPlayerProximity'' captures only the proximity
+    check; the function also always calls sub_81432FA for every active slot, making it a per-frame tick
+    over the 8 crow records with proximity-driven +1 = 8 marking. ''t3'' prefix fits t3-set/lesson data,
+    and ''_tick'' better describes the loop''s primary purpose.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_81432FA (per-slot update?) and meaning of its r1=1 argument
+- Exact meaning of slot +1 value 8 (state vs animation id) and units of the 0xFA<<16 distance threshold
+- Whether positions are 20.12 fixed point matching calc_hypotFixed12's scale
+- The summary is mostly accurate but the name 'crow_checkPlayerProximity' captures only the proximity
+  check; the function also always calls sub_81432FA for every active slot, making it a per-frame tick
+  over the 8 crow records with proximity-driven +1 = 8 marking. 't3' prefix fits t3-set/lesson data, and
+  '_tick' better describes the loop's primary purpose.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143294 -> t3_tickCrows
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143294

@@ -1,0 +1,56 @@
+name: object_clearState
+address: '0x080DFD56'
+kind: function
+status: probable
+summary: Resets a battle object's transient state (ExtraVars, CurAction), toggles a collision flag, and
+  removes it from the collision grid, refreshing panel collision highlights.
+interface: (r5 = battle object, r0 unused on entry) -> r0 = 0; toggles oCollisionData_SelfCollisionTypeFlags
+  bit 0x2000, clears collision region and CurAction
+details: Uses r5 directly as the battle object. It zeroes oBattleObject_ExtraVars, XORs 0x2000 into the
+  object's collision type flags (a toggle, not a clear — likely an 'inactive/hidden' state bit), then
+  calls object_clearCollisionRegion to drop the object out of its collision region, zeroes oBattleObject_CurAction,
+  and calls object_highlightCurrentCollisionPanels to refresh panel collision highlights. Reads the collision
+  data via oBattleObject_CollisionDataPtr. No caller is known, so whether the 0x2000 toggle means 'set
+  inactive' or the reverse is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: str r0,[r5,#oBattleObject_ExtraVars] / strb r0,[r5,#oBattleObject_CurAction] zero object state;
+    eor r1,r2 with 0x2000 toggles a bit in oCollisionData_SelfCollisionTypeFlags; bl object_clearCollisionRegion
+    removes the object from its collision region; bl object_highlightCurrentCollisionPanels refreshes
+    panel collision visuals after the change; callees are both battle-object collision routines, tying
+    this to object lifetime management
+  refs:
+  - bn6f/asm/asm31.s:86459
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCBE object_highlightCurrentCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DFD56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches most of the proposal: it zeroes ExtraVars, XOR-toggles the 0x2000 flag, clears
+    the collision region via object_clearCollisionRegion, zeroes CurAction, and refreshes panels. However,
+    r0 is explicitly loaded with 0 and stored to ExtraVars before being reused — r0 is not unused on entry.
+    Also, the name ''object_deactivate'' is reasonable, but since it toggles rather than sets a definite
+    inactive bit, a more honest name reflecting a reset/clear operation fits better.; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- no caller found, so the meaning/direction of the 0x2000 flag toggle (hide vs unhide) and the in-game
+  trigger for this routine are unknown
+- 'The code matches most of the proposal: it zeroes ExtraVars, XOR-toggles the 0x2000 flag, clears the
+  collision region via object_clearCollisionRegion, zeroes CurAction, and refreshes panels. However, r0
+  is explicitly loaded with 0 and stored to ExtraVars before being reused — r0 is not unused on entry.
+  Also, the name ''object_deactivate'' is reasonable, but since it toggles rather than sets a definite
+  inactive bit, a more honest name reflecting a reset/clear operation fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DFD56 -> object_clearState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFD56

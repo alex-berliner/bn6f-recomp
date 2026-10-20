@@ -1,0 +1,60 @@
+name: battle_checkPanelAction
+address: '0x080BA414'
+kind: function
+status: probable
+summary: 'Battle-object update that waits 10 frames after spawn, then checks the panel under the object:
+  if the panel matches mask 0x10010 it transitions to CurAction 4, otherwise CurAction 0x24, resetting
+  phase.'
+interface: (r5 = battle object) -> void; sets object's CurAction/CurPhase, plays SFX, no return value
+details: On phase 0 the object sets phase 4, animation 0x13, plays sound effect 0x94, ORs flag bit 0x02
+  into oObjectHeader_Flags, and arms oBattleObject_TimerAndTimer2 to 10 frames. In phase 4 it counts the
+  timer down; when it expires it reads the panel at the object's PanelX/PanelY via object_getPanelParameters
+  and tests against mask 0x10010 (0x10000 = hole/broken-panel status bit, 0x10 = panel-type bit). If the
+  panel matches the mask it enters CurAction 4, otherwise CurAction 0x24, resetting CurPhaseAndPhaseInitialized
+  to 0 in both cases. The 10-frame delay prevents instantly reacting to the panel it spawns on. The flag
+  0x02 set at spawn likely marks the object as blocking/solid or as needing collision checks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: phase 0 branch sets CurPhase=4, CurAnim=0x13, timer=10 and plays SFX 0x94 — typical 'spawn/place
+    object' behavior; calls object_getPanelParameters with the object's own PanelX/PanelY, checking panel
+    status word; mask 0x10010 (dword_80BA464) tests hole/broken-panel status before switching CurAction
+    to 4 vs 0x24; reads/writes oBattleObject_CurPhase, CurAnim, Timer, PanelX/Y, CurAction — a battle-object
+    per-frame update handler
+  refs:
+  - bn6f/asm/asm31.s:4648
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080BA414
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches almost all of the proposal: phase 0 sets CurPhase=4, CurAnim=0x13, plays SFX 0x94,
+    ORs 0x02 into oObjectHeader_Flags, arms timer to 10 (0xa). After the timer it reads the panel and
+    tests ==0x10010, going to CurAction 4 (fall) or CurAction 0x24 (recover). However the proposed name
+    ''battle_rockcubeUpdate'' is too specific — the code only describes generic behavior, and the SFX/animation
+    IDs (0x94, 0x13) are not necessarily rock-cube specific; nothing in the routine uniquely identifies
+    the object type. A neutral name is preferable.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which object ID this handler belongs to (needs the object table entry pointing at 0x080BA414) to confirm
+  it is the RockCube vs another panel-hole-sensitive object
+- exact meaning of ObjectHeader flag 0x02 and the semantics of CurAction 4 vs 0x24
+- 'The code matches almost all of the proposal: phase 0 sets CurPhase=4, CurAnim=0x13, plays SFX 0x94,
+  ORs 0x02 into oObjectHeader_Flags, arms timer to 10 (0xa). After the timer it reads the panel and tests
+  ==0x10010, going to CurAction 4 (fall) or CurAction 0x24 (recover). However the proposed name ''battle_rockcubeUpdate''
+  is too specific — the code only describes generic behavior, and the SFX/animation IDs (0x94, 0x13) are
+  not necessarily rock-cube specific; nothing in the routine uniquely identifies the object type. A neutral
+  name is preferable.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA414 -> battle_checkPanelAction
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA414

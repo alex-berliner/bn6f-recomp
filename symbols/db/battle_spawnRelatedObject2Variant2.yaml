@@ -1,0 +1,61 @@
+name: battle_spawnRelatedObject2Variant2
+address: '0x08011352'
+kind: function
+status: probable
+summary: Entry thunk that presets r3=2 and branches into the shared tail loc_8011368 of battle_spawnRelatedObject2
+  to spawn a kind-0x47 t1 object packed with 0x0A0C and the caller's r2 halfword, storing the result at
+  [r5+oBattleObject_RelatedObject2Ptr].
+interface: (r0, r1 = spawner args, r2 = halfword param, r5 = battle object) -> tail-calls battle_spawnRelatedObject2
+  with r3 = 2; spawned object ends up in [r5+oBattleObject_RelatedObject2Ptr]
+details: 'This is not an independent routine: it just loads r3 = 2 and branches into the shared tail of
+  battle_spawnRelatedObject2 at loc_8011368. The five sibling entry points 0x8011352..0x8011362 differ
+  only in the constant (2, 4, 6, 8, 0xA) placed in r3, which becomes the ''variant'' argument to spawn_t1_0x47_probablyGeneric_80C468C;
+  only variant 0 additionally calls object_setFlag. All r0/r1/r2 inputs are passed through untouched,
+  so the caller chooses the thunk according to which variant of the kind-0x47 related object it wants.
+  What variant 2 specifically produces in-game is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8011352 body is exactly ''mov r3, #2; b loc_8011368'', falling into battle_spawnRelatedObject2''s
+    prologue; loc_8011368: ''mov r6, r3'' keeps the preset constant as the variant passed on to spawn_t1_0x47_probablyGeneric_80C468C;
+    variant only affects the final ''cmp r6, #0 / bne'' - non-zero variants skip object_setFlag, so variant
+    2 never sets it; siblings sub_8011356..sub_8011362 load 4/6/8/0xA, confirming a variant-index thunk
+    family; no callers known, so the meaning of variant 2 cannot be confirmed from use'
+  refs:
+  - bn6f/asm/asm00_2.s:5516
+  - 0x08011368 battle_spawnRelatedObject2
+  reproduce: python3 tools/asmcat.py 0x08011352
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the thunk loads r3 with the variant constant and tail-calls the shared body at
+    loc_8011368, which packs 0x0A0C with r2 and stores the spawn into [r5+oBattleObject_RelatedObject2Ptr].
+    However the proposal calls it a ''tail-call'' to battle_spawnRelatedObject2 and claims a sibling ''variant-0
+    entry additionally calls object_setFlag'', but in the actual code battle_spawnRelatedObject2 itself
+    sets r3=0 then falls into loc_8011368, so variant 0 is just the base function, not a separate thunk;
+    the check `cmp r6,#0 / bne locret_8011382` is in the shared body. Also r5 holding the battle object
+    is asserted but not shown passed in. Name fits but summary overstates the relationship.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what kind-0x47 object variant 2 actually is in-game (needs a caller, or analysis of spawn_t1_0x47_probablyGeneric_80C468C's
+  variant switch)
+- what the r0/r1 spawner args and the r2 halfword mean for this variant
+- The code confirms the thunk loads r3 with the variant constant and tail-calls the shared body at loc_8011368,
+  which packs 0x0A0C with r2 and stores the spawn into [r5+oBattleObject_RelatedObject2Ptr]. However the
+  proposal calls it a 'tail-call' to battle_spawnRelatedObject2 and claims a sibling 'variant-0 entry
+  additionally calls object_setFlag', but in the actual code battle_spawnRelatedObject2 itself sets r3=0
+  then falls into loc_8011368, so variant 0 is just the base function, not a separate thunk; the check
+  `cmp r6,#0 / bne locret_8011382` is in the shared body. Also r5 holding the battle object is asserted
+  but not shown passed in. Name fits but summary overstates the relationship.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8011352 -> battle_spawnRelatedObject2Variant2
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011352

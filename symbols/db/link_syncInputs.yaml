@@ -1,0 +1,62 @@
+name: link_syncInputs
+address: '0x0803EE98'
+kind: function
+status: probable
+summary: Each frame, scans four 2-byte slots of unk_2009480 to find two active link players, copies their
+  columns into eLinkState.unk_88 and unk_88C for unk_70 halfwords, dispatches sub_803E828/850 on 0xFC
+  control markers, and writes the held L/R joypad byte plus an incremented counter into eLinkState.unk_84.
+interface: () -> void; writes eCamera.unk_88/8C row buffers, eCamera.unk_84 entry fields, eStruct200BC30+7
+  counter
+details: It scans four 2-byte slots (r1 = 0,2,4,6) calling sub_803E78C per slot to detect which link players
+  are present, saving the first two found slot indices. It then walks unk_2009480 as rows of 4 halfwords
+  (stride 8 bytes), copying the halfword column of each active slot into eCamera.unk_88 and unk_8C for
+  unk_70/2 rows. If a copied buffer starts with 0xFC (a control/disconnect marker), sub_803E828 or sub_803E850
+  is called on that buffer. Finally it takes eCamera.unk_84 (an 'end' record pointer), stores sub_8144D18/8144D24
+  results at +0xE/+0xF, stores the held joypad byte shifted right by 8 (only L/R bits) at +0, mirrors
+  eStruct200BC30+7's incremented counter into +1, and advances the counter.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop 803EEAE: r1 steps 0..6 by 2, sub_803E78C gate picks two slots stored to sp+4/sp+8; 803EED8
+    loop: ldrh from unk_2009480+slot, strh into eCamera.unk_88/8C, r5 += 8 (4-halfword rows); 803EF00/803EF12:
+    (byte & 0xFC)==0xFC triggers sub_803E828/sub_803E850 on the buffer; ldrh [joypad_Held]; lsr #8 ->
+    strb [r4] stores only L/R held bits; eStruct200BC30+7 incremented and copied to [r4+1], a shared frame
+    counter'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12381
+  - 0x0803EF7C sub_803EF7C
+  - 0x0803EBF4 eStruct200BC30_getRef
+  - 0x0803E78C sub_803E78C
+  reproduce: python3 tools/asmcat.py 0x0803EE98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the scanning of 4 halfword slots in unk_2009480 via sub_803E78C,
+    copying them into eLinkState offsets 0x38/0x3C (eCamera.unk_88/8C), the 0xFC control marker checks
+    calling sub_803E828/850, and the held joypad + counter writes into eLinkState+0x34 fields. However,
+    the interface description is wrong: it writes eLinkState.unk_88/8C buffers, not ''eCamera'' directly,
+    and the ''row count'' is eLinkState+0x20 (unk_70), not ''unk_70/2 rows''. Also the interface line
+    claims ''() -> void'' but the code is correct there. The function is link-cable input synchronization,
+    so a clearer name is link_syncInputs.; run wf investigate investigate-20261019-010606; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_803E78C tests exactly (active vs connected link slot)
+- Meaning of the 0xFC marker and what sub_803E828/803E850 do with it
+- What sub_8144D18/8144D24 return (likely per-frame counters) and which screen's caller invokes this
+- 'The summary correctly captures the scanning of 4 halfword slots in unk_2009480 via sub_803E78C, copying
+  them into eLinkState offsets 0x38/0x3C (eCamera.unk_88/8C), the 0xFC control marker checks calling sub_803E828/850,
+  and the held joypad + counter writes into eLinkState+0x34 fields. However, the interface description
+  is wrong: it writes eLinkState.unk_88/8C buffers, not ''eCamera'' directly, and the ''row count'' is
+  eLinkState+0x20 (unk_70), not ''unk_70/2 rows''. Also the interface line claims ''() -> void'' but the
+  code is correct there. The function is link-cable input synchronization, so a clearer name is link_syncInputs.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803EE98 -> link_syncInputs
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803EE98

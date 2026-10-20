@@ -1,0 +1,65 @@
+name: pet_copyNaviStatsFieldsToFirstNavi
+address: '0x0809CE40'
+kind: function
+status: probable
+summary: Copies NaviStats bytes at offsets 0x2D-0x30 and 0x56-0x5B from the PET's currently selected navi
+  record into navi 0's record via GetCurPETNaviStatsByte/SetCurPETNaviStatsByte, using a 0xFF-terminated
+  offset table at byte_809CE84.
+interface: () -> void; no meaningful return value
+details: 'Builds a local buffer on the stack, then walks a table of NaviStats field offsets at byte_809CE84
+  (0x2D,0x2E,0x2F,0x30,0x56..0x5B, terminated by 0xFF). For each non-terminator offset it reads one byte
+  via GetCurPETNaviStatsByte, passing the byte at [[r10]+0x40]+7 (likely the selected navi id) as the
+  first argument. In a second pass over the same table it writes each saved byte back via SetCurPETNaviStatsByte
+  with first argument 0, i.e. targeting navi 0''s record. The terminating 0xFF entry ends both loops.
+  Net effect: the fields at offsets 0x2D-0x30 and 0x56-0x5B are duplicated from the selected navi onto
+  the first navi; the terminator word 0xFF,4,34,3,2 at byte_809CEAC is just padding/data after the table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'off_809CE80/byte_809CE84: table of dword offsets 0x2D-0x30,0x56-0x5B terminated by 0xFF controls
+    both loops; first loop: mov r0,r4 (byte from [r10struct+7]); bl GetCurPETNaviStatsByte; str r0,[r7,r5]
+    saves each field byte; second loop: ldr r2,[r7,r5]; mov r0,#0; bl SetCurPETNaviStatsByte writes saved
+    value with navi arg 0; cmp r1,byte_809CEAC(0xFF); beq exit — 0xFF terminates the offset table; callee
+    summaries confirm the pair reads/writes the PET NaviStats record at caller-chosen offsets'
+  refs:
+  - bn6f/asm/asm28_0.s:5279
+  - 0x0809CDD4 sub_809CDD4
+  - 0x080137B6 GetCurPETNaviStatsByte
+  - 0x0801379E SetCurPETNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x0809CE40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at loc_809CE50/66 walks a table of int32 field offsets (0x2D,0x2E,0x2F,0x30,0x56..0x5B),
+    reading each via GetCurPETNaviStatsByte with first arg [[r10]+0x40]+7 (selected navi id) and writing
+    each via SetCurPETNaviStatsByte with first arg 0 (navi 0). However GetCurPETNaviStatsByte/SetCurPETNaviStatsByte
+    target the currently selected navi on the PET (per their names and description), so passing navi 0
+    in the write loop is inconsistent with ''cur'' semantics—this likely copies fields from the selected
+    navi into navi 0''s record. The summary is reasonable but the name ''pet_copyNaviStatsFieldsToFirstNavi''
+    overstates; ''copyNaviStatsFieldsToFirstNavi'' alone suffices and stays under typical limits.; run
+    wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the first argument to Get/SetCurPETNaviStatsByte (navi slot index vs. another selector)
+  — the callee bodies would confirm whether navi 0 is the destination
+- What gameplay data lives at NaviStats offsets 0x2D-0x30 and 0x56-0x5B
+- Why sub_809CDD4 invokes this mid-cutscene (nearby script checks BBS master rank) — caller context would
+  pin down the trigger
+- The code at loc_809CE50/66 walks a table of int32 field offsets (0x2D,0x2E,0x2F,0x30,0x56..0x5B), reading
+  each via GetCurPETNaviStatsByte with first arg [[r10]+0x40]+7 (selected navi id) and writing each via
+  SetCurPETNaviStatsByte with first arg 0 (navi 0). However GetCurPETNaviStatsByte/SetCurPETNaviStatsByte
+  target the currently selected navi on the PET (per their names and description), so passing navi 0 in
+  the write loop is inconsistent with 'cur' semantics—this likely copies fields from the selected navi
+  into navi 0's record. The summary is reasonable but the name 'pet_copyNaviStatsFieldsToFirstNavi' overstates;
+  'copyNaviStatsFieldsToFirstNavi' alone suffices and stays under typical limits.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809CE40 -> pet_copyNaviStatsFieldsToFirstNavi
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CE40

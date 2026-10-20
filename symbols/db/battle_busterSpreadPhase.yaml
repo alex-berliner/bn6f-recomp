@@ -1,0 +1,66 @@
+name: battle_busterSpreadPhase
+address: '0x080DF6CE'
+kind: function
+status: probable
+summary: Battle phase handler that spawns two type-1/sub-5 child attack objects, plays the buster sound,
+  and every 10 frames pulses the buster animation while advancing both children, ending after 120 frames
+  by cleaning them up.
+interface: (r5 = battle object, no args) -> r0 = undefined; no meaningful return
+details: On first entry (PhaseInitialized==0) it marks the phase initialized, sets CurAnim to 0xE, spawns
+  two type-1 subtype-5 temp attack objects via spawn_t1_0x5_tempAttackObject with parameter words 0x10006
+  and 0x10005 into the slots at object+0x60 and +0x64, plays SOUND_BUSTER, and sets Timer to 0x78 (120
+  frames). Each frame after that it decrements Timer2; every 10 frames it sets CurAnimCopy to 0xFF and
+  calls sub_80B8E7C on both spawned objects (likely triggering their fire/advance step) and replays SOUND_BUSTER,
+  giving a machine-gun buster volley. When the 120-frame Timer runs out it resets CurAnim, CurAction,
+  and the phase state to 0 and calls sub_80B8E58 on both spawned objects to clean them up. The two spawn
+  slots are read back through oBattleObject_ExtraVars and ExtraVars+4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init branch: strb #4,[PhaseInitialized], CurAnim=0xE, Timer=0x78, two spawn_t1_0x5 calls with
+    0x10006/0x10005 into r5+0x60/+0x64; repeating branch: Timer2 reload of 0xA followed by sub_80B8E7C
+    on both ExtraVars and PlaySoundEffect(SOUND_BUSTER) — periodic shots with buster sound; timer branch:
+    on Timer expiry clears CurAnim/CurAction/phase and calls sub_80B8E58 on both spawned objects (despawn/cleanup);
+    callee spawn_t1_0x5_tempAttackObject is documented as spawning a linked temp attack object, matching
+    a projectile attack'
+  refs:
+  - bn6f/asm/asm31.s:85764
+  - 0x080005CC PlaySoundEffect
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  - 0x080B8E58 sub_80B8E58
+  reproduce: python3 tools/asmcat.py 0x080DF6CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal in nearly all details: CurAnim=0xE, spawns two t1/sub5 objects with
+    0x10006/0x10005, plays SOUND_BUSTER, Timer=0x78, every 10 frames pulses CurAnimCopy=0xFF and calls
+    sub_80B8E7C on both, and on expiry resets CurAnim/CurAction/phase and calls sub_80B8E58. However,
+    the phase end at loc_80DF720 writes 0 to CurPhaseAndPhaseInitialized (a halfword), not just phase
+    state, and resets CurAction as well — minor. More importantly, the proposed name is fine but ''Volley''
+    is speculative; the function is a phase handler for an enemy buster attack that spawns two child projectiles
+    (likely cannon/spread), so ''battle_busterSpreadPhase'' or ''battle_busterDoubleShotPhase'' better
+    describes the dual spawn.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the parameter words 0x10005/0x10006 (element/power/direction encoding of the spawned
+  shots)
+- What sub_80B8E7C vs sub_80B8E58 do precisely (fire step vs despawn)
+- Which enemy/attack references this handler, since no callers are known yet
+- 'The code matches the proposal in nearly all details: CurAnim=0xE, spawns two t1/sub5 objects with 0x10006/0x10005,
+  plays SOUND_BUSTER, Timer=0x78, every 10 frames pulses CurAnimCopy=0xFF and calls sub_80B8E7C on both,
+  and on expiry resets CurAnim/CurAction/phase and calls sub_80B8E58. However, the phase end at loc_80DF720
+  writes 0 to CurPhaseAndPhaseInitialized (a halfword), not just phase state, and resets CurAction as
+  well — minor. More importantly, the proposed name is fine but ''Volley'' is speculative; the function
+  is a phase handler for an enemy buster attack that spawns two child projectiles (likely cannon/spread),
+  so ''battle_busterSpreadPhase'' or ''battle_busterDoubleShotPhase'' better describes the dual spawn.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF6CE -> battle_busterSpreadPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF6CE

@@ -1,0 +1,68 @@
+name: sprite_drawGlyphString
+address: '0x0803B814'
+kind: function
+status: probable
+summary: Queues one OAM sprite per character of a NUL-terminated string, mapping each byte through byte_80391A8
+  to a glyph index, advancing x via chatbox_8045ED0, and submitting each sprite to sprite_queueOamEntry
+  with tile-pointer = 0x40001000 + idx*4 and high attr bits (arg2<<12)|0x420.
+interface: (r0 = packed pos/attr A, r1 = packed pos/attr B, r2 = extra attr bits (<<12 | 0x420), r3 =
+  null-terminated string ptr) -> r0 = void; loops until NUL or count exhausted
+details: Iterates over the NUL-terminated string at r3; for each byte it indexes byte_80391A8 to get a
+  glyph/slot index. It points chatbox_8045ED0 at byte_2027200 + 2 + idx*8 (8-byte stride table, likely
+  per-glyph OAM/width data) and accumulates the returned advance into the saved r0, though the sum is
+  never read back out. Each glyph is submitted to sprite_queueOamEntry with r0 = (arg0<<16)|arg1|0x40001000
+  and r1 = 0x40001000 + glyphIdx*4 (tile index in the low bits, 0x40001000 constant attr flags), r2=2,
+  r3=7. The initial r2 argument is shifted left 12 and OR'd with 0x420 before use. Same glyph index is
+  reused for both the chatbox lookup and the tile number, confirming byte_80391A8 is a char-to-tile map.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_803B828 loop: ldrb r3,[r2,r0] via off_803B878 (byte_80391A8) maps char byte to glyph index;
+    bl chatbox_8045ED0 with byte_2027200+2+idx*8 and result added to [sp] each iteration (advance/width);
+    bl sprite_queueOamEntryThunk_802FE28 inside the loop queues one OAM entry per character; r1 for queueOamEntry
+    = 0x40001000 + (glyphIdx<<2), tying the sprite tile to the char table; loop exits on `ldrb r0,[r7];
+    tst; beq` — null-terminated string semantics'
+  refs:
+  - bn6f/asm/asm03_1_1.s:5523
+  - 0x0803A104 sub_803A104
+  - 0x0803A1D8 sub_803A1D8
+  - 0x0803A214 sub_803A214
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  - 0x08045ED0 chatbox_8045ED0
+  reproduce: python3 tools/asmcat.py 0x0803B814
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop counter decrement happens before any use (sub r4,#1 / blt), but r4 is never initialized
+    from any parameter; the caller-supplied r0..r3 don''t include a count. So termination is purely on
+    NUL byte (tst r0,r0 / beq), not a separate count. The proposal''s ''(r2 = extra attr bits (<<12 |
+    0x420))'' matches the code (lsl r2,#0xc / orr r2,0x420). The chatbox call reads byte_2027200+2+idx*8
+    and adds it to the saved x (r1=stored r0), confirming horizontal advance accumulation. Both indexes
+    use byte_80391A8, confirming it as the char→glyph map. However the proposal''s ''loops until NUL or
+    count exhausted'' is wrong (no count is passed), and the sprite_queueOamEntry call uses r1 as a pointer
+    (add r1,r1,r2 then mov r2,#2/mov r3,#7), not as a plain tile number.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the packed r0/r1 arguments (which field is X vs Y vs size flags) needs a caller analysis
+- contents/format of byte_2027200 and byte_80391A8 tables not confirmed
+- why the accumulated width is never used — possibly dead code or the callers use it separately
+- The loop counter decrement happens before any use (sub r4,#1 / blt), but r4 is never initialized from
+  any parameter; the caller-supplied r0..r3 don't include a count. So termination is purely on NUL byte
+  (tst r0,r0 / beq), not a separate count. The proposal's '(r2 = extra attr bits (<<12 | 0x420))' matches
+  the code (lsl r2,#0xc / orr r2,0x420). The chatbox call reads byte_2027200+2+idx*8 and adds it to the
+  saved x (r1=stored r0), confirming horizontal advance accumulation. Both indexes use byte_80391A8, confirming
+  it as the char→glyph map. However the proposal's 'loops until NUL or count exhausted' is wrong (no count
+  is passed), and the sprite_queueOamEntry call uses r1 as a pointer (add r1,r1,r2 then mov r2,#2/mov
+  r3,#7), not as a plain tile number.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803B814 -> sprite_drawGlyphString
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803B814

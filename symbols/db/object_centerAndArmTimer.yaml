@@ -1,0 +1,53 @@
+name: object_centerAndArmTimer
+address: '0x0811D0CC'
+kind: function
+status: probable
+summary: Centers the r5 object at (0x80,0x80) via sprite_setCoordinates, sets a 16-frame timer at [r5+0xC]
+  and state byte 4 at [r5+9], then plays sound effect SOUND_LOG_OUT_76.
+interface: (r0/r1 = hardcoded 0x80 coords passed to sprite_setCoordinates; r5 = object/sprite struct)
+  -> r0 = sound effect ID after wrapper call; no meaningful return
+details: 'Takes no real arguments; it calls sprite_setCoordinates with x=y=0x80, placing the object at
+  screen center. It then stores 0x10 (a 16-frame counter or animation length) into halfword [r5+0xC] and
+  value 4 into byte [r5+9], which is likely a state/mode field of the object struct. Finally it plays
+  sound effect 0x76, whose project name is SOUND_LOG_OUT. This looks like the start of an object (Navi
+  or similar) jacking out: reposition to center, arm a timer/state, play the logout sound.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x80 / mov r1,#0x80 / bl sprite_setCoordinates — fixed center-screen repositioning;
+    strh r0(=0x10),[r5,#0xc] and strb r0(=4),[r5,#9] — writes to the object struct's timer and state fields;
+    mov r0,#SOUND_LOG_OUT_76 / bl PlaySoundEffect — plays the logout/jack-out sound; Uses r5 as the object
+    pointer without a parameter, implying it is called as a step of a larger per-object routine
+  refs:
+  - bn6f/asm/asm32.s:31031
+  - 0x080005CC PlaySoundEffect
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811D0CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it calls sprite_setCoordinates(0x80,0x80), stores 0x10
+    at [r5+0xC] and 4 at [r5+9], then plays SOUND_LOG_OUT_76 via PlaySoundEffect. However, the name ''object_centerForLogout''
+    is awkward and the ''logout'' interpretation is speculative — there''s no evidence this is a jacking-out
+    routine. A more neutral, descriptive name better fits the verified behavior.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the exact gameplay context (which object jacks out) and the meaning of fields [r5+0xC]
+  and [r5+9] in the object struct are unconfirmed
+- Whether 0x10 in [r5+0xC] is a frame countdown or animation index needs the struct's other users
+- 'The code matches the proposal''s mechanics: it calls sprite_setCoordinates(0x80,0x80), stores 0x10
+  at [r5+0xC] and 4 at [r5+9], then plays SOUND_LOG_OUT_76 via PlaySoundEffect. However, the name ''object_centerForLogout''
+  is awkward and the ''logout'' interpretation is speculative — there''s no evidence this is a jacking-out
+  routine. A more neutral, descriptive name better fits the verified behavior.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811D0CC -> object_centerAndArmTimer
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D0CC

@@ -1,0 +1,58 @@
+name: get_countChipsWithByte7
+address: '0x08120B28'
+kind: function
+status: probable
+summary: Iterates a packed u16 chip-entry array, looks up each chip's 44-byte record, and counts entries
+  whose byte 7 equals the given value.
+interface: (r0 = target value of chip record byte 7, r1 = *u16[30] packed chip entries) -> r0 = match
+  count; flags clobbered by calls
+details: Iterates 30 halfword entries (0x3C bytes) at r1, splitting each packed value via split9BitsFromBitfield_8021AE0
+  and using the returned low 9-bit half as a chip ID. Looks that ID up in the 44-byte chip database with
+  getChip8021DA8 and compares byte 7 of the record against the r0 argument; every match increments a counter
+  which is returned. So it counts, across a folder-sized array, chips sharing a byte-7 property (element/class-style
+  field). The high 9 bits of each entry are computed but unused here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bound `cmp r7,#0x3c` with `ldrh r0,[r4,r7]` walks 30 halfword slots, folder size; split9BitsFromBitfield_8021AE0
+    result r0 is fed straight into getChip8021DA8 as the chip ID; `ldrb r0,[r0,#7]` / `cmp r0,r1` compares
+    chip record byte 7 against the r0 argument; r6 only increments on equality and is returned as the
+    count
+  refs:
+  - bn6f/asm/asm32.s:38647
+  - 0x08120DAC sub_8120DAC
+  - 0x08021AA4 getChip8021DA8
+  - 0x08021AE0 split9BitsFromBitfield_8021AE0
+  reproduce: python3 tools/asmcat.py 0x08120B28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_8120B28 does iterate 30 halfword entries (r7 goes 0..0x3C step 2), splitting via
+    split9BitsFromBitfield_8021AE0 and looking up the low 9 bits via getChip8021DA8, then comparing record
+    byte 7 to the stashed r0 and incrementing r6. The semantics match, but the caller sub_8120DAC at 0x08120DAC
+    suggests this is folder-chip counting; ''get_countFolderChipsWithByte7'' is acceptable but conflates
+    the folder context. The name is fine, but the summary overstates ''30-slot'' as a hard rule of the
+    routine (0x3C is the caller''s slot count, not part of this function''s contract).; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What byte 7 of ChipData means semantically (element, class, etc.)
+- What structure r1 points to and what the unused high 9 bits of each entry encode — the caller sub_8120DAC
+  would show both
+- The code at sub_8120B28 does iterate 30 halfword entries (r7 goes 0..0x3C step 2), splitting via split9BitsFromBitfield_8021AE0
+  and looking up the low 9 bits via getChip8021DA8, then comparing record byte 7 to the stashed r0 and
+  incrementing r6. The semantics match, but the caller sub_8120DAC at 0x08120DAC suggests this is folder-chip
+  counting; 'get_countFolderChipsWithByte7' is acceptable but conflates the folder context. The name is
+  fine, but the summary overstates '30-slot' as a hard rule of the routine (0x3C is the caller's slot
+  count, not part of this function's contract).
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8120B28 -> get_countChipsWithByte7
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120B28

@@ -1,0 +1,62 @@
+name: battle_setupCrackPanelEffect
+address: '0x080E4FCA'
+kind: function
+status: probable
+summary: Initializes a freshly type-4-spawned crack-panel effect by writing PanelX, PanelY, Element, alliance/direction-flip
+  (copied from a caller-supplied parent object) and damage into the new instance, skipping all writes
+  if the spawn failed.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = parent/attack object whose alliance is copied,
+  r6 = damage value) -> r0 = spawned object; spawn-failure branch skips all field stores
+details: 'Pushes r0-r2 and r5 so that object_spawnType4 can pick the extra arguments up from the stack,
+  then calls it with kind 0x3F. After the call the saved values are popped shifted by one (old r0->r1,
+  old r1->r2, old r2->r3, old r5->r5) and written into the new object: byte PanelX, byte PanelY, byte
+  Element, halfword AllianceAndDirectionFlip copied from [r5], and word DamageAndStaminaDamageCounterDisabler
+  from r6. The beq after the pop skips every store, so a failed spawn leaves the object untouched. r6
+  is never set inside this routine, so the damage value is a caller-provided side-channel argument, as
+  is r5. The only known caller, battle_crackPanelAttackPhase, matches a crack-attack spawning its effect
+  object at the highlighted panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E4FCA: push {r0-r2,r5} before bl object_spawnType4 passes the five spawn parameters via
+    r0=0x3F plus the stack; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element fills position and element
+    right after the spawn; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh into the new object
+    inherits the parent''s team/flip; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    sets the attack''s damage from a register the caller must supply; caller 0x080D2904 battle_crackPanelAttackPhase
+    uses this to materialize the panel-cracking attack object'
+  refs:
+  - bn6f/asm/asm31.s:98139
+  - 0x080D2904 battle_crackPanelAttackPhase
+  - 0x081028FE sub_81028FE
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E4FCA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly reads the pop-shift, the beq skip on spawn failure, and the field writes
+    (PanelX, PanelY, Element, AllianceAndDirectionFlip from r5, DamageAndStaminaDamageCounterDisabler
+    from r6). However the name "battle_spawnType4PanelAttack" is misleading: object_spawnType4 already
+    handles the spawning; this routine just packages the post-spawn initialization, so a name like "battle_initCrackPanelEffect"
+    or "battle_setupCrackPanelType4" fits the prefix rules better.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of kind 0x3F in object_spawnType4 and what sprite/behavior the type-4 object gets
+- why the spawn result is taken from r5 (mov r0,r5) rather than the callee's r0 return, and which register
+  the beq actually tests
+- 'The proposal correctly reads the pop-shift, the beq skip on spawn failure, and the field writes (PanelX,
+  PanelY, Element, AllianceAndDirectionFlip from r5, DamageAndStaminaDamageCounterDisabler from r6). However
+  the name "battle_spawnType4PanelAttack" is misleading: object_spawnType4 already handles the spawning;
+  this routine just packages the post-spawn initialization, so a name like "battle_initCrackPanelEffect"
+  or "battle_setupCrackPanelType4" fits the prefix rules better.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4FCA -> battle_setupCrackPanelEffect
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4FCA

@@ -1,0 +1,59 @@
+name: sprite_updateGui68
+address: '0x0811ADC0'
+kind: function
+status: probable
+summary: 'Per-frame updater for GUI sprite 0x68: dispatches a 3-way state handler via off_811ADF4, calls
+  sprite_update on its sprite struct, and if flag bit 1 is set runs a fixed five-subroutine effect sequence.'
+interface: (r5 = gui sprite object pointer; [r5+9] = state selector, [r5+0] = flags) -> r0 destroyed;
+  no meaningful return
+details: Reads the object's selector byte at [r5,#9], indexes a 3-entry dispatch table at off_811ADF4
+  (sub_811AE00/E04/E2C) and tail-calls the chosen handler with mov lr,pc/bx (so the handler returns straight
+  into this function). Then calls sprite_update on the object's sprite struct. Finally tests bit 1 of
+  the object's byte 0; when set, it runs a fixed sequence of five callees (sub_811B104, B14C, B194, B098,
+  B028) before returning — likely animation-progress/effect steps that only run once the state handler
+  signals active. The object layout matches the one created by gui_initSpriteWithPosition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#9] + ldr r0,[r0,r1] + bx r0 dispatches to one of 3 handlers in off_811ADF4; bl
+    sprite_update right after the dispatch updates the object's OAM/sprite struct; tst r0,#2 / beq skips
+    the 5-call block, so bit 1 of [r5] gates the effect sequence; sole caller gui_initSpriteWithPosition
+    creates this object (sprite 0x68) with animation/palette/priority and table-chosen x,y
+  refs:
+  - bn6f/asm/asm32.s:26850
+  - 0x0811AD58 gui_initSpriteWithPosition
+  - 0x080026C4 sprite_update
+  - 0x0811B028 sub_811B028
+  - 0x0811B098 sub_811B098
+  reproduce: python3 tools/asmcat.py 0x0811ADC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch table at off_811ADF4 has three entries (sub_811AE00/E04/E2C), so the selector is a
+    2-bit value (0-2), not arbitrarily many — the proposal''s ''state handler by selector'' is fine but
+    the tail-call via ''mov lr, pc; bx r0'' is standard ARM-to-Thumb dispatch, not unique to this pattern.
+    The function unconditionally calls sprite_update, then runs the five-subroutine sequence only when
+    bit 1 of byte 0 is set, matching the proposal. The name ''gui_updateSprite68'' is reasonable but ''sprite''
+    is a valid prefix; it fits, though ''gui'' is redundant since the caller already indicates GUI context.;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact roles of the five callees (sub_811B028..B194) and of the three state handlers
+- whether byte 0 bit 1 means 'active/finished' — need the writers of that flag
+- The dispatch table at off_811ADF4 has three entries (sub_811AE00/E04/E2C), so the selector is a 2-bit
+  value (0-2), not arbitrarily many — the proposal's 'state handler by selector' is fine but the tail-call
+  via 'mov lr, pc; bx r0' is standard ARM-to-Thumb dispatch, not unique to this pattern. The function
+  unconditionally calls sprite_update, then runs the five-subroutine sequence only when bit 1 of byte
+  0 is set, matching the proposal. The name 'gui_updateSprite68' is reasonable but 'sprite' is a valid
+  prefix; it fits, though 'gui' is redundant since the caller already indicates GUI context.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811ADC0 -> sprite_updateGui68
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811ADC0

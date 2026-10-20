@@ -1,0 +1,69 @@
+name: battle_attackStepSpawnFrontProjectile
+address: '0x0810887A'
+kind: function
+status: probable
+summary: 'One attack step of a battle object: initializes on first call (set element, animation, sound,
+  front-panel effect, 20-frame timer), spawns projectiles via sub_8108E98/BC when the timer reaches 0x11,
+  then selects 0x14 or 0x28 (20 or 40 frames) for HitElement based on SubStepIndex.'
+interface: (r0 = unused, r7 = oAIAttackVars of the acting battle object, r5 = oBattleObject of the actor)
+  -> r0 = clobbered; sets AttackElement, CurAnim, StepTimer, SubStepIndex, HitElement fields
+details: 'First invocation (AttackElement == 0) is the wind-up: it stamps element 4 into oAIAttackVars_AttackElement,
+  switches the object''s CurAnim to 0xC, plays sound effect 0x1C5 (0xC6+0xFF), spawns effect id 0 on the
+  panel in front via battle_spawnEffectAtFrontPanel, and arms StepTimer = 0x14. Later invocations decrement
+  StepTimer; when it reaches 0x11 they call sub_8108E98 and sub_8108EBC (presumably spawning the damaging
+  attack object(s)) and store the returned value in SubStepIndex. When the timer expires, SubStepIndex
+  selects the value written to the field labeled HitElement: 0x14 if nonzero, 0x28 if zero — likely the
+  number of frames until the spawned attack registers its hit for the near vs. far panel, i.e. the field
+  is reused as a hit timer, not an element.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bee guards one-shot init that stores element
+    4, anim 0xC and StepTimer 0x14 (sub_810887A start); mov r0,#0xC6; add r0,#0xFF; bl PlaySoundEffect
+    plays SFX 0x1C5 during the wind-up; mov r0,#0; bl battle_spawnEffectAtFrontPanel spawns effect 0 on
+    the panel ahead of the actor; cmp r0,#0x11; beq calls sub_8108E98 + sub_8108EBC and stores result
+    in oAIAttackVars_SubStepIndex; tail stores 0x14 or 0x28 into oAIAttackVars_HitElement based on SubStepIndex,
+    i.e. a delayed-hit counter, not an element
+  refs:
+  - bn6f/asm/asm31.s:173273
+  - 0x080005CC PlaySoundEffect
+  - 0x08108E64 battle_spawnEffectAtFrontPanel
+  - 0x08108E98 sub_8108E98
+  reproduce: python3 tools/asmcat.py 0x0810887A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms the proposal''s flow: first pass stamps element 4, sets CurAnim=0xC, calls
+    PlaySoundEffect(0x1C5), battle_spawnEffectAtFrontPanel(0), and arms StepTimer=0x14; then it decrements
+    the timer, calls sub_8108E98 and sub_8108EBC at 0x11, stores the return in SubStepIndex, and finally
+    selects 0x14 vs 0x28 into HitElement based on SubStepIndex. However the proposal misidentifies 0x1C5
+    as 0xC6+0xFF — 0xC6+0xFF is 0x1C5 via 8-bit overflow (actually 0xC6 + 0xFF = 0x1C5 only with carry,
+    but the constant loaded is 0x1C5), and the summary''s wording about ''17 frames later'' is fine but
+    calling HitElement a ''hit timer'' is speculative. The name itself fits and the prefix ''battle''
+    is appropriate.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8108E98 and sub_8108EBC spawn (exact attack object id/behavior) — that would pin down which
+  attack this is
+- Which caller dispatches to this step (AI attack step table entry) to confirm r7/r5 setup and the attack's
+  owner
+- Which element value 4 corresponds to and whether HitElement is genuinely a frame delay or something
+  else
+- 'The assembly confirms the proposal''s flow: first pass stamps element 4, sets CurAnim=0xC, calls PlaySoundEffect(0x1C5),
+  battle_spawnEffectAtFrontPanel(0), and arms StepTimer=0x14; then it decrements the timer, calls sub_8108E98
+  and sub_8108EBC at 0x11, stores the return in SubStepIndex, and finally selects 0x14 vs 0x28 into HitElement
+  based on SubStepIndex. However the proposal misidentifies 0x1C5 as 0xC6+0xFF — 0xC6+0xFF is 0x1C5 via
+  8-bit overflow (actually 0xC6 + 0xFF = 0x1C5 only with carry, but the constant loaded is 0x1C5), and
+  the summary''s wording about ''17 frames later'' is fine but calling HitElement a ''hit timer'' is speculative.
+  The name itself fits and the prefix ''battle'' is appropriate.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810887A -> battle_attackStepSpawnFrontProjectile
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810887A

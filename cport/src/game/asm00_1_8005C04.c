@@ -2626,7 +2626,7 @@ Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
  *
  * If the current state's handler (battle_getSubstateFinishedFlag_801FE5E) reports it is still running,
  * the state is kept alive: on its first step it is initialized by
- * sub_803DDA4 and marked with sub-state 4; afterwards rfu_isLinkBusy is polled
+ * initLinkState and marked with sub-state 4; afterwards rfu_isLinkBusy is polled
  * and, unless it reports completion for an object of kind 2 (byte at R4+1),
  * the state is torn down (link_resetHardwareAndClearLinkBuffers_81440D8, sub_801FE64). Once the state ends
  * (or the handler already reported idle), control passes to battle state 4
@@ -2640,7 +2640,7 @@ Next battle_stepSubstateToState4_8007C14(void) {
         if (LD8(R5 + 3) == 0) {
             /* First step in this state: run its init routine and mark it
              * as started with sub-state 4. */
-            GUEST_CALL(sub_803DDA4);
+            GUEST_CALL(initLinkState);
             R0 = 4;
             ST8(R5 + 3, R0);
             SET_FLAGS_NZ(R0);

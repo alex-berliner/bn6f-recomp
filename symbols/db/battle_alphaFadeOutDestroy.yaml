@@ -1,0 +1,68 @@
+name: battle_alphaFadeOutDestroy
+address: '0x080C05C6'
+kind: function
+status: probable
+summary: Battle-object phase that alpha-fades an effect out, then disables alpha, clears a header flag,
+  calls sub_8011044(1, Param1), and transitions the object to CUR_STATE_DESTROY.
+interface: (r5 = battle object; no args) -> r0 = 1 if destroyed else fallthrough; sets CUR_STATE_DESTROY
+  on the object
+details: Runs as an object state/phase handler using r5 as the battle object. First run calls sub_80C060A(0,0),
+  sets oBattleObject_Timer=8 and sets oBattleObject_PhaseInitialized. Each subsequent frame decrements
+  Timer and calls sprite_setAlpha_8002c7a with Timer*2, so the global blend alpha steps 16,14,...,2 as
+  the timer counts down — a linear fade-out. When Timer underflows, it calls sprite_disableAlpha, clears
+  bit 2 (0x2) of oObjectHeader_Flags, calls sub_8011044(1, oBattleObject_Param1) — likely notifying/cleanup
+  keyed by Param1 — and stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to kill the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] + strh #8 -> Timer: standard one-shot phase init
+    pattern; ldrh r0,[Timer]; add r0,r0,r0; bl sprite_setAlpha_8002c7a: alpha = Timer*2, a countdown fade;
+    bge keeps fading while Timer>=0; on expiry bl sprite_disableAlpha clears blending; bic bit 2 of oObjectHeader_Flags
+    then mov r0,#CUR_STATE_DESTROY str to CurState: self-destroy; bl sub_8011044 with r0=1, r1=[oBattleObject_Param1]
+    before destroy: Param1-driven cleanup/notify'
+  refs:
+  - bn6f/asm/asm31.s:18268
+  - 0x08002C7A sprite_setAlpha_8002c7a
+  - 0x08002CCE sprite_disableAlpha
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080C05C6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is correct: phase init calls sub_80C060A(0,0) and sets Timer=8 with initialized=4 (the
+    proposal said PhaseInitialized but doesn''t specify the value clearly; the code sets 4, fine). Each
+    frame decrements Timer; while >=0 it computes Timer*2 and calls sprite_setAlpha_8002c7a. Note the
+    alpha sequence: Timer 7→14, 6→12, ..., 1→2; it never reaches 16, and on Timer=0 (underflow branch)
+    it calls sprite_disableAlpha and clears bit 1 (0x2) of oObjectHeader_Flags — the proposal says ''bit
+    2 (0x2)'' which matches mask 2 = bit 1, so wording is consistent. Then sub_8011044(1, Param1) and
+    CUR_STATE_DESTROY are stored. The proposal''s claim ''sets CUR_STATE_DESTROY on the object'' is correct,
+    but the summary says ''fades over 8 frames'' — actually the loop runs only while Timer>=0 (7 down
+    to 1), so the fade is 7 alpha frames, not 8. Minor; name fits but can be tightened.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80C060A(0,0) sets up initially (global blend setup vs. effect spawn) needs its body
+- What sub_8011044(1, Param1) does — likely an object/event notify keyed by Param1; needs its body or
+  a caller
+- Which effect objects use this phase (no callers known) to confirm the in-game context
+- 'The summary is correct: phase init calls sub_80C060A(0,0) and sets Timer=8 with initialized=4 (the
+  proposal said PhaseInitialized but doesn''t specify the value clearly; the code sets 4, fine). Each
+  frame decrements Timer; while >=0 it computes Timer*2 and calls sprite_setAlpha_8002c7a. Note the alpha
+  sequence: Timer 7→14, 6→12, ..., 1→2; it never reaches 16, and on Timer=0 (underflow branch) it calls
+  sprite_disableAlpha and clears bit 1 (0x2) of oObjectHeader_Flags — the proposal says ''bit 2 (0x2)''
+  which matches mask 2 = bit 1, so wording is consistent. Then sub_8011044(1, Param1) and CUR_STATE_DESTROY
+  are stored. The proposal''s claim ''sets CUR_STATE_DESTROY on the object'' is correct, but the summary
+  says ''fades over 8 frames'' — actually the loop runs only while Timer>=0 (7 down to 1), so the fade
+  is 7 alpha frames, not 8. Minor; name fits but can be tightened.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C05C6 -> battle_alphaFadeOutDestroy
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C05C6

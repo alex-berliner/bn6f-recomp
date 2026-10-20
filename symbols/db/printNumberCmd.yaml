@@ -1,0 +1,73 @@
+name: printNumberCmd
+address: '0x080463A0'
+kind: function
+status: probable
+summary: A 3-byte display-script opcode that loads a 32-bit value from byte_200A220, converts it to 8-digit
+  packed BCD, and renders each digit (plus optional padding tiles of glyph 1) one tile at a time via sub_80461D0,
+  with the layout byte selecting leading-zero vs trailing-pad mode.
+interface: '(r0 = pointer to script command: [r0+1] = value-table index, [r0+2] = layout byte, bit7 =
+  order flag, bits0-6 = position) -> r0 = r0+3 (next script command); no meaningful flags'
+details: 'The function reads a word from table byte_200A220 at offset 8 + [r0+1]*4 and converts it to
+  8-digit packed BCD with memory_bcdConvert, then asks countHexDigits how many digits it has. It then
+  walks the BCD nibbles from the most significant digit down (shift by r1 starting at (len-1)*4, mask
+  0xF) and calls sub_80461D0 with r1 = digit+1, i.e. drawing each digit as glyph/tile id digit+1, advancing
+  4 units (pixels or tiles) per digit. The layout byte at [r0+2] controls placement: values below 0x80
+  take digitCount as a left offset (with a 0x40 flag variant that then emits r3 extra draws), values >=
+  0x80 subtract 0x80 and the digit count and emit in the opposite mode. After printing it restores the
+  command pointer and returns r0+3, so this is an opcode handler inside a bytecode-driven renderer. The
+  0x99999999 clamp of memory_bcdConvert means overflow prints as all-9 digits.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r0,#1]; lsl #2; add #8; ldr from byte_200A220 then bx to memory_bcdConvert — value
+    comes from a word table indexed by command byte; call to countHexDigits_8000C5C and r1=(count-1)<<4
+    setup shows per-nibble (per-digit) iteration; loop does lsr r8,r1 / and r7,#0xF / r1=digit+1 / bl
+    sub_80461D0 — draws each BCD digit as glyph tile digit+1; branch on ldrb [r0,#2] cmp #0x80 with 0x40
+    sub-split gives two placement/ordering modes from one layout byte; trailing pop {r0}; add r0,#3; pop
+    {r3,pc} — command-pointer semantics, a script opcode advancing 3 bytes'
+  refs:
+  - bn6f/asm/asm03_2.s:547
+  - 0x08000C5C countHexDigits_8000C5C
+  - 0x08000C00 memory_bcdConvert
+  - 0x080461D0 sub_80461D0
+  reproduce: python3 tools/asmcat.py 0x080463A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the bytecode-driven nature, BCD conversion via memory_bcdConvert,
+    countHexDigits lookup, digit-by-digit rendering via sub_80461D0, and the layout byte branching at
+    0x80/0x40. However, the proposal says values >= 0x80 ''emit in the opposite mode'' — the asm (loc_8046402
+    path) instead draws padding zeros first (mov r1, r0 with r0=0, drawing glyph 0+1=1) then digits, while
+    the <0x80 path (loc_80463F4) draws trailing glyph 1 with id=r0 after digits. The summary also misses
+    that sub_80461D0 is called with r1=glyph_id (digit+1) but r2/r3 presumably carry x-position from prior
+    setup, and r0 is a layout/position word passed through. The name ''printBcdNumberCmd'' is acceptable
+    but the function prints a number as tiles, not specifically BCD digits (it converts to BCD internally
+    for ordering). A more accurate name would be ''printNumberCmd''.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which renderer owns this bytecode (no caller known) — a caller would show the opcode dispatch table
+  and hence the subsystem prefix
+- Contents/meaning of the entries in byte_200A220 (what values are being printed, e.g. counters, prices,
+  scores)
+- Exact behavior of sub_80461D0 (tile draw vs text glyph, what r0=0xF and the 0/1 flag argument select)
+- The proposal correctly identifies the bytecode-driven nature, BCD conversion via memory_bcdConvert,
+  countHexDigits lookup, digit-by-digit rendering via sub_80461D0, and the layout byte branching at 0x80/0x40.
+  However, the proposal says values >= 0x80 'emit in the opposite mode' — the asm (loc_8046402 path) instead
+  draws padding zeros first (mov r1, r0 with r0=0, drawing glyph 0+1=1) then digits, while the <0x80 path
+  (loc_80463F4) draws trailing glyph 1 with id=r0 after digits. The summary also misses that sub_80461D0
+  is called with r1=glyph_id (digit+1) but r2/r3 presumably carry x-position from prior setup, and r0
+  is a layout/position word passed through. The name 'printBcdNumberCmd' is acceptable but the function
+  prints a number as tiles, not specifically BCD digits (it converts to BCD internally for ordering).
+  A more accurate name would be 'printNumberCmd'.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80463A0 -> printNumberCmd
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80463A0

@@ -1,0 +1,60 @@
+name: battle_commErrorGfxReloadTick
+address: '0x08038EAC'
+kind: function
+status: probable
+summary: Per-frame tick that, once a short delay (6 frames) expires, re-uploads the comm-error text glyphs
+  into VRAM and reloads two GFXAnim scripts before resuming the parent state.
+interface: (r0 implicit in r5 = error-object/state struct) -> r0 = result of sub_8039198; updates [r5+2]
+  state byte and [r5+4] frame counter
+details: 'The function is a per-frame update for a battle comm-error state struct: it decrements the 16-bit
+  frame counter at [r5+4] and, when it hits zero, calls battle_renderCommErrorTextGfx to draw the error-text
+  glyphs into VRAM, then loads two GFXAnimScript tables (byte_8038A6C and byte_8038A84, adjacent in the
+  data block) via LoadGFXAnim, sets the state byte at [r5+2] to 0x38, and reloads the counter with 6 frames.
+  Every call it also invokes sub_8039198 (likely per-frame rendering/update of the error display) and
+  returns its value. The counter-at-zero branch means the graphics reload happens periodically, not every
+  frame — the 6-frame wait then a re-upload suggests a blink/cycle or delayed init pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#4]; sub r0,#1; strh; bne skip — frame-countdown gating on a struct field; bl battle_renderCommErrorTextGfx
+    inside the zero branch — re-renders the comm-error glyphs to VRAM; two LoadGFXAnim calls with adjacent
+    script addresses byte_8038A6C/byte_8038A84 — reload of the error-text tile/anim data; strb 0x38 ->
+    [r5,#2]; strh 6 -> [r5,#4] — advances state and restarts the 6-frame timer; tail call bl sub_8039198
+    every frame — delegates the per-frame display update
+  refs:
+  - bn6f/asm/asm03_1_1.s:814
+  - 0x08038F74 battle_renderCommErrorTextGfx
+  - 0x08001B1C LoadGFXAnim
+  - 0x08039198 sub_8039198
+  reproduce: python3 tools/asmcat.py 0x08038EAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The state byte at [r5+2] is set to 0x38 (not 0x03 or any doc state), so this looks like a sub-state
+    within a larger comm-error handler, not the top-level tick. The function unconditionally calls sub_8039198
+    every frame, which the proposal correctly notes but buries. Since this is called during battle scene
+    (re)init based on the callee role, a name like battle_commErrorGfxReloadTick better captures that
+    it reloads glyph graphics periodically rather than being the main comm-error display state machine.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the struct layout at r5 (owner object) and the meaning of state 0x38 are inferred
+  only from this function
+- The exact semantics of sub_8039198 and whether byte_8038A6C/A84 differ only in palette or frame data
+  are unconfirmed
+- The state byte at [r5+2] is set to 0x38 (not 0x03 or any doc state), so this looks like a sub-state
+  within a larger comm-error handler, not the top-level tick. The function unconditionally calls sub_8039198
+  every frame, which the proposal correctly notes but buries. Since this is called during battle scene
+  (re)init based on the callee role, a name like battle_commErrorGfxReloadTick better captures that it
+  reloads glyph graphics periodically rather than being the main comm-error display state machine.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8038EAC -> battle_commErrorGfxReloadTick
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038EAC

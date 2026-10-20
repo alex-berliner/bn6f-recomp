@@ -1,0 +1,63 @@
+name: folderHasFlaggedChip
+address: '0x08130780'
+kind: function
+status: probable
+summary: Returns 1 if any chip in the active folder's 30-chip list has chipdata[0x16]&0x10 set, else 0;
+  r1 = list pointer past header.
+interface: () -> r0 = 1 if a chip with chipdata[0x16]&0x10 was found (checked in loop order), else 0;
+  r1 = pointer to the scanned list (base+0x20); no flags
+details: 'sub_803DD60 decides which of the two lists at unk_202714C/unk_20270EC is scanned (some game-state
+  switch, e.g. which folder is active). Each halfword entry is unpacked by split9BitsFromBitfield_8021AE0
+  and the 9-bit chip ID is looked up in the static 206-entry chip database via getChip8021DA8. Only the
+  low 9-bit half is actually used for the lookup; the high half is discarded. The test is ldrb [chipdata,#0x16],
+  tst #0x10: any chip with that attribute bit ends the scan with r0=1. If all 30 halfwords fail the test,
+  r0=0. The returned r1 always points at the list start, so callers can re-walk the list to find the matching
+  entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'add r4,#0x20 / ldrh r0,[r4,r6] over cmp r6,#0x3c: exactly 30 halfword entries, matching a 30-chip
+    folder; bl split9BitsFromBitfield then bl getChip8021DA8: each entry holds a 9-bit chip ID resolved
+    against the static chip database; ldrb r0,[r0,#0x16]; tst r0,#0x10; bne exit: early true return on
+    a per-chip attribute bit; two table pointers off_81307B4/B8 selected by sub_803DD60''s result: one
+    of two chip lists is scanned; returns r7=1 on match / 0 after full loop, with r1=r4 list base: a boolean
+    folder-attribute check'
+  refs:
+  - bn6f/asm/asm36.s:1003
+  - 0x0812FAE4 sub_812FAE4
+  - 0x081307BC sub_81307BC
+  - 0x08021AA4 getChip8021DA8
+  - 0x08021AE0 split9BitsFromBitfield_8021AE0
+  - 0x0803DD60 sub_803DD60
+  reproduce: python3 tools/asmcat.py 0x08130780
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: r7=1 default, sub_803DD60 selects one of two lists, +0x20 skips a header,
+    loop tests 30 halfwords via split9Bits/getChip for chipdata[0x16]&0x10, r0=found flag, r1=list+0x20.
+    Minor inaccuracy: the proposal says ''r1 = pointer to the scanned list (base+0x20)'' which is correct
+    but wording suggests list start; it''s actually past-header. Name ''folder_findFlaggedChip'' fits
+    — scanning a folder for a chip with flag bit 0x10 set.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of chipdata byte 0x16 bit 0x10 (chip class? tag/regular eligibility? Dark-chip flag?)
+- What sub_803DD60 tests to pick between unk_20270EC and unk_202714C (active vs spare folder?)
+- What callers sub_81307BC / sub_812FAE4 do with the r1 list pointer and why only the low 9-bit half of
+  each packed entry is checked
+- 'The behavior matches: r7=1 default, sub_803DD60 selects one of two lists, +0x20 skips a header, loop
+  tests 30 halfwords via split9Bits/getChip for chipdata[0x16]&0x10, r0=found flag, r1=list+0x20. Minor
+  inaccuracy: the proposal says ''r1 = pointer to the scanned list (base+0x20)'' which is correct but
+  wording suggests list start; it''s actually past-header. Name ''folder_findFlaggedChip'' fits — scanning
+  a folder for a chip with flag bit 0x10 set.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8130780 -> folderHasFlaggedChip
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130780

@@ -1,0 +1,58 @@
+name: object_spawnDimmingCollisionRegionInFront
+address: '0x080C188C'
+kind: function
+status: probable
+summary: Spawns a dimming collision-region object on the panel directly in front of the caller, inheriting
+  the caller's element, via object_spawnDimmingCollisionRegion.
+interface: (r0 = battle object, r5 also = object pointer) -> r0 = spawned object handle; no meaningful
+  flags
+details: Reads the caller's front-direction multiplier via object_getFrontDirection and adds it to oBattleObject_PanelX,
+  yielding the panel column immediately in front of the object (row unchanged in r1 = oBattleObject_PanelY).
+  It passes the object's oBattleObject_Element in r2, r3 = 0, a fixed descriptor pointer 0x705FF04 (r4),
+  and the constant 3 (r7) into object_spawnDimmingCollisionRegion, which spawns a collision-region object
+  that keeps updating during timestop. The element passthrough suggests the region's behavior/affinity
+  matches the spawning object's element. The 0x705FF04 pointer is presumably a static spawn template or
+  behavior table in ROM/IWRAM. The caller only runs this for one specific object behavior (single caller
+  at 0x080C174A).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then add r0, r0, oBattleObject_PanelX computes the front panel column
+    (sub_80C188C+4..+A); ldrb r2, [r5,#oBattleObject_Element] forwards the spawner's element to the spawn
+    call; ldr r4, =0x705FF04 and r7=3 are the only other arguments to object_spawnDimmingCollisionRegion;
+    bl object_spawnDimmingCollisionRegion is the sole callee side effect; the function is a thin wrapper
+  refs:
+  - bn6f/asm/asm31.s:20999
+  - 0x080C174A sub_80C174A
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C188C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee is object_spawnDimmingCollisionRegion (not object_spawnDimmingRegion), so the name should
+    reflect that. The function reads the caller''s element and panel coords to spawn a collision region
+    in front of it, and there is no evidence the caller is a ''panel'' object specifically (r5 is any
+    battle object, and the caller sub_80C174A could be anything). The summary is otherwise accurate: reads
+    front direction, adds to PanelX, passes PanelY, Element, 0, 0x705FF04, and 3.; run wf investigate
+    investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the 3 in r7 (lifetime? size?) and the structure at 0x705FF04
+- which enemy/attack behavior at 0x080C174A uses this, to confirm the in-game context
+- 'The callee is object_spawnDimmingCollisionRegion (not object_spawnDimmingRegion), so the name should
+  reflect that. The function reads the caller''s element and panel coords to spawn a collision region
+  in front of it, and there is no evidence the caller is a ''panel'' object specifically (r5 is any battle
+  object, and the caller sub_80C174A could be anything). The summary is otherwise accurate: reads front
+  direction, adds to PanelX, passes PanelY, Element, 0, 0x705FF04, and 3.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C188C -> object_spawnDimmingCollisionRegionInFront
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C188C

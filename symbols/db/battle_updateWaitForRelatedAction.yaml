@@ -1,0 +1,58 @@
+name: battle_updateWaitForRelatedAction
+address: '0x080C62B0'
+kind: function
+status: probable
+summary: Per-frame update that destroys the object if the battle ended or its related object has not yet
+  reached the expected CurAction (looked up by Param3 in dword_80C62F4), unless Param3 == 2 bypasses that
+  check; then, when not time-stopped, dispatches a per-CurAction handler from off_80C62EC.
+interface: (r5 = battle object) -> r0 = none; sets object CurState to CUR_STATE_DESTROY on failure/battle
+  end
+details: 'Standard object-update stub: if the battle is over the object is marked CUR_STATE_DESTROY. Otherwise
+  it reads the object''s Param3 as a role index; unless Param3 is 2 (skip check), it requires the object
+  at oBattleObject_RelatedObject1Ptr to have CurAction equal to dword_80C62F4[Param3] (expected actions
+  0x0D/0x0E/0x5E for roles 0-3), else it destroys itself. If battle_isTimeStop is active it returns without
+  dispatching. When all checks pass it calls a handler via jump table off_80C62EC indexed by the object''s
+  own oBattleObject_CurAction (first entry sub_80C62F8), using the mov lr,pc/bx trick for Thumb return.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver / bne loc_80C62E0 -> sets CUR_STATE_DESTROY: battle-end teardown path;
+    ldrb r0,[r5,#oBattleObject_Param3]; ldr r2,off_80C62F0; cmp related object''s CurAction to table[Param3]:
+    waits on partner''s action; cmp r0,#2 / beq loc_80C62D4: Param3==2 bypasses the wait check; bl battle_isTimeStop
+    / bne locret: frozen during time-stop like other object updates; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; mov lr,pc; bx r1: per-action handler dispatch via off_80C62EC'
+  refs:
+  - bn6f/asm/asm31.s:30980
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080C62B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the overall flow: the ''cmp r0, #2 / beq loc_80C62D4'' at 0x080C62C0-C2
+    means Param3 == 2 jumps past the related-object check to dispatch, not that Param3 == 2 skips the
+    check. Also the related-object action bytes are loaded as a little-endian word (0x5E000E0D) so roles
+    0/1/2/3 expect actions 0x0D/0x0E/0x00/0x5E, not ''0x0D/0x0E/0x5E for roles 0-3''. The name and summary
+    are otherwise accurate but those details matter.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which object(s) use this update and what Param3 roles mean is unconfirmed
+- Full jump table at off_80C62EC and the handler sub_80C62F8 are unexamined; they would confirm which
+  actions are handled
+- 'The proposal correctly captures the overall flow: the ''cmp r0, #2 / beq loc_80C62D4'' at 0x080C62C0-C2
+  means Param3 == 2 jumps past the related-object check to dispatch, not that Param3 == 2 skips the check.
+  Also the related-object action bytes are loaded as a little-endian word (0x5E000E0D) so roles 0/1/2/3
+  expect actions 0x0D/0x0E/0x00/0x5E, not ''0x0D/0x0E/0x5E for roles 0-3''. The name and summary are otherwise
+  accurate but those details matter.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C62B0 -> battle_updateWaitForRelatedAction
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C62B0

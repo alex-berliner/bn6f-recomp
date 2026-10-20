@@ -1,0 +1,60 @@
+name: battle_spawnTimelessCollisionRegion
+address: '0x080DB890'
+kind: function
+status: probable
+summary: Spawns a collision-region object at this battle object's panel using its element; when Param1
+  is set it uses the dimming (timestop-visible) variant, otherwise the normal one.
+interface: (r0 = element read from object, r5 = battle object ptr) -> r0 = spawned region object id; no
+  flag semantics seen
+details: Reads oBattleObject_Param1 from the owning object (r5); if zero it calls object_spawnCollisionRegion,
+  otherwise object_spawnDimmingCollisionRegion, which is the variant that keeps updating during timestop.
+  Either way it passes the object's PanelX, PanelY and Element as region position/element, r3=0, r4=0x15050A01
+  (region config/lifetime word), r6 = the object's DamageAndStaminaDamageCounterDisabler (propagated to
+  the region), and r7=3 (flags/count). The element argument indicates the region triggers on entities
+  of a matching element, e.g. an elemental ground/trap tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80DB8AC branches on oBattleObject_Param1 to pick object_spawnDimmingCollisionRegion vs
+    object_spawnCollisionRegion; both paths pass [oBattleObject_Element] as r2 to the region spawn calls;
+    both pass r4=0x15050A01 from dword_80DB8C0 and r7=3 from dword_80DB8C4; r6 copies [oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    into the region spawn call; callee summaries: both spawn collision-region objects, one marked to update
+    during timestop'
+  refs:
+  - bn6f/asm/asm31.s:77302
+  - 0x080DB7B2 sub_80DB7B2
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DB890
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it reads Param1, branches between object_spawnCollisionRegion (zero) and object_spawnDimmingCollisionRegion
+    (non-zero), passing PanelX, PanelY, Element, r3=0, r4=0x15050A01, r6=DamageAndStaminaDamageCounterDisabler,
+    r7=3. However, the proposed name ''battle_spawnElementalCollisionRegion'' is misleading because the
+    element is just one of several parameters and isn''t the focus of the function; the real distinction
+    is the timestop/dimming variant selection. A more accurate name should reflect that the function selects
+    between normal and dimming (timestop-active) collision-region spawning.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the 0x15050A01 config word and the r7=3 flag set
+- which object script uses this (caller sub_80DB7B2 is also unnamed), so the in-game element-based trap/field
+  is unconfirmed
+- 'The code matches: it reads Param1, branches between object_spawnCollisionRegion (zero) and object_spawnDimmingCollisionRegion
+  (non-zero), passing PanelX, PanelY, Element, r3=0, r4=0x15050A01, r6=DamageAndStaminaDamageCounterDisabler,
+  r7=3. However, the proposed name ''battle_spawnElementalCollisionRegion'' is misleading because the
+  element is just one of several parameters and isn''t the focus of the function; the real distinction
+  is the timestop/dimming variant selection. A more accurate name should reflect that the function selects
+  between normal and dimming (timestop-active) collision-region spawning.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB890 -> battle_spawnTimelessCollisionRegion
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB890

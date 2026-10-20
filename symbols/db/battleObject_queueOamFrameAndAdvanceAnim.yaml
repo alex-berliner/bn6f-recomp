@@ -1,0 +1,74 @@
+name: battleObject_queueOamFrameAndAdvanceAnim
+address: '0x0812D600'
+kind: function
+status: probable
+summary: Queues one OAM entry from a frame's OAM row table for a battle object using the state byte's
+  low nibble as the row index; when the state byte's high nibble is 1, advances the per-object animation
+  table pointer via battleObject_advanceAnimTableBy0xFF_8120CC8 and stores the new table byte into the
+  state byte.
+interface: (r0 = base ptr (low half replaced by offset), r1 = frame/OAM table base, r2 = state-byte offset
+  into object struct r5, r3 = index-byte selector (0 => frame index 0, else halfword [r5,r3]), r4/r6 =
+  extra args passed through) -> void; updates byte [r5+r2] = (nextRow<<4)|(old&0xF)
+details: 'The function combines a pointer from r0/r1 with a frame offset: it reads a halfword at [r5,r3]
+  (or 0 when r3==0), multiplies by 0x10 (16 halfwords per frame row), adds it to r1 and ORs it into r0''s
+  low half, producing the frame-data address passed to battleObject_queueOamFromTableRow_811FAF4. The
+  row index for that call is the low nibble of the state byte at [r5+r2]; r4 and r6 (saved from the incoming
+  r4/r6) are forwarded as further arguments. After queueing, it inspects the saved byte''s high nibble:
+  when it equals 1, it calls battleObject_advanceAnimTableBy0xFF_8120CC8 with the table pointer loaded
+  from dword_8129180 and stores the returned table byte back into [r5+r2]. Finally it recombines the byte
+  as (returned next-row index << 4) | (previous low nibble), so the high nibble tracks the animation/OAM
+  row and the low nibble (likely flip/palette bits) is preserved. byte_8129178 in the literal pool suggests
+  adjacent state tables for sibling callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r2,[r5,r3]; mov r3,#0x10; mul r2,r3; add r1,r1,r2; orr r0,r1 builds the frame-row address
+    (0x10 halfwords per row); and r2,#0xf before bl battleObject_queueOamFromTableRow_811FAF4 passes the
+    state byte's low nibble as OAM table row; lsr r1,#4; sub r1,#1; bne skips the advance only when the
+    high nibble is 1, then battleObject_advanceAnimTableBy0xFF_8120CC8 with off_812D664 (dword_8129180)
+    rewrites [r5,r2]; final lsl r1,#4; orr r0,r1; strb recombines next-row index (high nibble) with preserved
+    low nibble into the object's state byte; both callees' known summaries (OAM queuing from table row;
+    0xFF animation-table lookup) match this read
+  refs:
+  - bn6f/asm/asm34.s:356
+  - 0x0812D4FC sub_812D4FC
+  - 0x0812D668 sub_812D668
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x0812D600
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The row index passed to battleObject_queueOamFromTableRow is the low nibble of the state byte (lines
+    ''and r2, r3'' then passed via [sp,#0xc]), not the high nibble as the summary implies. The advance-trigger
+    check is on the *high* nibble (lsr r1,#4 / sub r1,#1 / bne), which is correct in the details. However,
+    the final recombination uses the original high nibble still in r1 (loaded from sp+0x14 before the
+    call), not the value returned by battleObject_advanceAnimTableBy0xFF_8120CC8 — so r1<<4 in ''orr r0,
+    r1'' just rewrites the high nibble to itself; the returned byte is stored to [r5+r2] but then overwritten.
+    The summary''s claim that ''nextRow<<4'' is stored is wrong. The byte_8129178 literal is not actually
+    referenced by the code (only dword_8129180 is loaded via off_812D664).; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the low nibble preserved in the state byte (flip flags vs palette vs duration)
+- what dword_8129180 and byte_8129178 tables contain (animation sequence vs frame-duration table)
+- what the callers sub_812D4FC/sub_812D668 pass in r4/r6 and how the r0/r1 pointer pair is formed
+- The row index passed to battleObject_queueOamFromTableRow is the low nibble of the state byte (lines
+  'and r2, r3' then passed via [sp,#0xc]), not the high nibble as the summary implies. The advance-trigger
+  check is on the *high* nibble (lsr r1,#4 / sub r1,#1 / bne), which is correct in the details. However,
+  the final recombination uses the original high nibble still in r1 (loaded from sp+0x14 before the call),
+  not the value returned by battleObject_advanceAnimTableBy0xFF_8120CC8 — so r1<<4 in 'orr r0, r1' just
+  rewrites the high nibble to itself; the returned byte is stored to [r5+r2] but then overwritten. The
+  summary's claim that 'nextRow<<4' is stored is wrong. The byte_8129178 literal is not actually referenced
+  by the code (only dword_8129180 is loaded via off_812D664).
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D600 -> battleObject_queueOamFrameAndAdvanceAnim
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D600

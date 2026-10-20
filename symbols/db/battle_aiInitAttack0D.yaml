@@ -1,0 +1,62 @@
+name: battle_aiInitAttack0D
+address: '0x0810209E'
+kind: function
+status: probable
+summary: Initializes the AI attack-variable block of a battle object from the dword_8101A28 table and
+  the version-scaled Damage/ExtraDamage halfword tables at 8101A38/8101A40, seeding the per-attack locals
+  (boost, timer, step indices, init flag, difficulty tier), then triggers object_setAttack0(0xD).
+interface: (r7 = battle object) -> void; object fields oAIAttackVars_* filled, object_setAttack0(0xd)
+  invoked, flags not meaningful
+details: 'Loads four 32-bit parameters (from dword_8101A28/2C/30/34) through sub_800FE28 into ScratchVar,
+  AiAttackParam, PanelParamFlags2 and ScratchPointerOrPanel, then reads two version-scaled table entries
+  via battle_aiGetVersionedTableEntry into Damage and ExtraDamage. It seeds constants: AttackBoost2 =
+  4, TimerOrCycles = copy of PanelParamFlags2, SubStepIndex = 8, AttackStepIndex = 0, InitFlag = 1, AiDifficultyTier
+  = 0. Finally it calls object_setAttack0 with attack id 0xD, so this is the setup routine for one specific
+  AI attack pattern whose tuning numbers live in the 8101A28.. table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_810209E stores sub_800FE28 results into oAIAttackVars_ScratchVar/AiAttackParam/PanelParamFlags2/ScratchPointerOrPanel;
+    battle_aiGetVersionedTableEntry_800FE12 results stored to oAIAttackVars_Damage and oAIAttackVars_ExtraDamage;
+    constant stores: AttackBoost2=4, SubStepIndex=8, AttackStepIndex=0, InitFlag=1, AiDifficultyTier=0,
+    TimerOrCycles=PanelParamFlags2; ends with mov r0,#0xd; bl object_setAttack0 — the initialized state
+    is used to run attack 0xd; data constants dword_8101A28..byte_8101A40 are a per-attack parameter block
+    read via the AI table helpers'
+  refs:
+  - bn6f/asm/asm31.s:159304
+  - 0x08101EBC sub_8101EBC
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  - 0x08011680 object_setAttack0
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x0810209E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the four sub_800FE28 loads, two version-scaled halfword loads
+    into Damage/ExtraDamage, the constants (4, copy-of-PanelParamFlags2, 8, 0, 1, 0), and the final object_setAttack0(0xD).
+    However, the summary claims it ''starts attack 0xD'', but the function returns immediately after object_setAttack0
+    without entering any state machine or per-tick logic. Also AttackBoost2 is set to 4, not named appropriately;
+    the function is the init/setup, so the summary should make clear it is an init for AI attack 0xD''s
+    local variables, not the attack execution itself.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_800FE28 reads (likely a difficulty-indexed word from the dword_8101A28 block) is not shown
+- which enemy/attack id 0xD corresponds to; the caller sub_8101EBC's role would confirm
+- The proposal correctly identifies the four sub_800FE28 loads, two version-scaled halfword loads into
+  Damage/ExtraDamage, the constants (4, copy-of-PanelParamFlags2, 8, 0, 1, 0), and the final object_setAttack0(0xD).
+  However, the summary claims it 'starts attack 0xD', but the function returns immediately after object_setAttack0
+  without entering any state machine or per-tick logic. Also AttackBoost2 is set to 4, not named appropriately;
+  the function is the init/setup, so the summary should make clear it is an init for AI attack 0xD's local
+  variables, not the attack execution itself.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810209E -> battle_aiInitAttack0D
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810209E

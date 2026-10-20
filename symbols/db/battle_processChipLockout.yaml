@@ -1,0 +1,63 @@
+name: battle_processChipLockout
+address: '0x080898E8'
+kind: function
+status: probable
+summary: 'Per-frame chip-lockout handler: decrements AIData+0x18 via battle_tickChipLockout_8089CB4; if
+  the timer has not expired it returns 1 immediately, else calls sub_8142BFA, writes 0x40 to [r5] and
+  returns 1.'
+interface: (r5 = some battle/AI struct pointer, set by caller) -> r0 = 1 always; calls battle_tickChipLockout_8089CB4
+  and sub_8142BFA
+details: Each frame it calls battle_tickChipLockout_8089CB4, which decrements AIData+0x18 (ChipLockoutTimer)
+  and returns nonzero when the timer has expired this frame. If the timer has NOT expired (beq taken on
+  a zero result), the function does nothing else and returns 1, i.e. it keeps polling. Once the timer
+  expires it calls sub_8142BFA (an unknown transition/callback) and then stores the constant 0x40 as a
+  byte to [r5], plausibly an AI phase/state or flag field in a battle struct, before returning 1 unconditionally.
+  It never uses r4, r6, r7 despite saving them, and always returns success, so it behaves like a one-shot
+  wait step in a larger state machine that the caller polls.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_tickChipLockout_8089CB4; beq loc_80898F8 — body only runs once the lockout timer expires
+    (asm at 80898EC-90); bl sub_8142BFA then mov r0,#0x40; strb r0,[r5] — a state write of 0x40 into a
+    struct pointed by r5 after expiry; mov r0,#1 before pop — always returns 1 regardless of branch taken;
+    callee battle_tickChipLockout_8089CB4 is documented as decrementing ChipLockoutTimer (AIData+0x18),
+    tying this to chip-selection lockout in battle
+  refs:
+  - bn6f/asm/asm23.s:1244
+  - 0x08089CB4 battle_tickChipLockout_8089CB4
+  - 0x08142BFA sub_8142BFA
+  reproduce: python3 tools/asmcat.py 0x080898E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080898E8 calls battle_tickChipLockout_8089CB4; if the result is nonzero (timer expired)
+    it calls sub_8142BFA and stores 0x40 to [r5]. Otherwise it falls through to loc_80898F8 returning
+    1. The proposal correctly captures this flow, but it reverses the branch logic (''beq taken on zero
+    result'' means it returns when expired, not unexpired): per the asm, beq jumps to loc_80898F8 (the
+    return 1 path), so the function actually returns 1 immediately when the timer is NOT expired, and
+    only runs the transition+store when expired. Also ''battle_waitChipLockoutEnd'' slightly misnames
+    the unexpired path which returns without waiting further; ''processChipLockout'' is more neutral.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Who calls this and how r5 is set — the caller would confirm which struct byte 0x40 is (AI phase vs flag)
+- What sub_8142BFA does (likely resumes chip selection or re-enables player input after lockout)
+- Whether this is polled as an AI/task step or a one-shot trigger
+- 'The code at 0x080898E8 calls battle_tickChipLockout_8089CB4; if the result is nonzero (timer expired)
+  it calls sub_8142BFA and stores 0x40 to [r5]. Otherwise it falls through to loc_80898F8 returning 1.
+  The proposal correctly captures this flow, but it reverses the branch logic (''beq taken on zero result''
+  means it returns when expired, not unexpired): per the asm, beq jumps to loc_80898F8 (the return 1 path),
+  so the function actually returns 1 immediately when the timer is NOT expired, and only runs the transition+store
+  when expired. Also ''battle_waitChipLockoutEnd'' slightly misnames the unexpired path which returns
+  without waiting further; ''processChipLockout'' is more neutral.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80898E8 -> battle_processChipLockout
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80898E8

@@ -1,0 +1,69 @@
+name: battle_scanPanelOffsetPattern
+address: '0x080264A8'
+kind: function
+status: probable
+summary: Scans a signed (dx,dy) offset table at r2, mirroring by the object's front-direction multiplier,
+  and returns sub_8026510's first match passing object_checkEnemyOrAllyPanel and panel bounds (col 0-6,
+  row vs incoming r6); r0=0 on terminator 0x7F or no match.
+interface: (r0 = base column, r1 = base row, r2 = int8 (dx,dy) offset table terminated by dx=0x7F; uses
+  global current battle object, incoming r6/r7 forwarded) -> r0 = sub_8026510 result for first matching
+  panel, or 0 if none; no meaningful flags
+details: 'Iterates 2-byte entries of signed (dx,dy) offsets at r2; each is scaled by object_getFrontDirection()''s
+  ±1 and added to the base column (must be 0–6) and base row (must be 0–3), so the whole pattern mirrors
+  with the object''s facing. object_checkEnemyOrAllyPanel(col,row) filters panels by the current object''s
+  alliance panel-state mask. Surviving entries are passed to sub_8026510(col,row,origR6,origR7); its first
+  nonzero return is returned verbatim. Terminator byte 0x7F in the dx slot ends the scan with r0=0. Quirk:
+  the caller''s r6/r7 are spilled before the front-direction call and reloaded as r2/r3 for sub_8026510,
+  implying a shared/extended convention between these helpers; incoming r3 is unused.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc loop: ldsb [r4] / ldsb [r4,#1], r4 += #2, terminator cmp r0,#0x7F -> mov r0,#0; col = dx*dir
+    + [sp,#8] bounds 0..6 and row = dy*dir + [sp,#0xC] bounds 0..3 — battle grid dimensions; bl object_getFrontDirection
+    supplies the ±1 mirror multiplier; bl object_checkEnemyOrAllyPanel validates panel state/alliance;
+    cmp r0,#0 / bne loc_802650C after bl sub_8026510 returns that callee''s r0 on first hit; str r6/[sp],
+    str r7/[sp,#4] before the clobbering call, reloaded as r2/r3 right before bl sub_8026510'
+  refs:
+  - bn6f/asm/asm03_0.s:54
+  - 0x080266AC sub_80266AC
+  - 0x0800E680 object_checkEnemyOrAllyPanel_800E680
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08026510 sub_8026510
+  reproduce: python3 tools/asmcat.py 0x080264A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanism is mostly correct: signed (dx,dy) entries at r2 are scaled by object_getFrontDirection
+    and bounds-checked (col 0-6, row 0-3), then object_checkEnemyOrAllyPanel filters, then sub_8026510
+    with the caller''s saved r6/r7 reloaded as r2/r3, ending at dx=0x7F. However, the proposal says the
+    row is also scaled by r6 and compared against an original row (''cmp r1, r2 / bgt''), which actually
+    compares against [sp] = saved incoming r6 (not the base row); the base row at [sp,#0xc] is only added
+    after this check, so the bounds test is against the saved r6, not the row. A clearer name is battle_scanPanelOffsetPattern,
+    but a better summary should reflect that the row bound compares against the incoming r6 parameter,
+    not the base row.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_8026510 actually tests on the panel (object occupancy? specific object type?) — its body is
+  not shown
+- meaning of the forwarded original r6/r7 arguments to sub_8026510
+- which game code supplies the offset tables (would identify the pattern, e.g. an attack area or AI scan)
+  and what the caller sub_80266AC uses the result for
+- 'The proposal''s mechanism is mostly correct: signed (dx,dy) entries at r2 are scaled by object_getFrontDirection
+  and bounds-checked (col 0-6, row 0-3), then object_checkEnemyOrAllyPanel filters, then sub_8026510 with
+  the caller''s saved r6/r7 reloaded as r2/r3, ending at dx=0x7F. However, the proposal says the row is
+  also scaled by r6 and compared against an original row (''cmp r1, r2 / bgt''), which actually compares
+  against [sp] = saved incoming r6 (not the base row); the base row at [sp,#0xc] is only added after this
+  check, so the bounds test is against the saved r6, not the row. A clearer name is battle_scanPanelOffsetPattern,
+  but a better summary should reflect that the row bound compares against the incoming r6 parameter, not
+  the base row.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80264A8 -> battle_scanPanelOffsetPattern
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80264A8

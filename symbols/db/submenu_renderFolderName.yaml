@@ -1,0 +1,69 @@
+name: submenu_renderFolderName
+address: '0x0811ABF8'
+kind: function
+status: probable
+summary: Sets state 4 on a folder-name display object, resolves a text script (with a 0x22 clamp on slot
+  0 via battle_getPlayerCurState), and tail-calls sub_3006B94 to draw into one of three text windows indexed
+  by r5+3.
+interface: '(r0-r3 = object in r5 by caller convention; r5 = object: +3 window idx, +9 state, +0xc selection)
+  -> r0 = sub_3006B94 result; no meaningful flags'
+details: 'Sets the object''s state byte at r5+9 to 4 (a ''printing/showing text'' state) and picks a base
+  pointer (unk_202714C or unk_20270EC, chosen by sub_803DD60''s result). The low 15 bits of r5+0xc are
+  the selected entry (1-based); if zero it uses the fallback blob byte_811AC9C (two 0x98 bytes = a near-empty
+  script), otherwise it subtracts 1 and calls chatbox_getTextScriptPointerByIndex, clamping the script
+  index to 2 when battle_getPlayerCurState for that index returns >= 0x22. Byte r5+3 (0-2) indexes two
+  parallel tables: a window-structure pointer (unk_2017C00/2017E00/2018000, 0x200 apart, i.e. three per-slot
+  text-window states) and per-window render config bytes {tile 0x22/0x24/0x26, palette 1, 0x0600-ish attrs}.
+  It then tail-invokes sub_3006B94 via ''mov lr, pc; bx'' with (textPtr, windowPtr, windowCfgPtr, dword_86B7AE0,
+  8, 1, 0) — evidently the text-render/print routine — so this draws a folder name into window slot r5+3.
+  The literal pool reference to TextScriptFolderNames confirms the scripts being displayed are folder
+  names.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb #4,[r5,#9] sets a state byte first, typical menu-object state advance; bl battle_getPlayerCurState
+    + cmp #0x22/blt clamps the script index from [r5+0xc]&0x7FFF minus 1; bl chatbox_getTextScriptPointerByIndex
+    yields the text pointer passed as r0 to sub_3006B94; tables off_811AC6C (unk_2017C00/E00/2018000)
+    and byte_811AC7C (tiles 0x22/0x24/0x26, pal 1) are indexed by [r5+3] as per-window buffer/config;
+    literal pool word TextScriptFolderNames ties the scripts to folder names'
+  refs:
+  - bn6f/asm/asm32.s:26620
+  - 0x08137884 battle_getPlayerCurState_8137884
+  - 0x0804A24C chatbox_getTextScriptPointerByIndex_804A24C
+  - 0x03006B94 sub_3006B94
+  reproduce: python3 tools/asmcat.py 0x0811ABF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: state byte at r5+9 is set to 4, the script index is resolved via
+    chatbox_getTextScriptPointerByIndex with the 0x22 clamp from battle_getPlayerCurState, and sub_3006B94
+    is tail-called with textPtr, windowPtr, cfgBytes, dword_86B7AE0, 8, 1, 0. The proposal''s ''folderMenu''
+    framing is plausible (three windows, TextScriptFolderNames) but misleading: r5+3 is read at loc_811AC18
+    with `cmp r0, r1` then `bne loc_811AC40`, meaning only index 0 triggers the player-state clamp path,
+    while indices 1-2 skip it and fall straight to loc_811AC40 — not the symmetric per-slot treatment
+    implied. A name following the prefix rules (e.g. submenu or object scope) would fit better than ''folderMenu''
+    since no caller confirms folder-menu context.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_3006B94 and dword_86B7AE0 are unknown; confirming the render-call signature and whether unk_2017C00
+  family are chatbox-window structs needs their disassembly
+- no callers known, so the object layout at r5 (+3, +9, +0xc) and which menu owns it is inferred only
+- 'The proposal is largely correct: state byte at r5+9 is set to 4, the script index is resolved via chatbox_getTextScriptPointerByIndex
+  with the 0x22 clamp from battle_getPlayerCurState, and sub_3006B94 is tail-called with textPtr, windowPtr,
+  cfgBytes, dword_86B7AE0, 8, 1, 0. The proposal''s ''folderMenu'' framing is plausible (three windows,
+  TextScriptFolderNames) but misleading: r5+3 is read at loc_811AC18 with `cmp r0, r1` then `bne loc_811AC40`,
+  meaning only index 0 triggers the player-state clamp path, while indices 1-2 skip it and fall straight
+  to loc_811AC40 — not the symmetric per-slot treatment implied. A name following the prefix rules (e.g.
+  submenu or object scope) would fit better than ''folderMenu'' since no caller confirms folder-menu context.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811ABF8 -> submenu_renderFolderName
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811ABF8

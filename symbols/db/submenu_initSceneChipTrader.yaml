@@ -1,0 +1,59 @@
+name: submenu_initSceneChipTrader
+address: '0x0804A2CC'
+kind: function
+status: probable
+summary: 'Initializes the chip trader sub-scene: stores the launch argument at dword_200ACB0 (eS200AC80+0x30),
+  saves the current MapGroup into LastMapGroup so the overworld can be restored, and clears the eStruct
+  scene record array via battle_resetEStructRecords_8046664.'
+interface: (r0 = value/pointer stored to dword_200ACB0) -> void; no return value
+details: Uses the push/pop {r0} trick to preserve its argument across the call to sub_804A2E8, then stores
+  that argument at eS200AC80+0x30 (dword_200ACB0), so sub_804A2E8's return value is discarded and r0 is
+  caller-supplied state. It then reads the game state via the toolkit (r10) and copies oGameState_MapGroup
+  into oGameState_LastMapGroup, the standard save-of-location done when entering an overlay scene so the
+  overworld can be restored afterwards. Finally it calls battle_resetEStructRecords_8046664 to re-init
+  the eStructArr2008450 record array, clearing leftover battle-overlay scene records before the trader
+  scene runs. The exact meaning of the stored r0 depends on sub_804A2E8, which is still unnamed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sole caller 0x08005D48 subsystem_launchChipTrader identifies the subsystem; push {r0}/pop {r0}
+    around 'bl sub_804A2E8' keeps the argument, whose value is then 'str r0,[r5,#0x30]' into dword_200ACB0;
+    'ldrh r0,[r1,#oGameState_MapGroup]; strh r0,[r1,#oGameState_LastMapGroup]' saves the current map for
+    returning from the sub-scene; 'bl battle_resetEStructRecords_8046664' clears eStructArr2008450 as
+    done when entering an overlay scene
+  refs:
+  - bn6f/asm/asm03_2.s:7310
+  - 0x08005D48 subsystem_launchChipTrader
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x0804A2E8 sub_804A2E8
+  reproduce: python3 tools/asmcat.py 0x0804A2CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structure (push/pop {r0}, store to eS200AC80+0x30, save MapGroup
+    into LastMapGroup, call battle_resetEStructRecords_8046664). However, the function is called from
+    subsystem_launchChipTrader, so ''chipTrader_initScene'' is reasonable, though the prefix list doesn''t
+    include ''chipTrader'' as a valid prefix — ''submenu'' would be the closest valid prefix. The name
+    fits the behavior but violates the naming rules; better is submenu_initSceneChipTrader or similar.
+    The summary is accurate.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_804A2E8 does and what kind of value/pointer the stored r0 is (trader state? object pointer?)
+- fields of the eS200AC80 struct besides +0x30
+- why the eStruct record reset is needed here rather than at scene exit
+- The code matches the proposal's structure (push/pop {r0}, store to eS200AC80+0x30, save MapGroup into
+  LastMapGroup, call battle_resetEStructRecords_8046664). However, the function is called from subsystem_launchChipTrader,
+  so 'chipTrader_initScene' is reasonable, though the prefix list doesn't include 'chipTrader' as a valid
+  prefix — 'submenu' would be the closest valid prefix. The name fits the behavior but violates the naming
+  rules; better is submenu_initSceneChipTrader or similar. The summary is accurate.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A2CC -> submenu_initSceneChipTrader
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A2CC

@@ -1,0 +1,67 @@
+name: ai_sustainedAttackUpdate
+address: '0x08107644'
+kind: function
+status: probable
+summary: 'Per-frame AI attack update: on first entry sets AttackElement=4, anim 0xE, spawns two type-1
+  subtype-5 temp objects (params 6 and 5), plays SFX 0xAE, and arms a 90-frame timer with a 5-frame charge
+  counter; every 5 frames it re-triggers anim 0xE (CurAnimCopy=0xFF), calls sub_8107B06, and calls sub_80B8E7C
+  on each spawned object; on timer expiry writes HitElement=0x28 and ends.'
+interface: () -> void; uses r5 = battle object, r7 = object's AI attack vars (oAIAttackVars); no return
+  value
+details: Called each frame for one AI-controlled attack. On first entry (AttackElement == 0) it marks
+  the attack as element 4, switches the battle object to animation 0xE, calls sub_8107B06, and spawns
+  two type-1 subtype-5 temp attack objects (params 6 and 5) that inherit position/alliance from the attacker;
+  their pointers are stored at oAIAttackVars_AiAttackParam and oAIAttackVars_PanelParamFlags2. It then
+  starts a 90-frame StepTimer and a 5-frame ChargeCycles counter. Each frame after that it decrements
+  StepTimer; when it reaches 0 it writes HitElement = 0x28 and returns, ending the attack. Otherwise every
+  5 frames it restarts animation 0xE (CurAnimCopy = 0xFF), calls sub_8107B06, replays sound effect 0xAE
+  (a looping/rapid-fire noise), and calls sub_80B8E7C on each spawned object that is non-null, likely
+  refreshing/moving them. The repeated sound and continuous anim restart suggest a sustained attack such
+  as a beam or breath.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb AttackElement / bne skips the whole init block, which sets element 4, anim 0xE, and spawns
+    two subtype-5 attack objects via spawn_t1_0x5_tempAttackObject_80B8E30 (params 6 and 5); PlaySoundEffect(0xAE)
+    at init and again inside the ChargeCycles==0 branch (every 5 frames) — a sustained, repeating sound;
+    StepTimer preloaded with 0x5A (90 frames); on expiry only HitElement = 0x28 is written before returning;
+    sub_80B8E7C is called on both stored attack-object pointers each 5-frame tick, guarded by null checks;
+    Callers unknown, so the owning boss/enemy is not identified
+  refs:
+  - bn6f/asm/asm31.s:170817
+  - 0x080005CC PlaySoundEffect
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  - 0x080B8E7C sub_80B8E7C
+  reproduce: python3 tools/asmcat.py 0x08107644
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The core mechanic matches (90-frame timer, 5-frame ChargeCycles, two spawned t1_0x5 objects, sound
+    0xAE on init and on each charge, ends with HitElement=0x28), but the proposal misorders detail: the
+    sound 0xAE plays only on first entry (init block), not every 5 frames; every 5 frames it instead re-triggers
+    animation 0xE, sets CurAnimCopy=0xFF, calls sub_8107B06, and updates each spawned object via sub_80B8E7C
+    (no PlaySoundEffect there). Also HitElement is written as 0x28 (not ''element 4''; AttackElement=4
+    is set on init). Name fits the ''ai_'' prefix well.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which boss/enemy uses this attack and what element 4 / HitElement 0x28 mean in this struct
+- What sub_8107B06 and sub_80B8E7C do to the spawned objects (refresh hitbox vs. movement)
+- What the two spawn params (5 and 6) select visually/mechanically for the subtype-5 attack objects
+- 'The core mechanic matches (90-frame timer, 5-frame ChargeCycles, two spawned t1_0x5 objects, sound
+  0xAE on init and on each charge, ends with HitElement=0x28), but the proposal misorders detail: the
+  sound 0xAE plays only on first entry (init block), not every 5 frames; every 5 frames it instead re-triggers
+  animation 0xE, sets CurAnimCopy=0xFF, calls sub_8107B06, and updates each spawned object via sub_80B8E7C
+  (no PlaySoundEffect there). Also HitElement is written as 0x28 (not ''element 4''; AttackElement=4 is
+  set on init). Name fits the ''ai_'' prefix well.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8107644 -> ai_sustainedAttackUpdate
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107644

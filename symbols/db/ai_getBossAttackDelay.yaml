@@ -1,0 +1,56 @@
+name: ai_getBossAttackDelay
+address: '0x08100500'
+kind: function
+status: probable
+summary: 'Returns a boss attack timing value: base selected from table dword_8100520 via sub_800FE28 indexed
+  by difficulty tier, with 0x3C added if the object''s first flag word has bits 0xA000 set.'
+interface: () -> r0 = timing value (base from table dword_8100520 via sub_800FE28, +0x3C if object flags
+  & 0xA000); flags not significant
+details: Loads the address of dword_8100520 (bytes 0x28, 0x24, 0x20, 0x1C, i.e. 40/36/32/28) and passes
+  it to sub_800FE28, which presumably indexes it by the current difficulty tier read from game state;
+  the selected value is kept in r4. It then calls object_getFlag to fetch the first flag word of the current
+  battle object's collision data and tests it against 0xA000 (bits 13 and 15); if set, 0x3C is added to
+  the result. Returns the summed value in r0. Its only caller, ai_bossAttackInit, uses it while setting
+  up attack timing/boost parameters for a boss AI attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_810051C loads table dword_8100520 (bytes 0x28,0x24,0x20,0x1C) before bl sub_800FE28;
+    tst r0, r1 with r1=0xA000 on object_getFlag''s result gates the add r4, #0x3C; sole caller ai_bossAttackInit
+    sets up boss attack timing/boost per difficulty tier before attack state 0'
+  refs:
+  - bn6f/asm/asm31.s:155393
+  - 0x0810064C ai_bossAttackInit
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08100500
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the core flow: load dword_8100520, pass to sub_800FE28, store
+    in r4, call object_getFlag, test against 0xA000, and add 0x3C if set. However, the flag check is against
+    r0 & 0xA000, not ''object flags & 0xA000'' — the meaning of ''object has the 0xA000 flag bits set''
+    is slightly misleading since the test is a simple bitmask test on the flag word value. The summary''s
+    ''+60'' is the decimal of 0x3C, which is correct. The name ''ai_bossAttackDelay'' is reasonable but
+    could be more specific.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- semantics of sub_800FE28 (whether it indexes the 4-byte table by difficulty tier) are unconfirmed
+- meaning of the 0xA000 flag bits (which boss/condition triggers the +60) is unknown
+- 'The proposal correctly identifies the core flow: load dword_8100520, pass to sub_800FE28, store in
+  r4, call object_getFlag, test against 0xA000, and add 0x3C if set. However, the flag check is against
+  r0 & 0xA000, not ''object flags & 0xA000'' — the meaning of ''object has the 0xA000 flag bits set''
+  is slightly misleading since the test is a simple bitmask test on the flag word value. The summary''s
+  ''+60'' is the decimal of 0x3C, which is correct. The name ''ai_bossAttackDelay'' is reasonable but
+  could be more specific.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8100500 -> ai_getBossAttackDelay
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100500

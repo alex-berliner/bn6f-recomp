@@ -1,0 +1,53 @@
+name: battle_addHudField20
+address: '0x0801DFB8'
+kind: function
+status: probable
+summary: Adds a signed delta (r0) to the halfword at eStruct2035280+0x20, saturating the result to a maximum
+  of 0x4000 before storing it back.
+interface: (r0 = signed delta to add) -> writes gauge halfword at eStruct2035280+0x20; no return value,
+  flags from cmp set but unused by caller
+details: 'Loads the battle HUD state pointer (eStruct2035280) and reads the halfword at +0x20 (word_20352A0).
+  It adds the caller-supplied signed value in r0, and if the result exceeds 0x4000 it saturates to 0x4000
+  before storing back. The 0x4000 ceiling matches a gauge that fills in fixed-point steps; the field sits
+  next to the HP box data (+0x24 shown HP) in the HUD struct. Only one caller is known: battle_dispatchNextPhase,
+  the per-frame turn-state machine, which would call it each frame (or on gauge-related phase transitions)
+  to advance or adjust the custom gauge toward full.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r1,[r2,#0x20]; add r0,r0,r1; strh r0,[r2,#0x20] — read-modify-write of the HUD halfword
+    at +0x20; cmp r0,r1(=0x4000); ble skip; mov r0,r1 — saturating clamp at 0x4000; ldr r2,off_801E0D8
+    = eStruct2035280 — operates on the battle HUD struct whose +0x24 holds shown HP; sole caller battle_dispatchNextPhase
+    routes cust-gauge phase advance, matching a gauge fill/adjust helper
+  refs:
+  - bn6f/asm/asm00_2.s:31662
+  - 0x0800855E battle_dispatchNextPhase
+  reproduce: python3 tools/asmcat.py 0x0801DFB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it reads the halfword at eStruct2035280+0x20, adds the
+    signed r0 delta, clamps to 0x4000, and stores back. The name prefix ''battle_'' is fine, but ''CustGauge''
+    is speculative; the field''s purpose isn''t established as a custom gauge by the code or symdb. A
+    more neutral name like ''battle_addHudField20'' better reflects what the code actually does without
+    guessing semantics.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller site shows what r0 typically is (per-frame fill amount vs. set/reset value), and whether 0x4000
+  corresponds to one full custom gauge or a different unit
+- 'The code matches the proposal''s mechanics: it reads the halfword at eStruct2035280+0x20, adds the
+  signed r0 delta, clamps to 0x4000, and stores back. The name prefix ''battle_'' is fine, but ''CustGauge''
+  is speculative; the field''s purpose isn''t established as a custom gauge by the code or symdb. A more
+  neutral name like ''battle_addHudField20'' better reflects what the code actually does without guessing
+  semantics.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801DFB8 -> battle_addHudField20
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DFB8

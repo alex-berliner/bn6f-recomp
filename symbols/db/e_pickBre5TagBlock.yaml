@@ -1,0 +1,67 @@
+name: e_pickBre5TagBlock
+address: '0x0813DB24'
+kind: function
+status: probable
+summary: Picks between the two eLinkState tag-block pointers (eLinkState+0x38/+0x3C) by the link mode
+  selector stored in eStruct200F360, returning the one whose 'BRE5'-magic block matches byte_813DBAC[r0*4]
+  (high-byte-only if r1!=0), or 0xFF if neither matches.
+interface: (r0 = slot index 0..3, r1 = compare-high-byte-only flag) -> r0 = pointer to matching tag block
+  (eLinkState+0x38/+0x3C target) or 0xFF if none; flags clobbered
+details: 'Stores link_getModeSelector_803DD30''s result (forced to 1 when nonzero) as a byte into eStruct200F360,
+  then indexes byte_813DBAC with r0*4 to get an expected u16 sub-tag. It inspects the two pointers at
+  eLinkState+0x38 and +0x3C, each expected to point at a block laid out like the one sub_813DBC0 builds
+  at 0x200B1B0: magic word 0x42523545 (''BRE5'') at +0 and a u16 tag at +4. If r1 is nonzero both the
+  block tag and expected tag are masked with 0xFF00 so only the high byte is compared. On match it returns
+  the matching block pointer; otherwise 0xFF. Quirk: the initial two-iteration loop performs the same
+  magic/tag checks but both branch outcomes converge on the loop increment, so the loop is effectively
+  dead code — only the post-loop check determines the result.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r1, =0x42523545 / cmp r0, r1 at 813DB4C-813DB56 checks the same magic that sub_813DBC0
+    writes to 0x200B1B0+0; off_813DBA8 table byte_813DBAC indexed by r7=r0<<2 supplies per-slot expected
+    u16 tag compared against ldrh [r6,#4]; eLinkState+0x38/+0x3C pointers are swapped or not based on
+    the mode byte stored to eStruct200F360, selecting which block is validated; mov r0, #0xff at 813DB96
+    is the failure return; mov r0, r6 returns the matching block pointer; Caller battle_getLinkStateCode_803F560
+    uses this in link-battle state resolution, consistent with a link-tag-block lookup'
+  refs:
+  - bn6f/asm/asm37_0.s:4774
+  - 0x0803F560 battle_getLinkStateCode_803F560
+  - 0x0803DD30 link_getModeSelector_803DD30
+  reproduce: python3 tools/asmcat.py 0x0813DB24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are correct: the loop at loc_813DB3C does match 0x42523545 magic and the
+    byte_813DBAC[r0*4] tag, but both bne branches fall through to loc_813DB58, making the loop dead as
+    noted. The post-loop block at 0x813DB5C picks +0x3C or +0x38 based on eStruct200F360 (storing the
+    other as [sp]), compares the same magic+tag (masking 0xFF00 if r1!=0), returns the pointer or 0xFF.
+    However the caller battle_getLinkStateCode_803F560 doesn''t appear to use this directly for the 0xFF/0x80/0
+    result described; name ''e_findBre5TagBlock'' is fine but the ''e_'' prefix on a tag-block search
+    is unusual. Better: ''e_selectBre5Block'' or ''e_pickBre5TagBlock''.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the two blocks at eLinkState+0x38/+0x3C structurally are (only the BRE5 header layout is confirmed
+  via sub_813DBC0)
+- Why the first loop's comparisons are dead (both branches converge) — intentional or a compiled-away
+  early exit
+- Exact meaning of the per-slot expected tags 0x4000/0x0200/0/1 in byte_813DBAC
+- 'The proposal''s mechanics are correct: the loop at loc_813DB3C does match 0x42523545 magic and the
+  byte_813DBAC[r0*4] tag, but both bne branches fall through to loc_813DB58, making the loop dead as noted.
+  The post-loop block at 0x813DB5C picks +0x3C or +0x38 based on eStruct200F360 (storing the other as
+  [sp]), compares the same magic+tag (masking 0xFF00 if r1!=0), returns the pointer or 0xFF. However the
+  caller battle_getLinkStateCode_803F560 doesn''t appear to use this directly for the 0xFF/0x80/0 result
+  described; name ''e_findBre5TagBlock'' is fine but the ''e_'' prefix on a tag-block search is unusual.
+  Better: ''e_selectBre5Block'' or ''e_pickBre5TagBlock''.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813DB24 -> e_pickBre5TagBlock
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813DB24

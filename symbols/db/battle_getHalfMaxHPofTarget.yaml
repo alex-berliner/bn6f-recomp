@@ -1,0 +1,60 @@
+name: battle_getHalfMaxHPofTarget
+address: '0x08010C06'
+kind: function
+status: probable
+summary: Returns half the MaxHP of either the highest-MaxHP opponent actor or the player object (whose
+  alliance is the passed-in flag inverted, per bit8 of GetBattleEffects), capped at 999, or 0 if no player
+  exists.
+interface: (r0 = bool flag (inverted when bit8 set)) -> r0 = half of MaxHP (0-999); flags preserved except
+  compare after cap
+details: 'Calls GetBattleEffects and tests bit 0x8 of the effects bitmask. If the bit is clear, it walks
+  the oBattleState_AliveOpponentActors array (up to 3 entries, 4-byte stride via toolkit''s BattleStatePtr)
+  and takes the highest oBattleObject_MaxHP found. If the bit is set, it instead calls battle_findPlayer
+  with the passed bool inverted and reads that object''s oBattleObject_MaxHP. The chosen MaxHP is halved
+  (lsr #1), clamped to dword 0x3E7 (999), and returned in r0; a null player object yields 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst r0,#8 after GetBattleEffects selects between enemy-array scan and player lookup; loop reads
+    oBattleObject_MaxHP from each entry of oBattleState_AliveOpponentActors and keeps the max; eor r0,r4
+    before battle_findPlayer shows the arg is inverted by the effects bit; lsr r0,#1 halves the value
+    and the 0x3E7 clamp caps it at 999; no callers known, so exact gameplay context (e.g. an HP-halving
+    battle effect) is unconfirmed
+  refs:
+  - bn6f/asm/asm00_2.s:4558
+  - 0x0802D246 GetBattleEffects
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x08010C06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s overall behavior matches the asm: bit8 clear scans AliveOpponentActors for the max
+    MaxHP; bit8 set calls battle_findPlayer with r4 eor''d by 1 (so the bool is inverted). The lsr #1
+    and 999 cap are also correct. However, the proposed interface has r0 as a bool, while the code shows
+    r4 (which is the saved r1, not r0) being used as the alliance argument, suggesting the bool actually
+    comes in r1, not r0. The name ''battle_getHalfMaxHP'' also misrepresents the function''s purpose,
+    which more accurately determines the MaxHP of an enemy (or the player''s partner in inverted-alliance
+    mode), then halves it. Better name: battle_getHalfMaxHPofTarget.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which gameplay feature reads this value — needs callers; what battle effect bit 0x8 corresponds to in
+  GetBattleEffects
+- 'The proposal''s overall behavior matches the asm: bit8 clear scans AliveOpponentActors for the max
+  MaxHP; bit8 set calls battle_findPlayer with r4 eor''d by 1 (so the bool is inverted). The lsr #1 and
+  999 cap are also correct. However, the proposed interface has r0 as a bool, while the code shows r4
+  (which is the saved r1, not r0) being used as the alliance argument, suggesting the bool actually comes
+  in r1, not r0. The name ''battle_getHalfMaxHP'' also misrepresents the function''s purpose, which more
+  accurately determines the MaxHP of an enemy (or the player''s partner in inverted-alliance mode), then
+  halves it. Better name: battle_getHalfMaxHPofTarget.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8010C06 -> battle_getHalfMaxHPofTarget
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010C06

@@ -1,0 +1,58 @@
+name: object_spawnElementCollisionRegionWithFallback
+address: '0x080DCC96'
+kind: function
+status: probable
+summary: Spawns a collision-region object on this battle object's panel and Element using the standard
+  spawner; if it fails, retries via the timestop-persistent (dimming) variant.
+interface: (r5 = battle object (not an r0-style arg)) -> r0 = spawned region object via callee, or undefined
+  on failure path; no meaningful flags to caller
+details: Reads the object's PanelX, PanelY, and Element fields from its oBattleObject struct and passes
+  them, with r3=0, r4=0x0A050701, r6=its DamageAndStaminaDamageCounterDisabler field, and r7=3, to object_spawnCollisionRegion.
+  If oBattleObject_Param2 equals 1 it instead calls object_spawnDimmingCollisionRegion, the variant that
+  keeps updating during timestop. Both branches pass identical arguments; the only difference is which
+  spawner is used. The branch target after the normal spawn only jumps away when the callee returns success-equal
+  flag clear (failure), so errors are silently dropped. The caller's r5 is an object context pointer,
+  so this is a method-like helper on a battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0/r1/r2 of oBattleObject_PanelX/PanelY/Element before both bl's shows the region is placed
+    on the object's panel with its element; cmp r0,#1 / beq selecting object_spawnDimmingCollisionRegion
+    shows Param2 picks the timestop-persistent variant; ldr r4 =0xA050701 constant reused for both calls
+    is the packed region-spawn parameter set; ldr r6 from oBattleObject_DamageAndStaminaDamageCounterDisabler
+    forwards the object's damage-counter-disable flag to the region; callee summaries of object_spawnCollisionRegion
+    / object_spawnDimmingCollisionRegion match the spawn pattern
+  refs:
+  - bn6f/asm/asm31.s:79993
+  - 0x080DCBCC sub_80DCBCC
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DCC96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches: r0=PanelX, r1=PanelY, r2=Element, r3=0, r4=0xA050701, r6=DamageAndStaminaDamageCounterDisabler,
+    r7=3, with r5 as the battle-object context. However, the beq after the normal spawn branches to locret
+    when the spawner returns success, not failure; failure falls through to the dimming variant as a retry.
+    So it is ''try normal, fall back to dimming,'' not the inverse, and the name should not be ''Element''
+    since Element is just one arg.; run wf investigate investigate-20261019-003606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the packed r4 word 0xA050701 (per-field hitbox/flags layout of the spawn spawner)
+- What kind of object's event table calls this (caller sub_80DCBCC is itself unnamed)
+- 'The asm matches: r0=PanelX, r1=PanelY, r2=Element, r3=0, r4=0xA050701, r6=DamageAndStaminaDamageCounterDisabler,
+  r7=3, with r5 as the battle-object context. However, the beq after the normal spawn branches to locret
+  when the spawner returns success, not failure; failure falls through to the dimming variant as a retry.
+  So it is ''try normal, fall back to dimming,'' not the inverse, and the name should not be ''Element''
+  since Element is just one arg.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DCC96 -> object_spawnElementCollisionRegionWithFallback
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCC96

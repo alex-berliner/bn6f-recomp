@@ -1,0 +1,67 @@
+name: rfu_processConnectionState
+address: '0x08145DD8'
+kind: function
+status: probable
+summary: 'Per-tick maintenance of the RFU parent/child link: detects new child joins (0x10), times out
+  and drops stale slots (0x11), force-disconnects when last child leaves (0x12), or resets state when
+  no children remain (0x14); only runs when link-state byte is 5..8 and advances the +0x7 sub-state to
+  drive the connection FSM.'
+interface: () -> void; no return value, operates on eStruct200FE00 link state and fires the registered
+  connection callback with reason codes 0x10/0x11/0x12/0x14
+details: 'Runs only while the link-state byte at eStruct200FE00+4 is 5..8 (connected/parent states). It
+  XORs the current child bitmap (byte at dword_2010CC0+2) with the stored one at +0xC to detect newly
+  joined children, fires callback 0x10 for them, and stores the bitmap. It then loops over the 4 child
+  slots: joined slots get a countdown at struct+0x28+i decremented each tick; on timeout (or if a slot''s
+  entry at dword_2010CB0 fails the 0x46/+0x61 check, or the child''s id is not found in the parent''s
+  table at dword_2010CC0+i*32+0x18) the slot is dropped — clearing its bit at +0x24, zeroing its timer
+  and calling rfu_clearSlot(8, slot) — and callback 0x11 fires if any dropped this tick. If the disconnect
+  flag +0xD is set and all children are accounted for, it calls rfu_forceDisconnect and fires callback
+  0x12. Finally, when no children remain (+0x24 == 0) and state is 8 (parent waiting for children to leave),
+  it resets the state bytes and fires callback 0x14, or advances the sub-state at +0x7 (values 1/3 ->
+  next states 5/9) if +0x7 is nonzero.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'guard: only state bytes 5..8 (sub r0,#5; cmp r0,#3 bls; cmp r0,#8) reach the body; loop over
+    4 slots with per-slot countdown at eStruct200FE00+0x28+i*2, cleared via rfu_clearSlot(8, i) on expiry;
+    child-join detection via eor/and of dword_2010CC0->byte[2] with stored byte_200FE0C, then callback
+    0x10; rfu_forceDisconnect called when byte_200FE0D set and all child bits verified, firing callback
+    0x12; all callers are sub_81453F0, which repeatedly calls this at six sites — a state-machine tick
+    dispatcher'
+  refs:
+  - bn6f/asm/libs.s:4023
+  - 0x081453F0 sub_81453F0
+  - 0x081454A4 sub_81453F0
+  - 0x081454C8 sub_81453F0
+  - 0x081461B0 rfu_fireConnCallbackAndClearState
+  - 0x081461D8 rfu_forceDisconnect
+  - 0x0814A934 rfu_clearSlot
+  reproduce: python3 tools/asmcat.py 0x08145DD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Sub-state transitions at +0x7 are misstated: code sets +0x4=5 when +0x7==1 (default), +0x4=9 when
+    +0x7==2 (writes 3 to +0x7), plus an extra branch when +0!=0 that resets +0x7=8,+0x4=5 — not ''1/3
+    → 5/9''. Otherwise the per-tick parent/child bookkeeping (join detection, timeout, drop, 0x10/0x11/0x12/0x14
+    callbacks) matches the asm. Revised summary tightens the transition wording.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the 0x46 field at dword_2010CB0 entry+0x34 and byte +0x61 (some child entity state?)
+- semantics of the sub-state byte at +0x7 values 1/2/3 and the state codes 5/9
+- what sub_81453F0's other branches do (would confirm this is the periodic poll during parent mode)
+- 'Sub-state transitions at +0x7 are misstated: code sets +0x4=5 when +0x7==1 (default), +0x4=9 when +0x7==2
+  (writes 3 to +0x7), plus an extra branch when +0!=0 that resets +0x7=8,+0x4=5 — not ''1/3 → 5/9''. Otherwise
+  the per-tick parent/child bookkeeping (join detection, timeout, drop, 0x10/0x11/0x12/0x14 callbacks)
+  matches the asm. Revised summary tightens the transition wording.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8145DD8 -> rfu_processConnectionState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8145DD8

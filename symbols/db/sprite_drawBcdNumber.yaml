@@ -1,0 +1,64 @@
+name: sprite_drawBcdNumber
+address: '0x08132A14'
+kind: function
+status: probable
+summary: Renders a 5-digit number as a row of digit sprites by BCD-converting the input and queueing one
+  OAM entry per digit, spacing each digit 7 units apart, LSB at the rightmost offset.
+interface: (r0 = attr/pos field A, r1 = attr/pos field B (packed as (r0<<16)|r1), r2 = base tile index,
+  r3 = value) -> r0 = queueOamEntry result; calls through thunk
+details: 'Packs r0/r1 into one 32-bit attribute value, adds 0x1000 (a flag bit, likely 256-color palette
+  in the tile/attr field), and orrs r2<<12 into r5 as the digit-tile base. Calls memory_bcdConvert on
+  r3 to get an 8-digit packed BCD value, then loops five times (r7 = 28,21,14,7,0): each pass takes the
+  low BCD nibble, adds it to the tile base, and calls sprite_queueOamEntry(base + r7, tile + digit, 2,
+  7), shifting r6 right by 4. So the number is drawn digit-by-digit, spaced 7 units apart, most-significant
+  digit first at the largest offset. Quirk: r5 is orr''d before ever being initialized in this function,
+  so the low 12 bits of the tile base come from the caller''s r5 (callee-saved, pushed/popped) — presumably
+  always 0 in practice.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl memory_bcdConvert on r3 immediately before the digit loop — the displayed value is BCD-encoded;
+    loop body: r2 = r6 & 0xF, r1 = r5 + digit, then bl sprite_queueOamEntryThunk_802FE28 — one sprite
+    per BCD nibble; r7 = 0x1C then sub r7,#7 with bge — five digits at offsets 28/21/14/7/0, uniform 7-unit
+    spacing; add r4 = ((r0<<16)|r1) + 0x1000 passed as first arg to queueOamEntry — per-instance sprite
+    attribute/position base; only caller 0x0811B194 passes r2<<12, consistent with r2 being a tile-sheet
+    base index'
+  refs:
+  - bn6f/asm/asm36.s:5372
+  - 0x0811B194 sub_811B194
+  - 0x08000C00 memory_bcdConvert
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x08132A14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: `orr r5, r2` does indeed read uninitialized r5 (caller-saved
+    quirk), and the loop at 0x8132A2C iterates 5 times with r7 starting at 0x1c and stepping by 7, using
+    `and r2, r6 #0xf` for the BCD digit. However the proposal''s name `sprite_drawBcdNumber` is fine,
+    but the summary''s claim about ''most-significant digit first at the largest offset'' is backwards:
+    r7 starts at 28 and decreases, so the first queued digit (LSB of BCD) is placed at the rightmost (largest
+    x) offset. Also ''rendering as a row'' is fine, but the BCD is iterated LSB-first from the right,
+    not MSD-first.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the caller sub_811B194 passes (which counter/HP value is drawn) and what the 2 and 7 arguments
+  to queueOamEntry mean
+- Whether the 0x1000 flag and the uninitialized low 12 bits of r5 are intentional or caller-guaranteed
+  zeros
+- 'The code matches the proposal''s mechanics: `orr r5, r2` does indeed read uninitialized r5 (caller-saved
+  quirk), and the loop at 0x8132A2C iterates 5 times with r7 starting at 0x1c and stepping by 7, using
+  `and r2, r6 #0xf` for the BCD digit. However the proposal''s name `sprite_drawBcdNumber` is fine, but
+  the summary''s claim about ''most-significant digit first at the largest offset'' is backwards: r7 starts
+  at 28 and decreases, so the first queued digit (LSB of BCD) is placed at the rightmost (largest x) offset.
+  Also ''rendering as a row'' is fine, but the BCD is iterated LSB-first from the right, not MSD-first.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8132A14 -> sprite_drawBcdNumber
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132A14

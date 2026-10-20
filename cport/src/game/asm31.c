@@ -1619,7 +1619,7 @@ Next sub_80C0EE2(void) {
             GUEST_CALL(battle_killObjectWithDependents);
         } else {
             R0 = related;
-            GUEST_CALL(sub_80E14AC);
+            GUEST_CALL(battle_flagSelfAndRelatedForRemoval);
         }
     }
 

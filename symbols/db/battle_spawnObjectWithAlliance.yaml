@@ -1,0 +1,70 @@
+name: battle_spawnObjectWithAlliance
+address: '0x080D3742'
+kind: function
+status: probable
+summary: Spawns a battle object of kind 0x75 on the given panel (r0=x, r1=y) using object_spawnType3,
+  copies AllianceAndDirectionFlip from the caller-supplied reference object (r5), writes r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  sets bit 0x10 in oObjectHeader_Flags, and registers it via setFieldBattleObject_800F614.
+interface: (r0 = panelX, r1 = panelY, r2 = spawn param, r5 = source battle object for alliance, r6 = value
+  for the damage/stamina-counter-disabler field) -> r0 = spawned object pointer (0 on failure); Z flag
+  from spawn success
+details: The wrapper pushes the caller's r0-r2/r5 onto the stack so object_spawnType3 receives them as
+  its five spawn arguments with the object kind 0x75 in r0; the callee returns the new object pointer
+  in r5 with success in flags. mov r0,r5 is placed before pop {r1-r3,r5} so the pointer survives the reload
+  of the caller's original arguments. The wrapper then writes the caller's original r0/r1 into oBattleObject_PanelX/PanelY
+  and r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler, copies AllianceAndDirectionFlip from
+  the caller-supplied reference object in r5, and sets bit 0x10 in the new object's oObjectHeader_Flags.
+  Finally it calls setFieldBattleObject_800F614 with r1 = alliance & 0xff and r2 = 1 to hook the object
+  into the field/battle object list. What object kind 0x75 represents is not determinable from this function
+  alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: push {r0-r2,r5}; mov r0,#0x75; bl object_spawnType3 — caller args become the five spawn arguments,
+    kind 0x75; mov r0,r5 immediately before pop {r1-r3,r5} — preserves the callee's returned object pointer
+    (in r5) across the argument reload; strb r1,[r0,#oBattleObject_PanelX] / strb r2,[r0,#oBattleObject_PanelY]
+    — caller's original r0/r1 are panel coordinates; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip];
+    strh r3,[r0,#...] plus flag 0x10 into oObjectHeader_Flags — alliance inherited from the caller's r5
+    object; mov r1,#0xff; and r1,r3; mov r2,#1; bl setFieldBattleObject_800F614 — registers the object
+    with its team in the battle field
+  refs:
+  - bn6f/asm/asm31.s:59942
+  - 0x080E5F10 sub_80E5F10
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080D3742
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The wrapper does copy the alliance from a reference object (ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip])
+    and writes r6 into the damage/stamina counter field, and the call to setFieldBattleObject_800F614
+    matches. However, the interface description is wrong: at pop, r5 is reloaded as a caller-saved register
+    but r0 still holds the spawn return value, so the spawned pointer survives in r0, not because of an
+    extra `mov r0,r5`. Also the interface should note r6 is the third caller argument (pushed via push
+    {r0-r2,r5} so only r0-r2,r5 survive; r6 is the 4th caller arg). The kind 0x75 spawn + alliance copy
+    + flag-set pattern suggests a more specific ''battle'' name is fine.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What battle object kind 0x75 is (name/behavior) — its initializer or a caller context would tell
+- What sub_80E5F10 is and what it passes in r2 and r6 (meaning of the DamageAndStaminaDamageCounterDisabler
+  value)
+- Exact semantics of setFieldBattleObject_800F614's r1/r2 arguments
+- 'The wrapper does copy the alliance from a reference object (ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip])
+  and writes r6 into the damage/stamina counter field, and the call to setFieldBattleObject_800F614 matches.
+  However, the interface description is wrong: at pop, r5 is reloaded as a caller-saved register but r0
+  still holds the spawn return value, so the spawned pointer survives in r0, not because of an extra `mov
+  r0,r5`. Also the interface should note r6 is the third caller argument (pushed via push {r0-r2,r5} so
+  only r0-r2,r5 survive; r6 is the 4th caller arg). The kind 0x75 spawn + alliance copy + flag-set pattern
+  suggests a more specific ''battle'' name is fine.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D3742 -> battle_spawnObjectWithAlliance
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3742

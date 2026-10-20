@@ -1,0 +1,61 @@
+name: object_spawnAttackProjectile
+address: '0x080DE660'
+kind: function
+status: probable
+summary: Forces battle object type 0xC9 and calls object_spawnType3; on success, fills PanelX/PanelY/Element
+  from saved r0-r2, Damage from r6, and copies AllianceAndDirectionFlip from the caller-supplied source
+  object in r5.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r3 = spawn arg 4 passthrough, r5 = source battle object,
+  r6 = damage word, stack arg passthrough) -> r0 = new object pointer or 0 on failure; Z from spawn success
+details: Saves the caller's r0-r2, forces the object type to 0xC9 (201) and calls object_spawnType3, forwarding
+  r1-r3 and any stack arguments unchanged. If the spawn fails, it returns immediately with r0 = 0. On
+  success it writes the caller's original r0/r1/r2 into the new object's PanelX, PanelY and Element fields,
+  stores the caller's r6 into the DamageAndStaminaDamageCounterDisabler word, and copies the AllianceAndDirectionFlip
+  halfword from the source object pointer the caller kept in r5. It is a pass-through argument marshaller,
+  not a state machine of its own.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xc9 before bl object_spawnType3 fixes the spawned object type; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    map popped caller args (orig r0-r2) onto the new object; str r6, [r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    uses the caller''s damage value directly; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh
+    r3,[r0,...] copies team/flip from the caller''s source object; sole caller ai_attackStepShoot fires
+    projectile attacks from the object''s damage/element settings, matching the fields set'
+  refs:
+  - bn6f/asm/asm31.s:83411
+  - 0x080EF4D0 ai_attackStepShoot
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DE660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal accurately describes the mechanics: it forces type 0xC9, calls object_spawnType3, then
+    writes PanelX/PanelY/Element from saved r0/r1/r2, Damage from r6, and AllianceAndDirectionFlip from
+    the source in r5. The name ''ai_spawnAttackProjectile'' is misleading since the wrapper is generic
+    and the only caller is ai_attackStepShoot; however, the prefix list has no perfect fit. A better name
+    is ''object_spawnAttackProjectile'' (object prefix is allowed). The summary''s ''thin wrapper'' and
+    field-fill description match the code exactly.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact identity of object type 0xC9 (which projectile/attack it renders as)
+- meaning of the 4th/5th spawn arguments passed through unchanged
+- whether object_spawnType3 also returns the pointer in r5 (the mov r0,r5 before pop assumes the new object
+  is addressable there)
+- 'The proposal accurately describes the mechanics: it forces type 0xC9, calls object_spawnType3, then
+  writes PanelX/PanelY/Element from saved r0/r1/r2, Damage from r6, and AllianceAndDirectionFlip from
+  the source in r5. The name ''ai_spawnAttackProjectile'' is misleading since the wrapper is generic and
+  the only caller is ai_attackStepShoot; however, the prefix list has no perfect fit. A better name is
+  ''object_spawnAttackProjectile'' (object prefix is allowed). The summary''s ''thin wrapper'' and field-fill
+  description match the code exactly.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE660 -> object_spawnAttackProjectile
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE660

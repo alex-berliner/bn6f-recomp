@@ -1,0 +1,66 @@
+name: battle_flagSelfAndRelatedForRemoval
+address: '0x080E14AC'
+kind: function
+status: probable
+summary: Sets the deletion flag bit (0x2) on the battle object's header, calls teardown sub_80E0DD0 on
+  its subordinate (if non-NULL), and sets the same flag on oCollisionData_LastHitObjectPtr and the object
+  at collision_data+0x4C (each if non-NULL); finally dispatches state 1 via dispatch_801DA48.
+interface: (r0 = battle object) -> r0 = dispatch_801DA48 result; destroys nothing directly but sets oObjectHeader_Flags
+  |= 2 on up to four objects
+details: Reads the collision-data pointer from the battle object and unconditionally sets bit 1 (0x2)
+  of the object's own oObjectHeader_Flags, a flag the engine evidently treats as 'remove this object'.
+  It then does the same to the subordinate object via oAIData_SubordinateObjectPtr (calling sub_80E0DD0
+  on it, likely its own teardown/destructor), to the object in oCollisionData_LastHitObjectPtr, and to
+  the object stored at collision data +0x4C, each only if non-NULL. Finally it calls dispatch_801DA48
+  with r0=1, the standard one-shot state-dispatch idiom used by one-frame object states. The caller at
+  0x80C0EE2 waits 4 frames after a one-shot setup call and then queues its object for destruction, matching
+  a self-destruct-with-victims behavior (e.g. a bomb, trap or panel-clearing attack entity).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sets oObjectHeader_Flags |= 2 on r0 at start (strb after orr #2, 0x080E14B2); same |= 2 applied
+    to [r2,#oAIData_SubordinateObjectPtr] with sub_80E0DD0 teardown call; same |= 2 applied to oCollisionData_LastHitObjectPtr
+    and collision+0x4C object, both null-guarded; ends with mov r0,#1; bl dispatch_801DA48, the standard
+    object one-shot state dispatch; caller 0x80C0EE2 is described as a one-shot that queues its object
+    for destruction afterwards'
+  refs:
+  - bn6f/asm/asm31.s:89737
+  - 0x080C0EE2 sub_80C0EE2
+  - 0x080E12BA sub_80E12BA
+  - 0x080E1502 sub_80E1502
+  - 0x0801DA48 dispatch_801DA48
+  - 0x080E0DD0 sub_80E0DD0
+  reproduce: python3 tools/asmcat.py 0x080E14AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does set bit 1 on the battle object''s oObjectHeader_Flags, but the subordinate object
+    is passed to sub_80E0DD0 (not just flag-set), while LastHitObject and the object at +0x4C only get
+    the flag bit set (no destructor call). So the four-object treatment is asymmetric, not a uniform ''mark
+    + destroy'' as the summary states. The name is fine, but the summary overstates symmetry. Note also
+    the self flag-set happens before the subordinate teardown, so r0 is the original battle object for
+    dispatch_801DA48 only after the subordinate branch.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of Flags bit 0x2 (assume 'marked for deletion') could be confirmed from the object update
+  loop that tests it
+- what sub_80E0DD0 does to the subordinate object (likely its destructor or flag-propagation)
+- what object is held at collision data +0x4C (a second victim or a spawned child?)
+- The code does set bit 1 on the battle object's oObjectHeader_Flags, but the subordinate object is passed
+  to sub_80E0DD0 (not just flag-set), while LastHitObject and the object at +0x4C only get the flag bit
+  set (no destructor call). So the four-object treatment is asymmetric, not a uniform 'mark + destroy'
+  as the summary states. The name is fine, but the summary overstates symmetry. Note also the self flag-set
+  happens before the subordinate teardown, so r0 is the original battle object for dispatch_801DA48 only
+  after the subordinate branch.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E14AC -> battle_flagSelfAndRelatedForRemoval
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E14AC

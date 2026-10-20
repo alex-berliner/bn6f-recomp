@@ -974,7 +974,7 @@ Next sub_8013E58(void) {
     switch (index) {
     case 0: GUEST_CALL(nullsub_45);   break;
     case 1: GUEST_CALL(sub_8013EC2); break;
-    case 2: GUEST_CALL(sub_8013ECC); break;
+    case 2: GUEST_CALL(object_giveInvulnerability5sec); break;
     case 3: GUEST_CALL(battle_applyBlindStatus); break;
     case 4: GUEST_CALL(sub_8013EE6); break;
     case 5: GUEST_CALL(sub_8013EF0); break;

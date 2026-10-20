@@ -1,0 +1,60 @@
+name: object_enterPhase4Moving
+address: '0x080CBF8C'
+kind: function
+status: probable
+summary: Sets the object's phase to 4 with a 60-frame Timer, clears ObjectFlags1 bit 0x40, sets the CURRENTLY_MOVING_1
+  bit, and copies the current PanelX/PanelY into FuturePanelX/FuturePanelY.
+interface: (r5 = battle object pointer; r0 = scratch flag bits) -> r0 = flag bits after setFlag1; no meaningful
+  return
+details: Stores 0x3C into oBattleObject_Timer and 4 into oBattleObject_CurPhaseAndPhaseInitialized, so
+  the object enters phase 4 with a one-second countdown. It clears ObjectFlags1 bit 0x40 and sets the
+  OBJECT_FLAGS_CURRENTLY_MOVING_1 bit via the CollisionData helpers. Finally it copies oBattleObject_PanelX/PanelY
+  into oBattleObject_FuturePanelX/FuturePanelY, making the movement target the current tile. The object
+  is passed in r5 rather than r0, so r0 only carries flag bitfields for the helpers. This looks like the
+  setup step of a delayed move/teleport in an enemy or object AI state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh #0x3C to oBattleObject_Timer and #4 to CurPhaseAndPhaseInitialized (asm lines 3-6) sets
+    a 60-frame phase-4 state; object_clearFlag(0x40) then object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1)
+    marks the object as moving (asm lines 7-11); FuturePanelX/Y are written from PanelX/Y, so the move
+    target is the current tile (asm lines 12-15); callees object_setFlag1/object_clearFlag act on a battle
+    object''s CollisionData ObjectFlags1, confirming r5 is a battle object'
+  refs:
+  - bn6f/asm/asm31.s:43682
+  - 0x080CBCB0 sub_80CBCB0
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080CBF8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s name and mechanics match the code (0x3C into Timer, phase 4, clear 0x40, set MOVING
+    flag, copy panel to future panel). However ''battle_beginMoveTimerPhase'' is awkward and misleading
+    — it''s not beginning a ''move timer phase'', it''s simply placing the object into phase 4 with a
+    60-frame timer and marking it as currently moving while pointing its future panel at its current one.
+    The flag operations are flag bitfields, not a scratch slot, so the interface description is off. A
+    name like ''object_setMovingOnCurrentPanel'' or ''object_enterPhase4Moving'' fits better.; run wf
+    investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what object/caller sub_80CBCB0 belongs to, and what phase 4 does in its state machine
+- whether the 0x40 flag cleared here is a specific known ObjectFlags1 bit
+- why FuturePanel is set to the current panel — later overwritten, or an intentional in-place move
+- The proposal's name and mechanics match the code (0x3C into Timer, phase 4, clear 0x40, set MOVING flag,
+  copy panel to future panel). However 'battle_beginMoveTimerPhase' is awkward and misleading — it's not
+  beginning a 'move timer phase', it's simply placing the object into phase 4 with a 60-frame timer and
+  marking it as currently moving while pointing its future panel at its current one. The flag operations
+  are flag bitfields, not a scratch slot, so the interface description is off. A name like 'object_setMovingOnCurrentPanel'
+  or 'object_enterPhase4Moving' fits better.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CBF8C -> object_enterPhase4Moving
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBF8C

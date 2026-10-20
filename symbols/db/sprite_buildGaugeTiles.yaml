@@ -1,0 +1,66 @@
+name: sprite_buildGaugeTiles
+address: '0x0811E744'
+kind: function
+status: probable
+summary: Builds a 13-tile (0x340-byte) 4bpp horizontal gauge strip with palette indices 10-14 into unk_2027000,
+  masking unused tiles per sub_8144010's 0-8 fill level, then DMA-queues it to VRAM 0x6014180.
+interface: () -> void; r0-r3 clobbered
+details: Zero-fills the 0x340-byte buffer at unk_2027000, then calls sub_8144010 whose return (r6, treated
+  as 0-8) is a fill/progress level. It reads 13 words from byte_811E7A0 (bytes 0xAA/0xBB/0xCC/0xDD/0xEE
+  = pairs of 2-bit fields 2/3 expanded to 4bpp nibbles 0xA-0xE, i.e. palette slots 10-14) and, when the
+  level is below 8, masks each word with 0xFFFFFFFF >> (32-4*level) so only the first 'level' 2-bit entries
+  survive. Each word is then written 10 times into a 0x40-byte block (remaining words stay zero from the
+  initial fill), giving 13 blocks of 0x40 = 0x340 bytes total. Finally the buffer is queued to VRAM dest
+  0x6014180 via QueueWordAlignedGFXTransfer (copy_type 3). The pattern (long runs of one color separated
+  by single transition bytes 0xBA/0xCB) looks like a shaded horizontal bar/gauge whose visible portion
+  grows with sub_8144010's value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ZeroFillByWord with size 0x34<<4=0x340 on unk_2027000, then QueueWordAlignedGFXTransfer
+    to 0x6014180 (same size); byte_811E7A0 holds 0x34 bytes of 0xAA/0xBB/0xCC/0xDD/0xEE, i.e. 2-bit fields
+    that land as 4bpp nibbles 0xA-0xE; inner loop str r0,[r7,r3] for r3=0..0x28 then r7+=0x40 replicates
+    each source word 10 times per 0x40 block; mask: lsl r1,r6,#2; lsr r2=0xFFFFFFFF by 0x20-r1 keeps only
+    first r6 two-bit entries when sub_8144010''s result < 8; sole caller sub_8144048 also calls sub_8144010,
+    consistent with a level-driven redraw'
+  refs:
+  - bn6f/asm/asm32.s:33799
+  - 0x08144048 sub_8144048
+  - 0x08000AC4 QueueWordAlignedGFXTransfer
+  - 0x080008E0 ZeroFillByWord
+  - 0x08144010 sub_8144010
+  reproduce: python3 tools/asmcat.py 0x0811E744
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The structural reading matches: 13 iterations (loop r4=0..0x34 step 4), 10 stores per iter (r3=0..0x28
+    step 4 = 10 words = 0x28 bytes, not 0x40), so each block is 0x28 bytes, total 13*0x28=0x340, matching
+    the 0x34<<4 DMA size. The fill-level logic is correct: when r6<8 it masks off high bits so only the
+    first r6 2-bit slots survive, then forces r6=8 to fall through. However, the byte patterns (0xAA→0xBB
+    transitions, etc.) are pairs of identical nibbles, so palette indices 10-14 used as 4bpp tiles with
+    each 2bpp slot occupying 2 bytes, and the destination 0x6014180 with 0x340 bytes strongly suggests
+    a 13-tile gauge sprite strip. The name ''sprite_fillGaugeTiles'' is plausible; a clearer snake-case-fitting
+    name is ''sprite_buildGaugeTiles''.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8144010 returns (the 0-8 fill level) and what in-game meter it tracks
+- Which UI element uses tiles at VRAM 0x6014180 and the palette at indices 10-14
+- 'The structural reading matches: 13 iterations (loop r4=0..0x34 step 4), 10 stores per iter (r3=0..0x28
+  step 4 = 10 words = 0x28 bytes, not 0x40), so each block is 0x28 bytes, total 13*0x28=0x340, matching
+  the 0x34<<4 DMA size. The fill-level logic is correct: when r6<8 it masks off high bits so only the
+  first r6 2-bit slots survive, then forces r6=8 to fall through. However, the byte patterns (0xAA→0xBB
+  transitions, etc.) are pairs of identical nibbles, so palette indices 10-14 used as 4bpp tiles with
+  each 2bpp slot occupying 2 bytes, and the destination 0x6014180 with 0x340 bytes strongly suggests a
+  13-tile gauge sprite strip. The name ''sprite_fillGaugeTiles'' is plausible; a clearer snake-case-fitting
+  name is ''sprite_buildGaugeTiles''.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811E744 -> sprite_buildGaugeTiles
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E744

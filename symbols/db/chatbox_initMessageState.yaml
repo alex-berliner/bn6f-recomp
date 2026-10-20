@@ -1,0 +1,59 @@
+name: chatbox_initMessageState
+address: '0x08131864'
+kind: function
+status: probable
+summary: Zeros the 0x80-byte chatbox message buffer at unk_2037700, resets byte 0xC to 0 and byte 0x70
+  to 1, sets bit 3 of the owning object's status byte at r5+0x1B, then tail-calls chatbox_8040818 to set
+  up a new message.
+interface: (r5 set by caller = owning object/state pointer) -> r0 = clobbered by calls; [r5+0x1B] bit
+  3 set
+details: The routine zero-fills 0x80 bytes at unk_2037700 (the message/text buffer), then sets byte 203770C
+  (offset 0xC in the buffer) to 0 and byte at offset 0x70 to 1, likely clearing a length/cursor and marking
+  the buffer in use. It also ORs bit 0x8 into the byte at r5+0x1B of an object passed via r5 (never set
+  inside, so the caller must preload it), presumably a 'text active/queued' status flag. Finally it calls
+  chatbox_8040818, so this looks like setup before displaying or refreshing chatbox text.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl ZeroFillByWord with r1=0x80 over unk_2037700 zeroes the message buffer; strb r0,[r4,#0xC]
+    and strb r0,[r4,#0x70] set buffer header fields 0/1; ldrb/orr/strb on [r5,#0x1B] with 0x8 toggles
+    a status bit of the caller-provided object; trailing bl chatbox_8040818 ties it to the chatbox subsystem;
+    sole caller sub_8130D40 must supply r5, implying per-object text state
+  refs:
+  - bn6f/asm/asm36.s:3213
+  - 0x08130D40 sub_8130D40
+  - 0x080008E0 ZeroFillByWord
+  - 0x08040818 chatbox_8040818
+  reproduce: python3 tools/asmcat.py 0x08131864
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it zero-fills 0x80 bytes at unk_2037700, writes 0 to offset 0xC,
+    writes 1 to offset 0x70, OR-s bit 3 into r5+0x1B, and tail-calls chatbox_8040818. However, chatbox_8040818
+    is a tail call (no pop between bl and ret), making this just initialization that resets state. The
+    proposed name fits but a name reflecting state reset plus chatbox setup is fine; ''chatbox_initMessageState''
+    conveys this adequately and the summary is accurate, though note r5 is never set by the function itself
+    and r5+0x1B is the only object-state flag touched here.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what chatbox_8040818 does (print vs reset)
+- what structure r5 points to and the meaning of the 0x8 bit at +0x1B
+- exact field roles of offsets 0xC and 0x70 in the 0x80-byte buffer
+- 'The code matches the proposal: it zero-fills 0x80 bytes at unk_2037700, writes 0 to offset 0xC, writes
+  1 to offset 0x70, OR-s bit 3 into r5+0x1B, and tail-calls chatbox_8040818. However, chatbox_8040818
+  is a tail call (no pop between bl and ret), making this just initialization that resets state. The proposed
+  name fits but a name reflecting state reset plus chatbox setup is fine; ''chatbox_initMessageState''
+  conveys this adequately and the summary is accurate, though note r5 is never set by the function itself
+  and r5+0x1B is the only object-state flag touched here.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8131864 -> chatbox_initMessageState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131864

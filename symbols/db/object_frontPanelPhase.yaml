@@ -1,0 +1,62 @@
+name: object_frontPanelPhase
+address: '0x080E7668'
+kind: function
+status: probable
+summary: 'Battle-object phase: on entry, test the panel in front via object_checkPanelParameters and call
+  sub_80DB2C6 on match, then idle 60 frames before advancing CurAction to 0xC.'
+interface: (r5 = battle object) -> sets oBattleObject_Timer=60, oBattleObject_PhaseInitialized=4 on entry;
+  after 60 frames sets oBattleObject_CurAction=0xC, oBattleObject_CurPhaseAndPhaseInitialized=0; no return
+  value used
+details: Runs as a per-frame update for a battle object held in r5. On the first frame (PhaseInitialized==0)
+  it gets the object's facing (+1/-1 via object_getFrontDirection), reads an 8-byte per-alliance table
+  at byte_80E76C4 (both alliances get mask words 0x10 and 0x0F880080), and calls object_checkPanelParameters
+  on (PanelX+frontDir, PanelY) to test the panel ahead. If the panel state matches, it calls sub_80DB2C6
+  passing the object's Element, Params, DamageAndStaminaDamageCounterDisabler and RelatedObject1Ptr (with
+  the object itself pushed as a 5th arg). It then sets Timer=0x3C and PhaseInitialized=4; each subsequent
+  frame decrements Timer, and when it expires the object moves to CurAction=0xC with phase reset. The
+  identical two 8-byte table entries mean front/enemy objects check the same panel condition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_80E76AC — one-time init then per-frame
+    timer wait; bl object_getFrontDirection; add r0,r0,r1 (PanelX) — computes the panel coordinate in
+    front of the object; ldr r2/r3 from byte_80E76C4 indexed by Alliance<<3, then bl object_checkPanelParameters
+    — panel flag-mask test, table identical for both alliances (0x10 / 0x0F880080); ldr r2 Element / r4
+    Params / r6 Damage... / r5 RelatedObject1Ptr; bl sub_80DB2C6 — conditional action on the matching
+    panel; mov r0,#0x3C; strh Timer; ... mov r0,#0xC; strb CurAction — 60-frame delay then transition
+    to action 0xC
+  refs:
+  - bn6f/asm/asm31.s:103637
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080DB2C6 sub_80DB2C6
+  reproduce: python3 tools/asmcat.py 0x080E7668
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: face direction, table lookup, panel check ahead, call sub_80DB2C6, wait 0x3C frames,
+    then set CurAction=0xC. However the summary''s wording ''triggers sub_80DB2C6, then idles 60 frames
+    before advancing'' implies sub_80DB2C6 runs every frame; it only runs on the entry frame (PhaseInitialized==0)
+    before Timer is set. Also note strh on CurPhaseAndPhaseInitialized clears the phase word (not just
+    PhaseInitialized).; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80DB2C6 does with Element/Params/RelatedObject1Ptr (likely spawns a panel effect or deals with
+  the tile) — its body was not shown
+- Which object uses this handler and what panel state mask 0x10/0x0F880080 denotes (e.g. hole/cracked/poison)
+- No caller found, so which phase/state table references this handler is unknown
+- 'The flow matches: face direction, table lookup, panel check ahead, call sub_80DB2C6, wait 0x3C frames,
+  then set CurAction=0xC. However the summary''s wording ''triggers sub_80DB2C6, then idles 60 frames
+  before advancing'' implies sub_80DB2C6 runs every frame; it only runs on the entry frame (PhaseInitialized==0)
+  before Timer is set. Also note strh on CurPhaseAndPhaseInitialized clears the phase word (not just PhaseInitialized).'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E7668 -> object_frontPanelPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7668

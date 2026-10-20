@@ -1,0 +1,56 @@
+name: battle_runFacingTileCheck
+address: '0x0802671C'
+kind: function
+status: probable
+summary: Loads the facing-offset table at byte_80267CC into r0 and tail-calls battle_checkFacingOffsets,
+  running the tile-offset check against that hardcoded table.
+interface: (r1 = object) -> r0 = nonzero as soon as a checker on a mirrored relative tile succeeds; flags
+  from callee
+details: 'Five-instruction wrapper: it loads the address of byte_80267CC into r0 (clobbering any r0 argument,
+  so the caller must pass the object in r1) and tail-calls battle_checkFacingOffsets, which walks the
+  0x7F-terminated signed tile-offset table, mirrors each offset by the object''s facing, and returns nonzero
+  the first time a checker on the resulting tile succeeds. So this function is simply the same check bound
+  to one hardcoded table. The identity of the checkers and the meaning of byte_80267CC''s offsets are
+  inherited from the callee and not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_8026838 =byte_80267CC overwrites r0, so the table is hardcoded and the input must
+    be in r1; bl battle_checkFacingOffsets with no further setup means the wrapper only binds a fixed
+    table to that callee; callee summary: walks a 0x7F-terminated table of signed tile offsets mirrored
+    by facing and returns nonzero on the first successful checker; no callers known, so no gameplay context
+    constrains the purpose'
+  refs:
+  - bn6f/asm/asm03_0.s:426
+  - 0x080265D0 battle_checkFacingOffsets
+  reproduce: python3 tools/asmcat.py 0x0802671C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code is a 5-instruction wrapper that loads byte_80267CC into r0 and tail-calls battle_checkFacingOffsets,
+    matching the proposal''s behavior. However, the proposed name uses ''Default'' which is speculative
+    — the callee''s parameter is just a table pointer with no indication it represents a ''default'' variant.
+    Also, the interface says r1 = object but the code passes the table in r0 and doesn''t load r1 at all,
+    suggesting this is a tail-call where r0 is the table and the object comes from a shared/global rather
+    than r1.; run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- contents of byte_80267CC (which offsets and which checker ids)
+- which battle objects/callsites invoke this variant
+- confirm that battle_checkFacingOffsets takes the table in r0 and object in r1
+- The code is a 5-instruction wrapper that loads byte_80267CC into r0 and tail-calls battle_checkFacingOffsets,
+  matching the proposal's behavior. However, the proposed name uses 'Default' which is speculative — the
+  callee's parameter is just a table pointer with no indication it represents a 'default' variant. Also,
+  the interface says r1 = object but the code passes the table in r0 and doesn't load r1 at all, suggesting
+  this is a tail-call where r0 is the table and the object comes from a shared/global rather than r1.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802671C -> battle_runFacingTileCheck
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802671C

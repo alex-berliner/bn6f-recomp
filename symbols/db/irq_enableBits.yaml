@@ -1,0 +1,50 @@
+name: irq_enableBits
+address: '0x03005DEC'
+kind: function
+status: probable
+summary: Atomically ORs the IE bits in r0 into the Interrupt Enable register by briefly clearing the Interrupt
+  Master Enable register, preserving r4 and returning nothing.
+interface: (r0 = IE bit mask to enable) -> r0 = destroyed? (not reloaded); preserves r4; no meaningful
+  return
+details: Reads the Interrupt Master Enable register, writes 0 to it to mask all interrupts, reads IE,
+  ORs in r0, writes IE back, then restores the saved IME value. This guarantees the new IE bits don't
+  take effect mid-update. Only caller seen is the startup code at 0x0800025C, consistent with crt0 enabling
+  its initial IRQ sources (e.g. VBlank/HBlank) before the game loop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh 0 to IME then restore of saved halfword brackets the IE update (sub_3005DEC lines 3-10);
+    orr r2, r0 ; strh r2,[IE] sets exactly the caller-supplied bits in IE; ldr =InterruptEnableRegister
+    / =InterruptMasterEnableRegister literals identify both registers; only caller 0x0800025C start_dead_800025C
+    is in the 0x08000000 entry/init region
+  refs:
+  - bn6f/asm/asm38.s:318
+  - 0x0800025C start_dead_800025C
+  reproduce: python3 tools/asmcat.py 0x03005DEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the behavior described: it saves IME (r4), zeroes IME, ORs r0 into IE, restores
+    IME. However, it does not take r0 as a bitmask to OR in directly — `orr r2, r0` sets IE to (oldIE
+    | r0). The name `irq_enableBits` is fine, but the summary should clarify it ORs r0 into IE, not overwrites
+    it. A simpler summary captures this more accurately.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which specific IE bits the startup caller passes in r0 (would confirm VBlank/HBlank init)
+- whether other callers exist outside the startup region
+- 'The code matches the behavior described: it saves IME (r4), zeroes IME, ORs r0 into IE, restores IME.
+  However, it does not take r0 as a bitmask to OR in directly — `orr r2, r0` sets IE to (oldIE | r0).
+  The name `irq_enableBits` is fine, but the summary should clarify it ORs r0 into IE, not overwrites
+  it. A simpler summary captures this more accurately.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_3005DEC -> irq_enableBits
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005DEC

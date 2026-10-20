@@ -1,0 +1,62 @@
+name: spawnFieldBattleObject55
+address: '0x080CF374'
+kind: function
+status: probable
+summary: Spawns a type 3 / ID 0x55 battle object at a caller-supplied panel, copies the source object's
+  position and alliance onto it, sets header flag 0x10, and registers it as a field battle object.
+interface: (r0 = panel X, r1 = panel Y; r5 = source battle object, r6 = damage/stamina value) -> r0 =
+  spawned object or 0; flags set by spawn (BEQ on failure)
+details: The function saves its arguments with the push {r0,r1,r5} idiom, calls object_spawnType3 with
+  type 0x55, and bails out if the spawn failed. On success it writes the saved panel X and Y into oBattleObject_PanelX/PanelY,
+  stores r6 into the DamageAndStaminaDamageCounterDisabler field, and copies the source object's oBattleObject_AllianceAndDirectionFlip
+  halfword onto the new object. It then sets bit 0x10 in oObjectHeader_Flags and calls setFieldBattleObject_800F614
+  with the low byte of the alliance halfword (plus 1 in r2), linking the new object into the field battle-object
+  list. The trailing data at 80CF3AC (0x31,0,0xA,5,1,0 repeated) looks like spawn-parameter records used
+  by related spawn helpers, not by this function itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x55 + bl object_spawnType3: spawns a type-3 object with ID 0x55; strb r1,[r0,#oBattleObject_PanelX]
+    / strb r2,[r0,#oBattleObject_PanelY]: places it at the caller''s panel arguments; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]
+    + strh back: inherits the source object''s alliance; orr r2,#0x10 on oObjectHeader_Flags: marks the
+    new object with flag 0x10; bl setFieldBattleObject_800F614 with alliance low byte: registers the spawn
+    as a field battle object'
+  refs:
+  - bn6f/asm/asm31.s:50763
+  - 0x080E4130 sub_80E4130
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080CF374
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: it spawns type 3 ID 0x55 (mov r0,#0x55; bl object_spawnType3), copies
+    panel XY from saved r0/r1, copies r6 to DamageAndStaminaDamageCounterDisabler, copies AllianceAndDirectionFlip
+    halfword, sets bit 0x10 in oObjectHeader_Flags, and calls setFieldBattleObject_800F614 with alliance+1.
+    However the name ''battle_spawnType3Object55'' implies this spawns object 0x55 generally, but the
+    function specifically copies source position/alliance and links as a field battle object — a more
+    accurate name is spawnFieldBattleObject55.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What gameplay object ID 0x55 is (the listing appears truncated, so some stores like r6's setup are not
+  visible)
+- What the caller sub_80E4130 is, which would reveal the in-game trigger for this spawn
+- The exact meaning of oObjectHeader_Flags bit 0x10 and of the parameter table at 80CF3AC
+- 'The code matches the summary: it spawns type 3 ID 0x55 (mov r0,#0x55; bl object_spawnType3), copies
+  panel XY from saved r0/r1, copies r6 to DamageAndStaminaDamageCounterDisabler, copies AllianceAndDirectionFlip
+  halfword, sets bit 0x10 in oObjectHeader_Flags, and calls setFieldBattleObject_800F614 with alliance+1.
+  However the name ''battle_spawnType3Object55'' implies this spawns object 0x55 generally, but the function
+  specifically copies source position/alliance and links as a field battle object — a more accurate name
+  is spawnFieldBattleObject55.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CF374 -> spawnFieldBattleObject55
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF374

@@ -1,0 +1,57 @@
+name: battle_startHitCountdown
+address: '0x080101AE'
+kind: function
+status: probable
+summary: Stores the given halfword as the object's hit countdown timer, sets OBJECT_FLAGS_UNK_4 in CollisionData
+  ObjectFlags1, and clears bit 1 of the object header Flags byte.
+interface: '(r0 = battle object (uses r5 as object pointer? no — r5 holds the object), r0 halfword stored
+  = countdown duration) -> r0 = scratch; flags: none meaningful, r1 clobbered'
+details: Takes the countdown value in r0 and stores it as a halfword into the object's CollisionData field
+  oCollisionData_HitCountdown. It then ORs OBJECT_FLAGS_UNK_4 into the CollisionData ObjectFlags1 word
+  via object_setFlag1, marking the object with the hit/invulnerable-type state flag. Finally it clears
+  bit 1 (0x2) of the object header's Flags byte, likely cancelling some per-object condition such as an
+  ongoing action or guard. The countdown value likely drives a per-frame decrement elsewhere in battle
+  logic (e.g. the object tick handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh r0,[r1,#oCollisionData_HitCountdown] stores the argument as the hit countdown; bl object_setFlag1
+    with OBJECT_FLAGS_UNK_4 sets a state flag on CollisionData ObjectFlags1; bic r0,#2 on oObjectHeader_Flags
+    clears header flag bit 1; callee object_setFlag1 is known to OR bits into the battle object's CollisionData
+    ObjectFlags1
+  refs:
+  - bn6f/asm/asm00_2.s:3122
+  - 0x080C49E4 sub_80C49E4
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080101AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s description: r0 is stored as a halfword at HitCountdown, OBJECT_FLAGS_UNK_4
+    is OR''d via object_setFlag1, and bit 0x2 of oObjectHeader_Flags is cleared (bic r0,r1 with r1=1 at
+    the actual asm means clearing bit 1 of the byte). However, the interface note says ''r5 holds the
+    object'' and ''r1 clobbered'' is inaccurate — r1 holds 2 and r5 is the object pointer throughout.
+    The name is fine but the summary overstates ''hit state'' when it really just primes a per-frame countdown
+    and toggles flags; also ''Flinch'' is speculative since the flag is OBJECT_FLAGS_UNK_4.; run wf investigate
+    investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact semantics of OBJECT_FLAGS_UNK_4 and of header flag bit 1 (hit-flash vs invulnerability vs guard-cancel)
+- who calls sub_80C49E4 and with what countdown values would confirm the flinch/stun interpretation
+- 'The code matches the proposal''s description: r0 is stored as a halfword at HitCountdown, OBJECT_FLAGS_UNK_4
+  is OR''d via object_setFlag1, and bit 0x2 of oObjectHeader_Flags is cleared (bic r0,r1 with r1=1 at
+  the actual asm means clearing bit 1 of the byte). However, the interface note says ''r5 holds the object''
+  and ''r1 clobbered'' is inaccurate — r1 holds 2 and r5 is the object pointer throughout. The name is
+  fine but the summary overstates ''hit state'' when it really just primes a per-frame countdown and toggles
+  flags; also ''Flinch'' is speculative since the flag is OBJECT_FLAGS_UNK_4.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80101AE -> battle_startHitCountdown
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80101AE

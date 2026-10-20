@@ -1,0 +1,56 @@
+name: object_toggleIgnoreCollisionFlag
+address: '0x080DFD38'
+kind: function
+status: probable
+summary: Flips a battle object's collision flag bit (XOR 0x1000 into SelfCollisionTypeFlags), zeroes its
+  ExtraVars and CurAction, then re-runs collision region clear and panel highlight.
+interface: (r5 = battle object) -> void
+details: Zeroes the object's oBattleObject_ExtraVars word, then loads the object's collision data pointer
+  and XORs oCollisionData_SelfCollisionTypeFlags with 0x1000, toggling that flag bit (likely an intangible/inactive
+  collision mode). It then calls object_clearCollisionRegion to remove the object from its collision region,
+  stores 0 into oBattleObject_CurAction, and calls object_highlightCurrentCollisionPanels to refresh the
+  panel-highlight state. Note it uses r5 as the object pointer rather than the usual r0, implying a caller
+  convention where the object is kept in a register across calls. With no known callers it is unclear
+  which gameplay event triggers this (e.g. a hit, removal, or phase-end reset).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: str r0,[r5,#oBattleObject_ExtraVars] with r0=0 clears the object's extra-vars word; eor r1,r2
+    with dword_80DFE38=0x1000 toggles bit in oCollisionData_SelfCollisionTypeFlags; bl object_clearCollisionRegion
+    removes the object from its current collision region; strb r0,[r5,#oBattleObject_CurAction] resets
+    the current action to 0; bl object_highlightCurrentCollisionPanels refreshes collision-panel highlighting
+    after the reset
+  refs:
+  - bn6f/asm/asm31.s:86442
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCBE object_highlightCurrentCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DFD38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly describes the operations (zero ExtraVars, XOR SelfCollisionTypeFlags with
+    0x1000, call object_clearCollisionRegion, zero CurAction, call object_highlightCurrentCollisionPanels).
+    However the name object_resetCollisionState is misleading: ''reset'' implies clearing, but it actually
+    toggles the 0x1000 bit via eor rather than clearing state. A clearer name reflecting the ''toggle
+    attack-ignore/self-collision'' intent would be more accurate.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the gameplay context (hit, despawn, phase transition) is unconfirmed
+- Exact meaning of the 0x1000 bit in SelfCollisionTypeFlags is unknown
+- 'The summary correctly describes the operations (zero ExtraVars, XOR SelfCollisionTypeFlags with 0x1000,
+  call object_clearCollisionRegion, zero CurAction, call object_highlightCurrentCollisionPanels). However
+  the name object_resetCollisionState is misleading: ''reset'' implies clearing, but it actually toggles
+  the 0x1000 bit via eor rather than clearing state. A clearer name reflecting the ''toggle attack-ignore/self-collision''
+  intent would be more accurate.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DFD38 -> object_toggleIgnoreCollisionFlag
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFD38

@@ -1,0 +1,72 @@
+name: camera_checkLinkConnectionType
+address: '0x0812BB08'
+kind: function
+status: probable
+summary: Camera/link helper that, after dispatching on eStruct200BC30 mode, validates the current eLinkState
+  against a two-entry table and then enforces a two-sided connection-type match (0x10/0x10-or-0x08 mirrored,
+  or both 0x20), writing 0x10/0/0 into camera state bytes on success or 2 on a single mismatch.
+interface: (no register inputs; r5 must already point at the camera/link struct set up by the caller)
+  -> r0/r1 clobbered; writes [r5+0x02]=0x10, [r5+0x0C]=0, [r5+0x03]=0 on success, or [r5+0x10]=2 on partial
+  match, or copies [r5+0x26] into the camera end struct
+details: 'It first dispatches via sub_803EAE4 over eStruct200BC30''s mode byte: result 4 tail-calls sub_812C24C,
+  result 1 returns immediately. If bit 0x10 of the result is clear, it calls camera_copyLinkStateToEnd
+  and stores [r5+0x26] at end+8, extending the link-state snapshot saved at camera end. If bit 8 is set
+  it stops; otherwise it fetches eLinkState (sub_803E8F8) and a two-entry, 0x10-byte-stride table from
+  sub_81323B0 (-1 means bail), checking each entry''s word at +4 against eLinkState+0x1C (mismatch aborts)
+  and halfword at +2 against +0xA; a r3 bitmask counts how many of the four comparisons matched. Full
+  match (r3==0) leads to a two-sided connection-type check: sub_803DD60 picks which side is ''local'',
+  and sub_81325C0''s returned pair must be (0x10, 0x10-or-8) in the mirrored order, or both 0x20, depending
+  on [r5+0x26]; only then are the camera state bytes [r5+0x02], [r5+0x0C], [r5+0x03] set/cleared. A partial
+  match (r3==1, exactly one of four comparisons failed) instead stores 2 at [r5+0x10].'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_812BB22: bl camera_copyLinkStateToEnd; ldrh r1,[r5,#0x26]; strh r1,[r0,#8] — writes next
+    to the copied eLinkState fields; loc_812BB4C loop: cmp [r0,#4] with [r6,#0x1c] and [r0,#2] with [r6,#0xa],
+    r6 = sub_803E8F8 (eLinkState); dword_812BC10 = 0xFFFFFFFF checked against sub_81323B0''s return, then
+    two 0x10-stride entries scanned (r7 = r0+0x10); loc_812BB8C-BBEE: sub_803DD60 result swaps which of
+    sub_81325C0''s r0/r1 must equal 0x10 vs 0x10-or-8 (or both 0x20); loc_812BBCA: strb 0x10 at [r5,#2],
+    strb 0 at [r5,#0xc] and [r5,#3]; loc_812BBFE: strb 2 at [r5,#0x10]'
+  refs:
+  - bn6f/asm/asm33.s:17986
+  - 0x081325CC camera_copyLinkStateToEnd
+  - 0x0803E8F8 sub_803E8F8
+  - 0x0803EAE4 sub_803EAE4
+  reproduce: python3 tools/asmcat.py 0x0812BB08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary direction is right (mode dispatch via sub_803EAE4, link-state table comparison, two-sided
+    connection-type check, partial-match handling), but the proposed writes are wrong. At loc_812BBCA,
+    the code does `strb r0, [r5,#2]` (0x10), `strb r0, [r5,#0xc]` (0), and `strb r0, [r5,#3]` (0), all
+    using the same zeroed r0 — there is no write of 0x10 to [r5+3]. Also the dispatch: cmp r0,#4 / cmp
+    r0,#1 means mode==4 falls into the final branch via beq to loc_812BC06 (not ''tail-call'' — it falls
+    through to sub_812C24C), and only r0==1 returns immediately. The proposal''s ''bit 8'' framing is
+    also inverted in presentation, though the control flow is correct. A clearer name reflecting the connection-type
+    validation is appropriate.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What struct r5 points to (presumably eCamera or a sibling) and the meaning of fields 0x02/0x03/0x0C/0x10/0x26
+- What table sub_81323B0 searches and what its {+2 halfword, +4 word} entries represent
+- What sub_803DD60's boolean and sub_81325C0's returned pair mean (likely local/remote connection types
+  0x10/8/0x20)
+- No callers known, so the required r5 setup and when this runs are unconfirmed
+- 'The summary direction is right (mode dispatch via sub_803EAE4, link-state table comparison, two-sided
+  connection-type check, partial-match handling), but the proposed writes are wrong. At loc_812BBCA, the
+  code does `strb r0, [r5,#2]` (0x10), `strb r0, [r5,#0xc]` (0), and `strb r0, [r5,#3]` (0), all using
+  the same zeroed r0 — there is no write of 0x10 to [r5+3]. Also the dispatch: cmp r0,#4 / cmp r0,#1 means
+  mode==4 falls into the final branch via beq to loc_812BC06 (not ''tail-call'' — it falls through to
+  sub_812C24C), and only r0==1 returns immediately. The proposal''s ''bit 8'' framing is also inverted
+  in presentation, though the control flow is correct. A clearer name reflecting the connection-type validation
+  is appropriate.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812BB08 -> camera_checkLinkConnectionType
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BB08

@@ -1,0 +1,60 @@
+name: battle_objectPhaseSwitchOnFrameFlag
+address: '0x080C3630'
+kind: function
+status: probable
+summary: Tests the current sprite frame's attribute byte (bit 0x80); if set, writes Timer=75, CurAnim=3,
+  and CurPhaseAndPhaseInitialized=0x10 to the battle object, switching it into phase 0x10; otherwise returns
+  without modification.
+interface: (r0 = battle object, r5 also = battle object) -> r0 = 0 if flag clear else undefined; no flags
+  used by caller visible
+details: Calls sprite_getFrameParameters on the object to fetch the current animation frame's attribute
+  byte and tests bit 0x80. When the bit is set, it writes Timer=0x4B (halfword), CurAnim=3 (byte), and
+  CurPhaseAndPhaseInitialized=0x10 (halfword), i.e. it transitions the object into phase 0x10 with a fresh
+  75-frame countdown and animation 3. When the bit is clear the call is a no-op and the object stays in
+  its current state. r0 doubles as the object pointer argument, while r5 is assumed to already hold the
+  same object. The exact meaning of attribute bit 0x80 (e.g. animation-end marker) is not proven from
+  this code alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sprite_getFrameParameters then tst r0,#0x80 gates the whole body (asm); stores 0x4B to oBattleObject_Timer,
+    3 to oBattleObject_CurAnim, 0x10 to oBattleObject_CurPhaseAndPhaseInitialized; beq locret skips all
+    stores when the frame attribute bit is clear; callee summary confirms r0 result is the frame attribute
+    byte
+  refs:
+  - bn6f/asm/asm31.s:25103
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C3630
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The function checks a flag bit (0x80) from the frame''s attribute byte and, when set, performs a
+    phase transition. However, the proposed name `object_frameAttrFlagToPhaseSwitch` is awkward and the
+    summary says ''restarts a battle object''s phase'' which is ambiguous. The code clearly uses [r5,#...]
+    for all stores, confirming r5 is the object pointer used internally, while r0 is reused as a scratch
+    after the test. The summary''s claim about ''halfword'' writes and values matches the code (strh for
+    Timer=0x4B=75, CurPhase=0x10; strb for CurAnim=3). Since the prefix describes a battle object operation,
+    a cleaner name would be `battle_phaseSwitchOnFrameFlag` or `battle_objectPhaseSwitchOnFrameFlag`.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so the owning object and the meaning of phase 0x10 / anim 3 are unidentified
+- the semantic of attribute bit 0x80 in sprite frame data needs confirmation from other users of sprite_getFrameParameters
+- The function checks a flag bit (0x80) from the frame's attribute byte and, when set, performs a phase
+  transition. However, the proposed name `object_frameAttrFlagToPhaseSwitch` is awkward and the summary
+  says 'restarts a battle object's phase' which is ambiguous. The code clearly uses [r5,#...] for all
+  stores, confirming r5 is the object pointer used internally, while r0 is reused as a scratch after the
+  test. The summary's claim about 'halfword' writes and values matches the code (strh for Timer=0x4B=75,
+  CurPhase=0x10; strb for CurAnim=3). Since the prefix describes a battle object operation, a cleaner
+  name would be `battle_phaseSwitchOnFrameFlag` or `battle_objectPhaseSwitchOnFrameFlag`.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C3630 -> battle_objectPhaseSwitchOnFrameFlag
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3630

@@ -1,0 +1,58 @@
+name: object_stepSpriteResource8
+address: '0x0811ABC8'
+kind: function
+status: probable
+summary: 'Step handler for objects initialized with sprite resource 8: each frame compares the halfword
+  timer at object+0xC against 0x80, writing 1 or 0x23 to object byte 0; in state 1 only sprite_update
+  runs, while state 0 dispatches via a two-entry table indexed by object byte 9 to sub_811ABF8 or sub_811ACA8.'
+interface: (r0 = object ptr (also r5 = object ptr, callee-saved convention)) -> r0 clobbered; sets object
+  byte 0 to state (0 or 1)
+details: 'Reads the halfword at object+0xC and compares it to 0x80: if equal it writes state 1 into object
+  byte 0, otherwise state 0 (0x23). In state 1 it does nothing but bl sprite_update. In state 0 it uses
+  object byte 9 as an index into a two-entry jump table at off_811ABF0, calling sub_811ABF8 or sub_811ACA8
+  via ''mov lr, pc; bx r0'' (long-call pattern passing the object pointer). The 0x80 compare on a halfword
+  field looks like a timer/frame counter threshold; byte 9 is the object''s substate selector. This matches
+  the standard BN6 object pattern where the init function (object_initSpriteResource8) installs this routine
+  as the object''s step handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller 0x0811AB7C object_initSpriteResource8 ''assigns sprite resource 8 ... and writes object
+    state bytes'' — this is the matching per-frame step callback; state byte: ''strb r0, [r5]'' with 0x23
+    default and 1 when [r5,#0xC]==0x80; state 0 dispatch: ''ldr r0, [r1,r0]'' from off_811ABF0 indexed
+    by ldrb r0,[r5,#9], tail-called via lr=pc; state 1 path only calls sprite_update, confirming this
+    is the object''s update loop; jump table holds exactly two handlers (sub_811ABF8, sub_811ACA8), matching
+    a 2-substate object'
+  refs:
+  - bn6f/asm/asm32.s:26561
+  - 0x0811AB7C object_initSpriteResource8
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x0811ABC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the dispatch: timer compare at +0xC vs 0x80, state written to byte
+    0 (0x23 or 1), state 1 just calls sprite_update, state 0 jumps via byte 9 into off_811ABF0 calling
+    sub_811ABF8/sub_811ACA8. However ''object_updateSpriteResource8'' is slightly misleading since the
+    function doesn''t reference sprite resource 8 itself; the init function is what installs it. A cleaner
+    name is object_stepSpriteResource8.; run wf investigate investigate-20261019-003606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_811ABF8 and sub_811ACA8 do (the actual object behavior in each substate)
+- which object type uses sprite resource 8 and what the 0x80 threshold on field +0xC represents (spawn/timeout
+  timer?)
+- 'The proposal correctly describes the dispatch: timer compare at +0xC vs 0x80, state written to byte
+  0 (0x23 or 1), state 1 just calls sprite_update, state 0 jumps via byte 9 into off_811ABF0 calling sub_811ABF8/sub_811ACA8.
+  However ''object_updateSpriteResource8'' is slightly misleading since the function doesn''t reference
+  sprite resource 8 itself; the init function is what installs it. A cleaner name is object_stepSpriteResource8.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811ABC8 -> object_stepSpriteResource8
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811ABC8

@@ -1,0 +1,56 @@
+name: battle_delayedSwapRelatedActor
+address: '0x080BCC96'
+kind: function
+status: probable
+summary: Waits 30 frames, then re-registers the related object's actor (with a new AI index via sub_8011044)
+  and kills the related object, before self-destructing.
+interface: (r0-r4 scratch; r5 = battle object) -> void; sets CUR_STATE_DESTROY and kills related object
+details: On first invocation (PhaseInitialized==0) it initializes a 0x1E-frame Timer and marks phase 4.
+  Each call decrements the timer and returns until it goes negative. At expiry it reads the related object's
+  NameID, unpacks its {version, actorType, aiIndex} record via unpackVerActorTyAndAIIdx_800F29C, and passes
+  those to sub_8011044 with r2=1 — apparently re-registering/respawning that actor with a new AI index.
+  It then runs sub_80B8E58 on ExtraVars+4, clears object-header flag bit 0x2, sets CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY, tears down the related object with battle_killObjectWithDependents, and finally
+  zeroes the byte at ExtraVars[0].
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb PhaseInitialized==0 -> timer=0x1E, phase=4 gives a one-shot 30-frame delay; unpackVerActorTyAndAIIdx_800F29C
+    on [r4+oBattleObject_NameID] then sub_8011044(r2=1) reconfigures the related actor; mov r0,#CUR_STATE_DESTROY;
+    str to CurStateActionPhaseAndPhaseInitialized then bl battle_killObjectWithDependents on RelatedObject1Ptr;
+    bic flag bit 2 in oObjectHeader_Flags before destroy, and final strb 0 to [ExtraVars]
+  refs:
+  - bn6f/asm/asm31.s:10289
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BCC96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary match the code flow: it waits 30 frames (0x1e), then unloads the related object
+    via sub_8011044 with r2=1, calls sub_80B8E58, clears flag 0x2, and sets CUR_STATE_DESTROY. battle_killObjectWithDependents
+    is called on the related object before zeroing ExtraVars[0], not on the battle object itself. The
+    name is fine but ''delayedSwapRelatedActor'' is clearer than ''delayedSwapRelatedActor'' — both ok;
+    minor wording tweak in summary to clarify it kills the related object.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_8011044 does exactly (spawn vs. re-register actor) and what sub_80B8E58 does with ExtraVars+4;
+  no callers are known, so the object type this state belongs to is unidentified
+- 'The name and summary match the code flow: it waits 30 frames (0x1e), then unloads the related object
+  via sub_8011044 with r2=1, calls sub_80B8E58, clears flag 0x2, and sets CUR_STATE_DESTROY. battle_killObjectWithDependents
+  is called on the related object before zeroing ExtraVars[0], not on the battle object itself. The name
+  is fine but ''delayedSwapRelatedActor'' is clearer than ''delayedSwapRelatedActor'' — both ok; minor
+  wording tweak in summary to clarify it kills the related object.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BCC96 -> battle_delayedSwapRelatedActor
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCC96

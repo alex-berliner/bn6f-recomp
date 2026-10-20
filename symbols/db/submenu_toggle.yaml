@@ -1,0 +1,63 @@
+name: submenu_toggle
+address: '0x0812D700'
+kind: function
+status: probable
+summary: 'Per-frame handler that toggles a menu subscreen (state 0x20): START opens or closes it, B also
+  closes it, otherwise reports not-handled via Z flag.'
+interface: (r5 = menu work struct, r7 from callee = related struct) -> r0 untouched (returns via Z flag
+  from final tst); side effects on state byte and sounds
+details: Calls sub_812D6F8 to fetch a struct pointer in r7, then checks START. If START is pressed and
+  the state byte [r5,#2] equals 0x20, it restores the saved state from [r7,#0xD] and plays SOUND_EXIT_SUBMENU
+  (closing the subscreen); otherwise it saves the current state byte to [r7,#0xD], sets [r5,#2]=0x20,
+  clears the halfword [r7,#0x34] (likely a cursor/scroll reset), and plays SOUND_MENU_SELECT (opening
+  it). While in state 0x20 without START, pressing B also closes it the same way. If not in state 0x20
+  and START/B unused, it returns with Z set via `mov r0,#0; tst r0,r0`, apparently reporting 'not handled'
+  to the caller through flags rather than r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#2] / cmp r0,#0x20 gates all branches: 0x20 is a special menu state; state byte
+    saved/restored symmetrically between [r5,#2] and [r7,#0xD] on open/close; PlaySoundEffect with SOUND_MENU_SELECT
+    on open and SOUND_EXIT_SUBMENU on close; IsButtonPressed(JOYPAD_START) opens/toggles, IsButtonPressed(JOYPAD_B)
+    closes while in state 0x20; strh r0,[r7,#0x34] zeroes a halfword only on open, consistent with resetting
+    a scroll/cursor field'
+  refs:
+  - bn6f/asm/asm34.s:498
+  - 0x0812D690 sub_812D690
+  - 0x0812D748 sub_812D748
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0812D6F8 sub_812D6F8
+  reproduce: python3 tools/asmcat.py 0x0812D700
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and flow are correct: START toggles the 0x20 subscreen state on/off, with B also closing
+    it, saving state to [r7,#0xd] and playing SOUND_MENU_SELECT/SOUND_EXIT_SUBMENU. The ''not handled''
+    flag is set via tst r0,r0 at loc_812D742 (only reached when neither START nor B triggered and state
+    != 0x20). However, the proposed name submenu_toggleByStart uses the disallowed ''submenu'' prefix?
+    Actually ''submenu'' is listed as allowed, but ''toggleByStart'' is awkward and misleading since B
+    can also close it.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What menu/task owns r5 and what state 0x20 displays (help screen, info popup, etc.) — callers sub_812D690/sub_812D748
+  and sub_812D6F8 would show the state table
+- Meaning of the halfword at r7+0x34 that gets cleared on open
+- How the final tst Z flag result is consumed by the callers
+- 'The summary and flow are correct: START toggles the 0x20 subscreen state on/off, with B also closing
+  it, saving state to [r7,#0xd] and playing SOUND_MENU_SELECT/SOUND_EXIT_SUBMENU. The ''not handled''
+  flag is set via tst r0,r0 at loc_812D742 (only reached when neither START nor B triggered and state
+  != 0x20). However, the proposed name submenu_toggleByStart uses the disallowed ''submenu'' prefix? Actually
+  ''submenu'' is listed as allowed, but ''toggleByStart'' is awkward and misleading since B can also close
+  it.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D700 -> submenu_toggle
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D700

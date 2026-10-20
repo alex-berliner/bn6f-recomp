@@ -1,0 +1,56 @@
+name: ai_spawnFrontPanelAttackRegion
+address: '0x081079DC'
+kind: function
+status: probable
+summary: 'AI attack helper: spawns a damage collision region on the panel directly in front of the acting
+  battle object.'
+interface: (r5 = battle object, r7 = oAIAttackVars {InitFlag, Damage}) -> r0 = spawn result from object_spawnCollisionRegion;
+  destroys r4,r6,r7
+details: Reads the object's facing multiplier via object_getFrontDirection and adds it to oBattleObject_PanelX
+  to get the panel one tile ahead, using the object's PanelY unchanged. It then calls object_spawnCollisionRegion
+  with r0=x, r1=y, r2=oAIAttackVars_InitFlag, r3=0, passing 0x7050104 (constant dword_81079F8), oAIAttackVars_Damage,
+  and 3 (dword_81079FC) in r4/r6/r7 — extra parameters the spawner evidently consumes from those registers.
+  The oAIAttackVars struct fields (InitFlag, Damage) indicate this is part of an AI-driven attack setup,
+  placing a hitbox on the front panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection; add r0,r0,PanelX: target panel is one tile in facing direction;
+    r2=[r7,#oAIAttackVars_InitFlag], r6=[r7,#oAIAttackVars_Damage]: attack parameters come from an AI
+    attack vars struct; ldr r4,=0x7050104 and r7,=3 loaded immediately before bl object_spawnCollisionRegion:
+    extra register args to the spawner; sole caller sub_8106FE6 fits an AI attack script context (oAIAttackVars
+    user)'
+  refs:
+  - bn6f/asm/asm31.s:171016
+  - 0x08106FE6 sub_8106FE6
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x081079DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm computes PanelX + frontDirectionMultiplier as r0 and PanelY as r1, so r0 is the X panel
+    coord and r1 the Y panel coord (not x/y swapped). InitFlag goes into r2, zero into r3, the 0x7050104
+    constant into r4, Damage into r6, and 3 into r7. The function indeed spawns a collision region on
+    the front panel for an AI attack, so the summary is correct, but the interface description has r0/r1
+    swapped.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of the constants 0x7050104 and 3 passed to object_spawnCollisionRegion (element/visual id and
+  region type?), and the full signature/semantics of object_spawnCollisionRegion
+- What sub_8106FE6 does to confirm the oAIAttackVars layout and when this runs
+- The asm computes PanelX + frontDirectionMultiplier as r0 and PanelY as r1, so r0 is the X panel coord
+  and r1 the Y panel coord (not x/y swapped). InitFlag goes into r2, zero into r3, the 0x7050104 constant
+  into r4, Damage into r6, and 3 into r7. The function indeed spawns a collision region on the front panel
+  for an AI attack, so the summary is correct, but the interface description has r0/r1 swapped.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81079DC -> ai_spawnFrontPanelAttackRegion
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81079DC

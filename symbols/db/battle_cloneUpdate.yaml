@@ -1,0 +1,68 @@
+name: battle_cloneUpdate
+address: '0x080E4D1E'
+kind: function
+status: probable
+summary: Per-frame update for a clone battle object that copies the first 12 bytes of the animation block
+  from its RelatedObject1 and maps related CurAnim 0→0/3→2/4→1/else→2 into its own CurAnim; visibility
+  (object flags bit 0x2) defaults hidden and is cleared either when CurAnim falls into the default case
+  or when the opposing alliance's player is blinded; on first call it spawns effect 0x5D and marks phase-initialized=4.
+interface: (r5 = battle object pointer, standard update-slot convention; r4 clobbered) -> r0 = garbage/void;
+  touches oObjectHeader_Flags, oBattleObject_CurAnim, oBattleObject_PhaseInitialized
+details: 'Treats r5 as the current battle object and r4 as its RelatedObject1Ptr. It copies 12 bytes at
+  +0x34 (an animation/sprite parameter block) from the related object into itself, then maps the related
+  object''s CurAnim to its own: anim 0 -> 0, 3 -> 2, 4 -> 1, any other value -> 1 with flags-bit-0x2 cleared.
+  It repeatedly sets oObjectHeader_Flags bit 1 (0x2, likely a hidden/invisible flag); if battle_findPlayerByAlliance_800EB6C
+  reports that the opposing alliance''s player is blinded (returns 0), that bit is cleared again, making
+  the object visible. On the first run (oBattleObject_PhaseInitialized == 0) it spawns effect object type
+  0x5D via spawn_t1_0x0_EffectObject and sets PhaseInitialized = 4, so the effect appears only once.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldmia/stmia of {r1-r3} between r4+0x34 and r5+0x34 copies the related object's anim block; CurAnim
+    chain 0->0, 3->2, 4->1, default clears flags bit 0x2 then stores into own CurAnim; battle_findPlayerByAlliance_800EB6C
+    blind test gates clearing of oObjectHeader_Flags bit 0x2 (visibility); one-shot spawn_t1_0x0_EffectObject
+    with r4=0x5d guarded by PhaseInitialized, then PhaseInitialized=4
+  refs:
+  - bn6f/asm/asm31.s:97796
+  - 0x080E4CDC sub_80E4CDC
+  - 0x0800EB6C battle_findPlayerByAlliance_800EB6C
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080E4D1E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct, but the visibility logic is more subtle: the flag bit 0x2 is set
+    by default and only cleared (twice along different branches) in specific conditions — once when related
+    CurAnim matches the default-mapping cases (0,3,4 — wait, actually 0,3,4 set r1=0,2,1 but only the
+    default-fallthrough clears flags), and once when the opposing player is NOT blinded. So the ''only
+    renders when blinded'' description understates it. Also, the ''12 bytes'' copy is from related +0x34
+    into self +0x34, but the CurAnim mapping from the proposal doesn''t match: looking at the asm, cmp
+    0 → r1=0, cmp 3 → r1=2, cmp 4 → r1=1, else fallthrough to flag-clear path then store r1=2 at loc_80E4D56
+    — so the default is anim 2, not ''1 with bit cleared''. The name fits since this is an update for
+    a clone/battle object mirroring its related one, but the summary details are off.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of oObjectHeader_Flags bit 0x2 (assumed invisible/not-drawn)
+- which chip or enemy spawns this object (only caller is sub_80E4CDC, itself undocumented)
+- what the 12 bytes at +0x34 are exactly (anim frame data vs. palette/offset block)
+- 'The summary is mostly correct, but the visibility logic is more subtle: the flag bit 0x2 is set by
+  default and only cleared (twice along different branches) in specific conditions — once when related
+  CurAnim matches the default-mapping cases (0,3,4 — wait, actually 0,3,4 set r1=0,2,1 but only the default-fallthrough
+  clears flags), and once when the opposing player is NOT blinded. So the ''only renders when blinded''
+  description understates it. Also, the ''12 bytes'' copy is from related +0x34 into self +0x34, but the
+  CurAnim mapping from the proposal doesn''t match: looking at the asm, cmp 0 → r1=0, cmp 3 → r1=2, cmp
+  4 → r1=1, else fallthrough to flag-clear path then store r1=2 at loc_80E4D56 — so the default is anim
+  2, not ''1 with bit cleared''. The name fits since this is an update for a clone/battle object mirroring
+  its related one, but the summary details are off.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4D1E -> battle_cloneUpdate
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4D1E

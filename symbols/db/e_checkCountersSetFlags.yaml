@@ -1,0 +1,65 @@
+name: e_checkCountersSetFlags
+address: '0x0812BDE4'
+kind: function
+status: probable
+summary: Iterates 20 halfword counters, updating the stored record and setting two paired event flags
+  per slot whose count has grown, then updates context fields and tail-calls the multi-entry handler if
+  any flag was set.
+interface: (r5 = context struct (fields 0xc, 0x10, 0x28 written), no args read) -> r0 = tail-call result
+  of sub_803F798 (or unchanged if no update); sets event flags via SetEventFlag
+details: Loops over 20 halfword slots (0x28 bytes) at unk_2033C00 (new counts) and unk_20018C0 (previously
+  recorded counts); whenever the stored value is lower, it writes the new count back and sets two event
+  flags indexed by the same slot from the word tables off_812BE48 (ids 0xAC-0xBD) and byte_812BE9C (ids
+  0xBF-0xD0), marking r7 that at least one updated. Finally it stores 0x11 (nothing updated) or 0x12 (something
+  updated) at [r5+0x10], 8 at [r5+0xc], and 0x96 (150) as a halfword at [r5+0x28] (likely an SFX/timer
+  field), and if any flag was set, tail-calls the multi-entry routine sub_803F798. The two flag tables
+  list related-but-interleaved ids (e.g. ...BC,B7,B6,B9... vs ...CF,CA,C9,CC...), suggesting paired one-shot
+  flags per category.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop `ldrh r0,[r4,r3] / ldrh r1,[r6,r3]; cmp r1,r0; ble skip; strh r0,[r6,r3]` copies only
+    increased counts from unk_2033C00 into unk_20018C0; per updated slot: `ldr r1,[off_812BE48,r0]; ldr
+    r2,[byte_812BE9C,r0]` then two `bl SetEventFlag` calls with those ids; word tables off_812BE48 (0xAC..0xBD)
+    and byte_812BE9C (0xBF..0xD0) hold 20 flag ids each, 4 bytes per slot, matching the 0x28 loop range;
+    `mov r0,#0x11 / tst r7,r7 / ... mov r0,#0x12; strb r0,[r5,#0x10]` encodes ''no update'' vs ''update''
+    into a context field; `strh #0x96,[r5,#0x28]` and `bl sub_803F798` (entry-stub of a shared routine)
+    show it feeds a dialogue/sound/UI handler on update'
+  refs:
+  - bn6f/asm/asm33.s:18369
+  - 0x0802F114 SetEventFlag
+  - 0x0803F798 sub_803F798
+  reproduce: python3 tools/asmcat.py 0x0812BDE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the loop over 20 halfword counters (cmp r3,#0x28), the comparison
+    ble to update, the two SetEventFlag calls per slot, and the final writes (0x11/0x12 to [r5+0x10],
+    8 to [r5+0xc], 0x96 to [r5+0x28]) with the tail-call to sub_803F798 when r7 was set. However, the
+    function is only ever called as a tail-call handler for a UI/text context state, and the writes to
+    r5 are not ''reports into a UI/text context'' but rather the standard context-state field updates;
+    the proposed name is also over-specific and uses a digit run. A simpler ''e'' prefixed name fits the
+    pattern of MMBN event handlers.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What unk_20018C0/unk_2033C00 actually count (per-category totals such as chips, requests or virus kills)
+  is not shown in the code
+- What structure r5 belongs to (fields 0xc/0x10/0x28) and which caller invokes this are unknown
+- Exact meaning of the two paired flag ids per slot and of sub_803F798's role after an update
+- The proposal correctly describes the loop over 20 halfword counters (cmp r3,#0x28), the comparison ble
+  to update, the two SetEventFlag calls per slot, and the final writes (0x11/0x12 to [r5+0x10], 8 to [r5+0xc],
+  0x96 to [r5+0x28]) with the tail-call to sub_803F798 when r7 was set. However, the function is only
+  ever called as a tail-call handler for a UI/text context state, and the writes to r5 are not 'reports
+  into a UI/text context' but rather the standard context-state field updates; the proposed name is also
+  over-specific and uses a digit run. A simpler 'e' prefixed name fits the pattern of MMBN event handlers.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812BDE4 -> e_checkCountersSetFlags
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BDE4

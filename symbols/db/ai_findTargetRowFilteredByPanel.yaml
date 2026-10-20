@@ -1,0 +1,61 @@
+name: ai_findTargetRowFilteredByPanel
+address: '0x08108CDE'
+kind: function
+status: probable
+summary: AI helper that looks up a target row via a per-state parameter pair from byte_8108D14, calls
+  object_getClosestPanelMatchingRowFiltered, and returns 1 only if the found panel also passes object_checkPanelParameters
+  with the caller-supplied pair.
+interface: (r0 = value of byte [r5+0x16], r1 = 2, r2/r3 = panel-parameter pair for object_checkPanelParameters;
+  r5 = object) -> r0 = 1 if a row was found and its panel passes the checks, else 0
+details: Reads a state byte at [r5+0x16] from the object struct and uses it as an index into the 8-byte-stride
+  table at byte_8108D14, whose entries are parameter pairs (state 0 -> {0,0}, states 1 and 2 -> {0x20,0},
+  i.e. higher states require panel flag bit 0x20). It calls object_getClosestPanelMatchingRowFiltered
+  with that indexed pair plus r1=2 to find the nearest valid row opposite the object's facing; if none,
+  returns 0. If a row is found, it calls object_checkPanelParameters with the caller's r2/r3 on the found
+  coordinates and returns its result (1 on match); a failed match also yields 0. Effectively a filtered
+  row search gated by an extra caller-chosen panel check.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x16]; lsl r2,r2,#3; ldr r3,=byte_8108D14 indexes an 8-byte-stride parameter table
+    by the object's state byte; table rows {0,0},{0x20,0},{0x20,0} supply the required/forbidden panel-flag
+    masks passed to the row search; bl object_getClosestPanelMatchingRowFiltered then tst r0 / beq locret
+    returns 0 when no qualifying row exists; push {r0,r1} keeps the found coordinates while bl object_checkPanelParameters
+    re-checks the panel with the caller's r2/r3; bne locret keeps the check result (1) in r0; falling
+    through sets mov r0,#0, so output is a boolean pass/fail
+  refs:
+  - bn6f/asm/asm31.s:173895
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  reproduce: python3 tools/asmcat.py 0x08108CDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the summary: [r5+0x16] indexes byte_8108D14 with stride 8 to fetch a parameter
+    pair (states 1/2 yield {0x20,0}), object_getClosestPanelMatchingRowFiltered is called with r1=2, and
+    on success the stored r2/r3 panel parameters are forwarded to object_checkPanelParameters on the found
+    (r0,r1). However the name should drop ''Check'' from the middle verb since the panel re-check is just
+    a secondary filter; ai_findTargetRowFilteredByPanel captures the flow better.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the meaning of the caller's r2/r3 parameter pair and what panel flag 0x20 represents
+  in-game is unconfirmed
+- What the byte at [r5+0x16] semantically is (AI state, difficulty level, facing index) and why r1 is
+  hard-coded to 2 in the row search
+- 'The code confirms the summary: [r5+0x16] indexes byte_8108D14 with stride 8 to fetch a parameter pair
+  (states 1/2 yield {0x20,0}), object_getClosestPanelMatchingRowFiltered is called with r1=2, and on success
+  the stored r2/r3 panel parameters are forwarded to object_checkPanelParameters on the found (r0,r1).
+  However the name should drop ''Check'' from the middle verb since the panel re-check is just a secondary
+  filter; ai_findTargetRowFilteredByPanel captures the flow better.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8108CDE -> ai_findTargetRowFilteredByPanel
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108CDE

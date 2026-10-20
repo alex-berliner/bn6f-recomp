@@ -1,0 +1,55 @@
+name: object_actionStateUpdate
+address: '0x080E100A'
+kind: function
+status: probable
+summary: 'Per-frame battle-object state: dispatches via oBattleObject_CurAction through a small jump table,
+  then calls object_updateSprite to tick the animation.'
+interface: (r5 = battle object) -> void; no return value used
+details: 'This looks like the update routine an object is switched into after spawn (object_spawnInitSpriteState
+  installs it). Each frame it reads oBattleObject_CurAction from the object at r5 and calls one of two
+  action handlers via a two-entry jump table (off_80E1020: sub_80E1028 for action 0, sub_80E1054 for action
+  1), then unconditionally calls object_updateSprite to advance/reload the animation unless paused or
+  time-stopped. It is a thin dispatcher-plus-ticker, typical of an ''idle vs. moving/acting'' sprite state
+  pair.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction] + ldr r1,[r1,r0]; bx r1: two-way dispatch on CurAction
+    through off_80E101C/off_80E1020; bl object_updateSprite after dispatch: animation ticking is done
+    every frame regardless of which action handler ran; Caller object_spawnInitSpriteState ''switches
+    it into its update state'', matching this being the installed per-frame sprite state; Jump table has
+    exactly two entries (sub_80E1028, sub_80E1054), implying two action modes share this sprite updater'
+  refs:
+  - bn6f/asm/asm31.s:88895
+  - 0x080E0FC0 object_spawnInitSpriteState
+  - 0x0801BBAC object_updateSprite
+  reproduce: python3 tools/asmcat.py 0x080E100A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee list shows no entry for sub_80E1028 or sub_80E1054, so the proposal''s claim that off_80E1020
+    dispatches to those two sub_80E1xxx handlers cannot be verified from the provided code. The code itself
+    only confirms the load of off_80E101C (which equals off_80E1020), the CurAction read at oBattleObject_CurAction,
+    the bx r1 dispatch, and the trailing bl object_updateSprite. The name and summary fit that evidence,
+    but it overstates detail about specific handlers that isn''t present.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80E1028 and sub_80E1054 do (which two CurAction values they correspond to and what behavior
+  each drives) is unknown; reading them would confirm the state-pair semantics
+- The callee list shows no entry for sub_80E1028 or sub_80E1054, so the proposal's claim that off_80E1020
+  dispatches to those two sub_80E1xxx handlers cannot be verified from the provided code. The code itself
+  only confirms the load of off_80E101C (which equals off_80E1020), the CurAction read at oBattleObject_CurAction,
+  the bx r1 dispatch, and the trailing bl object_updateSprite. The name and summary fit that evidence,
+  but it overstates detail about specific handlers that isn't present.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E100A -> object_actionStateUpdate
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E100A

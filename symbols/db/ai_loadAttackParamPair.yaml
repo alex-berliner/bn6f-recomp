@@ -1,0 +1,59 @@
+name: ai_loadAttackParamPair
+address: '0x0810407E'
+kind: function
+status: probable
+summary: Loads two versioned parameter halfwords from two AI tables (byte_81040F0 and byte_8104144) using
+  battle_aiGetVersionedTableEntry_800FE12, combines them into a 32-bit value (first as low halfword, second
+  shifted left 16), and stores the result at AIDataPtr+0xA0 (oAIAttackVars_Damage).
+interface: (r0 = battle object index/ptr) -> stores combined halfword pair at [AIDataPtr+0xA0]; r0 clobbered
+details: Indexes two tables (byte_81040F0 and byte_8104144) with object index*8 and reads one entry each
+  via battle_aiGetVersionedTableEntry_800FE12, which selects a byte based on the battle object's AI version.
+  The first read goes into the low halfword, the second is shifted left 16 and OR'd in, forming a 32-bit
+  value stored at oAIAttackVars_Damage (AIDataPtr + 0xA0). The value is likely damage plus an auxiliary
+  per-attack value (count/range). All callers are Gregar attack-init routines (attacks 0xB, 0xC, etc.),
+  so this is the shared parameter loader for those attacks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: Both table reads use battle_aiGetVersionedTableEntry_800FE12 with r0 = object index * 8, showing
+    per-version byte lookup; lsl r0,#0x10 / orr r6 packs the two reads into one word before the store;
+    str r6,[r3,#oAIAttackVars_Damage] with r3 = [r5,#oBattleObject_AIDataPtr]+0xA0 writes into the AI
+    attack-vars struct; All listed callers are Gregar AI attack initializers (ai_gregarInitAttackVars,
+    ai_initGregarAttack, ai_initGregarAttackVars)
+  refs:
+  - bn6f/asm/asm31.s:163394
+  - 0x08103FE8 ai_gregarInitAttackVars
+  - 0x08104050 ai_initGregarAttack
+  - 0x08103FB4 ai_initGregarAttackVars
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x0810407E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads two entries (likely halfwords via battle_aiGetVersionedTableEntry_800FE12, despite
+    the table name), shifts the second left 16, ORs them into r6, and stores the 32-bit combined value
+    at AIDataPtr+0xA0. The ''Damage'' field name for oAIAttackVars_Damage is correct. However, ''gregar''
+    in the name is misleading: callers include sub_8103F54, sub_8103F80, sub_810401C, and ai_initGregarAttackVars,
+    which aren''t all Gregar-specific, and the function itself does nothing to identify Gregar — it''s
+    a generic two-param loader.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the two packed halfwords (damage vs. count/timer) — needs the table contents at byte_81040F0/byte_8104144
+  and how oAIAttackVars_Damage is consumed by the attack routines
+- 'The code reads two entries (likely halfwords via battle_aiGetVersionedTableEntry_800FE12, despite the
+  table name), shifts the second left 16, ORs them into r6, and stores the 32-bit combined value at AIDataPtr+0xA0.
+  The ''Damage'' field name for oAIAttackVars_Damage is correct. However, ''gregar'' in the name is misleading:
+  callers include sub_8103F54, sub_8103F80, sub_810401C, and ai_initGregarAttackVars, which aren''t all
+  Gregar-specific, and the function itself does nothing to identify Gregar — it''s a generic two-param
+  loader.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810407E -> ai_loadAttackParamPair
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810407E

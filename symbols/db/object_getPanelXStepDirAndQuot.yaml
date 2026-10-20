@@ -1,0 +1,67 @@
+name: object_getPanelXStepDirAndQuot
+address: '0x080D61D2'
+kind: function
+status: probable
+summary: Battle-object helper that returns a signed X direction indicator in r0 (±1 scaled) and the per-frame
+  fixed-point X step (|obj->PanelX - r0_in|*0x28<<16 / frameCount) in r1, using SWI 6; r5 is the battle
+  object, r1_in is frame count.
+interface: (r0 = target/dest panel X, r1 = frame count or magnitude, r5 = battle object) -> r0 = direction-adjusted
+  copy of r1, r1 = signed quotient (40<<16 * |obj->PanelX - r0| / r1); no flags of use
+details: 'Loads the object''s PanelX (offset in r5), takes the absolute difference |PanelX - r0|, multiplies
+  it by 0x28<<16 (40 pixels-per-panel in 16.16 fixed point), and performs GBA SWI 6 (Div) with the original
+  r1 as denominator, yielding a signed per-frame step in r1. The sign handling is odd: r1 is negated when
+  PanelX >= r0, and that sign-flipped value is what gets returned in r0 (saved via push/pop around the
+  SWI), while the quotient in r1 keeps the sign of the original r1. The 40-per-panel constant matches
+  battle panel width, so the quotient is a fixed-point X velocity that covers the panel distance in r1
+  frames. Both known callers (slide-forward and hop-sideways actions) fit using this to pace horizontal
+  movement across panels.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r5,#oBattleObject_PanelX]; sub r2,r2,r0 — distance in panels from the object to r0;
+    mov r3,#0x28 lsl 16; mul r3,r2 — panel width 40px expressed as 16.16 fixed point times panel distance;
+    svc 6 with r0=product, r1=r4 (original r1) — BIOS signed Div; quotient moved to r1 for return; push
+    {r0}/pop {r0} around the SWI preserves the sign-adjusted r1 and returns it in r0; Callers object_actionSlideForward
+    and object_hopSidewaysAction are panel-crossing movement actions that would consume such a step
+  refs:
+  - bn6f/asm/asm31.s:65661
+  - 0x080D6020 object_actionSlideForward
+  - 0x080D60BC object_hopSidewaysAction
+  reproduce: python3 tools/asmcat.py 0x080D61D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate: it computes |PanelX - r0| * 0x280000 / r4 (panel pixels in 16.16)
+    via SWI 6, negates r1 when PanelX >= r0, returns that negated r1 in r0 and the signed quotient in
+    r1. However, the proposal says "r1 = frame count or magnitude" and "negated when PanelX >= r0", but
+    r4 holds the original r1 (frame count) unchanged, so r1 returned in r0 is a direction sign (not a
+    negated magnitude). Calling the returned r0 a "direction-adjusted copy" is misleading; it''s actually
+    a +/− indicator for stepping direction. The function isn''t really "calcPanelXStep" since it doesn''t
+    return the step itself — callers likely combine r0 and r1 to step. The name should reflect that it
+    prepares a signed panel-distance quotient for per-frame X movement.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of the returned r0 (sign-flipped r1) — caller asm is needed to confirm whether it is a
+  frame counter or animation timer
+- Whether r1 is a frame count or another divisor such as a velocity
+- Why the negation is keyed on (PanelX - r0) >= 0 rather than the quotient's own sign
+- 'The summary is mostly accurate: it computes |PanelX - r0| * 0x280000 / r4 (panel pixels in 16.16) via
+  SWI 6, negates r1 when PanelX >= r0, returns that negated r1 in r0 and the signed quotient in r1. However,
+  the proposal says "r1 = frame count or magnitude" and "negated when PanelX >= r0", but r4 holds the
+  original r1 (frame count) unchanged, so r1 returned in r0 is a direction sign (not a negated magnitude).
+  Calling the returned r0 a "direction-adjusted copy" is misleading; it''s actually a +/− indicator for
+  stepping direction. The function isn''t really "calcPanelXStep" since it doesn''t return the step itself
+  — callers likely combine r0 and r1 to step. The name should reflect that it prepares a signed panel-distance
+  quotient for per-frame X movement.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D61D2 -> object_getPanelXStepDirAndQuot
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D61D2

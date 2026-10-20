@@ -1,0 +1,66 @@
+name: object_syncField24ToMinOrReset
+address: '0x08008622'
+kind: function
+status: probable
+summary: Syncs the halfword at +0x24 of two object structs to the smaller of the two values; if r2<2 or
+  either pointer is null, it instead writes 0 to both fields, dispatches event 0x820080, and clears bits
+  0x820080 in dword_20352C0.
+interface: (r0 = struct ptr A, r1 = struct ptr B, r2 = mode) -> r0 = none; writes halfword [x+0x24] on
+  both structs, may call dispatch and clear flag bits; returns without writing if r0 is null
+details: 'Two behaviors selected by r2: if r2 >= 2 and both pointers are non-null, it reads the halfword
+  at +0x24 from both structs and stores the minimum back into both — a classic ''take the lower timer''
+  sync. Otherwise (r2 < 2, or r0/r1 null in the r2 >= 2 path) it sets the value to 0 and additionally
+  calls dispatch_801DACC(0x820080) and clears the matching bits (0x820080) in the flags word dword_20352C0,
+  suggesting 0x820080 marks a pending event/state that this reset clears and re-dispatches. All writes
+  are null-guarded, so either struct may be absent. The field at +0x24 is a 16-bit counter of some kind
+  (timer/counter shared between two entities). Only the value, never other fields, is touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r2, #2 / bge: mode argument only distinguishes reset (<2) vs sync (>=2) behavior; ldrh
+    r2,[r0,#0x24]; ldrh r3,[r1,#0x24]; cmp/blt/mov: takes the min of the two halfwords at offset 0x24;
+    strh r2,[r0,#0x24] and tst r1/strh r2,[r1,#0x24]: stores the synced value back into both structs,
+    each null-guarded; loc_800863A: push {r0-r2}, bl dispatch_801DACC with 0x820080, bl flags_clearBits_eStruct2035280_801BED6,
+    pop: reset path zeroes value and clears/dispatches the same flag set; sole caller is the also-undocumented
+    sub_80085FE, so no higher-level context is visible'
+  refs:
+  - bn6f/asm/asm00_1.s:11832
+  - 0x080085FE sub_80085FE
+  - 0x0801BED6 flags_clearBits_eStruct2035280_801BED6
+  - 0x0801DACC dispatch_801DACC
+  reproduce: python3 tools/asmcat.py 0x08008622
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at loc_800864C reads halfwords at +0x24 from both structs, compares them, and writes the
+    minimum back to both — this part of the summary is correct. However, the dispatch/clear path (loc_800863A)
+    also sets +0x24 to 0 in both structs (via loc_8008656), not just in the r2<2 branch; the proposal
+    incorrectly says it ''may call dispatch and clear flag bits'' as a side action. Also, the summary''s
+    null-pointer handling is slightly off: in the r2>=2 path, if r1 is null it falls through to the dispatch/clear
+    path, but if r0 is null with r2>=2 it also goes there — so r0 null doesn''t bypass the dispatch in
+    the >=2 path. A cleaner name reflects sync-to-min with reset fallback.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the halfword at struct+0x24 counts (turn timer, transform timer, animation counter) — the caller
+  sub_80085FE and the struct's type would show it
+- What event the dispatch flags 0x820080 represent in dispatch_801DACC
+- Whether r2 is truly a caller mode value or just happens to hold 0/1 from other uses
+- 'The code at loc_800864C reads halfwords at +0x24 from both structs, compares them, and writes the minimum
+  back to both — this part of the summary is correct. However, the dispatch/clear path (loc_800863A) also
+  sets +0x24 to 0 in both structs (via loc_8008656), not just in the r2<2 branch; the proposal incorrectly
+  says it ''may call dispatch and clear flag bits'' as a side action. Also, the summary''s null-pointer
+  handling is slightly off: in the r2>=2 path, if r1 is null it falls through to the dispatch/clear path,
+  but if r0 is null with r2>=2 it also goes there — so r0 null doesn''t bypass the dispatch in the >=2
+  path. A cleaner name reflects sync-to-min with reset fallback.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8008622 -> object_syncField24ToMinOrReset
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008622

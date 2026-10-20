@@ -1,0 +1,64 @@
+name: object_runStateScriptOnTimer
+address: '0x0812BD34'
+kind: function
+status: probable
+summary: 'Object update tick: decrements the halfword timer at [r5+0x28] and, on expiry, runs one of three
+  text-script indices (0x34 if state==0x11, 0x2C if state==0x0F, else 0x33 plus PlaySoundEffect(0x73))
+  from eTextScript201BA20, then stores 0xC into [r5+0x0C].'
+interface: (r5 = entity/object struct, preserved from caller) -> no return value used; destroys r0
+details: 'Decrements the halfword timer at [r5+0x28]; if it has not hit 0 the function returns immediately,
+  so it is a once-per-expiry trigger. On expiry it reads the state byte [r5+0x10]: state 0x11 selects
+  script index 0x34, state 0x0F selects 0x2C, and any other state first plays sound effect 0x73 and uses
+  script index 0x33. The chosen index is passed to the chatbox wrapper that runs text script archive eTextScript201BA20
+  (the standard in-game dialogue archive). Finally it writes 0xC to the state byte at [r5+0xC], moving
+  the entity into a new phase, so this is one state in a larger per-object state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on [r5,#0x28] with sub #1 and bne return: a one-shot countdown trigger; cmp r1,#0x11
+    / #0xF branches select mov r0,#0x34 / #0x2C, else #0x33 with PlaySoundEffect(0x73): message index
+    depends on entity state; bl chatbox_runScript_803FD9C_on_eTextScript201BA20 fires the dialogue with
+    the chosen index; strb r0(=0xC),[r5,#0xC] sets a new state byte after the message, a state-machine
+    transition; r5 is used bare with no allocation, so it is the caller-owned object struct typical of
+    per-frame object update calls'
+  refs:
+  - bn6f/asm/asm33.s:18273
+  - 0x080005CC PlaySoundEffect
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x0812BD34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are accurate: ldrh/sub on [r5+0x28] is the per-tick countdown, state bytes
+    at [r5+0x10] and [r5+0x0C] drive the script selection and post-fire transition, and the three branches
+    at 0x812BD44/0x812BD4C/0x812BD54 confirm the 0x33/0x2C/0x34 mapping. However, the proposed name implies
+    ''timer fires once then retires'', which the code doesn''t actually support: the function unconditionally
+    writes 0xC to [r5+0x0C] after running the script, so the caller is expected to switch the entity out
+    of the relevant state at [r5+0x10] to stop re-firing - the timer itself is not retired, and there
+    is no ''new phase'' enforced here. So the summary slightly oversells it as moving the entity into
+    a new phase.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which entity/object owns this struct and calls it (no caller found), so the best subsystem prefix is
+  uncertain
+- What states 0xF and 0x11 mean and what the three script entries (0x34, 0x2C, 0x33) say
+- Whether the sound 0x73 and default script path mark a timeout/failure case
+- 'The proposal''s mechanics are accurate: ldrh/sub on [r5+0x28] is the per-tick countdown, state bytes
+  at [r5+0x10] and [r5+0x0C] drive the script selection and post-fire transition, and the three branches
+  at 0x812BD44/0x812BD4C/0x812BD54 confirm the 0x33/0x2C/0x34 mapping. However, the proposed name implies
+  ''timer fires once then retires'', which the code doesn''t actually support: the function unconditionally
+  writes 0xC to [r5+0x0C] after running the script, so the caller is expected to switch the entity out
+  of the relevant state at [r5+0x10] to stop re-firing - the timer itself is not retired, and there is
+  no ''new phase'' enforced here. So the summary slightly oversells it as moving the entity into a new
+  phase.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812BD34 -> object_runStateScriptOnTimer
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BD34

@@ -1,0 +1,57 @@
+name: submenu_navigateThreeChoiceCursor
+address: '0x0813652C'
+kind: function
+status: probable
+summary: 'Input handler for a 3-option selection screen: B writes 0xFF at [r5,#0x30] (cancel); A clears
+  sprite 0xA confirming the current cursor; Left/Right cycle [r5,#0x30] over 0..2 with out-of-range snapping
+  to 0.'
+interface: (r5 = submenu state object) -> writes cursor value to [r5,#0x30] (0xFF = cancel); plays menu
+  sounds; no return value used
+details: 'Reads held keys from the toolkit joypad struct (r10 -> oToolkit_JoypadPtr +2, held-keys halfword).
+  B button: plays SOUND_EXIT_SUBMENU, calls sub_8046696(0xA) (clears/hides sprite entry 0xA in eStructArr2008450),
+  stores 0xFFFF at [r5,#0x30] and returns — a cancel marker. A button: plays SOUND_MENU_SELECT and also
+  calls sub_8046696(0xA) (closing the visual element) but leaves [r5,#0x30] as the chosen index. D-pad
+  Left/Right (bits 0xC0, sign flipped if bit 0x40 held) increments/decrements [r5,#0x30]; values below
+  0 snap to 1 and values above 2 snap to 0, so the cursor moves over 0..2, with SOUND_MENU_CUR_MOVE on
+  change.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r4,[r3,#2] via oToolkit_JoypadPtr reads held keys; tst with 2/1/0xC0 separates B, A, and
+    Left/Right; B branch: SOUND_EXIT_SUBMENU then strh 0xff to [r5,#0x30] — standard cancel marker for
+    a menu state; A branch: SOUND_MENU_SELECT plus sub_8046696(0xA) but no 0xFF store — accept keeps [r5,#0x30]
+    as result; add r1,r3 with clamp at <0 -> 1 and >=2 -> 0 shows a 3-slot cursor with move sound SOUND_MENU_CUR_MOVE'
+  refs:
+  - bn6f/asm/asm36.s:13281
+  - 0x081359A0 sub_81359A0
+  - 0x080005CC PlaySoundEffect
+  - 0x08046696 sub_8046696
+  reproduce: python3 tools/asmcat.py 0x0813652C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The B/A/dpad logic matches the code at loc_813654C/loc_8136560/loc_8136570. However the cursor-clamp
+    claim is inverted: the asm at loc_8136570 sets r4=1 (the *increment* value), and at loc_813657E it
+    falls back to r4=0 when the new value is <0 or >2 — so out-of-range snaps to 0, not to 1. Also B stores
+    0xFF, not 0xFFFF (mov r0,#0xff; strh). The name fits well.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What screen this 3-choice menu belongs to and what the three options mean (caller sub_81359A0 unknown);
+  what sprite/entry 0xA being cleared via sub_8046696 represents visually; exact semantics of the odd
+  0->1 wrap on Left
+- 'The B/A/dpad logic matches the code at loc_813654C/loc_8136560/loc_8136570. However the cursor-clamp
+  claim is inverted: the asm at loc_8136570 sets r4=1 (the *increment* value), and at loc_813657E it falls
+  back to r4=0 when the new value is <0 or >2 — so out-of-range snaps to 0, not to 1. Also B stores 0xFF,
+  not 0xFFFF (mov r0,#0xff; strh). The name fits well.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813652C -> submenu_navigateThreeChoiceCursor
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813652C

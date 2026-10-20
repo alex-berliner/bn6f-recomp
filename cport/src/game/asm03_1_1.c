@@ -2699,12 +2699,12 @@ static u32 current_battle_mode(u32 *r1_out) {
     return R0;
 }
 
-/* register form: calls sub_813DB24 outside this file, which has no typed C interface yet */
+/* register form: calls e_pickBre5TagBlock outside this file, which has no typed C interface yet */
 static u32 poll_link_partner(u32 *r2_out) {
     R0 = 0;
     R1 = 1;
     R6 = 0xFF;                     /* r6 still holds 0xFF at this point */
-    GUEST_CALL(sub_813DB24);
+    GUEST_CALL(e_pickBre5TagBlock);
     *r2_out = R2;                  /* the answer also arrives in r2; the caller moves it into r1 */
     return R0;
 }

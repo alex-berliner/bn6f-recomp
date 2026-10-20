@@ -1,0 +1,66 @@
+name: spawn_illusionObject
+address: '0x080F9C28'
+kind: function
+status: probable
+summary: Builds a spawn id from the caller id ORed with object_getFlip() plus 0x808, forwards 3 words
+  from r5+0x34 and a 0x101000F flag word to spawnIllusionObject_80E33FA.
+interface: (r0 = battle object/entity, r5 = related object base from caller) -> r0 = spawn result from
+  spawnIllusionObject_80E33FA; clobbers r4, r6, r7
+details: 'The function reads the caller''s direction word into r4, ORs in object_getFlip()''s effective
+  horizontal facing, and adds 0x808, producing a resource/object id with a flipped variant selected by
+  alliance/facing. It then loads three consecutive words from (r5 + 0x34) — likely the source object''s
+  panel x/y and a third spawn parameter — into r1-r3, and tail-calls spawnIllusionObject_80E33FA with
+  fixed arguments r6 = 0x8318 (a pointer into ROM data) and r7 = 0x101000F (flags/params). The nearby
+  data supports this being an illusion-type battle object: off_80F9D40 is a step-handler table containing
+  RunSpawnAnimation, mark-acted, dispatch, flinch, paralyze, recover-to-panel and jump-land steps, and
+  byte_80F9C5C looks like AI/script command data for the spawned entity. r5 is used without being set
+  or saved in this function, so the caller (sub_80F97C0) must establish r5 as the object pointer before
+  calling — an implicit-argument quirk.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl r4,r0,#0x10 + bl object_getFlip + orr/add 0x808: id = base 0x808 plus facing-dependent
+    variant; mov r0,#0x34; add r0,r0,r5; ldmia r0!,{r1-r3}: copies three fields at object+0x34 as spawn
+    arguments; ldr r6,=0x8318; ldr r7,=0x101000F; bl spawnIllusionObject_80E33FA: fixed spawn parameters,
+    tail call; off_80F9D40 handler table (flinch/paralyze/recover/jump steps) is battle-object script
+    data for the spawned entity; byte_80F9C5C / byte_80F9C80 command-style tables sit directly after,
+    belonging to the same object definition'
+  refs:
+  - bn6f/asm/asm31.s:141962
+  - 0x080F97C0 sub_80F97C0
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080F9C28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does construct a spawn id by ORing the shifted caller id with object_getFlip() and adding
+    0x808, loads 3 words from r5+0x34, sets r7=0x101000F, and tail-calls spawnIllusionObject. However,
+    r0 is the caller id (shifted into r4), not the destination object — r4 holds the spawn id passed to
+    the callee. The callee is named spawnIllusionObject, so the summary''s claim of copying the caller''s
+    ''position fields'' is unverified; only (r5+0x34) is loaded, which need not be positions. The name
+    ''spawn_illusionClone'' is acceptable but the interface description is slightly off.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the three fields copied from object+0x34 (panel coords? palette? hp?)
+- Why r5 is used implicitly — need sub_80F97C0 to confirm it sets r5 as the source object
+- What 0x8318 points to and what the fields of 0x101000F encode
+- Which in-game entity/attack creates this illusion (needs the caller's context)
+- The code does construct a spawn id by ORing the shifted caller id with object_getFlip() and adding 0x808,
+  loads 3 words from r5+0x34, sets r7=0x101000F, and tail-calls spawnIllusionObject. However, r0 is the
+  caller id (shifted into r4), not the destination object — r4 holds the spawn id passed to the callee.
+  The callee is named spawnIllusionObject, so the summary's claim of copying the caller's 'position fields'
+  is unverified; only (r5+0x34) is loaded, which need not be positions. The name 'spawn_illusionClone'
+  is acceptable but the interface description is slightly off.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F9C28 -> spawn_illusionObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9C28

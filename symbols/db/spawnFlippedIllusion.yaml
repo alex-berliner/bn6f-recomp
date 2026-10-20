@@ -1,0 +1,59 @@
+name: spawnFlippedIllusion
+address: '0x080E4FFC'
+kind: function
+status: probable
+summary: Spawns an illusion object at the battle object's X/Y/Z position using the object's horizontally-flipped
+  facing and the constants 0x83E0 (resource) and 0xE (type).
+interface: (r5 = battle object ptr) -> r0 = spawned object or result from spawnIllusionObject_80E33FA;
+  no flags used
+details: 'Reads the object''s effective horizontal facing via object_getFlip and shifts it into the top
+  byte, ORing in constant 0x43010 (attribute/flag word, likely OAM-style params for the illusion). It
+  then loads the object''s X, Y and Z fields (oBattleObject_X/Y/Z) as the spawn position, and passes two
+  constants from literal pools: 0x83E0 (likely an illusion/animation resource id) and 0xE (likely an illusion
+  type or size class) to spawnIllusionObject_80E33FA. r5 is used directly as the object pointer, so the
+  caller must set it up before calling. Purely a thin wrapper: no state of its own, no branch logic.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFlip then lsl r4, r0, #0x18 orr r4, 0x43010 builds flip-tagged attribute word;
+    ldr r1/r2/r3, [r5,#oBattleObject_X/Y/Z] passes the battle object''s position as spawn coords; ldr
+    r6,=0x83E0 / ldr r7,=0xE then bl spawnIllusionObject_80E33FA spawns the illusion with fixed resource
+    ids; only caller sub_80E4EB8 shares the same r5-based object context'
+  refs:
+  - bn6f/asm/asm31.s:97967
+  - 0x080E4EB8 sub_80E4EB8
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080E4FFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the behavior of spawning an illusion at the battle object''s position
+    using its flipped facing, and the callee is indeed spawnIllusionObject_80E33FA. However, the proposed
+    name ''spawnFlipIllusionForObject'' misuses ''ForObject'' (the prefix ''spawn'' already implies spawning
+    an object; the ''ForObject'' suffix is redundant and the intended ''submenu''-style helper semantics
+    don''t really show in the code). The prefix ''spawn'' is more appropriate as ''spawnIllusion'', describing
+    what is spawned rather than the calling convention. The interface description also misses that r4,
+    r6, r7, and lr are saved/restored.; run wf investigate investigate-20261019-003606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of 0x43010 (attribute bits vs OAM word) and of 0x83E0/0xE in spawnIllusionObject_80E33FA
+- which object/attack invokes sub_80E4EB8, to confirm it is an afterimage/illusion effect
+- The summary correctly captures the behavior of spawning an illusion at the battle object's position
+  using its flipped facing, and the callee is indeed spawnIllusionObject_80E33FA. However, the proposed
+  name 'spawnFlipIllusionForObject' misuses 'ForObject' (the prefix 'spawn' already implies spawning an
+  object; the 'ForObject' suffix is redundant and the intended 'submenu'-style helper semantics don't
+  really show in the code). The prefix 'spawn' is more appropriate as 'spawnIllusion', describing what
+  is spawned rather than the calling convention. The interface description also misses that r4, r6, r7,
+  and lr are saved/restored.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4FFC -> spawnFlippedIllusion
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4FFC

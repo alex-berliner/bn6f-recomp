@@ -1,0 +1,60 @@
+name: battle_phaseBlinkOut
+address: '0x080BD084'
+kind: function
+status: probable
+summary: Battle-object phase handler that clears color shader, stores 0x1F in DirectionAngle (repurposed
+  as countdown), plays SFX 0x94, then on subsequent frames blinks flag bit 1 each odd Timer tick while
+  decrementing the counter by 2 per frame, advancing CurPhase to 4 when it hits zero.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized=4 (curPhase 4) when done
+details: On first run it clears any color shader (0x7fff), stores 0x1f (31) into oBattleObject_DirectionAngle,
+  plays sound effect 0x94, resets oBattleObject_Timer, and marks the phase initialized. Each subsequent
+  frame it increments Timer and toggles oObjectHeader_Flags bit 1 on odd frames (blink), while decrementing
+  DirectionAngle by 2 each frame — DirectionAngle here is evidently repurposed as a countdown/rotation
+  counter, not a facing angle. When the counter hits zero it re-sets flag bit 1, zeroes the counter, and
+  advances the object to phase 4. This is a self-terminating dissolve/blink-out animation for a battle
+  object, driven from a phase script table rather than a direct call, which explains why no callers are
+  known.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'first-run branch: sprite_setColorShader(0x7fff), PlaySoundEffect(0x94), Timer=0, PhaseInitialized=4;
+    loop toggles oObjectHeader_Flags bit 1 every other frame via lsr/bcc on Timer — a blink; DirectionAngle
+    starts at 0x1f and is decremented by 2 per frame, bgt exits, so ~16 frames of fade; exit path writes
+    phase 4 into oBattleObject_CurPhaseAndPhaseInitialized, i.e. falls through to a next phase; uses battle-object
+    fields (PhaseInitialized, Timer, CurPhase), so it is a phase-script handler, not a directly called
+    routine'
+  refs:
+  - bn6f/asm/asm31.s:10807
+  - 0x080005CC PlaySoundEffect
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x080BD084
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly describes the blink/fade-out behavior, but the final phase write at `strh
+    r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]` sets CurPhase to 4 (the high byte), not just
+    PhaseInitialized. Also `oBattleObject_PhaseInitialized` and CurPhase share one field, so on first
+    run writing 4 also sets CurPhase=0 (a quirk worth noting). The naming rules require an ''object''
+    or ''battle'' prefix; ''battle_phaseBlinkFadeOut'' works but could be tightened.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which object/phase table references this handler (identifies which enemy or effect blinks out)
+- what shader id 0x7fff means exactly (likely 'no shader' or full palette cycling) and what sound 0x94
+  is
+- The summary correctly describes the blink/fade-out behavior, but the final phase write at `strh r0,
+  [r5,#oBattleObject_CurPhaseAndPhaseInitialized]` sets CurPhase to 4 (the high byte), not just PhaseInitialized.
+  Also `oBattleObject_PhaseInitialized` and CurPhase share one field, so on first run writing 4 also sets
+  CurPhase=0 (a quirk worth noting). The naming rules require an 'object' or 'battle' prefix; 'battle_phaseBlinkFadeOut'
+  works but could be tightened.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BD084 -> battle_phaseBlinkOut
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD084

@@ -1,0 +1,60 @@
+name: object_runBattleAction
+address: '0x080D0566'
+kind: function
+status: probable
+summary: 'Battle-object action dispatcher: tears the object down if the battle is over, skips its tick
+  during a time-stop, otherwise tail-calls the handler indexed by CurAction in off_80D058C (currently
+  only sub_80D0590).'
+interface: (r5 = battle object) -> sets r5->CurState = CUR_STATE_DESTROY if battle over, else tail-dispatches
+  to action table [CurAction]; r0 = battle-over/time-stop check results
+details: Standard battle-object update dispatcher. First it calls battle_isBattleOver; if the battle has
+  ended it force-writes CUR_STATE_DESTROY into the object's CurState field (offset oBattleObject_CurState)
+  so the object is torn down. Otherwise it calls battle_isTimeStop and returns immediately while a time-stop
+  is freezing the battle, so objects do not act during freezes like custom-menu/finish flashes. In the
+  normal case it indexes off_80D058C with the object's CurAction byte (oBattleObject_CurAction) and does
+  a bx dispatch to the per-action function; the table here has only one entry, sub_80D0590, so this object
+  has exactly one action. The object pointer lives in r5, not r0, matching the project's battle-object
+  calling convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver + strb CUR_STATE,[r5,#oBattleObject_CurState] on battle end (loc_80D0582);
+    bl battle_isTimeStop; bne locret — skip the update while time-stop is active; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; bx r1 — action-indexed handler jump table; off_80D058C contains a single entry sub_80D0590+1,
+    so this object only has one action state
+  refs:
+  - bn6f/asm/asm31.s:53116
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D0566
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it checks battle_isBattleOver, writes CUR_STATE_DESTROY
+    into CurState if over, otherwise checks battle_isTimeStop and bails out if frozen, then dispatches
+    via off_80D058C[CurAction] to sub_80D0590+1. However, the summary''s phrase ''per-frame battle object
+    update'' is an overreach since no callers are known, and this is simply an action dispatcher that
+    happens to also handle end-of-battle cleanup. The interface note says r5 is the battle object, which
+    is consistent with the ldrb/strb off r5; this is fine but unverifiable without more context.; run
+    wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D0590 (the sole action handler) does, and which object/owner uses this dispatcher, since
+  no callers are known yet
+- 'The code matches the proposal''s behavior: it checks battle_isBattleOver, writes CUR_STATE_DESTROY
+  into CurState if over, otherwise checks battle_isTimeStop and bails out if frozen, then dispatches via
+  off_80D058C[CurAction] to sub_80D0590+1. However, the summary''s phrase ''per-frame battle object update''
+  is an overreach since no callers are known, and this is simply an action dispatcher that happens to
+  also handle end-of-battle cleanup. The interface note says r5 is the battle object, which is consistent
+  with the ldrb/strb off r5; this is fine but unverifiable without more context.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D0566 -> object_runBattleAction
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0566

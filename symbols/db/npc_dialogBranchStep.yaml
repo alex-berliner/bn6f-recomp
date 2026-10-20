@@ -1,0 +1,59 @@
+name: npc_dialogBranchStep
+address: '0x0812A3C8'
+kind: function
+status: probable
+summary: 'Object/NPC step handler: on clear flag, calls sub_813D978, writes state fields (0x3C/4/5) into
+  r5, and plays text script 0x24 of eTextScript201BA20 via the chatbox wrapper; on set flag, calls sub_803CB18
+  with r0=0x10 and only on nonzero return writes 0x1C to r5+0xC and 8 to r5+0x28.'
+interface: () -> void; uses r5 as object/work struct base, no return value
+details: First tests byte offset 5 of the IWRAM struct at 0x200BC50 via the known flag-test helper. If
+  the flag is clear, it stores 0x3C into r5+1, 4 into r5+2 and 5 into r5+0x10, then invokes the chatbox
+  wrapper to run script index 0x24 of eTextScript201BA20 — a dialog/notice — and returns. If the flag
+  is set, it calls sub_803CB18 with r0=0x10 (plausibly a sound or action request); only if that returns
+  nonzero does it store 0x1C into r5+0xC and 8 into halfword r5+0x28, advancing the object's state. The
+  r5 offsets look like the usual step/state/timer fields of an object work struct, so this is one state
+  of a step-machine handler. Which NPC or scenario owns the struct is unknown since no callers are mapped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl test0x200bc50_0x5_813D60C / bne loc_812A3E8 — branch on the saved flag selects the two paths;
+    stores 0x3C/4/5 into r5+1,+2,+0x10 then bl chatbox_runScript_...201BA20 with r0=0x24 — dialog setup
+    before running script 36; alternate path: mov r0,#0x10; bl sub_803CB18; beq locret — a request whose
+    failure aborts the state update; strb 0x1C,[r5,#0xC] and strh 8,[r5,#0x28] — writes to step/state
+    fields of the r5 work struct; no return value is computed; both paths just pop {pc}'
+  refs:
+  - bn6f/asm/asm33.s:14854
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x0813D60C test0x200bc50_0x5_813D60C
+  - 0x0803CB18 sub_803CB18
+  reproduce: python3 tools/asmcat.py 0x0812A3C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal inverts the flag condition: the fall-through (chatbox/script 0x24) path runs when test0x200bc50_0x5
+    returns 0 (flag clear, since ''bne loc_812A3E8'' branches on set), not the other way around. Also,
+    sub_813D978 is called only on the clear-flag path before setting work fields. Name npc_dialogBranchStep
+    is reasonable but the summary must reflect the reversed condition.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- identity of sub_803CB18(0x10) (sound request vs. something else) and why its result gates the state
+  write
+- what object owns the r5 work struct — no callers are known, so the offsets +1/+2/+0xC/+0x10/+0x28 can't
+  be tied to a named struct
+- what flag byte 5 of the 0x200BC50 struct represents in-game
+- 'The proposal inverts the flag condition: the fall-through (chatbox/script 0x24) path runs when test0x200bc50_0x5
+  returns 0 (flag clear, since ''bne loc_812A3E8'' branches on set), not the other way around. Also, sub_813D978
+  is called only on the clear-flag path before setting work fields. Name npc_dialogBranchStep is reasonable
+  but the summary must reflect the reversed condition.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812A3C8 -> npc_dialogBranchStep
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A3C8

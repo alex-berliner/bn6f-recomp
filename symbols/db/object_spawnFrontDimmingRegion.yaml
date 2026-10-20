@@ -1,0 +1,69 @@
+name: object_spawnFrontDimmingRegion
+address: '0x080DF2A0'
+kind: function
+status: probable
+summary: Battle-object routine that, when its config byte1 is nonzero, computes the panel one step in
+  front of the owner (facing-aware via object_getFrontDirection × config byte0 + PanelX) and calls object_spawnDimmingCollisionRegion
+  with PanelY, Element, 0, the config dword [r0+4], the owner's DamageAndStaminaDamageCounterDisabler
+  field, and 0x3.
+interface: '(r0 = owner state struct: byte0 = panel offset, byte1 = active flag, word4 = region param/duration)
+  -> r0 = object_spawnDimmingCollisionRegion result; r2-r7 clobbered'
+details: Uses r5 as the owning battle object. If byte [r0+1] is zero it does nothing, otherwise it reads
+  the owner's facing multiplier (object_getFrontDirection, honoring the DirectionFlip flag), multiplies
+  it by byte [r0] to get a signed panel offset, and adds it to oBattleObject_PanelX. It then calls object_spawnDimmingCollisionRegion
+  with panelX+offset, oBattleObject_PanelY, oBattleObject_Element, [r0+4] as a region parameter, the owner's
+  DamageAndStaminaDamageCounterDisabler field, and a constant 3 (dword_80DF320) as the final argument.
+  The trailing tables (off_80DF2CC, byte_80DF2F0, byte_80DF308, dword_80DF324 = 0x280000) look like the
+  object's sprite/anim or state tables, not data consumed by this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then mul r0,r1 places the effect at panelX + facing*byte[r0] (offset
+    mirrored by DirectionFlip); final bl object_spawnDimmingCollisionRegion passes PanelX, PanelY, Element,
+    [r0+4], Damage field, and constant 0x3; ldrb r0,[r7,#1]; tst/beq makes byte1 an enable flag gating
+    the spawn; only caller sub_80DF288 with no known summary; callee summaries (getFrontDirection, spawnDimmingCollisionRegion)
+    pin the behavior
+  refs:
+  - bn6f/asm/asm31.s:85212
+  - 0x080DF288 sub_80DF288
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DF2A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s core mechanics match the code: the byte-1 guard, object_getFrontDirection multiplied
+    by byte 0, addition to oBattleObject_PanelX, and the object_spawnDimmingCollisionRegion call with
+    PanelY, Element, 0 in r3, [r7+4], the DamageAndStaminaDamageCounterDisabler field, and the 0x3 constant
+    are all correct. However, the proposal inaccurately calls r0 ''owner state struct'' and labels byte1
+    as ''active flag'' — r0 is pushed/popped and r7 holds it; the [r7+4] field is treated as a region
+    parameter passed in r4 (passed as the 4th user arg), not ''word4 = duration''. The name ''battle_spawnDimmingRegionInFront''
+    is acceptable but the summary should drop the ''attack/update handler'' framing (it just spawns a
+    region) and not call byte1 an active flag without evidence; it more likely selects between different
+    region-config variants. The prefix should likely be ''object'' since it acts on a battle object and
+    spawns an object.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what battle object/chip this state struct belongs to (its handler table off_80DF2C8 is unlabelled)
+- meaning of the constant 3 and of [r0+4] passed to object_spawnDimmingCollisionRegion
+- what the dimming region does in-game (which attack/Navi effect it realizes)
+- 'The proposal''s core mechanics match the code: the byte-1 guard, object_getFrontDirection multiplied
+  by byte 0, addition to oBattleObject_PanelX, and the object_spawnDimmingCollisionRegion call with PanelY,
+  Element, 0 in r3, [r7+4], the DamageAndStaminaDamageCounterDisabler field, and the 0x3 constant are
+  all correct. However, the proposal inaccurately calls r0 ''owner state struct'' and labels byte1 as
+  ''active flag'' — r0 is pushed/popped and r7 holds it; the [r7+4] field is treated as a region parameter
+  passed in r4 (passed as the 4th user arg), not ''word4 = duration''. The name ''battle_spawnDimmingRegionInFront''
+  is acceptable but the summary should drop the ''attack/update handler'' framing (it just spawns a region)
+  and not call byte1 an active flag without evidence; it more likely selects between different region-config
+  variants. The prefix should likely be ''object'' since it acts on a battle object and spawns an object.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF2A0 -> object_spawnFrontDimmingRegion
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF2A0

@@ -1,0 +1,55 @@
+name: objectWaitFramesThenSetStateC
+address: '0x08027658'
+kind: function
+status: probable
+summary: Increments the 32-bit counter at [r5+0x40]; once it reaches 0x32 (50) and no screen fade is active,
+  writes 0xC into the halfword at [r5+2].
+interface: (r5 = object/state struct) -> r0 = undefined; updates [r5+0x40] counter and [r5+2] state field
+details: 'Each call increments the 32-bit counter at [r5+0x40]; while it is below 0x32 (50) the function
+  returns without doing anything else. Once the count reaches 50, it calls IsScreenFadeActive and only
+  proceeds when the screen is not fading, then stores 0xC into the halfword at [r5+2], which in these
+  structs is the state/state-machine field. So it is a delay step: wait 50 frames, then wait out any screen
+  fade, then enter state 12. r5 is caller-supplied via a register convention (not on the stack), so this
+  is called with the object pointer already in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr/add/str on [r5,#0x40] plus 'cmp r0,#0x32; blt' shows a 50-frame frame counter; bl IsScreenFadeActive
+    followed by 'cmp r0,#0; bne skip' gates the transition on no active fade; mov r0,#0xc; strh r0,[r5,#2]
+    writes 0xC to the struct's state field (halfword at +2); no known callers, so which object owns this
+    state struct is unconfirmed
+  refs:
+  - bn6f/asm/asm03_0.s:2577
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08027658
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function increments a counter at [r5+0x40] each call and only acts once it reaches 0x32 (50).
+    At that point it checks IsScreenFadeActive and, if no fade, stores 0xC into the halfword at [r5+2].
+    This matches the proposal''s behavior. However, the proposal''s interface claims r5 is the object/state
+    struct passed in, but the callee uses r5 as a base without any explicit setup in this function—it''s
+    a non-standard call convention. The name ''waitFramesThenSetStateC'' is reasonable; ''object'' prefix
+    is more accurate than ''t4''. The summary is correct.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which entity owns the r5 struct and what state 0xC does there — needs the caller or a known state table
+  for [r5+2]
+- The function increments a counter at [r5+0x40] each call and only acts once it reaches 0x32 (50). At
+  that point it checks IsScreenFadeActive and, if no fade, stores 0xC into the halfword at [r5+2]. This
+  matches the proposal's behavior. However, the proposal's interface claims r5 is the object/state struct
+  passed in, but the callee uses r5 as a base without any explicit setup in this function—it's a non-standard
+  call convention. The name 'waitFramesThenSetStateC' is reasonable; 'object' prefix is more accurate
+  than 't4'. The summary is correct.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8027658 -> objectWaitFramesThenSetStateC
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027658

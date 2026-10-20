@@ -1,0 +1,70 @@
+name: sprite_updateFlashShader
+address: '0x0811B8C8'
+kind: function
+status: probable
+summary: Each frame, while a shared counter (word_20377A0) plus 2 is below the per-object threshold byte
+  at r5+0x4, applies the constant shader 0xA108 via sprite_setColorShader; once it reaches the threshold,
+  applies one of eight halfword shaders from byte_811B904 indexed by (curFrame & 0xF)>>1, alternating
+  a flash sequence.
+interface: (r0 = object/sprite handle passed to sprite_zeroColorShader; r5 = state struct, byte +0x4 =
+  threshold) -> r0 = result of sprite_setColorShader; no meaningful flags
+details: The routine first zeroes the target's color-shader halfword via sprite_zeroColorShader, then
+  reads the counter at word_20377A0+0x20 (shared state at unk_2037780), adds 2, and compares it to a byte
+  at r5+0x4. While the counter has not reached that byte, it applies the constant shader id 0xA108 every
+  call. Once the counter matches, it instead indexes byte_811B904 with (curFrame & 0xF)>>1<<1 — i.e. selects
+  one of eight halfword shader ids (0x0000, 0x0842, 0x1084, 0x0842, 0x8000, 0x8842, 0x9084, 0x8842) alternating
+  by frame parity — and passes it to sprite_setColorShader. The +2 step suggests the counter counts in
+  units of two frames and is incremented elsewhere; the table values look like palette-effect/shader halfwords
+  rather than raw colors. r5 is not set inside this function, so it is supplied by the caller (or a shared
+  register convention).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_zeroColorShader at entry clears the shader halfword before choosing a new one; counter
+    at unk_2037780+0x20 incremented by 2 and compared to byte [r5,#4] gates the two behaviors; default
+    path: ldr r0, =0xA108 then bl sprite_setColorShader (constant shader while timer not reached); table
+    path: (frame & 0xF)/2*2 indexes byte_811B904, eight halfword shader ids chosen by frame parity; callee
+    summaries (sprite_setColorShader/sprite_zeroColorShader) confirm the values are color-shader ids on
+    an object''s sprite block'
+  refs:
+  - bn6f/asm/asm32.s:28273
+  - 0x0811B570 sub_811B570
+  - 0x08002ED0 sprite_setColorShader
+  - 0x08002EE8 sprite_zeroColorShader
+  reproduce: python3 tools/asmcat.py 0x0811B8C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the fall-through shader 0xA108, the alternating table at byte_811B904,
+    and the per-object threshold at r5+4, but its description of the shader halfwords is wrong: the bytes
+    at 0x811B904 are 0x00,0x00,0x42,0x08,0x84,0x10,0x42,0x08,0x00,0x80,0x42,0x88,0x84,0x90,0x42,0x88,
+    giving eight halfwords (0x0000, 0x0842, 0x1084, 0x0842, 0x8000, 0x8842, 0x9084, 0x8842) indexed by
+    (curFrame & 0xF)>>1. This is a classic palette-fade/flash sequence, so ''FlashShader'' fits better
+    than the current name which already conveys that — the name is fine but the summary''s parenthetical
+    list of eight values must be corrected. The interface description is correct: r0 holds the result
+    of sprite_zeroColorShader used by sprite_setColorShader, r5 is caller''s state pointer.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what object/state r5 points to and what byte +0x4 means (duration in 2-frame units?) is set only by
+  the unknown caller sub_811B570
+- who increments word_20377A0+0x20 and what the 0xA108 shader looks like visually (flash, blink, tint)
+- 'The proposal correctly identifies the fall-through shader 0xA108, the alternating table at byte_811B904,
+  and the per-object threshold at r5+4, but its description of the shader halfwords is wrong: the bytes
+  at 0x811B904 are 0x00,0x00,0x42,0x08,0x84,0x10,0x42,0x08,0x00,0x80,0x42,0x88,0x84,0x90,0x42,0x88, giving
+  eight halfwords (0x0000, 0x0842, 0x1084, 0x0842, 0x8000, 0x8842, 0x9084, 0x8842) indexed by (curFrame
+  & 0xF)>>1. This is a classic palette-fade/flash sequence, so ''FlashShader'' fits better than the current
+  name which already conveys that — the name is fine but the summary''s parenthetical list of eight values
+  must be corrected. The interface description is correct: r0 holds the result of sprite_zeroColorShader
+  used by sprite_setColorShader, r5 is caller''s state pointer.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B8C8 -> sprite_updateFlashShader
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B8C8

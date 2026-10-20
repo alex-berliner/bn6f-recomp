@@ -2,48 +2,45 @@ name: object_chatboxStep
 address: '0x08039BC0'
 kind: function
 status: probable
-summary: 'Per-frame object state step: skip if not ready, consume a use counter; if B pressed play effect
-  0x68 and store state 0x68; else if chatbox flag bit 0x8 is on and chatbox is active, close it, set a
-  0x1E timer, wait on sub_813D638, then run network text phase 0xB and store state 0x20.'
-interface: (r0 = unused, r5 = object ptr) -> r0 = result of sub_803A1B0; sets [r5+1] to 0x68 or 0x20;
-  flags from sub_803A558/sub_803BB80/sub_813D638 tests
-details: r5 points to an object whose byte at +1 is its state/next-state. First sub_803A558 gates the
-  update (nonzero -> skip to the common tail sub_803A1B0), then sub_803BB80 consumes one charge from a
-  use counter, exiting if none remain. If the pressed joypad word has bit 0x2 (B), it calls sub_803C28A(0x68)
-  — likely queueing sound/effect id 0x68 — and stores state 0x68. Otherwise, if chatbox flag bit 0x8 of
-  eFlags2009F38 is set, it checks sub_803BB94 (chatbox still active?), calls sub_803C558 (advance/close
-  chatbox), arms a 30-frame timer via sub_803BB90(0x1E), waits on sub_813D638, then has sub_803BB2C select
-  network-text phase 0xB and stores state 0x20.
+summary: 'Per-frame object state step: skip if not ready, consume a use counter; if B pressed play effect 0x68 and
+  store state 0x68; else if chatbox flag bit 0x8 is on and chatbox is active, close it, set a 0x1E timer, wait on
+  sub_813D638, then run network text phase 0xB and store state 0x20.'
+interface: (r0 = unused, r5 = object ptr) -> r0 = result of sub_803A1B0; sets [r5+1] to 0x68 or 0x20; flags from
+  sub_803A558/sub_803BB80/sub_813D638 tests
+details: r5 points to an object whose byte at +1 is its state/next-state. First sub_803A558 gates the update (nonzero
+  -> skip to the common tail sub_803A1B0), then sub_803BB80 consumes one charge from a use counter, exiting if none
+  remain. If the pressed joypad word has bit 0x2 (B), it calls sub_803C28A(0x68) — likely queueing sound/effect
+  id 0x68 — and stores state 0x68. Otherwise, if chatbox flag bit 0x8 of eFlags2009F38 is set, it checks sub_803BB94
+  (chatbox still active?), calls sub_803C558 (advance/close chatbox), arms a 30-frame timer via sub_803BB90(0x1E),
+  waits on sub_813D638, then has sub_803BB2C select network-text phase 0xB and stores state 0x20.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'sub_803BB80 is known to decrement a uses-remaining counter on r5 and return 0 when consumed,
-    gating the rest; ldr [r10+oToolkit_JoypadPtr], ldrh oJoypad_Pressed, tst #2 reads the just-pressed
-    B button; chatbox_mask_eFlags2009F38(8) tests a chatbox/cutscene flag before the dialog branch; sub_803BB2C
-    is known to select a network-related text script by phase id (0xb here); both exits write a new state
-    byte: strb #0x68 / #0x20 [r5,#1]'
+  detail: 'sub_803BB80 is known to decrement a uses-remaining counter on r5 and return 0 when consumed, gating the
+    rest; ldr [r10+oToolkit_JoypadPtr], ldrh oJoypad_Pressed, tst #2 reads the just-pressed B button; chatbox_mask_eFlags2009F38(8)
+    tests a chatbox/cutscene flag before the dialog branch; sub_803BB2C is known to select a network-related text
+    script by phase id (0xb here); both exits write a new state byte: strb #0x68 / #0x20 [r5,#1]'
   refs:
   - bn6f/asm/asm03_1_1.s:2120
   - 0x08045F3C chatbox_mask_eFlags2009F38
   - 0x0803BB2C sub_803BB2C
   - 0x0803BB80 sub_803BB80
   reproduce: python3 tools/asmcat.py 0x08039BC0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is mostly accurate, but the chatbox flow relies on sub_813D638 plus a subsequent sub_803BB2C(0xB);
-    the proposed summary wrongly says ''sub_803BB94 (chatbox still active?)'' and ordering is off. Also
-    strb writes [r5+1], not the proposed [r5+1] context differs slightly. A better prefix: chatbox-related
-    object step fits ''object'' since this drives an object''s state byte. Rename to chatbox_objStep or
-    object_chatboxStep to capture the object-state-step role.; run wf investigate investigate-20261018-235109;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    is mostly accurate, but the chatbox flow relies on sub_813D638 plus a subsequent sub_803BB2C(0xB); the proposed
+    summary wrongly says ''sub_803BB94 (chatbox still active?)'' and ordering is off. Also strb writes [r5+1], not
+    the proposed [r5+1] context differs slightly. A better prefix: chatbox-related object step fits ''object'' since
+    this drives an object''s state byte. Rename to chatbox_objStep or object_chatboxStep to capture the object-state-step
+    role.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - exact meaning of sub_803A558's gate return, sub_803C28A(0x68) (sound vs. effect vs. text id), sub_803BB94/sub_803C558/sub_813D638,
   and which object/caller invokes this — no callers are known
 - 'The summary is mostly accurate, but the chatbox flow relies on sub_813D638 plus a subsequent sub_803BB2C(0xB);
-  the proposed summary wrongly says ''sub_803BB94 (chatbox still active?)'' and ordering is off. Also
-  strb writes [r5+1], not the proposed [r5+1] context differs slightly. A better prefix: chatbox-related
-  object step fits ''object'' since this drives an object''s state byte. Rename to chatbox_objStep or
-  object_chatboxStep to capture the object-state-step role.'
+  the proposed summary wrongly says ''sub_803BB94 (chatbox still active?)'' and ordering is off. Also strb writes
+  [r5+1], not the proposed [r5+1] context differs slightly. A better prefix: chatbox-related object step fits ''object''
+  since this drives an object''s state byte. Rename to chatbox_objStep or object_chatboxStep to capture the object-state-step
+  role.'
 sources:
 - wf investigate investigate-20261018-235109
 changes:
@@ -55,5 +52,9 @@ changes:
   what: rename sub_8039BC0 -> object_chatboxStep
   where: bn6f cfc4da77
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
 previous_names:
 - sub_8039BC0

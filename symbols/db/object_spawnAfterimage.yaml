@@ -1,0 +1,58 @@
+name: object_spawnAfterimage
+address: '0x080DDBDE'
+kind: function
+status: probable
+summary: Spawns an afterimage/illusion of the battle object at its current position, with the mirrored
+  sprite variant selected by the object's effective facing, offset to screen coordinates.
+interface: (r5 = battle object pointer, set by caller) -> r0 = spawned illusion object from spawnIllusionObject_80E33FA;
+  r0-r3, r6, r7 clobbered as arguments
+details: Takes the battle object in r5 (pushed context shows r4/r6/r7 saved, r5 must be prepared by caller).
+  Calls object_getFlip to get the effective horizontal facing (alliance XOR DirectionFlip) and forms the
+  new object id 0x910 + (flip << 24), i.e. id 0x910 with the side byte selected by facing. Loads three
+  consecutive words from object+0x34 (likely x, y and a third position/priority field), subtracts 0x10000
+  from the second and third, converting the object's centered coordinates to screen coordinates. Calls
+  spawnIllusionObject_80E33FA with r0 = id, r1-r3 = coordinates, r6 = 0xCA8F and r7 = 0x14 as further
+  spawn parameters. dword_80DDC00 = 0xC0000 sits in the literal pool but is unused in this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: object_getFlip call result is shifted into the top byte and added to 0x910, making a facing-dependent
+    object id; ldmia from r5+0x34 loads three words and 0x10000 is subtracted from two of them before
+    passing to the spawner; tailcall into spawnIllusionObject_80E33FA with r6=0xCA8F, r7=0x14 shows this
+    routine only prepares arguments for the spawn
+  refs:
+  - bn6f/asm/asm31.s:82025
+  - 0x080DDBCA sub_80DDBCA
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080DDBDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: r5 object -> object_getFlip -> id 0x910 + (flip<<24), loads from
+    object+0x34 (the proposal''s ''third'' is actually 0x38 in the code since ldmia r0! auto-advances),
+    subtracts 0x10000 from r2 and r3, calls spawnIllusionObject_80E33FA with r6=0xCA8F, r7=0x14. The dword_80DDC00
+    constant is indeed in the pool but unused. However, ''object_spawnIllusionCopyAtObjectPos'' is clunky;
+    a tighter name is ''object_spawnAfterimage''.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of the 0x910 id, the 0xCA8F and 0x14 arguments, and the third word loaded from object+0x34
+  depends on spawnIllusionObject_80E33FA's parameter semantics
+- Which in-game object/action calls sub_80DDBCA and what r5 refers to at that point
+- 'The code matches the proposal: r5 object -> object_getFlip -> id 0x910 + (flip<<24), loads from object+0x34
+  (the proposal''s ''third'' is actually 0x38 in the code since ldmia r0! auto-advances), subtracts 0x10000
+  from r2 and r3, calls spawnIllusionObject_80E33FA with r6=0xCA8F, r7=0x14. The dword_80DDC00 constant
+  is indeed in the pool but unused. However, ''object_spawnIllusionCopyAtObjectPos'' is clunky; a tighter
+  name is ''object_spawnAfterimage''.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DDBDE -> object_spawnAfterimage
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDBDE

@@ -1,0 +1,61 @@
+name: battle_stepBackOnePanelOnFutureX
+address: '0x080C2934'
+kind: function
+status: probable
+summary: 'Battle phase handler: on first entry sets CurAnim=4 and Timer=3, sets PanelX = FuturePanelX
+  - frontDirection (one panel away from the enemy), PanelY = FuturePanelY, calls object_setCoordinatesFromPanels
+  to refresh pixel coordinates, then on expiry writes phase 0xC into CurPhaseAndPhaseInitialized to advance.'
+interface: (r5 = battle object ptr, implicit) -> r0 = new phase; updates PanelX/PanelY, CurAnim, Timer,
+  PhaseAndPhaseInitialized
+details: On the first entry (PhaseInitialized == 0) it sets CurAnim to 4 and a 3-frame Timer, then computes
+  PanelX = FuturePanelX - frontDirection, where frontDirection is the +1/-1 alliance/DirectionFlip multiplier
+  from object_getFrontDirection — i.e. one panel in the direction away from the enemy. It copies FuturePanelY
+  into PanelY, calls object_setCoordinatesFromPanels to recompute pixel X/Y, and latches PhaseInitialized
+  = 4. On subsequent frames it decrements Timer; when it reaches 0 it writes phase 0xC into CurPhaseAndPhaseInitialized,
+  ending the phase. The neg of the front direction strongly suggests a retreat/backstep step of a larger
+  enemy move routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: neg r0, r0 + add r0, FuturePanelX writes one panel opposite object_getFrontDirection's result
+    into PanelX; mov r0,#4 / strb to oBattleObject_CurAnim selects a specific hop/step animation; Timer
+    set to 3, decremented each frame, then CurPhaseAndPhaseInitialized = 0xC — classic phase-timer pattern;
+    object_setCoordinatesFromPanels called after panel write, confirming panel-grid movement; PhaseInitialized
+    guard makes the setup run once, remainder run per-frame
+  refs:
+  - bn6f/asm/asm31.s:23193
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080C2934
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: sets CurAnim=4, Timer=3, moves PanelX = FuturePanelX - frontDir, copies Y, calls
+    setCoordinatesFromPanels, decrements Timer, and when it hits 0 stores 0xC into CurPhaseAndPhaseInitialized.
+    However, storing 0xC into a halfword overwrites both phase and the initialized flag, so the next phase
+    must itself be responsible for re-initializing, not this handler; this is also where ''battle_'' fits
+    since it''s purely a battle-object phase. The mechanism is correct but the name ''phaseStepBackOnePanel''
+    slightly mischaracterizes it since it always uses future-X, not current-X, and one panel away from
+    the enemy.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so which enemy/move owns phase 0xC and what anim 4 looks like in-game is unconfirmed
+- Whether FuturePanelX is a target panel or the object's own pre-set landing spot needs caller context
+- 'The code matches: sets CurAnim=4, Timer=3, moves PanelX = FuturePanelX - frontDir, copies Y, calls
+  setCoordinatesFromPanels, decrements Timer, and when it hits 0 stores 0xC into CurPhaseAndPhaseInitialized.
+  However, storing 0xC into a halfword overwrites both phase and the initialized flag, so the next phase
+  must itself be responsible for re-initializing, not this handler; this is also where ''battle_'' fits
+  since it''s purely a battle-object phase. The mechanism is correct but the name ''phaseStepBackOnePanel''
+  slightly mischaracterizes it since it always uses future-X, not current-X, and one panel away from the
+  enemy.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2934 -> battle_stepBackOnePanelOnFutureX
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2934

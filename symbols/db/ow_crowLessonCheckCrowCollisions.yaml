@@ -1,0 +1,59 @@
+name: ow_crowLessonCheckCrowCollisions
+address: '0x08143248'
+kind: function
+status: probable
+summary: 'Per-crow proximity check for the Cybercrow lesson: when an active crow''s position is within
+  the collision threshold of another active crow (delta hypot < 6<<16), flag that crow into state 2 via
+  sub_81432FA.'
+interface: () -> void; for each active crow record whose position comes within 6.0 of another active crow,
+  invokes sub_81432FA(crowIndex, 2) and moves on
+details: Iterates the 8 crow records at byte_2000D20 (0x14 bytes each). Records with a nonzero state byte
+  at +0 are treated as active; for each such crow it compares that record's X/Y at +8/+0xC against the
+  X/Y of every following record with a nonzero state, calling calc_hypotFixed12 on the delta (20.12 fixed
+  point). If the distance is less than 6<<16 (6.0 units), it calls sub_81432FA with the outer crow's index
+  and value 2 — almost certainly a state transition, e.g. turning/retargeting — and skips the rest of
+  that crow's inner loop. Inner comparisons only start at the outer index+1, so each pair is evaluated
+  once. Per-record timers and Z (+2/+6/+0x10) are untouched here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7]; tst; beq — only records with nonzero +0 state participate (loc_814324E loop);
+    ldr [r5,#8]/[r5,#0xC] vs [r7,#8]/[r7,#0xC] then bl calc_hypotFixed12 — pairwise X/Y distance between
+    crow records; mov r1,#6 lsl r1,#16; cmp r0,r1; bge skip — threshold of 6.0 in 20.12 fixed point; bl
+    sub_81432FA with r0 = outer index, r1 = 2 — result is a per-crow state change, not a removal (slot
+    not cleared); caller ow_crowLessonInteraction runs this per frame for the crow lesson spot, consistent
+    with a per-frame separation/retarget check
+  refs:
+  - bn6f/asm/asm37_1.s:2935
+  - 0x08142FC8 ow_crowLessonInteraction
+  - 0x080014D4 calc_hypotFixed12
+  - 0x081432FA sub_81432FA
+  reproduce: python3 tools/asmcat.py 0x08143248
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Pattern matches: 8-record outer loop over byte_2000D20, inner loop from outer+1, calls calc_hypotFixed12
+    on delta, then sub_81432FA(outer,2) and breaks inner loop. However the threshold description is wrong:
+    `mov r1,#6; lsl r1,r1,#0x10` produces 6<<16 = 0x60000, not 6.0; in 20.12 fixed that would be 384.0
+    units, not 6.0. Z at +0x10 and timers at +2/+6 are indeed untouched.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'sub_81432FA is unnamed: its body would confirm whether state 2 means turn-away, retarget, or something
+  else'
+- exact position scale (pixels vs fixed units) and what the 6.0 threshold means visually
+- 'Pattern matches: 8-record outer loop over byte_2000D20, inner loop from outer+1, calls calc_hypotFixed12
+  on delta, then sub_81432FA(outer,2) and breaks inner loop. However the threshold description is wrong:
+  `mov r1,#6; lsl r1,r1,#0x10` produces 6<<16 = 0x60000, not 6.0; in 20.12 fixed that would be 384.0 units,
+  not 6.0. Z at +0x10 and timers at +2/+6 are indeed untouched.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143248 -> ow_crowLessonCheckCrowCollisions
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143248

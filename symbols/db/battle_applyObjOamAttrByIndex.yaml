@@ -1,0 +1,61 @@
+name: battle_applyObjOamAttrByIndex
+address: '0x0811A914'
+kind: function
+status: probable
+summary: Loads a word (0x20000000 or 0x40000000) from byte_811A938 using r0<<2 and stores it via sprite_setUnk0x2c
+  on the entity at eStructArr2008450 entry r1. Then returns the entity's first (status) byte with Z set
+  iff bit 0x8 is clear.
+interface: (r0 = selector indexed into byte_811A938 (word-sized), r1 = index into eStructArr2008450) ->
+  r0 = entry status byte; Z set iff bit 0x8 of that byte is clear
+details: Fetches the entry of the fixed 0x58-byte struct array at eStructArr2008450 given by r1, keeping
+  its pointer in r5. Uses r0<<2 to load a word from byte_811A938 (0x20000000 or 0x40000000 — likely hflip/vflip
+  or OAM attr bits) and stores it into field 0x2c of the sprite struct via sprite_setUnk0x2c. Then reads
+  the entry's first (status) byte and tests bit 0x8, returning with NZ flags from that test. The two table
+  entries suggest a binary choice such as facing direction. Exact meaning of the 0x8 status bit is not
+  shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: lsl r4,r4,#2 + ldr r0,[r1,r4] indexes table byte_811A938 whose words are 0x20000000/0x40000000;
+    bl sprite_setUnk0x2c right after the table load writes the word into sprite field 0x2c; ldrb r0,[r5]
+    with r5 = entry pointer from getStructFrom2008450, then tst r0,#8 returns the status-bit test in flags;
+    Callers at 0x812C884/0x812D204/0x812E08C/0x812E910/0x812F628 cluster in the battle-code region, consistent
+    with per-entity sprite flip updates
+  refs:
+  - bn6f/asm/asm32.s:26229
+  - 0x0811A878 sub_811A878
+  - 0x0812C884 sub_812C884
+  - 0x0812D204 sub_812D204
+  - 0x080466C4 getStructFrom2008450
+  - 0x08002FA6 sprite_setUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x0811A914
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match: r0 indexes byte_811A938 loaded as a word via lsl r4,#2 and ldr
+    r0,[r1,r4] (0x20000000 vs 0x40000000 — OAM attr bits, not ''flip''). r1 is the entity index passed
+    to getStructFrom2008450, whose first byte is returned via ldrb r0,[r5] then tst with bit 0x8. The
+    name ''battle_setSpriteFlipByIndex'' is misleading because the stored value is an OAM attribute word
+    (0x20000000/0x40000000), not a flip flag, and the function''s return is a status check, not a setter.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Whether 0x20000000/0x40000000 are hflip/vflip or other OAM attribute bits in field 0x2c
+- Meaning of status bit 0x8 in the 2008450 entry and how callers branch on the returned flags
+- Why r1 (table base) is still live at the sprite_setUnk0x2c call — its full argument contract needs checking
+- 'The proposal''s mechanics match: r0 indexes byte_811A938 loaded as a word via lsl r4,#2 and ldr r0,[r1,r4]
+  (0x20000000 vs 0x40000000 — OAM attr bits, not ''flip''). r1 is the entity index passed to getStructFrom2008450,
+  whose first byte is returned via ldrb r0,[r5] then tst with bit 0x8. The name ''battle_setSpriteFlipByIndex''
+  is misleading because the stored value is an OAM attribute word (0x20000000/0x40000000), not a flip
+  flag, and the function''s return is a status check, not a setter.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811A914 -> battle_applyObjOamAttrByIndex
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A914

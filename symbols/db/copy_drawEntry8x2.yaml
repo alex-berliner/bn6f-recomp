@@ -1,0 +1,64 @@
+name: copy_drawEntry8x2
+address: '0x0812EE20'
+kind: function
+status: probable
+summary: Draws an 8x2-tile graphic into BG tile block 2 at a coordinate from a lookup table; the tile-id
+  base is r4 (path A, fixed=4) or r4 loaded from byte_812EEBC (path B), then offset by byte_812EEE1[[r5+0x30]]
+  where r5 is supplied by the caller.
+interface: (r0 = entry index for the second code path, r5 = object/state pointer with state byte at +0x30)
+  -> r0 = ?; no meaningful return
+details: 'The routine picks a table entry: path A uses a fixed base (r4=4) with r0=0; path B scales r0
+  by 4 to index a word array at byte_812EEBC and a pointer array at off_812EEB0. It reads r6 = word from
+  byte_812EEBC at r0+8 (the destination coordinate) and computes r7 = r4 + byte_812EEE1[[r5+0x30]] (the
+  tile-id base, offset by a per-state byte from the object/state struct field 0x30). It first calls call_sub_3005EBA
+  with tile_ids = 0 (apparently clearing/filling the 8x2 region with tile 0) and then CopyBackgroundTiles(j=r4,
+  i=r6, block=2, tile_ids=r7, j_size=8, i_size=2), drawing the graphic into BG tile block 2. Notably r5
+  is never set inside the function, so the caller must have it already pointing at the relevant object/state
+  struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r2,[r5,#0x30]; ldrb r2,[byte_812EEE1,r2]; add r7,r7,r2 — tile base depends on state byte
+    at struct+0x30 (asm near 812EE30/812EE44); mov r2,#2 ... mov r4,#8; mov r5,#2; bl CopyBackgroundTiles
+    — writes an 8x2 tile region into tile block 2; bl call_sub_3005EBA with r3=0 before the real copy
+    — a first pass writing tile 0 (erase) over the same region; ldr r3,[off_812EEB0,r0] and ldr r4/r6,[byte_812EEBC,r0]
+    — coordinates/data come from parallel lookup tables indexed by the entry; push {r4-r7,lr} but r5 never
+    initialized — relies on caller's r5 (state object pointer)
+  refs:
+  - bn6f/asm/asm35.s:503
+  - 0x0812EF20 sub_812EF20
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x080018D0 call_sub_3005EBA
+  reproduce: python3 tools/asmcat.py 0x0812EE20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct (path A uses r4=4, path B scales r0 by 4, tile-id base is r7). However,
+    the proposal''s interface says `r5 = object/state pointer` but the code never loads r5 anywhere in
+    the function, and `ldrh r2, [r5,#0x30]` reads a halfword, not a byte, so the byte-at-+0x30 wording
+    is wrong. Also, the proposed name `bg2_drawTileEntry8x2` invents a new prefix; the convention requires
+    an approved prefix.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What call_sub_3005EBA does exactly (erase variant of CopyBackgroundTiles?) and what its r3=0 tile id
+  means
+- What the tables at off_812EEB0, byte_812EEBC and byte_812EEE1 contain (coordinate pairs and tile bases)
+  and what visual element the 8x2 tiles depict
+- Which object/state struct r5 points to and the meaning of field 0x30; the second entry path (loc_812EE38)
+  seems unreachable from the shown entry point — possibly a separate entry label
+- The summary is mostly correct (path A uses r4=4, path B scales r0 by 4, tile-id base is r7). However,
+  the proposal's interface says `r5 = object/state pointer` but the code never loads r5 anywhere in the
+  function, and `ldrh r2, [r5,#0x30]` reads a halfword, not a byte, so the byte-at-+0x30 wording is wrong.
+  Also, the proposed name `bg2_drawTileEntry8x2` invents a new prefix; the convention requires an approved
+  prefix.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812EE20 -> copy_drawEntry8x2
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EE20

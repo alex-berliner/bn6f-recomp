@@ -1,0 +1,60 @@
+name: battle_decrementAndDespawnObjectOnTimerExpiry
+address: '0x080BB46A'
+kind: function
+status: probable
+summary: Decrement a battle object's lifetime timer; on expiry, tear down the related object (via unpackVerActorTyAndAIIdx/sub_8011044
+  then battle_killObjectWithDependents), clear bit 1 of oObjectHeader_Flags, store CUR_STATE_DESTROY,
+  and zero *oBattleObject_ExtraVars.
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY, clears oObjectHeader_Flags
+  bit 1 and ExtraVars byte 0 of the object when Timer reaches -1
+details: Each call decrements oBattleObject_Timer and returns while it is still >=0 (bge to the exit).
+  On expiry it reads oBattleObject_NameID of RelatedObject1Ptr, unpacks the {version, actor type, AI index}
+  triple via unpackVerActorTyAndAIIdx_800F29C and passes it with r2=1 to sub_8011044, then bic's bit 1
+  (0x02) out of the object's own oObjectHeader_Flags. It stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and calls battle_killObjectWithDependents on RelatedObject1Ptr, so the linked object tree is deleted.
+  Finally it stores 0 to the first byte of oBattleObject_ExtraVars. Reads its object from r5, so it is
+  an object-method-style helper rather than a r0-argument function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bge locret — countdown gate for everything below;
+    ldr r4,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh r0,[r4,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C;
+    bl sub_8011044 — acts on the owner's identity when time is up; bic r0,#2 on oObjectHeader_Flags —
+    clears a single active/visible-style flag on the object; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — switches the object's state machine to destruction; bl battle_killObjectWithDependents on RelatedObject1Ptr,
+    then strb 0 to [ExtraVars] — tears down the linked object and resets its extra state
+  refs:
+  - bn6f/asm/asm31.s:6939
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BB46A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior is largely right: it decrements oBattleObject_Timer and returns while >=0 (bge locret_80BB49A),
+    unloads related object via unpackVerActorTyAndAIIdx+sub_8011044, clears bit 1 of oObjectHeader_Flags,
+    sets CUR_STATE_DESTROY, calls battle_killObjectWithDependents, and zeros ExtraVars[0]. However, ExtraVars
+    is treated as a pointer (ldr r1,[r5,#ExtraVars]; strb r0,[r1]), not an inline byte, contradicting
+    the detail.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the object type using this (summon, panel object, timer-based trap?) is unidentified
+- What sub_8011044 does with the unpacked {version, actor type, AI index} and r2=1 is unknown
+- Meaning of oObjectHeader_Flags bit 1 and the ExtraVars byte cleared here
+- 'The behavior is largely right: it decrements oBattleObject_Timer and returns while >=0 (bge locret_80BB49A),
+  unloads related object via unpackVerActorTyAndAIIdx+sub_8011044, clears bit 1 of oObjectHeader_Flags,
+  sets CUR_STATE_DESTROY, calls battle_killObjectWithDependents, and zeros ExtraVars[0]. However, ExtraVars
+  is treated as a pointer (ldr r1,[r5,#ExtraVars]; strb r0,[r1]), not an inline byte, contradicting the
+  detail.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BB46A -> battle_decrementAndDespawnObjectOnTimerExpiry
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB46A

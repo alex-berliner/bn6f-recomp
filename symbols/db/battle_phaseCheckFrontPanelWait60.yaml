@@ -1,0 +1,63 @@
+name: battle_phaseCheckFrontPanelWait60
+address: '0x080E5F10'
+kind: function
+status: probable
+summary: 'Per-frame phase handler: once per phase it tests the panel directly in front of the object against
+  panel-flag masks and, if it passes, triggers sub_80D3742 on that panel, then counts down 60 frames before
+  advancing the object to action 0xC.'
+interface: (r5 = battle object) -> r0 = 0 on phase exit; sets oBattleObject_Timer=60, oBattleObject_PhaseInitialized=4,
+  and on timeout oBattleObject_CurAction=0xC, oBattleObject_CurPhase=0
+details: On the first run (PhaseInitialized == 0) it gets the object's facing multiplier from object_getFrontDirection,
+  indexes byte_80E5F68 by Alliance*8 to fetch two panel-flag masks (both alliances use set=0x00000000,
+  clear=0x0F880080), and calls object_checkPanelParameters on (PanelX + facing, PanelY). If the panel
+  has none of the masked states (i.e. it is a plain/normal panel), it calls sub_80D3742 with r0=panel
+  x, r1=panel y, r2=oBattleObject_Element, r3=0, plus r4=Params and r6=DamageAndStaminaDamageCounterDisabler+Z16Save
+  under the same r5 object. Either way it loads Timer=60 and marks the phase initialized (4). Each subsequent
+  frame decrements Timer; when it expires the object's CurAction is set to 0xC and CurPhase reset to 0,
+  ending the phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized / bne skips straight to the timer countdown: init runs once per phase;
+    off_80E5F64 -> byte_80E5F68 supplies per-Alliance mask pairs to object_checkPanelParameters with (PanelX+facing,
+    PanelY); sub_80D3742 is only called when checkPanelParameters returns nonzero, passing Element, Params
+    and Damage+Z16Save; mov r0,#0x3c; strh Timer; mov r0,#4; strb PhaseInitialized sets the 60-frame delay;
+    Timer countdown ending writes CurAction=0xC and CurPhase=0, a standard phase-advance pattern'
+  refs:
+  - bn6f/asm/asm31.s:100407
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D3742 sub_80D3742
+  reproduce: python3 tools/asmcat.py 0x080E5F10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the 60-frame wait, CurAction=0xC transition, and panel-flag mask
+    lookup. However, it says sub_80D3742 is called ''if it passes'' the check, but `beq loc_80E5F4A` skips
+    the call when checkPanelParameters returns nonzero, meaning the call happens only on non-matching
+    panels. Also, the last store is a single `strh` to CurPhaseAndPhaseInitialized, not separate CurPhase
+    and PhaseInitialized writes. Name is acceptable but could be more descriptive.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D3742 does with (x, y, element, params, damage+Z16) — spawn an attack, damage the panel,
+  or something else — is unknown, so the exact game effect is unconfirmed
+- Which enemy/object uses this phase (no callers known), so the AI prefix and a more specific name may
+  be warranted
+- Exact meaning of the panel-flag mask 0x0F880080 (which panel states are disallowed)
+- The summary correctly captures the 60-frame wait, CurAction=0xC transition, and panel-flag mask lookup.
+  However, it says sub_80D3742 is called 'if it passes' the check, but `beq loc_80E5F4A` skips the call
+  when checkPanelParameters returns nonzero, meaning the call happens only on non-matching panels. Also,
+  the last store is a single `strh` to CurPhaseAndPhaseInitialized, not separate CurPhase and PhaseInitialized
+  writes. Name is acceptable but could be more descriptive.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E5F10 -> battle_phaseCheckFrontPanelWait60
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5F10

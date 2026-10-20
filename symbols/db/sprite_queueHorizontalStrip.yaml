@@ -1,0 +1,62 @@
+name: sprite_queueHorizontalStrip
+address: '0x0811ACA8'
+kind: function
+status: probable
+summary: Queues 8 OAM entries in a row starting at (x-32, y-8), advancing x by 0x80000 (8 px) and the
+  tile index by 2 each iteration; the starting tile is selected from a 3-entry table at byte_811ACF0 indexed
+  by byte [r5+3].
+interface: (r5 = object/sprite struct ptr, carried in) -> void; r0-r3,r4-r7 clobbered
+details: 'Calls sprite_getCoordinates on the object in r5, subtracts 0x20 from x and 8 from y, and packs
+  the result with 0x8000 OR''d into the low halfword (likely a flag in the packed coordinate format).
+  A selector byte at [r5+3] indexes a 4-byte-stride table at byte_811ACF0 (three entries: halfwords 0xB910,
+  0xB920, 0xB930 — tile indices 0x10/0x20/0x30 with shared attributes 0xB9, i.e. three visual variants).
+  It then loops 8 times calling sprite_queueOamEntry(attr2 = tile/palette halfword, a3=0, a4=3), advancing
+  the position by 8 px in x each iteration and the tile index by 2 each iteration, so it lays out 8 tiles
+  in one row starting at (x-32, y-8).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_getCoordinates; sub r0,#0x20; sub r1,#8 — position derived from the object''s coordinates
+    with fixed (-32,-8) offset; ldrb r0,[r5,#3]; lsl r0,#2; ldr r6,[r6,r0] — variant byte selects one
+    of three tile-base entries in byte_811ACF0; loop: bl sprite_queueOamEntryThunk_802FE28 with r4 = packed
+    coord, r6 = tile word, then r4 += 0x0008_0000 and r6 += 2 — 8 sprites in a row, tile index stepping
+    by 2; dword_811ACE4 = 0x8000 OR''d into the packed coordinates, likely a flag bit in the x/y encoding
+    used by the OAM queue; table byte_811ACF0 holds 0xB910/0xB920/0xB930 — only the tile number varies
+    per variant, attribute nibble 0xB is shared'
+  refs:
+  - bn6f/asm/asm32.s:26702
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  - 0x080030A8 sprite_getCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811ACA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does queue a horizontal strip of 8 OAM sprites anchored above-left of the object''s position,
+    and uses byte_811ACF0 as a tile-index table — that part is right. But the tile indices in byte_811ACF0
+    are 0x10, 0x20, 0x30 (not ''0xB910, 0xB920, 0xB930''); the 0xB9 is the palette byte packed alongside,
+    loaded as halfword 0xB910/0xB920/0xB930 from the table. The summary''s wording about ''tile/palette
+    halfword'' is therefore misleading. Name and summary are otherwise fine; just clarify the packed halfword.;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which game object/screen uses this strip (its in-game meaning) is unidentified
+- What the 0x8000 bit in the packed coordinate means to sprite_queueOamEntry
+- What object field [r5+3] is named and what its three values select visually (tiles 0x10/0x20/0x30 in
+  palette/bank 0xB)
+- Why only three table entries exist while nothing bounds the selector byte
+- The code does queue a horizontal strip of 8 OAM sprites anchored above-left of the object's position,
+  and uses byte_811ACF0 as a tile-index table — that part is right. But the tile indices in byte_811ACF0
+  are 0x10, 0x20, 0x30 (not '0xB910, 0xB920, 0xB930'); the 0xB9 is the palette byte packed alongside,
+  loaded as halfword 0xB910/0xB920/0xB930 from the table. The summary's wording about 'tile/palette halfword'
+  is therefore misleading. Name and summary are otherwise fine; just clarify the packed halfword.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811ACA8 -> sprite_queueHorizontalStrip
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811ACA8

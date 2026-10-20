@@ -1,0 +1,61 @@
+name: sprite_shrinkStep
+address: '0x0811AE04'
+kind: function
+status: probable
+summary: Per-frame step that subtracts 0x30 from object+0x10 (scale), clamps to a minimum of 0x40, and
+  calls sprite_setScaleParameters(0,0x40). When the scale reaches exactly 0x40, it calls sprite_makeUnscalable
+  and zeroes object+0x09, terminating the shrink.
+interface: (r0 unused entry, r5 = object struct) -> void; touches object+0x10 (scale) and object+0x09
+  (state flag)
+details: Reads the byte at object+0x10 (a scale value), subtracts 0x30, and clamps the result to a minimum
+  of 0x40 before storing it back. It then calls sprite_setScaleParameters(0, 0x40) with hardcoded arguments.
+  When the scale value has reached exactly 0x40, it calls sprite_makeUnscalable to clear the scalable
+  state and scale bits, zeroes the byte at object+0x09, and returns. This is a per-frame shrink animation
+  that terminates once the object is at minimum scale, likely a disappear/despawn effect for a battle
+  object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r5,#0x10]; sub r2,#0x30; cmp/bgt/mov #0x40; strb back — scale decremented with 0x40
+    floor; bl sprite_setScaleParameters with r0=0, r1=0x40 — hardcoded scale parameters each step; cmp
+    r0,#0x40; bne skip; bl sprite_makeUnscalable — terminates shrink at 0x40; strb r0(0),[r5,#9] — clears
+    a state/active byte once fully shrunk; known callees sprite_setScaleParameters/sprite_makeUnscalable
+    confirm this operates on the sprite scaling system'
+  refs:
+  - bn6f/asm/asm32.s:26854
+  - 0x08002D52 sprite_makeUnscalable
+  - 0x08002C24 sprite_setScaleParameters
+  reproduce: python3 tools/asmcat.py 0x0811AE04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary incorrectly states it subtracts 0x30 and clamps to a minimum of 0x40 (it actually subtracts
+    0x30 and clamps to a minimum of 0x40 via bgt, which is correct, but the subsequent logic is misdescribed).
+    Looking at the code: after the clamp, it calls sprite_setScaleParameters(0, 0x40) unconditionally
+    (not only when 0x40 is reached), then only when scale equals 0x40 it calls sprite_makeUnscalable and
+    zeros object+0x09. Also, the function takes no args (r5 is a caller-set register, not a parameter),
+    so the interface description of (r5 = object) is misleading. A better summary should note the unconditional
+    scale-parameter update each frame.; run wf investigate investigate-20261019-003606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the object struct layout (fields +0x09 and +0x10) and which game entity uses this
+  shrink are unconfirmed
+- Exact meaning of the hardcoded setScaleParameters(0, 0x40) arguments (x/y scale roles) is unclear
+- 'The summary incorrectly states it subtracts 0x30 and clamps to a minimum of 0x40 (it actually subtracts
+  0x30 and clamps to a minimum of 0x40 via bgt, which is correct, but the subsequent logic is misdescribed).
+  Looking at the code: after the clamp, it calls sprite_setScaleParameters(0, 0x40) unconditionally (not
+  only when 0x40 is reached), then only when scale equals 0x40 it calls sprite_makeUnscalable and zeros
+  object+0x09. Also, the function takes no args (r5 is a caller-set register, not a parameter), so the
+  interface description of (r5 = object) is misleading. A better summary should note the unconditional
+  scale-parameter update each frame.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811AE04 -> sprite_shrinkStep
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811AE04

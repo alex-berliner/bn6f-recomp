@@ -1,0 +1,56 @@
+name: object_stepForwardOrFall
+address: '0x080BD538'
+kind: function
+status: probable
+summary: 'Battle-object update: waits 30 frames, then either issues a fall action (0xC) on a non-solid
+  panel or readies a one-panel step toward the player''s side (CurAction=4).'
+interface: (r0 = unused, r5 = battle object pointer assumed set by caller) -> r0 = destroyed; writes Timer,
+  PhaseInitialized, CurAction/CurPhase, FuturePanelX/Y, ExtraVars+0xC, Param3
+details: 'On first invocation (PhaseInitialized==0) it loads a 30-frame timer (0x1E) and marks phase 4
+  as initialized. Each subsequent call decrements the timer until it hits zero. At expiry it checks object_isCurrentPanelSolid
+  for the object''s PanelX/PanelY: if the panel is not solid (hole/broken/off-grid) it sets CurAction=0xC
+  (a fall/sink-like action) with phase 0. Otherwise it calls object_getFrontDirection, stores FuturePanelX
+  = PanelX + facing direction and FuturePanelY = 1, sets ExtraVars+0xC = 1 and Param3 = 0, then issues
+  CurAction=4 (movement action) with phase 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80BD54A: timer decrement with bgt exit is a standard phase delay before acting; bl object_isCurrentPanelSolid
+    branch selects between action 0xC and the movement setup; bl object_getFrontDirection; add r0,r1 result
+    stored to FuturePanelX shows a step toward the opposing side; FuturePanelY=1 and ExtraVars+0xC=1 mirror
+    fields consumed by the battle engine''s move/planned-move handling; CurAction/CurPhase writes with
+    value 0 end the phase, matching other known object phase handlers'
+  refs:
+  - bn6f/asm/asm31.s:11460
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080BD538
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s described behavior: 30-frame timer init, panel-solidity check,
+    fall action 0xC vs step action 4 with FuturePanelX = PanelX + facing direction and FuturePanelY =
+    1, plus ExtraVars+0xC=1 and Param3=0. However, the phase mark stored is exactly 4 (strb r0,#4 then
+    strh 0 into CurPhaseAndPhaseInitialized), meaning only the phase-initialized byte holds 4 while the
+    phase itself is 0 — not ''phase 4'' in the typical sense, so the summary''s ''Phase-4'' framing is
+    slightly misleading.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so which enemy/action set uses this is unidentified
+- Exact semantics of CurAction 0xC vs 4 (fall vs move) would be confirmed from the action dispatcher
+- 'The code matches the proposal''s described behavior: 30-frame timer init, panel-solidity check, fall
+  action 0xC vs step action 4 with FuturePanelX = PanelX + facing direction and FuturePanelY = 1, plus
+  ExtraVars+0xC=1 and Param3=0. However, the phase mark stored is exactly 4 (strb r0,#4 then strh 0 into
+  CurPhaseAndPhaseInitialized), meaning only the phase-initialized byte holds 4 while the phase itself
+  is 0 — not ''phase 4'' in the typical sense, so the summary''s ''Phase-4'' framing is slightly misleading.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BD538 -> object_stepForwardOrFall
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD538

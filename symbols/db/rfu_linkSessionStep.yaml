@@ -2,50 +2,48 @@ name: rfu_linkSessionStep
 address: '0x08039AB8'
 kind: function
 status: probable
-summary: 'State-machine step that initializes the rfu link session: on success, triggers a fade and script
-  0x13 and sets [r5+1]=0x10; on failure, sets [r5+1]=8; then calls sub_803A1B0.'
-interface: (no args; r5 = per-menu state struct set by caller) -> r0 = return of sub_803A1B0; writes state
-  byte at [r5+1] (0x10 or 8)
-details: Calls rfu_initLinkSession and tests its result. On the nonzero (failure) path it simply stores
-  state 8 into [r5+1]. On the zero path it calls sub_803C320, triggers a screen fade via SetScreenFade(8,
-  0x10), asks sub_803BB2C to show network text script 0x13, and stores state 0x10 into [r5+1]. The r5
-  struct is a caller-managed state/phase block whose byte 1 selects the next phase of what looks like
-  the wireless network menu. No inputs are consumed; the function only advances state and triggers the
-  fade/text.
+summary: 'State-machine step that initializes the rfu link session: on success, triggers a fade and script 0x13
+  and sets [r5+1]=0x10; on failure, sets [r5+1]=8; then calls sub_803A1B0.'
+interface: (no args; r5 = per-menu state struct set by caller) -> r0 = return of sub_803A1B0; writes state byte
+  at [r5+1] (0x10 or 8)
+details: Calls rfu_initLinkSession and tests its result. On the nonzero (failure) path it simply stores state 8
+  into [r5+1]. On the zero path it calls sub_803C320, triggers a screen fade via SetScreenFade(8, 0x10), asks sub_803BB2C
+  to show network text script 0x13, and stores state 0x10 into [r5+1]. The r5 struct is a caller-managed state/phase
+  block whose byte 1 selects the next phase of what looks like the wireless network menu. No inputs are consumed;
+  the function only advances state and triggers the fade/text.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'bl rfu_initLinkSession; tst r0,r0; bne loc_8039ADA — result decides the two state transitions;
-    failure path: mov r0,#8; strb r0,[r5,#1] — state byte 8 on error; success path: bl SetScreenFade(8,0x10);
-    mov r0,#0x13; bl sub_803BB2C (network text script) — error/info dialog shown as session starts; strb
-    r0,[r5,#1] with 0x10 — success advances the phase to 0x10; callee sub_803BB2C is described as selecting
-    network-related text by phase, confirming the wireless-menu context'
+  detail: 'bl rfu_initLinkSession; tst r0,r0; bne loc_8039ADA — result decides the two state transitions; failure
+    path: mov r0,#8; strb r0,[r5,#1] — state byte 8 on error; success path: bl SetScreenFade(8,0x10); mov r0,#0x13;
+    bl sub_803BB2C (network text script) — error/info dialog shown as session starts; strb r0,[r5,#1] with 0x10
+    — success advances the phase to 0x10; callee sub_803BB2C is described as selecting network-related text by phase,
+    confirming the wireless-menu context'
   refs:
   - bn6f/asm/asm03_1_1.s:1987
   - 0x081465BC rfu_initLinkSession
   - 0x0803BB2C sub_803BB2C
   - 0x08006270 SetScreenFade
   reproduce: python3 tools/asmcat.py 0x08039AB8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code confirms the basic structure: rfu_initLinkSession is tested; on zero it fades, shows script
-    0x13, and stores 0x10 at [r5+1]; on nonzero it stores 8 at [r5+1] and finally calls sub_803A1B0. However,
-    the summary has the success/failure branches swapped: tst r0,r0; bne jumps to the branch that stores
-    8, meaning nonzero=error=state 8 and zero=success stores 0x10. Also r5 is never shown as a input —
-    push {r4-r7,lr} then later strb r0,[r5,#1] is puzzling, but no ''r5'' appears in the prologue, so
-    it must be set by a caller as stated. The name net_initLinkSessionStep is reasonable but could be
-    cleaner as an rfu_ prefixed step.; run wf investigate investigate-20261018-235109; proposed by Hyper
-    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The code
+    confirms the basic structure: rfu_initLinkSession is tested; on zero it fades, shows script 0x13, and stores
+    0x10 at [r5+1]; on nonzero it stores 8 at [r5+1] and finally calls sub_803A1B0. However, the summary has the
+    success/failure branches swapped: tst r0,r0; bne jumps to the branch that stores 8, meaning nonzero=error=state
+    8 and zero=success stores 0x10. Also r5 is never shown as a input — push {r4-r7,lr} then later strb r0,[r5,#1]
+    is puzzling, but no ''r5'' appears in the prologue, so it must be set by a caller as stated. The name net_initLinkSessionStep
+    is reasonable but could be cleaner as an rfu_ prefixed step.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
 open_questions:
 - Semantics of rfu_initLinkSession's return (0 = success assumed) not confirmed
 - Which menu/state machine owns the r5 struct and what phases 8 and 0x10 mean
 - What sub_803C320 and sub_803A1B0 do in this step
-- 'The code confirms the basic structure: rfu_initLinkSession is tested; on zero it fades, shows script
-  0x13, and stores 0x10 at [r5+1]; on nonzero it stores 8 at [r5+1] and finally calls sub_803A1B0. However,
-  the summary has the success/failure branches swapped: tst r0,r0; bne jumps to the branch that stores
-  8, meaning nonzero=error=state 8 and zero=success stores 0x10. Also r5 is never shown as a input — push
-  {r4-r7,lr} then later strb r0,[r5,#1] is puzzling, but no ''r5'' appears in the prologue, so it must
-  be set by a caller as stated. The name net_initLinkSessionStep is reasonable but could be cleaner as
-  an rfu_ prefixed step.'
+- 'The code confirms the basic structure: rfu_initLinkSession is tested; on zero it fades, shows script 0x13, and
+  stores 0x10 at [r5+1]; on nonzero it stores 8 at [r5+1] and finally calls sub_803A1B0. However, the summary has
+  the success/failure branches swapped: tst r0,r0; bne jumps to the branch that stores 8, meaning nonzero=error=state
+  8 and zero=success stores 0x10. Also r5 is never shown as a input — push {r4-r7,lr} then later strb r0,[r5,#1]
+  is puzzling, but no ''r5'' appears in the prologue, so it must be set by a caller as stated. The name net_initLinkSessionStep
+  is reasonable but could be cleaner as an rfu_ prefixed step.'
 sources:
 - wf investigate investigate-20261018-235109
 changes:
@@ -57,5 +55,9 @@ changes:
   what: rename sub_8039AB8 -> rfu_linkSessionStep
   where: bn6f cfc4da77
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
 previous_names:
 - sub_8039AB8

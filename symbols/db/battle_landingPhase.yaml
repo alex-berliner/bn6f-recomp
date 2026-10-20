@@ -1,0 +1,58 @@
+name: battle_landingPhase
+address: '0x080B954C'
+kind: function
+status: probable
+summary: 'Battle-object landing/spawn phase: initializes anim+phase, plays sound 0x94 and a spawn helper,
+  waits 6 frames, then chooses action 4 if the panel under the object has hole flags 0x10010, otherwise
+  action 0x18.'
+interface: (r0 unused on entry; r5 = battle object header) -> r0 clobbered; updates oBattleObject_CurPhase/CurAnim/CurAction/Timer
+  and oObjectHeader_Flags
+details: 'A per-object phase dispatcher (r5 = battle object). In phase 0 it initializes: sets CurPhase
+  4, CurAnim 3, plays sound effect 0x94, calls sub_8010DF6(2,6,1) (likely an effect/spawn helper), sets
+  flag bit 1 in oObjectHeader_Flags, and loads a 6-frame timer into oBattleObject_TimerAndTimer2. On later
+  calls it decrements oBattleObject_Timer and returns until it hits 0. It then reads the panel status
+  flags at the object''s PanelX/PanelY via object_getPanelParameters and tests for mask 0x10010; if the
+  panel has those flags (hole/void-like state) it sets CurAction 4, otherwise CurAction 0x18, clearing
+  CurPhase/PhaseInitialized either way so the new action starts from its phase 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'phase 0 branch: sets CurPhase 4, CurAnim 3, PlaySoundEffect(0x94), timer 6 (asm lines at 80B954C-80B9576);
+    sub_8010DF6 called with (r0=2, r1=6, r2=1) during init; post-timer branch calls object_getPanelParameters(PanelX,
+    PanelY) and ANDs result with 0x10010; cmp against 0x10010 selects CurAction 4 vs CurAction 0x18, resetting
+    CurPhaseAndPhaseInitialized to 0; structure offsets oBattleObject_* and oObjectHeader_Flags match
+    the known battle object layout'
+  refs:
+  - bn6f/asm/asm31.s:2616
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x08010DF6 sub_8010DF6
+  reproduce: python3 tools/asmcat.py 0x080B954C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The phase handler, sound/animation setup, 6-frame wait, hole-panel branch, and action selection
+    (0x4 vs 0x18) match the code. However, ''checkHolePanelPhase'' implies only checking; the function
+    also performs the spawn/effect setup, so a name like ''battle_holePanelLandingPhase'' or ''battle_landingDescendPhase''
+    better reflects both the spawn role and the hole-branch check.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which specific object/attack uses this handler — no known caller and sub_8010DF6 is unnamed, so what
+  its (2,6,1) arguments spawn is unknown
+- Exact meaning of panel flag bits 0x10 and 0x10000 (presumably hole/void-related)
+- The phase handler, sound/animation setup, 6-frame wait, hole-panel branch, and action selection (0x4
+  vs 0x18) match the code. However, 'checkHolePanelPhase' implies only checking; the function also performs
+  the spawn/effect setup, so a name like 'battle_holePanelLandingPhase' or 'battle_landingDescendPhase'
+  better reflects both the spawn role and the hole-branch check.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B954C -> battle_landingPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B954C

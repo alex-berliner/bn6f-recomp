@@ -1,0 +1,67 @@
+name: battle_spawnAlliedLinkedObject
+address: '0x080C4AEC'
+kind: function
+status: probable
+summary: Spawns battle object type 0x5D via object_spawnType1, initialises its extra-vars block with 1,
+  copies the alliance/flip from the caller's object, and stores the matching side's player pointer (from
+  battle_findPlayer) into oBattleObject_RelatedObject1Ptr.
+interface: (r0 = ptr to extra-vars block (its first byte is set to 1), r1-r3+stack = x, y, z, params forwarded
+  to object_spawnType1; r5 = source BattleObject) -> r0 = new BattleObject* or NULL on spawn failure
+details: 'Forces the object index to 0x5D and calls object_spawnType1 with the remaining arguments passed
+  through untouched; on a NULL return it just returns. On success it stores the r0 argument pointer into
+  the new object''s oBattleObject_ExtraVars field and writes 1 to the first byte of that block (an init/active
+  flag). It then copies oBattleObject_AllianceAndDirectionFlip from the object pointer in the entry r5
+  (restored by the pop) into the new object, so the child shares the source''s side and sprite flip. Finally
+  it reads the source''s oBattleObject_Alliance byte, calls battle_findPlayer to get that side''s player
+  object, and stores it in the new object''s oBattleObject_RelatedObject1Ptr. The r5-as-source is a register-parameter
+  convention, not AAPCS, so this helper is tightly coupled to its caller. Net effect: a new battle entity
+  of type 0x5D that is owned by and points at the player on the same side as the requesting object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x5d; bl object_spawnType1 with r1-r3/stack untouched: spawns battle object type 0x5D
+    from forwarded args; str r1,[r0,#oBattleObject_ExtraVars]; mov r2,#1; strb r2,[r1]: new object''s
+    ExtraVars = arg0, *(u8*)arg0 = 1; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r1,[r0,#oBattleObject_AllianceAndDirectionFlip]:
+    copies alliance/flip from entry-r5 object; ldrb r0,[r5,#oBattleObject_Alliance]; bl battle_findPlayer;
+    str r1,[r0,#oBattleObject_RelatedObject1Ptr]: links to the player of that alliance; mov r0,r5; pop
+    {r1,r5}; beq locret: spawn result (returned in r5, moved to r0) is tested and NULL passes through
+    unchanged'
+  refs:
+  - bn6f/asm/asm31.s:27864
+  - 0x080E4954 sub_80E4954
+  - 0x08003320 object_spawnType1
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080C4AEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: it forces type 0x5D, calls object_spawnType1, sets the extra-vars
+    byte to 1, copies alliance/flip from r5''s object, and links to the player found via battle_findPlayer.
+    However the name ''battle_spawnPlayerLinkedObject'' is misleading — the linked player is on the same
+    alliance as r5, which may be an enemy, not necessarily the player character. Also r5 is not a separate
+    parameter but holds the caller''s object ptr across the bl (per `push {r0,r5}` / `mov r0,r5`), so
+    ''r5 = source BattleObject'' overstates it.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Need the assembly of sole caller sub_80E4954 to confirm its r5 holds the parent/spawner BattleObject
+  at the call site (register-parameter convention).
+- Which battle entity object index 0x5D corresponds to in game terms.
+- Meaning of the byte set to 1 at the start of the ExtraVars block (state vs. active flag).
+- 'The proposal is mostly correct: it forces type 0x5D, calls object_spawnType1, sets the extra-vars byte
+  to 1, copies alliance/flip from r5''s object, and links to the player found via battle_findPlayer. However
+  the name ''battle_spawnPlayerLinkedObject'' is misleading — the linked player is on the same alliance
+  as r5, which may be an enemy, not necessarily the player character. Also r5 is not a separate parameter
+  but holds the caller''s object ptr across the bl (per `push {r0,r5}` / `mov r0,r5`), so ''r5 = source
+  BattleObject'' overstates it.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C4AEC -> battle_spawnAlliedLinkedObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4AEC

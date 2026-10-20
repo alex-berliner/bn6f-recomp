@@ -1,0 +1,58 @@
+name: ai_getPanelAttackTurnDuration
+address: '0x080F9EA4'
+kind: function
+status: probable
+summary: Returns the enemy panel-attack turn duration for the current difficulty tier (30/40/50/60 frames),
+  with 60 frames added if the battle object's flag word has any of mask 0xA000 set.
+interface: () -> r0 = turn duration in frames (30/40/50/60 by tier, +60 if flag 0xA000 set); no flags
+details: Loads the literal table at dword_80F9EC4 whose little-endian bytes are 3C,32,28,1E = 60,50,40,30
+  frames — one entry per difficulty tier — and calls sub_800FE28 with that table to pick the entry matching
+  the current tier. It then reads the battle object's first flag word via object_getFlag and, if any of
+  mask 0xA000 (bits 15/13) is set, adds 0x3C (60 frames) before returning. The caller ai_initPanelAttackTurn
+  uses this value as the attack turn's duration and boost, matching its 'fetches duration and boost' description.
+  The flag check likely detects an enraged/buffed enemy state granting longer attack turns.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: dword_80F9EC4 = 0x1E28323C is a byte table {60,50,40,30}, one duration per difficulty tier;
+    bl sub_800FE28 is called with that table pointer and its result is returned (or +0x3C); object_getFlag
+    result is tested against 0xA000 to add 60 frames; caller ai_initPanelAttackTurn 'reads the difficulty
+    tier ... fetches its duration and boost', matching the returned value
+  refs:
+  - bn6f/asm/asm31.s:142208
+  - 0x080F9F76 ai_initPanelAttackTurn
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F9EA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: loads table 0x1E28323C (=30,40,50,60 frames), indexes by difficulty tier via sub_800FE28,
+    then checks object_getFlag against 0xA000 and adds 0x3C if set. The caller ai_initPanelAttackTurn
+    reads ''duration and boost'' for attack id 0xB, consistent with this value. However, the mask is 0xA000
+    (bits 15 and 13), not ''bits 15/13'' as a single combined mask — but that is the literal value, so
+    the description is fine. Name is acceptable; ''panelAttackTurnDuration'' is slightly cleaner than
+    ''PanelAttackTurnDuration'' per naming style.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of object flag bits 15/13 (likely enhanced/enraged state) needs confirmation from where
+  they are set
+- exact behavior of sub_800FE28 (tier-indexed table lookup helper) is unconfirmed
+- 'The code matches: loads table 0x1E28323C (=30,40,50,60 frames), indexes by difficulty tier via sub_800FE28,
+  then checks object_getFlag against 0xA000 and adds 0x3C if set. The caller ai_initPanelAttackTurn reads
+  ''duration and boost'' for attack id 0xB, consistent with this value. However, the mask is 0xA000 (bits
+  15 and 13), not ''bits 15/13'' as a single combined mask — but that is the literal value, so the description
+  is fine. Name is acceptable; ''panelAttackTurnDuration'' is slightly cleaner than ''PanelAttackTurnDuration''
+  per naming style.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F9EA4 -> ai_getPanelAttackTurnDuration
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9EA4

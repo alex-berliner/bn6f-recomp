@@ -1,0 +1,64 @@
+name: battle_spawnType52
+address: '0x080CEAA2'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x52 via object_spawnType3, base-initializes it via BasicBattleObjectInitialize,
+  then sets ExtraVars+4 = r7 and ORs 0x10 into oObjectHeader_Flags.
+interface: (r0-r2 = init args forwarded to BasicBattleObjectInitialize, r7 = value for ExtraVars+4) ->
+  r0 = spawned object (or 0 if spawn failed); flags from object_spawnType3 result
+details: 'Sets r0 = 0x52 and calls object_spawnType3 with the caller''s r1-r4 still in place as the remaining
+  spawn arguments. The beq after the call tests the spawn result: on failure it returns immediately. On
+  success, the saved r0-r2 are popped into r1-r3 and BasicBattleObjectInitialize is run to fill in the
+  new entity''s base fields (position, element, related object, flags); r0 afterwards holds the object.
+  It then stores the caller''s r7 into oBattleObject_ExtraVars+4 and ORs 0x10 into oObjectHeader_Flags
+  before returning the object pointer. The odd ''mov r0, r5'' before the pop suggests the spawn path communicates
+  the new object through r5/r0 in a nonstandard way, or r5 carried caller context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x52 / bl object_spawnType3 — spawns battle object 0x52 using the forwarded r1-r4;
+    beq locret_80CEAC0 right after the spawn call — nothing is initialized when the spawn fails; pop {r1-r3,r5}
+    then bl BasicBattleObjectInitialize — the saved original r0-r2 become the base-init arguments for
+    the new entity; str r7, [r0,#oBattleObject_ExtraVars+4] — caller-supplied r7 is written into the object''s
+    extra-vars field; ldrb/orr/strb on oObjectHeader_Flags with 0x10 — sets header flag bit 0x10 on the
+    spawned object'
+  refs:
+  - bn6f/asm/asm31.s:49497
+  - 0x080E862E sub_80E862E
+  - 0x080E863E sub_80E863E
+  - 0x080EC044 sub_80EC044
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CEAA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially correct: r0=0x52, call object_spawnType3, pop saved regs into r1-r3,
+    BasicBattleObjectInitialize, store r7 into oBattleObject_ExtraVars+4, OR 0x10 into oObjectHeader_Flags.
+    However, the proposal''s note about ''saved r0-r2'' is slightly off — the push is {r0-r2,r5}, so r0,r1,r2,r5
+    are saved, and the pop restores r1,r2,r3,r5, meaning r3 also gets the saved r2 (r5 holds the spawn
+    result via ''mov r0,r5''). A tighter name would emphasize the battle-object-of-type-0x52 spawn aspect.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What battle object ID 0x52 actually is in-game (which enemy/object the callers at 0x80E862E/0x80E863E/0x80EC044
+  are spawning)
+- Exact meaning of the value stored at ExtraVars+4 and of header flag 0x10
+- Why the object pointer appears to be taken from r5 (whether object_spawnType3 returns it in r5 as well
+  as r0, or r5 is caller context)
+- 'The summary is essentially correct: r0=0x52, call object_spawnType3, pop saved regs into r1-r3, BasicBattleObjectInitialize,
+  store r7 into oBattleObject_ExtraVars+4, OR 0x10 into oObjectHeader_Flags. However, the proposal''s
+  note about ''saved r0-r2'' is slightly off — the push is {r0-r2,r5}, so r0,r1,r2,r5 are saved, and the
+  pop restores r1,r2,r3,r5, meaning r3 also gets the saved r2 (r5 holds the spawn result via ''mov r0,r5'').
+  A tighter name would emphasize the battle-object-of-type-0x52 spawn aspect.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CEAA2 -> battle_spawnType52
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEAA2

@@ -1,0 +1,57 @@
+name: battle_runAllianceHook
+address: '0x08013C4E'
+kind: function
+status: probable
+summary: Clears ObjectFlags1 bit 0x20000 on the battle object, then bx-calls a function pointer from a
+  13-entry ARM table at off_8013C70 indexed by the object's alliance byte, returning the handler's result.
+interface: () -> r0 = handler return value; no flags of interest
+details: The routine first clears flag 0x20000 in the battle object's ObjectFlags1 via object_clearFlag.
+  It then fetches byte 0x29 of the battle object's NaviStats through GetBattleNaviStatsByte_AllianceFromBattleObject,
+  multiplies it by 4, and uses it as an index into a 13-entry table at off_8013C70. The selected entry
+  is a function pointer called with `mov lr, pc; bx r1` (an ARM-mode caller thunk), so this is a dispatch/jump-table
+  call, not a plain branch. All 13 table entries currently point to nullsub_28, meaning the dispatchable
+  handlers are stubbed at these addresses in this build. The pattern (clear a per-object flag, then run
+  a side/alliance-indexed hook) suggests a per-turn or per-phase maintenance routine where each side may
+  plug in custom behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, =0x20000; bl object_clearFlag — clears a single ObjectFlags1 bit on the active battle
+    object; mov r1, #0x29; bl GetBattleNaviStatsByte_AllianceFromBattleObject — reads NaviStats byte 0x29
+    as the dispatch index; lsl r6, r6, #2; ldr r1, [r6, r1] with table base off_8013C70 — word-sized,
+    13-entry function-pointer jump table; mov lr, pc; bx r1 — ARM-returning dispatch into the selected
+    handler; all 13 entries of off_8013C70 are nullsub_28+1 — the hook slots are stubs in this build'
+  refs:
+  - bn6f/asm/asm00_2.s:11643
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08013C4E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal accurately describes the code: clearing flag 0x20000, indexing a 13-entry table at
+    off_8013C70 by alliance*4, and bx-calling the entry. However, the name `battle_dispatchSideHook` is
+    fine but `battle_runAllianceHook` or similar would be slightly more descriptive. The table entries
+    are `nullsub_28+1` (ARM mode), consistent with the bx r1 caller thunk. The interface and flag/handler
+    analysis match the assembly exactly.; run wf investigate investigate-20261019-010606; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the firing context (turn start, phase change, etc.) is unconfirmed
+- The semantic meaning of NaviStats byte 0x29 and its valid range (vs. the 13-entry table) is unverified
+- What flag bit 0x20000 in ObjectFlags1 guards, and who sets it, is unknown
+- Real (non-null) handler behavior is unknown since every table slot is a nullsub in this build
+- 'The proposal accurately describes the code: clearing flag 0x20000, indexing a 13-entry table at off_8013C70
+  by alliance*4, and bx-calling the entry. However, the name `battle_dispatchSideHook` is fine but `battle_runAllianceHook`
+  or similar would be slightly more descriptive. The table entries are `nullsub_28+1` (ARM mode), consistent
+  with the bx r1 caller thunk. The interface and flag/handler analysis match the assembly exactly.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8013C4E -> battle_runAllianceHook
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8013C4E

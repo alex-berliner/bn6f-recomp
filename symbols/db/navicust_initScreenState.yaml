@@ -1,0 +1,61 @@
+name: navicust_initScreenState
+address: '0x08135968'
+kind: function
+status: probable
+summary: One-time initialization of the Navi Customizer screen state (board, key-item list, counters)
+  guarded by an init flag; unconditionally clears a per-entry latch byte at state+0x13 on return.
+interface: (r5 = navi-customizer screen state struct; r0 unused on entry) -> r0 = 0; writes state bytes
+  in the struct, calls rebuild/draw helpers
+details: Reads the flag at state+0xD; if it is already set, only state+0x13 is cleared and the function
+  returns, so the setup runs exactly once. The setup sets state+2 = 8 (likely a phase/mode), calls sub_813BA80,
+  rebuilds the key-item list via submenu_rebuildKeyItemList, sets state+0xC = 0x10, calls sub_813660C(1),
+  redraws the 49-cell customizer board via navicust_drawBoardTilemap(1), zeroes state+0xE, 0x14 and 0x10,
+  and calls sub_813B920. Finally it always clears state+0x13, likely a per-frame or per-transition latch
+  consumed elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xD]; tst; bne loc_813599A — body only runs when flag 0xD is clear (one-time init
+    latch); bl submenu_rebuildKeyItemList — rebuilds the list buffer of the customizer''s key-item menu;
+    mov r0,#1; bl navicust_drawBoardTilemap — draws the customizer board tilemap; strb of 0 into 0xE,
+    0x14, 0x10 and bl sub_813B920 — resets screen-state counters and runs another setup helper; loc_813599A:
+    strb 0 into 0x13; pop — clears a latch unconditionally on every call'
+  refs:
+  - bn6f/asm/asm36.s:11686
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  - 0x08135D9C submenu_rebuildKeyItemList
+  - 0x0813660C sub_813660C
+  reproduce: python3 tools/asmcat.py 0x08135968
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: flag at state+0xD is tested (ldrb r0,[r5,#0xd]; tst r0,r0),
+    bne to loc_813599A skips setup, state+2=8, calls sub_813BA80, submenu_rebuildKeyItemList, sets state+0xC=0x10,
+    calls sub_813660C(1), navicust_drawBoardTilemap(1), zeros state+0xE and 0x14, calls sub_813B920, then
+    zeros state+0x10, and finally at loc_813599A clears state+0x13. However, state+0x10 (not 0x13) is
+    the latch cleared only inside the init branch, while state+0x13 is cleared unconditionally on every
+    entry — so the summary should call 0x13 the per-entry latch and 0x10 the init-branch state.; run wf
+    investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which screen mode values 8 (state+2) and 0x10 (state+0xC) select
+- What sub_813BA80, sub_813660C and sub_813B920 set up
+- No known caller, so the trigger (screen entry vs. flag-driven transition) is inferred only from the
+  0xD latch
+- 'The code matches the proposal well: flag at state+0xD is tested (ldrb r0,[r5,#0xd]; tst r0,r0), bne
+  to loc_813599A skips setup, state+2=8, calls sub_813BA80, submenu_rebuildKeyItemList, sets state+0xC=0x10,
+  calls sub_813660C(1), navicust_drawBoardTilemap(1), zeros state+0xE and 0x14, calls sub_813B920, then
+  zeros state+0x10, and finally at loc_813599A clears state+0x13. However, state+0x10 (not 0x13) is the
+  latch cleared only inside the init branch, while state+0x13 is cleared unconditionally on every entry
+  — so the summary should call 0x13 the per-entry latch and 0x10 the init-branch state.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8135968 -> navicust_initScreenState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135968

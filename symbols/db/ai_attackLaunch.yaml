@@ -1,0 +1,68 @@
+name: ai_attackLaunch
+address: '0x080F8914'
+kind: function
+status: probable
+summary: 'On first call (AttackElement==0): sets AttackElement=4, CurAnim=0xC, counter 0x12, spawns the
+  attack object via sub_80CB410(PanelX,PanelY,InitFlag,(AttackBoost2<<8)|AiDifficultyTier,Damage,ScratchVar),
+  plays sound 0x109, and sets StepTimer=15. On later calls, decrements StepTimer and when it hits zero
+  writes 0x14 to HitElement to advance to the hit stage.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars ptr) -> r0 = destroyed; touches oAIAttackVars fields
+  only
+details: 'Reads oAIAttackVars_AttackElement as a state flag: when it is 0, this is the attack''s launch
+  — it writes element 4, sets oBattleObject_CurAnim to 0xC, gives the object a 0x12 counter via object_setCounterTime,
+  and calls sub_80CB410 with the object''s PanelX/PanelY, InitFlag, AttackBoost2<<8 | AiDifficultyTier,
+  Damage, and ScratchVar as a 5th argument (passed via push/pop of r7), i.e. spawning the actual attack
+  entity. It then plays sound 0x109 and sets oAIAttackVars_StepTimer to 15. On later calls (AttackElement
+  != 0) it decrements StepTimer each frame, and when it expires writes 0x14 into oAIAttackVars_HitElement,
+  advancing the attack to its hit/cleanup stage. The double-use of r7 (struct pointer AND 5th argument)
+  relies on push/pop around the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / bne: first entry (AttackElement==0) runs the launch branch, later calls only tick
+    the timer; strb #4,[r7,#AttackElement]; str #0xC,[r5,#CurAnim]; bl object_setCounterTime: arms attack,
+    plays anim, sets counter; args to sub_80CB410 built from PanelX/PanelY/InitFlag/AttackBoost2/AiDifficultyTier/Damage/ScratchVar:
+    spawn parameters for the attack entity; bl PlaySoundEffect with r0 = 0xA-1 = 0x109: plays the attack''s
+    sound effect; StepTimer-- bgt exit; then HitElement = 0x14: timed transition to the next attack state'
+  refs:
+  - bn6f/asm/asm31.s:139469
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E9DC object_setCounterTime
+  - 0x080CB410 sub_80CB410
+  reproduce: python3 tools/asmcat.py 0x080F8914
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior summary matches the code well: AttackElement==0 path arms, sets CurAnim=0xC, sets counter
+    0x12, spawns via sub_80CB410 with InitFlag, (AttackBoost2<<8)|AiDifficultyTier, Damage and ScratchVar
+    (the push/pop of r7 trick), then plays sound 0x109 (mov r0,#0xa; add r0,#0xff => r0=0x109) and stores
+    0xF (not 0x0F? it is 15) into StepTimer. The non-zero path decrements StepTimer and on expiry writes
+    0x14 to HitElement. Minor inaccuracies: HitElement is written with strh (halfword), and the sound
+    ID is 0x109 not a typo; the summary''s ''applies its hit element after 15 frames'' is correct. The
+    only issue is the summary claiming ''touches oAIAttackVars fields only'' — it also writes oBattleObject_CurAnim
+    and the scratch r7 use is fine.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80CB410 spawns (attack object type/shape) and how Damage/ScratchVar are interpreted
+- which enemy/AI attack state machine owns this handler and what element 4 / hit value 0x14 mean in that
+  enum
+- no known caller, so how oAIAttackVars is set up before this runs is unconfirmed
+- 'The behavior summary matches the code well: AttackElement==0 path arms, sets CurAnim=0xC, sets counter
+  0x12, spawns via sub_80CB410 with InitFlag, (AttackBoost2<<8)|AiDifficultyTier, Damage and ScratchVar
+  (the push/pop of r7 trick), then plays sound 0x109 (mov r0,#0xa; add r0,#0xff => r0=0x109) and stores
+  0xF (not 0x0F? it is 15) into StepTimer. The non-zero path decrements StepTimer and on expiry writes
+  0x14 to HitElement. Minor inaccuracies: HitElement is written with strh (halfword), and the sound ID
+  is 0x109 not a typo; the summary''s ''applies its hit element after 15 frames'' is correct. The only
+  issue is the summary claiming ''touches oAIAttackVars fields only'' — it also writes oBattleObject_CurAnim
+  and the scratch r7 use is fine.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F8914 -> ai_attackLaunch
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8914

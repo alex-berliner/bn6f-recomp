@@ -1,0 +1,63 @@
+name: battle_panelAuraPhase
+address: '0x080D90C8'
+kind: function
+status: probable
+summary: Battle-object phase that alternates between two collision-region IDs every 8-frame pass while
+  Timer2 is nonzero, spawning the region and calling sub_801BD3C (0x3D panel effect), then clears the
+  region and destroys itself when Timer2 expires.
+interface: (r5 = battle object) -> void; sets oBattleObject_Timer=8 and phase=4 to continue, or state=CUR_STATE_DESTROY
+  when Timer2 reaches 0
+details: Each invocation selects one of two packed parameter words (0x405FF09 or 0x405FF0B) based on bit
+  1 of oBattleObject_Timer2, passing it on the stack to object_spawnCollisionRegion along with PanelX,
+  PanelY, Element and 0x1000. It then calls sub_801BD3C with PanelX, PanelY, r2=0x3D, r3 = low byte of
+  the chosen word (0x09 or 0x0B), r4 = Alliance and r7=0xA0000, likely dealing damage or spawning a hit/effect
+  tied to the collision region. Timer2 acts as a lifetime counter, decremented once per pass; while nonzero
+  the object waits 8 frames (Timer=8, phase=4) and repeats, alternating the 9/11 parameter each pass.
+  On expiry it calls object_clearCollisionRegion to remove the region and sets its state to CUR_STATE_DESTROY.
+  The two alternating parameter IDs suggest a two-stage or alternating panel effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsr/bcc on oBattleObject_Timer2 bit 1 selects dword_80D9118 vs dword_80D911C (0x405FF09/0x405FF0B)
+    pushed as spawnCollisionRegion''s stack arg; object_spawnCollisionRegion called with oBattleObject_PanelX/Y,
+    Element, r3=0, r4-word, 0x1000; sub_801BD3C called with PanelX, PanelY, 0x3D, (word&0xFF)=9|11, Alliance,
+    0xA0000; ldrh Timer2; sub #1; beq -> object_clearCollisionRegion then CUR_STATE_DESTROY; otherwise
+    Timer=8, phase=4'
+  refs:
+  - bn6f/asm/asm31.s:72020
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080C536A object_spawnCollisionRegion
+  - 0x0801BD3C sub_801BD3C
+  reproduce: python3 tools/asmcat.py 0x080D90C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it alternates between 0x405FF09 and 0x405FF0B based on Timer2 bit
+    1, spawns a collision region, calls sub_801BD3C with r2=0x3D, decrements Timer2, and either loops
+    with Timer=8/phase=4 or clears the region and destroys. The ''spawns a collision region on its own
+    panel and applies a panel effect'' framing is correct, though sub_801BD3C is undocumented so ''damage''
+    is speculative. The read of oBattleObject_DamageAndStaminaDamageCounterDisabler is loaded into r6
+    but unused in the visible code path; the proposal should not claim it is passed. A clearer name: battle_panelAuraPhase.;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_801BD3C does (damage application vs. effect spawn) and what fields 0x3D, 0x09/0x0B and 0xA0000
+  select
+- Which caller/object uses this handler, to identify the specific attack or trap
+- 'The code matches the proposal: it alternates between 0x405FF09 and 0x405FF0B based on Timer2 bit 1,
+  spawns a collision region, calls sub_801BD3C with r2=0x3D, decrements Timer2, and either loops with
+  Timer=8/phase=4 or clears the region and destroys. The ''spawns a collision region on its own panel
+  and applies a panel effect'' framing is correct, though sub_801BD3C is undocumented so ''damage'' is
+  speculative. The read of oBattleObject_DamageAndStaminaDamageCounterDisabler is loaded into r6 but unused
+  in the visible code path; the proposal should not claim it is passed. A clearer name: battle_panelAuraPhase.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D90C8 -> battle_panelAuraPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D90C8

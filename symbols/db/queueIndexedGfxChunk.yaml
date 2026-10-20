@@ -1,0 +1,57 @@
+name: queueIndexedGfxChunk
+address: '0x080282D2'
+kind: function
+status: probable
+summary: Reads a byte index from [r4+7], uses it (multiplied by 0x180) to pick a src from the table at
+  dword_86E441C, queues a 0x180-byte VRAM transfer to r1, then advances r1 by 0x180.
+interface: (r0 = dst VRAM ptr, r1 = dst VRAM ptr, r4 = object struct with byte index at +7) -> r1 advanced
+  by 0x180; r0 = src ptr used
+details: The function loads a graphics table base from dword_86E441C, reads a byte index from [r4+7] of
+  the caller's structure, and multiplies it by 0x180 (384 bytes) to select one entry, passing the resulting
+  src, the dst in r1, and size 0x180 to QueueEightWordAlignedGFXTransfer. Afterwards it does add r1,#0xC0
+  twice, i.e. adds 0x180 to the destination pointer so a caller can queue further chunks sequentially.
+  The byte at struct+7 thus acts as a graphics/palette-set selector. Note the input comes via r4 rather
+  than a standard register argument, so callers must set it up beforehand; r1 must be preloaded with the
+  VRAM destination.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r3,[r4,#7]; mul r3,r2 with r2=0x180: gfx entry selected by struct+7 (asm lines 3-5); off_802835C
+    = dword_86E441C is the base of the gfx entry table; bl QueueEightWordAlignedGFXTransfer with size
+    0x180 queues the copy; add r1,#0xC0 twice returns dst advanced by 0x180 for sequential transfers;
+    no known callers, so the r4-passed struct type is unconfirmed'
+  refs:
+  - bn6f/asm/asm03_0.s:4368
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x080282D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core mechanics are correct: it indexes dword_86E441C by [r4+7]*0x180 and calls QueueEightWordAlignedGFXTransfer
+    with r0=src, r1=dst, r2=0x180, then bumps r1 by 0x180 (via two add #0xc0). The interface description
+    is misleading though: r0 is set by the function (loaded table base + offset), not passed in; r1 is
+    the dst argument; r4 is indeed the caller-set struct pointer. The name is fine but ''sprite_queueIndexedGfxChunk''
+    is a slight stretch since no sprite-specific context is shown — a simpler ''queue'' prefix is allowed.;
+    run wf investigate investigate-20261019-015108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No known callers: which subsystem owns the r4 struct and what field +7 indexes (npc/object sprite set?)
+  is unconfirmed'
+- What dword_86E441C's table contains (which bank of 0x180-byte gfx chunks) and where r1's destination
+  VRAM region is set
+- 'The summary''s core mechanics are correct: it indexes dword_86E441C by [r4+7]*0x180 and calls QueueEightWordAlignedGFXTransfer
+  with r0=src, r1=dst, r2=0x180, then bumps r1 by 0x180 (via two add #0xc0). The interface description
+  is misleading though: r0 is set by the function (loaded table base + offset), not passed in; r1 is the
+  dst argument; r4 is indeed the caller-set struct pointer. The name is fine but ''sprite_queueIndexedGfxChunk''
+  is a slight stretch since no sprite-specific context is shown — a simpler ''queue'' prefix is allowed.'
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80282D2 -> queueIndexedGfxChunk
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80282D2

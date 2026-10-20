@@ -1,0 +1,60 @@
+name: ai_chargeFrontPanelRegion
+address: '0x08100B2C'
+kind: function
+status: probable
+summary: 'AI attack state: on entry initializes AttackElement=4 and StepTimer from AttackBoost2; each
+  frame increments ChargeCycles and, every 8 frames, calls object_getFrontDirection and object_highlightPanelRegion
+  to highlight the 4-wide panel region in front of it; when the timer hits 0, sets HitElement=0x10.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = destroyed; updates AttackElement, ChargeCycles,
+  StepTimer, HitElement
+details: 'Runs as a per-frame AI attack state on r7 (oAIAttackVars) with the owner object in r5. On entry
+  with AttackElement==0 it initializes the attack: sets element to 4, copies AttackBoost2 into StepTimer
+  as the charge duration, and clears ChargeCycles. While charging it increments ChargeCycles every frame;
+  every 8 frames (lsr #3 carry) it calls object_getFrontDirection and object_highlightPanelRegion to flash
+  the 4-wide panel region directly in front of the enemy, passing (DirectionFlip<<8)|Alliance as the side
+  parameter. Each frame it counts StepTimer down; when it reaches 0 the charge ends and HitElement is
+  set to 0x10, which presumably triggers the actual damage step elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Init branch: strb #4 AttackElement, strh AttackBoost2->StepTimer, clear ChargeCycles (8100B2C..8100B40);
+    Charge: ChargeCycles++ then lsr #3 with bcs gates the panel highlight to every 8th frame (8100B42..8100B48);
+    Highlight uses object_getFrontDirection + oBattleObject_PanelX/PanelY and r2=#4, r3=(DirectionFlip<<8)|Alliance
+    -> object_highlightPanelRegion (8100B4C..8100B62); Finish: StepTimer-- until 0, then strh #0x10 into
+    oAIAttackVars_HitElement (8100B64..8100B6E)'
+  refs:
+  - bn6f/asm/asm31.s:156525
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08100B2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and field updates (AttackElement=4, StepTimer from AttackBoost2, ChargeCycles increment,
+    every-8-frame highlight, HitElement=0x10 on timeout) match the code at 0x08100B2C exactly. The ''destroyed''
+    return in r0 is never set—the only writes to r0 are constants (4, 0, 0x10) and the post-decrement
+    StepTimer value, so r0 is left as the StepTimer result. Also, ''flash'' is misleading: object_highlightPanelRegion
+    is called unconditionally when carry is clear (every 8 frames), not just as a flash. The name is acceptable
+    but ''frontPanel'' implies a single panel; the code highlights a 4-wide region.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which element value 4 and hit element 0x10 correspond to, and what AttackBoost2 normally holds
+- Where HitElement=0x10 is consumed to apply the damage
+- 'The summary and field updates (AttackElement=4, StepTimer from AttackBoost2, ChargeCycles increment,
+  every-8-frame highlight, HitElement=0x10 on timeout) match the code at 0x08100B2C exactly. The ''destroyed''
+  return in r0 is never set—the only writes to r0 are constants (4, 0, 0x10) and the post-decrement StepTimer
+  value, so r0 is left as the StepTimer result. Also, ''flash'' is misleading: object_highlightPanelRegion
+  is called unconditionally when carry is clear (every 8 frames), not just as a flash. The name is acceptable
+  but ''frontPanel'' implies a single panel; the code highlights a 4-wide region.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8100B2C -> ai_chargeFrontPanelRegion
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100B2C

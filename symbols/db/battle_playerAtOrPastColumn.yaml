@@ -1,0 +1,63 @@
+name: battle_playerAtOrPastColumn
+address: '0x080D2E38'
+kind: function
+status: probable
+summary: Returns the opposing player's BattleObject if the input panel column is on the [r5+0x16]-selected
+  side of the player, with r2 = the player's panel column or 0xFF.
+interface: (r0 = panel column, r1 = unused; r5 = entity with alliance byte at 0xD and side/facing byte
+  at 0x16) -> r0 = *BattleObject or NULL, r2 = panel column or 0xFF, r3 = panel row; r1 unchanged/undefined
+details: 'Flips the alliance byte at [r5+0xD] (eor #1) and calls battle_findPlayer to fetch the opposing
+  player object. Reads the player''s X/Y world position at offsets 0x34/0x38 and converts them to panel
+  (col,row) via convertXYToPanelXY. The column argument is then compared to the player''s column: if [r5+0x16]
+  is nonzero the match requires arg <= playerCol, otherwise arg >= playerCol — i.e. ''same side of the
+  player'' chosen by a direction/side flag. On success r0 = player pointer, r2 = column, r3 = row; on
+  failure r0 = 0 and r2 = 0xFF. The battle-state load from r10''s toolkit and the store of r1 are dead
+  code, suggesting an inlined/optimized caller context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: eor r0,#1 before bl battle_findPlayer — fetches the player on the opposite alliance from [r5+0xD]
+    (asm ldrb/eor/bl sequence); ldr r0,[r6,#0x34]/ldr r1,[r6,#0x38] then bl convertXYToPanelXY_800E258
+    — converts player position to panel col/row; ldrb r1,[r5,#0x16]; tst selects between bge and ble on
+    cmp r2,r3 — comparison direction governed by a side flag; mov r2,#0xFF default, overwritten with col/row
+    only when the match succeeded; str r1,[sp,#4] is never reloaded — second argument is unused
+  refs:
+  - bn6f/asm/asm31.s:58819
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080D2E38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name''s description matches: r5''s 0xD alliance byte is flipped (ldrb/eor) to fetch the opposing
+    player via battle_findPlayer, then [r6+0x34/0x38] are converted to panel coords and compared against
+    the input column depending on [r5+0x16]. However the proposal''s interface says r0 = player column
+    or 0xFF while the code stores the converted *player''s* column into r2 on success (ldr r2, [sp,#0x10]),
+    not the input arg. Also r0 is overwritten by sp,#0xc only when set as return, but it ends up as the
+    loaded result pointer or zero — the returned column is the player''s, and returning 0xFF on failure
+    is from mov r2,#0xff before the beq. A name like battle_playerAtOrPastColumn fits better.; run wf
+    investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of r0 (world X vs panel column) and which entity type r5 points to
+  are unconfirmed
+- The exact semantics of the [r5+0x16] flag (facing direction vs own-side indicator) and why r1 is accepted
+  but ignored are unclear
+- 'The name''s description matches: r5''s 0xD alliance byte is flipped (ldrb/eor) to fetch the opposing
+  player via battle_findPlayer, then [r6+0x34/0x38] are converted to panel coords and compared against
+  the input column depending on [r5+0x16]. However the proposal''s interface says r0 = player column or
+  0xFF while the code stores the converted *player''s* column into r2 on success (ldr r2, [sp,#0x10]),
+  not the input arg. Also r0 is overwritten by sp,#0xc only when set as return, but it ends up as the
+  loaded result pointer or zero — the returned column is the player''s, and returning 0xFF on failure
+  is from mov r2,#0xff before the beq. A name like battle_playerAtOrPastColumn fits better.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2E38 -> battle_playerAtOrPastColumn
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2E38

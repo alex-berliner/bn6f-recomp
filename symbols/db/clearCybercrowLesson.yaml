@@ -1,0 +1,61 @@
+name: clearCybercrowLesson
+address: '0x081431C6'
+kind: function
+status: probable
+summary: 'Resets the Cybercrow lesson state: runs sub_814339C, zero-fills the 0xA0-byte crow-records array
+  at byte_2000D20, and calls sub_81430B6(0) twice with each result passed to ClearEventFlagRange(8).'
+interface: () -> void; clobbers r0-r2, calls sub_814339C, ZeroFillByWord, sub_81430B6, ClearEventFlagRange
+details: Takes the pointer to byte_2000D20 (the Cybercrow lesson crow records, 8 slots of 0x14 bytes),
+  first runs sub_814339C (unknown, likely per-slot teardown or state fetch), then zero-fills the whole
+  0xA0-byte array, wiping state/timers/heading/position of every crow slot. It then calls sub_81430B6
+  with r0=0 twice and after each call invokes ClearEventFlagRange with range 8, clearing a block of event
+  flags tied to the lesson entries. The odd 'mov r0, r0' / 'mov r0, r1' suggest r1 (the flag bitfield
+  argument) comes from sub_81430B6's return, so the flags cleared depend on its result. Overall this reads
+  as an init/reset routine run when the Cybercrow lesson area is entered or restarted.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ZeroFillByWord on byte_2000D20 with size 0xA0 = 8 slots * 0x14 bytes wipes all crow records
+    (asm after 'ldr r5, off_8143398'); two ClearEventFlagRange calls with range 8 directly follow the
+    buffer wipe, tying flag clearing to the lesson reset; byte_2000D20 is symdb-identified as Cybercrow
+    lesson crow records with state/timer/heading/position fields; sole caller sub_8142ECC and callees
+    sub_814339C/sub_81430B6 are unknown, but the reset pattern is self-contained
+  refs:
+  - bn6f/asm/asm37_1.s:2854
+  - 0x08142ECC sub_8142ECC
+  - 0x0802F1AC ClearEventFlagRange
+  - 0x080008E0 ZeroFillByWord
+  - 0x081430B6 sub_81430B6
+  reproduce: python3 tools/asmcat.py 0x081431C6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary of behavior is mostly correct: it calls sub_814339C, zero-fills the 0xA0-byte crow records
+    array at byte_2000D20, and twice calls sub_81430B6(0) followed by ClearEventFlagRange(8). The ''mov
+    r0,r0'' before the first ClearEventFlagRange is a no-op (r0 still holds sub_81430B6''s return), so
+    the first ClearEventFlagRange uses that return value, while the second uses r1 (overwritten by ClearEventFlagRange''s
+    own return). Since ''clear'' is the appropriate prefix and ''Lesson'' isn''t an established one, a
+    tighter name would be ''clearCybercrowLesson'' or ''initCybercrowLesson''.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_814339C does before the wipe (per-slot teardown vs. state fetch)
+- what sub_81430B6 returns in r1 that becomes the ClearEventFlagRange bitfield
+- which event-flag block the range-8 clears correspond to in game terms
+- 'The summary of behavior is mostly correct: it calls sub_814339C, zero-fills the 0xA0-byte crow records
+  array at byte_2000D20, and twice calls sub_81430B6(0) followed by ClearEventFlagRange(8). The ''mov
+  r0,r0'' before the first ClearEventFlagRange is a no-op (r0 still holds sub_81430B6''s return), so the
+  first ClearEventFlagRange uses that return value, while the second uses r1 (overwritten by ClearEventFlagRange''s
+  own return). Since ''clear'' is the appropriate prefix and ''Lesson'' isn''t an established one, a tighter
+  name would be ''clearCybercrowLesson'' or ''initCybercrowLesson''.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81431C6 -> clearCybercrowLesson
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81431C6

@@ -1,0 +1,68 @@
+name: battle_getHitSlideDelta
+address: '0x0800F598'
+kind: function
+status: probable
+summary: Returns the (dx, dy, mode) slide vector and a ±1 sign factor for a battle object being knocked
+  back, derived from its collision flags and HitModifierFinal; returns 0,0,0,0 when no relevant flag bits
+  are set.
+interface: (r5 = battle object, r0 unused) -> r0 = signed dx, r1 = dy, r2 = mode byte from table, r3 =
+  ±1 sign factor; returns 0,0,0,0 when no applicable flag bits; clobbers flags only
+details: The function reads the object's collision data (via r5) and combines oCollisionData_FlagsFromCollision
+  with field 0x54. If no bits of mask 0xF3000000 are set it returns all zeros (no slide); otherwise the
+  sign is -1, becoming +1 only when bits of 0xA2000000 are set while 0x51000000 bits are clear. It then
+  takes oCollisionData_HitModifierFinal >> 2 and finds the lowest set bit of the low 4 bits (index 0..3,
+  else index 4), multiplying it by 3 to index byte_800F604, whose 3-byte entries are (-1,0,6), (1,0,6),
+  (-1,0,1), (1,0,1), (0,0,0). The dx byte is multiplied by the ±1 sign, and the trick 'push {r0} ... pop
+  {r3}' returns the sign factor itself in r3. Both callers (ai_beginPanelSlideMove, object_continuePanelMoveStep)
+  use this to launch a velocity-driven slide onto the adjacent panel after a hit, so the mode byte (6
+  vs 1) likely selects a slide speed/substate variant.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_800F598 reads [r5,oBattleObject_CollisionDataPtr] then FlagsFromCollision | field 0x54,
+    tests masks 0xF3000000/0xA2000000/0x51000000 to set sign or zero result; loc_800F5CE loop scans bits
+    2..5 of oCollisionData_HitModifierFinal (lsr #2 then lsr/ bcs) to pick index 0..3; index*3 indexes
+    byte_800F604 whose 3-byte records are (-1,0,6),(1,0,6),(-1,0,1),(1,0,1),(0,0,0), returned as r0*sign,
+    r1, r2; push {r0} ... pop {r3} returns the ±1 sign factor in r3 alongside the delta; callers ai_beginPanelSlideMove
+    and object_continuePanelMoveStep start velocity-driven adjacent-panel slides right after calling this'
+  refs:
+  - bn6f/asm/asm00_2.s:1338
+  - 0x08017E44 ai_beginPanelSlideMove
+  - 0x08017CE0 object_continuePanelMoveStep
+  reproduce: python3 tools/asmcat.py 0x0800F598
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are essentially correct: the function computes dx/dy/mode from oCollisionData
+    fields and returns ±1 in r3 via push/pop. However the proposed caller''s r5 register is named as ''battle
+    object'', and the function takes r5 as the input pointer (r5 is not passed explicitly per calling
+    convention — it must be preserved by the caller). The interface description says ''r0 unused'' but
+    r0 is clearly used as the accumulator. Also ''clobbers flags only'' is wrong: r4, r6, r7 are saved,
+    and r0-r3 are the return values. The byte table entries are listed as (-1,0,6),(1,0,6),(-1,0,1),(1,0,1),(0,0,0)
+    which matches the data at byte_800F604. The naming ''battle_getHitSlideDelta'' is reasonable and follows
+    the battle_ prefix convention.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of collision-flag bits 24-31 (which hit types/relations set 0xF3, 0xA2, 0x51 masks and
+  why the sign flips)
+- what the third table byte (6 vs 1 vs 0) controls in the callers (slide speed, MoveSubState, or animation)
+- whether dx/dy are facing-relative or absolute panel coordinates
+- 'The name and summary are essentially correct: the function computes dx/dy/mode from oCollisionData
+  fields and returns ±1 in r3 via push/pop. However the proposed caller''s r5 register is named as ''battle
+  object'', and the function takes r5 as the input pointer (r5 is not passed explicitly per calling convention
+  — it must be preserved by the caller). The interface description says ''r0 unused'' but r0 is clearly
+  used as the accumulator. Also ''clobbers flags only'' is wrong: r4, r6, r7 are saved, and r0-r3 are
+  the return values. The byte table entries are listed as (-1,0,6),(1,0,6),(-1,0,1),(1,0,1),(0,0,0) which
+  matches the data at byte_800F604. The naming ''battle_getHitSlideDelta'' is reasonable and follows the
+  battle_ prefix convention.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800F598 -> battle_getHitSlideDelta
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F598

@@ -1,0 +1,56 @@
+name: object_spawnCollisionRegionByParam3
+address: '0x080C63AE'
+kind: function
+status: probable
+summary: Spawns the battle object's collision region, using a dimming (timestop-proof) variant when Param3
+  == 2 and the plain collision-region spawner otherwise.
+interface: (r5 = battle object; reads Param3, PanelX, PanelY, Element, Z, DamageAndStaminaDamageCounterDisabler)
+  -> r0 = spawned region object from spawn helper
+details: 'Dispatches on oBattleObject_Param3 (1, 2, 3, default) but all four branches load the same arguments:
+  panel X/Y, Element, Z, r4 = 0x400FF0F (spawn flags), r6 = the object''s DamageAndStaminaDamageCounterDisabler,
+  and r7 = 1. Only the Param3 == 2 branch calls object_spawnDimmingCollisionRegion; every other case calls
+  object_spawnCollisionRegion with identical arguments, so the switch is effectively ''dimming if Param3
+  == 2, plain otherwise''. Both callees are known collision-region spawners, the dimming one keeping the
+  region updating during timestop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r5,#oBattleObject_Param3] with cmp #1/#2/#3 dispatch at 0x080C63B0-0x080C63C2; all
+    branches load PanelX/PanelY/Element/Z and set r4 = dword_80C6410 = 0x400FF0F before spawning; Param3==2
+    branch (loc_80C63E6) uniquely calls object_spawnDimmingCollisionRegion; others call object_spawnCollisionRegion;
+    callees are the known object_spawnCollisionRegion / object_spawnDimmingCollisionRegion spawners; sole
+    caller sub_80C62F8 sits adjacent in the same collision-region object code'
+  refs:
+  - bn6f/asm/asm31.s:31119
+  - 0x080C62F8 sub_80C62F8
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C63AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: four switch branches on Param3 load identical args (PanelX/Y, Element,
+    Z, r4=0x400FF0F, r6=DamageAndStaminaDamageCounterDisabler, r7=1), and only the Param3==2 branch (loc_80C63E6)
+    calls object_spawnDimmingCollisionRegion; the other three call object_spawnCollisionRegion. The ''param3''
+    in the proposed name is awkward and not idiomatic; a cleaner object-prefix name would be object_spawnCollisionRegionByParam3
+    or object_spawnCollisionRegionDimmingIfParam3.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Whether Param3 values beyond 0-3 ever occur, and what the caller sets Param3 from
+- 'The code matches the proposal: four switch branches on Param3 load identical args (PanelX/Y, Element,
+  Z, r4=0x400FF0F, r6=DamageAndStaminaDamageCounterDisabler, r7=1), and only the Param3==2 branch (loc_80C63E6)
+  calls object_spawnDimmingCollisionRegion; the other three call object_spawnCollisionRegion. The ''param3''
+  in the proposed name is awkward and not idiomatic; a cleaner object-prefix name would be object_spawnCollisionRegionByParam3
+  or object_spawnCollisionRegionDimmingIfParam3.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C63AE -> object_spawnCollisionRegionByParam3
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C63AE

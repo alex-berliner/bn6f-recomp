@@ -1,0 +1,58 @@
+name: submenu_resetState
+address: '0x08132398'
+kind: function
+status: probable
+summary: Clears the 0x200-byte submenu work buffer at unk_2033800 and zeroes the +0xF state flag in the
+  caller's submenu struct to reset transient submenu state.
+interface: (r0 unused, r5 = submenu state struct from caller) -> void; zeroes 0x200 bytes at unk_2033800,
+  stores byte at [r5+0xF]
+details: The routine loads the fixed buffer pointer unk_2033800 and its length 0x200 and passes them to
+  ZeroFillByEightWords, wiping the whole 512-byte buffer with a CpuFastSet fill. It then does mov r0,#1
+  but stores r1's low byte into [r5+0xF]; since r1 holds 0x200 (low byte 0) unless the callee clobbers
+  it, the flag byte is effectively written as 0 (dead r0 load). r5 is not set up in this function, so
+  it relies on the caller's submenu state struct, whose +0xF field acts as a per-frame state/flag byte.
+  All six callers are submenu screen state handlers (including submenu_waitCancelButton), consistent with
+  this being a shared 'reset/clear submenu buffer' helper invoked when entering or leaving a submenu screen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,off_81323A8 / ldr r1,off_81323AC / bl ZeroFillByEightWords with =unk_2033800 and =0x200
+    wipes the buffer; strb r1,[r5,#0xf] writes a flag byte in the caller's state struct (r5 inherited
+    from caller); mov r0,#1 result is discarded — only r1 is stored, a compiler artifact; caller submenu_waitCancelButton
+    is a B-button submenu exit handler, matching a cleanup helper; no other memory is touched besides
+    unk_2033800 and [r5+0xF]
+  refs:
+  - bn6f/asm/asm36.s:4471
+  - 0x08129F88 submenu_waitCancelButton
+  - 0x0812A4AC sub_812A4AC
+  - 0x0812A5F8 sub_812A5F8
+  - 0x08000900 ZeroFillByEightWords
+  reproduce: python3 tools/asmcat.py 0x08132398
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: unk_2033800 of length 0x200 is cleared via ZeroFillByEightWords,
+    then a byte is written to [r5+0xF]. The detail that ''stores r1''s low byte'' is correct (r1 still
+    holds 0x200, low byte 0, so it zeroes the flag). However ''submenu_clearBuffer'' is misleading since
+    it also writes the flag; a name reflecting both actions fits better.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what unk_2033800 holds exactly (text/tile/list buffer for which submenu)
+- which struct r5 points to and the semantic of the +0xF flag (r1's value at the store depends on ZeroFillByEightWords's
+  register usage)
+- 'The code matches the proposal: unk_2033800 of length 0x200 is cleared via ZeroFillByEightWords, then
+  a byte is written to [r5+0xF]. The detail that ''stores r1''s low byte'' is correct (r1 still holds
+  0x200, low byte 0, so it zeroes the flag). However ''submenu_clearBuffer'' is misleading since it also
+  writes the flag; a name reflecting both actions fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8132398 -> submenu_resetState
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132398

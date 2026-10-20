@@ -1,0 +1,64 @@
+name: ai_attackQueueSpreadStrikes
+address: '0x080F73CA'
+kind: function
+status: probable
+summary: Queues three staggered strikes across panels from the attacker toward the target via sub_80D61A8,
+  passing per-strike X offset, target Y, difficulty tier OR'd with the pass index, damage and duration.
+interface: (r5 = attacking battle object, r7 = AI attack vars struct) -> r0 = result of sub_80D61A8; flags
+  from callee
+details: Loops three times (r6 = 1,2,3). Each pass reads the object's front direction via object_getFrontDirection,
+  negates and scales it by the pass index to step the target X coordinate toward the enemy side, and passes
+  that X plus the target PanelY to sub_80D61A8. It packs the attack vars' InitFlag low byte with (passIndex-1)<<8
+  into r2, stages the pass index in that field, and forwards oAIAttackVars_Damage and oAIAttackVars_AttackDuration
+  (in r6/r7, restored after each call). The pattern of three staggered panel positions with per-pass indexing
+  suggests a multi-hit attack that advances one panel per strike (e.g. a lunging or wave-style attack).
+  sub_80D61A8 itself is undocumented, so the exact effect of each queued strike is inferred from the argument
+  layout.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop counter r6 from 1 to 3 with 'add r6,#1; cmp r6,#3; ble loc_80F73CE' gives three iterations;
+    neg r0/r0; mul r0,r6; add with oBattleObject_PanelX steps the X by -frontDir*passIndex; r2 assembled
+    as InitFlag | ((passIndex-1)<<8), matching a per-strike stage/index field; oAIAttackVars_Damage and
+    oAIAttackVars_AttackDuration are loaded into r6/r7 and passed to sub_80D61A8; sole caller ai_attackLandOnTargetStep
+    invokes it when an attack object lands on its target panel
+  refs:
+  - bn6f/asm/asm31.s:136790
+  - 0x080F695C ai_attackLandOnTargetStep
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D61A8 sub_80D61A8
+  reproduce: python3 tools/asmcat.py 0x080F73CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop iterates r6 from 1 to 3 inclusive (cmp r6,#3 + bble loc_80F73CE), so three strikes — that
+    part agrees. However, the name ''SpawnStrikeChain'' implies spawning entities, and the summary says
+    ''damage and duration parameters,'' but r6 holds damage and r7 holds duration only after they are
+    loaded from oAIAttackVars_Damage/AttackDuration at 0x080F73FA-0x080F73FE, then immediately consumed
+    by sub_80D61A8 as args. The proposal''s mention of ''oAIAttackVars_InitFlag low byte with (passIndex-1)<<8''
+    is actually oAIAttackVars_AiDifficultyTier being OR''d with the shifted index. A clearer name reflecting
+    a staged/spread attack queuer is better.; run wf investigate investigate-20261019-010606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_80D61A8 is undocumented; its behavior would confirm whether this spawns hitboxes, deals damage,
+  or queues animation at each panel
+- the exact meaning of the InitFlag low byte and the pass-index field packed into r2 within sub_80D61A8
+- The loop iterates r6 from 1 to 3 inclusive (cmp r6,#3 + bble loc_80F73CE), so three strikes — that part
+  agrees. However, the name 'SpawnStrikeChain' implies spawning entities, and the summary says 'damage
+  and duration parameters,' but r6 holds damage and r7 holds duration only after they are loaded from
+  oAIAttackVars_Damage/AttackDuration at 0x080F73FA-0x080F73FE, then immediately consumed by sub_80D61A8
+  as args. The proposal's mention of 'oAIAttackVars_InitFlag low byte with (passIndex-1)<<8' is actually
+  oAIAttackVars_AiDifficultyTier being OR'd with the shifted index. A clearer name reflecting a staged/spread
+  attack queuer is better.
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F73CA -> ai_attackQueueSpreadStrikes
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F73CA

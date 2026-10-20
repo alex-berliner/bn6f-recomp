@@ -1,0 +1,54 @@
+name: object_phaseDashForward
+address: '0x080DF626'
+kind: function
+status: probable
+summary: Per-frame object phase handler that dashes the object at ±0x60000 in its facing direction for
+  ~46 frames then clears CurAction/CurPhase.
+interface: (r5 = battle object pointer) -> void; updates oBattleObject fields
+details: 'Runs as a per-frame phase handler on the battle object in r5. On first invocation (PhaseInitialized==0)
+  it marks the phase as initialized with value 4, sets XVelocity to object_getEnemyDirection''s ±1 step
+  times 0x60000 (6.0 in 1/65536 fixed point, i.e. 6 px/frame forward in facing direction), and computes
+  the frame count via SWI Div: (0x28<<16)*7 / 0x60000 ≈ 46 frames stored in Timer. On later frames it
+  adds XVelocity to X, recomputes PanelX/PanelY via object_setPanelsFromCoordinates, and counts the timer
+  down; when it expires it clears CurAction and the CurPhase/PhaseInitialized field, returning the object
+  to idle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: init-once vs. run branches typical of phase
+    handlers; bl object_getEnemyDirection then mul with 0x60000 stored to XVelocity: horizontal dash speed
+    in facing direction; svc 6 (SWI Div) of (0x28<<16)*7 by 0x60000: integer frame-count computation ≈
+    46 stored to Timer; X += XVelocity followed by bl object_setPanelsFromCoordinates: per-frame movement
+    synced to panel grid; on timer expiry: CurAction=0 and CurPhaseAndPhaseInitialized=0, ending the action'
+  refs:
+  - bn6f/asm/asm31.s:85670
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080DF626
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: on first call sets PhaseInitialized=4, XVelocity=±0x60000, Timer≈46, then
+    per-frame adds XVelocity to X, calls object_setPanelsFromCoordinates, decrements Timer, clears CurAction
+    and CurPhase when it expires. However the naming prefix should be ''object'' (not ''battle'') per
+    the allowed list, since r5 is an object pointer and callees are object_* routines.; run wf investigate
+    investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- no known caller, so which enemy/action invokes this phase is unconfirmed; the exact semantic of PhaseInitialized
+  value 4 and the action it belongs to (dash vs. lunge) would need the action table or caller
+- 'The behavior matches: on first call sets PhaseInitialized=4, XVelocity=±0x60000, Timer≈46, then per-frame
+  adds XVelocity to X, calls object_setPanelsFromCoordinates, decrements Timer, clears CurAction and CurPhase
+  when it expires. However the naming prefix should be ''object'' (not ''battle'') per the allowed list,
+  since r5 is an object pointer and callees are object_* routines.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF626 -> object_phaseDashForward
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF626

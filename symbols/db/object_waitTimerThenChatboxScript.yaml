@@ -1,0 +1,54 @@
+name: object_waitTimerThenChatboxScript
+address: '0x0812BEEC'
+kind: function
+status: probable
+summary: 'Object tick: decrements the halfword timer at r5+0x28; on expiry, if byte at r5+0x10==0x11 runs
+  text script 0x37 silently, otherwise plays sound 0x73 and runs text script 0x36, then writes 0xC to
+  r5+0xc and returns.'
+interface: (r5 = object/NPC struct, hidden arg) -> r0 = 0; updates [r5+0x28], [r5+0xc]
+details: 'Each frame it decrements the halfword timer at [r5,#0x28] and returns until it reaches zero.
+  On expiry it checks the byte at [r5,#0x10]: if it equals 0x11 it uses text script index 0x37 with no
+  sound effect, otherwise it plays sound effect 0x37 and uses script index 0x36. Both scripts come from
+  archive eTextScript201BA20 via the chatbox wrapper. Finally it stores 0xC into the object''s state byte
+  at [r5,#0xc], so this is one leg of an object state machine that waits, then delivers a line of dialogue.
+  r5 is not set up here, so the caller supplies the struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#0x28] / sub r0,#1 / strh / bne locret: frame countdown gate; cmp r1,#0x11; beq:
+    variant at [r5+0x10]==0x11 skips PlaySoundEffect and picks script 0x37; mov r0,#0x37/0x36; bl chatbox_runScript_803FD9C_on_eTextScript201BA20:
+    shows dialogue from that archive; strb r0,#0xc,[r5,#0xc]: advances the object state to 0xC after the
+    message'
+  refs:
+  - bn6f/asm/asm33.s:18439
+  - 0x080005CC PlaySoundEffect
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x0812BEEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is correct in behavior (decrement timer at r5+0x28, branch on zero, branch on r5+0x10==0x11
+    to skip the sound and pick script 0x37 vs 0x36, set r5+0xc=0xC, tail-return). However the name is
+    too long and r5 is described as a ''hidden arg'' but is never set here — it is an object pointer,
+    so ''object_waitTimerThenChatboxScript'' is cleaner.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so which NPC/scene owns this struct and the meaning of state 0xC and the +0x10 selector
+  (0x11) are unconfirmed
+- The exact text of script 0x36 vs 0x37 in eTextScript201BA20 would pin down the in-game context
+- The summary is correct in behavior (decrement timer at r5+0x28, branch on zero, branch on r5+0x10==0x11
+  to skip the sound and pick script 0x37 vs 0x36, set r5+0xc=0xC, tail-return). However the name is too
+  long and r5 is described as a 'hidden arg' but is never set here — it is an object pointer, so 'object_waitTimerThenChatboxScript'
+  is cleaner.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812BEEC -> object_waitTimerThenChatboxScript
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812BEEC

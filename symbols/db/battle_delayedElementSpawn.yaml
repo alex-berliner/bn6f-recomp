@@ -1,0 +1,60 @@
+name: battle_delayedElementSpawn
+address: '0x080DA1F8'
+kind: function
+status: probable
+summary: Decrement Timer2 each tick; on expiry, set CurAnim from dword_80DA244[Param3], compute panel
+  as (PanelX + facing, PanelY + dword_80DA3E8[Param3]), spawn object kind 0x9F with the parent's Element
+  and (Param3<<8)|1 link arg, and advance CurPhase to 0x10.
+interface: (r5 = battle object) -> r0 = void; spawns object 0x9F; object CurPhase set to 0x10 on completion
+details: On entry it decrements oBattleObject_Timer2 and returns until it reaches zero, so the caller
+  keeps invoking this as the object's phase step. When the timer expires it reads oBattleObject_Param3
+  and uses it to (1) look up a new CurAnim from table dword_80DA244 (bytes 02,00,00,05) and (2) look up
+  a signed byte Y-panel offset from dword_80DA3E8. It computes the spawn panel as PanelX + object_getFrontDirection(parent)
+  (alliance-dependent +1/-1) and PanelY + that signed offset, passing Element in r2 and (Param3<<8)|1
+  in r4 to battle_spawnObject9F, which links the spawned 0x9F object back to this object. Finally it writes
+  0x10 to oBattleObject_CurPhaseAndPhaseInitialized so the next phase runs. The per-Param3 anim and Y-offset
+  tables suggest Param3 selects a variant/level of the spawned effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#Timer2]; sub/sub/bne locret — re-entry until a countdown finishes; ldrb r0,[r1,r0]
+    with r1=dword_80DA244 then strb to CurAnim — Param3-indexed animation change; bl object_getFrontDirection;
+    add r0,r0,PanelX; ldrsb r2,[dword_80DA3E8,Param3]; add r1,r1,r2 — spawn panel offset by facing and
+    Param3 Y table; mov r3,#0x60; add r3,r5; ... bl battle_spawnObject9F with Element in r2 and (Param3<<8)|1
+    in r4 — parent-linked spawn of kind 0x9F; mov r0,#0x10; strh r0,[r5,#CurPhaseAndPhaseInitialized]
+    — advance to phase 0x10 after spawning
+  refs:
+  - bn6f/asm/asm31.s:74324
+  - 0x080D924E battle_spawnObject9F
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DA1F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The countdown, Param3-indexed CurAnim table, signed Y-offset table, front-direction X offset, spawn
+    of 0x9F with Element and link word (Param3<<8)|1, and writing 0x10 to CurPhaseAndPhaseInitialized
+    match the proposal exactly. Minor corrections: r3 is set to r5+0x60 (parent link pointer), not described
+    in the summary, but the core function name and behavior are right; however ''battle_9fDelayedSpawnPhase''
+    carries a digit run from the placeholder, so pick a name without it.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so which battle object uses this phase and what object 0x9F visually is remain unclear
+- Meaning of the 0x100|Param3 spawn argument and the exact fields of the spawn structure at r5+0x60 are
+  unverified
+- 'The countdown, Param3-indexed CurAnim table, signed Y-offset table, front-direction X offset, spawn
+  of 0x9F with Element and link word (Param3<<8)|1, and writing 0x10 to CurPhaseAndPhaseInitialized match
+  the proposal exactly. Minor corrections: r3 is set to r5+0x60 (parent link pointer), not described in
+  the summary, but the core function name and behavior are right; however ''battle_9fDelayedSpawnPhase''
+  carries a digit run from the placeholder, so pick a name without it.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DA1F8 -> battle_delayedElementSpawn
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA1F8

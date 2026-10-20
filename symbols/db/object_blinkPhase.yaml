@@ -1,0 +1,59 @@
+name: object_blinkPhase
+address: '0x080E1BDC'
+kind: function
+status: probable
+summary: Battle-object phase handler applying color shader 0x2108 each frame with timer-derived parameters
+  over ~22 frames, then advancing to action 4.
+interface: (r5 = battle object) -> void; r0/r1 clobbered via calls
+details: On first entry (PhaseInitialized == 0) it sets the sprite OAM priority to 0, loads the timer
+  with 0x16 (22 frames), and marks the phase initialized (PhaseInitialized = 4). Each call it decrements
+  oBattleObject_Timer; once it goes negative it sets oBattleObject_CurAction = 4 and clears CurPhaseAndPhaseInitialized,
+  ending the effect. While the timer is still running it calls sub_80E1CB0 with r0 = timer*4 and r1 =
+  (timer*0x70)&0xFF — two timer-derived ramp values (timer counts down, so r0 ramps down while r1 cycles
+  mod 256), almost certainly fade/blend parameters — then applies color shader 0x2108 to the object's
+  sprite. The 0x2108 shader constant and the per-frame parameter update indicate a darkening/dissolve
+  transition on the object's sprite rather than gameplay logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: First-entry block sets sprite priority 0, timer 0x16, PhaseInitialized=4 (init-once pattern);
+    Timer countdown ends with CurAction=4 and phase cleared, so this is one state of an object's phase
+    machine; sub_80E1CB0 receives r0=timer<<2 and r1=(timer*0x70)&0xFF, i.e. time-varying visual parameters;
+    bl sprite_setColorShader with dword_80E1C20 = 0x2108 applies a fixed shader each frame; Callees sprite_setPriority_8002E14/sprite_setColorShader
+    confirm it drives the object's sprite rendering
+  refs:
+  - bn6f/asm/asm31.s:90912
+  - 0x08002ED0 sprite_setColorShader
+  - 0x08002E14 sprite_setPriority_8002E14
+  - 0x080E1CB0 sub_80E1CB0
+  reproduce: python3 tools/asmcat.py 0x080E1BDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: 22-frame fade transition that ends by setting CurAction=4 and clearing
+    the phase. However, ''object_fadeOutPhase'' is misleading because the constant 0x2108 (a sprite color-shader)
+    is applied every frame, not just on entry; the name should reflect the per-frame shader application.
+    ''object_blinkPhase'' or ''object_flashPhase'' would be more accurate since the constant 0x2108 is
+    a known blink/flash color shader in this game, not a generic fade-out.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_80E1CB0 is unknown — it likely computes the blend/dither amount from the two ramp arguments; reading
+  it would confirm the exact visual effect
+- No callers known, so which battle object uses this phase (and what action 4 means for it) is unconfirmed
+- 'The summary is accurate: 22-frame fade transition that ends by setting CurAction=4 and clearing the
+  phase. However, ''object_fadeOutPhase'' is misleading because the constant 0x2108 (a sprite color-shader)
+  is applied every frame, not just on entry; the name should reflect the per-frame shader application.
+  ''object_blinkPhase'' or ''object_flashPhase'' would be more accurate since the constant 0x2108 is a
+  known blink/flash color shader in this game, not a generic fade-out.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1BDC -> object_blinkPhase
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1BDC

@@ -1,0 +1,61 @@
+name: submenu_updateCursorLoop
+address: '0x0804A514'
+kind: function
+status: probable
+summary: 'Per-frame menu loop: skips work on two state conditions, else reads held d-pad via the toolkit
+  joypad pointer and advances an 8-entry cursor index in [r5+0x34], then refreshes per-entry state and
+  copies background tiles; always returns 0.'
+interface: () -> r0 = 0 always; updates menu state at [r5+0x34] (cursor index) and background tiles
+details: First checks two early-exit/state conditions via sub_804AAD0 and sub_804AE04; if neither triggers,
+  it reads the toolkit's joypad pointer (r10 + oToolkit_JoypadPtr) and passes the low-sensitivity held
+  keys to menu_moveCursorUpDown_811FA22 with max index 7 (r1=7, r2=1) and the current cursor from [r5,#0x34],
+  storing the returned index back to [r5,#0x34]. After the cursor update it calls sub_804AE50 and sub_804AE68
+  (likely per-entry redraw/cursor-icon updates), then sub_804AA58, sub_804A8F4, and menuCopyBackgroundTiles_804A7C0
+  to rebuild the menu's VRAM. Returns 0 unconditionally, typical of a menu task/state handler that keeps
+  running. The r5 menu-state structure and r10 = toolkit global are assumed from standard BN6 conventions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,[r10,#oToolkit_JoypadPtr]; ldrh r0,[r0,#oJoypad_LowSensitivityHeld] — input read each
+    frame; bl menu_moveCursorUpDown_811FA22 with r1=7, r2=1, r3=[r5,#0x34]; strh r0,[r5,#0x34] — cursor
+    over 8 entries stored back; bne branches around the cursor block via sub_804AAD0/sub_804AE04 — conditional
+    state/key gating; bl menuCopyBackgroundTiles_804A7C0 at end of loop — menu background refresh; mov
+    r0,#0; pop {pc} — returns 0 like a continuing menu task
+  refs:
+  - bn6f/asm/asm03_2.s:7586
+  - 0x0811FA22 menu_moveCursorUpDown_811FA22
+  - 0x0804A7C0 menuCopyBackgroundTiles_804A7C0
+  - 0x0804A8F4 sub_804A8F4
+  reproduce: python3 tools/asmcat.py 0x0804A514
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s control flow (early exits via sub_804AAD0/sub_804AE04, joypad read,
+    cursor update to [r5+0x34] with max 7/1, unconditional return 0). However, the proposal invents callees
+    sub_804AE50 and sub_804AE68, which do not appear in the callee list; the callees between loc_804A534
+    and loc_804A53C must be different. Also the redraw callees sub_804AA58, sub_804A8F4, menuCopyBackgroundTiles_804A7C0
+    run on both branches (before any return), not only after the cursor path, contradicting ''then refresh...
+    after the cursor update''. The name and general summary are fine but the details need correcting.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which menu this is (unknown callers; sub_804AA58/sub_804A8F4/sub_804AE04 etc. are unnamed)
+- Exact meaning of the sub_804AAD0/sub_804AE04 return checks (exit condition vs. key-mask check)
+- Layout of the r5 menu-state structure beyond the cursor field at +0x34
+- The code matches the proposal's control flow (early exits via sub_804AAD0/sub_804AE04, joypad read,
+  cursor update to [r5+0x34] with max 7/1, unconditional return 0). However, the proposal invents callees
+  sub_804AE50 and sub_804AE68, which do not appear in the callee list; the callees between loc_804A534
+  and loc_804A53C must be different. Also the redraw callees sub_804AA58, sub_804A8F4, menuCopyBackgroundTiles_804A7C0
+  run on both branches (before any return), not only after the cursor path, contradicting 'then refresh...
+  after the cursor update'. The name and general summary are fine but the details need correcting.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A514 -> submenu_updateCursorLoop
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A514

@@ -1,0 +1,61 @@
+name: battle_stepObject
+address: '0x080DCB9C'
+kind: function
+status: probable
+summary: 'Per-frame step for a battle object held in r5: if Param2!=1 and the battle is over it marks
+  the object for destroy, and if a time-stop is active it skips this frame; otherwise it dispatches via
+  the object''s CurAction handler table (off_80DCBC8).'
+interface: (r5 = battle object) -> r0 = handler-dependent; flags clobbered by callees
+details: Reads oBattleObject_Param2 from r5; if it equals 1 the battle-over/time-stop checks are bypassed
+  entirely. Otherwise battle_isBattleOver ending the battle writes CUR_STATE_DESTROY into the object's
+  packed CurState/Action/Phase word, and battle_isTimeStop returning nonzero aborts the step for this
+  frame. In the normal case it loads a handler table pointer (off_80DCBC8), indexes it with oBattleObject_CurAction,
+  and calls the handler with lr=pc so the handler returns straight to this function's caller. The table's
+  first (only visible) entry is sub_80DCBCC, so the object's action-0 handler follows immediately. The
+  r5-based object access suggests it is invoked from a generic object loop that keeps the current object
+  in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: cmp r0,#1 / beq bypasses both checks via oBattleObject_Param2; battle_isBattleOver nonzero ->
+    mov r0,#CUR_STATE_DESTROY; str to oBattleObject_CurStateActionPhaseAndPhaseInitialized; battle_isTimeStop
+    bne locret skips the step without destroying; ldr r1,[r1,r0] with r0=oBattleObject_CurAction then
+    bx r1 with lr=pc dispatches per-action handler; off_80DCBC8 contains only sub_80DCBCC+1, the action-0
+    handler directly following
+  refs:
+  - bn6f/asm/asm31.s:79867
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080DCB9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and flow match: the early branch on Param2==1 jumps directly to the handler dispatch
+    (loc_80DCBB2), battle_isBattleOver writes CUR_STATE_DESTROY into the packed state word (matching oBattleObject_CurStateActionPhaseAndPhaseInitialized),
+    and battle_isTimeStop falling through to locret_80DCBC2 aborts the step. However, the handler-table
+    claim is slightly off: off_80DCBC8 contains sub_80DCBCC+1 (Thumb bit set), which is a per-object handler
+    dispatcher at loc_80DCBCC, not a single action handler, so calling it "battle_objectStep" still fits.
+    The name is acceptable but could be tightened.; run wf investigate investigate-20261019-003606; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which specific object type this belongs to (no known caller, r5-based calling convention hides the owner)
+- whether the handler table off_80DCBC8 has more entries beyond the one shown
+- meaning of Param2==1 that bypasses the battle-over/time-stop gates
+- 'The summary and flow match: the early branch on Param2==1 jumps directly to the handler dispatch (loc_80DCBB2),
+  battle_isBattleOver writes CUR_STATE_DESTROY into the packed state word (matching oBattleObject_CurStateActionPhaseAndPhaseInitialized),
+  and battle_isTimeStop falling through to locret_80DCBC2 aborts the step. However, the handler-table
+  claim is slightly off: off_80DCBC8 contains sub_80DCBCC+1 (Thumb bit set), which is a per-object handler
+  dispatcher at loc_80DCBCC, not a single action handler, so calling it "battle_objectStep" still fits.
+  The name is acceptable but could be tightened.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DCB9C -> battle_stepObject
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCB9C

@@ -1,0 +1,57 @@
+name: object_spawn3ForwardDimmingCollisionRegions
+address: '0x080BA946'
+kind: function
+status: probable
+summary: Spawns three dimming collision-region objects in front of the caller battle object at PanelX
+  + dir*1, dir*2, dir*3 on the same PanelY row, using the object's Element/DamageAndStaminaDamageCounterDisabler.
+interface: (r5 = battle object) -> r0 = last spawned region object; flags preserved by callee
+details: 'Uses the caller''s battle object in r5 (never set inside this function, so it is effectively
+  a this-pointer passed via r5). It reads the object''s PanelX/PanelY and Element and calls object_getFrontDirection
+  three times to get the +1/-1 facing multiplier, spawning a dimming collision region at PanelX + dir*1,
+  dir*2, and dir*3, all at the object''s PanelY. Each spawn uses the same constant arguments: r2 = the
+  object''s Element, r3 = 0, r4 = 0x19050301 and r7 = 0x1101 (region properties such as lifetime/damage/flags),
+  r6 = the object''s DamageAndStaminaDamageCounterDisabler field. Quirk: it relies on r5 being live from
+  the caller rather than taking a parameter, so it is only valid as a leaf helper of sub_80BA84C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: three object_spawnDimmingCollisionRegion calls with r0 = object_getFrontDirection() * 1, 2,
+    3 added to [r5+oBattleObject_PanelX]; PanelY, Element, DamageAndStaminaDamageCounterDisabler all read
+    from the same r5 battle object each time; identical constants 0x19050301 (dword_80BA99C) and 0x1101
+    (dword_80BA9A0) passed for every region; only caller sub_80BA84C shares the same r5 context, confirming
+    r5 is the battle object this-pointer
+  refs:
+  - bn6f/asm/asm31.s:5427
+  - 0x080BA84C sub_80BA84C
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080BA946
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code''s three offsets are dir*1, dir*2, dir*3 (see the `mov r1, #2; mul r0, r1` and `mov r1,
+    #3; mul r0, r1` blocks), all at the object''s PanelY, spawning dimming collision regions. The proposal''s
+    summary is essentially correct, but the name''s ''Front'' panel row reading is imprecise — these are
+    columns 1/2/3 panels ahead on the same row, not the three front-panel rows. Use the existing ''object''
+    prefix as set by the codebase.; run wf investigate investigate-20261019-010606; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the spawn-argument constants 0x19050301 and 0x1101 (lifetime, damage, hit flags?) would
+  need object_spawnDimmingCollisionRegion's parameter layout
+- which attack/chip in sub_80BA84C uses this 3-panel-forward pattern
+- 'The code''s three offsets are dir*1, dir*2, dir*3 (see the `mov r1, #2; mul r0, r1` and `mov r1, #3;
+  mul r0, r1` blocks), all at the object''s PanelY, spawning dimming collision regions. The proposal''s
+  summary is essentially correct, but the name''s ''Front'' panel row reading is imprecise — these are
+  columns 1/2/3 panels ahead on the same row, not the three front-panel rows. Use the existing ''object''
+  prefix as set by the codebase.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA946 -> object_spawn3ForwardDimmingCollisionRegions
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA946

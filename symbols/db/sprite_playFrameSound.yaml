@@ -1,0 +1,59 @@
+name: sprite_playFrameSound
+address: '0x0800232A'
+kind: function
+status: probable
+summary: If the sound ID at offset 0 of the GFXAnimDataNext pointer in r0 is non-negative, calls PlaySoundEffect
+  with that ID; otherwise returns without playing anything.
+interface: (r0 = * GFXAnimDataNext, frame data whose offset-0 field oGFXAnimData_ParamNext holds the sound
+  ID) -> r0 clobbered; no return value
+details: 'Takes a pointer to a GFXAnimDataNext frame descriptor and loads its first field (oGFXAnimData_ParamNext
+  at offset 0), which holds a sound effect ID. If the value is negative the call returns without playing
+  anything, otherwise it forwards the ID to PlaySoundEffect (0x080005CC), the M4A engine wrapper. This
+  is evidently invoked once per animation frame advance so frames can trigger sounds; the caller-side
+  GFXAnimState ($r7) is not touched here. Note the comment''s ''self: GFXAnimState'' signature is misleading
+  — the function never dereferences a state struct, it only uses the frame-data pointer. Negative-ID-as-no-sentinel
+  is the only quirk.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, [r0,#oGFXAnimData_ParamNext - oGFXAnimData_ParamNext] loads the sound ID from offset
+    0 of the frame data; cmp r0, #0 / blt .noSound treats negative IDs as ''no sound''; bl PlaySoundEffect
+    with r0 = ID delegates to the M4A sfx wrapper at 0x080005CC; comment names GFXAnimDataNext, matching
+    an animation-frame descriptor carrying a per-frame sound'
+  refs:
+  - bn6f/asm/asm00_0.s:5062
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0800232A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly takes a single pointer in r0 (oGFXAnimData_ParamNext, offset 0), loads the sound ID,
+    and branches to PlaySoundEffect — matching the proposal. However the proposal claims r0 is clobbered
+    as a ''no return value'', but PlaySoundEffect is a void wrapper and the function ends with pop {pc},
+    so that''s correct; the only inaccuracy is naming. The name ''sprite_playFrameSound'' is reasonable
+    but the access prefix list lacks ''sprite'' (it has ''sprite''), so it is valid; ''sprite_playFrameSound''
+    fits since this is invoked on sprite anim frame data.; run wf investigate investigate-20261019-015108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so it is unconfirmed that this runs exactly once per animation frame advance rather
+  than on some other animation event
+- Exact semantics of special ID values other than negative (e.g. whether some positives are reserved)
+  are unknown
+- The assembly takes a single pointer in r0 (oGFXAnimData_ParamNext, offset 0), loads the sound ID, and
+  branches to PlaySoundEffect — matching the proposal. However the proposal claims r0 is clobbered as
+  a 'no return value', but PlaySoundEffect is a void wrapper and the function ends with pop {pc}, so that's
+  correct; the only inaccuracy is naming. The name 'sprite_playFrameSound' is reasonable but the access
+  prefix list lacks 'sprite' (it has 'sprite'), so it is valid; 'sprite_playFrameSound' fits since this
+  is invoked on sprite anim frame data.
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800232A -> sprite_playFrameSound
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800232A

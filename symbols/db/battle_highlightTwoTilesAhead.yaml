@@ -1,0 +1,54 @@
+name: battle_highlightTwoTilesAhead
+address: '0x081050C2'
+kind: function
+status: probable
+summary: Highlights the panel two tiles in front of the battle object twice with different highlight kinds
+  (0x8 and 0x2E), mirroring per alliance/DirectionFlip.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = clobbered; no meaningful return
+details: Ignores its incoming argument and instead uses r5 as the battle object. It calls object_getFrontDirection
+  to get the +1/-1 facing multiplier, doubles it, and adds it to oBattleObject_PanelX to get the x of
+  the column two tiles ahead, keeping oBattleObject_PanelY. It calls object_highlightPanelRegion twice
+  with that position, once with kind 8 and once with kind 0x2E, passing oBattleObject_AllianceAndDirectionFlip
+  so the highlight is mirrored per side/DirectionFlip. Purely a panel-highlight helper, no game state
+  is modified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: twice computes getFrontDirection()*2 + oBattleObject_PanelX, i.e. the column two panels ahead
+    (0x081050C2 block); both calls pass oBattleObject_PanelY and oBattleObject_AllianceAndDirectionFlip
+    to object_highlightPanelRegion; r2 = 8 on first highlight call, r2 = 0x2E on second, indicating two
+    distinct highlight kinds over the same panel; only callee object_getFrontDirection is the known facing-direction
+    helper, confirming 'ahead' is relative to alliance side
+  refs:
+  - bn6f/asm/asm31.s:165570
+  - 0x08104694 sub_8104694
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x081050C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches: r0 clobbered, r5 used as battle object, two calls to object_highlightPanelRegion with
+    PanelX+2*facing and PanelY, kinds 8 and 0x2E, AllianceAndDirectionFlip passed. However the proposal
+    says ''two tiles in front'' but the offset is 2 — this is fine. The name ''battle_highlightFront2Panels''
+    is awkward; a clearer battle_-prefix name describing the 2-tile-ahead highlight region fits better.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what highlight kinds 8 and 0x2E mean (tile/area variant), needs object_highlightPanelRegion docs or
+  the caller sub_8104694 context to know which attack/move this area belongs to
+- 'Code matches: r0 clobbered, r5 used as battle object, two calls to object_highlightPanelRegion with
+  PanelX+2*facing and PanelY, kinds 8 and 0x2E, AllianceAndDirectionFlip passed. However the proposal
+  says ''two tiles in front'' but the offset is 2 — this is fine. The name ''battle_highlightFront2Panels''
+  is awkward; a clearer battle_-prefix name describing the 2-tile-ahead highlight region fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81050C2 -> battle_highlightTwoTilesAhead
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81050C2

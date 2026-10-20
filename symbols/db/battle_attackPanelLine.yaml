@@ -1,0 +1,64 @@
+name: battle_attackPanelLine
+address: '0x080BBB38'
+kind: function
+status: probable
+summary: Hits a line of consecutive panels in front of the battle object (up to 5) until one fails the
+  panel-parameter flag check, spawning an elemental hit per panel.
+interface: (r5 = battle object ptr) -> r0 = number of panels successfully processed (0-5); r4/r6/r7 clobbered
+details: 'Loops r4=0..4: target panel = object''s panelX/Y offset by -(r4+1)*getFrontDirection(r5), i.e.
+  successive panels in the direction opposite the front-direction multiplier. Each panel is tested with
+  object_checkPanelParameters against the constant struct {set=0x10, clear=0xF800000}; on the first failing
+  panel the loop exits and returns the count of panels hit so far. For each passing panel it calls sub_80DB014(x,
+  y, element=oBattleObject_Element, packed r4=(idx<<8)|1|(0x3C<<16)|(0xFF<<24), r6=oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  r7=0x40000). The packed word looks like {count=1, delay/step=panel index, 0x3C=60, 0xFF}, suggesting
+  per-panel hits with an index-scaled delay, i.e. a traveling line attack. Quirk: the object pointer arrives
+  in r5 (not saved/restored), so the caller must set it up.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80BBB3C: neg r0,r0; mul by r4+1; add ldrb [r5,#oBattleObject_PanelX] — scans offset -dir*(1..5)
+    from the object''s own panel; bl object_checkPanelParameters with struct {0x10, 0xF800000} from off_80BBB88;
+    beq exits loop — stops at first panel not matching the flag state; hit block: ldrb r2,[r5,#oBattleObject_Element];
+    r4=(r4<<8)|1|0x3C0000|0xFF000000; r7=0x40000; bl sub_80DB014 with panel x,y — spawns an effect/hit
+    per panel; add r4,#1; cmp r4,#4; ble — exactly five panels scanned; r0=r4 returned as panels-processed
+    count; callee object_getFrontDirection supplies a +/-1 side multiplier, negated before use'
+  refs:
+  - bn6f/asm/asm31.s:7936
+  - 0x080BB9F0 sub_80BB9F0
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080DB014 sub_80DB014
+  reproduce: python3 tools/asmcat.py 0x080BBB38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal: it loops up to 5 panels offset by -(r4+1)*object_getFrontDirection,
+    calls object_checkPanelParameters with set=0x10/clear=0xF800000, and calls sub_80DB014 for each hit.
+    However, the packed argument is (1|(idx<<8)|0x3C0000|0xFF000000), and the proposal mislabels 0x3C
+    as ''delay=60'' when it''s actually a flag byte (likely hit-effect/animation type), not a timing.
+    Also, r0 holds the count and r4 is preserved across the loop, so the summary overstates clobbers.;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80DB014 does (spawn attack object vs. direct damage) and the field meanings of the packed 0xFF3C01xx
+  word
+- Which in-game attack/boss move invokes this (caller sub_80BB9F0 is undocumented)
+- Sign convention of getFrontDirection, to confirm whether the line extends in front of or behind the
+  user
+- Meaning of panel-flag masks 0x10 (required) and 0xF800000 (forbidden)
+- 'The code confirms the proposal: it loops up to 5 panels offset by -(r4+1)*object_getFrontDirection,
+  calls object_checkPanelParameters with set=0x10/clear=0xF800000, and calls sub_80DB014 for each hit.
+  However, the packed argument is (1|(idx<<8)|0x3C0000|0xFF000000), and the proposal mislabels 0x3C as
+  ''delay=60'' when it''s actually a flag byte (likely hit-effect/animation type), not a timing. Also,
+  r0 holds the count and r4 is preserved across the loop, so the summary overstates clobbers.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BBB38 -> battle_attackPanelLine
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBB38

@@ -1,0 +1,63 @@
+name: battle_relocateToRandomFilteredPanel
+address: '0x080BBE58'
+kind: function
+status: probable
+summary: Picks a random filtered field panel (excluding the object's last chosen panel) and stores it
+  in ExtraVars+4/+8, then spawns an element-tied effect at the object's current panel via sub_80D54F0.
+interface: (r5 = battle object) -> r0 = result of sub_80D54F0; object's ExtraVars+4/+8 updated to new
+  panel x/y
+details: The routine saves the object's PanelX/Y on the stack, then swaps the panel coordinates with ExtraVars+4/+8
+  so the 'exclude current panel' filter skips the panel the object last targeted. It calls object_getPanelsExceptCurrentFiltered
+  with the alliance-indexed filter table (first {0x..., 0, 0x8000000, 0x20}, falling back to byte_80BBEF4
+  requiring bit 0x20), and if any panels match, draws GetPositiveSignedRNG modulo the count to choose
+  one. The chosen packed byte is split into x (low 3 bits) and y (high nibble) and stored back into ExtraVars+4/+8.
+  It then calls sub_80D54F0 with r2 = the object's element, r6 = its DamageAndStamina counter field, and
+  a packed r4 = 0x0001010A (likely effect/panel-type parameters), apparently placing the effect on the
+  panel still in PanelX/Y. Finally it restores the saved PanelX/Y, leaving the object's logical panel
+  unchanged.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PanelX/PanelY pushed to sp, overwritten from ExtraVars+4/+8 before the filtered scan,
+    restored at end (loc_80BBECE); two object_getPanelsExceptCurrentFiltered calls with alliance-indexed
+    mask tables off_80BBEE0 / byte_80BBEF4 as fallback; svc 6 (modulo) of GetPositiveSignedRNG by panel
+    count, then lsr #4 / low-3-bit split of the selected entry into ExtraVars+4/+8; call to sub_80D54F0
+    with r2 = oBattleObject_Element and r4 = 0x0001010A before coordinates are restored'
+  refs:
+  - bn6f/asm/asm31.s:8368
+  - 0x080BBD60 sub_80BBD60
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x080D54F0 sub_80D54F0
+  reproduce: python3 tools/asmcat.py 0x080BBE58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name are largely correct, but the proposal misreads the filter fallback. byte_80BBEF4
+    is `{0x20,0,0,0,0,0,0,0,0,0,0,0,0x20,0,0,0}`, not requiring bit 0x20 uniformly: each alliance index
+    picks one byte (offset 0 for ally 0, offset 0xC for ally 1...). The summary''s wording about ''falling
+    back to byte_80BBEF4 requiring bit 0x20'' is therefore imprecise. Also, the PanelX/Y swap trick stores
+    the *previous* ExtraVars+4/+8 panel, so the filter excludes the last-teleport target, not ''the panel
+    the object last targeted'' in general.; run wf investigate investigate-20261019-010606; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D54F0 does (panel change vs. spawned effect) determines the in-game identity
+- What the caller sub_80BBD60 is (object type) and which panels the masks 0x8000000/0x20 select would
+  pin down the exact move/attack this implements
+- 'The summary and name are largely correct, but the proposal misreads the filter fallback. byte_80BBEF4
+  is `{0x20,0,0,0,0,0,0,0,0,0,0,0,0x20,0,0,0}`, not requiring bit 0x20 uniformly: each alliance index
+  picks one byte (offset 0 for ally 0, offset 0xC for ally 1...). The summary''s wording about ''falling
+  back to byte_80BBEF4 requiring bit 0x20'' is therefore imprecise. Also, the PanelX/Y swap trick stores
+  the *previous* ExtraVars+4/+8 panel, so the filter excludes the last-teleport target, not ''the panel
+  the object last targeted'' in general.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BBE58 -> battle_relocateToRandomFilteredPanel
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBE58

@@ -1,0 +1,62 @@
+name: e_setField13FromChipAtIndex
+address: '0x081268D8'
+kind: function
+status: probable
+summary: Adds two u16 fields from the caller-supplied r5 struct, uses the sum as a 4-byte-record index
+  into dword_201F420, treats the loaded u16 as a chip ID, fetches the 44-byte chip record via getChip8021DA8,
+  takes byte 7 (element), and writes it via e_setField13.
+interface: (r5 = current entity/context struct) -> r0 = result of e_setField13; no flags used
+details: Reads two u16 fields at r5+0x32 and r5+0x36, adds them, and scales by 4 to index a table of 4-byte
+  records at dword_201F420, taking the first u16 as a chip ID. Fetches the 44-byte chip record via getChip8021DA8
+  and reads the byte at offset 7 (element/style byte). Calls e_setField13 with that byte in r0 and r1=1,
+  which writes it to field 0x13 of the entity entry selected from the fixed array at 0x2008450, but only
+  if that entry is active. r5 is never initialized here, so the caller must supply it (treated as the
+  current entity/context pointer). The 4-byte record stride suggests entries of {chipId, extra}, not a
+  plain u16 list.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#0x32]; ldrh r1,[r5,#0x36]; add/lsl #2 indexes dword_201F420 as 4-byte records,
+    first u16 loaded; bl getChip8021DA8 then ldrb r0,[r0,#7] extracts byte 7 of the 44-byte chip record;
+    mov r1,#1; bl e_setField13 passes the chip byte plus entity index 1 to the known field-0x13 setter;
+    no push of r5 and no argument setup: r5 comes from caller sub_8124F8C as shared context'
+  refs:
+  - bn6f/asm/asm33.s:7369
+  - 0x08124F8C sub_8124F8C
+  - 0x0811983C e_setField13
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x081268D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed function body matches the code: r5+0x32 and r5+0x36 are summed, shifted left by 2,
+    used to load a u16 from dword_201F420 passed to getChip8021DA8, then byte offset 7 is moved to r0
+    and e_setField13 called with r1=1. The issue is the name: ''e_setField13FromFolderChip'' implies data
+    from a folder chip lookup, but the table is a small indexed lookup, not folder contents. A more neutral
+    ''e_setField13FromChipAtIndex'' or ''e_setField13FromTable'' fits better. Caller sub_8124F8C and the
+    meaning of r5 aren''t established, so ''entity'' assumptions are guesses.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what dword_201F420 actually is (folder, selected-chips list, or custom-screen buffer) and what r5+0x32/0x36
+  index into it
+- which entity index 1 at 0x2008450 represents (player? specific object) and the game meaning of field
+  0x13 beyond 'a byte field'
+- what the caller sub_8124F8C does around this call to confirm the gameplay context
+- 'The proposed function body matches the code: r5+0x32 and r5+0x36 are summed, shifted left by 2, used
+  to load a u16 from dword_201F420 passed to getChip8021DA8, then byte offset 7 is moved to r0 and e_setField13
+  called with r1=1. The issue is the name: ''e_setField13FromFolderChip'' implies data from a folder chip
+  lookup, but the table is a small indexed lookup, not folder contents. A more neutral ''e_setField13FromChipAtIndex''
+  or ''e_setField13FromTable'' fits better. Caller sub_8124F8C and the meaning of r5 aren''t established,
+  so ''entity'' assumptions are guesses.'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81268D8 -> e_setField13FromChipAtIndex
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81268D8

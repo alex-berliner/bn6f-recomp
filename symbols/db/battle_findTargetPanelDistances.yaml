@@ -1,0 +1,66 @@
+name: battle_findTargetPanelDistances
+address: '0x080E84D0'
+kind: function
+status: probable
+summary: Scans the battle grid for panels matching flag 0x10 at the column ahead of the object and at
+  the opposite edge column, storing their coordinates and the distance (panel count) to the next flagged
+  panel in each horizontal direction; returns 1 if the forward distance is <4, else 0.
+interface: '(r0 = out struct ptr, r4/r5 = battle object ptr) -> r0 = 1 if a valid target within range,
+  else 0; out struct: +0/+1 candidate1 x/y, +3 forward distance (0xFF = none), +4/+5 candidate2 x/y, +6
+  candidate2-valid, +7 reverse distance'
+details: Fills an 8-byte result struct. First checks the panel at (PanelX + frontDirection, PanelY) against
+  flag mask 0x10 via object_checkPanelParameters (coords passed as stack args, table 0xF880080); if it
+  matches, stores it as candidate 1 and counts panels forward (object_countPanelsUntilFlag) to the next
+  flagged panel into +3. A second candidate at x = 6 - 5*(Alliance^DirectionFlip) (i.e. column 6 or 1)
+  is checked and stored at +4/+5 only if it differs from candidate 1; its distance counting runs in the
+  flipped horizontal direction into +7. Returns 0 (r6=0) if the forward count is >= 4 (target too far),
+  and forces +7 to 0xFF in one edge case; otherwise returns 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PanelX/PanelY + bl object_getFrontDirection: derives facing-relative start panel; two
+    bl object_checkPanelParameters calls with r2=0x10 and table dword_80E8578=0xF880080 test candidate
+    panels by flag mask; bl object_countPanelsUntilFlag stores 0xFF-sentinel distances at +3 and +7, second
+    call uses DirectionFlip eor 1 (reversed direction); cmp r0,#4 / blt pattern clears r6, so a distance
+    of 4+ panels means failure; struct layout: strb to [r7,+0..+7] with [r7,#6]=1 set before the counting
+    calls'
+  refs:
+  - bn6f/asm/asm31.s:105680
+  - 0x080E83FC sub_80E83FC
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x080E8486 object_countPanelsUntilFlag
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080E84D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is close - it does search for candidate target panels at edge columns and report distances
+    - but ''+6 candidate2-valid'' is wrong: the code writes 1 there once and never touches it. Also ''+7
+    reverse distance'' is misleading: the second count uses flipped DirectionFlip for the *horizontal*
+    axis, not a ''reverse'' search; it''s really the distance count in the opposing horizontal direction.
+    The candidate2 column formula (6 - 5*(Alliance^DirectionFlip)) always picks the edge column opposite
+    the facing direction, so both candidates are at fixed panel columns (one at front column, one at back
+    column edge).; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which chip, enemy AI, or object behavior calls this (sole caller sub_80E83FC is undocumented)
+- What panel flag 0x10 and the table at 0xF880080 represent (hole/broken/object-blocked?)
+- Exact argument convention of object_checkPanelParameters (coords appear to be passed on the stack)
+- 'The summary is close - it does search for candidate target panels at edge columns and report distances
+  - but ''+6 candidate2-valid'' is wrong: the code writes 1 there once and never touches it. Also ''+7
+  reverse distance'' is misleading: the second count uses flipped DirectionFlip for the *horizontal* axis,
+  not a ''reverse'' search; it''s really the distance count in the opposing horizontal direction. The
+  candidate2 column formula (6 - 5*(Alliance^DirectionFlip)) always picks the edge column opposite the
+  facing direction, so both candidates are at fixed panel columns (one at front column, one at back column
+  edge).'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E84D0 -> battle_findTargetPanelDistances
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E84D0

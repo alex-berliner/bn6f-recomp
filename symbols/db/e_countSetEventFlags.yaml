@@ -1,0 +1,59 @@
+name: e_countSetEventFlags
+address: '0x08143198'
+kind: function
+status: probable
+summary: Counts the number of set event flags in a fixed group (size from sub_81433CA, base id from sub_81430B6)
+  and returns the count in r0 with Z set when every flag in the group is set, used by ow_crowLessonInteraction
+  to gate cutscene stages.
+interface: () -> r0 = number of set flags; flags Z set iff r0 == total flags in group (r1 = total), N/C
+  per cmp
+details: The routine first calls sub_81433CA to get the group's flag count (r6), then sub_81430B6 with
+  0 to get the group's base flag id (r7). It loops r6 times calling TestEventFlag on each successive flag
+  id, incrementing r4 for each set flag. It re-fetches the total via sub_81433CA into r1, then executes
+  cmp r0, r1 before returning r0 = count of set flags, leaving the equality flags so the caller can branch
+  on 'all flags set'. It takes no arguments; the flag range is fixed by the two helpers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sub_81433CA twice, once before the loop and once after — result used as loop bound r6 and
+    as cmp operand r1 (group size); loop body: bl TestEventFlag on r7 then add r4,#1 when Z clear — counts
+    consecutive flag ids starting at sub_81430B6(0); final cmp r0, r1 before pop — returns count while
+    leaving ''count == total'' comparison for the caller; caller ow_crowLessonInteraction at 0x08142FC8
+    is a flag-staged cutscene handler, consistent with ''are all stage flags done?'' checks'
+  refs:
+  - bn6f/asm/asm37_1.s:2829
+  - 0x08142FC8 ow_crowLessonInteraction
+  - 0x0811E600 sub_811E600
+  - 0x0802F168 TestEventFlag
+  - 0x081430B6 sub_81430B6
+  - 0x081433CA sub_81433CA
+  reproduce: python3 tools/asmcat.py 0x08143198
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately describes the loop: it calls sub_81433CA to get the count into r6, sub_81430B6
+    with 0 for the base flag id into r7, then iterates r6 times calling TestEventFlag and counting set
+    flags into r4. It then re-fetches the count into r1 and does cmp r0, r1, returning r0 with Z set when
+    all flags are set. However, the prefix ''ow_countSetEventFlags'' misuses ''ow'' (which is a noun prefix,
+    not a verb). The ''count'' verb suggests a different prefix; ''e'' or ''get'' fits better.; run wf
+    investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact flag group and meaning of sub_81433CA/sub_81430B6 return values (which flag block the lesson uses)
+- how ow_crowLessonInteraction branches on the returned equality flags
+- 'The summary accurately describes the loop: it calls sub_81433CA to get the count into r6, sub_81430B6
+  with 0 for the base flag id into r7, then iterates r6 times calling TestEventFlag and counting set flags
+  into r4. It then re-fetches the count into r1 and does cmp r0, r1, returning r0 with Z set when all
+  flags are set. However, the prefix ''ow_countSetEventFlags'' misuses ''ow'' (which is a noun prefix,
+  not a verb). The ''count'' verb suggests a different prefix; ''e'' or ''get'' fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b06b927d
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143198 -> e_countSetEventFlags
+  where: bn6f 54bc3514
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143198
