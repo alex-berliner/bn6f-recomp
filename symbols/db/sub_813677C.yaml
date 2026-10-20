@@ -1,0 +1,64 @@
+name: sub_813677C
+address: '0x0813677C'
+kind: function
+status: hypothesis
+summary: Copies 8 bytes from the battle state buffer at 0x2022B70 into the work buffer at 0x2000090.
+interface: void sub_813677C(void)
+details: Trivial wrapper around CopyBytes (u8 *src, u8 *dest, int count) with a fixed count of 8. Source is unk_2022B70
+  (an IWRAM battle/state slot), destination is unk_2000090 (IWRAM work buffer). Takes no arguments and returns nothing;
+  only lr is read on entry, and r0-r3 plus flags are clobbered via the tail work of CopyBytes. The meaning of the
+  8-byte block is not established from this function alone; the name is a guess based on the source buffer appearing
+  to be battle-related state.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_813677C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813677C
+
+    ./wf verify --function sub_813677C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813677C
+
+    ./wf verify --function sub_813677C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813677C
+
+    ./wf verify --function sub_813677C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813677c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- What the 8 bytes at 0x2022B70 represent (counter, seed, or state struct?)
+- Who reads 0x2000090 afterwards, to confirm the buffer's role
+- Whether 0x2022B70 is written by battle code elsewhere, which would confirm the battle_ prefix
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d

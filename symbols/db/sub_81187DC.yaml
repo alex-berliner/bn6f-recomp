@@ -1,0 +1,68 @@
+name: sub_81187DC
+address: '0x081187DC'
+kind: function
+status: hypothesis
+summary: Returns a pointer into a record selected by the high nibble of the record's byte at offset 2, each nibble
+  step addressing one 16-byte slot.
+interface: u32 *getSubRecordByNibbleSelector(void *base /* r5 */)
+details: 'Takes a record base pointer in r5, loads the byte at [r5+2], and keeps only its high nibble (lsl/lsr round
+  the whole byte down to a multiple of 16). That value, 0x00-0xF0, is added to the base pointer and returned in
+  r0, so the function is a selector over sixteen 16-byte sub-records laid out inline at the start of the parent
+  record. The byte at offset 2 therefore doubles as a "current sub-record index << 4" field. Only r0 is returned;
+  r5 and lr are the only inputs and nothing is preserved or clobbered beyond flags. The mechanics are certain from
+  the code, but which structure this belongs to (and thus its game meaning) is not identifiable from this function
+  alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_81187DC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81187DC
+
+    ./wf verify --function sub_81187DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81187DC
+
+    ./wf verify --function sub_81187DC --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81187DC
+
+    ./wf verify --function sub_81187DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081187dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- which caller(s) and record type this selector belongs to, so it can be given a true game-level name
+- whether the selector byte at +2 is written by this subsystem elsewhere or shared with other accessors
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
