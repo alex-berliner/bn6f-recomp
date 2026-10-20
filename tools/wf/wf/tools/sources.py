@@ -161,7 +161,7 @@ def _read() -> dict[str, Outage]:
         return {}
 
 
-HYPER_RESET = (10, 13)   # local time Hyper's daily credit comes back (the user, 2026-10-09)
+HYPER_RESET = (9, 13)    # local time Hyper's daily credit comes back: 10:13 per the user on 2026-10-09, measured 9:05-9:21 on 2026-10-20 (balance 0 -> 250)
 
 
 def _until_hyper_reset(now: datetime | None = None) -> float:
