@@ -1,0 +1,73 @@
+name: bubbleShotAttack_80ECBB0
+address: '0x080ECBB0'
+kind: function
+status: confirmed
+summary: 'Bubble-shot AI attack step: dispatches on the element the attack last hit, either stepping in for a strike
+  (normal hit) or updating the hold timeout (missed/held).'
+interface: void bubbleShotAttack_80ECBB0(void); // r7 = attackVars (AI attack vars); tail-calls handler with r0
+  = HitElement, r1 = handler addr; results returned in r1, r5, r8-r12; flags clobbered
+details: 'Trampoline for the AI''s bubble-shot attack routine. Reads the HitElement byte from the AI attack vars
+  at [r7, #oAIAttackVars_HitElement] and uses it to index a two-entry handler table at off_80ECBC4: index 0 (no
+  element hit / neutral) -> ai_attackFrontStrikeStep+1 (step forward and perform a strike, i.e. the shot connected),
+  index 1 -> ai_attackHoldTimeoutUpdate+1 (the attack is still holding / timed out while holding the shot). The
+  routine sets up a tail-call: r0 is left holding the element value and r1 holds the selected Thumb handler address,
+  then branches via `mov lr, pc; bx r1`, so the handler returns directly to bubbleShotAttack''s caller. All other
+  incoming registers (r2 r3 r5 r6 r7 r10) pass through untouched, and the handler''s outputs in r1, r5 and r8-r12
+  become this function''s outputs. The element byte therefore acts as a two-way state flag for whether the bubble
+  shot landed.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c bubbleShotAttack_80ECBB0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function bubbleShotAttack_80ECBB0
+
+    ./wf verify --function bubbleShotAttack_80ECBB0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function bubbleShotAttack_80ECBB0
+
+    ./wf verify --function bubbleShotAttack_80ECBB0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 32 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function bubbleShotAttack_80ECBB0
+
+    ./wf verify --function bubbleShotAttack_80ECBB0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, chips.'
+  reproduce: grep -l '^080ecbb0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+- chips
+open_questions:
+- Exact meaning of HitElement values 0 vs 1 (struck vs held/timeout) is inferred from the two handlers; confirm
+  how the byte is set elsewhere.
+- The assembly comment marks a possible Japanese counterpart at 80F2550; verify the mapping.
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

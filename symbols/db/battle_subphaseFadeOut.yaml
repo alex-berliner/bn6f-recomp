@@ -1,47 +1,72 @@
 name: battle_subphaseFadeOut
 address: '0x08009C2A'
 kind: function
-status: probable
-summary: Battle sub-phase that fades the screen out, then on fade completion stops the music, frees object
-  type 0x1A, and advances the battle state to 8.
-interface: (r5 = battle state struct) -> void; sets oBattleState_SubPhaseInitFlag, oBattleState_Index_00
-details: 'Standard init-then-poll sub-phase: first call starts a screen fade via SetScreenFade(0xC, 0x10)
-  and sets oBattleState_SubPhaseInitFlag to 4. Later calls wait on IsScreenFadeActive; once the fade is
-  finished they call musicGameState_8000784 to turn BGM off, free all objects of type 0x1A with FreeAllObjectsOfSpecifiedTypes,
-  and store 8 into oBattleState_Index_00, which the battle main loop (sub_8007800) reads to dispatch sub_8007B80.
-  Runs as a step of the battle-state machine on the battlesweep/beastsp routes.'
+status: confirmed
+summary: 'Battle transition fade-out subphase: starts a screen fade once, then when it completes stops the battle
+  music, frees the battle objects, and advances battle main to state 8.'
+interface: void battle_subphaseFadeOut(void); // battle state ptr in r5; reads oBattleState_SubPhaseInitFlag (byte)
+  and writes oBattleState_Index_00 (word); returns via caller trampoline preserving r4-r7
+details: 'Runs once per frame while the battle main state machine is in this subphase. On first entry (SubPhaseInitFlag
+  == 0) it calls SetScreenFade(0xC, 0x10) to start a fade-out (fade mode 0x0C, 0x10 frames) and stores 4 into the
+  SubPhaseInitFlag byte at r5+oBattleState_SubPhaseInitFlag so setup is not repeated. On subsequent frames it polls
+  IsScreenFadeActive via the Z flag: while the fade is still running (Z set) it returns immediately. Once the fade
+  finishes it calls musicGameState_8000784 (stops/silences the battle music), then FreeAllObjectsOfSpecifiedTypes
+  with r0 = 0x1A to release every battle object of type 0x1A, and finally stores 8 into the word at r5+oBattleState_Index_00
+  so battle main (battle_main_8007800) advances to its next state (state 8, via sub_8007B80). r4/r6/r7 are preserved
+  across the whole routine; the values passed to musicGameState_8000784 and FreeAllObjectsOfSpecifiedTypes in r2/r4-r7
+  are just whatever the caller left / the previous callee left, matching the original''s register behavior rather
+  than meaningful arguments.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'init branch: SetScreenFade(0xC,0x10) + strb 4 to oBattleState_SubPhaseInitFlag on first run;
-    poll branch: bl IsScreenFadeActive gates all teardown work (loc_8009C40); teardown: musicGameState_8000784
-    and FreeAllObjectsOfSpecifiedTypes(0x1A) clear music and screen objects; mov r0,#8; str r0,[r5,oBattleState_Index_00]
-    triggers sub_8007B80 via battle_main_8007800; oBattleState field offsets imply r5 is the battle state
-    struct driven by the battle main loop'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_1.s:14898
-  - 0x08000784 musicGameState_8000784
-  - 0x080035A2 FreeAllObjectsOfSpecifiedTypes
-  - 0x080062F8 IsScreenFadeActive
-  reproduce: python3 tools/asmcat.py 0x08009C2A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_subphaseFadeOut
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_subphaseFadeOut
+
+    ./wf verify --function battle_subphaseFadeOut --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_subphaseFadeOut
+
+    ./wf verify --function battle_subphaseFadeOut --snapshots build-snapshots'
+  result: 34 compared, 0 differed, 62 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_subphaseFadeOut
+
+    ./wf verify --function battle_subphaseFadeOut --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08009c2a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_1_800801C.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which battle phase/state index leads into this one and what battle state 8 (sub_8007B80) does next
-- What object type 0x1A represents (enemy/objects freed at fade-out)
+- What battle main state 8 (dispatched through sub_8007B80) does after the fade-out completes.
+- Which object types 0x1A covers exactly in the battle object type table.
+- Whether SetScreenFade mode 0x0C has other callers with a documented meaning for the mode value.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8009C2A -> battle_subphaseFadeOut
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8009C2A
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,56 +1,69 @@
 name: battleObject_togglePlayerAllyLockout_808FF44
 address: '0x0808FF44'
 kind: function
-previous_names:
-- sub_808FF44
-status: probable
-summary: Toggles/clears a player's ally lockout flag and resets its associated counters during battle.
-interface: (r5 = ptr to battle-related struct) -> r5 preserved ; r1/r2/r3 clobbered ; NZ flags updated
-details: "Reads ePETMenuData+5 (a flag byte accessed via TestPETMenuDataFlag with r0=1). If that bit is\n\
-  \  already set, this routine falls through to loc_808FF68 which writes 1 into [r5,#5] and returns.\n\
-  \  Otherwise it tests the local zero flag at [r5,#5]; if zero, returns immediately. In the active\n\
-  \  case, calls sub_80468BA (no args) and then sub_80468C6 with r0/r1/r2 = 0,0,0, then stores 0\n  into\
-  \ [r5,#5] before returning. The two callees sub_80468BA / sub_80468C6 look like clear/reset\n  helpers,\
-  \ implying the routine is releasing something (counters/timers) attached to the\n  flag byte at offset\
-  \ 5 — consistent with a PET-menu / ally-control lockout being cleared.\n  Lives in the battle subsystem\
-  \ (called from sub_808FEA4, which itself is a battle helper),\n  and is reached as part of per-frame\
-  \ battle updates. r5 holds the target struct pointer; the\n  struct field at offset 5 (one byte) is\
-  \ the lockout indicator being manipulated.\n"
+status: confirmed
+summary: 'Toggles the player battle object''s ally-lockout byte (+5): locks the ally out when the PET menu data
+  flag is set, otherwise clears the ally''s AI chip queue and unlocks it.'
+interface: void battleObject_togglePlayerAllyLockout_808FF44(u32 object /* r5 */) /* returns r5 = object unchanged
+  */
+details: "Takes the player battle object pointer in r5 and passes it through unchanged (r5 is\nboth input and output).\
+  \ Behavior branches on TestPETMenuDataFlag(1):\n- If the flag is set (Z clear): store 1 to the byte at object+5,\
+  \ locking the ally out.\n- If the flag is clear and object+5 is nonzero (currently locked out): call sub_80468BA\n\
+  \  (presumably resetting ally AI state), then battleObject_initAIChipQueueSlot_80468C6(0,0,0)\n  to clear the\
+  \ ally's AI chip queue slot, then store 0 to object+5 to unlock the ally.\n- If the flag is clear and object+5\
+  \ is already 0: do nothing (fall through to return).\nOnly the byte at object+5 is written; no other fields of\
+  \ the object are touched.\nClobbers r0-r3 and flags; preserves r4-r7. lr is the return address and r5 is the sole\n\
+  meaningful caller register.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#5]` reads and `strb r0, [r5,#5]` writes the same offset-5 byte of r5''s struct.
-    - `bl TestPETMenuDataFlag` with r0=1 confirms the gate uses ePETMenuData+5 bit 1 (PET menu state).
-    - `bne loc_808FF68` then `mov r0, #1; strb r0, [r5,#5]` shows the "set" path writes 1 back. - `bl
-    sub_80468BA` followed by `sub_80468C6(r0=0, r1=0, r2=0)` strongly suggests zeroing a 3-arg counter/timer
-    triple after releasing the lockout. - Single caller sub_808FEA4 lives in the battle subsystem, so
-    the routine is battle-scoped.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808FF44
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleObject_togglePlayerAllyLockout_808FF44
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_togglePlayerAllyLockout_808FF44
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_togglePlayerAllyLockout_808FF44 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 186 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_togglePlayerAllyLockout_808FF44
+
+    ./wf verify --function battleObject_togglePlayerAllyLockout_808FF44 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_togglePlayerAllyLockout_808FF44
+
+    ./wf verify --function battleObject_togglePlayerAllyLockout_808FF44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808ff44 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact struct that r5 points to is not visible here; could be a BattleObject or the
-- BattleState's AI/player entry. Identifying r5's type in the caller would settle the
-- semantics (whether the cleared triple at [r5,#5..] is enemy/allied lockout, an HP regen
-- counter, etc.).
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808ff44 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 90fa2c5c
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808FF44 -> battleObject_togglePlayerAllyLockout_808FF44
-  where: bn6f f043a75e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What sub_80468BA does exactly (called before clearing the AI chip queue slot)
+- Exact semantics of TestPETMenuDataFlag(1) — which PET menu flag bit/index is being tested
+- Which battle object structure field at +5 is named by other functions (confirm it is an 'ally lockout' flag)
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,45 +1,69 @@
 name: battle_objectDestroyAfterTimer
 address: '0x080D033C'
 kind: function
-status: probable
-summary: Battle object handler that despawns the object after a frame delay set by Param1.
-interface: (r5 = battle object) -> updates oBattleObject_Timer, sets state CUR_STATE_DESTROY on expiry;
-  flags n/a
-details: On entry with oBattleObject_CurPhase==0 it stores phase 4 and writes Param1-10 to oBattleObject_Timer,
-  so the effective lifetime is the Param1 value minus the frames spent in earlier setup. Every call afterwards
-  decrements oBattleObject_Timer and branches out while it is still positive. When the timer reaches zero
-  the word field oBattleObject_CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_DESTROY, making
-  the engine delete the object. No other fields or callees are touched, so the object just lingers invisible/inert
-  until it self-destructs.
+status: confirmed
+summary: Battle-object state handler that counts down an object's timer and switches it to the DESTROY state when
+  the timer runs out.
+interface: void battle_objectDestroyAfterTimer(BattleObject* obj /* in r5 */); no return value; clobbers r0, r1
+  and the nzcv flags; lr is popped to return
+details: 'Per-frame state handler for a battle object, with the object pointer passed in r5 (caller-owned register).
+  Uses the standard BattleObject fields oBattleObject_CurPhase, oBattleObject_Param1, oBattleObject_Timer and the
+  packed oBattleObject_CurStateActionPhaseAndPhaseInitialized word. On the first invocation (CurPhase == 0) it writes
+  phase 4 into CurPhase (marking the phase as started) and arms the Timer halfword to Param1 - 0xA, i.e. the configured
+  lifetime minus a 10-frame lead-in. On every invocation it decrements Timer and, when the 32-bit decrement result
+  is <= 0 (bgt), stores CUR_STATE_DESTROY into the CurState/Action/Phase packed field, letting the object system
+  delete the object next update. Quirk: the "already zero" case is caught by the signed comparison of the decremented
+  register (-1), not by the stored halfword, so a Timer preloaded with 0 (or Param1 <= 0xA) still gets one extra
+  frame before destruction; a wrapped halfword of 0xFFFF only matters because the branch reads the 32-bit register,
+  not the stored value.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; tst; bne skips one-time init that sets phase 4 and Timer=Param1-0xa;
-    ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh; bgt locret — plain per-frame countdown; mov r0,#CUR_STATE_DESTROY;
-    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] on timeout; no callee calls and
-    no other memory access — pure timer state machine on the object struct; recorded routes battlesweep/beastsp
-    confirm it runs as a battle update handler
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:52392
-  reproduce: python3 tools/asmcat.py 0x080D033C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_objectDestroyAfterTimer
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_objectDestroyAfterTimer
+
+    ./wf verify --function battle_objectDestroyAfterTimer --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 163 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_objectDestroyAfterTimer
+
+    ./wf verify --function battle_objectDestroyAfterTimer --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_objectDestroyAfterTimer
+
+    ./wf verify --function battle_objectDestroyAfterTimer --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d033c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
-open_questions:
-- which object ID(s) use this handler and what Param1 values the game passes, to name it more specifically
-- what happens during frames before phase 4 (the reason for the -10 adjustment)
+open_questions: []
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D033C -> battle_objectDestroyAfterTimer
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D033C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

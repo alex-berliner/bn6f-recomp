@@ -1,53 +1,71 @@
 name: battle_spawnLinkedObj3C
 address: '0x080E4B34'
 kind: function
-status: probable
-summary: Spawns battle object 0x3C of spawn-type 4 and links it to the requesting object, recording the
-  new object's handle for the caller.
-interface: (r0 = object id 0x3C for object_spawnType4, r1-r4 = other spawn params passed through unmodified
-  from this fn's caller, r5 = parent battle object, r7 = ptr to handle slot) -> r0 = spawned object ptr;
-  Z from spawn result gates the linking
-details: Calls object_spawnType4 with id 0x3C; only r0 is set inside this function, so r1-r4 must already
-  hold position/params prepared by the caller. On success (non-null spawn), it copies the parent's oBattleObject_AllianceAndDirectionFlip
-  from r5 into the new object so they share alliance/flip, and stores r5 into the new object's oBattleObject_RelatedObject1Ptr,
-  making the parent the related-object link. It writes r7 into the new object's oBattleObject_ExtraVars
-  and writes the new object pointer back through r7 (*r7 = new obj), i.e. ExtraVars points at the caller's
-  handle slot holding the object itself - the usual self-erasing handle so the parent can null the link
-  when the object despawns. Finally it ORs flag bits 0x14 into the new object's oObjectHeader_Flags, likely
-  marking it as linked/related. The `mov r0, r5`/`pop {r5}` pair around the null-check looks like a decode
-  artifact of keeping the spawn result in r0 while restoring the parent pointer in r5.
+status: confirmed
+summary: Spawns a battle object of type 0x3C, links it to a parent object and the parent's extra-vars block, and
+  inherits the parent's alliance/direction-flip.
+interface: void battle_spawnLinkedObj3C(u32 arg1 /*r1*/, u32 arg2 /*r2*/, u32 arg3 /*r3*/, u32 arg4 /*r4*/, BattleObject*
+  parent /*r5*/, BattleObject** outPtr /*r7*/); returns new object in r0 (NULL on failure); r3/r6 are leftovers
+  from the spawn call, r5 preserved
+details: 'Wrapper around object_spawnType4 with the object type hardcoded to 0x3C; r1-r4 are spawn arguments passed
+  straight through. On success (new object != NULL in r5 before it is saved around the pop): copies the parent''s
+  oBattleObject_AllianceAndDirectionFlip halfword into the new object, stores the parent in the new object''s oBattleObject_RelatedObject1Ptr,
+  stores the caller''s r7 (an extra-vars/owner block pointer) into oBattleObject_ExtraVars, writes the new object''s
+  pointer back into the first word of that block (mutual link), and ORs 0x14 into the new object''s oObjectHeader_Flags
+  (bit set 0x14 = 0x10|0x04). On failure nothing is linked and only the raw spawn-call leftovers are returned. Note
+  the assembly keeps the new object in r0 and restores the original parent pointer into r5 around the call, so r5
+  is unchanged for the caller and the fresh object is delivered in r0 (contract lists outputs r3/r5/r6, with r0/r1/r2
+  clobbered).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'mov r0, #0x3c; bl object_spawnType4 — spawns type-4 battle object with id 0x3C; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip];
-    strh r1,[r0,...] — child inherits parent''s alliance/flip; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
-    — new object''s related-object link is the parent r5; str r7,[r0,#oBattleObject_ExtraVars]; str r0,[r7]
-    — ExtraVars points at caller''s handle slot which now holds the new object; ldrb r1,[r0,#oObjectHeader_Flags];
-    orr r1,#0x14 — sets flags 0x14 on the spawned object'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:96331
-  - 0x080033AC object_spawnType4
-  reproduce: python3 tools/asmcat.py 0x080E4B34
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_spawnLinkedObj3C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_spawnLinkedObj3C
+
+    ./wf verify --function battle_spawnLinkedObj3C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_spawnLinkedObj3C
+
+    ./wf verify --function battle_spawnLinkedObj3C --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_spawnLinkedObj3C
+
+    ./wf verify --function battle_spawnLinkedObj3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e4b34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - battlesweep
 - beastsp
-open_questions:
-- What gameplay entity object id 0x3C is (needs object_spawnType4's id table or the object's initializer)
-- What r1-r4 mean at entry (spawn params set by unknown callers) and which callers set up r5/r7
-- Exact meaning of object flags 0x14
-- Whether the r0/r5 register shuffle after the bl is a disassembly decode artifact
+open_questions: []
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E4B34 -> battle_spawnLinkedObj3C
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E4B34
+- tools/wf run convert-20261020-105112
+- recomp da063e1

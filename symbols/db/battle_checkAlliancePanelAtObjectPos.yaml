@@ -1,56 +1,74 @@
 name: battle_checkAlliancePanelAtObjectPos
 address: '0x0810B646'
 kind: function
-status: probable
-summary: Tests whether the battle panel under an object (Y shifted by a stored offset) satisfies the panel-flag
-  requirement taken from the alliance-indexed panel-parameter table, returning the panel coordinates when
-  it matches.
-interface: (r5 = battle object ptr, r0/r1/r2 set up internally) -> r0 = panel X, r1 = panel Y when the
-  check passes (0 otherwise, exact failure path unclear); flags set by cmp before pop
-details: 'Reads oBattleObject_PanelX and oBattleObject_PanelY from the battle object in r5, adds the word
-  at oBattleObject_ExtraVars+8 to Y (a stored Y offset, e.g. from movement/knockback state), and saves
-  X/Y on the stack. It then calls GetAllianceDependentPanelParamArgs with the table base byte_810B6E0
-  (loaded via off_810B77C) to fetch the panel-type parameter and args for the object''s alliance, and
-  feeds the result to object_checkPanelParameters, which verifies the target panel''s mask bits. The stack
-  push of {x,y,lr} is a tail-call trick: on success the pop reloads X into r0 and Y into r1 as the return
-  values, so the caller receives the coordinates of the matching panel. The cmp r0,#0 result appears unused
-  because pop discards flags, suggesting a conditional return path the listing compresses (12 instructions
-  vs 10 shown). Given the callers run during battlesweep and beast-over special routes, this is likely
-  a condition check for a panel-dependent battle effect tied to the beast/alliance state.'
+status: confirmed
+summary: Checks whether the panel a battle object occupies (including its vertical offset) is valid for the object's
+  alliance/side.
+interface: void battle_checkAlliancePanelAtObjectPos(r5=oBattleObject*) -> r0=panelX, r1=panelY (with the Y offset
+  applied), NZ flags set from object_checkPanelParameters' r0 result; clobbers r2, r3, lr; preserves r4/r5 as left
+  by object_checkPanelParameters
+details: 'Reads the object''s PanelX (oBattleObject_PanelX, byte) and PanelY (oBattleObject_PanelY, byte) and adds
+  the 32-bit value at oBattleObject_ExtraVars+8 to the Y coordinate, so the checked position is (PanelX, PanelY
+  + ExtraVars[2]); this offset is presumably an elevation/hover/lift displacement of the object. It then calls GetAllianceDependentPanelParamArgs
+  with r3 = pointer to the panel parameter table byte_810B6E0 and r5 = the object, receiving back two parameter
+  values in r2/r3 (likely the panel bounds/valid ranges that depend on whether the object is on the player or enemy
+  alliance). Those are passed along with the computed x/y to object_checkPanelParameters, whose nonzero/non-negative
+  result sets the NZ flags as the return condition. Quirk: the wrapper pushes {r0,r1,lr} before the calls and pops
+  {r0,r1,pc} afterward, so the returned r0/r1 are the original panel coordinates read at entry (r1 including the
+  ExtraVars+8 offset), not the callee''s r0/r1; callers read the boolean check from the Z flag while getting the
+  checked coordinates back in r0/r1. r4/r5 survive only insofar as object_checkPanelParameters preserves them.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb [r5,#oBattleObject_PanelX]/[r5,#oBattleObject_PanelY] + add r1,r1,r2(ExtraVars+8) builds
-    the target panel coords; ldr r3, off_810B77C (byte_810B6E0) feeds GetAllianceDependentPanelParamArgs,
-    which indexes by alliance; bl object_checkPanelParameters immediately after, whose summary is a panel-flag-mask
-    test; pop {r0,r1,pc} returns the saved X/Y as r0/r1, i.e. coords of the matched panel; only caller
-    sub_810B62E and recorded routes (battlesweep, beastsp) place it in battle object panel logic
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:176370
-  - 0x0810B62E sub_810B62E
-  - 0x081096FA GetAllianceDependentPanelParamArgs
-  - 0x0800CC86 object_checkPanelParameters
-  reproduce: python3 tools/asmcat.py 0x0810B646
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_checkAlliancePanelAtObjectPos
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_checkAlliancePanelAtObjectPos
+
+    ./wf verify --function battle_checkAlliancePanelAtObjectPos --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 193 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_checkAlliancePanelAtObjectPos
+
+    ./wf verify --function battle_checkAlliancePanelAtObjectPos --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_checkAlliancePanelAtObjectPos
+
+    ./wf verify --function battle_checkAlliancePanelAtObjectPos --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b646 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Exact meaning of byte_810B6E0 parameter word (which panel types the mask encodes)
-- What ExtraVars+8 represents (Y offset source) and why the check uses it
-- 'The two unlisted instructions around cmp/pop: whether failure returns 0 or falls through with stale
-  r0'
+- exact meaning of the value at oBattleObject_ExtraVars+8 (vertical/elevation offset vs. some other Y modifier)
+- semantics of the fields GetAllianceDependentPanelParamArgs returns in r2/r3 from the byte_810B6E0 table (bounds?
+  side-specific flags?)
+- whether callers rely on the r4/r5 passthrough values or only on the flags and r0/r1
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_810B646 -> battle_checkAlliancePanelAtObjectPos
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_810B646
+- tools/wf run convert-20261020-105112
+- recomp da063e1

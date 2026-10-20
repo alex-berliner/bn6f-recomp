@@ -1,52 +1,72 @@
 name: beastout_loadSelectionScreenChipUseGfx
 address: '0x0802871C'
 kind: function
-status: probable
-summary: 'Custom-screen chip-use GFX loader: queues a fixed graphics block plus one per-chip tile into
-  VRAM/buffer, then reloads the Beast Out selection sprite sheets.'
-interface: () -> (); queues a 0x540-byte ROM block to VRAM 0x6009560 and a 0x20-byte per-chip tile to
-  unk_3001AA0
-details: First queues a fixed 0x540-byte ROM block (byte_8723034) into VRAM at 0x6009560 — 42 4bpp tiles
-  of shared graphics. It then looks up active-chip entry 0xb via getLocOfActiveChips_8027E1C, reads the
-  byte at offset +6 (per-entry chip/index field), multiplies it by 0x20, and indexes the per-chip table
-  dword_8725814 with that offset, queuing one 32-byte (single 4bpp tile) entry into the EWRAM buffer unk_3001AA0.
-  Finally it calls beastout_LoadSelectionScreenSpriteSheets_802869E to refresh the three Beast Out selection
-  screen sheets in VRAM slots 1-3. Called only from the custom-screen chip-use dispatcher (battleObject_runCustomScreenChipPickerEffect_8028476),
-  i.e. when a chip is used from the custom screen during routes that show the Beast Out selection UI.
+status: confirmed
+summary: Queues the chip-use tile art and the selected chip's icon sheet for the Beast-Out selection screen, then
+  reloads its sprite sheets.
+interface: 'void beastout_loadSelectionScreenChipUseGfx(void); (in: lr only; r2-r7 and flags clobbered by callees)'
+details: "Part of the Beast-Out selection screen's graphics setup, called with no arguments. It performs\nthree\
+  \ steps:\n  1. Calls loadOneSpriteTileRow_80287D2 to stage one tile row of chip-use art.\n  2. Queues a GFX transfer\
+  \ of that staged data from byte_8723034 to VRAM 0x6009560,\n     0x540 bytes, via QueueEightWordAlignedGFXTransfer.\n\
+  \  3. Calls getLocOfActiveChips_8027E1C with a1 = 0xB (active-chip list kind 11) and reads the\n     byte at offset\
+  \ +6 of the entry, which is the selected chip's index. The chip's 0x20-byte\n     icon sheet is computed as dword_8725814\
+  \ + index * 0x20 and queued as a second GFX\n     transfer into IWRAM buffer unk_3001AA0 (presumably staged for\
+  \ a later copy to object\n     tile VRAM).\n  4. Finally calls beastout_LoadSelectionScreenSpriteSheets_802869E\
+  \ to reload the\n     selection-screen sprite sheets on top of the new graphics.\nTouches: VRAM tile area at 0x6009560,\
+  \ chip icon sheet table dword_8725814 (0x20 bytes per\nchip), IWRAM staging buffer unk_3001AA0, and the active-chip\
+  \ list entry kind 0xB field +6.\nThe function itself returns nothing meaningful; r2-r7 are just leftover callee\
+  \ registers.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_802871C+0x4..0x1a: QueueEightWordAlignedGFXTransfer(byte_8723034 -> 0x6009560, 0x540) is
-    a fixed shared GFX upload; sub_802871C+0x1e..0x32: getLocOfActiveChips(0xb), ldrb [r0,#6], *0x20 indexes
-    dword_8725814 and queues 0x20 bytes to unk_3001AA0 — one per-chip tile; sub_802871C+0x36: tail call
-    beastout_LoadSelectionScreenSpriteSheets_802869E ties it to the Beast Out selection screen; sole caller
-    battleObject_runCustomScreenChipPickerEffect_8028476 is the custom-screen chip-use dispatcher, so
-    this is the GFX branch for one chip kind'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_0.s:4923
-  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
-  - 0x0802869E beastout_LoadSelectionScreenSpriteSheets_802869E
-  - 0x08027E1C getLocOfActiveChips_8027E1C
-  - 0x080287D2 loadOneSpriteTileRow_80287D2
-  reproduce: python3 tools/asmcat.py 0x0802871C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c beastout_loadSelectionScreenChipUseGfx
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function beastout_loadSelectionScreenChipUseGfx
+
+    ./wf verify --function beastout_loadSelectionScreenChipUseGfx --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 163 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function beastout_loadSelectionScreenChipUseGfx
+
+    ./wf verify --function beastout_loadSelectionScreenChipUseGfx --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function beastout_loadSelectionScreenChipUseGfx
+
+    ./wf verify --function beastout_loadSelectionScreenChipUseGfx --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0802871c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_0.c
 coverage:
 - beastsp
 open_questions:
-- Exact meaning of byte+6 in the active-chip entry (chip ID vs. graphics index) and what dword_8725814's
-  per-entry 0x20 bytes depict (icon tile vs. chip image slice)
-- What unk_3001AA0 is consumed by afterwards, and why the second transfer targets EWRAM instead of VRAM
+- Exact meaning of active-chip list kind 0xB (assumed 'currently selected chip' slot; could be a different list
+  kind)
+- What unk_3001AA0 is later copied to (likely object/icon tile VRAM during the selection-screen update)
+- Semantics of the byte at active-chip entry +6 (assumed chip index into the icon table)
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_802871C -> beastout_loadSelectionScreenChipUseGfx
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_802871C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

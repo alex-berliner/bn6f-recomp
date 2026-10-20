@@ -1,50 +1,74 @@
 name: battle_dispatchBPwrAtkHandler
 address: '0x080117BA'
 kind: function
-status: probable
-summary: Dispatches the per-chip Beast Out attack-power handler selected by the index in r0, with r7 preloaded
-  with the object's AI attack vars.
-interface: (r0 = attack/chip handler index, r5 = battle object) -> tail-calls table handler (off_80117D4[r0]);
-  r6 = oBattleObject_AIDataPtr, r7 = aiData + oAIData_AttackVars on entry to handler
-details: 'Loads the battle object''s AI data pointer from [r5+oBattleObject_AIDataPtr] and precomputes
-  r7 = aiData + oAIData_AttackVars, which handlers can use for the attack variable block. Then it indexes
-  the 0x94-entry word table at off_80117D4 with lsl r0,r0,#2 and performs a long-call trick (mov lr,pc;
-  bx r0) so any ARM/THUMB-state handler returns straight back to this function''s caller. The table is
-  a per-attack-id jump table of Beast Power attack routines: entry 0x41 is battle_setupBeastPwrAttackVars,
-  0x16 is ai_initBeastPwrAttackVars, and most entries are per-chip BPwrAtk init/damage handlers (megamanChargeShotBPwrAtk_init,
-  greatfireAPwrAtk_init, slashcrossBPwrAtk_init, tomahawkmanBPwrAtk_init, bubbleSpreadBPwrAtk_init, etc.);
-  unimplemented ids point at nullsub_44, and several ids reuse the charge-shot handler. Runs on the beastsp
-  route, consistent with Beast Out attack handling.'
+status: confirmed
+summary: Battle AI dispatcher that runs the per-step "B+power attack" handler for a battle object, selected by the
+  attack step id in r0 from a ~0x93-entry jump table.
+interface: u32 battle_dispatchBPwrAtkHandler(u32 step /*r0*/, u32 object /*r5*/, void* r10, ...); preserves r6/r7;
+  returns the selected handler's r0
+details: 'Reads the acting battle object''s AI data pointer from object + oBattleObject_AIDataPtr (r5 is the battle
+  object), computes r7 = aiData + oAIData_AttackVars (the attack-variable scratch area inside that AI block), then
+  indexes the handler table off_80117D4 with r0<<2 and tail-calls the selected routine via the classic mov lr,pc;
+  bx r0 thumb trampoline. The callee receives its own address in r0 (the step id is consumed by the lookup), the
+  object in r5, its AI data block in r6, and its attack vars in r7; r10 and the remaining registers flow through
+  untouched so the handler''s r5..r12 side effects pass straight to the dispatcher''s caller. r6/r7 are saved and
+  restored around the call (push/pop {r6,r7}), and flags are whatever the handler leaves. The table entries are
+  the B+power-attack step routines of the battle AI: per-chip/per-attack initializers and damage-variable setup
+  (Beast Out and cross attacks such as megaman charge shot, buster bug, great fire, spout cross, slash cross, tomahawk
+  man, bubble spread; chip-parameter writers like writeChipParams3/init_chipParams4f/battleInitChip199; generic
+  AI helpers like ai_clearAttackVars, ai_setChipUseDelay, ai_scheduleChipAttack, ai_bossAttemptChipSteal, ai_setDifficultyTier20),
+  with several ids mapping to the same default init (megamanChargeShotBPwrAtk_init_8011A26) and nullsub_44 placeholders.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'lsl r0,r0,#2 / ldr r0,[r1,r0] / mov lr,pc; bx r0: indexed long-call dispatch over off_80117D4;
-    r6/r7 setup from oBattleObject_AIDataPtr and oAIData_AttackVars prepares the attack-var context handlers
-    expect; table contents: battle_setupBeastPwrAttackVars (0x41) and ai_initBeastPwrAttackVars (0x16)
-    alongside many *_BPwrAtk_init handlers; many ids fall back to nullsub_44 and several reuse megamanChargeShotBPwrAtk_init,
-    showing default/no-op per attack id; captured execution on the beastsp route matches the Beast Out
-    attack theme of the table'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:6160
-  reproduce: python3 tools/asmcat.py 0x080117BA
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_dispatchBPwrAtkHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_dispatchBPwrAtkHandler
+
+    ./wf verify --function battle_dispatchBPwrAtkHandler --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_dispatchBPwrAtkHandler
+
+    ./wf verify --function battle_dispatchBPwrAtkHandler --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 43 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_dispatchBPwrAtkHandler
+
+    ./wf verify --function battle_dispatchBPwrAtkHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080117ba ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of the r0 index (attack/chip id vs. animation step) — a caller would need to show what
-  value it passes
-- what sub_8011AF2 and the many unnamed per-id sub_* handlers each do
+- the exact meaning of each step id and whether r10 is a second input (e.g. attacker/enemy pointer) is decided inside
+  the individual handlers, not here
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80117BA -> battle_dispatchBPwrAtkHandler
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80117BA
+- tools/wf run convert-20261020-105112
+- recomp da063e1

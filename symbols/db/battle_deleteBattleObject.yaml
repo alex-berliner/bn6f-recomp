@@ -1,46 +1,70 @@
 name: battle_deleteBattleObject
 address: '0x0811670E'
 kind: function
-status: probable
-summary: 'Tears down a battle actor: decrements its alliance count, clears it from the alive-actor list,
-  and marks its state as destroy'
-interface: (r0 = unused; actor pointer expected in r5) -> r0 = destroyed; sets object state to CUR_STATE_DESTROY
-details: Acts on a battle object whose pointer is held in r5, not passed in r0 (the incoming r0 is discarded).
-  It first calls the battle-over bookkeeping routine, which decrements the actor's alliance member count
-  and clears its entries in the alive-actor turn list when an actor leaves. It then calls RemoveGivenAliveBattleActorFromList
-  to clear every slot in the 8-entry alive player actor list that points to this actor. Finally it stores
-  CUR_STATE_DESTROY into the object's state/phase field, so the object's update loop will run its destroy
-  phase. The r5 convention suggests this is called from a shared object-dispatch path rather than directly.
+status: confirmed
+summary: Deletes a battle object by running battle-over bookkeeping, unlinking it from the alive-actor list, and
+  setting its state to "destroyed".
+interface: battle_deleteBattleObject(r5 = battle object, r10 = battle state); returns r1 (result carried back from
+  RemoveGivenAliveBattleActorFromList); clobbers r0-r3, flags, lr
+details: 'Takes a battle object pointer in r5 (battle state pointer in r10 is passed through to the callee). First
+  calls relatedToIsBattleOver_800A11C, which appears to handle the "is the battle over" bookkeeping for the object
+  (e.g. checking whether its deletion ends the battle). Then calls RemoveGivenAliveBattleActorFromList with the
+  object in r0, unlinking it from the list of alive battle actors; r1 on return is whatever that routine leaves
+  there and is propagated to this function''s caller. Finally it writes CUR_STATE_DESTROY into the object''s oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  field, marking it destroyed so its update loop stops processing it. Callers are expected to pass the object in
+  r5 rather than r0, which is unusual for this codebase.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl relatedToIsBattleOver_800A11C — decrements alliance count and clears turn-list entries for
-    a leaving actor; mov r0,r5; bl RemoveGivenAliveBattleActorFromList — clears the actor from the 8-entry
-    alive list; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
-    — transitions the object to the destroy state; no use of incoming r0; only r5 is the object pointer,
-    implying a dispatcher caller convention
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:16532
-  - 0x080077B4 RemoveGivenAliveBattleActorFromList
-  - 0x0800A11C relatedToIsBattleOver_800A11C
-  reproduce: python3 tools/asmcat.py 0x0811670E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_deleteBattleObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_deleteBattleObject
+
+    ./wf verify --function battle_deleteBattleObject --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_deleteBattleObject
+
+    ./wf verify --function battle_deleteBattleObject --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_deleteBattleObject
+
+    ./wf verify --function battle_deleteBattleObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811670e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - beastsp
 open_questions:
-- no callers captured — the r5-based calling convention and which route invokes this (e.g. actor HP reaches
-  0 vs. explicit deletion) are unconfirmed
+- exact role of relatedToIsBattleOver_800A11C (does it check or set battle-over state?)
+- meaning of the r1 value returned by RemoveGivenAliveBattleActorFromList
+- why r10 is an input (presumably battle context pointer used by the callee)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_811670E -> battle_deleteBattleObject
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811670E
+- tools/wf run convert-20261020-105112
+- recomp da063e1

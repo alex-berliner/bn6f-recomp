@@ -1,62 +1,75 @@
 name: battle_aiAttackTickDown_80EF608
 address: '0x080EF608'
 kind: function
-previous_names:
-- sub_80EF608
-status: probable
-summary: Per-frame tick on the AI's per-attack vars (Unk_10 then Unk_12); when both reach 0, clears OBJECT_FLAGS_USING_ACTION
-  and exits attack state.
-interface: '(r5 = AIData*, r6 = ?, r7 = AIAttackVars*, lr) -> r0..r3/r6/r7 clobbered ; side effects: writes
-  AIAttackVars[0x10], AIAttackVars[0x12], AIAttackVars[0x00]; on expiry calls object_clearFlag(r5, 0x400000)
-  and object_exitAttackState(r5,r6,r7)'
-details: "- r7 points at an AIAttackVars struct (offsets oAIAttackVars_Unk_10=0x10 and 0x12 are written).\n\
-  \  - Each frame: --AIAttackVars->Unk_10; if it stays >0, return (locret_80EF62C).\n  - Else --AIAttackVars->Unk_12;\
-  \ if it reaches 0:\n      clear 0x400000 (= OBJECT_FLAGS_USING_ACTION) on r5's CollisionData->ObjectFlags1\
-  \ via object_clearFlag\n      then call object_exitAttackState(r5,r6,r7).\n    Otherwise (Unk_12 was\
-  \ non-zero) zero AIAttackVars->Unk_00 and return.\n  - The bit 0x400000 corresponds to OBJECT_FLAGS_USING_ACTION\
-  \ in CollisionData/ObjectFlags1.\n  - r5 is the BattleObject (object_exitAttackState signature is in=['r5','r6','r7'],\
-  \ so r5 is the battle object, r7 reused as AIData-derived ptr or AIAttackVars ptr, r6 likewise preserved).\n"
+status: confirmed
+summary: Per-tick countdown for an AI enemy's attack, ending the attack (clearing the elemental-hit flag and leaving
+  the attack state) once the step timer and charge cycles run out.
+interface: void battle_aiAttackTickDown(u32 r1_passthrough, BattleObject* object /*r5*/, ObjState* obj_state /*r6*/,
+  AIAttackVars* vars /*r7*/); returns the r1 value left by object_exitAttackState (or the incoming r1 on the early-out
+  paths); r4/r6/r7 preserved, nzcv clobbered
+details: 'Called once per tick while an AI attack is in progress. r7 points to the AI attack variable block. Each
+  call decrements oAIAttackVars_StepTimer (halfword); while it is still >0 the routine returns immediately. When
+  the step timer hits 0, it decrements oAIAttackVars_ChargeCycles; if charge cycles remain (result != 0), it only
+  resets oAIAttackVars_HitElement to 0 for the new cycle. On the tick where the charge counter reaches 0, the attack
+  finishes: it calls object_clearFlag with bit 1<<22 (the object''s "elemental hit" / hit-element-active flag) on
+  the battle object in r5, then calls object_exitAttackState with r5/r6/r7 pass-through to move the object out of
+  its attack state. r1 is unconditionally overwritten on exit by whatever object_exitAttackState leaves (or the
+  incoming r1 on early paths), so callers should not rely on any particular r1 value. r5/r6 are never read by this
+  function itself except as pass-through arguments to the two object helpers. No branch to loc_80EF620 is taken
+  after resetting HitElement (the beq after strh falls through to return, which is required since HitElement reset
+  never zeroes flags).'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrh r0, [r7,#oAIAttackVars_Unk_10]` then `sub r0,#1` / `strh r0,[r7,#oAIAttackVars_Unk_10]`
-    = per-frame countdown of the u16 at AIAttackVars+0x10. - `bgt locret_80EF62C` is the early-return
-    when the primary counter is still >0. - `ldrh r0,[r7,#oAIAttackVars_Unk_12]`, `--` and `strh` with
-    `beq loc_80EF620` confirms 0x12 is a secondary timer that gates exit. - At loc_80EF620: `mov r0,#1;
-    lsl r0,r0,#0x16` => r0 = 0x00400000 = OBJECT_FLAGS_USING_ACTION, used as the bit arg to object_clearFlag
-    which clears the matching bit in the object''s CollisionData->ObjectFlags1. - `bl object_exitAttackState`
-    is called right after clearing the flag, matching the documented role of that function (exit-attack-state
-    teardown for the battle object identified by r5/r6/r7). - Non-expiry branch zeroes `[r7,#oAIAttackVars_Unk_00]`
-    to reset the attack slot. - In/out contract: r0..r4 and r6,r7 are listed as may_write, consistent
-    with the callees clobbering them; out flags (nz/c/v) come from the timer comparisons and the post-decrement
-    subs.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080EF608
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_aiAttackTickDown_80EF608
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_aiAttackTickDown_80EF608
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_aiAttackTickDown_80EF608 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 173 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_aiAttackTickDown_80EF608
+
+    ./wf verify --function battle_aiAttackTickDown_80EF608 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_aiAttackTickDown_80EF608
+
+    ./wf verify --function battle_aiAttackTickDown_80EF608 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080ef608 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Exact semantics of AIAttackVars+0x10 vs 0x12 (frame timer vs sub-timer); could be cooldowns or part
-  of an attack-state machine.
-- What triggers the caller to invoke this — likely a per-frame AI update tick — would settle by finding
-  its single caller.
-- r6's role is not touched here; it is just preserved through object_exitAttackState.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080ef608 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80EF608 -> battle_aiAttackTickDown_80EF608
-  where: bn6f 82358707
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of bit 1<<22 on the object flag bitfield (assumed 'elemental hit active') needs confirmation from
+  other setters/clearers of that bit
+- Whether oAIAttackVars_HitElement reset should happen every remaining charge cycle or only matters on the final
+  cycle in practice
+- What object_exitAttackState returns in r1 (untyped interface, wrapper passes it through)
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

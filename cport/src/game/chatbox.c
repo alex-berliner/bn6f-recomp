@@ -1036,7 +1036,7 @@ Next chatbox_advanceNextState_8040C9C(void) {
 #undef CHATBOX_1F1
 #undef CHATBOX_1F2
 
-/* ── chatbox_8040DDC ── */
+/* ── chatbox_clearWorkBuffers_8040DDC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_ZeroFillByWord_result;
 /* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
@@ -1066,8 +1066,8 @@ static void clear_chatbox_work_buffers(u32 index) {
         call_ZeroFillByWord(A_unk_200BEA0 + slot * 0x60, fill_size);
 }
 
-/* chatbox_8040DDC(r0 = size/index) -> r0-r5 preserved (push/pop in original) */
-Next chatbox_8040DDC(void) {
+/* chatbox_clearWorkBuffers_8040DDC(r0 = size/index) -> r0-r5 preserved (push/pop in original) */
+Next chatbox_clearWorkBuffers_8040DDC(void) {
     u32 in0 = R0, in1 = R1, in2 = R2, in3 = R3;
     clear_chatbox_work_buffers(in0);
     R0 = in0; R1 = in1; R2 = in2; R3 = in3;
@@ -3205,7 +3205,7 @@ Next chatbox_setFlag0x1000AndAdvanceStep_80426E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8042820 ── */
+/* ── chatbox_stepUpdateAndContinue_8042820 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_809CA84_result;
 /* register form: generated wrapper: sub_809CA84 has no typed C interface yet */
@@ -3238,7 +3238,7 @@ static u32 chatbox_step(void) {
     return box.r4 + 2;
 }
 
-Next chatbox_8042820(void) {
+Next chatbox_stepUpdateAndContinue_8042820(void) {
     /* r4 exits advanced by 2 and r0 is the success value; r2/r5/r6/r7 were
        already left in the guest registers by the call to sub_809CA84, so the
        adapter must not write them again. */

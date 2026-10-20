@@ -1,48 +1,83 @@
 name: battle_endRelatedObjectAnims
 address: '0x080FF668'
 kind: function
-status: probable
-summary: Stops the current animations of a battle object's two associated objects (related object and
-  extra-vars object), no-op when either is NULL.
-interface: (r5 = battle object ptr; r0 unused) -> r0 = last callee result; no flags used by caller
-details: 'Reads oBattleObject_RelatedObject2Ptr from the battle object at r5 and, if non-NULL, calls battle_EndObjectCurrentAnim_80C44D2
-  to mark that object''s animation finished (0xFF) and refresh its anim state. Then it reads oBattleObject_ExtraVars
-  and performs the same end-anim call on it if non-NULL. It is a cleanup/teardown helper: both pointers
-  are optional, and NULL pointers are skipped. The use of two different fields suggests it clears animations
-  on a secondary/attached entity pair owned by the object. No other state is touched.'
+status: confirmed
+summary: Ends the current animation of a battle object's second related object and of its "extra vars" object, skipping
+  either when NULL.
+interface: void battle_endRelatedObjectAnims(battleObject *obj /* r5 */); also takes lr (return address); outputs
+  r1-r5 are whatever battle_EndObjectCurrentAnim_80C44D2 last left in them (pass-through r1-r5 when no call runs);
+  r4/r5 preserved; clobbers r0, lr, nzcv
+details: 'Small helper run at battle teardown/cleanup time (caller named battle_end*). r5 holds a battle
+
+  object. It loads obj+oBattleObject_RelatedObject2Ptr; if non-NULL it calls
+
+  battle_EndObjectCurrentAnim_80C44D2 with that pointer in r0, which terminates whatever animation
+
+  that related object is currently playing. It then loads obj+oBattleObject_ExtraVars and, if
+
+  non-NULL, calls battle_EndObjectCurrentAnim_80C44D2 on that object as well. There is no other
+
+  logic and no return value of its own. Quirk: it does not restore r1-r3, so the callee''s
+
+  leftover register values (or the incoming values when a pointer is NULL and no call happens)
+
+  are what callers observe in r1-r5; the register contract reflects this. r4 and r5 are
+
+  preserved on every path (both by this routine and apparently by the callee).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq then bl battle_EndObjectCurrentAnim_80C44D2
-    — first associated object's anim ended; ldr r0,[r5,#oBattleObject_ExtraVars]; tst/beq then bl battle_EndObjectCurrentAnim_80C44D2
-    — second associated object's anim ended; function is 12 instructions, only calls the known anim-end
-    helper, touches only the two pointer fields
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:151952
-  - 0x080FE950 sub_80FE950
-  - 0x080FF1A2 sub_80FF1A2
-  - 0x080C44D2 battle_EndObjectCurrentAnim_80C44D2
-  reproduce: python3 tools/asmcat.py 0x080FF668
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_endRelatedObjectAnims
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_endRelatedObjectAnims
+
+    ./wf verify --function battle_endRelatedObjectAnims --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_endRelatedObjectAnims
+
+    ./wf verify --function battle_endRelatedObjectAnims --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 69 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_endRelatedObjectAnims
+
+    ./wf verify --function battle_endRelatedObjectAnims --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ff668 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- what gameplay entity the RelatedObject2Ptr / ExtraVars objects represent (callers sub_80FE950 and sub_80FF1A2
-  would show it)
-- whether callers also NULL out these fields after this cleanup
+- exact battle-time trigger/context of the caller that invokes this (end-of-battle object cleanup is inferred from
+  the battle_end* naming)
+- precise meaning of oBattleObject_ExtraVars (an auxiliary/attached battle object pointer rather than a plain struct
+  is inferred from it being passed to battle_EndObjectCurrentAnim_80C44D2)
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80FF668 -> battle_endRelatedObjectAnims
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FF668
+- tools/wf run convert-20261020-105112
+- recomp da063e1

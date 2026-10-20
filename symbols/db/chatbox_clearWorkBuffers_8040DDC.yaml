@@ -1,0 +1,83 @@
+name: chatbox_clearWorkBuffers_8040DDC
+address: '0x08040DDC'
+kind: function
+status: confirmed
+summary: Zero-fills the chatbox script-engine work area at unk_200BEA0 (14 slots of 0x60 bytes), each
+  fill sized from a caller-supplied value scaled x8.
+interface: 'void chatbox_clearWorkBuffers_8040DDC(u32 sizeIndex) — in: r0 = size/index; out: r4, r5 recorded
+  as read back by callers, but the function''s push {r0-r5,lr}/pop {r0-r5,pc} actually preserves r0-r5
+  unchanged; clobbers flags only.'
+details: 'Takes r0, computes fill_size = r0 * 0x10 / 2 (i.e. r0 * 8 via mul + lsr #1), then loops 14 times
+  (r2 = 0..0xD inclusive) calling ZeroFillByWord on unk_200BEA0 + slot*0x60 with that same fill size every
+  iteration. So the 14 slots of the chatbox work area (0x60 = 96 bytes each, 0x540 bytes total region)
+  are zeroed, with the fill length controlled by the argument rather than fixed to 0x60 — smaller values
+  clear only the head of each slot, larger values would overlap into the next slot. unk_200BEA0 is the
+  chatbox/text-script work buffer; the adjacent TextScriptBytecodeJumptable (handlers chatbox_E5_nop through
+  chatbox_FF_copytext, opcodes 0xE5-0xFF) operates on this same area, so this is the chatbox reset/init
+  used before running a text script. The wrapper push/pop means all registers r0-r5 and lr come back exactly
+  as passed in despite ZeroFillByWord clobbering r0/r1.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c
+    chatbox_8040DDC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8040DDC
+
+    ./wf verify --function chatbox_8040DDC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    163 out of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8040DDC
+
+    ./wf verify --function chatbox_8040DDC --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8040DDC
+
+    ./wf verify --function chatbox_8040DDC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08040ddc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename chatbox_8040DDC -> chatbox_clearWorkBuffers_8040DDC
+  where: bn6f 16e31ee5
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- beastsp
+open_questions:
+- What the r0 argument actually means to callers (byte count, a character count, or a slot index scaled
+  by 8) — the x0x10/lsr1 scaling is unexplained.
+- Why the lifter records r4/r5 as outputs when the push/pop provably restores them; likely an artifact
+  of callers re-reading their own preserved values.
+- The trailing literal-pool words (0x420, 0x540, 0x1C05B520, ...) look like unrelated data/code bytes
+  pooled after the function, not parameters.
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1
+previous_names:
+- chatbox_8040DDC

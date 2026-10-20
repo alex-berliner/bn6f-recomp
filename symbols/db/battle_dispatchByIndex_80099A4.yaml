@@ -1,54 +1,92 @@
 name: battle_dispatchByIndex_80099A4
 address: '0x080099A4'
 kind: function
-previous_names:
-- sub_80099A4
-status: probable
-summary: Dispatches to a battle-state handler based on `BattleState.Index_01`.
-interface: (r5 = BattleState* via toolkit r10) -> r0 = target-subroutine-return ; clobbers r0/r1, lr
-details: "Loads a 4-entry table pointer from `off_80099B8` (itself 9 slots, with three NULL entries\n\
-  \  for indices 2, 6, 7, 8), reads the current substate `BattleState.Index_01` (offset `oBattleState_Index_01`),\
-  \ and tail-calls through `mov lr,pc / bx r1`. Effectively a `switch(Index_01)` over battle sub-states:\n\
-  \    0 -> sub_80099E0  (init / enter)\n    1 -> sub_8009A88  (run / update)\n    2 -> NULL         (no-op\
-  \ / invalid)\n    3 -> sub_8009B20\n    4 -> sub_8009BAC\n    5 -> sub_8009C2A\n    6,7,8 -> NULL\n\
-  \    9 -> sub_8009C56  (exit / cleanup)\n  The prologue `push {lr}` then `pop {pc}` makes it a leaf\
-  \ trampoline; no local stack frame\n  is used. r5 is the BattleState pointer (sourced from the toolkit),\
-  \ r10 is the toolkit.\n"
+status: confirmed
+summary: Dispatches to the current battle phase's handler, selected by the battle state's phase index into a jump
+  table.
+interface: void battle_dispatchPhaseHandler_80099A4(BattleState* r5); // tail-calls handler(r0=index, r1=table entry)
+  with caller's r2-r7,r10 live; results returned as pass-through registers r2-r6,r8-r12
+details: 'Reads the byte at battle state + oBattleState_Index_01 (r5 is the battle
+
+  state pointer) and uses it directly as the byte offset — already 4*phase
+
+  number, not a plain phase number — into the jump table at off_80099B8,
+
+  then tail-calls (mov lr, pc; bx r1) the selected handler. The handler
+
+  receives the phase index in r0 and its own table entry in r1; the
+
+  dispatcher''s caller''s r2-r7 and r10 argument registers are still live at
+
+  the call, and the register state the handler leaves in r2-r6 and r8-r12
+
+  is exactly what the dispatcher''s callers observe, so this is a pure
+
+  pass-through dispatcher. Table entries: phase 0
+
+  battle_advanceIndexFromPauseIntro_80099E0, phase 1 sub_8009A88,
+
+  phase 3 battle_runBattleStep_8009B20, phase 4 sub_8009BAC, phase 5
+
+  battle_subphaseFadeOut, phase 9 rfu_stepShowNaviCommError (the
+
+  navi-comm-error screen step), phases 2/6/7/8 are NULL (unused phases).
+
+  Quirk: the Index_01 field stores a byte offset, not an index, so any
+
+  code writing it must multiply the phase number by 4.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#oBattleState_Index_01]` (line 14525) loads the second BattleState byte (Index_01).
-    - `ldr r1, off_80099B4` followed by `ldr r1, [r1,r0]` indexes the dispatch table at off_80099B8 with
-    that index. - `mov lr, pc` + `bx r1` tail-calls through the loaded function pointer. - `pop {pc}`
-    returns via the value `lr` was set to (= the called function''s return address) — classic Thumb `bx`
-    trampoline pattern. - Dispatch table lists at off_80099B8 enumerate which subroutines are reachable
-    from each Index_01 value.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080099A4
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_dispatchByIndex_80099A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_dispatchByIndex_80099A4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_dispatchByIndex_80099A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 19 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_dispatchByIndex_80099A4
+
+    ./wf verify --function battle_dispatchByIndex_80099A4 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 2 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_dispatchByIndex_80099A4
+
+    ./wf verify --function battle_dispatchByIndex_80099A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080099a4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The semantic role of each target sub_8009xxx (init vs. update vs. cleanup) is inferred from context
-  only; matching exact names would require inspecting those bodies.
-- Whether the three NULL entries are intentionally skipped, treated as no-ops by callers, or are placeholders
-  for unused states is not deducible from this stub alone.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080099a4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80099A4 -> battle_dispatchByIndex_80099A4
-  where: bn6f 6a79e2de
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact roles of sub_8009A88 and sub_8009BAC (phase 1 and 4 handlers)
+- whether phase 2/6/7/8 are legitimately unused or reached via other code paths
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

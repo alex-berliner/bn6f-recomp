@@ -1,61 +1,76 @@
 name: battle_checkLockedEventTable_808CDC4
 address: '0x0808CDC4'
 kind: function
-previous_names:
-- sub_808CDC4
-status: probable
-summary: Walk an event-flag table whose pointer is selected by sub_808D084; return a packed index (group*3 + entry)
-  when the event and the subsequent event-flag range both pass.
-interface: '() -> r0 = match flag (0/1), r1 = group index (0..N), r2 = (3*group + entry) ; side effects: r10 (Toolkit)
-  read-only, NZ/CV flags preserved by TestEventFlag calls'
-details: "1. Saves r4-r8 and lr; calls sub_808D084 to obtain a small group index (r8) in [0..3].\n  2. Loads a pointer\
-  \ table via `ldr r6, [r6, r0<<2]` (off_808CEBC indexed by the group index). r6 points to a row of records; each\
-  \ row is 8 bytes: `[u16 eventFlag, u16 rangeStart, u16 rangeEnd, u16 pad?]` based on the reads at offsets 0, +2,\
-  \ +4 (with a stray `add r3,#2` that suggests start==+2, end==+4).\n  3. Loops r7 in 0..3 (when group<3) or 0..4\
-  \ (when group==3) checking each record: TestEventFlag(eventFlag) AND TestEventFlagRange(start,end). On the first\
-  \ full match, sets r4=1 and breaks.\n  4. Returns r0=r4 (match), r1=r8 (group index), r2 = r8*3 + r7 (encoded\
-  \ slot of the matching or last-tested entry).\n  5. Only known caller is sub_808CC34; the 3*group packing plus\
-  \ the variable inner count (3 vs 4) strongly suggests a per-encounter / per-battle-stage event test (story progression\
-  \ gating for AI / encounter eligibility).\n"
+status: confirmed
+summary: Scans the battle AI's per-map-group locked-event table and reports (via flags/index) whether any gated
+  event-flag condition currently matches.
+interface: u32 battle_checkLockedEventTable_808CDC4(r10 battle_ctx) -> bool /* Z clear = match */; out r1 = ai_mode*3
+  + matched entry index (0 if none), r2 = saved r8 value passed in, r3 = leftover from last flag test; r4/r6 preserved-but-touched
+  (push/pop), r5/r7/r8 preserved
+details: 'Calls ai_getAIModeForMapGroup_808D084 to get the current AI mode for r10''s battle/map context, then indexes
+  a table-of-tables at off_808CEBC (one pointer per AI mode) and walks up to 3 entries (4 entries when ai_mode >=
+  3). Each entry is 8 bytes: u16 gate event flag, u16 range-start flag, u16 range-end flag, u16 padding. An entry
+  matches when its gate flag is set (TestEventFlag) AND at least one flag in the inclusive range [start, end] is
+  set (TestEventFlagRange). On the first match the loop stops with the index on that entry and the found flag =
+  1; otherwise the index resets to 0. Return value convention: r1 = ai_mode*3 + entry index, Z flag clear when a
+  locked event matched (from a tst of the found flag). Quirks: r8 is saved/restored by pushing the value (pop into
+  r2), so callers observe the incoming r8 in r2; r4 and r6 are push/popped so they read back with their entry values
+  even though the helper calls clobber r4; r3 is not reset, so it carries whatever the last TestEventFlag/TestEventFlagRange
+  left.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl sub_808D084` followed by `lsl r0,r0,#2` and indirect load through `off_808CEB8` -> off_808CEBC
-    gives a row pointer table indexed by a small group id. - Each iteration `ldrh r0,[r6,r3]` at r3=r7*8 reads a
-    u16 event flag, then at +2 reads a u16 start and at +4 (after `add r3,#2`) reads a u16 end -> two field reads,
-    looks like TestEventFlagRange(a2=start,a3=end). - `bl TestEventFlag` then `beq loc_808CE02` (skip row), and
-    `bl TestEventFlagRange` then `beq loc_808CE02` again - both must succeed for r4 to become 1. - Loop bound: `cmp
-    r8,#3` / `blt loc_808CDDA` vs `cmp r7,#4` chosen by `blt loc_808CE0E` -> group 3 has one extra entry. - Exit
-    packing: `mov r1,r8; mov r2,#3; mul r1,r2; add r1,r1,r7` => r2 = 3*group + slot.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808CDC4
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_checkLockedEventTable_808CDC4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_checkLockedEventTable_808CDC4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_checkLockedEventTable_808CDC4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_checkLockedEventTable_808CDC4
+
+    ./wf verify --function battle_checkLockedEventTable_808CDC4 --snapshots build-snapshots'
+  result: 79 compared, 0 differed, 17 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_checkLockedEventTable_808CDC4
+
+    ./wf verify --function battle_checkLockedEventTable_808CDC4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808cdc4 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Exact semantics of the row layout (whether the +4 read is end or pad) and which game subsystem consumes the (group,
-  slot) pair; decompiling sub_808D084 and the caller sub_808CC34 would confirm whether this gates battle/encounter
-  selection or something else.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cdc4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808CDC4 -> battle_checkLockedEventTable_808CDC4
-  where: bn6f 1bd2afd1
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- Why the result index uses stride 3 (ai_mode*3 + entry) while the loop can iterate 4 entries for ai_mode >= 3 -
+  caller-side table layout unknown
+- Exact meaning of the three AI modes returned by ai_getAIModeForMapGroup_808D084 and what the locked events gate
+  in game terms (e.g. special encounter/behavior unlocks)
+- What callers do with the leftover r3 value, if anything
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

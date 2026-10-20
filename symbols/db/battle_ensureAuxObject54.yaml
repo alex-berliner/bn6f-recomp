@@ -1,47 +1,71 @@
 name: battle_ensureAuxObject54
 address: '0x08112648'
 kind: function
-status: probable
-summary: Anim/step helper for a battle object that spawns (once) its tethered auxiliary object 0x54 and
-  remembers it.
-interface: (r5 = self battle object) -> r0 = spawned object pointer (also stored at self+oBattleObject_ExtraVars+0x10);
-  no flag semantics
-details: 'Takes its subject in r5 rather than r0, setting the object''s current animation (oBattleObject_CurAnim)
-  to 1. It then checks ExtraVars+0x10 as a lazy-init guard: if it already holds a pointer the function
-  returns immediately, otherwise it spawns owned object 0x54 with args (0, 0, 5, 0) — 5 likely a sub-type/behavior
-  id — via battle_spawnOwnedObject54, which ties the aux object''s position/alliance to the owner and
-  passes the four args into its ExtraVars. The resulting pointer is cached in ExtraVars+0x10, so subsequent
-  runs are no-ops. The write to CurAnim before the spawn suggests it runs as part of an animation/state
-  transition of the owner.'
+status: confirmed
+summary: Sets a battle object to animation 1 and lazily spawns its owned aux/helper object (id 0x11504, kind 5),
+  caching the helper's handle.
+interface: void battle_ensureAuxObject54(battleObject* obj /*r5*/); clobbers r0-r3, lr and flags; preserves r4-r7
+  (r4 returned unchanged)
+details: 'Takes a battle object pointer in r5. First stores 1 into the object''s oBattleObject_CurAnim byte, switching
+  the object to its idle/current animation. Then checks the cached helper handle at oBattleObject_ExtraVars+0x10;
+  if it is nonzero the function returns immediately (helper already spawned). Otherwise it calls battle_spawnOwnedObject54
+  with (r0=0, r1=0, r2=5 /*spawn kind*/, r3=0) and r4 = 0x11504 (the helper''s object id, loaded from dword_81126D8),
+  stores the returned handle back into oBattleObject_ExtraVars+0x10 so the helper is only created once, and returns.
+  The helper object is owned by the calling object (spawn is "owned", so the helper presumably follows/dies with
+  the owner). r4 is pushed/popped purely as a scratch-saver for the call, so it comes back with whatever value the
+  caller had; r5-r7 are whatever the spawn call leaves behind (it preserves r5).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: strb r0,[r5,#oBattleObject_CurAnim] with r0=1 sets the owner's animation state; ldr r0,[r5,#oBattleObject_ExtraVars+0x10];
-    bne locret — cached guard makes the spawn happen only once; bl battle_spawnOwnedObject54 with r2=5
-    spawns tethered aux object 0x54 with params 0,0,5,0; str r0,[r5,#oBattleObject_ExtraVars+0x10] stores
-    the spawned object as the owner's extra handle
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:9143
-  - 0x080C4038 battle_spawnOwnedObject54
-  reproduce: python3 tools/asmcat.py 0x08112648
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_ensureAuxObject54
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_ensureAuxObject54
+
+    ./wf verify --function battle_ensureAuxObject54 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 184 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_ensureAuxObject54
+
+    ./wf verify --function battle_ensureAuxObject54 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_ensureAuxObject54
+
+    ./wf verify --function battle_ensureAuxObject54 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112648 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No callers are known, so what state/event invokes this (which animation frame or boss routine) is unconfirmed
-- What aux object 0x54 does and what the stored args (especially r2=5) mean inside its ExtraVars
+- what object id 0x11504 actually is in game terms (which enemy/NPC helper this pairs with)
+- whether callers rely on r5-r7 being the spawn call's outputs or just ignore them
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8112648 -> battle_ensureAuxObject54
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8112648
+- tools/wf run convert-20261020-105112
+- recomp da063e1

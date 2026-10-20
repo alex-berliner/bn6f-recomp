@@ -1,52 +1,84 @@
 name: battle_despawnEnemyObject
 address: '0x080E33D2'
 kind: function
-status: probable
-summary: 'Tears down a defeated enemy battle object: signals a linked object, notifies a per-enemy counter
-  via the enemy''s version/actor/AI record, then frees the object slot.'
-interface: (r0 unused, r5 = battle object ptr via caller convention) -> r0 clobbered; sets flag 0x4 on
-  RelatedObject2's flags when Param1 == 0xFF
-details: Reads oBattleObject_Param1; if it equals 0xFF and oBattleObject_RelatedObject2Ptr is non-null,
-  it ORs flag 0x4 into that object's oObjectHeader_Flags (likely telling a linked/child object, e.g. a
-  summon or panel object, that its owner is gone). It then loads oBattleObject_NameID and calls unpackVerActorTyAndAIIdx_800F29C
-  to decompose it into the enemy's {version, actor type, AI index} register triple, calls sub_8011044
-  with r2=1 (possibly decrementing a live-enemy count for that kind), and finally calls object_freeMemory
-  to unlink and free the object's slot. Ran on the recorded battlesweep and beastsp routes, consistent
-  with enemy-death cleanup.
+status: confirmed
+summary: Removes an enemy battle object, dragging along a chained related object when flagged, and frees its memory.
+interface: void battle_despawnEnemyObject(object in r5); returns with whatever object_freeMemory leaves in r0-r3/r5
+  and flags (nzcv)
+details: 'Entry point takes the battle object to despawn in r5. If the object''s
+
+  oBattleObject_Param1 byte is 0xFF (a "chained/attached" marker), it reads
+
+  oBattleObject_RelatedObject2Ptr; if that is non-NULL it sets bit 2
+
+  (0x04) of the related object''s oObjectHeader_Flags, marking that object
+
+  to be cleaned up together with its owner. It then reads the object''s
+
+  oBattleObject_NameID halfword, calls unpackVerActorTyAndAIIdx_800F29C to
+
+  split it into the version-specific actor type and AI index, passes those
+
+  plus the object pointer to battle_runObjectTeardownByNameID (sub_8011044)
+
+  for actor-slot bookkeeping, and finally releases the object''s memory with
+
+  object_freeMemory. The function is a tail-of-chain wrapper: it preserves
+
+  nothing and its visible return state is exactly object_freeMemory''s.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'cmp r1,#0xFF + flag 0x4 OR into [RelatedObject2Ptr,#oObjectHeader_Flags] marks a linked object
-    at lines starting loc_80E33E8 path; ldrh r0,[r5,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C
-    identifies r5 as an enemy battle object; bl sub_8011044 with r2=1 immediately before bl object_freeMemory
-    fits a count/decrement hook in a teardown sequence; tail call object_freeMemory (known: clears flags,
-    frees bitmap slot, unlinks active list) shows the object is being destroyed; recorded routes battlesweep/beastsp
-    match enemy-defeat cleanup context'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:93008
-  - 0x08003458 object_freeMemory
-  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
-  - 0x08011044 sub_8011044
-  reproduce: python3 tools/asmcat.py 0x080E33D2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_despawnEnemyObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_despawnEnemyObject
+
+    ./wf verify --function battle_despawnEnemyObject --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_despawnEnemyObject
+
+    ./wf verify --function battle_despawnEnemyObject --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 49 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_despawnEnemyObject
+
+    ./wf verify --function battle_despawnEnemyObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e33d2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Purpose of sub_8011044 (r0/r1 from the unpacked record, r2=1) — a caller or its body is needed to confirm
-  it is a live-enemy counter/decrement
-- Exact meaning of Param1 == 0xFF and flag 0x4 on RelatedObject2 (which object types pair this way)
+- exact meaning of Param1 == 0xFF (likely a "spawned as part of another enemy" marker)
+- semantics of bit 2 in oObjectHeader_Flags on the related object (assumed "remove with owner")
+- what battle_runObjectTeardownByNameID (sub_8011044) does with the unpacked actor type/AI index
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E33D2 -> battle_despawnEnemyObject
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E33D2
+- tools/wf run convert-20261020-105112
+- recomp da063e1

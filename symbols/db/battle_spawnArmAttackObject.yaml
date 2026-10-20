@@ -1,55 +1,74 @@
 name: battle_spawnArmAttackObject
 address: '0x080E4A6E'
 kind: function
-status: probable
-summary: 'Spawns a battle object on a Navi''s arm: loads its sprite/animation, marks it active, renders
-  one frame with facing, and enters its per-frame update state.'
-interface: (uses r4 = battle object header; r0/r1/r2 = sprite resource args 0x80/0xC/0x20 for sprite_load)
-  -> r0 = result of battleObject_updateAttachedArmCoords; object state set to CUR_STATE_UPDATE
-details: 'The routine initializes an existing object record (pointed to by r4 through the shared sprite/object
-  helpers): it loads sprite resource 0x80 with params (12, 32), skips forward to the attached animation
-  data and loads it, and flags the sprite as shadowless. It sets a bit (0x2) in the object header flags,
-  writes animation index 2 into both oBattleObject_CurAnim and its copy, commits it via sprite_setAnimation,
-  reloads animation data, and calls sprite_update. It then applies the object''s effective facing (alliance
-  XOR flip override) to the sprite, stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
-  to switch the object into its update state, and finally syncs the object''s X/Y/Z and panel coords to
-  its RelatedObject1Ptr''s arm offset via battleObject_updateAttachedArmCoords — confirming this is an
-  arm-attached object (a chip-attack/part object) being spawned into play.'
+status: confirmed
+summary: Initializes the "arm attack" battle object — loads its sprite, sets the object flag and animation, mirrors
+  facing, and hands it to the per-frame update state.
+interface: void battle_spawnArmAttackObject(r5=battleObject, r10=battleContext); returns r5=battleObject (unchanged
+  pointer); clobbers r0-r3, lr, flags
+details: "Spawn/setup routine for an arm-attack effect object in battle (e.g. an attack limb attached to\nthe player,\
+  \ cf. battleObject_updateAttachedArmCoords_80E4AAE). The object pointer lives in r5\nfor the whole routine and\
+  \ is the only meaningful value callers get back (r4 is popped, so its\nincoming value is dead). Steps:\n  1. sprite_load(0x80,\
+  \ 0xC, 0x20) — loads the arm-attack sprite resources with fixed resource\n     IDs 0x80/0xC/0x20 (sprite/palette/animation\
+  \ set as used by sprite_load).\n  2. sprite_loadAnimationData, then sprite_noShadow — this object casts no battle\
+  \ shadow.\n  3. Sets bit 1 (0x2) of oObjectHeader_Flags — likely the \"no shadow / special draw\" style flag\n\
+  \     for battle objects.\n  4. Sets oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 2 (the spawn/idle\
+  \ animation\n     index), calls sprite_setAnimation(2), reloads animation data and calls sprite_update to\n  \
+  \   render the first frame.\n  5. object_getFlip / sprite_setFlip — copies the object's horizontal facing onto\
+  \ the sprite.\n  6. Writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\n     switching\
+  \ the object into its standard per-frame update state, then calls\n     battleObject_updateAttachedArmCoords_80E4AAE\
+  \ to position the arm relative to its owner.\nNo caller-visible flags: nz/c/v are clobbered by the callees.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sprite_load(0x80, 0xC, 0x20) + sprite_loadAnimationData + sprite_noShadow: sets up the object''s
-    visual (asm lines 2-8); orr r0,#2 on oObjectHeader_Flags and CurAnim=2 in both anim slots: marks loaded/active
-    with animation 2; object_getFlip -> sprite_setFlip: orients sprite per alliance/facing, typical of
-    battle projectiles/parts; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized:
-    hands the object to its per-frame update handler; battleObject_updateAttachedArmCoords_80E4AAE as
-    final call: object position is derived from RelatedObject1Ptr''s arm offset, i.e. an arm-attached
-    spawn'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:95867
-  - 0x080E4AAE battleObject_updateAttachedArmCoords_80E4AAE
-  - 0x0800E456 object_getFlip
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080E4A6E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_spawnArmAttackObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_spawnArmAttackObject
+
+    ./wf verify --function battle_spawnArmAttackObject --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_spawnArmAttackObject
+
+    ./wf verify --function battle_spawnArmAttackObject --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_spawnArmAttackObject
+
+    ./wf verify --function battle_spawnArmAttackObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e4a6e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which chip/attack uses sprite resource 0x80 and animation 2 (callers unknown, so exact identity of the
-  spawned object is unconfirmed)
-- Whether r0=0x80 is a sprite index or something else in sprite_load's arg convention
+- Exact meaning of oObjectHeader_Flags bit 0x2 (no-shadow vs. other render flag).
+- What sprite resource IDs 0x80/0xC/0x20 correspond to in the sprite tables.
+- Whether the initial animation index 2 differs per element/variant or is always the same spawn animation.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E4A6E -> battle_spawnArmAttackObject
-  where: bn6f be30f643
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E4A6E
+- tools/wf run convert-20261020-105112
+- recomp da063e1

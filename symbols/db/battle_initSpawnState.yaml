@@ -1,55 +1,83 @@
 name: battle_initSpawnState
 address: '0x080D124E'
 kind: function
-status: probable
-summary: 'Spawn-state handler for a battle object: loads its fixed sprite at its panel position and sets
-  up HP/animation, or despawns with a poof effect if the sprite fails to load.'
-interface: (r5 = battle object pointer; no register args read) -> r0 = garbage; advances oBattleObject_CurState
-  to CUR_STATE_UPDATE on success, frees the object on failure
-details: Reads the object from r5 (not saved — caller-dependent). Calls object_setCoordinatesFromPanels,
-  then battleObject_initSpriteAndCollision with hard-coded resource ids 0x1034 and 0xc0d0100. On failure
-  it nulls the related object's header, spawns a t1 effect at object+0x34 with y+0x100 (0x10 << 16) and
-  calls object_freeMemory (despawn poof). On success it sets ObjectHeader flags |= 2, maps Param1 (0/1)
-  into CurAnim = Param1*2+1 (two visual variants), sets hit effect 0xff (no hit effect), copies Param3
-  into HP, MaxHP and ExtraVars+8, resets palette 0, clears and refreshes collision data, sets the related
-  object's header to 2, and stores CUR_STATE_UPDATE in CurState.
+status: confirmed
+summary: 'Initializes a battle object''s spawn state: places it on its panel, sets up sprite/collision, then either
+  frees it (spawning a vanish effect) on failure or configures flags, animation, HP, palette, collision and spawn
+  motion before handing it to the update state.
+
+  '
+interface: 'battle_initSpawnState(obj in r5, spriteInitData in r6, moreInitData in r7, collisionData in r8) -> r5
+  (possibly updated object pointer), r8; r4 preserved; clobbers flags and r0-r3
+
+  '
+details: 'Called for battle objects entering their spawn/init state. First places the object on its panel coordinates
+  (object_setCoordinatesFromPanels), then initializes sprite and collision via battleObject_initSpriteAndCollision_8011504
+  with fixed arguments r0=0x1034 (sprite resource index) and r1=0xC0D0100 (tile/OAM attribute word). If that fails
+  (r0==0), the object is aborted: the RelatedObject1 pointer, if set, gets its ObjectHeader field cleared to 0 (unlinking
+  the related object), a type-1 type-0 effect object is spawned using the three words read from obj+0x34 (the third
+  incremented by 0x100000, r4=0x14 as the effect kind), and the object''s own memory is released via object_freeMemory.
+  On success the object is marked spawned: oObjectHeader_Flags |= 2; oBattleObject_Param1 is normalized to 0/1 (non-zero
+  becomes 1) and oBattleObject_CurAnim is set to 2*Param1+1 (enemy/virus vs player side appearance variant); the
+  collision hit effect is disabled (0xFF) via object_setCollisionHitEffect; oBattleObject_HP, oBattleObject_MaxHP
+  and oBattleObject_ExtraVars+8 are all initialized from oBattleObject_Param3 (read as a byte); palette is reset
+  to 0 (sprite_setPalette), the collision region is cleared, collision data is published (object_presentCollisionData),
+  and spawn motion is started (battle_initSpawnMotion). Finally the related object''s ObjectHeader, if any, is set
+  to 2 (active/linked), and oBattleObject_CurState is set to CUR_STATE_UPDATE so the per-frame update handler takes
+  over next tick.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_setCoordinatesFromPanels then bl battleObject_initSpriteAndCollision with dword_80D14F8/FC
-    (0x1034, 0xc0d0100) — fixed sprite load at panel position; failure path: str r1=0 into [r0,#oBattleObject_ObjectHeader],
-    spawn_t1_0x0_EffectObject at obj+0x34 with y+0x10, bl object_freeMemory — despawn with effect; success
-    path: CurAnim = Param1*2+1 and HP/MaxHP/ExtraVars+8 all set from Param3 — initial stats and variant
-    animation from params; strb CUR_STATE_UPDATE, [r5,#oBattleObject_CurState] and related object header
-    := 2 — hands off to the update state, i.e. this is the init/spawn state; mov r0,#0xff; bl object_setCollisionHitEffect
-    — suppresses hit effects at spawn'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:54198
-  - 0x08011504 battleObject_initSpriteAndCollision_8011504
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x08003458 object_freeMemory
-  reproduce: python3 tools/asmcat.py 0x080D124E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_initSpawnState
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_initSpawnState
+
+    ./wf verify --function battle_initSpawnState --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_initSpawnState
+
+    ./wf verify --function battle_initSpawnState --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 73 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_initSpawnState
+
+    ./wf verify --function battle_initSpawnState --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d124e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which object type this belongs to (identity of sprite resource 0x1034 / 0xc0d0100) — would need the
-  state-handler table that dispatches to it
-- Semantics of Param1 (animation variant selector?) and why Param3 is the source of HP (spawn parameter
-  passed by the spawner)
-- What sub_80D149E does (called only after collision refresh)
+- exact meaning of the ObjectHeader values written to the related object (0 on abort vs 2 on success)
+- semantics of Param1 normalization (which caller-side value selects animation 1 vs 3)
+- what the 0x100000 added to the effect's third argument encodes (position/parameter field)
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D124E -> battle_initSpawnState
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D124E
+- tools/wf run convert-20261020-105112
+- recomp da063e1

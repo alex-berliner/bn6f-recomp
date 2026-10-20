@@ -1,48 +1,67 @@
 name: battle_objWaitThenSetAction4
 address: '0x080D0310'
 kind: function
-status: probable
-summary: Battle object state-machine step that plays a sound effect, waits ~11 frames, then switches the
-  object to action 4.
-interface: (r0 = unused) -> r0 = undefined; uses r5 = battle object; sets CurPhase, Timer, CurAction,
-  CurPhaseAndPhaseInitialized
-details: Reads oBattleObject_CurPhase from the object in r5. If it is 0, it stores phase 4, plays sound
-  effect 0x46 (0x47-1 via PlaySoundEffect), and loads the 16-bit Timer with 11. On subsequent calls (phase
-  nonzero) it decrements Timer; while it stays positive it just returns. When the countdown hits zero
-  it writes CurAction = 4 and clears CurPhaseAndPhaseInitialized to 0, handing control back to the battle
-  object's action dispatcher. The single shared r5-based object pointer suggests it is called from an
-  object-update table with the object already loaded into a register.
+status: confirmed
+summary: Battle object helper that plays sound effect 0x146, waits 11 frames, then switches the object to CurAction
+  4.
+interface: void battle_objPlaySfxWaitThenSetAction4(battleobject* obj /* r5 */, u32 sfxArg /* r2, pass-through to
+  PlaySoundEffect */); no meaningful return values (callers see whatever r5/r10 PlaySoundEffect leaves behind);
+  flags clobbered
+details: State-machine stepper for a battle object (r5). On the first invocation (oBattleObject_CurPhase == 0) it
+  stores phase 4 into oBattleObject_CurPhase, calls PlaySoundEffect with id 0x146 (built in-code as 0x47 + 0xFF),
+  and loads oBattleObject_Timer with 11 (0xB) frames. On subsequent invocations it decrements the 16-bit oBattleObject_Timer;
+  while the result is still positive as a signed 32-bit value (BGT) it just returns. Once the timer hits zero or
+  below it writes 4 to oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized to 0, handing
+  control back to the action dispatcher. r2 is only a pass-through argument to PlaySoundEffect and is preserved.
+  The phase/timer handshake means the caller must re-enter this function each frame until the action fires.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'tst r0,r0 / bne splits first-call (phase 0) from countdown behavior (asm lines 2-4); bl PlaySoundEffect
-    with r0 = 0x47-1 = 0x46 on the phase-0 path; strh 0xb,[r5,#oBattleObject_Timer] then decrement-and-bgt
-    loop is an 11-frame wait; on timeout: mov r0,#4; strb [r5,#oBattleObject_CurAction] and strh 0 to
-    CurPhaseAndPhaseInitialized; callee list contains only PlaySoundEffect, so the function''s whole effect
-    is one sfx plus object-state writes'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:52301
-  - 0x080005CC PlaySoundEffect
-  reproduce: python3 tools/asmcat.py 0x080D0310
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_objWaitThenSetAction4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_objWaitThenSetAction4
+
+    ./wf verify --function battle_objWaitThenSetAction4 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_objWaitThenSetAction4
+
+    ./wf verify --function battle_objWaitThenSetAction4 --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_objWaitThenSetAction4
+
+    ./wf verify --function battle_objWaitThenSetAction4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d0310 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
-open_questions:
-- which battle object type uses this (no caller identified, so the r5 owner and triggering context are
-  unknown)
-- what action 4 means for that object and what sound 0x46 is, to name it more precisely
+open_questions: []
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D0310 -> battle_objWaitThenSetAction4
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D0310
+- tools/wf run convert-20261020-105112
+- recomp da063e1

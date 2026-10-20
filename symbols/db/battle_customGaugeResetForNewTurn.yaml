@@ -1,51 +1,73 @@
 name: battle_customGaugeResetForNewTurn
 address: '0x0801DF0C'
 kind: function
-status: probable
-summary: 'Resets the in-battle custom gauge for the next turn: clears gauge state, reloads its tile graphics,
-  and flags the HUD for redraw.'
-interface: () -> void; no return value
-details: Called at end of turn by battle_customGauge_EndTurn_8027D78. It first calls ClearCustGauge to
-  zero the gauge progress and flags, then queues the graphics transfer list at off_801DF60 (presumably
-  the empty-gauge tile data) to VRAM via QueueGFXTransfersInList. It ORs bit 0x20000 into the request
-  dword at eStruct2035280+0x40 and dispatches via dispatch_801DA48 with the same mask, requesting the
-  HUD redraw. Finally it zeroes bytes eStruct2035280+0x18 and +0x19, likely gauge animation/flash counters,
-  so the gauge starts fresh.
+status: confirmed
+summary: At the start of a new battle turn, empties the custom gauge, redraws its GUI, and resets the gauge's per-turn
+  state.
+interface: 'void battle_customGaugeResetForNewTurn(void); // in: r10 (unused, caller scratch); preserves r5-r7;
+  r1-r12 and NZCV flags are whatever the callees leave behind (no meaningful typed outputs)'
+details: 'Turn-boundary reset for the battle Custom gauge (the Custom Screen charge meter). 1) calls ClearCustGauge
+  to empty the gauge counter. 2) queues the GFX transfer list at off_801DF60 via QueueGFXTransfersInList so the
+  gauge GUI is redrawn (empty). 3) sets request bit 0x20000 (1<<17) on eStruct2035280 through eStruct2035280_SetRequestBits_801BECC,
+  then dispatches the same bit 0x20000 again through dispatch_801DA48 - the request is effectively raised twice,
+  once via the entity-struct request setter and once via the dispatcher. 4) zeroes the two gauge state bytes byte_2035298
+  and byte_2035299 (fields 0x18/0x19 of eStruct2035280), which track gauge fill/turn state. No parameters of its
+  own; the "outputs" r1-r12 and flags are just relayed callee residue, with r1 surviving from the SetRequestBits
+  call and r2-r12 from dispatch_801DA48.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl ClearCustGauge — gauge state reset before the redraw; bl QueueGFXTransfersInList with off_801DF60
-    — reloads gauge tile graphics to VRAM; SetRequestBits(0x20000) then dispatch(0x20000) on eStruct2035280
-    — HUD redraw request; strb 0 to +0x18/+0x19 of eStruct2035280 — clears gauge sub-state counters; Caller
-    battle_customGauge_EndTurn_8027D78 summary matches end-of-turn gauge teardown
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:31269
-  - 0x08027D78 battle_customGauge_EndTurn_8027D78
-  - 0x08008D9C sub_8008D9C
-  - 0x080096E0 sub_80096E0
-  - 0x0801DF92 ClearCustGauge
-  - 0x08000B8E QueueGFXTransfersInList
-  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
-  reproduce: python3 tools/asmcat.py 0x0801DF0C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_customGaugeResetForNewTurn
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_customGaugeResetForNewTurn
+
+    ./wf verify --function battle_customGaugeResetForNewTurn --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_customGaugeResetForNewTurn
+
+    ./wf verify --function battle_customGaugeResetForNewTurn --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_customGaugeResetForNewTurn
+
+    ./wf verify --function battle_customGaugeResetForNewTurn --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801df0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Contents of the graphics list at off_801DF60 not shown, so exact tile set queued is inferred
-- Meaning of bytes +0x18/+0x19 in eStruct2035280 unconfirmed
+- exact meaning of byte_2035298/byte_2035299 (gauge fill counter vs turn counter) not independently confirmed
+- why bit 0x20000 is set both via the request setter and the dispatcher (redundancy vs. two distinct consumers)
+  is unclear
+- purpose of the r10 input is unknown; no caller-side use is visible in this body
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 960a2fd2
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_801DF0C -> battle_customGaugeResetForNewTurn
-  where: bn6f ffbdad58
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_801DF0C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

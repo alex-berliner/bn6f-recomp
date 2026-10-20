@@ -1,54 +1,89 @@
 name: battle_getFrontPanelParamChecked
 address: '0x0810B60C'
 kind: function
-status: probable
-summary: Looks up the alliance-dependent panel-effect entry for the panel in front of the battle object
-  and returns it only if that panel's flag state passes the check, else 0.
-interface: (r0 = battle object in r5? see quirks; uses r5 = object ptr) -> r0 = param word of matched
-  table entry (r1 = args pointer) or 0; flags from cmp
-details: 'Calls object_getFrontDirection to get the object''s facing multiplier (+1/-1), adds it to oBattleObject_PanelX
-  (and takes oBattleObject_PanelY) to address the tile in front of the object. That coordinate indexes
-  GetAllianceDependentPanelParamArgs, which fetches the 8-byte entry from the panel-effect parameter table
-  selected by the object''s alliance field, yielding a param word (r0) and args pointer (r1). It saves
-  {r0,r1}, calls object_checkPanelParameters (which consumes the args to test the panel''s required set/none
-  flag masks), then restores the pair: on success it returns the param word (with args pointer in r1),
-  otherwise 0. Note the object pointer appears to live in r5, set by the caller sub_810B3E4, not in an
-  argument register — a caller-managed ''current object'' convention. Callees are used read-only; no state
-  is written.'
+status: confirmed
+summary: Computes the panel in front of a battle object and returns its coordinates, forced to x=0 when the panel
+  fails the front-panel parameter check.
+interface: u32 battle_getFrontPanelParamChecked(u32 obj /* r5 */) -> r0 = panel x (0 if invalid), r1 = panel y;
+  r4 and r5 are pass-through (returned unmodified); flags clobbered
+details: 'Takes a battle object pointer in r5. Calls object_getFrontDirection(obj) to get the
+
+  directional x-offset of the panel in front of the object, adds it to the object''s
+
+  PanelX field (byte at oBattleObject_PanelX) to form the candidate x coordinate, and
+
+  reads PanelY directly. Then calls GetAllianceDependentPanelParamArgs with r3 pointing
+
+  at the table byte_810B6E0 and r5 = object to obtain, in r2/r3, the panel-parameter
+
+  bounds/check data that depend on the object''s alliance (player vs. enemy side).
+
+  Those results plus (x, y) are passed to object_checkPanelParameters, which validates
+
+  the panel (bounds and/or panel state relevant to the alliance). If the check returns
+
+  0, x is forced to 0 while y is still returned unchanged; otherwise both coordinates
+
+  pass through. Quirk: on failure only x is zeroed, y is never validated independently,
+
+  so callers get (0, y) rather than a distinct error marker. r4/r5 are untouched by the
+
+  original and appear in the outputs only because the callee object_checkPanelParameters
+
+  treats them as pass-through; a caller preserving r4/r5 across this call is safe.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_getFrontDirection then add r0,r0,PanelX: computes front-panel x (asm lines 2-4);
-    bl GetAllianceDependentPanelParamArgs with byte_810B6E0 table base: fetches alliance-indexed entry
-    for that tile (lines 5-8); push {r0,r1} / bl object_checkPanelParameters / pop {r0,r1}: entry validated
-    then returned intact on success (lines 9-14); cmp r0,#0 / bne ... / mov r0,#0: failure path zeroes
-    the return (lines 13-16); caller sub_810B3E4 runs on battlesweep/beastsp routes, consistent with front-panel
-    effect lookups in battle'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:176336
-  - 0x0810B3E4 sub_810B3E4
-  - 0x081096FA GetAllianceDependentPanelParamArgs
-  - 0x0800CC86 object_checkPanelParameters
-  - 0x0800E2CA object_getFrontDirection
-  reproduce: python3 tools/asmcat.py 0x0810B60C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_getFrontPanelParamChecked
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_getFrontPanelParamChecked
+
+    ./wf verify --function battle_getFrontPanelParamChecked --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 189 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_getFrontPanelParamChecked
+
+    ./wf verify --function battle_getFrontPanelParamChecked --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_getFrontPanelParamChecked
+
+    ./wf verify --function battle_getFrontPanelParamChecked --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b60c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- 'exact calling convention: r5 as implicit object pointer should be confirmed from sub_810B3E4'
-- which panel-effect table byte_810B6E0 represents and what the returned param word selects in callers
+- exact semantics of the byte_810B6E0 parameter table used by GetAllianceDependentPanelParamArgs (needs that function
+  typed)
+- whether x=0 has a special meaning to callers (e.g. "no valid front panel") or is just a degenerate coordinate
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_810B60C -> battle_getFrontPanelParamChecked
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_810B60C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

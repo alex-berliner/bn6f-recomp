@@ -1,52 +1,70 @@
 name: battle_syncToPanelInFrontOfRelated
 address: '0x080D2BC0'
 kind: function
-status: probable
-summary: Repositions this battle object onto the panel directly in front of its related object (owner),
-  then refreshes its pixel position and collision panels.
-interface: (r0 unused? r5 = battle object ptr) -> void; no meaningful flags
-details: 'Reads the object''s RelatedObject1Ptr (r5 is the object, so the caller sets it up before calling),
-  takes that related object''s PanelX and PanelY, adds the +1/-1 facing multiplier from object_getFrontDirection
-  to X, and stores both into this object''s own PanelX/PanelY. It then calls object_setCoordinatesFromPanels
-  to convert the new panel coordinates into pixel X/Y, and object_updateCollisionPanels to sync the collision
-  record/facing. Net effect: the object jumps to the single panel immediately ahead of its related object
-  each time it runs, keeping PanelY identical to the related object''s. With the pulsing-attacker caller
-  this makes the attack re-anchor itself one panel in front of its owner on every pulse.'
+status: confirmed
+summary: Moves a battle object onto the panel directly in front of its related object (the tile that object is facing)
+  and refreshes its derived position/collision data.
+interface: void battle_syncToPanelInFrontOfRelated(void); // object in r5; returns r1/r4 passthrough from object_updateCollisionPanels,
+  clobbers r0-r3, flags NZCV, lr
+details: 'Takes the battle object in r5, calls object_getFrontDirection on it to get the horizontal direction its
+  related object is facing (0 or +/-1), then reads RelatedObject1Ptr from the object. Copies the related object''s
+  PanelY into the object''s PanelY, and sets the object''s PanelX to the related object''s PanelX plus the front
+  direction — i.e. the tile the related object is facing. Finally calls object_setCoordinatesFromPanels to recompute
+  pixel coordinates from the panel position, and object_updateCollisionPanels to rebuild the collision footprint.
+  r1/r4 (and N/Z/C/V) are left exactly as object_updateCollisionPanels left them, since callers only want that callee''s
+  results. r4-r6 are preserved. The "related object" is the oBattleObject_RelatedObject1Ptr link, so this is presumably
+  used for things that shadow/track another entity (e.g. following tiles, cursor-like helpers, or attached effects).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r1,[r2,#oBattleObject_PanelX]; add r1,r1,r0 (front-direction); strb into [r5,#oBattleObject_PanelX]
-    — moves object to related object's X + 1 facing step; ldrb/strb PanelY from r2 to r5 copies the related
-    object's row; callees object_setCoordinatesFromPanels and object_updateCollisionPanels per their summaries
-    recompute pixel pos and collision from the new panel coords; caller battle_objectUpdatePulsingAttacker
-    (12-frame pulse, camera shake on collision) invokes this so the attack tracks a panel in front of
-    its owner
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:57735
-  - 0x080D2B2C battle_objectUpdatePulsingAttacker
-  - 0x080D2AB4 sub_80D2AB4
-  - 0x0800E2CA object_getFrontDirection
-  - 0x0800E29C object_setCoordinatesFromPanels
-  - 0x0801A04C object_updateCollisionPanels
-  reproduce: python3 tools/asmcat.py 0x080D2BC0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_syncToPanelInFrontOfRelated
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_syncToPanelInFrontOfRelated
+
+    ./wf verify --function battle_syncToPanelInFrontOfRelated --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_syncToPanelInFrontOfRelated
+
+    ./wf verify --function battle_syncToPanelInFrontOfRelated --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_syncToPanelInFrontOfRelated
+
+    ./wf verify --function battle_syncToPanelInFrontOfRelated --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2bc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
-open_questions:
-- which attack objects use this (RelatedObject1Ptr could be owner or target — caller context suggests
-  owner)
-- why PanelX is read from the related object rather than from r5's own fields
+related:
+- battle_initSpawnObjectCollision
+open_questions: []
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D2BC0 -> battle_syncToPanelInFrontOfRelated
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D2BC0
+- tools/wf run convert-20261020-105112
+- recomp da063e1

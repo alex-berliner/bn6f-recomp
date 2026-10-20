@@ -1,74 +1,84 @@
 name: battleObject_submenuFolderEditTick_81338D4
 address: '0x081338D4'
 kind: function
-previous_names:
-- sub_81338D4
-status: probable
-summary: 'Per-frame tick for the in-battle submenu folder-edit screen: animates the folder panel, then
-  redraws the scrolling background, submenu bg, folder/chip graphics and dispatches chip-select AI ticks
-  for slots 5/6.'
-interface: (r5 = submenu state ptr, r10 = toolkit ptr, lr = return) -> no meaningful return; side effects
-  mutate submenu state, BG, submenu GFX, dispatch chip-select AI updates
-details: "- At entry r5 is the submenu struct; r10 is the toolkit (r5 is moved to r7 right away to preserve\
-  \ r5 across the bl calls at the bottom).\n  - Copies the current animation/animation-state field (r7+0x18)\
-  \ into r7+0x1a, then inspects r7+0xd (state byte). State 4 means \"closing\" and the function walks\
-  \ the animation counter from current toward 0 by 2 per frame, then calls entity_setLookupEntryStateFromFlag_8117D10(r0=0,\
-  \ r1=0) to clear the linked entity when it underflows; any other state walks the counter toward 0x1e\
-  \ by +2 per frame and clamps at 0x1e (with state byte 4 written on clamp).\n  - After the animation\
-  \ tick, calls sub_8133E88 (two-layer scrolling BG redraw into tile block 1) and the per-frame \"if not\
-  \ open, clear submenu BG\" routine submenu_clearBgIfClosed_8134594, then sub_81345B0 (which the project's\
-  \ hypothesis describes as a fixed-arg sprite/effect init, ID 0xF3 type 0x16).\n  - Then object_resolveTableEntryByIndex_8134538,\
-  \ the 0x182/0x1C/0x28/0x2E thunk sub_8134548, the folder+chip render battleObject_submenuRenderFolderAndChips_81341A0,\
-  \ the folder-edit screen GFX draw battleObject_drawFolderEditScreenGfx_8134310, and the wrapper sub_81353DC\
-  \ (a 0x24/0xA5/0x28/4/6 fixed-arg call).\n  - Finally it dispatches two battle_aiRunTurnHandler_81353F0\
-  \ calls with (5,0) and (6,1) — those (r0=5, r0=6) values are the AI/jumptable indices, and the two r1\
-  \ values are sub-state flags (0/1). This is the chip-select Custom-screen \"tick 5 then 6\" pattern.\n\
-  \  - Out contract only lists r5 restored; the function is effectively void from the caller's perspective\
-  \ (it just runs the screen frame).\n  - The state machine at the top plus the final (5,0)/(6,1) chip-select\
-  \ handler calls strongly suggest this is the screen's per-frame updater for the folder-edit (Custom\
-  \ Gauge / chip select) submenu state, which is why I picked `battleObject_submenu...` even though the\
-  \ contract and naming don't strictly require it.\n"
+status: confirmed
+summary: Per-frame tick of the in-battle folder-edit submenu object, animating the panel's slide-in/slide-out and
+  driving the submenu render/update pipeline each frame.
+interface: u32 battle_submenuFolderEditAnimateTick_81338D4(u32 r5 /* battle/submenu object, updated by callees */,
+  u32 r10); // returns r5 unchanged (r7 copy is clobbered by callees; caller's r5 restored via pop {r4-r7}); clobbers
+  nzcv, r0-r3, lr; preserves r4-r7
+details: 'Treats r5 as the submenu/battle object (r7 = r5 work copy). First copies the slide value at halfword +0x18
+  into +0x1A (previous-frame snapshot). Then a small two-way slide state machine keyed on the state byte at +0xD:
+  when +0xD != 4 (opening), the signed slide value is incremented by 2 each frame and clamped at 0x1E, at which
+  point byte +0x3 is set to 4 (fully-open state); when +0xD == 4 (closing), the slide value is decremented by 2
+  each frame, and once it goes below 0 it calls entity_setLookupEntryStateFromFlag_8117D10(0,3) (releasing the lookup-entry
+  slot / notifying the entity machinery with state 3) and resets halfword +0x18 and byte +0x3 to 0. After the state
+  machine, it runs the standard submenu update pipeline with r5 threaded through (each callee may update it): sub_8133E88,
+  submenu_clearBgIfClosed_8134594, battleObject_runBeastStatusEffect_81345B0, object_resolveTableEntryByIndex_8134538,
+  object_resolveTableEntryWrapper_8134548, battleObject_submenuRenderFolderAndChips_81341A0, battleObject_drawFolderEditScreenGfx_8134310,
+  battleObject_alignRowOffsetCheckSN3_81353DC, and finally pokes the AI turn handler twice with battle_aiRunTurnHandler_81353F0(5,0)
+  then (6,1). Fields touched: object +0x18/+0x1A (slide current/previous), +0xD (open/closing state), +0x3 (submenu
+  state byte).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrh r0,[r7,#0x18]; strh r0,[r7,#0x1a]` is a shadow/animation latch on the submenu struct.
-    - `ldrb r0,[r7,#0xd]; cmp r0,#4; beq loc_81338F4` selects between closing and opening animation. -
-    The opening branch does `add r0,#2; cmp r0,#0x1e; ble ...; mov r0,#0x1e; mov r1,#4` — clamps to 0x1e
-    and sets state 4. - The closing branch does `sub r0,#2; bge ...; mov r0,#0; mov r1,#3; bl entity_setLookupEntryStateFromFlag_8117D10`
-    — clears an entity when the animation finishes. - The 40 captured calls all show the same entry r0..r3
-    and the same return r0=0x40 (just the high bit of a flag word, incidental) so this is a hot per-frame
-    routine, not a one-shot. - Final two `bl battle_aiRunTurnHandler_81353F0` with r0=5,r1=0 then r0=6,r1=1
-    match the "tick AI handler 5 then 6 with sub-state 0 then 1" pattern used by chip-select screens.
-    - Folder/chip submenu rendering functions (sub_81341A0 named `battleObject_submenuRenderFolderAndChips_81341A0`,
-    sub_8134310 named `battleObject_drawFolderEditScreenGfx_8134310`) are called only here, fitting the
-    per-frame screen tick.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x081338D4
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleObject_submenuFolderEditTick_81338D4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_submenuFolderEditTick_81338D4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_submenuFolderEditTick_81338D4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_submenuFolderEditTick_81338D4
+
+    ./wf verify --function battleObject_submenuFolderEditTick_81338D4 --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 55 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_submenuFolderEditTick_81338D4
+
+    ./wf verify --function battleObject_submenuFolderEditTick_81338D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battles1, battles2, beastsp, menus3, story4, story6, story8, story9'
-  reproduce: 'grep -l ''^081338d4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battles1, battles2, beastsp, menus3, story4, story6, story8, story9
-open_questions:
-- The exact meaning of state byte 0xd (4 = "closing", 3 = "fully closed"?). I infer 4 from the close-branch
-  write, but the post-clamp value 0x1e vs the AnimOpenCounter interpretation is not directly visible.
-- Whether r7 is the submenu state struct (oSubMenu is only 0x50 bytes) or a sub-struct (the offsets used
-  here are 0x18/0x1a/0xd which fit). The captured calls don't decode the 0x40 bytes at r0/r1, so the struct
-  identity is inferred from the call sites (sub_81341A0, sub_8134310 are submenu renderers).
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story4, story6, story8, story9.'
+  reproduce: grep -l '^081338d4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f a5b62063
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_81338D4 -> battleObject_submenuFolderEditTick_81338D4
-  where: bn6f 0c53d483
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact meaning of state byte values 3 and 4 written to object +0x3
+- what the lookup-entry call entity_setLookupEntryStateFromFlag_8117D10(0,3) releases at shutdown (state 3 semantics)
+- role of r10 on input (not referenced in this body)
+- purpose of the two battle_aiRunTurnHandler_81353F0 calls (5,0)/(6,1) — likely marking submenu-held turn phases
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

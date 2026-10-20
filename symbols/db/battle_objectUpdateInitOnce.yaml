@@ -1,52 +1,68 @@
 name: battle_objectUpdateInitOnce
 address: '0x0810BE74'
 kind: function
-status: probable
-summary: Per-frame battle-object update handler that runs a one-time init on the first frame (phase 0),
-  then dispatches the current phase handler.
-interface: (r5 = battle object ptr; no stack args) -> r0 = result of battle_objectUpdateDispatchPhase_80165C2;
-  no meaningful flags
-details: This is an object 'this'-in-r5 update routine, matching the BN6 battle-object calling style.
-  It reads oBattleObject_CurPhase from [r5] and, only when the phase is 0 (first invocation / init phase),
-  loads the pointer-sized field at r5+0x64 into r0 and calls sub_80D9284 with it, then calls sub_810BB64
-  before falling through. Control then tail-calls battle_objectUpdateDispatchPhase_80165C2, which runs
-  the object's flagged-handler/current-phase dispatch, so the phase-0 work acts as a first-frame setup
-  hook ahead of normal phase processing. The 0x64 field is an argument, likely a data/sub-object pointer
-  or handle for the init call. Recorded execution on the 'beastsp' route suggests it belongs to a Beast
-  Out-related battle object, but the assembly alone doesn't identify which.
+status: confirmed
+summary: Runs an battle object's once-per-spawn initialisation (resetting its attack hit state and freeing aux objects)
+  when its CurPhase is still 0, then dispatches the object's phase update.
+interface: void battle_objectUpdateInitOnce(r5=battleObject*, r2,r3,r4,r6,r7,r8,r9,r11,r12=dispatch state; returns
+  r1,r5,r8,r9,r11,r12 updated, flags clobbered)
+details: 'Tail-less wrapper called for every battle object update. Reads the object''s CurPhase byte (oBattleObject_CurPhase
+  from r5); when it is 0 (first update of this spawn), it loads the attack-state pointer stored at object+0x64 into
+  r0, calls ai_attackHitClearState8 to clear/reset the attack hit state (which returns the possibly updated object
+  pointer in r5), then calls ai_attackFreeAuxObjects with r5 to release the object''s auxiliary objects (refreshing
+  r4-r7). In all cases it tail-calls the phase dispatcher battle_objectUpdateDispatchPhase_80165C2 with the (possibly
+  refreshed) register set. r10 passes through untouched; all flags are clobbered.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_810BE88 - init body only runs when
-    CurPhase==0 (first update); mov r0,#0x64; ldr r0,[r5,r0]; bl sub_80D9284 - passes object field +0x64
-    to the init helper; bl sub_810BB64 before the dispatch - second init/setup step, same r5 object context;
-    tail call battle_objectUpdateDispatchPhase_80165C2 - standard per-frame object phase dispatcher, so
-    this is an object update handler; recorded route 'beastsp' is the only observed caller context; no
-    direct callers in the snapshot
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:177795
-  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
-  - 0x080D9284 sub_80D9284
-  - 0x0810BB64 sub_810BB64
-  reproduce: python3 tools/asmcat.py 0x0810BE74
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_objectUpdateInitOnce
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_objectUpdateInitOnce
+
+    ./wf verify --function battle_objectUpdateInitOnce --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_objectUpdateInitOnce
+
+    ./wf verify --function battle_objectUpdateInitOnce --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 48 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_objectUpdateInitOnce
+
+    ./wf verify --function battle_objectUpdateInitOnce --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0810be74 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - beastsp
 open_questions:
-- What sub_80D9284 and sub_810BB64 do (init of what resource/field 0x64 holds) is unknown
-- Which battle object template registers this handler (beast-out sprite/effect object?) is not shown
-- Whether sub_810BB64 also runs every frame or only during the phase-0 branch
+- Exact semantics of ai_attackHitClearState8 and the attack-state structure at offset 0x64 (both lack typed interfaces).
+- Whether CurPhase==0 doubles as an "uninitialised" sentinel in the battle object struct or is a genuine phase 0.
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_810BE74 -> battle_objectUpdateInitOnce
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_810BE74
+- tools/wf run convert-20261020-105112
+- recomp da063e1

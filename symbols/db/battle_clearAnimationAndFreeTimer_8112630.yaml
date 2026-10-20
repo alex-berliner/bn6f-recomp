@@ -1,51 +1,73 @@
 name: battle_clearAnimationAndFreeTimer_8112630
 address: '0x08112630'
 kind: function
-previous_names:
-- sub_8112630
-status: probable
-summary: Clears a battle object's current animation and frees/disarms its extra-vars timer slot.
-interface: (r5 = BattleObject*) -> void ; clobbers r0, r1, flags
-details: "Pushes {r4, lr} (note: r4 is preserved but not actually used inside), zeroes the object's\n\
-  \  CurAnim field at +0x10 (BattleObject.CurAnim, 1 byte), then if the +0x10 slot of the\n  ExtraVars\
-  \ region (i.e. ExtraVars[0x10]) is non-null it is passed to\n  battle_ResetObjectTimerTo8_80C4072 and\
-  \ then nulled. The function then returns. The\n  constant 0x10 used to read/write the ExtraVars+0x10\
-  \ field does not coincide with any named\n  field in BattleObject.inc; it is treated as an opaque timer/handle\
-  \ pointer slot inside\n  the per-object ExtraVars region. Caller (sub_81122A0) preserves r5/r4/r6/r7/r10\
-  \ across the\n  call, matching the contract.\n"
+status: confirmed
+summary: Clears a battle object's current animation id and, if it holds an extra timer slot, resets that timer and
+  releases the slot.
+interface: void battle_clearAnimationAndFreeTimer_8112630(BattleObject* object /* r5 */)
+details: 'Takes the battle object in r5. First it stores 0 into the object''s current animation
+
+  byte at oBattleObject_CurAnim, ending whatever animation the object was playing.
+
+  Then it reads the pointer/handle stored at oBattleObject_ExtraVars+0x10; if non-zero,
+
+  it calls battle_ResetObjectTimerTo8_80C4072 with that value (resetting the associated
+
+  timer to 8) and stores 0 back into oBattleObject_ExtraVars+0x10, releasing the slot.
+
+  If the slot was already empty, the call is skipped. r4 is preserved; flags and
+
+  r0/r1/lr are clobbered. No meaningful return value.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `strb r0, [r5,#oBattleObject_CurAnim]` (0x10) zeroes the current animation index. - `ldr
-    r0, [r5,#oBattleObject_ExtraVars+0x10]` loads a u32 handle; `cmp r0,#0` skips when null. - `bl battle_ResetObjectTimerTo8_80C4072`
-    is the only callee and is described as resetting an object wait/timer field; `str r0, [r5,#oBattleObject_ExtraVars+0x10]`
-    then clears the slot. - Contract `out` list contains only r4 (callee-saved), so the function returns
-    void. - Sole caller sub_81122A0 treats it as a teardown/reset step taken while the object is being
-    recycled (its caller context suggests object destroy/finish).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08112630
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_clearAnimationAndFreeTimer_8112630
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_clearAnimationAndFreeTimer_8112630
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_clearAnimationAndFreeTimer_8112630 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_clearAnimationAndFreeTimer_8112630
+
+    ./wf verify --function battle_clearAnimationAndFreeTimer_8112630 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_clearAnimationAndFreeTimer_8112630
+
+    ./wf verify --function battle_clearAnimationAndFreeTimer_8112630 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^08112630 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What "ExtraVars+0x10" actually represents (a timer slot, an event handle, or a sibling
-- object pointer). Following the writers/readers in sub_81122A0 of that field would settle it.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112630 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8112630 -> battle_clearAnimationAndFreeTimer_8112630
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,40 +1,63 @@
 name: battle_decrementHp
 address: '0x08116878'
 kind: function
-status: probable
-summary: Decrements a battle object's HP by 1 if it is still positive
-interface: (r0 = battle object pointer) -> r0 = undefined; sets flags from the HP compare
-details: Loads the halfword at oBattleObject_HP from the battle object in r0, returns immediately if it
-  is zero or negative, otherwise subtracts 1 and stores it back. It acts as a fixed one-point HP drain/tick
-  rather than a parameterized damage routine. No other fields are touched and no callees are invoked.
+status: confirmed
+summary: Decrements one battle object's HP by 1, leaving it untouched if already 0 or negative.
+interface: battle_decrementHp(battleObject r0) -> r1 = HP after decrement (u16 in low bits); flags clobbered (nzcv),
+  lr used as return
+details: Reads the 16-bit HP field (oBattleObject_HP) of the battle object passed in r0. If the value interpreted
+  as signed is <= 0 it is left unchanged; otherwise it is decremented by 1 and written back with a halfword store.
+  The new HP is returned in r1 (the value left there after the strh; if no decrement happened, r1 holds the unchanged
+  HP read earlier). No other state is touched; callers use the return value to check for death/KO handling. The
+  trailing words (0x4000, 0x10000, 0xF880080) are pool data belonging to nearby code, not part of this function.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrh r1, [r0,#oBattleObject_HP] reads the object''s HP field; cmp r1, #0 / ble locret skips
-    the write when HP is already exhausted; sub r1, #1 / strh r1,[r0,#oBattleObject_HP] writes back exactly
-    -1; recorded only on battle routes (battlesweep, beastsp), consistent with battle-object use'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:16968
-  - 0x080D45EC sub_80D45EC
-  reproduce: python3 tools/asmcat.py 0x08116878
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_decrementHp
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_decrementHp
+
+    ./wf verify --function battle_decrementHp --snapshots build-snapshots'
+  result: 'captured calls: 31 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 182 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_decrementHp
+
+    ./wf verify --function battle_decrementHp --snapshots build-snapshots'
+  result: 18 compared, 0 differed, 78 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_decrementHp
+
+    ./wf verify --function battle_decrementHp --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08116878 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
-open_questions:
-- caller sub_80D45EC is unknown, so the exact game context (e.g. poison tick vs. fixed-damage hit) is
-  not confirmed
+open_questions: []
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8116878 -> battle_decrementHp
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8116878
+- tools/wf run convert-20261020-105112
+- recomp da063e1

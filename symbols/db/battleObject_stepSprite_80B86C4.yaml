@@ -1,62 +1,69 @@
 name: battleObject_stepSprite_80B86C4
 address: '0x080B86C4'
 kind: function
-previous_names:
-- sub_80B86C4
-status: probable
-summary: Tail-call wrapper that runs the battle object's sprite/animation step when the object is alive
-  and unfrozen.
-interface: (r5 = BattleObject*, r10 = Toolkit*) -> tail-calls battleObject_stepSpriteIfAliveAndUnfrozen_80B881E
-details: "Pure passthrough/thunk: push {lr}; bl sub_80B8800; bl sub_80B8810; bl battleObject_stepSpriteIfAliveAndUnfrozen_80B881E;\
-  \ pop {pc}.\n  All three callees are invoked unconditionally, then the tail callee runs the sprite/animation\
-  \ update\n  for the BattleObject in r5 using the Toolkit in r10. Identical contract (in=['r5','r10','lr'],\
-  \ out identical)\n  is consistent with a single-arg-per-context tail: sub_80B8800 and sub_80B8810 likely\
-  \ are small early\n  steps (sprite/animation precondition checks) gated only by object state, and sub_80B881E\
-  \ is the real\n  sprite update.\n  No new state is computed or stored by this wrapper; it exists only\
-  \ to group the precondition steps\n  under a single label for readability / call-site deduplication.\n\
-  evidence: |\n- push {lr}/pop {pc} at 0x80B86C4..0x80B86D2 with no intervening stack restoration => pure\
-  \ leaf tail.\n- Three direct bl targets in fixed order: sub_80B8800, sub_80B8810, battleObject_stepSpriteIfAliveAndUnfrozen_80B881E.\n\
-  - Last bl is to a function whose name already says \"stepSpriteIfAliveAndUnfrozen\", and its in-contract\n\
-  \  ('r5','r10','lr') matches this wrapper's in/out contract exactly.\n- Caller sub_80B86A4 has the identical\
-  \ contract, suggesting the caller is a similar step-wrapper that\n  tail-calls this one as one of its\
-  \ sub-steps.\nuncertain:\n- The exact semantics of sub_80B8800 and sub_80B8810 are unknown (they may\
-  \ be early-out checks that\n  short-circuit on flags set by the prior step); inspecting their bodies\
-  \ would settle whether they\n  guard the sprite update or are independent animation/timer advances.\n"
+status: confirmed
+summary: Per-frame sprite update for a battle object — syncs its coordinates with its attached object, clamps the
+  current animation, and steps the sprite if the object is alive and unfrozen.
+interface: u32 battleObject_stepSprite_80B86C4(u32 obj /* r5 */, u32 r10); returns the (possibly updated) object
+  pointer in r5
+details: Thin three-call wrapper operating on a battle object passed in r5, with r10 forwarded as an extra context/global-ish
+  argument. It first calls battleObject_copyCoordsFromRelatedObject_80B8800 to sync the object's coordinates with
+  the related object it is attached to, then battleObject_clampCurAnim_80B8810 to clamp the current animation frame
+  to valid range, then battleObject_stepSpriteIfAliveAndUnfrozen_80B881E, which advances the sprite only when the
+  object is alive and not frozen. The r5 value returned by the last call is returned to the caller, so r5 doubles
+  as the in/out object pointer. Preserves r4-r5 and r10; clobbers r0-r3, flags and lr. Likely called as the standard
+  per-frame sprite tick for battle objects (enemies, panels' effects, etc.).
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- push {lr}/pop {pc} at 0x80B86C4..0x80B86D2 with no intervening stack restoration => pure
-    leaf tail. - Three direct bl targets in fixed order: sub_80B8800, sub_80B8810, battleObject_stepSpriteIfAliveAndUnfrozen_80B881E.
-    - Last bl is to a function whose name already says "stepSpriteIfAliveAndUnfrozen", and its in-contract
-    (''r5'',''r10'',''lr'') matches this wrapper''s in/out contract exactly. - Caller sub_80B86A4 has
-    the identical contract, suggesting the caller is a similar step-wrapper that tail-calls this one as
-    one of its sub-steps.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080B86C4
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleObject_stepSprite_80B86C4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86C4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_stepSprite_80B86C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86C4
+
+    ./wf verify --function battleObject_stepSprite_80B86C4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86C4
+
+    ./wf verify --function battleObject_stepSprite_80B86C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080b86c4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The exact semantics of sub_80B8800 and sub_80B8810 are unknown (they may be early-out checks that
-- short-circuit on flags set by the prior step); inspecting their bodies would settle whether they
-- guard the sprite update or are independent animation/timer advances.
-- 'status: probable'
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b86c4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80B86C4 -> battleObject_stepSprite_80B86C4
-  where: bn6f 82358707
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the r10 argument (page/global pointer?) needs confirmation from callers
+- whether any of the callee return values besides r5 are meaningful (r0-r3 returned by the last callee are ignored
+  here)
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,52 +1,70 @@
 name: battle_dispatchActorAIHandlers
 address: '0x0800F3CC'
 kind: function
-status: probable
-summary: Tail-calls the actor-type/AI-index dispatcher with a fixed 3-entry handler table, selecting one
-  behavior for an actor.
-interface: (r0 = clobbered, no meaningful input) -> none; dispatches to one of three handler addresses
-  taken from the built-in table
-details: 'The function ignores its arguments: it loads off_800F3DC (a table of three handler pointers:
-  0x8109450, 0x80F2794, 0x80EAB30) into r0 and branches to indexByActorTypeAndAIIdxThenDispatch_800F420,
-  which reads the current actor''s type and AI index to pick and jump to one entry. It is therefore a
-  data-bearing wrapper around the generic dispatcher, fixing the handler set for whatever subsystem registered
-  it. The three entries suggest three distinct behaviors (e.g. three actor types or AI variants) handled
-  by this table. Its actual game role depends on the three handler targets and on the only caller sub_8016B72,
-  neither of which is shown here.'
+status: confirmed
+summary: Pure thunk that points r0 at the battle AI handler table and tail-calls the dispatcher that runs the current
+  actor's AI handler.
+interface: void battle_dispatchActorAIHandlers(void); // passes r4, r5, r8, r10 through to indexByActorTypeAndAIIdxThenDispatch_800F420
+  along with r0 = &off_800F3DC; all returned registers/flags are whatever the dispatcher leaves behind
+details: 'Sets r0 to off_800F3DC, a table of three pointers (off_8109450, off_80F2794, off_80EAB30), and tail-calls
+  indexByActorTypeByAIIdxThenDispatch_800F420, which selects a per-actor AI handler by the actor''s type and AI
+  index and dispatches to it. The function itself has no logic of its own: r4/r5/r8 (and guest r10) are forwarded
+  untouched, and every "output" register (r3-r12) and flag is simply whatever the dispatcher leaves in the guest
+  state. The three sub-tables are likely one entry per actor category (e.g. player/enemy/other battle actors); each
+  entry is itself a dispatch table indexed by AI index.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_800F3CC: ldr r0, off_800F3D8 then bl indexByActorTypeAndAIIdxThenDispatch_800F420 — pure
-    dispatch thunk, no other logic; off_800F3DC holds exactly three words (0x8109450, 0x80F2794, 0x80EAB30)
-    — the handler table indexed by actor type/AI index; callee name indexByActorTypeAndAIIdxThenDispatch_800F420
-    documents the selection mechanism used on the table; single caller sub_8016B72 and recorded routes
-    battlesweep/beastsp tie it to battle actor AI, but do not reveal the specific behavior'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:1028
-  - 0x08016B72 sub_8016B72
-  - 0x0800F420 indexByActorTypeAndAIIdxThenDispatch_800F420
-  reproduce: python3 tools/asmcat.py 0x0800F3CC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_dispatchActorAIHandlers
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_dispatchActorAIHandlers
+
+    ./wf verify --function battle_dispatchActorAIHandlers --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_dispatchActorAIHandlers
+
+    ./wf verify --function battle_dispatchActorAIHandlers --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 1 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_dispatchActorAIHandlers
+
+    ./wf verify --function battle_dispatchActorAIHandlers --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0800f3cc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What behaviors off_8109450 / off_80F2794 / off_80EAB30 implement — reading those handler bodies would
-  name the function precisely
-- What sub_8016B72 does before calling this (which actor/context it operates on)
-- How the dispatcher combines actor type and AI index into an index, i.e. whether the 3 entries map to
-  types or AI states
+- what the three top-level table entries (off_8109450, off_80F2794, off_80EAB30) correspond to exactly (actor categories
+  vs. game state)
+- the meaning of the r4/r5/r8 dispatcher context values, pending a typed interface for indexByActorTypeAndAIIdxThenDispatch_800F420
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_800F3CC -> battle_dispatchActorAIHandlers
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_800F3CC
+- tools/wf run convert-20261020-105112
+- recomp da063e1

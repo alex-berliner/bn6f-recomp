@@ -1,46 +1,71 @@
 name: battle_aiSnakeArmStepInitStage4
 address: '0x08112A64'
 kind: function
-status: probable
-summary: SnakeArm AI step handler that sets a version-dependent timer, selects AI script 4, and runs the
-  SnakeArm AI tick.
-interface: (r4 = AI data object, r6 = AI state object) -> r0 = tick result; sets Timer and ScriptId
-details: Reads byte_81129D6[oAIData_Version_16] — a small per-version (Falzar/Gregal) lookup table — and
-  stores the byte as the halfword at oAIState_Timer, presumably the delay before the next AI action. It
-  writes 4 to oAIState_ScriptId, selecting AI script/stage 4. It then tail-continues into battle_aiSnakeArmTickStep_8112A78,
-  which counts the timer down and performs stage checks (0x74/0x7F/0x84 and 0x64/0x7F/0x84) to decide
-  whether to schedule attack 0xB. The version table likely encodes different timings or stage selections
-  for the two game versions.
+status: confirmed
+summary: 'Stage-4 initializer for the snake-arm AI: loads a per-version step timer into the AI state and switches
+  it to script id 4 before entering the shared tick step.'
+interface: Next battle_aiSnakeArmStepInitStage4(u32 r4 aiData, u32 r5, u32 r6 aiState, u32 r7 /* r10, lr also inputs
+  */); returns r1, r5 (passthrough from battle_aiSnakeArmTickStep_8112A78)
+details: Part of a stage/state machine for a snake-arm style boss AI (likely a DelDeltar/Bass-style multi-part enemy
+  attack). r4 points to the AI's data block, whose version byte at offset oAIData_Version_16 selects an entry in
+  the byte table byte_81129D6. That table value is stored as a halfword into the AI state struct at r6 + oAIState_Timer
+  (the step's duration/countdown), and the state's ScriptId byte (oAIState_ScriptId) is set to 4 to select this
+  stage's script. It then tail-calls battle_aiSnakeArmTickStep_8112A78, forwarding r4/r5/r6/r7 and passing the version-table
+  pointer in r1; the callee's r1 (the same table pointer) and r5 results are returned to this function's caller,
+  so the tick step is expected to preserve/forward r1. Flags are clobbered and unused by callers.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r1,r0] with r1=byte_81129D6 indexed by oAIData_Version_16, then strh to oAIState_Timer:
-    per-version timer load; mov r0,#4; strb r0,[r6,#oAIState_ScriptId]: selects AI script/stage 4; bl
-    battle_aiSnakeArmTickStep_8112A78: hands off to the SnakeArm AI tick that checks stages and schedules
-    attack 0xB; recorded in battlesweep/beastsp routes: consistent with boss battle AI execution'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:9608
-  - 0x08112A78 battle_aiSnakeArmTickStep_8112A78
-  reproduce: python3 tools/asmcat.py 0x08112A64
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_aiSnakeArmStepInitStage4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_aiSnakeArmStepInitStage4
+
+    ./wf verify --function battle_aiSnakeArmStepInitStage4 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_aiSnakeArmStepInitStage4
+
+    ./wf verify --function battle_aiSnakeArmStepInitStage4 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_aiSnakeArmStepInitStage4
+
+    ./wf verify --function battle_aiSnakeArmStepInitStage4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112a64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact meaning of the byte_81129D6 table values (timer ticks vs stage index) needs cross-referencing
-  with the tick step's stage checks
-- which caller dispatches to this handler (no caller captured) and what AI-state value selects it
+- Meaning of the per-version byte table byte_81129D6 entries (timer values per AI difficulty/version) is inferred
+  from use as oAIState_Timer, not confirmed
+- What the shared battle_aiSnakeArmTickStep_8112A78 does with r1/r5 and why the table pointer is passed through
+  as r1 is not documented here
+- Which boss/attack this snake-arm AI belongs to (name taken from the existing battle_aiSnakeArm symbol family)
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8112A64 -> battle_aiSnakeArmStepInitStage4
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8112A64
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,47 +1,77 @@
 name: battle_runPwrAtkStep
 address: '0x080EAD9C'
 kind: function
-status: probable
-summary: 'Per-frame step runner for the enemy''s scripted power attack: dispatches a sub-step (panel move,
-  beast wave slash, end action) and waits for an A press before finishing.'
-interface: (r7 = AI attack state struct, r4 = AIData) -> r0 = handler's return; writes state+0x1E (step
-  idx consumed by handler), state+5 (wait counter), state+4 (done/A-press flag)
-details: 'Called from RunAIAttack, it tail-dispatches through off_80EADD0 using the byte at state+0x1E
-  to one of three handlers: battle_commitPanelMove, battleObject_slashBeastWaveUpdate_80EAE28, object_endPwrAtkAction.
-  After the handler returns, it decrements the byte at state+5 while nonzero (a hold/delay counter). Once
-  that counter reaches 0, it tests AIData_JoypadPressed for bit 0 (A button) and, if pressed, stores 1
-  to state+4, signaling the attack sequence is finished. The sequence move-to-panel, slash beast wave,
-  end action identifies this as the enemy power-attack (PwrAtk) routine shared by the beast-out AI attack.'
+status: confirmed
+summary: Runs one frame of a battle object's PowerAtk action — dispatches the current step handler from a jump table,
+  then either ticks down an input-wait counter or arms the attack on an A-button press.
+interface: void battle_runPwrAtkStep(u32 r2, AIData* r4, BattleObject* r7 /* also r5,r6,r8-r12 pass-through */);
+  outputs r1/r5/r8-r12 as left by the step handler (r1=1 when the wait counter had reached 0), r7 restored; clobbers
+  r0-r4,r6,flags
+details: 'Per-frame driver for the "PowerAtk" action state of a battle object (r7). Computes r3 = obj+0x1E (the
+  step-number byte), reads it, and indexes the jump table at off_80EADD0 with it, then does the classic mov lr,pc
+  / bx r1 BL-long-style dispatch so the handler sees the caller''s entire register state: r0 = step value, r1 =
+  handler address, r3 = pointer to the step byte, r7 = battle object, everything else passed through untouched.
+  The three steps are battle_commitPanelMove, battleObject_slashBeastWaveUpdate_80EAE28 and object_endPwrAtkAction_80EAF36
+  — a panel-move setup, a beast-style slash/wave attack, and the action''s cleanup, so this is the step sequencer
+  for a charged/power slash attack that first moves the attacker''s panel, spawns the slash wave, then ends. After
+  the handler returns, the pushed r3 (obj+0x1E) is popped into r7, so the following code reads the object at +0x22
+  (PWR_ATK_ARM) and +0x23 (PWR_ATK_WAIT): if byte +0x23 (the wait countdown at handler-relative +5) is nonzero it
+  is decremented and input is ignored for that frame; otherwise r1 is set to 1 and, if bit 0 (A) of oAIData_JoypadPressed
+  in r4''s AIData is set, byte +0x22 is set to 1, arming the attack. r7 is then restored to the battle object and
+  the handler''s r1/r5/r8-r12 values flow back to the caller (the register contract lists r1/r5/r8-r12 as outputs,
+  r7 preserved).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r1, off_80EADCC; ldrb r0, [r3]; ldr r1, [r1,r0]; bx r1 dispatches on state+0x1E into a 3-entry
-    handler table; off_80EADD0 entries battle_commitPanelMove / slashBeastWaveUpdate / endPwrAtkAction
-    form a move-attack-end power attack sequence; ldrb r0, [r7,#5]; sub r0,#1; strb decrements a wait
-    counter each call until it hits 0; ldrh r0, [r4,#oAIData_JoypadPressed]; tst r0,#1 polls the A button
-    before setting [r7,#4]=1 (done flag); Called by RunAIAttack, the dispatcher for extra enemy AI attack
-    scripts
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:109375
-  - 0x0801B9E6 RunAIAttack
-  reproduce: python3 tools/asmcat.py 0x080EAD9C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_runPwrAtkStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_runPwrAtkStep
+
+    ./wf verify --function battle_runPwrAtkStep --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_runPwrAtkStep
+
+    ./wf verify --function battle_runPwrAtkStep --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 32 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_runPwrAtkStep
+
+    ./wf verify --function battle_runPwrAtkStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080ead9c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 open_questions:
-- Exact meaning/layout of the state struct fields 0x4, 0x5 and 0x1E (only inferred from usage)
-- Which enemy/boss uses this specific script (build-snapshot route only says 'beastsp')
+- Which entity uses this action (player beast-out versus an enemy/boss) is inferred from the handler names, not
+  confirmed from callers.
+- Exact meaning of the arm byte +0x22 downstream (how endPwrAtkAction consumes it) is not traced here.
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80EAD9C -> battle_runPwrAtkStep
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80EAD9C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

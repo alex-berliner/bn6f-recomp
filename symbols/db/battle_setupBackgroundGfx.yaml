@@ -1,52 +1,72 @@
 name: battle_setupBackgroundGfx
 address: '0x0804C72C'
 kind: function
-status: probable
-summary: Loads battle background tile data into VRAM and stage-related palette data into an EWRAM buffer
-  as one step of the battle scene's graphics init sequence.
-interface: (r0-r3 unused, relies on r5 = battle object, r10 = toolkit) -> r0 clobbered; r5+0x10 set to
-  4 as a state/step marker
-details: Queues a 0x80-byte block from ROM byte_86A2C00 into BG VRAM at 0x600CF40 (tile area) and a 0x20-byte
-  block (one 16-color palette) from ROM byte_86A2BE0 into the EWRAM scratch buffer byte_3001B00, both
-  via the deferred DMA queue so they take effect on vblank. It then writes 0x1F09 into the toolkit's RenderInfo
-  at +0xA, calls sub_804C844 (not yet understood), stores 4 at r5+0x10 (likely advancing a battle-UI init
-  step counter), and finishes by calling battleObject_initBattleFieldTilesAndSfxTimer_804C770, which sets
-  the BG2/BG3 viewport, dispatches a post-init callback from r5+0xd, and rolls the ambient-SFX timer.
-  The whole shape is a single stage of battle background setup in an init state machine.
+status: confirmed
+summary: Queues the battle background GFX and palette transfers, sets the render-info blend word, advances the battle
+  setup state to step 4, and initialises the battlefield tiles/SFX timer.
+interface: void battle_setupBackgroundGfx(battleState* r5, toolkit* r10); // outputs r2, r8-r12 pass through from
+  battleObject_initBattleFieldTilesAndSfxTimer_804C770; clobbers r0-r3, lr, flags
+details: 'Part of the battle-scene setup sequence. r5 is a battle state object and r10 the toolkit. 1) Queues an
+  8-word-aligned GFX transfer of 0x80 bytes of ROM tile data (byte_86A2C00) into VRAM at 0x0600CF40 (the battle
+  background tiles). 2) Queues a second transfer of 0x20 bytes from ROM byte_86A2BE0 into the IWRAM buffer byte_3001B00
+  (companion block, likely the matching palette). 3) Reads the toolkit''s render-info pointer (oToolkit_RenderInfoPtr)
+  and stores the fixed halfword 0x1F09 at renderInfo+0xA, programming the blend/BLDALPHA-style control for the battle
+  background. 4) Calls sub_804C844 with the battle state (updating it), then writes the byte 4 to battleState+0x10,
+  marking setup step/phase 4. 5) Tail-calls battleObject_initBattleFieldTilesAndSfxTimer_804C770(battleState), whose
+  register results (r2, r8-r12) are returned unchanged to this function''s caller. Preserves r4-r7; r5 is updated
+  by sub_804C844 and used for the +0x10 store.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'QueueEightWordAlignedGFXTransfer(0x86A2C00 -> 0x600CF40, 0x80): 0x80 bytes of ROM data queued
-    straight into BG tile VRAM; QueueEightWordAlignedGFXTransfer(0x86A2BE0 -> byte_3001B00, 0x20): exactly
-    one 16-color palette bank staged into an EWRAM buffer; strh 0x1F09 to [r1,#0xA] where r1 = [r10+oToolkit_RenderInfoPtr]:
-    touches render info for the background; callee battleObject_initBattleFieldTilesAndSfxTimer_804C770
-    handles BG2/BG3 viewport, post-init callback and battlefield tile copy, confirming battle-scene BG
-    setup context; strb #4 to [r5,#0x10] looks like a step/state field advanced within a battle init sequence'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_2.s:10821
-  - 0x0804C770 battleObject_initBattleFieldTilesAndSfxTimer_804C770
-  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
-  - 0x0804C844 sub_804C844
-  reproduce: python3 tools/asmcat.py 0x0804C72C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_setupBackgroundGfx
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_setupBackgroundGfx
+
+    ./wf verify --function battle_setupBackgroundGfx --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_setupBackgroundGfx
+
+    ./wf verify --function battle_setupBackgroundGfx --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 8 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_setupBackgroundGfx
+
+    ./wf verify --function battle_setupBackgroundGfx --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804c72c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
 coverage:
 - beastsp
 open_questions:
-- No callers captured, so which battle state invokes this step and what r5's structure is (battle object
-  vs battle UI) is unconfirmed
-- Meaning of RenderInfo+0xA = 0x1F09 (scroll, BG control, or fade target) is unknown
-- What sub_804C844 does and how byte_3001B00 is later consumed (vblank palette upload?) needs checking
+- exact meaning of the 0x1F09 blend word fields
+- what sub_804C844 does to the battle state
+- whether byte_3001B00 is a palette or scratch buffer
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_804C72C -> battle_setupBackgroundGfx
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_804C72C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

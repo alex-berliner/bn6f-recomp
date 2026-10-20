@@ -1,54 +1,66 @@
 name: battle_checkPlayerActorStoryFlag_808CC10
 address: '0x0808CC10'
 kind: function
-previous_names:
-- sub_808CC10
-status: probable
-summary: If the battle actor at r5 is a player actor (Unk_04 == 2) and story flag EVENT_9D8 is unset,
-  sets the flag and marks the result true; otherwise returns false.
-interface: (r5 = SomeBattleActorPtr, r10 = toolkit) -> flags only (r4 holds result)
-details: "Saves callee-saved r4-r7, sets r4 = 0.\n  ldrb r0, [r5, #4] loads Unk_04 of the pointed-to BattleObject\
-  \ (offset 0x4 per `battle_object_struct`: the `Params`/`Param1` byte). Compares against #2.\n  On equality,\
-  \ calls `TestEventFlagFromImmediate` with `EVENT_9D8`; if the flag is already set, falls through with\
-  \ r4 = 0 (returns nz=false). Otherwise calls `SetEventFlagFromImmediate(EVENT_9D8)` and sets r4 = 1\
-  \ (returns nz=true).\n  Final `tst r4, r4` followed by `pop {r4-r7, pc}` returns the boolean in the\
-  \ z flag to the caller `sub_808CC34`.\n  The check on Unk_04 == 2 corresponds to the high nibble of\
-  \ `Params`, which per `object_header_struct` is the actor's `ListIndex`/type, gating the work to one\
-  \ specific battle object kind.\n"
+status: confirmed
+summary: If the given battle actor is in story state 2 and event flag EVENT_9D8 is not yet set, sets that flag and
+  reports that it was just latched.
+interface: bool battle_checkPlayerActorStoryFlag_808CC10(void* actor /* r5 */); returns NZ set (r4 = 1) only on
+  the call that sets the flag; r3/r4/r5/r6 also live on return (r3 is leftover from the flag helper, r4-r6 are pass-through).
+details: Battle-side one-shot story-flag latch. Reads the actor header byte at [r5+4] (story/state byte) and only
+  acts when it equals 2. It then tests event flag EVENT_9D8 via TestEventFlagFromImmediate (flag split as r0 = bank
+  9, r1 = index 0xD8); if clear, it sets the flag with SetEventFlagFromImmediate and sets r4 = 1. Finally tst r4,r4
+  drives the NZ flags, so callers branch on "flag was set by this call" vs "nothing happened" (already set, or actor
+  not in state 2). r4-r7 are pushed/popped, so r4-r6 reach the caller unchanged (r4 as the result, r5/r6 pass-through);
+  r10 is listed as an input by the callers but is never read in the body. No other game state is touched.
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `cmp r0, #2` at 0x808CC18 tests the byte at [r5, #4] against the constant 2. - Two direct
-    calls to `TestEventFlagFromImmediate` then `SetEventFlagFromImmediate` with the same `EVENT_9D8` immediate
-    from `movflag`. - r4 is initialised to 0 before the branch and only set to 1 on the "set the flag"
-    path; the trailing `tst r4, r4` plus the caller contract `out=[''nz'', ...]` show r4 is the boolean
-    returned via flags. - r5 in is callee-saved and used as the actor pointer; r10 is the toolkit (matches
-    the `EventFlagsPtr`-based flag APIs).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808CC10
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_checkPlayerActorStoryFlag_808CC10
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_checkPlayerActorStoryFlag_808CC10
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_checkPlayerActorStoryFlag_808CC10 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 182 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_checkPlayerActorStoryFlag_808CC10
+
+    ./wf verify --function battle_checkPlayerActorStoryFlag_808CC10 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_checkPlayerActorStoryFlag_808CC10
+
+    ./wf verify --function battle_checkPlayerActorStoryFlag_808CC10 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808cc10 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact game meaning of EVENT_9D8 and which subset of actors ("battle object kind 2") this fires for.
-  Mapping EVENT_9D8 to a named story milestone and confirming which `ListIndex` byte == 2 corresponds
-  to would settle both.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cc10 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808CC10 -> battle_checkPlayerActorStoryFlag_808CC10
-  where: bn6f 1bd2afd1
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- What r10 means to the callers (flag context?) — it is declared as an input but unused in this body.
+- What EVENT_9D8 gates in the story (the state-2 actor and one-shot semantics suggest a scripted battle trigger).
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,45 +1,78 @@
 name: battle_destroyWithRelatedUnlink
 address: '0x080D123C'
 kind: function
-status: probable
-summary: Clears the back-pointer a related battle object holds to this one, then destroys this object.
-interface: (r0 = this battle object, r5 must also hold it) -> r0 = destroyed; no meaningful return
-details: Reads [r5+oBattleObject_RelatedObject1Ptr]; if the related object exists, stores 0 into its oBattleObject_ObjectHeader
-  field, which is evidently a pointer back to this object, detaching the pair's link. It then falls through
-  to object_genericDestroy, releasing this object's panel tile reserves, collision data, and memory. Note
-  the pointer is fetched via r5 while the destroy call passes r0, so both registers must reference the
-  object on entry. This suggests RelatedObject1 is a paired/tethered entity whose header pointer must
-  be nulled before teardown so the partner never dereferences a dead object.
+status: confirmed
+summary: Clears the linked related object's owner pointer and then destroys this battle object.
+interface: battle_destroyWithRelatedUnlink(void); takes the battle object in r5 (also lr), calls object_genericDestroy(r5),
+  and returns the (updated) object pointer in r5
+details: 'Wrapper around object_genericDestroy that first severs one direction of an object link.
+
+  Reads oBattleObject_RelatedObject1Ptr from the battle object in r5; if non-null, it stores 0
+
+  into that related object''s oBattleObject_ObjectHeader field, so the related object no longer
+
+  points back at (references) the object about to be destroyed. It then falls through to
+
+  object_genericDestroy, which performs the actual destruction of the r5 object and returns the
+
+  updated pointer in r5 (back through this wrapper to its caller). r5-r7 are preserved; the
+
+  related object itself is NOT destroyed here — only its back-pointer/header is nulled, so it
+
+  presumably outlives this object or is handled elsewhere.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; cmp/beq: only nulls the link when a related object
-    exists; str r1(=0),[r0,#oBattleObject_ObjectHeader]: writes NULL into the related object''s header
-    field before teardown; bl object_genericDestroy: known generic battle-object destructor, so this is
-    a destroy-path routine; no other reads/writes and only 9 instructions: pure unlink+destroy wrapper'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:54347
-  - 0x08016C8A object_genericDestroy
-  reproduce: python3 tools/asmcat.py 0x080D123C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_destroyWithRelatedUnlink
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_destroyWithRelatedUnlink
+
+    ./wf verify --function battle_destroyWithRelatedUnlink --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_destroyWithRelatedUnlink
+
+    ./wf verify --function battle_destroyWithRelatedUnlink --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_destroyWithRelatedUnlink
+
+    ./wf verify --function battle_destroyWithRelatedUnlink --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d123c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which object kinds set oBattleObject_RelatedObject1Ptr (paired entities like cursor/attached objects)
-  — no caller is recorded, only route executions
-- Whether oBattleObject_ObjectHeader always stores a pointer back to the partner or can hold other values
+- exact semantics of oBattleObject_ObjectHeader (owner back-pointer vs. allocation header) and what nulling it means
+  for the related object's lifecycle
+- whether other RelatedObjectN pointers (beyond index 1) are unlinked on destruction elsewhere
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D123C -> battle_destroyWithRelatedUnlink
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D123C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

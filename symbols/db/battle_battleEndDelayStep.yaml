@@ -1,46 +1,74 @@
 name: battle_battleEndDelayStep
 address: '0x08008B52'
 kind: function
-status: probable
-summary: Per-frame countdown (30 frames) that, on expiry, advances the battle-end substate and clears
-  a flag in the overworld player struct.
-interface: (r5 = battle-side struct with state at +3, timer at +8 halfword, result flag at +4; r10 = toolkit)
-  -> r0 = overworld struct base from callee; no meaningful return
-details: 'State machine step: if the byte at [r5,#3] is 0, it initializes the halfword timer at +8 to
-  0x1E (30) and sets the state byte to 4. Every call then decrements the +8 halfword; while it is still
-  positive it returns. When it reaches zero, it stores 1 into [r5,#4], stores 1 into the GameState field
-  oGameState_BattleEndSubState (via the toolkit pointer in r10), and calls eStruct200A008_setUnk02(0),
-  which zeroes byte 2 of the fixed overworld player struct at 0x200A008. This matches a short wait after
-  a battle result before handing control back to the overworld/state machine.'
+status: confirmed
+summary: Runs the post-battle delay state of the battle object, counting down 30 frames before flagging the battle-end
+  sequence as started.
+interface: void battle_battleEndDelayStep(u32 battleObj /*r5*/, u32 toolkit /*r10*/) — no return value; updates
+  N/Z/C/V via the countdown test
+details: "State-machine step for the battle object's end-of-battle handling, called from the battle\nobject update\
+  \ loop with the object in r5 and the toolkit in r10.\n\nFirst entry (object byte at +3 still 0): stores a 30-frame\
+  \ countdown into the object's\nhalfword timer at +8 and advances the object's state byte (+3) to 4, so subsequent\
+  \ calls\ntake the countdown path immediately.\n\nEvery call then decrements the halfword timer at +8 and returns\
+  \ while it is still > 0\n(the decrement result drives flags; branch on >0 keeps the state active for the remaining\n\
+  frames).\n\nWhen the countdown expires:\n- stores 1 into the object's byte at +4 (its battle-end flag slot),\n\
+  - reads the toolkit's GameState pointer (oToolkit_GameStatePtr) and stores 1 into the\n  game state's battle-end\
+  \ substate byte (oGameState_BattleEndSubState), signalling the\n  battle end sequence has begun,\n- calls eStruct200A008_setUnk02\
+  \ with r0 = 0, clearing that toolkit/entity-struct flag.\n\nQuirks: the \"first call\" check relies on state byte\
+  \ +3 being zero on entry; the timer is\na 16-bit halfword so the decrement wraps at 0, but the >0 branch makes\
+  \ the countdown\nbehave as a plain signed-style test in practice. Clobbers r0, r1 and lr (calls out via\nbl),\
+  \ so lr is consumed.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r5,#3]; tst/be: lazy-init timer 0x1E and state 4 at loc_8008B52 branch; ldrh r0,[r5,#8];
-    sub r0,#1; strh; bgt locret: per-frame decrement until zero; strb r0(=1),[r1,#oGameState_BattleEndSubState]
-    via toolkit''s GameStatePtr: signals battle-end progression; mov r0,#0; bl eStruct200A008_setUnk02:
-    clears byte 2 of overworld struct 0x200A008 at the same moment'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_1.s:12501
-  - 0x0800B6C2 eStruct200A008_setUnk02
-  reproduce: python3 tools/asmcat.py 0x08008B52
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_battleEndDelayStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_battleEndDelayStep
+
+    ./wf verify --function battle_battleEndDelayStep --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_battleEndDelayStep
+
+    ./wf verify --function battle_battleEndDelayStep --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_battleEndDelayStep
+
+    ./wf verify --function battle_battleEndDelayStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08008b52 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_1_800801C.c
 coverage:
 - beastsp
 open_questions:
-- No caller is known, so r5's owning structure (battle scene object?) and what byte 2 of 0x200A008 means
-  are unconfirmed; a caller showing when this runs in the battle-end sequence would confirm the timing
-  semantics.
+- exact meaning of eStruct200A008_setUnk02 and its structure (only the call with r0=0 is evidenced here)
+- which battle object holds this state (r5 source not fixed in this fragment) and the full layout/meaning of its
+  +3 state byte and +4 flag
+- what oGameState_BattleEndSubState drives downstream in the battle-end flow
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8008B52 -> battle_battleEndDelayStep
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8008B52
+- tools/wf run convert-20261020-105112
+- recomp da063e1

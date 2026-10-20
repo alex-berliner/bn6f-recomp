@@ -1,48 +1,71 @@
 name: battle_rosterIconSetShade
 address: '0x0811DFD4'
 kind: function
-status: probable
-summary: Sets a Navi roster icon's shade level from its roster index, writing a 1.0/0.5/0.25/... float
-  into the object and its sprite struct.
-interface: (r0 = unused on entry; index read from [r6,#4], object base in r6) -> r0 = shade value passed
-  to sprite_setUnk0x2c; no meaningful flags
-details: Reads the icon's roster index from object field 0x4. If it is 0xFF, stores 0x3F800000 (1.0f,
-  full brightness) into object field 0x20. Otherwise clears bit (0x1D - index) of field 0x20, which turns
-  1.0f into the decreasing shade ladder 0.5, 0.25, 0.0625, ... for indices 6..0 (the cleared bit is an
-  exponent bit of the float). The new field 0x20 value is then passed to sprite_setUnk0x2c, which copies
-  it into field 0x2c of the sprite struct for rendering. The operation is idempotent per frame, so each
-  icon settles at the shade fixed by its index.
+status: confirmed
+summary: Applies a shade/darkness level (from the battle object at r6) to a roster icon sprite, building the shade
+  bitmask and handing it to the sprite renderer.
+interface: void battle_rosterIconSetShade(u32 sprite /* r5 */, BattleObj* obj /* r6 */); clobbers r0,r2,r3,lr,NZCV
+details: 'Reads the shade index from obj+0x04. If it is 0xFF ("fully lit" / no shade), the constant 0x3F800000 (the
+  float 1.0 bit pattern, likely a fixed-point or bitmask constant here) is stored to obj+0x20 wholesale. Otherwise
+  a mask bit (1 << (0x1D - shade)) is cleared in the word at obj+0x20, so larger shade indices clear lower bits
+  and the bit position decreases as the shade index grows. The resulting word is written back to obj+0x20 and passed
+  in r0 to sprite_setUnk0x2c together with the sprite handle in r5, which presumably applies the shade/palette darkening
+  to the rendered sprite. r6 is the same battle-object layout used elsewhere in the battle subsystem (+0x04 attribute
+  byte, +0x20 flag/mask word). Callers pass the sprite handle in r5 and the object pointer in r6; no return value
+  is produced.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r6,#4]; cmp #0xFF selects reset path storing 0x3F800000 (=1.0f) to [r6,#0x20]; mov
-    r2,#0x1D; sub r2,r2,r0; lsl r3,r2; bic r0,r3 clears bit 29-index of field 0x20; 0x3F800000 has bits
-    23-29 set, so clearing one exponent bit yields the 1.0/0.5/0.25/... shade sequence; result in r0 is
-    passed to sprite_setUnk0x2c, which stores it into sprite struct field 0x2c; caller sub_811DF94 is
-    the per-frame update of a pre-battle lineup Navi roster icon'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:32183
-  - 0x0811DF94 sub_811DF94
-  - 0x08002FA6 sprite_setUnk0x2c
-  reproduce: python3 tools/asmcat.py 0x0811DFD4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_rosterIconSetShade
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_rosterIconSetShade
+
+    ./wf verify --function battle_rosterIconSetShade --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 250 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_rosterIconSetShade
+
+    ./wf verify --function battle_rosterIconSetShade --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_rosterIconSetShade
+
+    ./wf verify --function battle_rosterIconSetShade --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811dfd4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32_811CAEC.c
 coverage:
 - beastsp
 open_questions:
-- exact rendering meaning of sprite struct field 0x2c (brightness multiplier vs alpha vs palette ramp)
-- whether field 0x20 is per-icon or shared through r6 across roster icons
-- what the caller's story-flag branch decides about which icons get dimmed vs index 0xFF
+- exact meaning of the shade index at obj+0x04 (palette darkening level vs. some flag index) and which game state
+  sets it to 0xFF
+- whether 0x3F800000 is used as a bitmask constant or because the field at +0x20 is read elsewhere as a float
+- what sprite_setUnk0x2c does with the mask word (r0) and sprite handle (r5)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_811DFD4 -> battle_rosterIconSetShade
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811DFD4
+- tools/wf run convert-20261020-105112
+- recomp da063e1

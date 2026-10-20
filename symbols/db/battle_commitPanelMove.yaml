@@ -1,52 +1,73 @@
 name: battle_commitPanelMove
 address: '0x080EADDC'
 kind: function
-status: probable
-summary: 'Commits a battle object''s planned panel move: copies the future panel coordinates into its
-  current panel slot, re-reserves the panel, clears movement flags, and initializes a follow-up state
-  struct.'
-interface: (r1/r5 = battle object, r3/r6 = state struct) -> r0 = clobbered; writes state struct {h0=4,
-  b4=0, b5=0xC} and mutates the object's panel/reserve/flag fields
-details: 'Operating on the object in r5, it first clears ObjectFlags1 bit 0x400000, then copies FuturePanelX/Y
-  into PanelX/Y so the planned move becomes the object''s actual position. It releases the object''s previous
-  panel reservation (object_removePanelReserve), recomputes pixel coordinates from the new panel (object_setCoordinatesFromPanels),
-  and updates collision panels. It then clears ObjectFlags1 bits 0x1040 and ObjectFlags2 bit 0x10, copies
-  the now-current PanelX/Y back into FuturePanelX/Y, and re-reserves the panel via object_reservePanel.
-  Finally it sets the OBJECT_FLAGS_CANNOT_SLIDE bit in ObjectFlags1, preventing further sliding, and initializes
-  the struct passed in r3: halfword at +0 = 4, byte at +4 = 0, byte at +5 = 0xC, which looks like a new
-  action/movement phase with its counters (state 4, timer 0, duration 12).'
+status: confirmed
+summary: Commits a battle object's queued panel move — the target panel becomes its current panel, reservations
+  are swapped, position/collision data refresh, and the move-request state resets.
+interface: void battle_commitPanelMove(moveRequest r3, BattleObject *r5) — outputs r1/r4 (stale values left by callees,
+  read by callers); clobbers r0-r3, flags, lr; preserves r4(as passed? no—r4 output)/r6
+details: 'r3 points to a small move-request/step struct and r5 to a battle object. Clears the "panel move pending"
+  flag (bit 22, 1<<22) on the object, copies oBattleObject_FuturePanelX/Y into oBattleObject_PanelX/Y, releases
+  the reservation on the old panel (object_removePanelReserve), recomputes pixel coordinates (object_setCoordinatesFromPanels)
+  and collision panel data (object_updateCollisionPanels), then clears the step/slide bookkeeping flags via pool
+  literal dword_80EB03C = 0x1040 and flag 0x10 through object_clearFlag2. It reserves the newly occupied panel (object_reservePanel)
+  after syncing FuturePanelX/Y back to PanelX/Y, and sets OBJECT_FLAGS_CANNOT_SLIDE so the object cannot slide again
+  until the move animation finishes (object_setFlag1). Finally it resets the move-request struct at r3: byte+4 =
+  0 (step index), byte+5 = 0xC (wait timer, 12 frames), halfword+0 = 4 (state/phase). r6 is saved/restored around
+  the calls because object_updateCollisionPanels clobbers it. r1 and r4 outputs come from object_setFlag1 and object_updateCollisionPanels
+  respectively; callers read them, so the values are whatever those callees leave.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb/strb copies oBattleObject_FuturePanelX/Y into oBattleObject_PanelX/Y then back after reserve
-    — commit of a planned panel move; calls object_removePanelReserve then object_reservePanel around
-    object_setCoordinatesFromPanels/object_updateCollisionPanels; clears flag 0x400000, dword_80EB03C=0x1040,
-    and Flag2 0x10, then sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1; tail writes [r6]=4, [r6+4]=0,
-    [r6+5]=0xC — initializing a state/timer struct for a follow-up phase; callee summaries (reserve/remove
-    panel, set coordinates from panels, cannot-slide flag) all match a panel-move finalize routine
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:109004
-  - 0x0801A15C object_clearFlag
-  - 0x0801A176 object_clearFlag2
-  - 0x0801BB46 object_removePanelReserve
-  reproduce: python3 tools/asmcat.py 0x080EADDC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_commitPanelMove
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_commitPanelMove
+
+    ./wf verify --function battle_commitPanelMove --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_commitPanelMove
+
+    ./wf verify --function battle_commitPanelMove --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_commitPanelMove
+
+    ./wf verify --function battle_commitPanelMove --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080eaddc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 open_questions:
-- What struct r3 points to and what state 4 with byte 0xC means would need a caller or the state-machine
-  consumer; no callers are currently known
+- exact meaning of the 0x1040 and 0x10 flags cleared (slide/step bookkeeping guessed from context)
+- semantics of the move-request struct fields (state 4, timer 12, step 0) and which subsystem owns that struct
+- what values r1/r4 are expected to hold for callers (inherited from callees, not set here)
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80EADDC -> battle_commitPanelMove
-  where: bn6f be30f643
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80EADDC
+- tools/wf run convert-20261020-105112
+- recomp da063e1

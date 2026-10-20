@@ -1,54 +1,68 @@
 name: battleTutorial_getMessageId
 address: '0x080299FA'
 kind: function
-status: probable
-summary: 'Returns the chatbox message id for the current battle-tutorial step: 0x25 for step 0xA, 0x24
-  for other steps, or 0 if +0x17 latch is set or step is 0xB.'
-interface: (r5 = tutorial state struct; r0 input unused) -> r0 = message id 0x24/0x25, or 0 if none pending;
-  flags clobbered by cmp/tst
-details: 'Treats r5 as the battle-tutorial state record. It switches on the step byte at +0x07: step 0xA
-  selects message 0x25 (beast-out-specific, given the beastsp route), any other step selects 0x24. The
-  byte at +0x17 is a latch: nonzero means the step''s message was already shown, so the routine returns
-  0 and the caller stops re-playing it. No other memory is touched; it is purely a read-and-decide helper
-  invoked per-frame from the tutorial custMenu handler.'
+status: confirmed
+summary: Chooses which battle-tutorial text message to show based on the tutorial kind and a "already seen" flag,
+  returning the message id (0x24, 0x25, or 0 for none).
+interface: u32 battleTutorial_pickMessageId(u8* state /* in r5 */) /* returns message id in r0; clobbers NZCV */
+details: 'r5 points at the battle-tutorial state block. Reads the tutorial kind at +0x07 and the seen/progress flag
+  byte at +0x17. Kind 0x0B yields message id 0 (no message shown). Kind 0x0A yields 0x25 if the flag byte at +0x17
+  is still clear, else 0. Any other kind yields 0x24 if the flag is clear, else 0. The flag byte is only read, never
+  written here; the caller presumably advances the tutorial and sets +0x17 elsewhere. Returns via pop {pc} with
+  the id in r0; flags are clobbered and all other registers preserved (only lr is pushed).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: cmp [r5,#7] with 0xA/0xB branches pick 0x25 vs 0x24, i.e. a step-dependent message id; tst [r5,#0x17]
-    gates both branches, returning 0 once the flag is set; caller custMenu_80298F4 'polls the tutorial
-    state's check routine and, if it yields a message, plays it through the chatbox'; returns via pop
-    {pc} with only r0 written, matching a lightweight predicate called per frame
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_0.s:7688
-  - 0x080298F4 custMenu_80298F4
-  reproduce: python3 tools/asmcat.py 0x080299FA
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is accurate: it returns 0x24 for non-0xA/0xB steps and 0x25 for step 0xA, returning
-    0 if +0x17 latch is set or for step 0xB. However, step 0xB is not ''any other step'' but a distinct
-    case returning 0, which the summary glosses over. The function is more of a tutorial step dispatcher
-    than a simple checker, so the name could be improved.; run wf investigate investigate-20261018-203615;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleTutorial_getMessageId
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleTutorial_getMessageId
+
+    ./wf verify --function battleTutorial_getMessageId --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 188 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleTutorial_getMessageId
+
+    ./wf verify --function battleTutorial_getMessageId --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleTutorial_getMessageId
+
+    ./wf verify --function battleTutorial_getMessageId --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080299fa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_0_80299B6.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact meaning of step values 0xA/0xB in the tutorial state machine
-- what sets the +0x17 flag (likely chatbox completion in the caller's other paths)
-- 'The summary is accurate: it returns 0x24 for non-0xA/0xB steps and 0x25 for step 0xA, returning 0 if
-  +0x17 latch is set or for step 0xB. However, step 0xB is not ''any other step'' but a distinct case
-  returning 0, which the summary glosses over. The function is more of a tutorial step dispatcher than
-  a simple checker, so the name could be improved.'
+- Exact meaning of tutorial kinds 0x0A vs 0x0B (which tutorial variant each selects).
+- What sets the flag byte at +0x17, and whether it means "message already shown" or "tutorial step done".
+- Which structure type/state block r5 points into (no base address or field documentation confirmed).
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80299FA -> battleTutorial_getMessageId
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80299FA
+- tools/wf run convert-20261020-105112
+- recomp da063e1

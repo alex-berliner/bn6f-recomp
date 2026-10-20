@@ -1,48 +1,67 @@
 name: battle_repeatActionPhase
 address: '0x080D8ADC'
 kind: function
-status: probable
-summary: Battle-object phase handler that repeats a per-timer action (with sound 0xC7) Param2 times, then
-  advances the object to CurAction 0x0C.
-interface: (r5 = battle object) -> void; r0 scratched, flags from timer decrement
-details: On first entry (PhaseInitialized==0) it sets CurAnim=1, clears Timer, and marks the phase initialized
-  (value 4). Every tick it decrements oBattleObject_Timer; when it reaches 0 it reloads Timer from ExtraVars+4
-  (the repeat interval), calls sub_80D8BD4 (the repeated action) and plays sound effect 0xC7. It also
-  decrements oBattleObject_Param2 as a repeat counter; once it hits 0, it sets CurAction=0x0C and zeroes
-  CurPhaseAndPhaseInitialized so the object's state machine moves to the next action. r5 is the battle
-  object throughout, using the standard oBattleObject fields.
+status: confirmed
+summary: Runs a battle object's repeating phase - counts down a timer, replays a panel effect plus sound 0xC7 on
+  each expiry, and moves to action 0x0C when repeats run out
+interface: void battle_repeatActionPhase(BattleObject* r5)
+details: Called with r5 = battle object. On first entry (PhaseInitialized == 0) it sets CurAnim = 1, Timer = 0,
+  and PhaseInitialized = 4 to mark the phase as initialized. Each tick afterwards it decrements the 16-bit Timer
+  and returns while it is still above zero. When the timer expires it reloads Timer from the 32-bit field ExtraVars+4,
+  spawns a panel element effect via battle_spawnPanelElementEffect (r5 = object), plays sound effect 0xC7, and decrements
+  the repeat count in Param2. While repeats remain it returns. When the last repeat is used up it sets CurAction
+  = 0x0C and zeroes the combined CurPhaseAndPhaseInitialized halfword so the object's action script advances to
+  the next step. Preserves r4, r6, r7; r1/r10 outputs seen by callers come from PlaySoundEffect, r5 is unchanged.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] / strb 1..4 init block: one-shot setup of anim, timer
-    and phase state; Timer reload from [r5,#oBattleObject_ExtraVars+4] then bl sub_80D8BD4 + PlaySoundEffect(0xC7):
-    periodic repeat step; ldrb [r5,#oBattleObject_Param2]; sub 1; bgt: Param2 used as repeat count; mov
-    r0,#0xC; strb [r5,#oBattleObject_CurAction] and clearing CurPhaseAndPhaseInitialized: end of phase
-    hands control back to the action machine'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:70339
-  - 0x080005CC PlaySoundEffect
-  - 0x080D8BD4 sub_80D8BD4
-  reproduce: python3 tools/asmcat.py 0x080D8ADC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_repeatActionPhase
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_repeatActionPhase
+
+    ./wf verify --function battle_repeatActionPhase --snapshots build-snapshots'
+  result: 'captured calls: 31 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 167 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_repeatActionPhase
+
+    ./wf verify --function battle_repeatActionPhase --snapshots build-snapshots'
+  result: 27 compared, 0 differed, 69 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_repeatActionPhase
+
+    ./wf verify --function battle_repeatActionPhase --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8adc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
 open_questions:
-- what sub_80D8BD4 actually performs (the repeated action/attack) and thus which enemy or object uses
-  this handler
-- which action id 0x0C represents in this object's action table
-- exact meaning of ExtraVars+4 vs Timer semantics for the interval
+- Which action scripts route into this phase (what action 0x0C is on the receiving side)
+- What the sound 0xC7 corresponds to in game terms
+- What effect battle_spawnPanelElementEffect draws and which panel it targets
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D8ADC -> battle_repeatActionPhase
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D8ADC
+- tools/wf run convert-20261020-105112
+- recomp da063e1

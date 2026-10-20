@@ -1,64 +1,75 @@
 name: battleObject_stepSprite_80B86A4
 address: '0x080B86A4'
 kind: function
-previous_names:
-- sub_80B86A4
-status: probable
-summary: Step a battle object's sprite/animation by calling per-object sprite/animation helpers, force
-  CurAction=4 and clear CurPhase/PhaseInitialized when the battle state's Unk_5c shifted out of bit 1,
-  then dispatch to the object's sprite step state machine.
-interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: writes r5+CurAction, r5+CurPhaseAndPhaseInitialized,
-  calls several subs'
-details: "1. push lr.\n  2. bl sub_80B8800 (no observable contract change to out flags; runs some per-object\
-  \ setup).\n  3. bl sub_80B8810 (sets v-flag-only per contract; likely reads/writes limited fields like\
-  \ Timer or a counter).\n  4. bl battle_getStateUnk5c_800139A returning r0 = BattleState->Unk_5c.\n \
-  \ 5. lsr r0, r0, #2 ; bcc locret_80B86C2 — branches (no carry) if bit 2 of Unk_5c was zero, skipping\
-  \ the reset.\n  6. If bit 2 is set: mov r0,#4 ; strb r0,[r5,#oBattleObject_CurAction] — sets CurAction=4\
-  \ (sprite/animation phase action code).\n  7. mov r0,#0 ; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]\
-  \ — clears CurPhase and PhaseInitialized together (they share a u16).\n  8. bl battleObject_stepSprite_80B86C4\
-  \ — runs the per-object sprite/animation step state machine.\n  9. pop {pc}. Function is essentially\
-  \ an \"advance the object's sprite state each tick, but reset its phase/action if the global battle\
-  \ state's Unk_5c bit 2 transitioned\".\n"
+status: confirmed
+summary: Advances a battle object's sprite one step, syncing its position with the object it follows and forcing
+  action 4 (interrupt) when the battle state's bit 1 is set.
+interface: void battleObject_stepSprite_80B86A4(BattleObject* obj /* r5; r10 = battle state read by callee */);
+  obj passed through and possibly updated in r5; clobbers r0-r3, lr, flags
+details: 'Entry point of the per-frame sprite update for a battle object. Calls battleObject_copyCoordsFromRelatedObject_80B8800
+  to sync the object''s coordinates with whatever related object it tracks, then battleObject_clampCurAnim_80B8810
+  to keep its current animation index in range. Reads the battle state word via battle_getStateUnk5c_800139A (which
+  uses r10 as the battle state pointer) and performs "lsr r0, #2" so the carry flag carries out bit 1 of that state
+  word. When that bit is set, the object''s current action is interrupted: oBattleObject_CurAction is forced to
+  4 and oBattleObject_CurPhaseAndPhaseInitialized is zeroed (new phase, phase not initialized), after which the
+  inner stepper battleObject_stepSprite_80B86C4 runs on the object and its (possibly updated) pointer is returned
+  in r5. r4 and r5 are preserved throughout; the tail call into the inner stepper is only made on the interrupt
+  path — the ordinary per-frame sprite stepping proper lives in the 80B86C4 callee.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- Three consecutive bl calls before any branching indicate prep work: sub_80B8800, sub_80B8810,
-    battle_getStateUnk5c_800139A. - `bl battle_getStateUnk5c_800139A` then `lsr r0, r0, #2` followed by
-    `bcc locret_80B86C2` gates the reset on bit 2 of BattleState.Unk_5c; the carry flag path skips writes
-    entirely. - `strb r0,[r5,#oBattleObject_CurAction]` with r0=4 writes 0x4 to offset 0x9 (CurAction)
-    of the BattleObject struct (per BattleObject.inc: CurAction loc=0x9). - `strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
-    with r0=0 zeroes the u16 at offset 0xa (CurPhase at 0xa + PhaseInitialized at 0xb), exactly the union
-    CurPhaseAndPhaseInitialized per BattleObject.inc. - The next bl calls sub_80B86C4 whose name was inferred
-    as `battleObject_stepSprite_80B86C4`; with r5 still the object pointer in r5, this is the sprite-step
-    dispatch invoked after the reset, supporting that this function is the per-tick sprite step entry.
-    - contract `in=[''r5'',''r10'',''lr'']` and `out` includes only flags + r0..r3,r4,r5,lr — confirms
-    r5 (BattleObject) and r10 (Toolkit) are inputs and the caller treats nothing in r0 as meaningful return.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080B86A4
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleObject_stepSprite_80B86A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86A4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_stepSprite_80B86A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86A4
+
+    ./wf verify --function battleObject_stepSprite_80B86A4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_stepSprite_80B86A4
+
+    ./wf verify --function battleObject_stepSprite_80B86A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080b86a4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What sub_80B8800 and sub_80B8810 actually do (pre/post per-object book-keeping) — naming them would
-  settle their semantics.
-- Which specific battle event sets BattleState.Unk_5c bit 2 (the trigger condition for the reset); a captured-call
-  trace of battle_getStateUnk5c_800139A would identify the event source.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b86a4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 90fa2c5c
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80B86A4 -> battleObject_stepSprite_80B86A4
-  where: bn6f f043a75e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of bit 1 in the battle state word returned by battle_getStateUnk5c_800139A (referred to only as
+  "unk5c" so far)
+- what action id 4 denotes in game terms (currently only an opaque forced action)
+- why the inner stepper is skipped when bit 1 is clear (is a caller expected to run battleObject_stepSprite_80B86C4
+  separately in that case?)
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

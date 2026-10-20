@@ -1,65 +1,73 @@
 name: battleObject_updateMovementHighlight_80D4544
 address: '0x080D4544'
 kind: function
-previous_names:
-- sub_80D4544
-status: probable
-summary: 'Per-frame battle object update: re-highlights the panel under the object while its movement
-  timer has bit 0x4 clear, decrements the timer, and on expiry marks the object paused with CurAction=4
-  and clears CurPhase/PhaseInitialized.'
-interface: '(r5 = BattleObject*) -> void ; side effects: writes oBattleObject_Flags, oBattleObject_CurAction,
-  oBattleObject_CurPhaseAndPhaseInitialized; may call object_highlightPanel'
-details: "- Loads the 16-bit Timer at offset oBattleObject_Timer (0x20) and tests bit 0x4; if clear it\
-  \ reads the object's current panel coordinates (PanelX 0x12, PanelY 0x13) and invokes object_highlightPanel(r0=PanelX,\
-  \ r1=PanelY) to keep its panel marked as highlighted.\n  - Always decrements the Timer word by 1 (sub\
-  \ r0,#1 / strh to oBattleObject_Timer 0x20). The decrement uses the halfword at 0x20; if the lower byte\
-  \ of Timer2 (0x22) matters it is not touched here.\n  - If the decremented timer is still > 0 the function\
-  \ returns (pop {pc}); otherwise it sets OBJECT_FLAG_PAUSE_UPDATE (0x04 -> bits 0x02 in the Flags byte\
-  \ at oObjectHeader_Flags 0x00 via ORR with 2 - wait, see uncertainty) into oObjectHeader_Flags (0x00),\
-  \ forces CurAction (0x09) = 4, and writes 0 to CurPhaseAndPhaseInitialized (0x0a) so the next update\
-  \ starts at phase 0 with PhaseInitialized=false.\n  - The contract says callers see lr restored and\
-  \ r0..r3 clobbered; only r5 is in. Callee object_highlightPanel uses the same r0/r1 contract (panelX,\
-  \ panelY) and clobbers flags. No r4 is touched, so this is leaf-ish with one BL and one POP {pc}.\n"
+status: confirmed
+summary: Counts down a battle object's movement-highlight timer, highlighting its panel each frame, and on expiry
+  marks it ready to move (action 4).
+interface: 'void battleObject_updateMovementHighlight_80D4544(obj /* r5 */) -> r1 (status value: 4 if highlight
+  skipped, object_highlightPanel''s r1 otherwise, 2 once the timer expires)'
+details: "Per-frame update for a battle object (r5) in its movement-highlight countdown state:\n1. Reads oBattleObject_Timer\
+  \ (u16). If bit 2 (0x4) of the timer is clear, calls\n   object_highlightPanel with oBattleObject_PanelX / oBattleObject_PanelY\
+  \ to mark the\n   panel the object stands on (the blinking target-area highlight shown while choosing\n   a move).\
+  \ If bit 2 is set, the highlight call is skipped and r1 stays 4.\n2. Reloads Timer (the highlight call may have\
+  \ modified it), decrements it, stores it back.\n   While the result is still > 0, returns early.\n3. When the\
+  \ timer reaches 0 or below: sets bit 1 (0x2) of oObjectHeader_Flags (the\n   \"ready to move\" / input-accepted\
+  \ flag), writes oBattleObject_CurAction = 4, and\n   clears oBattleObject_CurPhaseAndPhaseInitialized (u16 = 0)\
+  \ so the action state\n   machine restarts at phase 0.\nOutput r1 is incidental: 4 on the skip path, the highlight\
+  \ call's r1 on the highlight\npath, and 2 on the expiry path (left over from the orr immediate). Callers read\
+  \ it, so\nit is effectively a small status return.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- "ldrh r0, [r5,#oBattleObject_Timer]" at asm offset ~+0 loads the 16-bit Timer field at offset
-    0x20. - "tst r0, r1" with r1=4 plus "bne loc_80D4556" gates the highlightPanel call on bit 0x4 of
-    Timer being clear. - "ldrb r0, [r5,#oBattleObject_PanelX] / ldrb r1, [r5,#oBattleObject_PanelY] /
-    bl object_highlightPanel" passes the object''s current panel to highlightPanel. - "ldrh r0, [r5,#oBattleObject_Timer]
-    / sub r0,#1 / strh r0,[r5,#oBattleObject_Timer]" decrements the timer each call. - "bgt locret_80D456E"
-    exits early if the timer remains > 0; otherwise the ORR-with-2 path arms the "finished" branch. -
-    "strb r0, [r5,#oBattleObject_CurAction]" with r0=4 sets CurAction to 4 on completion. - "strh r0,
-    [r5,#oBattleObject_CurPhaseAndPhaseInitialized]" with r0=0 clears CurPhase/PhaseInitialized.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080D4544
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battleObject_updateMovementHighlight_80D4544
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_updateMovementHighlight_80D4544
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_updateMovementHighlight_80D4544 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 175 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_updateMovementHighlight_80D4544
+
+    ./wf verify --function battleObject_updateMovementHighlight_80D4544 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_updateMovementHighlight_80D4544
+
+    ./wf verify --function battleObject_updateMovementHighlight_80D4544 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080d4544 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The ORR is with literal 2 (`mov r1,#2 ; orr r0,r1 ; strb r0,[r5,#oObjectHeader_Flags]`), but the project's
-  ObjectHeader defines OBJECT_FLAG_PAUSE_UPDATE as 0x04, not 0x02. So either the constant 0x02 here is
-  a different "done with movement" flag, or the struct constant is misnamed - the assembly itself clearly
-  sets bit 0x02 (i.e. what the project calls OBJECT_FLAG_VISIBLE) in the header byte, not bit 0x02 of
-  pause. Worth confirming against the real engine which bit means "movement finished, freeze this actor".
-- The Timer bit 0x4 being "highlight only while this bit is unset" is a behaviour inferred from the test/invert
-  branch, not labelled.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4544 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 18c67962
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D4544 -> battleObject_updateMovementHighlight_80D4544
-  where: bn6f ffe506a3
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of timer bit 2 (0x4) that suppresses the panel highlight (possibly "highlight already drawn this
+  state").
+- What object_highlightPanel does with/returns in r1, and why callers consume it here.
+- Whether action ID 4 is specifically "move selected" or a generic next-action transition.
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

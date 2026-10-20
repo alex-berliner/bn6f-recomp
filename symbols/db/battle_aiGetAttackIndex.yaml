@@ -1,55 +1,69 @@
 name: battle_aiGetAttackIndex
 address: '0x080F85B2'
 kind: function
-status: probable
-summary: Returns an AI attack/action index for the enemy AI handler, bumped by 0x3C when the queried battle
-  object carries flag bits 0xA000.
-interface: (r0 = constant 0xA141E28 passed through to sub_800FE28) -> r0 = base index from sub_800FE28,
-  +0x3C if object_getFlag on that value has bits 0x8000|0x2000 set; flags preserved from tst.
-details: Calls sub_800FE28 with a fixed literal (dword_80F85D0 = 0xA141E28) and keeps its return in r4
-  while also feeding it to object_getFlag, so sub_800FE28 appears to resolve a battle object (or object
-  reference) from that constant. It reads the object's first collision-flag word and tests bits 0xA000
-  (0x8000 and 0x2000). If either bit is set it adds 0x3C (60) to the base value, otherwise returns it
-  unchanged; the result is a small index/selector consumed by battle_aiEnemyAiActionHandler_80F8448 when
-  picking an attack script. The +0x3C step looks like an offset into a parallel block of attack entries
-  for a special enemy state (e.g. invisibility/stealth or a transformed state) keyed by those flag bits.
-  The literal 0xA141E28 is not a valid GBA address, so it is likely an encoded object query key rather
-  than a pointer.
+status: confirmed
+summary: Returns the attack index the battle AI should use, adding 60 to pick an alternate attack when the battle
+  object carries one of two status flags.
+interface: u32 battle_aiGetAttackIndex(u32 battle_object /* r5 */) -> r0
+details: 'Takes the battle object in r5. Looks up a base attack index by calling sub_800FE28 with a static config
+  pointer at dword_80F85D0 (0x0A141E28) and the object; then calls object_getFlag(r5) to read the object''s flag
+  word. If either bit 15 or bit 13 is set (mask 0xA000), the returned index is offset by +0x3C (60), selecting an
+  alternate attack variant. Preserves r4; clobbers r1-r2, lr and all flags. The base-index lookup helper (sub_800FE28)
+  is undocumented, so the exact config structure it reads is not yet known.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl sub_800FE28 with r0 = literal 0xA141E28; result kept in r4 and reused as object_getFlag''s
-    argument (sub_80F85B2+4..+A); tst r0, 0xA000 / beq skip / add r4, #0x3C — flag bits gate the +60 index
-    offset (sub_80F85B2+0xC..+0x12); only caller battle_aiEnemyAiActionHandler_80F8448 selects attack
-    scripts and targets, matching an index-returning helper; callees object_getFlag (battle object collision
-    flags) tie the branch condition to a battle-object state'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:137101
-  - 0x080F8448 battle_aiEnemyAiActionHandler_80F8448
-  - 0x0801A166 object_getFlag
-  - 0x0800FE28 sub_800FE28
-  reproduce: python3 tools/asmcat.py 0x080F85B2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_aiGetAttackIndex
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_aiGetAttackIndex
+
+    ./wf verify --function battle_aiGetAttackIndex --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_aiGetAttackIndex
+
+    ./wf verify --function battle_aiGetAttackIndex --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_aiGetAttackIndex
+
+    ./wf verify --function battle_aiGetAttackIndex --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f85b2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- What sub_800FE28 does with the 0xA141E28 constant and what exactly its return value is (object pointer
-  vs. raw index)
-- Which enemy state flag bits 0x8000/0x2000 represent, and what table the +0x3C offset indexes in the
-  caller
+- what sub_800FE28 reads from the config at dword_80F85D0 to compute the base attack index
+- what in-game states set flag bits 13 and 15 on a battle object (the meaning of mask 0xA000)
+- whether the +60 offset corresponds to a fixed table layout of paired attacks (normal vs. empowered variant)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80F85B2 -> battle_aiGetAttackIndex
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80F85B2
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,61 +1,70 @@
 name: battle_chatbox_setCursorTextFromEventFlag_808CF8C
 address: '0x0808CF8C'
 kind: function
-previous_names:
-- sub_808CF8C
-status: probable
-summary: If event flag EVENT_9D9 is set in battle, writes a u16 from the battle object's slot data into
-  the chatbox `Unk_4C` and plays SFX 0x122 (battle-tied cue line)
-interface: '(r5 = battle object, r10 = toolkit) -> r0 = 1 if the flag was set, else 0; side effects: writes
-  to chatbox+0x4C and calls PlaySoundEffect(0x122)'
-details: "Tests event flag `EVENT_9D9` via `TestEventFlagFromImmediate`. If the flag is clear, returns\
-  \ 0 and does nothing else.\n  If the flag is set, loads the active chatbox pointer from `toolkit->ChatboxPtr`\
-  \ (offset `oToolkit_ChatboxPtr = 0x2C`), then writes a u16 read from `[r5+6]` (the battle object's `Param3`/`BButton`\
-  \ field at offset 6 of the `battle_object_struct`) into `[chatbox+0x4C]`.\n  Plays sound effect 0x122\
-  \ (the chatbox appears to consume this value, likely as a script/text index), and returns 1.\n  The\
-  \ caller in `sub_808CC34` uses the returned bool to decide whether to take a battle-state branch (likely\
-  \ setting a specific dialog line for an event-tied battle outcome, e.g. a victory/loss turn flag).\n\
-  \  `r5` carries the battle object pointer across the call (object header at offset 0, `Param3`/`BButton`\
-  \ at offset 6), r10 the toolkit.\ndetails: |\n  - `movflag EVENT_9D9` + `bl TestEventFlagFromImmediate`\
-  \ (0x0802f164) gates the entire body.\n  - `ldr r1, [r10, #oToolkit_ChatboxPtr]` (0x2C) then `mov r2,\
-  \ #0x4C; ldrh r0, [r5, #6]; str r0, [r1, r2]` writes the param to chatbox+0x4C.\n  - `ldr r0, dword_808CFB4`\
-  \ = 0x122, used as SFX id with `bl PlaySoundEffect` (0x080005cc).\n  - Sets r0 = 1 on success, otherwise\
-  \ returns r4 (= 0); `tst r0, r0` then `pop {r4,pc}`.\n"
+status: confirmed
+summary: If event flag EVENT_9D9 is set, copies a text id from the caller's object into the battle chatbox's cursor-text
+  field and plays sound 0x122; returns whether it did so.
+interface: bool battle_chatbox_setCursorTextFromEventFlag(void *textSource /* r5 */, struct Toolkit *toolkit /*
+  r10 */); result also carried out in N/Z
+details: 'r5 points at an object whose halfword at +6 holds a text id; r10 is the toolkit, whose oToolkit_ChatboxPtr
+  field points at the battle chatbox. First tests event flag EVENT_9D9 via TestEventFlagFromImmediate (flag id passed
+  as page/index pair in r0/r1 via movflag); if the flag is clear the function returns 0 (Z set) without touching
+  anything. If set, the halfword at [r5+6] is written as a word to chatbox+0x4C (the cursor text field, offset loaded
+  as 0x4C into r2 and reused by the callee contract), then PlaySoundEffect(0x122) plays a cursor/text sound, and
+  the function returns 1 (NZ clear). Quirk: the 0/1 result is computed in r4 but the epilogue pops the saved entry
+  value back into r4, so r4 is effectively preserved and only the N/Z flags carry the result out; r2/r3/r6 on the
+  taken path are whatever PlaySoundEffect leaves behind.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl TestEventFlagFromImmediate` immediately after `movflag EVENT_9D9` is the explicit branch
-    gate at 0x0808cf94. - Chatbox pointer is loaded from the toolkit''s `oToolkit_ChatboxPtr` (0x2C) field
-    per the `toolkit_struct` definition. - Writing `ldrh r0, [r5,#6]` to `[chatbox+0x4C]` overwrites an
-    as-yet unnamed chatbox word with the battle object''s `BButton`/`Param3` byte pair. - SFX id 0x122
-    is read from `dword_808CFB4` (.word 0x122) and passed to the M4A wrapper at 0x080005cc. - Function
-    returns a bool (`mov r4,#1` on success, `mov r4,#0` initially), and that bool is the only output the
-    caller propagates.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808CF8C
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_chatbox_setCursorTextFromEventFlag_808CF8C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_chatbox_setCursorTextFromEventFlag_808CF8C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_chatbox_setCursorTextFromEventFlag_808CF8C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_chatbox_setCursorTextFromEventFlag_808CF8C
+
+    ./wf verify --function battle_chatbox_setCursorTextFromEventFlag_808CF8C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_chatbox_setCursorTextFromEventFlag_808CF8C
+
+    ./wf verify --function battle_chatbox_setCursorTextFromEventFlag_808CF8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808cf8c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- What field chatbox+0x4C actually represents (no named member at 0x4C in the `chatbox_struct` macro aside
-  from `Unk_4C`) and which SFX 0x122 corresponds to; resolving those would let us drop the `_ADDRESS`
-  suffix and pick a precise role name.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cf8c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808CF8C -> battle_chatbox_setCursorTextFromEventFlag_808CF8C
-  where: bn6f 48692679
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- What structure r5 points into (only field +6 halfword is known); a wider battle_object/chatbox-source naming may
+  refine the signature.
+- What in-game event EVENT_9D9 corresponds to, which would explain when this cursor text is gated.
+- Whether sound 0x122 is a specific named cursor/confirm sound.
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

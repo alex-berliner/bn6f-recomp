@@ -1,49 +1,72 @@
 name: battle_slowTickTimers
 address: '0x0800EA90'
 kind: function
-status: probable
-summary: Halves five halfword timers in the object's AI/collision work area and decrements a master counter
-  at +0x80 by their sum, returning whether the master did not change.
-interface: (r0 = unused/scratch, r5 = battle object) -> r0 = 1 if master timer at [collisionData+0x80]
-  was unchanged (all timers empty), else 0; flags clobbered
-details: 'Loads the object''s CollisionDataPtr (oBattleObject_CollisionDataPtr, +0x5C) and saves the halfword
-  at +0x80. For each of the five halfwords at +0x82, +0x84, +0x86, +0x88, +0x8A it computes (value+1)>>1
-  — a ceil(x/2) — writes it back, and subtracts it from the saved value, which is then stored back to
-  +0x80. It returns 0 when the master changed (at least one timer was nonzero) and 1 when nothing changed.
-  This is a decay/tick step: all timers shrink geometrically each call while the master drains by the
-  total amount removed, so the master only advances while some sub-timer is still running.'
+status: confirmed
+summary: Halves every per-hit collision timer on a battle object each slow tick, banking the lost odd ticks into
+  the master slow timer, and reports whether anything actually ticked down.
+interface: void battle_slowTickTimers(BattleObject* self /* r5 */) -> u16 unchanged (r0), CollisionData* coll (r2);
+  clobbers r1, r3 and flags; preserves r4
+details: 'Reads the object''s collision data pointer (battle object + oBattleObject_CollisionDataPtr), snapshots
+  the master slow timer at collision+0x80, then walks the four 16-bit per-hit collision timers at collision+0x82,
+  0x84, 0x86, 0x8A (loop offsets 0x82..0x8A step 2, stopping at 0x8C). Each timer is replaced by (value+1)>>1, i.e.
+  halved rounding up, so a timer of 1 stays 1 and only reaches 0 on the next tick. The sum of all halves is subtracted
+  from the master slow timer at collision+0x80 and stored back, so the master counter tracks the total timer mass
+  including the lost halves. Returns 1 (r0=1) when the master slow timer is unchanged from before the tick — meaning
+  all per-hit timers were already 0 and nothing was lost — otherwise 0. r2 is left holding the collision data pointer
+  for the caller. r4 is pushed/popped (holds the pre-tick master total during the loop) and is preserved for the
+  caller despite the register contract listing it as an output.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r2,[r5,#oBattleObject_CollisionDataPtr] then ldrh r1,[r2,#0x80] — works on the object''s
-    battle data block; loop loc_800EA9C: ldrh r0,[r2,r3]; add r0,#1; lsr r0,#1; strh r0 — ceil-halve of
-    fields 0x82..0x8A; sub r1,r1,r0 accumulating, then strh r1,[r2,#0x80] — master counter drained by
-    the halved amounts; cmp r1,r4; mov r0,#1 when equal — returns 1 only if the master timer did not tick;
-    called from battle_8108F74''s AI hook dispatch (hooks off_81091D0 indexed by AIData.AIIndex*4), so
-    it runs as an enemy AI per-frame hook'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/object.s:6048
-  - 0x08108F74 battle_8108F74
-  reproduce: python3 tools/asmcat.py 0x0800EA90
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_slowTickTimers
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_slowTickTimers
+
+    ./wf verify --function battle_slowTickTimers --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_slowTickTimers
+
+    ./wf verify --function battle_slowTickTimers --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_slowTickTimers
+
+    ./wf verify --function battle_slowTickTimers --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0800ea90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/object.c
 coverage:
 - beastsp
 open_questions:
-- Which gameplay system owns the master counter at +0x80 and the five sub-timers at +0x82..0x8A — likely
-  a slow/exponential-decay status or an AI charge/countdown, but no known caller summary or field names
-  pin it down
-- What the boolean return (1 = master unchanged) is used for by the AI hook dispatcher at battle_8108F74
+- Exact meaning of the four per-hit timers at 0x82..0x8A (likely per-collision-type hit freeze/flinch timers) is
+  inferred from the field layout, not from caller-side use.
+- Whether any caller actually uses the returned r2 collision pointer or only the r0 flag.
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_800EA90 -> battle_slowTickTimers
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_800EA90
+- tools/wf run convert-20261020-105112
+- recomp da063e1

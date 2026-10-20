@@ -1,53 +1,74 @@
 name: battle_restoreBaseSprite
 address: '0x080E70F8'
 kind: function
-status: probable
-summary: Reloads an object's sprite resources from its related/base object, resets its animation to index
-  8 and flip, then re-enters the state-update phase.
-interface: (r0 = battle object (this, in r5 by convention)) -> r0 = destroyed; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
-  = CUR_STATE_UPDATE
-details: Copies 12 bytes (three words at offset 0x34) from the object pointed to by oBattleObject_RelatedObject1Ptr
-  into the same offset of r5, transplanting sprite/resource pointers from a base object. It then calls
-  sprite_load with (8, 0xf, 0x80), reloads animation data, disables the shadow, and sets bit 0x2 of oObjectHeader_Flags.
-  It writes animation index 8 into both oBattleObject_CurAnim and oBattleObject_CurAnimCopy, calls sprite_setAnimation(8)
-  and sprite_loadAnimationData again, sets palette 0, and applies the object's effective facing via object_getFlip/sprite_setFlip.
-  Finally it stores CUR_STATE_UPDATE into the state/phase word, so the object's state machine resumes
-  updating next tick. The related-object copy plus hardcoded animation 8 strongly suggests restoring a
-  default/base appearance, e.g. after a transformation (Beast Out) ends.
+status: confirmed
+summary: Puts a battle object back on its base/idle sprite, restoring sprite params saved by a related object and
+  returning to the normal update state.
+interface: u32 battle_restoreBaseSprite(u32 obj /* r5 */); passes r5 through unchanged
+details: 'Restores a battle object (in r5) to its base sprite after some overlay/transformation sprite was in use.
+  It copies 12 bytes (three words) of saved sprite parameters from RelatedObject1''s struct at offset +0x34 back
+  into the same offset of this object, then reloads the base graphics via sprite_load (VRAM tile 0x80, 8 wide, 0xf
+  tall) and sprite_loadAnimationData, and calls sprite_noShadow. It sets flag bit 1 (0x02) in oObjectHeader_Flags
+  to mark the sprite for refresh, resets both oBattleObject_CurAnim and oBattleObject_CurAnimCopy to animation index
+  8 (the idle/base animation), calls sprite_setAnimation(8) and reloads animation frame data, resets the palette
+  to 0, and reapplies the object''s current flip via object_getFlip + sprite_setFlip. Finally it writes CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object resumes normal per-frame updating. Uses
+  RelatedObject1Ptr as the source of the saved sprite parameters, so the caller must have that pointer valid. r4/r5
+  preserved; returns r5.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldmia from RelatedObject1Ptr+0x34 / stmia to r5+0x34 copies sprite resource pointers between
-    objects; sprite_load(8, 0xf, 0x80) and sprite_loadAnimationData reload the sprite from scratch; mov
-    r0,#8; strb to CurAnim and CurAnimCopy plus sprite_setAnimation(8) fixes animation index 8; object_getFlip
-    -> sprite_setFlip reapplies the object's facing to the new sprite; str CUR_STATE_UPDATE to CurStateActionPhaseAndPhaseInitialized
-    resumes the object's normal state processing
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:101218
-  - 0x0800E456 object_getFlip
-  - 0x080026E4 sprite_load
-  - 0x080026A4 sprite_loadAnimationData
-  reproduce: python3 tools/asmcat.py 0x080E70F8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_restoreBaseSprite
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_restoreBaseSprite
+
+    ./wf verify --function battle_restoreBaseSprite --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_restoreBaseSprite
+
+    ./wf verify --function battle_restoreBaseSprite --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_restoreBaseSprite
+
+    ./wf verify --function battle_restoreBaseSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080e70f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- Which object the RelatedObject1Ptr normally points to (player base form?), and whether animation 8 is
-  a specific shared pose
-- Meaning of sprite_load's constant arguments (8, 0xf, 0x80) and of flag bit 0x2 set on oObjectHeader_Flags
+- which gameplay situations call this (e.g. after a transformation or panel-based sprite change) is not visible
+  from this function alone
+- exact meaning of the three restored words at +0x34 of the related object (likely saved tile/size/offsets) is unconfirmed
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E70F8 -> battle_restoreBaseSprite
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E70F8
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,66 +1,80 @@
 name: battle_initSpawnObjectCollision
 address: '0x080D2AB4'
 kind: function
-status: probable
-summary: 'Shared init for a spawned battle object: if Param1==0 copies bit 0x10 of this object''s flags
-  onto an object found via sub_80D2B8E(list at r5+0x68); allocates a collision slot (frees object and
-  stores 0 in ExtraVars+8 on failure); calls object_setupCollisionData with width 6/0x4A, height 5, value
-  0x61/3 from params; sets Timer2=Param2, Timer=0xC; calls sub_80D2BC0; marks region 1 and hit-effect
-  0xA; enters CUR_STATE_UPDATE via sub_80D2B2C.'
-interface: (r5 = battle object, not passed in registers) -> r0 clobbered; on collision-slot allocation
-  failure the object is freed and r0=0 is stored in ExtraVars+8
-details: 'Reads the object at r5. When Param1 is 0, it walks a list head at r5+0x68 via sub_80D2B8E and
-  copies bit 0x10 of the found object''s header flags onto this object (clearing other bits of that mask).
-  It then allocates a collision-data slot (object_createCollisionData); if none is free it zeroes ExtraVars+8
-  and frees the object via object_freeMemory. Otherwise object_setupCollisionData is called with geometry
-  taken from the spawn params: width 6 or 0x4A depending on Param1, height 5, and a value of 0x61 or 3
-  depending on Param3. It sets Timer2 = Param2 and Timer = 0xC, marks collision region 1 and hit-effect
-  type 0xA, stores CUR_STATE_UPDATE into the object''s state field, and calls sub_80D2B2C.'
+status: confirmed
+summary: 'Sets up the collision half of a freshly spawned battle attack object: spawns a companion object if needed,
+  allocates collision data (freeing the object on failure), configures shape/hit behaviour and timers, moves it
+  onto the panel in front of its related object, arms the collision region/hit effect and hands it to the pulsing-attacker
+  update state.'
+interface: void battle_initSpawnObjectCollision(u32 r1 spawnerArg, BattleObject* r5 obj, u32 r8 pulsingCtx) -> returns
+  r5, r8 from battle_objectUpdatePulsingAttacker; preserves r4/r6/r7, clobbers r0-r3/lr and flags
+details: 'r5 is a battle object. If oBattleObject_Param1 is 0, it first spawns a companion object via sub_80D2B8E
+  using oBattleObject_Element, oBattleObject_Z, oBattleObject_Params+1 and oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  passing r1 through untouched and r5+0x68 as a context pointer; it then copies the caller''s 0x10 bit of oObjectHeader_Flags
+  onto the companion (clearing that bit in the companion, ORing in the parent''s value). It always calls object_createCollisionData;
+  if that fails (r0 == 0) it zeroes oBattleObject_ExtraVars+8, frees the object via object_freeMemory and returns,
+  leaving r5/r8 as they came in. Otherwise it configures the collision: object_setupCollisionData with shape 0x4A
+  when Param1 != 0 else 6, hit behaviour 3 when Param3 == 1 else 0x61, and r2 = 5 (element/size selector). Timers
+  are initialised as oBattleObject_Timer2 = Param2 (frames until activation) and oBattleObject_Timer = 0xC (12-frame
+  pulse period). It then calls battle_syncToPanelInFrontOfRelated to place the object on the panel in front of its
+  related object, arms the collision with object_setCollisionRegion(1) and object_setCollisionHitEffect(0xA), stores
+  CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and finally enters battle_objectUpdatePulsingAttacker,
+  whose returned r5/r8 become this function''s outputs (r4/r7 reaching that call are whatever the earlier helpers
+  left).'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bne loc_80D2ADE on Param1==0 guard wraps the flag-copy loop through sub_80D2B8E (oObjectHeader_Flags
-    bit 0x10 merge); tst r0,r0 after object_createCollisionData; failure path stores 0 to ExtraVars+8
-    and calls object_freeMemory; loc_80D2AF0: r1=6 vs 0x4A from Param1, r3=0x61 vs 3 from Param3, r2=5,
-    then bl object_setupCollisionData; strh Param2 -> Timer2, strh 0xC -> Timer, then object_setCollisionRegion(1)
-    and object_setCollisionHitEffect(0xA); str CUR_STATE_UPDATE -> oBattleObject_CurStateActionPhaseAndPhaseInitialized,
-    then bl sub_80D2B2C before return'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:57456
-  - 0x08019892 object_createCollisionData
-  - 0x08003458 object_freeMemory
-  - 0x0801A140 object_setCollisionHitEffect
-  reproduce: python3 tools/asmcat.py 0x080D2AB4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The flag-copy direction is reversed: the code at lines ''ldrb r1,[r0,#Flags]…orr r1,r2…strb r1,[r0,#Flags]''
-    copies bit 0x10 from THIS object (r5) onto the FOUND object (r0), not from the found object onto this
-    one. Additionally the proposal omits the ''bl sub_80D2BC0'' call that occurs between setting Timer/Timer2
-    and calling object_setCollisionRegion. The name and overall structure (collision alloc/setup, state=CLEAR_STATE_UPDATE,
-    failure path freeing the object) are correct.; run wf investigate investigate-20261018-155607; proposed
-    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_initSpawnObjectCollision
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_initSpawnObjectCollision
+
+    ./wf verify --function battle_initSpawnObjectCollision --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_initSpawnObjectCollision
+
+    ./wf verify --function battle_initSpawnObjectCollision --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_initSpawnObjectCollision
+
+    ./wf verify --function battle_initSpawnObjectCollision --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2ab4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
+related:
+- battle_syncToPanelInFrontOfRelated
 open_questions:
-- Which spawn family (which chip/attack/object template) uses Param1/2/3, so the geometry constants (6/0x4A
-  wide, 0x61/3) can be named
-- What sub_80D2B8E searches (list at r5+0x68) and what flag bit 0x10 means on the object header
-- What sub_80D2B2C does as the post-init step
-- 'The flag-copy direction is reversed: the code at lines ''ldrb r1,[r0,#Flags]…orr r1,r2…strb r1,[r0,#Flags]''
-  copies bit 0x10 from THIS object (r5) onto the FOUND object (r0), not from the found object onto this
-  one. Additionally the proposal omits the ''bl sub_80D2BC0'' call that occurs between setting Timer/Timer2
-  and calling object_setCollisionRegion. The name and overall structure (collision alloc/setup, state=CLEAR_STATE_UPDATE,
-  failure path freeing the object) are correct.'
+- What sub_80D2B8E spawns exactly (companion/paired attack object) and which attack uses this path - identity of
+  the 'pulsing attacker' object family is inferred only from battle_objectUpdatePulsingAttacker.
+- Exact meaning of collision shape 6 vs 0x4A and hit behaviour 0x61 vs 3 in object_setupCollisionData.
+- Semantics of oBattleObject_Params+1 (param count? index?) passed to the companion spawner.
+- Which caller(s) supply r1 and what it means for the companion spawn.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80D2AB4 -> battle_initSpawnObjectCollision
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D2AB4
+- tools/wf run convert-20261020-105112
+- recomp da063e1

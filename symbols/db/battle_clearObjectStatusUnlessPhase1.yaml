@@ -1,47 +1,65 @@
 name: battle_clearObjectStatusUnlessPhase1
 address: '0x080145C2'
 kind: function
-status: probable
-summary: Battle hook that clears an object's status/affliction flags and collision timers unless the battle
-  is in phase 1 (likely the custom screen, where status timers should be frozen).
-interface: (r0 = battle object or state passed through implicitly via r10; no explicit args used) -> r0
-  = result of battle_clearObjectStatusFlagsAndTimers; no meaningful flags
-details: Reads the toolkit's battle-state pointer from r10 and loads oBattleState_BattlePhase. If the
-  phase equals 1, it returns immediately without doing anything; otherwise it tail-context-calls battle_clearObjectStatusFlagsAndTimers_801A264,
-  which clears the object's status flags in both flag words and zeroes its blind/confusion-style collision
-  timers. The phase==1 early-out suggests status clearing is suppressed while that phase (probably the
-  custom screen) is active, so timers don't expire during it. Note the callee is called with r0 holding
-  the phase byte read from battle state, so the callee's first argument is likely a battle-state pointer
-  or index rather than a direct object pointer, and the project's summary of the callee may be imprecise.
-  Only 9 instructions; no known callers, so its trigger context is unconfirmed.
+status: confirmed
+summary: Runs the per-battle-object status/timer cleanup unless the battle is in phase 1, in which case it does
+  nothing.
+interface: void battle_clearObjectStatusUnlessPhase1(battleobj_t* obj /* r5 */, toolkit_t* toolkit /* r10 */); returns
+  callee's r3 passthrough (u32), otherwise void
+details: 'Loads the toolkit''s battle state pointer (r10 + oToolkit_BattleStatePtr), reads oBattleState_BattlePhase,
+  and if the phase equals 1 it returns immediately without touching anything. Otherwise it tail-calls battle_clearObjectStatusFlagsAndTimers_801A264
+  with the battle object in r5, which presumably clears the object''s status effect flags and associated status
+  timers. Quirk: the phase check leaves r3 unmodified on the skip path, so callers see the incoming r3 when skipped
+  and the callee''s r3 when it runs; r0-r2, lr and flags are clobbered and ignored by callers.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: mov r0, r10; ldr r0,[r0,#oToolkit_BattleStatePtr] — gets battle state from toolkit; ldrb r0,[r0,#oBattleState_BattlePhase];
-    cmp r0,#1; beq locret — skips the clear when battle phase is 1; bl battle_clearObjectStatusFlagsAndTimers_801A264
-    — reuses the known status/timer-clearing routine
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:12990
-  - 0x0801A264 battle_clearObjectStatusFlagsAndTimers_801A264
-  reproduce: python3 tools/asmcat.py 0x080145C2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_clearObjectStatusUnlessPhase1
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_clearObjectStatusUnlessPhase1
+
+    ./wf verify --function battle_clearObjectStatusUnlessPhase1 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_clearObjectStatusUnlessPhase1
+
+    ./wf verify --function battle_clearObjectStatusUnlessPhase1 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_clearObjectStatusUnlessPhase1
+
+    ./wf verify --function battle_clearObjectStatusUnlessPhase1 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080145c2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
 coverage:
 - beastsp
 open_questions:
-- No known callers, so the trigger point (per-frame hook? cure event?) and what r0 the callee actually
-  expects are unconfirmed
-- Which battle phase value 1 corresponds to (custom screen vs another turn phase) is not shown here
+- what battle phase 1 represents exactly (likely the card-selection/intro phase, where status resets would be premature)
+- exact fields cleared by battle_clearObjectStatusFlagsAndTimers_801A264 (not shown here)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80145C2 -> battle_clearObjectStatusUnlessPhase1
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80145C2
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,44 +1,79 @@
 name: battle_setObjectAnim
 address: '0x080B8E70'
 kind: function
-status: probable
-summary: Sets a battle object's current animation index, invalidating the animation-copy byte so the animation
-  engine restarts it.
-interface: (r0 = battle object ptr (may be null), r1 = anim id) -> r0 unchanged; flags from tst
-details: If the object pointer r0 is non-null, the function stores the animation id r1 into oBattleObject_CurAnim
-  and writes 0xFF into oBattleObject_CurAnimCopy. Writing 0xFF to the copy makes it differ from CurAnim,
-  which downstream animation code reads as 'animation changed, restart/current anim needs re-apply'. Null
-  pointer is silently ignored, so callers can pass optional objects. All known callers are in the beast-out
-  battle routines, consistent with battle object animation control.
+status: confirmed
+summary: Sets a battle object's current animation index and invalidates its cached copy so the renderer picks up
+  the change.
+interface: void battle_setObjectAnim(BattleObject* object, u8 anim)  /* r0 = object ptr, r1 = anim; returns byte
+  in r1 (0xFF on success, anim on null ptr); clobbers NZ flags */
+details: 'Guarded setter used by the battle engine to switch an object''s animation.
+
+  If r0 is null the function returns immediately without touching memory (the
+
+  original falls straight through, leaving r1 = anim as the "return value").
+
+  Otherwise it stores the anim byte at oBattleObject_CurAnim and then writes
+
+  0xFF into oBattleObject_CurAnimCopy, a shadow field the per-frame animation
+
+  update uses as a dirty marker: when it differs from CurAnim the engine
+
+  re-resets the frame/step state for the new animation. Returns the last
+
+  value written to r1 (0xFF after a successful store), which callers appear
+
+  to ignore. Thumb, 8 bytes, no flags other than NZ (from tst) are meaningful.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: strb r1,[r0,#oBattleObject_CurAnim] stores the anim id argument; mov r1,#0xff + strb into oBattleObject_CurAnimCopy
-    is the classic anim-restart invalidation; tst r0,r0 / beq guards against a null object pointer; callers
-    at 0x080BE1DC–0x080BF94E are battle-side code (beastsp route)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:1627
-  - 0x080BE1DC sub_80BE1DC
-  - 0x080BEF02 sub_80BEF02
-  - 0x080BF8DA sub_80BF8DA
-  reproduce: python3 tools/asmcat.py 0x080B8E70
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_setObjectAnim
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_setObjectAnim
+
+    ./wf verify --function battle_setObjectAnim --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_setObjectAnim
+
+    ./wf verify --function battle_setObjectAnim --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_setObjectAnim
+
+    ./wf verify --function battle_setObjectAnim --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080b8e70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31.c
 coverage:
 - beastsp
 open_questions:
-- exact semantics of oBattleObject_CurAnimCopy in the animation update loop (assume 0xFF triggers restart)
-  not verified here
+- Whether any caller actually consumes the returned r1 value, or if it is dead.
+- Why 0xFF was chosen as the dirty sentinel (assumed no valid anim index uses it).
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80B8E70 -> battle_setObjectAnim
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80B8E70
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,48 +1,69 @@
 name: battle_applyGuardStatus
 address: '0x08110E76'
 kind: function
-status: probable
-summary: Marks the current battle object as guarding and unable to slide, then stores a random 0-3 value
-  in one of its extra vars (likely a timer/counter for the status).
-interface: (r5 = battle object pointer, object-script context) -> void; r0 clobbered
-details: Called in an object script where r5 holds the acting battle object. It ORs OBJECT_FLAGS_GUARD
-  and then OBJECT_FLAGS_CANNOT_SLIDE into the object's CollisionData ObjectFlags1 via object_setFlag1,
-  making the object block damage and immovable by sliding. It then advances the primary RNG and masks
-  the result with 3, storing the 0-3 value into oBattleObject_ExtraVars+8, most plausibly a remaining-duration
-  or phase counter for the guard state. No caller is known, so which chip/Navi script invokes it and what
-  the stored value counts down are unconfirmed.
+status: confirmed
+summary: Puts a battle object into its Guard state — sets the guarding and cannot-slide flags and rolls a 0-3 guard
+  value into its extra vars.
+interface: void battle_applyGuardStatus(BattleObject* obj /* r5 */) -> returns roll (r0 = roll 0..3, r1 = 3); sets
+  n/z from the roll, c/v left as GetPositiveSignedRNG left them
+details: "Called with the battle object pointer in r5. It:\n1. object_setFlag1(OBJECT_FLAGS_GUARD) — marks the object\
+  \ as guarding (e.g. Guard chip reaction).\n2. object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE) — blocks slide/dash movement\
+  \ while guarding.\n3. Calls GetPositiveSignedRNG, masks the result with 3 (a 0..3 roll, r1 is left holding the\
+  \ mask 3),\n   and stores it at obj + oBattleObject_ExtraVars + 8 (the third extra-var slot, apparently the\n\
+  \   object's guard-related state/counter).\nReturns the stored roll in r0 for callers that care which guard variant\
+  \ was rolled. Touches only\nthe object's flag word and that one extra-var field; the object pointer itself is\
+  \ never reloaded,\nso both flag sets and the store go to the same r5 object.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8110E76+2/+6: two bl object_setFlag1 with #OBJECT_FLAGS_GUARD and #OBJECT_FLAGS_CANNOT_SLIDE;
-    bl GetPositiveSignedRNG; and r0,#3; str r0,[r5,#oBattleObject_ExtraVars+8] stores a random 0-3 into
-    the object''s extra var; r5 used directly as the object base with an oBattleObject_ offset, matching
-    object-script convention; Captured execution in battlesweep/beastsp routes suggests a battle chip/boss
-    script context'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:6234
-  - 0x08001532 GetPositiveSignedRNG
-  - 0x0801A152 object_setFlag1
-  reproduce: python3 tools/asmcat.py 0x08110E76
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_applyGuardStatus
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_applyGuardStatus
+
+    ./wf verify --function battle_applyGuardStatus --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_applyGuardStatus
+
+    ./wf verify --function battle_applyGuardStatus --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_applyGuardStatus
+
+    ./wf verify --function battle_applyGuardStatus --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110e76 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- no known callers, so which chip or boss script triggers this is unknown
-- what oBattleObject_ExtraVars+8 counts (duration in frames/turns vs. animation variant) needs the code
-  that reads it back
+- What the 0..3 roll selects exactly (guard strength/variant, or a timer seed for the guard state).
+- Whether OBJECT_FLAGS_GUARD and OBJECT_FLAGS_CANNOT_SLIDE are also consumed elsewhere for non-Guard-chip states,
+  which would widen the function's meaning beyond "Guard chip".
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8110E76 -> battle_applyGuardStatus
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8110E76
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,45 +1,68 @@
 name: battle_clearExtraVarsOwnerRef
 address: '0x080D01FE'
 kind: function
-status: probable
-summary: Clears the owner back-reference in a battle object's ExtraVars block if it still points at this
-  object.
-interface: (r0 unused, r5 = battle object) -> r0 = 0 if cleared; flags from cmp
-details: Loads the object's oBattleObject_ExtraVars pointer, then reads the first word of that referenced
-  structure. If that word equals the battle object itself (r5), it is treated as a stale back-pointer
-  to this object and is overwritten with 0; otherwise the structure is left untouched. The function returns
-  0 in r0 in the clearing case and preserves the value otherwise. It is a small conditional cleanup step,
-  almost certainly part of an object teardown/unregistration path called from sub_80D01BC.
+status: confirmed
+summary: Detaches a battle object from its ExtraVars slot by blanking the slot's owner back-pointer if it still
+  points at the object.
+interface: void battle_clearExtraVarsOwnerRef(BattleObject* r5) // tailcalls via pop {pc}; clobbers r0, r1, NZCV
+details: 'Reads the object''s oBattleObject_ExtraVars pointer (a slot in some per-battle pool). Each slot begins
+  with a word holding the address of the BattleObject that owns it. If that owner word still equals r5, the slot
+  is cleared to 0 so the slot becomes free/unowned; if another object has taken ownership (owner != r5), the slot
+  is left untouched. Only the first word of the slot is cleared, not the whole slot. Uses r5 as the object pointer
+  (a common convention in battle code where r5 holds the "current" battle object), so it is not a normal C callable.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r1, [r5,#oBattleObject_ExtraVars] then ldr r0,[r1] reads the first field of the extra-vars
-    struct; cmp r0, r5 / bne skip: only acts when the struct''s first word is this same object; mov r0,#0
-    / str r0,[r1]: zeroes that first word, i.e. removes the self-reference; single caller sub_80D01BC
-    and no callees fit an inline cleanup helper in object teardown'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:52209
-  - 0x080D01BC sub_80D01BC
-  reproduce: python3 tools/asmcat.py 0x080D01FE
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_clearExtraVarsOwnerRef
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_clearExtraVarsOwnerRef
+
+    ./wf verify --function battle_clearExtraVarsOwnerRef --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_clearExtraVarsOwnerRef
+
+    ./wf verify --function battle_clearExtraVarsOwnerRef --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_clearExtraVarsOwnerRef
+
+    ./wf verify --function battle_clearExtraVarsOwnerRef --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d01fe ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What structure ExtraVars points to and what the cleared first field is used for elsewhere (a reader
-  of that field would confirm the semantic)
-- What sub_80D01BC does around the call, to confirm this runs during battle object deletion
+- Which subsystem owns the ExtraVars slot pool (actor/AI data? custom var block?) is not identified from this snippet
+  alone.
+- Whether the remaining words of the slot need separate clearing elsewhere.
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D01FE -> battle_clearExtraVarsOwnerRef
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D01FE
+- tools/wf run convert-20261020-105112
+- recomp da063e1

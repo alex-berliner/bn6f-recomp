@@ -1,54 +1,93 @@
 name: battle_initObjectDefaultSprite
 address: '0x080B88F0'
 kind: function
-status: probable
-summary: Reinitializes a battle object with a fixed default sprite (no shadow), resets its animation and
-  flip, and switches it into the normal update state.
-interface: (r0 = battle object pointer, passed through to callees; r5 = same object) -> r0 = CUR_STATE_UPDATE
-  stored to object state field; no meaningful return
-details: The function takes a battle object, recomputes its PanelX/PanelY from world position via object_setPanelsFromCoordinates,
-  then loads a hard-coded sprite resource (arguments 0x10, 0x3D, 0x80) with sprite_load followed by sprite_loadAnimationData.
-  It marks the sprite shadowless via sprite_noShadow, sets a flags bit 0x2 in the object header flags
-  byte, zeroes both CurAnim and CurAnimCopy and applies animation 0 with sprite_setAnimation, reloads
-  animation data, and sets palette 0 and the object's effective facing via object_getFlip/sprite_setFlip.
-  Finally it writes CUR_STATE_UPDATE into the CurStateActionPhaseAndPhaseInitialized field, so the object
-  begins executing its normal per-frame update on the next tick. The fixed resource arguments and full
-  reset suggest it swaps an object onto a generic/default sprite while keeping its position, rather than
-  a per-entity graphics init.
+status: confirmed
+summary: Resets a battle object to its default sprite setup — reloads the standard sprite, clears animation state,
+  reapplies flip/palette, and enters the normal update state.
+interface: 'void battle_initObjectDefaultSprite(Object* obj /* r5 */)  /* in: r5, lr; out: r5; clobbers r0-r3, lr,
+  nzcv */'
+details: 'Takes the battle object in r5 and (re)initializes its sprite. First
+
+  object_setPanelsFromCoordinates recomputes the object''s panel position from
+
+  its x/y coordinates. Then sprite_load is called with the constant resource
+
+  triple (0x80, 0x10, 0x3D) — the object''s default sprite resource set —
+
+  followed by sprite_loadAnimationData and sprite_noShadow, so the object has
+
+  no shadow sprite. Bit 1 (0x2) of oObjectHeader_Flags is OR-ed in, marking the
+
+  object as sprite-initialized. Animation state is reset: oBattleObject_CurAnim
+
+  and oBattleObject_CurAnimCopy are both set to 0, sprite_setAnimation(0) is
+
+  called and sprite_loadAnimationData is run again for animation 0. The palette
+
+  is set to index 0 and the flip state is read from the object via
+
+  object_getFlip and pushed back through sprite_setFlip, preserving the
+
+  object''s current facing. Finally the state machine word
+
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_UPDATE,
+
+  handing the object to the standard per-frame update logic. r5 (the object
+
+  pointer) is returned unchanged; r4 and r6 are preserved.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl object_setPanelsFromCoordinates then bl sprite_load with fixed mov r1,#0x10 / mov r2,#0x3d
-    / mov r0,#0x80 show a hard-coded sprite resource reload; bl sprite_noShadow plus orr r0,#2 into oObjectHeader_Flags
-    shows sprite attribute/flag reconfiguration; mov r0,#0; strb to oBattleObject_CurAnim and CurAnimCopy,
-    then bl sprite_setAnimation(0) shows animation reset to frame 0; object_getFlip -> sprite_setFlip
-    reapplies the object's effective facing to the new sprite; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
-    ends the routine by entering the update state
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:991
-  - 0x0800E456 object_getFlip
-  - 0x0800E2AC object_setPanelsFromCoordinates
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080B88F0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_initObjectDefaultSprite
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_initObjectDefaultSprite
+
+    ./wf verify --function battle_initObjectDefaultSprite --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_initObjectDefaultSprite
+
+    ./wf verify --function battle_initObjectDefaultSprite --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 47 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_initObjectDefaultSprite
+
+    ./wf verify --function battle_initObjectDefaultSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b88f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No caller was captured, so the object type and why the fixed resource 0x3D is used (placeholder vs.
-  specific shared sprite) is unknown
-- The meaning of header flags bit 0x2 set here is not confirmed from this function alone
+- What object types use this default sprite set (0x80/0x10/0x3D) — likely the generic/default battle object resources
+  rather than an enemy-specific one.
+- Exact meaning of bit 1 in oObjectHeader_Flags (assumed "sprite initialized").
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80B88F0 -> battle_initObjectDefaultSprite
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80B88F0
+- tools/wf run convert-20261020-105112
+- recomp da063e1

@@ -1,50 +1,102 @@
 name: battle_crackPanelBlinkOutHandler
 address: '0x080CE690'
 kind: function
-status: probable
-summary: 'Battle object tick handler: on entry plays a sound effect and cracks the panel under the object,
-  then blinks it out and destroys itself after a 12-frame timer.'
-interface: (r5 = battle object ptr) -> void; sets oBattleObject_CurPhase, Timer, object flag bit 1, and
-  CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY
-details: On phase 0 it advances the object to phase 1, clears its collision region, loads Timer with 12,
-  and plays sound effect 0x1D0 (0xD1+0xFF); if Param2 is nonzero it also calls sub_8109794 to crack the
-  tile at the object's PanelX/PanelY. While Timer <= 8 it first clears flag bit 1 of oObjectHeader_Flags
-  (visibility) and re-sets it on alternate frames (Timer bit 1), producing a blink. Timer is decremented
-  each tick; when it underflows the object's state is set to CUR_STATE_DESTROY, removing it. r4/r6/r7
-  are pushed but unused.
+status: confirmed
+summary: Per-frame handler for a battle "cracked panel" effect object during its blink-out phase; plays the crack
+  sound, blinks the sprite flag, and destroys the object when the timer expires.
+interface: void battle_crackPanelBlinkOutHandler(r5=battleObject, r2=soundArg /* passthrough to PlaySoundEffect
+  */, r1=caller's r1); returns r1 (2 when the blink block ran, else last callee's / caller's r1); clobbers r0-r3,
+  lr and NZCV flags, preserves r4-r7, r10
+details: 'Runs as a battle-object state handler with r5 = battle object.
+
+  First tick (oBattleObject_CurPhase == 0): sets CurPhase = 1, clears the
+
+  object''s collision region via object_clearCollisionRegion, loads
+
+  oBattleObject_Timer = 12, plays sound effect 0xD1 + 0xFF = 0x1D0 (passing
+
+  r2 through as PlaySoundEffect''s second argument), and if
+
+  oBattleObject_Param2 is nonzero fires sub_8109794 with the object''s
+
+  oBattleObject_PanelX / oBattleObject_PanelY panel coordinates (likely a
+
+  panel-crack particle/effect spawn).
+
+  Every tick: while oBattleObject_Timer <= 8, oObjectHeader_Flags bit 1 is
+
+  cleared and then re-set iff (timer & 2) != 0, giving a 2-on/2-off blink of
+
+  the sprite/visibility flag for the last ~9 ticks. Finally the timer is
+
+  decremented (u16); when it was already 0 the timer wraps to 0xFFFF and the
+
+  object''s combined state word
+
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized is set to
+
+  CUR_STATE_DESTROY, ending the effect. Note the u16 counter: expiry only
+
+  triggers when the timer reads exactly 0 on entry.
+
+  Quirk: r1 on output is 2 only on ticks where the blink block executed
+
+  (timer <= 8); otherwise it is whatever the last callee (or the caller)
+
+  left there — callers apparently ignore r1.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'phase 0 block: bl object_clearCollisionRegion, Timer=12, bl PlaySoundEffect with r0=0xD1+0xFF=0x1D0;
-    ldrb Param2 nonzero -> bl sub_8109794 with r0=PanelX, r1=PanelY (known panel-crack handler); Timer<=8
-    branch clears then conditionally re-sets bit 1 of oObjectHeader_Flags each other frame (blink); Timer
-    decrement then bge skip: sets word at CurStateActionPhaseAndPhaseInitialized to CUR_STATE_DESTROY
-    when Timer goes negative'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:48439
-  - 0x080005CC PlaySoundEffect
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x08109794 sub_8109794
-  reproduce: python3 tools/asmcat.py 0x080CE690
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_crackPanelBlinkOutHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_crackPanelBlinkOutHandler
+
+    ./wf verify --function battle_crackPanelBlinkOutHandler --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 187 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_crackPanelBlinkOutHandler
+
+    ./wf verify --function battle_crackPanelBlinkOutHandler --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_crackPanelBlinkOutHandler
+
+    ./wf verify --function battle_crackPanelBlinkOutHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ce690 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- which object/spell uses this handler (no callers known), so the in-game identity of the blinking object
-  and the meaning of Param2's bitfield are unconfirmed
-- exact meaning of sound effect 0x1D0 and of flag bit 1 (assumed visibility)
+- exact meaning of r2 as passed to PlaySoundEffect (panning/volume/variant?)
+- what sub_8109794 does with the panel X/Y (assumed crack-panel effect spawn, still unnamed)
+- which sound 0x1D0 is (assumed the panel-crack/break hit sound)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80CE690 -> battle_crackPanelBlinkOutHandler
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80CE690
+- tools/wf run convert-20261020-105112
+- recomp da063e1

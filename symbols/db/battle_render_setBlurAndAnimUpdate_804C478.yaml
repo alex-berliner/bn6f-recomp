@@ -1,58 +1,88 @@
 name: battle_render_setBlurAndAnimUpdate_804C478
 address: '0x0804C478'
 kind: function
-previous_names:
-- sub_804C478
-status: probable
-summary: Enables OBJ blur (0x4800) on RenderInfo then drives a GFX anim frame for the current battle object
-interface: '(r5 = ptr to AIData-like struct, r7 = GFX anim state ptr, r10 = Toolkit) -> no return; side
-  effect: RenderInfo word 0 ORed with 0x4800'
-details: "Reads RenderInfoPtr from Toolkit (r10+0x8) and ORs its u16 at offset 0 with 0x4800, enabling\
-  \ a\n  mosaic/blur bit on the render object attributes.\n  Pulls three words from the GFX anim state\
-  \ (r7+0, r7+4, r7+8) — the GFXAnimState fields CommandPos,\n  Param0, Param1. Subtracts (r5 byte 0xd\
-  \ << 16) from the third one — that byte is a render-time\n  vertical offset baked into AIData. Saves\
-  \ the three values to a stack scratch buffer and passes\n  sp as r0 plus the anim state's remaining\
-  \ words (r7+0xc, r7+0x10, r7+0x11) as r1..r3 into the\n  palette/animation runner loc_80024D8, which\
-  \ interprets the scratch as a packed (x,y,z) and the\n  other args as a frame/anim command.\n  Two `gfx_anim_*`\
-  \ tables follow in the same alignment word block (dword_804C4B0 / dword_804C4E0)\n  but they are data,\
-  \ not code. This function is only the run-step; the script streams are\n  installed elsewhere. Single\
-  \ in-line caller: sub_804C43C, which is presumably the per-frame\n  dispatcher.\n"
+status: confirmed
+summary: Enables the blur/animation redraw flag in the render-info control word and submits one sprite draw with
+  a z position offset by the blur object's subpixel value.
+interface: void battle_render_setBlurAndAnimUpdate_804C478(r5 blur_obj, r7 sprite, r10 toolkit) — outputs r2 r8
+  r9 (leftovers of the draw callee); clobbers r0 r1 r3 lr and nzcv
+details: 'Reads the toolkit''s render-info pointer (oToolkit_RenderInfoPtr from r10) and ORs the
+
+  control halfword with 0x4800, the bit combination that turns on the blur and
+
+  animation-update redraw path for the frame. Then, using r7 as a sprite state struct
+
+  (x at +0, y at +4, z at +8, palette at +0xC, layer byte at +0x10, priority byte at
+
+  +0x11) and r5 as a blur object whose byte at +0xD is a fixed-point subpixel offset,
+
+  it builds a 12-byte (x, y, z) draw packet on the guest stack. The z value has
+
+  (blur_obj[0xD] << 16) subtracted from it, lowering the sprite''s depth for the blur
+
+  pass. It calls the sprite-draw routine loc_80024D8 directly with r0 = packet
+
+  address (guest SP), r1 = palette, r2 = layer, r3 = priority. The caller keeps
+
+  r4-r9 and r10 intact across the call (r4 is used to reach the toolkit pointer).
+
+  The trailing gfx_anim_data tables after the function body belong to adjacent
+
+  animation data, not to this routine.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r1, [r4,#oToolkit_RenderInfoPtr]` then `ldrh r0,[r1] / orr r0,0x4800 / strh r0,[r1]`
-    shows a halfword OR of 0x4800 into RenderInfo word 0. - `ldr r1,[r7] / ldr r2,[r7,#4] / ldr r3,[r7,#8]`
-    matches GFXAnimState fields CommandPos, Param0, Param1 (offsets 8, 0xc, 0x10 actually; here the ldr
-    offsets are 0,4,8 from r7, so they alias the first 12 bytes of the state — i.e. LoopAddress/CommandPos/Param0).
-    - `ldrb r0,[r5,#0xd]; lsl r0,#0x10; sub r3,r3,r0` subtracts a vertical render offset from the third
-    arg before passing it through the stack. - The stack-saved triplet is then handed to `loc_80024D8`
-    as `(sp, r7+0xc, r7+0x10 byte, r7+0x11 byte)`, i.e. as a 3-word coordinate plus three control bytes.
-    - Only caller is sub_804C43C, which is a small thunk in the same file.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0804C478
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_render_setBlurAndAnimUpdate_804C478
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_render_setBlurAndAnimUpdate_804C478
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_render_setBlurAndAnimUpdate_804C478 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_render_setBlurAndAnimUpdate_804C478
+
+    ./wf verify --function battle_render_setBlurAndAnimUpdate_804C478 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_render_setBlurAndAnimUpdate_804C478
+
+    ./wf verify --function battle_render_setBlurAndAnimUpdate_804C478 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp, maps'
-  reproduce: 'grep -l ''^0804c478 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp, maps
-open_questions:
-- What the two adjacent `gfx_anim_*` tables are for (probably the two AIData Unk_0d variants the
-- runner branches on). Settled by looking at sub_804C43C to see whether it picks one based on
-- AIData state.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0804c478 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_804C478 -> battle_render_setBlurAndAnimUpdate_804C478
-  where: bn6f 7ad99d5e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- exact meaning of the individual bits in the 0x4800 render-info control mask (two bits set; one likely enables
+  blur, the other an animation update)
+- which subsystem owns the blur_obj (r5) and sprite (r7) structs; field layouts beyond +0xD/+0x0..0x11 are inferred
+  from the draw call
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1

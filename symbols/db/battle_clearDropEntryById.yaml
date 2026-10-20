@@ -1,48 +1,80 @@
 name: battle_clearDropEntryById
 address: '0x080E544C'
 kind: function
-status: probable
-summary: Searches the battle state's two drop slots for a matching id and zeroes that slot and its paired
-  word.
-interface: (r0 = drop id to match) -> r0 = destroyed; r1-r3, flags clobbered, no return value
-details: Loads the battle state via r10 (toolkit) + oToolkit_BattleStatePtr and iterates two 4-byte-strided
-  slots starting at oBattleState_Drop. Each slot has a main word (compared against r0) and a companion
-  word stored 8 bytes after the slot's own word; on a match both words are written zero. Nothing is returned,
-  and unmatched slots are left untouched. The dword_80E546C word is dead literal-pool padding, not data
-  the routine reads. Exact meaning of the drop fields (likely a drop/chip id plus count or timer) depends
-  on how callers fill them.
+status: confirmed
+summary: Zeroes the two-word drop entry (id + paired word) whose id matches r0 in the battle state's two-slot drop
+  table.
+interface: void battle_clearDropEntryById(u32 r0 dropId, toolkit in r10); returns scratch u32 r3 (last id word read,
+  0 if slot 2 matched)
+details: 'Reads the battle state pointer from toolkit+oToolkit_BattleStatePtr, then walks the
+
+  drop table at battleState+oBattleState_Drop. The table has two slots of 8 bytes each:
+
+  an id word at +0 (and +4 for slot 2) and a paired word 8 bytes after each id word.
+
+  For each slot, if the id word equals r0, both that slot''s id word and its paired word
+
+  are written to 0. The loop uses r1 as the slot counter (0..1) and advances r2 by 4 per
+
+  iteration. r3 is left holding the last id word read (0 if the second slot matched and
+
+  was cleared); it is scratch in the original and not a meaningful return value.
+
+  Callers pass the toolkit in r10 (no register save), so this must only be called from
+
+  contexts where r10 already holds the toolkit pointer.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r2,[r10,#oToolkit_BattleStatePtr]; add r2,#oBattleState_Drop — operates on battleState.drop;
-    loop runs exactly 2 iterations (cmp r1,#2) with stride 4: two slots in the drop array; cmp r0,r3 /
-    str r3,[r2]; str r3,[r2,#8] — matches r0 against slot word, zeroes it and the word 8 bytes on; no
-    bl and mov pc,lr — pure in-place state clear, no return value'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:98102
-  - 0x08018186 sub_8018186
-  - 0x080CD1BE sub_80CD1BE
-  - 0x080E5314 sub_80E5314
-  reproduce: python3 tools/asmcat.py 0x080E544C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_clearDropEntryById
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_clearDropEntryById
+
+    ./wf verify --function battle_clearDropEntryById --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_clearDropEntryById
+
+    ./wf verify --function battle_clearDropEntryById --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_clearDropEntryById
+
+    ./wf verify --function battle_clearDropEntryById --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, chips.'
+  reproduce: grep -l '^080e544c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e87b5c9b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 - chips
 open_questions:
-- what the paired +8 word means (count vs. timer) — needs a caller that writes the drop slots
-- what values r0 holds in practice (drop item id? object id?) from sub_8018186/sub_80CD1BE/sub_80E5314
-  context
+- What the paired word at +8/+12 represents (count? item id? chip id?) is not determined from this function alone.
+- No caller analysis here shows what drop ids are compared against or where the drop table is populated.
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E544C -> battle_clearDropEntryById
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E544C
+- tools/wf run convert-20261020-105112
+- recomp da063e1

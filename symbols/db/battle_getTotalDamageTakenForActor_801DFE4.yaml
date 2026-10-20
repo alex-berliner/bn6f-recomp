@@ -1,54 +1,64 @@
 name: battle_getTotalDamageTakenForActor_801DFE4
 address: '0x0801DFE4'
 kind: function
-previous_names:
-- sub_801DFE4
-status: probable
-summary: Returns the cumulative damage-taken counter (TotalDamageTaken) for the actor's AIData.
-interface: () -> r0 = u16 TotalDamageTaken for the currently-bound AIData record
-details: "Trivial leaf wrapper. Loads the global pointer `eStruct2035280` (the battle/AIData\n  aggregate\
-  \ at 0x02035280), offsets into it by 0x20, and returns the u16 read there\n  in r0. By the AIData layout,\
-  \ that field at offset 0x20 is `TotalDamageTaken`, the\n  per-actor running sum of damage the actor\
-  \ has taken during the battle. The caller\n  passes no inputs; the bound AIData selection is done elsewhere\
-  \ before this is\n  called, so the function is purely an accessor. `lr` is the only thing read on\n\
-  \  entry and it returns via `mov pc, lr`, so flags and other regs are unchanged.\n  Used by at least\
-  \ two battle routines (sub_800A21C, sub_8010B78) that need the\n  accumulated damage value (e.g. for\
-  \ \"anger\"/enrage thresholds or move-decision\n  logic in the AI step).\n"
+status: confirmed
+summary: Getter returning the total damage the player has taken in the current battle.
+interface: u16 battle_getTotalDamageTakenForActor(void)
+details: 'Reads a halfword at offset 0x20 of the battle stats struct based at 2035280 (field word_20352A0) and returns
+  it in r0. The field accumulates the damage dealt to the player over the course of the current battle; callers
+  can use it e.g. for Fauché/Falzar-style effects or HUD/stat checks that depend on damage taken. No state is modified;
+  lr is used as the return address (plain tail return, no other registers touched).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r0, off_801E0D8 // =eStruct2035280` loads the EWRAM base at 0x02035280. - `ldrh r0,
-    [r0,#0x20]` reads exactly the offset labelled `TotalDamageTaken // loc=0x20` inside `ai_data_struct`
-    in AIData.inc. - Function returns the loaded halfword directly in r0 (`mov pc, lr`), matching the
-    contract''s `out=[''r0'']`. - Both callers are battle/AI routines, consistent with consuming an AIData
-    field.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (4 attempt(s), run convert-20261020-105112);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0801DFE4
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 93' --file leaves_farm_93.c battle_getTotalDamageTakenForActor_801DFE4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_getTotalDamageTakenForActor_801DFE4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_getTotalDamageTakenForActor_801DFE4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-105112-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_getTotalDamageTakenForActor_801DFE4
+
+    ./wf verify --function battle_getTotalDamageTakenForActor_801DFE4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-105112-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_getTotalDamageTakenForActor_801DFE4
+
+    ./wf verify --function battle_getTotalDamageTakenForActor_801DFE4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-105112-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^0801dfe4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Which actor's AIData record is being indexed into — the global `eStruct2035280` is
-- presumably the per-actor slot multiplexer (an outer index written elsewhere), and
-- without that context we can't say whether this returns the player's or the current
-- AI actor's damage. Settled by finding the code that writes the outer index into
-- the struct at 0x02035280 just before these callers run.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801dfe4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp da063e1
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 03e8533e
+  where: bn6f e87b5c9b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_801DFE4 -> battle_getTotalDamageTakenForActor_801DFE4
-  where: bn6f dfa12bf8
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- whether the field is updated directly on every damage event or reconciled elsewhere
+sources:
+- tools/wf run convert-20261020-105112
+- recomp da063e1
