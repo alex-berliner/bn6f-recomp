@@ -269,6 +269,24 @@ Next ai_getTargetObjectPos(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E1654 ── */
+/* Mark the AI's current target as ... (the target object at r5's AIData gets
+ * flagged: word 1 at +0x64 and byte 1 at +0x10), returning the target pointer. */
+static u32 flag_ai_target(u32 battleObject) {
+    u32 aiData   = LD32(battleObject + oBattleObject_AIDataPtr);
+    u32 target   = LD32(aiData + oAIData_TargetObjectPtr);
+
+    ST32(target + 0x64, 1);
+    ST8(target + 0x10, 1);
+    return target;
+}
+
+/* sub_80E1654(r5 = battle object) -> r1 = target object pointer */
+Next sub_80E1654(void) {
+    R1 = flag_ai_target(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_computeMoveTargetPanel_80E16CC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: battle_aiIterateOverBattleObjectsByRow_80E1704 has no typed C interface yet */
@@ -1111,6 +1129,37 @@ Next battle_despawnEnemyObject(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E341E ── */
+/* Store a value into a battle object's scratch slot 3 of its extra-vars block
+ * (used by the AI as a general-purpose memory cell). */
+static void battle_object_set_extra_var_c(u32 object, u32 value) {
+    ST32(object + (oBattleObject_ExtraVars + 0xC), value);
+}
+
+/* sub_80E341E(r0 = object, r1 = value) -> void */
+Next sub_80E341E(void) {
+    battle_object_set_extra_var_c(R0, R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E3950 ── */
+/* Advance a battle object past its current phase: when the phase has finished
+ * initializing, move it to action 8 (phase done) and clear the phase counter
+ * so the next phase starts fresh. Objects not yet initialized are left alone. */
+static void finish_battle_object_phase(u32 obj) {
+    if (LD8(obj + oBattleObject_PhaseInitialized) != 1)
+        return;
+
+    ST8(obj + oBattleObject_CurAction, 8);
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+}
+
+/* sub_80E3950(r5 = battle object) -> nothing */
+Next sub_80E3950(void) {
+    finish_battle_object_phase(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── t4_0x30_80E3B70 ── */
 /* Dispatch to the BattleObject's state handler from the jump table at
  * 0x080E3B88, then always call object_updateSprite.
@@ -1379,6 +1428,49 @@ Next sub_80E3D1A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E4A4C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result_sub_80E4A4C;
+/* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
+static inline call_sprite_getFrameParameters_result_sub_80E4A4C call_sprite_getFrameParameters_sub_80E4A4C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_getFrameParameters);
+    return (call_sprite_getFrameParameters_result_sub_80E4A4C){ R0, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_sub_8016C9C_result;
+/* register form: generated wrapper: object_freeMemoryWrapper_8016C9C has no typed C interface yet */
+static inline call_sub_8016C9C_result call_sub_8016C9C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemoryWrapper_8016C9C);
+    return (call_sub_8016C9C_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Tick a battle object's current action.
+ * If no action is queued (CurAction == 0), start action 3 along with its animation.
+ * Otherwise ask the sprite for its frame parameters and, when the 0x80 flag is set
+ * (animation finished), run the action-completion routine object_freeMemoryWrapper_8016C9C.
+ * The object pointer in r5 is passed through unchanged. */
+static void battle_object_tick_action(u32 obj)
+{
+    if (LD8(obj + oBattleObject_CurAction) == 0) {
+        /* Nothing queued: begin action 3 and its matching animation. */
+        ST8(obj + oBattleObject_CurAction, 3);
+        ST8(obj + oBattleObject_CurAnim, 3);
+        return;
+    }
+
+    u32 frameParams = call_sprite_getFrameParameters_sub_80E4A4C(obj).r0;
+    if (frameParams & 0x80)
+        call_sub_8016C9C(obj);
+}
+
+/* sub_80E4A4C(r5 = battle object) -> r5 unchanged */
+Next sub_80E4A4C(void) {
+    battle_object_tick_action(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_spawnArmAttackObject ── */
 #define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battle_spawnArmAttackObject 0x8u
 #define CUR_STATE_UPDATE_battle_spawnArmAttackObject 0x4u
@@ -1634,6 +1726,110 @@ Next object_scriptedEffectTick(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E5264 ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E5264 0x8u
+#define CUR_STATE_UPDATE_sub_80E5264 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result call_PlaySoundEffect(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result){ R1, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_sub_80E527A_result;
+/* register form: generated wrapper: sub_80E527A has no typed C interface yet */
+static inline call_sub_80E527A_result call_sub_80E527A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80E527A);
+    return (call_sub_80E527A_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Shared tail of the state handler: the object has finished its current action, so
+ * store the extra var (3), play sound 0xAD, switch to the "update" state phase and
+ * continue into the state dispatcher, whose results are this function's outputs.
+ *
+ * inputs: r2 (passed through to PlaySoundEffect), r5 (battle object pointer), r10
+ * outputs: r5 r8 r9 r10 r11 r12 (all from sub_80E527A)
+ */
+static call_sub_80E527A_result finish_state_phase(u32 obj, u32 arg2)
+{
+    ST32(obj + oBattleObject_ExtraVars + 0xC, 3);
+    call_PlaySoundEffect(0xAD, arg2);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E5264, CUR_STATE_UPDATE_sub_80E5264);
+    return call_sub_80E527A(obj);
+}
+
+Next sub_80E5264(void) {
+    call_sub_80E527A_result res = finish_state_phase(R5, R2);
+    R5 = res.r5;
+    R8 = res.r8;
+    R9 = res.r9;
+    R10 = res.r10;
+    R11 = res.r11;
+    R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E527A ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_object_dispatchPhaseHandler_result;
+/* register form: generated wrapper: object_dispatchPhaseHandler has no typed C interface yet */
+static inline call_object_dispatchPhaseHandler_result call_object_dispatchPhaseHandler(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_dispatchPhaseHandler);
+    return (call_object_dispatchPhaseHandler_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Result registers of object_dispatchPhaseHandler (r5 r8 r9 r10 r11 r12), which
+ * this thunk passes through to its own callers. */
+typedef call_object_dispatchPhaseHandler_result PhaseHandlerRegs;
+
+/* Tail-shared thunk before object_dispatchPhaseHandler: normally the related
+ * object's phase handler is dispatched, but if the related object is currently
+ * performing action 4, or its collision flags report the 0x80010000 condition
+ * (dword_80E546C), the call is skipped and every output register is left as it
+ * came in.
+ * Note: the generated wrapper takes r5 as a parameter but passes r10 through
+ * from the live register, so the adapter must not have touched R10 yet when
+ * this runs — it still holds the r10 the thunk was entered with. */
+static PhaseHandlerRegs sub_80E527A_body(u32 object, u32 r8, u32 r9, u32 r10,
+                                         u32 r11, u32 r12)
+{
+    PhaseHandlerRegs unchanged;
+    unchanged.r5 = object;
+    unchanged.r8 = r8;
+    unchanged.r9 = r9;
+    unchanged.r10 = r10;
+    unchanged.r11 = r11;
+    unchanged.r12 = r12;
+
+    u32 related = LD32(object + oBattleObject_RelatedObject1Ptr);
+    if (LD8(related + oBattleObject_CurAction) == 4)
+        return unchanged;
+
+    u32 collision = LD32(related + oBattleObject_CollisionDataPtr);
+    u32 flags1 = LD32(collision + oCollisionData_ObjectFlags1);
+    if (flags1 & 0x80010000)
+        return unchanged;
+
+    return call_object_dispatchPhaseHandler(object);
+}
+
+/* sub_80E527A(r5 = object, r10 = handler context) -> r5 r8 r9 r10 r11 r12 */
+Next sub_80E527A(void) {
+    PhaseHandlerRegs out = sub_80E527A_body(R5, R8, R9, R10, R11, R12);
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_dispatchPhaseHandler ── */
 /* object_dispatchPhaseHandler — hand a battle object to the handler for the
  * phase it is currently in.
@@ -1809,6 +2005,56 @@ Next battle_phaseWaitTimer2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E5314 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battle_clearDropEntryById has no typed C interface yet */
+static inline void call_battle_clearDropEntryById(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_clearDropEntryById);
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result call_object_freeMemory(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Tear down a battle object: optionally clear its drop entry, zero its
+ * extra-variable block, then return its memory to the object pool.
+ * r5 = object; r5 ends unchanged (object_freeMemory preserves it). */
+static void destroy_battle_object_sub_80E5314(u32 object) {
+    /* Objects whose Param3 is still zero were never assigned a drop,
+     * so their drop entry (if any) must be released first. */
+    if (LD8(object + oBattleObject_Param3) == 0)
+        call_battle_clearDropEntryById(object);
+
+    ST32(object + oBattleObject_ExtraVars, 0);
+    call_object_freeMemory(object);
+}
+
+/* sub_80E5314(r5 = object, r10 = context) -> r5 preserved */
+Next sub_80E5314(void) {
+    destroy_battle_object_sub_80E5314(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E5410 ── */
+/* Initialize an entity's timer/state fields: set the 8-unit field at +8
+ * and clear the counter at +0x60. Returns 0 in r1 (the last value written). */
+static u32 reset_entity_fields(u32 entity) {
+    ST32(entity + 8, 8);
+    ST32(entity + 0x60, 0);
+    return 0;
+}
+
+/* sub_80E5410(r0 = entity) -> r1 */
+Next sub_80E5410(void) {
+    R1 = reset_entity_fields(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_clearDropEntryById ── */
 /* Clear the drop entry whose id matches, in the battle state's two-slot drop table.
  *
@@ -1839,6 +2085,42 @@ static u32 clear_drop_entry_by_id(u32 id, u32 toolkit) {
 /* battle_clearDropEntryById(r0 = drop id, r10 = toolkit) -> r3 */
 Next battle_clearDropEntryById(void) {
     R3 = clear_drop_entry_by_id(R0, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E54DC ── */
+/* Battle-object action dispatcher (sub_80E54DC).
+ *
+ * Reads the battle object's current action (CurAction byte) and calls the
+ * matching handler from the jump table at off_80E54F0:
+ *   action 0x00 -> object_slideXAndCheckPanel
+ *   action 0x04 -> battle_introAnimPhaseHandler
+ *   action 0x08 -> object_destroyIfExtraVarTargetNull
+ * (the table is indexed with the raw byte, so only those values land on entries).
+ *
+ * The original invokes the handler through `mov lr, pc; bx r1` with
+ *   r0 = action byte, r1 = handler address, r5 = battle object,
+ * and its results are the outgoing r5 and r8-r12, which the handler leaves
+ * in the guest registers directly; nothing else needs to be written here.
+ */
+
+/* register form: dispatches through the game's jump table with the handler
+ * address loaded from guest memory, so the call has to go through
+ * GUEST_CALL_ADDR; the callee receives r0/r1/r5 exactly as the original
+ * leaves them at its `bx r1`. */
+static void run_battle_action_handler(u32 object) {
+    u32 action  = LD8(object + oBattleObject_CurAction);
+    u32 handler = LD32(A_off_80E54F0 + action);
+
+    R0 = action;   /* handler argument: the raw action byte               */
+    R1 = handler;  /* the original leaves the handler address here too    */
+    R5 = object;   /* handler argument: the battle object being acted on  */
+
+    GUEST_CALL_ADDR(handler);
+}
+
+Next sub_80E54DC(void) {
+    run_battle_action_handler(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1957,6 +2239,79 @@ Next battle_restoreBaseSprite(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E7142 ── */
+#define oBattleObject_Param1_sub_80E7142 0x4u
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E7142 0x8u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r3; } call_battle_isBattleOver_result;
+/* register form: generated wrapper: battle_isBattleOver has no typed C interface yet */
+static inline call_battle_isBattleOver_result call_battle_isBattleOver(void) {
+    GUEST_CALL(battle_isBattleOver);
+    return (call_battle_isBattleOver_result){ R0, R1, R3 };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isTimeStop_result;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result call_battle_isTimeStop(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: battle_objectFlinchStep has no typed C interface yet */
+static inline void call_battle_objectFlinchStep(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_objectFlinchStep);
+}
+
+/* Battle object per-tick step: when the battle is over the object is switched to
+ * the destroy state; otherwise it mirrors three words from its related object
+ * and then performs a flinch step, unless the related object's current action
+ * says otherwise and time is stopped. */
+
+/* r5 = object pointer, r10 = battle context (used by the callees). */
+static void sub_80E7142_step(u32 self) {
+    if (call_battle_isBattleOver().r0 == 0) {
+        u32 related = LD32(self + oBattleObject_RelatedObject1Ptr);
+
+        /* Copy the related object's fields at +0x34..+0x3F onto this object. */
+        u32 w0 = LD32(related + 0x34);
+        u32 w1 = LD32(related + 0x38);
+        u32 w2 = LD32(related + 0x3C);
+        ST32(self + 0x34, w0);
+        ST32(self + 0x38, w1);
+        ST32(self + 0x3C, w2);
+
+        /* A nonzero Param1 means the object must flinch this tick. */
+        if (LD8(self + oBattleObject_Param1_sub_80E7142) == 0) {
+            u32 action = LD8(related + oBattleObject_CurAction);
+            if (action == 0xA) {
+                /* Action 0xA only flinches when time is not stopped;
+                 * battle_isTimeStop leaves Z set when time is stopped. */
+                if (!call_battle_isTimeStop().z)
+                    return;
+            } else {
+                /* Any other related action destroys this object. */
+                ST32(self + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E7142,
+                     CUR_STATE_DESTROY);
+                return;
+            }
+        }
+
+        call_battle_objectFlinchStep(self);
+        return;
+    }
+
+    /* Battle already over: destroy this object. */
+    ST32(self + oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E7142,
+         CUR_STATE_DESTROY);
+}
+
+/* sub_80E7142(r5 = object, r10 = battle context) -> no outputs */
+Next sub_80E7142(void) {
+    sub_80E7142_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_objectFlinchStep ── */
 /* Advance a battle object's flinch state machine:
  *  - if it is already finishing the flinch (action 8), do nothing;
@@ -1990,6 +2345,24 @@ static void flinch_step(u32 obj) {
 /* battle_objectFlinchStep(r5 = battle object) -> nothing */
 Next battle_objectFlinchStep(void) {
     flinch_step(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E71B8 ── */
+/* Write the value 8 to object+8 when the object pointer is non-NULL.
+ * This is the usual "flag object as destroyed" setter used all over the battle code.
+ * r1 is an output: it becomes 8 on a successful store and keeps its incoming
+ * value when the pointer is NULL (the original leaves it untouched there). */
+static u32 mark_object_at(u32 obj, u32 r1) {
+    if (obj == 0)
+        return r1;              /* NULL pointer: nothing to write */
+    ST32(obj + 8, 8);
+    return 8;
+}
+
+/* sub_80E71B8(r0 = object pointer, r1 = incoming r1) -> r1 */
+Next sub_80E71B8(void) {
+    R1 = mark_object_at(R0, R1);
     RETURN_TO_CALLER();
 }
 
@@ -2065,6 +2438,43 @@ Next ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486(void) {
     SET_FLAGS_CMP(i, 8); /* i == 8 here: same "equal" flags as the original's final cmp */
     R4 = savedR4;
     R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80E8124 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_object_spawnType4_result_sub_80E8124;
+/* register form: generated wrapper: object_spawnType4 has no typed C interface yet */
+static inline call_object_spawnType4_result_sub_80E8124 call_object_spawnType4_sub_80E8124(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType4);
+    return (call_object_spawnType4_result_sub_80E8124){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* Spawn battle object 0x6B and link the caller's object to it.
+ *
+ * r1-r4 are passed straight through to object_spawnType4; the spawner reports
+ * the newly created object in its r5 result. When it did produce one, the
+ * caller's r5 value (an existing battle object) is recorded in the new
+ * object's RelatedObject1 slot. r5 itself is popped back unchanged, and the
+ * spawner's other results (r2, r3, r6, r7) are simply left in place for the
+ * caller. */
+static u32 spawn_object_and_link_related(u32 a1, u32 a2, u32 a3, u32 a4, u32 related) {
+    call_object_spawnType4_result_sub_80E8124 res = call_object_spawnType4_sub_80E8124(0x6B, a1, a2, a3, a4);
+
+    if (res.r5 != 0)    /* the mov r0,r5 / beq check: skip the store if no object */
+        ST32(res.r5 + oBattleObject_RelatedObject1Ptr, related);
+
+    return related;     /* r5 is restored by the original's pop {r5} */
+}
+
+/* sub_80E8124 (r1-r4 = spawner arguments, r5 = object to link) -> r2 r3 r5 r6 r7 */
+Next sub_80E8124(void) {
+    R5 = spawn_object_and_link_related(R1, R2, R3, R4, R5);
     RETURN_TO_CALLER();
 }
 
@@ -2329,6 +2739,21 @@ Next battle_commitPanelMove(void) {
     u32 savedR6 = R6;    /* preserved overall, but clobbered by a callee */
     battle_commitPanelMove_run(R3, R5);
     R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80EAF1A ── */
+/* Check the battle object's current action: return 0xC when the object is
+ * performing action 0x52 (guard/shield-style action), otherwise 0. */
+static u32 get_action_result(u32 object) {
+    if (LD8(object + oBattleObject_CurAction) == 0x52)
+        return 0xC;
+    return 0;
+}
+
+/* sub_80EAF1A(r5 = battle object) -> r0 */
+Next sub_80EAF1A(void) {
+    R0 = get_action_result(R5);
     RETURN_TO_CALLER();
 }
 

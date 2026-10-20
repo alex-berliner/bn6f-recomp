@@ -5917,6 +5917,32 @@ Next battle_syncToPanelInFrontOfRelated(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80D4464 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_object_genericDestroy_result_sub_80D4464;
+/* register form: generated wrapper: object_genericDestroy has no typed C interface yet */
+static inline call_object_genericDestroy_result_sub_80D4464 call_object_genericDestroy_sub_80D4464(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_genericDestroy);
+    return (call_object_genericDestroy_result_sub_80D4464){ R0, R1, R2, R3, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Tear down a battle object: the object pointer stays in r5 throughout.
+ * Zeroes the head of its extra-variable list, then hands the object to the
+ * generic destroyer. r5 is returned unchanged, as the original leaves it. */
+static u32 destroy_battle_object_sub_80D4464(u32 object) {
+    u32 extraVars = LD32(object + oBattleObject_ExtraVars);
+    ST32(extraVars, 0);
+    call_object_genericDestroy_sub_80D4464(object);
+    return object;
+}
+
+/* sub_80D4464(r5 = object, lr = return address) -> r5 (unchanged) */
+Next sub_80D4464(void) {
+    R5 = destroy_battle_object_sub_80D4464(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_updateMovementHighlight_80D4544 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; } call_object_highlightPanel_result_battleObject_updateMovementHighlight_80D4544;
@@ -6040,6 +6066,175 @@ Next battleObject_phaseTickToNext_80D458C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80D45AE ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; } call_sprite_forceWhitePalette_result;
+/* register form: generated wrapper: sprite_forceWhitePalette has no typed C interface yet */
+static inline call_sprite_forceWhitePalette_result call_sprite_forceWhitePalette(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_forceWhitePalette);
+    return (call_sprite_forceWhitePalette_result){ R1, R2, R3 };
+}
+
+/* Advance one frame of the white-flash effect on a battle object.
+ *
+ * While the object's timer has bit 1 set, the sprite is forced to the white
+ * palette.  The 16-bit timer counts down every frame; when it reaches zero the
+ * flash counter (Param3) is bumped:
+ *   - counter < 2: blink again (next animation frame, phase cleared),
+ *   - counter == 2: last blink done, Param2 gains 0x3C (60 frames) and the
+ *     next animation frame is queued,
+ *   - counter > 2: the effect is finished, move on to CurAction 0x0C.
+ *
+ * Returns the value the original leaves in r1: 2 unless sprite_forceWhitePalette
+ * ran, in which case that call's r1 result.
+ */
+static u32 white_flash_tick(u32 obj) {
+    u32 r1_out = 2;                       /* mov r1, #2 before the test */
+
+    if (LD16(obj + oBattleObject_Timer) & 2)
+        r1_out = call_sprite_forceWhitePalette(obj).r1;
+
+    /* Countdown; note the original reloads the timer after the palette call. */
+    u32 timer = LD16(obj + oBattleObject_Timer) - 1;
+    ST16(obj + oBattleObject_Timer, timer);
+    if ((s32)timer > 0)
+        return r1_out;
+
+    /* Timer expired: advance the flash counter. */
+    u32 flashCount = LD8(obj + oBattleObject_Param3) + 1;
+    ST8(obj + oBattleObject_Param3, flashCount);
+
+    if (flashCount > 2) {
+        /* All flashes done: hand control back to the action state machine. */
+        ST8(obj + oBattleObject_CurAction, 0xC);
+        ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+        return r1_out;
+    }
+
+    if (flashCount == 2) {
+        /* Final blink: schedule the next one 60 frames out. */
+        ST8(obj + oBattleObject_Param2, LD8(obj + oBattleObject_Param2) + 0x3C);
+    }
+
+    /* Blink again: next animation frame, phase reset. */
+    ST8(obj + oBattleObject_CurAnim, LD8(obj + oBattleObject_CurAnim) + 1);
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    return r1_out;
+}
+
+/* sub_80D45AE(r5 = battle object) -> r1 */
+Next sub_80D45AE(void) {
+    R1 = white_flash_tick(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D45EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5; } call_sub_80D4674_result;
+/* register form: generated wrapper: sub_80D4674 has no typed C interface yet */
+static inline call_sub_80D4674_result call_sub_80D4674(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80D4674);
+    return (call_sub_80D4674_result){ R5 };
+}
+
+typedef struct { u32 r1; } call_battle_decrementHp_result;
+/* register form: generated wrapper: battle_decrementHp has no typed C interface yet */
+static inline call_battle_decrementHp_result call_battle_decrementHp(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_decrementHp);
+    return (call_battle_decrementHp_result){ R1 };
+}
+
+/* Destroy a battle object (sub_80D45EC).
+ *
+ * The object pointer lives in r5 on entry and on exit. If the object's Param1
+ * is 4, run the extra cleanup in sub_80D4674 first (which may replace the
+ * object pointer). Then deduct HP from the object's related object and mark
+ * this object as destroyed.
+ *
+ * r1 on exit is the value battle_decrementHp leaves behind; the wrapper for
+ * that call already leaves it in place. */
+static u32 destroy_battle_object_sub_80D45EC(u32 obj) {
+    if (LD8(obj + oBattleObject_Param1) == 4)
+        obj = call_sub_80D4674(obj).r5;
+
+    call_battle_decrementHp(LD32(obj + oBattleObject_RelatedObject1Ptr));
+
+    ST8(obj + oBattleObject_CurState, CUR_STATE_DESTROY);
+    return obj;
+}
+
+/* sub_80D45EC(r5 = object) -> r5 (object), r1 (from battle_decrementHp) */
+Next sub_80D45EC(void) {
+    R5 = destroy_battle_object_sub_80D45EC(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D4674 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5; } call_sub_80D4B44_result;
+/* register form: generated wrapper: sub_80D4B44 has no typed C interface yet */
+static inline call_sub_80D4B44_result call_sub_80D4B44(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_80D4B44);
+    return (call_sub_80D4B44_result){ R5 };
+}
+
+/* sub_80D4674 — initialise the Alliance field of a battle object.
+ *
+ * r5 points to the battle object. The routine clears its Alliance byte,
+ * invokes sub_80D4B44 three times (with the loop counter 3, 2, 1 in r1),
+ * each time passing a halfword from the table at byte_80D46A4 as the r4
+ * parameter, then sets the Alliance byte to 1.
+ *
+ * r5 is preserved: it is handed to sub_80D4B44 as its r5 argument and
+ * comes back there, so it is still in place when we return. The original
+ * pushes/pops r4 and r6 around the calls because sub_80D4B44 clobbers
+ * both, so their entry values are restored before returning. */
+
+#define ALLIANCE_TABLE  A_byte_80D46A4   /* halfword parameters, indexed by the loop counter */
+#define ALLIANCE_PARAM  0xAu             /* fixed r6 parameter for sub_80D4B44 */
+#define ALLIANCE_SIZE   0x00100000u      /* r3 parameter: 0x10 << 16 */
+
+/* Entry values of the registers sub_80D4B44 clobbers but this routine
+ * must preserve for its callers. */
+typedef struct {
+    u32 r4;
+    u32 r6;
+} PreservedRegs;
+
+/* Run the three sub_80D4B44 passes for one battle object. Returns the
+ * entry values of the registers the callee clobbers. */
+static PreservedRegs setup_alliance(u32 obj, u32 entry_r4, u32 entry_r6) {
+    PreservedRegs keep = { entry_r4, entry_r6 };
+
+    ST8(obj + oBattleObject_Alliance, 0);
+
+    for (u32 counter = 3; counter != 0; counter--) {
+        u32 param = LD16(ALLIANCE_TABLE + counter * 2);
+        call_sub_80D4B44(0, counter, 0, ALLIANCE_SIZE, param, obj, ALLIANCE_PARAM);
+    }
+
+    ST8(obj + oBattleObject_Alliance, 1);
+    return keep;
+}
+
+/* sub_80D4674: r5 (object) -> r5; r4 and r6 preserved */
+Next sub_80D4674(void) {
+    PreservedRegs keep = setup_alliance(R5, R4, R6);
+    R4 = keep.r4;
+    R6 = keep.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_projectileAdvanceXTick ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r6; } call_object_setPanelsFromCoordinates_result_object_projectileAdvanceXTick;
@@ -6135,6 +6330,56 @@ Next object_projectileAdvanceXTick(void) {
     ProjectileTickResult result = projectile_advance_x_tick(R5, R10);
     R5 = result.obj;
     R10 = result.r10;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D4B44 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_object_spawnType3_result_sub_80D4B44;
+/* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
+static inline call_object_spawnType3_result_sub_80D4B44 call_object_spawnType3_sub_80D4B44(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType3);
+    return (call_object_spawnType3_result_sub_80D4B44){ R4, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: BasicBattleObjectInitialize has no typed C interface yet */
+static inline void call_BasicBattleObjectInitialize_sub_80D4B44(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(BasicBattleObjectInitialize);
+}
+
+/* Battle helper: spawn object 0x7B through object_spawnType3 (the caller's
+ * r1-r4 are the spawn arguments), then, if the spawn produced a non-null
+ * object handle, run BasicBattleObjectInitialize on it.
+ *
+ * Register shuffle done by the original's push/pop pair: the spawn's r5
+ * result becomes the init call's r0, while the init call's r1-r3 are the
+ * caller's original r0-r2; r5 and r6 pass through unchanged. */
+static void spawn_object_7B_and_initialize(u32 callerR0, u32 callerR1, u32 callerR2,
+                                           u32 callerR3, u32 callerR4,
+                                           u32 callerR5, u32 callerR6) {
+    u32 object = call_object_spawnType3_sub_80D4B44(0x7B, callerR1, callerR2, callerR3, callerR4).r5;
+
+    if (object != 0)
+        call_BasicBattleObjectInitialize_sub_80D4B44(object, callerR0, callerR1, callerR2,
+                                         callerR5, callerR6);
+}
+
+/* sub_80D4B44: spawn object 0x7B from the caller's r1-r4 and initialize it.
+ * Inputs: r0-r6. Outputs: r5 (left unchanged, as the original's pop restores
+ * it). r0-r3 and the flags are clobbered. */
+Next sub_80D4B44(void) {
+    spawn_object_7B_and_initialize(R0, R1, R2, R3, R4, R5, R6);
     RETURN_TO_CALLER();
 }
 
@@ -6483,6 +6728,19 @@ Next battle_timedSelfDestructState(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80D8C06 ── */
+/* Store the "extra vars" word of the battle object in r5, setting its second
+ * halfword slot to 10. */
+static void set_object_extra_count(u32 object) {
+    ST32(object + (oBattleObject_ExtraVars + 4), 0xA);
+}
+
+/* sub_80D8C06(r5 = battle object) -> r5 field updated */
+Next sub_80D8C06(void) {
+    set_object_extra_count(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_canSlideOntoPanel ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3; } call_object_getPanelParameters_result;
@@ -6517,6 +6775,30 @@ static u32 object_canSlideOntoPanel_typed(u32 object, u32 panelType) {
 
 Next object_canSlideOntoPanel(void) {
     R0 = object_canSlideOntoPanel_typed(R0, R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80D9532 ── */
+/* Reset a battle object that was handed to us in r0:
+ *   - clear the pointer the object keeps at offset 0x60 (its attached record),
+ *   - store state 0xC at offset 9 (marks the object as finished/released).
+ * If r0 is NULL there is nothing to do. Either way r5 comes back as the
+ * object pointer (the original copies r0 into r5 before using it), and the
+ * flags left behind are those of `cmp r0, #0`: carry set, overflow clear. */
+static u32 release_object(u32 saved_r5, u32 object) {
+    if (object == 0)
+        return saved_r5;
+
+    ST32(LD32(object + 0x60), 0);   /* *object->field60 = NULL */
+    ST8(object + 9, 0xC);           /* object->state = 12 */
+    return object;
+}
+
+/* sub_80D9532(r0 = object) -> r5 = object (or incoming r5 when r0 is NULL),
+ * flags C/V from the initial comparison */
+Next sub_80D9532(void) {
+    R5 = release_object(R5, R0);
+    SET_FLAGS_CMP(R0, 0);
     RETURN_TO_CALLER();
 }
 
