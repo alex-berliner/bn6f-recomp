@@ -1319,7 +1319,19 @@ def try_kill(D, side=1):
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1]); foes = enemies_alive(side)
-    if not foes: return None
+    if not foes:
+        # ours won before the video did (run10d 1147836: our last virus gone ~120 frames early): the kill from the
+        # last frame it lived, the enemies held there until the video's deletion
+        if side != 1 or b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: return None
+        last = max([p[0] for p in b.pokes] + [0])
+        for bk in range(30, 601, 30):
+            wb = state_at(D - bk)
+            if wb is None or wb[0] <= last: return None
+            b.e.load(wb[1])
+            if enemies_alive(side):
+                log(f'  kill: no enemy left at {D}; the last one lives at {D - bk}: the kill from there')
+                return try_kill(D - bk, side)
+        return None
     # how far back this battle goes (up to 600 frames): the video's end is not looked for before it (an
     # earlier battle's result screen would undo what was fixed since)
     back = 0; wk = state_at(max(D - 600, ring[0][0]))
