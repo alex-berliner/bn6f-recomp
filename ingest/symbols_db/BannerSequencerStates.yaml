@@ -1,0 +1,62 @@
+name: BannerSequencerStates
+address: '0x08008038'
+kind: data
+previous_names:
+- off_8008038
+status: probable
+summary: Jump table of the battle banner sequencer states (BATTLE START!, TURN START!, ENEMY DELETED,
+  result messages, chip window open/close).
+details: Ten handler pointers dispatched every frame by battle_runMainStep_800801C, which loads the byte
+  at eBattleSequencerState (dword_203CA70) and uses it directly as a byte offset, so entry N is state
+  N*4 (0x00..0x24). The branch says the same table drives every banner, not just end of battle, and that
+  a normal battle walks 0x08 -> 0x20 -> 0x24 -> 0x00 -> 0x04 -> 0x08. Entry 0 is battle_bannerSeqState00Settle,
+  entry 2 (state 0x08) is the fight, entry 7 (0x1C) is battle_bannerSeqState1C, entries 8/9 (0x20/0x24)
+  are the chip-window opening/open states.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "the sequencer''s state jump table, entries 0..9 = states 0x00..0x24"
+    (citing the bn Rust code, src/battle.rs:1164). Note at asm/asm00_1.s on bn-notes: "THE GENERIC BANNER
+    SEQUENCER''s state table, indexed by eBattleSequencerState as a PRE-MULTIPLIED byte offset... It is
+    not an end-of-battle pipeline", with per-entry notes (SETTLE, BANNER_WAIT, FIGHT, WIN_COUNT, LOSE_COUNT,
+    MESSAGE_COUNT, 18, 1C, WINDOW_OPENING, WINDOW_OPEN).'
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  - bn6f/asm/asm00_1.s:11130
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10400
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10411
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10414
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10417
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10421
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10424
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10426
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10428
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10430
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10432
+  - bn-notes a5c3b9fe:asm/asm00_1.s:10435
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'off_8008038'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '10400,10409p'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '10411,10412p'
+  result: bn-notes names it BannerSequencerStates_8008038 (commit 5f6c6d00, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: battle_runMainStep_800801C does ldrb r0,[r5] (r5 = dword_203CA70) then ldr r1,[table,r0], and
+    the table holds exactly 10 words, matching the pre-multiplied 0x00..0x24 claim.
+  refs:
+  - bn6f/asm/asm00_1.s:11130
+  reproduce: |
+    sed -n '11130,11190p' bn6f/asm/asm00_1.s
+  result: 'agrees: yes'
+open_questions:
+- Per-entry roles (e.g. WIN_COUNT, LOSE_COUNT) come from the branch notes; only entries 0, 7 and the dispatch
+  mechanism were checked here.
+- A second dispatcher (sub_80084F0) uses the same state word with a different table, so state values are
+  not globally unique.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_bannerSequencerStates.'
+sources:
+- bn6f bn-notes 5f6c6d00
+- audit docs/reviews/2026-10-20-orphaned-branches.md

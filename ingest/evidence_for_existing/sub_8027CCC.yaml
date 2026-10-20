@@ -1,0 +1,44 @@
+# Not a symbols/db entry: sub_8027CCC already has one (symbols/db/sub_8027CCC.yaml (confirmed); queued rename fillGridRect_8027CCC), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_8027CCC.yaml
+address: '0x08027CCC'
+kind: function
+proposed_name: battle_applyChipWindowMapPatches
+branch_status: probable
+branch_summary: Stamps one rectangle of running tile ids into the chip window's map buffer (unk_2035000,
+  30 cells wide), row-major or column-major; callers use it to apply each ChipWindowMapPatches record.
+interface: (r0 = column, r1 = row, r2 = first tile id including palette bits, r3 = width, r4 = height,
+  r5 = 1 for column-major) -> r2 = next tile id; r0, r1, r3-r7 preserved
+details: 'Three callers walk ChipWindowMapPatches and call it once per record, threading r2 through to
+  get running ids: battle_initCustomScreen_8026840, initBackgroundTilemap and sub_8027834. The row stride
+  is 0x1E halfwords. It never reads the table itself.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Same docs/renames.md row as the table, citing src/custom.rs:10,237: "the game overwrites 27
+    rectangles with running VRAM tile ids (byte_8027B2C via sub_8027CCC)".'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:3436
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_8027CCC'
+  result: bn-notes names it applyChipWindowMapPatches_8027CCC (commit 0d5c5f33, 2026-09-15). The branch
+    read the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The body writes strh r2 across width x height into unk_2035000, stepping by 1 (or by height
+    when column-major), and the table walk happens in its three callers, so it applies one patch rather
+    than the list.
+  refs:
+  - bn6f/asm/asm03_0.s:3436
+  reproduce: |
+    sed -n '3436,3496p' bn6f/asm/asm03_0.s
+  result: 'agrees: partly'
+open_questions:
+- The name implies it applies the whole patch list; it stamps a single rectangle and is a generic helper
+  (stampTileRect would be closer).
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

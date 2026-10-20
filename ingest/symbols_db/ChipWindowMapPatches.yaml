@@ -1,0 +1,45 @@
+name: ChipWindowMapPatches
+address: '0x08027B2C'
+kind: data
+previous_names:
+- byte_8027B2C
+status: probable
+summary: The 27 rectangles stamped with running VRAM tile ids onto the chip window's BG map after its
+  base map is loaded; ends with a 0xFF byte.
+details: 'battle_initCustomScreen_8026840 and initBackgroundTilemap walk the whole list starting from
+  tile id 0x9B. sub_8027834 walks it from record 5 (label byte_8027B4A) starting from tile id 0xE1. Each
+  record has six bytes: column, row, width, height, palette bank (shifted into bits 12-15) and a column-major
+  flag. The walkers add 6 per record and stop at a first byte of 0xFF; I count 27 records, then 0xFF,
+  0x00.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row citing src/custom.rs:10,237: "the game overwrites 27 rectangles with running
+    VRAM tile ids (byte_8027B2C via sub_8027CCC) ... eight bytes: x, y, w, h, bank and the column-major
+    flag".'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:3335
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_8027B2C'
+  result: bn-notes names it ChipWindowMapPatches_8027B2C (commit 0d5c5f33, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The walkers ldrb [r6] to [r6+5], add r6,#6 and stop on 0xFF; that gives 27 records, as claimed,
+    but six bytes each, not the eight in the quote.
+  refs:
+  - bn6f/asm/asm03_0.s:3335
+  reproduce: |
+    sed -n '3335,3395p' bn6f/asm/asm03_0.s
+  result: 'agrees: partly'
+open_questions:
+- The quoted record size (eight bytes) disagrees with the code (six bytes, and six fields are listed).
+- Master splits the table into many labels (byte_8027B2D..byte_8027B31, byte_8027B4A..byte_8027B4F, and
+  so on), and sub_8027834 reads from byte_8027B4A, so these labels need folding or keeping deliberately.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_chipWindowMapPatches.'
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

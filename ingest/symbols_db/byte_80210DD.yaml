@@ -1,0 +1,38 @@
+name: byte_80210DD
+address: '0x080210DD'
+kind: data
+status: probable
+summary: Per-navi base stat records (16 bytes each); byte 0 is half the base HP, so row 0 gives 100 HP.
+details: Indexed navi*16 by init_8013B64, which stores byte 0 doubled as CurHP/MaxHP/MaxBaseHP and bytes
+  1..15 as SuperArmor, FloatShoes, AirShoes, UnderShirt, FstBarr, MegaLevel, GigaLevel, BButton, BPwrAtk,
+  BLeftAbility and more. initNaviStatsFromNaviId uses the same rows for bytes 1+ but takes HP from dword_802F0A8
+  instead. The branch evidence covers only the HP byte.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "byte_80210DD (data/dat01.s:295) row 0 gives 50 * 2 = 100" (bn src/battle.rs:52).'
+  refs:
+  - bn6f ffe10f48 (branch bn-notes)
+  - bn6f/data/dat01.s:297
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_80210DD'
+  result: bn-notes names it NaviBaseHpByRow_80210DD (commit ffe10f48, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: init_8013B64 does ldrb [r6] then add r0,r0,r0 into CurHP/MaxHP/MaxBaseHP (row 0 byte is 0x32
+    = 50), but it also loads 15 other stat bytes from each 16-byte row.
+  refs:
+  - bn6f/data/dat01.s:297
+  reproduce: |
+    sed -n '297,357p' bn6f/data/dat01.s
+  result: 'agrees: partly'
+open_questions:
+- The rows hold full navi base stats, not just HP; 'NaviBaseHpByRow' undersells the table.
+- initNaviStatsFromNaviId takes HP from dword_802F0A8, not this table, so the HP byte is used only by
+  init_8013B64.
+- 'The branch''s name NaviBaseHpByRow_80210DD was not proposed: it would mislead (see details).'
+sources:
+- bn6f bn-notes ffe10f48
+- audit docs/reviews/2026-10-20-orphaned-branches.md

@@ -1,0 +1,45 @@
+name: TempObjectRecords
+address: '0x080B8BD4'
+kind: data
+previous_names:
+- byte_80B8BD4
+status: probable
+summary: 'Sprite records for temporary attack/effect objects (held weapons, swords, bombs): sprite, palette,
+  direction and arm offset per row.'
+details: 52 rows of 5 bytes, indexed by Param1 * 5 in battle_initNaviSprite_80B8CF8 (state 0 of t1_0x5_tempAttackObject_80B8CD8)
+  and by getSpawnTablePos. Bytes 0 and 1 go to sprite_load, byte 2 plus Param4 to sprite_setPalette, byte
+  3 to DirectionAngle, and a nonzero byte 4 makes it fetch an arm position via getBattleArmPositionMaybe_8018810.
+  The animation comes from Param2, not from this table.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "The temp-attack/effect OBJECT RECORD table: one row per effect giving
+    [effect list, index, anim, palette, ...]", citing src/shot.rs:29 in the bn reimplementation.'
+  refs:
+  - bn6f ffe10f48 (branch bn-notes)
+  - bn6f/asm/asm31.s:1420
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_80B8BD4'
+  result: bn-notes names it TempObjectRecords_80B8BD4 (commit ffe10f48, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master reads rows of 5 bytes at Param1*5: [0],[1] sprite_load arguments, [2] palette base,
+    [3] DirectionAngle, [4] arm-position flag; the anim is taken from Param2, so the quoted field order
+    (anim before palette) does not match the code.'
+  refs:
+  - bn6f/asm/asm31.s:1420
+  reproduce: |
+    sed -n '1420,1480p' bn6f/asm/asm31.s
+  result: 'agrees: partly'
+open_questions:
+- The quoted layout [effect list, index, anim, palette] disagrees with the code, which has no anim byte
+  and keeps the palette at +2.
+- Rows are used for temporary attack objects (e.g. MiniBomb, swords); calling them effect records may
+  confuse them with EffectObjectRows.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_tempObjectRecords.'
+sources:
+- bn6f bn-notes ffe10f48
+- audit docs/reviews/2026-10-20-orphaned-branches.md

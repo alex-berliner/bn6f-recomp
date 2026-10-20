@@ -1,0 +1,40 @@
+name: sub_8132538
+address: '0x08132538'
+kind: function
+status: probable
+summary: Variant of e_compareLinkStates that treats state 0x84 like 4 when ranking two link records' state
+  halfwords; 0xFF if neither exceeds 2.
+interface: (r0 = two consecutive 16-byte records, state u16 at +8 of each) -> r0 = 0xFF, 1, 2, 3 or 4;
+  calls sub_803DD60 to choose which record is checked first
+details: 'The C returns 0xFF unless a = [+8] or b = [+0x18] is greater than 2. If sub_803DD60 is nonzero:
+  a==8 gives 1, b==8 gives 2, b in {0x84,4} gives 4 if a in {0x84,4} else 3, otherwise 0xFF; with sub_803DD60
+  zero the roles of a and b swap. The only caller is sub_812A8EC (asm33.s:15840).'
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "if (a == 8u) return 1u; if (b == 8u) return 2u; if (b != 0x84u && b != 4u) return 0xFFu;
+    if (a == 0x84u || a == 4u) return 4u; return 3u;". No commit description.'
+  refs:
+  - bn6f 8ff835f3 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_8132538.c
+  - bn6f/asm/asm36.s:4890
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_8132538.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master''s branches (cmp #8, cmp #0x84 / cmp #4 on both paths, r7 = 1/2/3/4) match the C, with
+    the 0x84 alias applied on both the primary and secondary paths as the C does (the C header comment
+    wrongly says secondary only).'
+  refs:
+  - bn6f/asm/asm36.s:4890
+  reproduce: |
+    sed -n '4890,4950p' bn6f/asm/asm36.s
+  result: 'agrees: yes'
+open_questions:
+- What link state 0x84 is (4 with bit 7 set?).
+sources:
+- bn6f old-master-2026-07-12 8ff835f3
+- audit docs/reviews/2026-10-20-orphaned-branches.md

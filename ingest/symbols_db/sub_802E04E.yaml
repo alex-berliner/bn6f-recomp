@@ -1,0 +1,40 @@
+name: sub_802E04E
+address: '0x0802E04E'
+kind: function
+status: probable
+summary: Subtracts r1 from the halfword counter at +0x28 of entry r0 of the 0x1D0-byte array unk_2036120,
+  clamping at 0.
+interface: (r0 = entry index, r1 = amount) -> no return; entry = getEntryPtr_2036120_1D0_802E070(r0);
+  entry[+0x28] = max(0, entry[+0x28] - r1) (u16); clobbers r0-r2
+details: The C gets the slot from the 0x1D0-stride entry helper, subtracts the amount from the u16 at
+  +40 as a signed value and stores 0 if it went negative. battle_addCounterAmount (asm03_0.s:19385) calls
+  it as the alternate path to battle_addCappedCounter for its counter at field 0x28; other callers are
+  sub_802E95C and sub_80E45F8.
+evidence:
+- method: assembly-reading
+  date: '2026-05-24'
+  detail: 'Old C: "s32 v = (s32)(*(u16 *)(slot + 40)) - (s32)dec; if (v < 0) v = 0; *(u16 *)(slot + 40)
+    = (u16)v;" (sub_802E070 is master''s getEntryPtr_2036120_1D0_802E070). No commit description.'
+  refs:
+  - bn6f cf06be2b (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_802e04e.c
+  - bn6f/asm/asm03_0.s:17458
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_802e04e.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master: bl getEntryPtr_2036120_1D0_802E070; ldrh r0,[r2,#0x28]; sub r0,r0,r1; bge; mov r0,#0;
+    strh, matching the C including the signed floor.'
+  refs:
+  - bn6f/asm/asm03_0.s:17458
+  reproduce: |
+    sed -n '17458,17518p' bn6f/asm/asm03_0.s
+  result: 'agrees: yes'
+open_questions:
+- What the counter at +0x28 of an unk_2036120 entry is.
+sources:
+- bn6f old-master-2026-07-12 cf06be2b
+- audit docs/reviews/2026-10-20-orphaned-branches.md

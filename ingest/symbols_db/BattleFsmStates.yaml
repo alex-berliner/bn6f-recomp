@@ -1,0 +1,63 @@
+name: BattleFsmStates
+address: '0x080091BC'
+kind: data
+previous_names:
+- off_80091BC
+status: probable
+summary: Jump table of the top-level battle state machine states 0x00..0x24 (intro, chip window, fight,
+  result, tutorial messages, comm error).
+details: Ten handler pointers dispatched by battle_runBattlePhase_8009158 using BattleState.Index_01 as
+  a pre-multiplied byte offset. The branch says a battle walks 0x00 -> 0x04 -> 0x08 -> 0x0C and parks
+  at 0x0C, the state that runs the banner sequencer each frame. Entry 0x08 is battle_fsmState08 (waits
+  on battle_isChipWindowReady), 0x0C is battle_stepRunAndDecideResult_800938A, 0x1C/0x20 are battle_fsmState1C/battle_fsmState20
+  and 0x24 is battle_stateNaviCommErrorMsg.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Table note at asm/asm00_1.s on bn-notes: "eBattleState.Index_01 selects a row here... a PRE-MULTIPLIED
+    byte offset... A battle walks 0x00 -> 0x04 -> 0x08 -> 0x0C and parks at 0x0C, which is the state that
+    runs the banner sequencer every frame (measured)." The renames.md row says "same" (pointing to the
+    previous row''s evidence).'
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  - bn6f/asm/asm00_1.s:13663
+  - bn-notes a5c3b9fe:asm/asm00_1.s:12808
+  - bn-notes a5c3b9fe:asm/asm00_1.s:12813
+  - bn-notes a5c3b9fe:asm/asm00_1.s:12815
+  - bn-notes a5c3b9fe:asm/asm00_1.s:12817
+  - bn-notes a5c3b9fe:asm/asm00_1.s:12820
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'off_80091BC'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '12808,12811p'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '12813,12813p'
+  result: bn-notes names it BattleFsmStates_80091BC (commit 5f6c6d00, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: runtime
+  date: '2026-09-15'
+  detail: The branch's note says this was measured live against the original game (by the bn reimplementation's
+    harness); the measurement is not in this repo and was not repeated in this audit.
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'off_80091BC'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '12808,12811p'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '12813,12813p'
+  result: claim recorded as the branch states it
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: battle_runBattlePhase_8009158 does ldrb r0,[r5,#oBattleState_Index_01]; ldr r1,[table,r0], the
+    table has 10 words commented 0x00..0x24, and battle_stepRunAndDecideResult_800938A (entry 0x0C) is
+    the only caller of battle_runMainStep_800801C.
+  refs:
+  - bn6f/asm/asm00_1.s:13663
+  reproduce: |
+    sed -n '13663,13723p' bn6f/asm/asm00_1.s
+  result: 'agrees: yes'
+open_questions:
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_fsmStates.'
+sources:
+- bn6f bn-notes 5f6c6d00
+- audit docs/reviews/2026-10-20-orphaned-branches.md

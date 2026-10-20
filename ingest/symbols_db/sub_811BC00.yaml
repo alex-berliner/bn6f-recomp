@@ -1,0 +1,40 @@
+name: sub_811BC00
+address: '0x0811BC00'
+kind: function
+status: probable
+summary: If record r2 of eStructArr2008450 (0x58-byte stride) is in use, writes u16 r0 at +0xe, u16 r3
+  at +0x18 and byte r1 at +9.
+interface: (r0 = u16 for +0xe, r1 = byte for +9, r2 = record index, r3 = u16 for +0x18) -> no return;
+  no-op if the record's first byte is 0
+details: The C computes 0x02008450 + idx*88, returns if byte 0 is zero, and otherwise stores the three
+  fields; it inlines getStructFrom2008450 because that helper reports emptiness through the Z flag. Master
+  calls getStructFrom2008450 and branches on its flags. Callers are sub_812EC2C and two sites in asm35.s
+  (one loads a halfword from word_2023FA0 into record 9).
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "if (*p == 0u) return; *(u16 *)(p + 0x0e) = (u16)a; *(u16 *)(p + 0x18) = (u16)b; *(u8
+    *)(p + 0x09) = (u8)c;". Commit description: "write 3 fields into 0x02008450 slot if non-empty".'
+  refs:
+  - bn6f 0ffd4d93 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_811bc00.c
+  - bn6f/asm/asm32.s:29352
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_811bc00.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master: bl getStructFrom2008450 (r0 = idx); beq skip; strh [sp] to +0xe, strh [sp,#0xc] to
+    +0x18, strb [sp,#4] to +9 on the returned r1, matching the C.'
+  refs:
+  - bn6f/asm/asm32.s:29352
+  reproduce: |
+    sed -n '29352,29412p' bn6f/asm/asm32.s
+  result: 'agrees: yes'
+open_questions:
+- What the eStructArr2008450 fields +9, +0xe and +0x18 mean.
+sources:
+- bn6f old-master-2026-07-12 0ffd4d93
+- audit docs/reviews/2026-10-20-orphaned-branches.md

@@ -1,0 +1,47 @@
+# Not a symbols/db entry: sub_801EA34 already has one (symbols/db/sub_801EA34.yaml (confirmed); queued rename loadFourTileSlotsFromSelectorTable_801EA34), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_801EA34.yaml
+address: '0x0801EA34'
+kind: function
+proposed_name: battle_queueChipPowerDigits
+branch_status: probable
+branch_summary: Queues the four digit glyphs of a chip's power number into OBJ VRAM for the chip name
+  display.
+interface: (r1 = VRAM destination of rightmost digit, r4 = four packed digit nibbles) -> queues 8 GFX
+  transfers; r1 stepped back; preserves r5, r6
+details: For each of four nibbles of r4 (low first) it picks a glyph pointer from off_801FD90 and queues
+  two 0x20-byte transfers (top at r1, bottom at r1+0x80), then steps r1 back by 0x20, so digits are laid
+  right to left. Its caller chip_renderListEntry converts the chip's power to BCD and pads with 0xA nibbles;
+  destinations come from dword_801EA7C/dword_801EA88 (0x6017060/0x6017160 for player one, 0x60174E0/0x60175E0
+  for player two).
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "the routine''s own note in this repo" ("Queue four decimal digits of
+    a chip''s power figure into OBJ tiles"). Note at asm/asm00_2.s on bn-notes (loc_801E9FC): r4 holds
+    four nibbles of digit index selecting glyphs from off_801FD90, each digit two 0x20-byte transfers,
+    r1 steps back 0x20, "so the digits are laid right to left."'
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  - bn6f/asm/asm00_2.s:33897
+  - bn-notes a5c3b9fe:asm/asm00_2.s:31523
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_801EA34'
+    git -C bn6f show a5c3b9fe:asm/asm00_2.s | sed -n '31523,31529p'
+  result: bn-notes names it queueChipPowerDigits_801EA34 (commit 5f6c6d00, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Code loops 4 times over r4 nibbles, loads from off_801FD90, does two QueueEightWordAlignedGFXTransfer
+    calls (r1 and r1+0x80) and sub r1,#0xa0 after add #0x80, and its caller feeds memory_bcdConvert of
+    the chip power.'
+  refs:
+  - bn6f/asm/asm00_2.s:33897
+  reproduce: |
+    sed -n '33897,33957p' bn6f/asm/asm00_2.s
+  result: 'agrees: yes'
+sources:
+- bn6f bn-notes 5f6c6d00
+- audit docs/reviews/2026-10-20-orphaned-branches.md

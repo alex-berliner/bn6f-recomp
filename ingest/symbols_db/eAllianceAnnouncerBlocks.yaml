@@ -1,0 +1,42 @@
+name: eAllianceAnnouncerBlocks
+address: '0x0203CF00'
+kind: ram
+previous_names:
+- byte_203CF00
+status: probable
+summary: Two 0x50-byte per-alliance blocks used to sync and queue the chip-name popup announcers.
+details: The branch says the blocks are indexed alliance -> &byte_203CF00[alliance*0x50]. Its note says
+  byte 1 is a sync byte between the two sides' popup announcers that object_drawChipName waits on. On
+  master byte_203CF00_getEntryPtr_800BF5C returns base + index*0x50, zeroFill_800BF66 clears 0xA0 bytes
+  (two entries), and battle_queueEffectRequest writes type, param and object fields into an entry.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row cites "alliance -> &byte_203CF00[alliance * 0x50]" (this repo''s own note);
+    note at asm/object.s on bn-notes: byte 1 "is a synchronisation byte between the two sides'' popup
+    announcers, not a property of any chip".'
+  refs:
+  - bn6f 2ea59267 (branch bn-notes)
+  - bn6f/ewram.s:3189
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_203CF00'
+  result: bn-notes names it eAllianceAnnouncerBlocks_203CF00 (commit 2ea59267, 2026-09-15). The branch
+    read the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The 0x50 stride, the two-entry 0xA0 clear and the byte-1 reads (battleObject_getIndex_800B892)
+    match, but the announcer role is not visible from the accessors alone.
+  refs:
+  - bn6f/ewram.s:3189
+  reproduce: |
+    sed -n '3189,3193p' bn6f/ewram.s
+  result: 'agrees: yes'
+open_questions:
+- Master symdb calls entries battle effect or spawn request slots; whether the whole block is announcer-specific
+  is not shown.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_allianceAnnouncerBlocks.'
+sources:
+- bn6f bn-notes 2ea59267
+- audit docs/reviews/2026-10-20-orphaned-branches.md

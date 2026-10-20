@@ -1,0 +1,42 @@
+name: dword_2033000
+address: '0x02033000'
+kind: ram
+status: probable
+summary: Shared EWRAM work buffer; during chip select it holds the chip-use command queue built when the
+  player confirms chips.
+details: The branch calls it ePAScratch, a scratch block zeroed 0x48 bytes by the chip-select code. On
+  master custMenu_confirmAndProcessSelectedChips_8029110 zero-fills 0x48 bytes here, fills six halfwords
+  with 0xFFFF, writes chip IDs, codes (+0x30) and effect values (+0xC, +0x24), and processChipCommandQueue_8029224
+  then walks it. The same address is also the folder shuffle buffer in shuffleFolder_800A570 (0x3C halfwords
+  copied out) and is read by chip-drop code in asm29.s.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row (Chip-select window and Program Advance section): "scratch dword_2033000
+    (zeroed 0x48 bytes)", citing docs/recon/T10.md:10.'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/ewram.s:2532
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'dword_2033000'
+  result: bn-notes names it ePAScratch_2033000 (commit 0d5c5f33, 2026-09-15). The branch read the code
+    and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The 0x48-byte ZeroFillByWord in custMenu_confirmAndProcessSelectedChips_8029110 matches, but
+    shuffleFolder_800A570 and getRandomChipBonusOfKindFromTable (asm29.s) use the same address for unrelated
+    work.
+  refs:
+  - bn6f/ewram.s:2532
+  reproduce: |
+    sed -n '2532,2536p' bn6f/ewram.s
+  result: 'agrees: partly'
+open_questions:
+- The buffer is reused by folder shuffling and chip-drop code, so a PA-specific name may mislead.
+- Whether Program Advance itself is the main user is not shown; the confirm handler uses it as a chip-use
+  queue.
+- 'The branch''s name ePAScratch_2033000 was not proposed: it would mislead (see details).'
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

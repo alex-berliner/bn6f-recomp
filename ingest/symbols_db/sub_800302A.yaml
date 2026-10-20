@@ -1,0 +1,41 @@
+name: sub_800302A
+address: '0x0800302A'
+kind: function
+status: probable
+summary: Sets bits 2-3 of the object's sprite byte +0x16 to r0 and sets bit 0x40 of sprite byte +0x03
+  (SpriteFlags2).
+interface: (r0 = 2-bit value, r5 = ObjectHeader) -> no return; sprite = r5 + (TypeAndSpriteOffset & 0xF0);
+  sprite[0x16] = (sprite[0x16] & ~0xC) | (r0 << 2); sprite[0x3] |= 0x40; clobbers r0-r3
+details: The C finds the object's sprite block at r5 + (byte +2 & 0xF0), replaces bits 2-3 of byte +0x16
+  with the argument and ORs 0x40 into byte +0x03. Master's assembly does the same byte read-modify-writes.
+  The only caller (asm31.s:101325) calls it with r0 = 1 right after loading the sprite and setting sprite_setField0x3Bit5.
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "spr[0x16] = (u8)((spr[0x16] & ~0xCu) | (val << 2)); spr[0x03] = (u8)(spr[0x03] | 0x40u);".
+    Commit description: "sprite Unk_16 bit-stripe set + Unk_03 |= 0x40".'
+  refs:
+  - bn6f f556a832 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_800302a.c
+  - bn6f/asm/sprite.s:1770
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_800302a.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master''s ldrb/bic #0xc/orr (r0<<2)/strb on oObjectSprite_CurFrame and ldrb/orr #0x40/strb
+    on oObjectSprite_SpriteFlags2 match the C exactly.'
+  refs:
+  - bn6f/asm/sprite.s:1770
+  reproduce: |
+    sed -n '1770,1830p' bn6f/asm/sprite.s
+  result: 'agrees: yes'
+open_questions:
+- Master labels sprite +0x16 as CurFrame (u16), but this function treats bits 2-3 of its low byte as a
+  field; what those bits and SpriteFlags2 bit 0x40 control is unknown.
+- The C does not mask val to 2 bits (nor does the asm), so larger values spill into other bits.
+sources:
+- bn6f old-master-2026-07-12 f556a832
+- audit docs/reviews/2026-10-20-orphaned-branches.md

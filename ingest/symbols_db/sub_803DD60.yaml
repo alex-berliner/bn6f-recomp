@@ -1,0 +1,41 @@
+name: sub_803DD60
+address: '0x0803DD60'
+kind: function
+status: probable
+summary: 'Link helper: returns 0 if the eStruct200BC30 jump offset is 4, 1 if 8, else 1 iff eLinkState+0x48
+  has bit 0 or 1 set.'
+interface: () -> r0 = 0/1; reads eStruct200BC30_getJumpOffset00() and the u32 at eLinkState+0x48 (0x02009A18);
+  clobbers r1, r7 saved
+details: 'The C calls eStruct200BC30_getJumpOffset00: a nonzero value of 4 returns 0, 8 returns 1, and
+  any other value (or 0) falls through to returning (*(u32 *)(0x020099D0+0x48) & 3) != 0. e_compareLinkStates
+  and its variants sub_81324A8/sub_8132538 use the result to decide which of two link records gets priority;
+  it has about 40 callers across link/battle code.'
+evidence:
+- method: assembly-reading
+  date: '2026-05-24'
+  detail: 'Old C: "if (jo == 4u) return 0u; if (jo == 8u) return 1u; ... if ((*(u32 *)(0x020099D0u + 0x48u)
+    & 3u) != 0u) return 1u;". No commit description.'
+  refs:
+  - bn6f 8bb93028 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_803dd60.c
+  - bn6f/asm/asm03_1_1.s:10127
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_803dd60.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Master's branches (cmp r1,#4 -> 0; cmp r1,#8 -> 1; else ldr [eLinkState,#0x48] & 3, tst) match
+    the C exactly.
+  refs:
+  - bn6f/asm/asm03_1_1.s:10127
+  reproduce: |
+    sed -n '10127,10187p' bn6f/asm/asm03_1_1.s
+  result: 'agrees: yes'
+open_questions:
+- Game meaning (possibly 'this side is the link parent/host') is not established; what eLinkState+0x48
+  bits 0-1 and jump offsets 4/8 represent.
+sources:
+- bn6f old-master-2026-07-12 8bb93028
+- audit docs/reviews/2026-10-20-orphaned-branches.md

@@ -1,0 +1,46 @@
+name: sub_801393A
+address: '0x0801393A'
+kind: function
+status: probable
+summary: 'Applies the navi''s stat-based abilities to its battle object: B-button attack bytes and Float/Air
+  Shoes, UnderShirt and SuperArmor flags.'
+interface: (r5 = player battle object) -> no return; writes AIData.BPwrAtk/BLeftAbility when untransformed
+  and sets or clears object flags
+details: 'If NaviStats.Transformation is 0 it copies NaviStats.BPwrAtk and BLeftAbility into the AIData.
+  It then sets or clears object flag 0x20 (FloatShoes, plus a collision update), 0x10 (AirShoes), always
+  sets 0x2000000, and sets or clears bit 18 (UnderShirt) and bit 17 (SuperArmor) from the matching NaviStats
+  bytes. The branch notes focus on the SuperArmor flag: with it set HP still drops but the flinch is suppressed.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-25'
+  detail: 'Note at asm/asm00_2.s on bn-notes (loc_8013938): "sub_801393A reads and writes the super-armour
+    flag. With it set, HP still drops (damage is unconditional, see battle_801B1C4) but CurAction stays
+    0x08 and the flinch/knockback is suppressed." A second note: the lsl #0x11 + r2=#0x23 (NaviStats+0x23
+    SuperArmor) + tst sequence "is a boolean gate, not a product. Bit 21 is ANGER."'
+  refs:
+  - bn6f a5c3b9fe (branch bn-notes)
+  - bn6f/asm/asm00_2.s:11517
+  - bn-notes a5c3b9fe:asm/asm00_2.s:10640
+  - bn-notes a5c3b9fe:asm/asm00_2.s:10696
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe:asm/asm00_2.s | sed -n '10640,10642p'
+    git -C bn6f show a5c3b9fe:asm/asm00_2.s | sed -n '10696,10697p'
+  result: bn-notes documents it in a note but keeps the name sub_801393A. The branch read the code and
+    cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Code reads NaviStats+0x23 (SuperArmor) and sets or clears object flag 1<<17, as the note says,
+    but it also handles Transformation, BPwrAtk, BLeftAbility, FloatShoes, AirShoes, UnderShirt and the
+    0x2000000 flag, which the note omits.
+  refs:
+  - bn6f/asm/asm00_2.s:11517
+  reproduce: |
+    sed -n '11517,11577p' bn6f/asm/asm00_2.s
+  result: 'agrees: partly'
+open_questions:
+- The function does more than super armour; a name should reflect applying all navi-stat ability flags.
+- The flinch-suppression effect is claimed in the note but lives in other code, not in this function.
+sources:
+- bn6f bn-notes a5c3b9fe
+- audit docs/reviews/2026-10-20-orphaned-branches.md

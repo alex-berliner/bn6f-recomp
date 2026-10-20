@@ -1,0 +1,54 @@
+name: ChipWindowStates
+address: '0x08026AA4'
+kind: data
+previous_names:
+- off_8026AA4
+status: probable
+summary: Jump table of the chip-select window's 24 inner states. eS20364C0.JumpOffset01 indexes it as
+  a pre-multiplied byte offset (0x00..0x5C).
+details: 'custMenuMainMaybe_8026A88 loads JumpOffset01, calls off_8026AA4[offset] and then runs custMenu_dispatchState_802A2B0.
+  The table has 24 word entries, 0x00 to 0x5C. The branch documents three rows: 0x00 is the slide-in,
+  0x04 the interactive wait, which leaves to 0x40 on a pick, and 0x08 the slide-out. On master, row 0x00
+  (battle_custMenuAnimateCursorToOK_8026B04) starts [r5+0x40] at 0x78, takes 0xC off per call and then
+  writes 4, or 0x2C when a first-battle tutorial step is active; row 0x04 (custMenuUpdateWaitSelectionState_8026CCC)
+  writes 0x40.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "the table custMenuMainMaybe_8026A88 dispatches JumpOffset01 through";
+    notes at asm/asm03_0.s:830-845 on bn-notes: "it is a PRE-MULTIPLIED byte offset -- which is why the
+    code writes 4, 0x2c or 0x40 into it", "0x00 -- THE SLIDE-IN", "0x04 -- the interactive wait", "0x08
+    -- the slide-out: the same ten steps the other way".'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:880
+  - bn-notes a5c3b9fe:asm/asm03_0.s:830
+  - bn-notes a5c3b9fe:asm/asm03_0.s:837
+  - bn-notes a5c3b9fe:asm/asm03_0.s:842
+  - bn-notes a5c3b9fe:asm/asm03_0.s:845
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'off_8026AA4'
+    git -C bn6f show a5c3b9fe:asm/asm03_0.s | sed -n '830,835p'
+    git -C bn6f show a5c3b9fe:asm/asm03_0.s | sed -n '837,840p'
+  result: bn-notes names it ChipWindowStates_8026AA4 (commit 0d5c5f33, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Confirmed: ldrb JumpOffset01 then ldr r1,[r1,r0] over 24 entries; row 0x00 writes 0x2C or 4
+    (0x8026BD6/0x8026BE0), row 0x04 writes 0x40, and row 0x08 uses byte_8026C88 and dword_8026CC8.'
+  refs:
+  - bn6f/asm/asm03_0.s:880
+  reproduce: |
+    sed -n '880,940p' bn6f/asm/asm03_0.s
+  result: 'agrees: yes'
+open_questions:
+- Master's symdb calls row 0x00 'animates the chip cursor sliding right to the OK column' (battle_custMenuAnimateCursorToOK_8026B04),
+  which conflicts with the branch's slide-in reading.
+- renames.md speaks of 'the other 20 rows', but the table has 24 rows; only three are confirmed against
+  their writers.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_chipWindowStates.'
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

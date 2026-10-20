@@ -1,0 +1,45 @@
+name: sub_80084F0
+address: '0x080084F0'
+kind: function
+status: probable
+summary: Second dispatcher over the battle sequencer state word, used during the battle-result phase with
+  its own seven-state table.
+interface: (no args) -> r0 = byte [dword_203CA70+4]; dispatches off_8008508[[dword_203CA70]] with r5 =
+  dword_203CA70
+details: Same shape as battle_runMainStep_800801C but indexes a 7-entry table off_8008508 (sub_8008528,
+  battle_dispatchNextPhase, e_dispatchUpdateByState, sub_8008764, battle_effectWaitDispatch, battle_introStepDispatch,
+  npc_checkRecordFlagFinish). Its only caller is battle_processBattleResultPhase (0x0800980E), not the
+  banner sequencer's FSM state, so the meaning of a state value depends on which battle FSM state is running.
+  The branch keeps address names for these seven states.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Note at asm/asm00_1.s on bn-notes: "A SECOND dispatcher over the SAME eBattleSequencerState
+    word, with its own seven-entry table (off_8008508) instead of BannerSequencerStates", reached from
+    sub_800980E rather than battleFsmState0C; it adds that sub_800855E is "the fight state''s per-frame
+    body, which adds to the CUSTOM gauge and opens every frame with UnpauseBattle."'
+  refs:
+  - bn6f 2ea59267 (branch bn-notes)
+  - bn6f/asm/asm00_1.s:11794
+  - bn-notes a5c3b9fe:asm/asm00_1.s:11058
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '11058,11064p'
+  result: bn-notes documents it in a note but keeps the name sub_80084F0. The branch read the code and
+    cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Code loads dword_203CA70, uses ldrb [r5] as a byte offset into the 7-word off_8008508, and the
+    only bl to it is in battle_processBattleResultPhase at 0x0800981E.
+  refs:
+  - bn6f/asm/asm00_1.s:11794
+  reproduce: |
+    sed -n '11794,11854p' bn6f/asm/asm00_1.s
+  result: 'agrees: yes'
+open_questions:
+- sub_800855E named in the note is master's battle_dispatchNextPhase (entry 1, offset 4), whose master
+  name suggests a different role than 'fight per-frame body'.
+- No rename proposed; a name such as a result-phase sequencer step could be considered.
+sources:
+- bn6f bn-notes 2ea59267
+- audit docs/reviews/2026-10-20-orphaned-branches.md

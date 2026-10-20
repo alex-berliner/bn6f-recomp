@@ -1,0 +1,43 @@
+name: sub_814FE0C
+address: '0x0814FE0C'
+kind: function
+status: probable
+summary: 'Sound-sequence extended-command handler: reads the next byte from the track''s command stream
+  (+0x40) into track byte +0x2E and advances the stream.'
+interface: (r0 = ignored, r1 = track/context block) -> no return; r1[0x2E] = *r1->[+0x40]; r1->[+0x40]
+  += 1; clobbers r0, r2
+details: The C (BYTE_READER macro) loads the stream pointer at ctx+0x40, copies one byte to ctx+0x2E and
+  stores the pointer back incremented by one. It is reached only through the 12-entry table off_81C06C0,
+  which sub_814FD54 indexes with a sub-command byte read from the same stream. The table order and offsets
+  (+0x40 command pointer, +0x24..0x2F tone data) match the m4a sound engine's MusicPlayerTrack and its
+  xcmd handlers (this entry lines up with ply_xsust, setting tone.sustain).
+evidence:
+- method: assembly-reading
+  date: '2026-06-04'
+  detail: 'Old C (sub_814fdd0_series.c, found by grep): "BYTE_READER(sub_814FE0C_c, 0x2E)" with the macro
+    body "u8 *stream = *(u8 **)(ctx + 0x40); ctx[off] = *stream; *(u8 **)(ctx + 0x40) = stream + 1;".
+    No commit description.'
+  refs:
+  - bn6f e6bb4969 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_814fdd0_series.c
+  - bn6f/asm/libs.s:26288
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_814fdd0_series.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master: ldr r0,[r1,#0x40]; ldrb; strb to r1+0x2E; ldr [r1,#0x40]; add #1; str, identical to
+    the C.'
+  refs:
+  - bn6f/asm/libs.s:26288
+  reproduce: |
+    sed -n '26288,26348p' bn6f/asm/libs.s
+  result: 'agrees: yes'
+open_questions:
+- Identification as m4a ply_xsust (tone.sustain) is by struct layout and table order only; master names
+  neighbours text_ReadNextChar_814FE34 and readNextStreamByte_814FE40 differently.
+sources:
+- bn6f old-master-2026-07-12 e6bb4969
+- audit docs/reviews/2026-10-20-orphaned-branches.md

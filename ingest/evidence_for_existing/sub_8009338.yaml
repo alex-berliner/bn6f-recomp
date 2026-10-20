@@ -1,0 +1,48 @@
+# Not a symbols/db entry: sub_8009338 already has one (symbols/db/sub_8009338.yaml (probable)), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_8009338.yaml
+address: '0x08009338'
+kind: function
+proposed_name: battle_fsmState08
+branch_status: probable
+branch_summary: 'Battle FSM state 0x08: opens the custom (chip select) screen and waits until it is ready,
+  then enters the fight state 0x0C.'
+interface: (r5 = BattleState) -> writes Index_01 = 0x0C (or goes to state 0x14 when the window check returns
+  2); sets both players' AIData BeastOutLockoutTimer = 1
+details: Entry 0x08 of BattleFsmStates. On first entry it sets battle-state flag 4 (setBattleStateUnk11Flag_800A9CA)
+  and calls battle_initCustomScreen_8026840; every frame it polls sub_8026A28 (battle_isChipWindowReady).
+  Return 0 holds, 2 jumps to phase 0x14 via battle_stateGotoPhase14_800AABC, anything else sets both players'
+  BeastOutLockoutTimer to 1 and writes Index_01 = 0x0C.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md group row for battleFsmState00..24: "the table plus the two independently-confirmed
+    rows above; 0x0C is ''the Index_01 = 0x0C handler; the only caller of sub_800801C'' (battlestart_gunner.md:62-64)".
+    Note on bn-notes: "Index_01 holds at 0x08 at battleFsmState08''s beq while eS20364C0.JumpOffset00
+    holds at 4"; table note: "gates on isChipWindowReady returning non-zero".'
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  - bn6f/asm/asm00_1.s:13932
+  - bn-notes a5c3b9fe:asm/asm00_1.s:13064
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_8009338'
+    git -C bn6f show a5c3b9fe:asm/asm00_1.s | sed -n '13064,13065p'
+  result: bn-notes names it battleFsmState08_8009338 (commit 5f6c6d00, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Code does bl sub_8026A28; cmp r0,#0; beq locret, then on success writes #0xc to oBattleState_Index_01,
+    matching the gate the branch describes.'
+  refs:
+  - bn6f/asm/asm00_1.s:13932
+  reproduce: |
+    sed -n '13932,13992p' bn6f/asm/asm00_1.s
+  result: 'agrees: yes'
+open_questions:
+- Name only restates the table position (08); the code shows a clear role (custom-screen open/wait) that
+  a better name could carry.
+sources:
+- bn6f bn-notes 5f6c6d00
+- audit docs/reviews/2026-10-20-orphaned-branches.md

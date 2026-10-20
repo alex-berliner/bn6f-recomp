@@ -1,0 +1,47 @@
+name: ShockwaveHopTable
+address: '0x080C6B00'
+kind: data
+previous_names:
+- byte_80C6B00
+status: probable
+summary: 'Per-tier table for the Mettaur-style shockwave: animation, dwell time per panel and panel effect.'
+details: 16 rows of 4 bytes, indexed by Param1 * 4 in battle_objectInitFromParamTable_80C6B64 (state 0
+  of the type-3 id 0x16 object). Byte 0 is sprite_load's size argument (3 in every row), byte 1 CurAnim,
+  byte 2 the Timer (0x16 in row 0), byte 3 a panel effect passed to battle_objectDispatchPanelChange_80C6CFC
+  (0xFF = none; only rows 4 and 5 differ). The hop respawn passes the whole Params word to the new segment,
+  so one attack keeps its row.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Note at asm/asm31.s:31377 on bn-notes: "THE SHOCKWAVE''S PER-HOP TABLE: 16 rows of 4 bytes,
+    indexed by Param1 * 4", with byte roles +0 size, +1 CurAnim, +2 Timer, +3 panel effect, and "PARAM1
+    IS THE VIRUS''S VERSION TIER, AND IT DOES NOT CHANGE BETWEEN HOPS"; docs/renames.md cites TODO_ARCHIVE.md:46
+    (A1).'
+  refs:
+  - bn6f 8a20e179 (branch bn-notes)
+  - bn6f/asm/asm31.s:33522
+  - bn-notes a5c3b9fe:asm/asm31.s:31377
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_80C6B00'
+    git -C bn6f show a5c3b9fe:asm/asm31.s | sed -n '31377,31396p'
+  result: bn-notes names it ShockwaveHopTable_80C6B00 (commit 8a20e179, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Master has 64 bytes (16x4) read at Param1*4 with [r4] to sprite_load, [r4,#1] to CurAnim, [r4,#2]
+    to Timer and [r4,#3] to the panel-change call; the hop path loads r4 = oBattleObject_Params before
+    battle_spawnBasicObjectKind0x16_80C6CE4.
+  refs:
+  - bn6f/asm/asm31.s:33522
+  reproduce: |
+    sed -n '33522,33582p' bn6f/asm/asm31.s
+  result: 'agrees: yes'
+open_questions:
+- The note itself says every hop reads the same row, so the name ShockwaveHopTable (per-hop) may mislead;
+  it is per-tier, not per-hop.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_shockwaveHopTable.'
+sources:
+- bn6f bn-notes 8a20e179
+- audit docs/reviews/2026-10-20-orphaned-branches.md

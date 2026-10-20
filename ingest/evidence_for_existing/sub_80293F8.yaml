@@ -1,0 +1,47 @@
+# Not a symbols/db entry: sub_80293F8 already has one (symbols/db/sub_80293F8.yaml (confirmed); queued rename custom_resetSelectedChipState_80293F8), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_80293F8.yaml
+address: '0x080293F8'
+kind: function
+proposed_name: battle_blankPickedDeckSlots
+branch_status: probable
+branch_summary: When OK is pressed, marks the folder entries of the chips just picked as empty (0xFFFF)
+  so they drop out of the deck.
+interface: (r5 = eS20364C0, r10 = toolkit) -> (); writes 0xFFFF through each picked slot's folder-entry
+  pointer (+8); may clear BattleState+0x17 and decrement BattleState+0x45
+details: It loops NumChipsSelected times over the slot indices at [r5+0x48]. For each it fetches the slot
+  record with getLocOfActiveChips_8027E1C, following a kind-2 record's link at +4 when GetBattleMode is
+  1. For a kind-0 record it clears BattleState+0x17 if bit 0 of +4 is set, stores 0xFFFF at the folder
+  entry pointed to by +8, and decrements BattleState+0x45 if +0x44 is nonzero. custMenuPressOK_8028D3A
+  calls it right after custMenu_confirmAndProcessSelectedChips_8029110; battle_compactFolderChipList_802945A
+  later squeezes out the 0xFFFF entries.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: docs/renames.md row lists it with the routines it names for battle_BuildFolderEntryRecords_8027EE8
+    and battle_compactFolderChipList_802945A, and cites only "src/deck.rs:8-10" without quoting it.
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:6924
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_80293F8'
+  result: bn-notes names it blankPickedDeckSlots_80293F8 (commit 0d5c5f33, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: mov r7,#0; sub r7,#1, then strh r7 to [record+8] for each picked kind-0 chip, called from the
+    OK handler, fits blanking the picked deck slots.
+  refs:
+  - bn6f/asm/asm03_0.s:6924
+  reproduce: |
+    sed -n '6924,6984p' bn6f/asm/asm03_0.s
+  result: 'agrees: yes'
+open_questions:
+- The evidence is a bare citation with no quoted text.
+- Master's symdb reads it as resetting chip in-flight state.
+- The meaning of the BattleState+0x17 and +0x45 side effects is unknown.
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

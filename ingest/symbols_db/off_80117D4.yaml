@@ -1,0 +1,44 @@
+name: off_80117D4
+address: '0x080117D4'
+kind: data
+status: probable
+summary: Shared 148-entry handler table for buster and B-button abilities (charge shots, B-button, B-left
+  and navi bonus handlers).
+details: '148 handler pointers (0x00..0x93). It is indexed by several AIData bytes: BButton (calledOnBAtkProbInit_8011764),
+  BPwrAtk (battle_dispatchBusterAtkHandler), NaviBonusIndex (battle_dispatchNaviBonusHandler), BLeftAbility
+  (ai_dispatchBLeftAbility) and a raw index (battle_dispatchBPwrAtkHandler). The branch calls it the transformation
+  -> charge-shot table and notes cell 0x11 only seeds attack vars.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "charge-shot dispatch off_80117D4", with a 25-row TF_* table (docs/SCOPE.md:781-810).
+    Note at asm/asm00_2.s on bn-notes: "The 148-cell transformation -> charge-shot table. Cell 0x11 (sub_8011CB4)
+    only seeds attack vars; the charged muzzle flash is a separate OBJ."'
+  refs:
+  - bn6f ffe10f48 (branch bn-notes)
+  - bn6f/asm/asm00_2.s:6346
+  - bn-notes a5c3b9fe:asm/asm00_2.s:5814
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'off_80117D4'
+    git -C bn6f show a5c3b9fe:asm/asm00_2.s | sed -n '5814,5815p'
+  result: bn-notes names it ChargeShotHandlersByTransformation_80117D4 (commit ffe10f48, 2026-09-15).
+    The branch read the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The table has 148 words as the note says, but five different dispatchers index it by BButton,
+    BPwrAtk, NaviBonusIndex, BLeftAbility or r0, not by a transformation id directly. Cell 0x11 is ai_attackProcUseChipResult
+    at 0x08011CB4, the routine the note names.
+  refs:
+  - bn6f/asm/asm00_2.s:6346
+  reproduce: |
+    sed -n '6346,6406p' bn6f/asm/asm00_2.s
+  result: 'agrees: partly'
+open_questions:
+- The table serves B-button, B-left and navi-bonus handlers as well as charge shots, so 'ChargeShotHandlersByTransformation'
+  is narrower than its use.
+- 'The branch''s name ChargeShotHandlersByTransformation_80117D4 was not proposed: it would mislead (see
+  details).'
+sources:
+- bn6f bn-notes ffe10f48
+- audit docs/reviews/2026-10-20-orphaned-branches.md

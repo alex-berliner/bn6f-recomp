@@ -1,0 +1,54 @@
+name: oS20364C0_Extra_WindowFrameCounter
+address: '0x40'
+kind: struct-field
+previous_names:
+- oS20364C0_Extra_Unk_40
+status: probable
+summary: The chip window's own frame counter, which also sets the blink phase of the cursor's highlight bracket.
+details: 'A u32 at eS20364C0+0x40 (the same word as unk_2036500). Per the branch, the window''s slide-in
+  state seeds it to 0x78 and counts it down by 0xc. The interactive state increments it once a frame and
+  zeroes it again when a chip is selected. The cursor-bracket drawer reduces it to (x >> 3) & 1 and adds
+  that to base tile 0xb764 to choose between the two bracket tiles. Its value is therefore "frames since
+  this window opened" and means nothing from one window to the next.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Note at include/structs/S20364C0.inc on bn-notes: "Unk_40 (the same word as unk_2036500) is the
+    window''s OWN FRAME COUNTER, and it is the phase of the highlight bracket''s blink ... Its value is therefore
+    frames since THIS window opened and means nothing across windows."'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/include/structs/S20364C0.inc:56
+  - bn6f/asm/asm03_0.s:1094
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe:include/structs/S20364C0.inc | sed -n '56,63p'
+  result: bn-notes renames the field oS20364C0_Extra_WindowFrameCounter (commit 0d5c5f33). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: scrollStrip_update_8026BF4 (the branch's slide-out state 0x08) zeroes the word on its first call
+    (str r0,[r5,#oS20364C0_Extra_Unk_40]) and then loads it and adds 0xc each call, which fits a slide
+    position or frame counter. The other writers the note names were not traced here.
+  refs:
+  - bn6f/asm/asm03_0.s:1094
+  - bn6f/asm/asm03_0.s:1109
+  reproduce: |
+    sed -n '1085,1112p' bn6f/asm/asm03_0.s
+  result: 'agrees: partly (only the slide-out use was read)'
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Applying the rename oS20364C0_Extra_Unk_40 -> oS20364C0_Extra_WindowFrameCounter as a whole-word
+    replacement in a scratch copy of bn6f, together with every other proposal of this audit, rebuilds a ROM
+    with an unchanged SHA-1.
+  refs:
+  - docs/reviews/2026-10-20-orphaned-branches.md
+  reproduce: |
+    grep -n -w oS20364C0_Extra_Unk_40 bn6f/include/structs/S20364C0.inc bn6f/asm/asm03_0.s
+  result: bn6f.gba SHA-1 0676ecd4d58a976af3346caebb44b9b6489ad099 after the rename (scratch build)
+open_questions:
+- The note says this is the same word as unk_2036500; whether the other references to unk_2036500 use it as
+  this counter was not checked.
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

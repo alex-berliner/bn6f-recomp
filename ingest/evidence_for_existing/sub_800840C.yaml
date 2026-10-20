@@ -1,0 +1,45 @@
+# Not a symbols/db entry: sub_800840C already has one (symbols/db/sub_800840C.yaml (confirmed); queued rename battle_introStep_800840C), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_800840C.yaml
+address: '0x0800840C'
+kind: function
+proposed_name: battle_bannerSeqState00Settle
+branch_status: probable
+branch_summary: 'Banner sequencer state 0x00: the settle step after the chip window closes, before the
+  next banner wait.'
+interface: (r5 = eBattleSequencerState record) -> writes 4 to [r5] when done; uses [r5+2], [r5+3] as latches
+details: Entry 0 of BannerSequencerStates. On first entry ([r5+3]==0) it calls sub_80147E4 with byte_203F558/byte_203F658
+  and sets [r5+3]=4; each frame it calls battle_runControllerStep_801483C and waits while that returns
+  nonzero. It then latches [r5+2] via timer_resetAndStart_801482C, and on the next pass runs sub_8015A38
+  on both players and writes state 0x04 (banner wait).
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "entry 0 = state 0x00, the post-window settle" (bn src/objects.rs:72/74;
+    TODO_ARCHIVE.md:3071 ticket T7c). Table note on bn-notes: "BATTLE_SEQ_SETTLE: the post-window settle;
+    leaves to BANNER_WAIT on" the chip-window slide-idle check (battle_runControllerStep_801483C) "plus
+    the [r5+2] latch."'
+  refs:
+  - bn6f 5f6c6d00 (branch bn-notes)
+  - bn6f/asm/asm00_1.s:11658
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_800840C'
+  result: bn-notes names it bannerSeqState00Settle_800840C (commit 5f6c6d00, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Code matches the described exit: bne locret while battle_runControllerStep_801483C returns
+    nonzero, then the [r5,#2] latch, then mov r0,#4; str r0,[r5].'
+  refs:
+  - bn6f/asm/asm00_1.s:11658
+  reproduce: |
+    sed -n '11658,11718p' bn6f/asm/asm00_1.s
+  result: 'agrees: yes'
+open_questions:
+- The branch calls battle_runControllerStep_801483C a chip-window slide-idle check; master's name calls
+  it a generic controller step, so its role is unconfirmed here.
+sources:
+- bn6f bn-notes 5f6c6d00
+- audit docs/reviews/2026-10-20-orphaned-branches.md

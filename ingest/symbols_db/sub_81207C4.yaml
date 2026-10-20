@@ -1,0 +1,42 @@
+name: sub_81207C4
+address: '0x081207C4'
+kind: function
+status: probable
+summary: 'Packs 30 folder-editor entries (0x20 bytes each) into a halfword list: for each nonzero 9-bit
+  field at bits 7-15 of +0x1C, writes (bits0-6 << 9) | field.'
+interface: (r0 = first 0x20-byte entry, r1 = u16 output array of 30) -> no return; out[i] = ((w & 0x7F)
+  << 9) | ((w >> 7) & 0x1FF) when that 9-bit field is nonzero, else out[i] is left unchanged
+details: The C walks 30 entries of 32 bytes, splits the low 16 bits of the word at +0x1C into a 7-bit
+  low field and a 9-bit high field, and writes the swapped packing when the 9-bit field is nonzero; the
+  output pointer always advances. The only caller (sub_8133A68, asm36.s:7718) passes word_202A020 (the
+  folder/pack editor's 0x20-byte chip entries) and unk_2039AA0, then calls pet_applyStatModsToCurNavi.
+evidence:
+- method: assembly-reading
+  date: '2026-05-24'
+  detail: 'Old C: "hi9 = (w >> 7) & 0x1FFu; lo7 = w & 0x7Fu; if (hi9 != 0u) { *dst = (u16)((lo7 << 9)
+    | hi9); }". No commit description.'
+  refs:
+  - bn6f b79a1818 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_81207c4.c
+  - bn6f/asm/asm32.s:39052
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_81207c4.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master: ldr [r4,#0x1c]; lsl 16 / lsr 23 (hi9); lsl 9 / lsr 25 (lo7); if hi9: strh (lo7<<9)|hi9;
+    add r7,#2; add r4,#0x20 until base+30*32, matching the C.'
+  refs:
+  - bn6f/asm/asm32.s:39052
+  reproduce: |
+    sed -n '39052,39112p' bn6f/asm/asm32.s
+  result: 'agrees: yes'
+open_questions:
+- Likely chip ID (9 bits) and code (7 bits) converted to the folder halfword format (id | code<<9); not
+  confirmed.
+- Whether unk_2039AA0 is the saved folder.
+sources:
+- bn6f old-master-2026-07-12 b79a1818
+- audit docs/reviews/2026-10-20-orphaned-branches.md

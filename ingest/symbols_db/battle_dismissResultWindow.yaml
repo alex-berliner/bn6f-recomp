@@ -1,0 +1,54 @@
+name: battle_dismissResultWindow
+address: '0x0802C280'
+kind: function
+previous_names:
+- sub_802C280
+status: probable
+summary: RESULT window step that waits for A or Start, counts 0x14 more frames, then goes either to the
+  new-virus-data message step or to the fade-out.
+interface: (r5 = eS20364C0) -> (); byte +3 is the phase and +0xB the countdown; writes JumpOffset01 =
+  0x0C or 0x10
+details: 'Entry 0x08 of battle_chipSelectStep_802BDC0''s table. In phase 0 it tests mask 9 (A|Start) on
+  the halfwords at dword_2036820+4 and +0xC; on a press it sets +0xB to 0x14 and the phase to 4. When
+  the countdown reaches 0: if table_GetByte16Row_203EAE0_800AB3A(0, 0xA) is nonzero it goes to state 0x0C,
+  sub_802C2D0, which slides the window further and runs TextScriptYouGotNewVirusData. Otherwise it goes
+  to state 0x10 (battle_advanceFade_802C328).'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row citing src/results.rs:7: "waits for A or Start, holds 0x14 more frames,
+    then fades the screen out"; branch chain note at asm/asm03_0.s:11561: "A or Start, 0x14 more frames,
+    then fade", part of a chain "traced and timed against the real ROM".'
+  refs:
+  - bn6f 1ca2a415 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:13164
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_802C280'
+  result: bn-notes names it dismissResultWindow_802C280 (commit 1ca2a415, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: runtime
+  date: '2026-09-15'
+  detail: The branch's note says this was measured live against the original game (by the bn reimplementation's
+    harness); the measurement is not in this repo and was not repeated in this audit.
+  refs:
+  - bn6f 1ca2a415 (branch bn-notes)
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_802C280'
+  result: claim recorded as the branch states it
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: mov r1,#9; tst confirms A/Start and mov r0,#0x14 the hold, but when the 0xA row is set the exit
+    goes to state 0x0C (the virus-data message) instead of straight to the fade.
+  refs:
+  - bn6f/asm/asm03_0.s:13164
+  reproduce: |
+    sed -n '13164,13224p' bn6f/asm/asm03_0.s
+  result: 'agrees: partly'
+open_questions:
+- The evidence leaves out the path to state 0x0C (TextScriptYouGotNewVirusData).
+- Master's names place this machine in chip select, not the RESULT window.
+sources:
+- bn6f bn-notes 1ca2a415
+- audit docs/reviews/2026-10-20-orphaned-branches.md

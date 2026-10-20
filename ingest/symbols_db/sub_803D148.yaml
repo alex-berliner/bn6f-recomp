@@ -1,0 +1,43 @@
+name: sub_803D148
+address: '0x0803D148'
+kind: function
+status: probable
+summary: Maps a NaviCust program base item ID plus a variant byte to the one of its 4 consecutive IDs
+  whose descriptor byte +3 matches; else 0.
+interface: (r0 = base ID, r1 = wanted byte) -> r0 = base + i for the first i in 0..3 with battleObject_getByIndex_813B780(base
+  - 0x90 + i)[+3] == r1, else 0
+details: The C looks up four 16-byte entries of StructArr_813944C (via the old sub_813B780, master battleObject_getByIndex_813B780)
+  starting at index base-0x90 and returns base+i for the first whose byte +3 equals the wanted value.
+  Its callers GiveNaviCustPrograms, TakeNaviCustPrograms, sub_803D118 and sub_803D138 pass the result
+  as an item ID to GiveItem, TakeItem, keyItems_RemoveFromInventoryAndGive_803CDF8 and CheckKeyItem; sprite_playAnimationFrameSfx
+  also calls it with r0 = hword+0x90.
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "p = (u8 *) sub_813B780_c(lo + i); if (p[3] == (u8)wanted) { return base + i; }". Commit
+    description: "linear-search sub_813B780 by byte +3".'
+  refs:
+  - bn6f 1781ae0e (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_803d148.c
+  - bn6f/asm/asm03_1_1.s:9510
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_803d148.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master: sub r0,#0x90; loop i<4 calling battleObject_getByIndex_813B780(r4+i); ldrb [r7,#3];
+    cmp r5; return r4+i+0x90 or 0, matching the C.'
+  refs:
+  - bn6f/asm/asm03_1_1.s:9510
+  reproduce: |
+    sed -n '9510,9570p' bn6f/asm/asm03_1_1.s
+  result: 'agrees: yes'
+open_questions:
+- Byte +3 is probably the program's color variant; not confirmed.
+- Master's names for the callee (battleObject_getByIndex_813B780, battle-object descriptor) and the sprite_playAnimationFrameSfx
+  symdb (sfx id) look inconsistent with the item-ID use here.
+sources:
+- bn6f old-master-2026-07-12 1781ae0e
+- audit docs/reviews/2026-10-20-orphaned-branches.md

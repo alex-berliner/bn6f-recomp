@@ -1,0 +1,44 @@
+name: ThrownBombLaunchParams
+address: '0x080C5D58'
+kind: data
+previous_names:
+- byte_80C5D58
+status: probable
+summary: 'Launch velocities for a thrown bomb chip: X speed, gravity and initial upward speed.'
+details: 'Read by battleObject_updateBombPanelBomb_80C5C9C on its first frame with ldmia r7!, {r1-r3}:
+  the X word is multiplied by the front direction and all three are stored at object +0x40 (velocities),
+  with a 0x28-frame timer. The values are 0x0002E666, 0xFFFFD800 and 0x00020666. The table holds 6 words;
+  the last three repeat 0x0002E666 and are not read through this label.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'Note at asm/asm31.s:29637 (loc_80C5D52) on bn-notes: "The launch that [battleObject_updateBombPanelBomb_80C5C9C]
+    reads: three words, X velocity 0x0002E666, gravity 0xFFFFD800 and Z velocity 0x00020666 ... the words
+    after them are not reached through this label from here"; docs/renames.md also cites src/battle.rs:750.'
+  refs:
+  - bn6f 2ea59267 (branch bn-notes)
+  - bn6f/asm/asm31.s:31613
+  - bn-notes a5c3b9fe:asm/asm31.s:29637
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'byte_80C5D58'
+    git -C bn6f show a5c3b9fe:asm/asm31.s | sed -n '29637,29640p'
+  result: bn-notes names it ThrownBombLaunchParams_80C5D58 (commit 2ea59267, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Master battleObject_updateBombPanelBomb_80C5C9C does ldr r7,=byte_80C5D58 / ldmia r7!,{r1-r3}
+    / mul r1,r0 (front direction) / stmia to +0x40, matching the three words.
+  refs:
+  - bn6f/asm/asm31.s:31613
+  reproduce: |
+    sed -n '31613,31673p' bn6f/asm/asm31.s
+  result: 'agrees: yes'
+open_questions:
+- The second word is labelled gravity by the branch; the code shown here only stores it at +0x44 (the
+  velocity block), its use as gravity is from the integration code, not checked here.
+- 'Name style: data and RAM follow master''s existing convention here; the strict prefix_lowerCamel form
+  would be battle_thrownBombLaunchParams.'
+sources:
+- bn6f bn-notes 2ea59267
+- audit docs/reviews/2026-10-20-orphaned-branches.md

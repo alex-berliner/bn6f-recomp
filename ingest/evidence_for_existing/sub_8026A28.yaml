@@ -1,0 +1,45 @@
+# Not a symbols/db entry: sub_8026A28 already has one (symbols/db/sub_8026A28.yaml (confirmed); queued rename stateMachine_runStep_8026A28), which this audit does not change.
+# What the orphaned branch adds for it, to append to that entry's evidence if the owner agrees
+# (and, with proposed_name, to rename it with tools/rename_symbol.py, which moves the entry).
+existing_entry: symbols/db/sub_8026A28.yaml
+address: '0x08026A28'
+kind: function
+proposed_name: battle_isChipWindowReady
+branch_status: probable
+branch_summary: Per-frame tick of the chip-select (Custom) window's outer state machine; its return value
+  tells the battle when the window is done.
+interface: () -> r0 = handler status (0 while the window is running); loads r5 = eS20364C0 itself and
+  dispatches on JumpOffset00
+details: 'Dispatches on eS20364C0.JumpOffset00 through the 3-entry table off_8026A3C: sub_8026A50 (0x00,
+  setup), custMenuMainMaybe_8026A88 (0x04, runs the window) and object_runFrameUpdate_8026A6C (0x08, teardown,
+  returns byte +4). Its only caller, sub_8009338 in asm/asm00_1.s, runs battle_initCustomScreen_8026840
+  once and then polls it every frame. The caller keeps waiting on 0, goes to battle phase 0x14 on 2, and
+  carries on into the turn on any other nonzero value.'
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row, citing docs/coverage/battlestart_gunner.md:79-99: "the ''window ready''
+    signal sub_8026A28 gates on ... dispatches on eS20364C0''s top FSM byte JumpOffset00".'
+  refs:
+  - bn6f 0d5c5f33 (branch bn-notes)
+  - bn6f/asm/asm03_0.s:801
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_8026A28'
+  result: bn-notes names it isChipWindowReady_8026A28 (commit 0d5c5f33, 2026-09-15). The branch read the
+    code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: ldr r5,=eS20364C0; ldrb JumpOffset00; ldr r1,[off_8026A3C,r0]; bx r1 returns the handler's r0,
+    and sub_8009338 branches on 0 / 2 / other, which fits a readiness gate.
+  refs:
+  - bn6f/asm/asm03_0.s:801
+  reproduce: |
+    sed -n '801,861p' bn6f/asm/asm03_0.s
+  result: 'agrees: yes'
+open_questions:
+- The return is a multi-valued status (0, 2, other nonzero), not a boolean, so an is...Ready name hides
+  the value-2 outcome (battle phase 0x14).
+sources:
+- bn6f bn-notes 0d5c5f33
+- audit docs/reviews/2026-10-20-orphaned-branches.md

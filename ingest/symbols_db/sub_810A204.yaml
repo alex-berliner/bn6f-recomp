@@ -1,0 +1,54 @@
+name: sub_810A204
+address: '0x0810A204'
+kind: function
+status: hypothesis
+summary: 'Mettaur decision state 4: a flat 40-frame wait, entered after it uses a chip, then back to the
+  choose-attack state.'
+interface: (r6 = AIState) -> nothing; increments oAIState_SubState to 0x28, then sets oAIState_ScriptId
+  = 0xC and clears the sub-state
+details: The branch says state [4] is a flat 0x28-frame wait before forcing CurAction 0xC (GUARD), reachable
+  only from the equipped-ability branch. On master the wait is 0x28 frames. Afterwards it writes 0xC to
+  oAIState_ScriptId, the decision state byte (CHOOSE_ATTACK), and never touches CurAction. State 0x10
+  is set by battle_aiSelectAndUseChip_810A126 after it uses a held chip.
+evidence:
+- method: assembly-reading
+  date: '2026-09-15'
+  detail: 'docs/renames.md row: "[4] (sub_810A204 ..., a flat 0x28-frame wait before forcing CurAction
+    0xC, GUARD)", citing src/objects.rs:479; note at asm/asm31.s on bn-notes: "a flat wait, then CurAction
+    -> GUARD"; docs/renames.md Mettaur AI block header: the notes "walk the entire machine state by state
+    and say it was measured live against the real ROM".'
+  refs:
+  - bn6f ea20f9de (branch bn-notes)
+  - bn6f/asm/asm31.s:182402
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_810A204'
+  result: bn-notes names it MettaurDecideArmGuard_810A204 (commit ea20f9de, 2026-09-15). The branch read
+    the code and cites the bn reimplementation's sources; neither was re-run in this audit.
+- method: runtime
+  date: '2026-09-15'
+  detail: The branch's note says this was measured live against the original game (by the bn reimplementation's
+    harness); the measurement is not in this repo and was not repeated in this audit.
+  refs:
+  - bn6f ea20f9de (branch bn-notes)
+  reproduce: |
+    git -C bn6f fetch origin bn-notes
+    git -C bn6f show a5c3b9fe^:docs/renames.md | grep -n -F 'sub_810A204'
+  result: claim recorded as the branch states it
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: strb 0xc goes to [r6,#oAIState_ScriptId] (r6 = AIData+0x80), not to oBattleObject_CurAction,
+    so the wait leads back to CHOOSE_ATTACK rather than to GUARD.
+  refs:
+  - bn6f/asm/asm31.s:182402
+  reproduce: |
+    sed -n '182402,182462p' bn6f/asm/asm31.s
+  result: 'agrees: no'
+open_questions:
+- 'The proposed name ai_mettaurDecideArmGuard is contradicted: the routine sets decision state 0xC, not
+  CurAction 0xC.'
+- Guard (CurAction 0xC) is actually entered from sub_810A004's not-my-turn branch for Version>0.
+- 'The branch''s name MettaurDecideArmGuard_810A204 was not proposed: the code does not support it.'
+sources:
+- bn6f bn-notes ea20f9de
+- audit docs/reviews/2026-10-20-orphaned-branches.md

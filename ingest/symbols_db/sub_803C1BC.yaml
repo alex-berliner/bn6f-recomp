@@ -1,0 +1,43 @@
+name: sub_803C1BC
+address: '0x0803C1BC'
+kind: function
+status: probable
+summary: Converts up to r2 halfword character codes back to byte indices via the 8-byte-per-entry table
+  at unk_2026A00+2 (reverse of convertByteStringToCharCodes).
+interface: (r0 = 16-byte destination, r1 = u16 char-code source, r2 = max count) -> no return; zeroes
+  dst[0..15], writes one index byte per code, stops at a code whose low byte is 0xE5/0xE6; unknown or
+  0 codes become 32; clobbers r0-r3
+details: The C clears 16 bytes of dst, then for each source halfword stops on low byte 0xE5/0xE6, maps
+  0 to 32, and otherwise linearly searches the table at 0x02026A02 (stride 8, end marker 0xE6) for the
+  code, writing the matched entry index (or 32 if absent). It is the inverse of convertByteStringToCharCodes
+  (0x0803C168), which expands indices via the same table. Callers are sub_803C1A8 (counts from [r5+0x24]/[r5+0x26])
+  and sub_8049DA0 (counts 8 and 10).
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "if (*(u16 *)(table + idx_bytes) == wanted) { idx_bytes += 8; break; } ... result =
+    (u8)((idx_bytes >> 3) - 1u);". Commit description: "char→tile-index reverse-renderer".'
+  refs:
+  - bn6f c5ea2c65 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_803c1bc.c
+  - bn6f/asm/asm03_1_1.s:6962
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_803c1bc.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: The table search and index arithmetic match, but master's loop is a do-while (sub r2,#1; bgt
+    at the bottom) that converts one character even when r2 is 0, while the C checks count > 0 first.
+  refs:
+  - bn6f/asm/asm03_1_1.s:6962
+  reproduce: |
+    sed -n '6962,7022p' bn6f/asm/asm03_1_1.s
+  result: 'agrees: partly'
+open_questions:
+- Can sub_803C1A8 ever pass a count of 0 from [r5+0x24]/[r5+0x26]? If not, the C's pre-test is harmless.
+- What the 8-byte entries at unk_2026A00 hold beyond the code at +2.
+sources:
+- bn6f old-master-2026-07-12 c5ea2c65
+- audit docs/reviews/2026-10-20-orphaned-branches.md

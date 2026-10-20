@@ -1,0 +1,41 @@
+name: sub_801DCCC
+address: '0x0801DCCC'
+kind: function
+status: probable
+summary: Updates bytes +4/+5 of the battle status-list slot (byte_203EB50) owned by the battle object
+  in r5; returns 0, or 1 if none.
+interface: (r0 = byte for +4, r1 = byte for +5, r5 = BattleObject) -> r0 = 0 on update, 1 if no in-use
+  slot (bit 0 of byte +0 set) has +0xc == r5; clobbers r1-r3
+details: The C scans the four 0x14-byte entries at byte_203EB50 for one with bit 0 of byte +0 set and
+  owner pointer +0xc equal to r5, writes the two argument bytes to +4 and +5 and returns 0, else returns
+  1. sub_801DC7C, which claims these slots, writes the same two parameters to +4/+5 when it creates an
+  entry, so this is the update counterpart. The only caller (sub_80BC468, asm31.s:9752) passes r0 = an
+  X-distance between two objects and r1 = 0 with r5 set to the other object.
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "if ((p[0] & 1u) != 0u && *(u8 **)(p + 0xc) == bo) { p[4] = (u8)a; p[5] = (u8)b; return
+    0u; }". Commit description: "set bytes +4/+5 of first slot whose +0xc == bo".'
+  refs:
+  - bn6f 9b4d2f03 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_801dccc.c
+  - bn6f/asm/asm00_2.s:31756
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_801dccc.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'Master''s loop (ldrb/tst #1, ldr [r2,#0xc] cmp r5, strb to +4/+5, add #0x14, 4 iterations,
+    return 0 or 1) matches the C.'
+  refs:
+  - bn6f/asm/asm00_2.s:31756
+  reproduce: |
+    sed -n '31756,31816p' bn6f/asm/asm00_2.s
+  result: 'agrees: yes'
+open_questions:
+- What the +4/+5 parameters of a status-list entry mean.
+sources:
+- bn6f old-master-2026-07-12 9b4d2f03
+- audit docs/reviews/2026-10-20-orphaned-branches.md

@@ -1,0 +1,42 @@
+name: sub_80134C8
+address: '0x080134C8'
+kind: function
+status: probable
+summary: Initializes a 100-byte NaviStats block with fixed defaults (HP 500, Attack/Speed/Charge 2, etc.);
+  used when building the battle Navi stats for battle mode 1.
+interface: (r0 = pointer to 0x64-byte NaviStats block) -> no return; zero-fills 100 bytes then writes
+  the default bytes/halfwords; preserves r4 via push
+details: The C calls ZeroFillByWord(p, 100) and then stores BPwrAtk=1, BLeftAbility=0xFF, RegUP=4, CustomLevel=5,
+  MegaLevel=5, GigaLevel=1, Mood=0x99, Attack/Speed/Charge=2, Folder1Reg/Folder2Reg/+0x30=0xFF, +0x27=0x1F,
+  +0x20=1, BeastOutCounter (+0x21)=1, MaxBaseHP/CurHP/MaxHP=500, and zeros elsewhere (field names from
+  master's NaviStats struct). The only caller, battle_initBattleStateBuffer_800B144, calls it on dword_203CBE0+0xc
+  when GetBattleMode returns 1, where other modes copy a real NaviStats there.
+evidence:
+- method: assembly-reading
+  date: '2026-05-25'
+  detail: 'Old C: "ZeroFillByWord_c((u32 *)p, 100u); ... *(u16 *)(p + 64) = 0x01F4; *(u16 *)(p + 66) =
+    0x01F4; *(u16 *)(p + 62) = 0x01F4;". Commit description: "100-byte block initializer".'
+  refs:
+  - bn6f 2d63faa7 (old master, shelved decomp work)
+  - e6bb4969:src/c/sub_80134c8.c
+  - bn6f/asm/asm00_2.s:10752
+  reproduce: |
+    git -C bn6f fetch origin old-master-2026-07-12
+    git -C bn6f show e6bb4969:src/c/sub_80134c8.c
+  result: A hand C translation from the shelved decomp effort on the old master, which its replay harness
+    accepted at the time; that harness was removed and not re-run here.
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: Master stores the same 28 values at the same offsets (in a different order than the C, which
+    does not matter since all are independent stores after the zero-fill).
+  refs:
+  - bn6f/asm/asm00_2.s:10752
+  reproduce: |
+    sed -n '10752,10812p' bn6f/asm/asm00_2.s
+  result: 'agrees: yes'
+open_questions:
+- Meaning of the unnamed offsets +0x7..0x8, +0x12, +0x18, +0x20, +0x26..0x28, +0x30 set here.
+- Which battle mode 1 is (e.g. a test or link mode) is not shown.
+sources:
+- bn6f old-master-2026-07-12 2d63faa7
+- audit docs/reviews/2026-10-20-orphaned-branches.md
