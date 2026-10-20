@@ -1,0 +1,57 @@
+name: sprite_renderGlyphStack7
+address: '0x08137F8C'
+kind: function
+status: probable
+summary: Queues 7 stacked 6-px-tall OAM sprites (one per 2-byte entry) into an OAM work buffer, advancing
+  Y by 12 px per row and skipping rows whose first byte is zero.
+interface: (r0 = stride/base?, r1 = glyph entry array ptr, r2 = base Y, r3 = X base value) -> void; clobbers
+  r4-r7
+details: r5 is computed as r0*2 + r1, pointing at an array of 2-byte entries; it walks 7 of them (r4 counts
+  to 7), advancing 2 bytes per entry. For each entry whose first byte is nonzero, it calls sub_813802C
+  with the second byte *2 (glyph/tile lookup) and then sub_8137FDC with r0 = (r3<<12)|0x200 — a fixed-point
+  X of 2.0 px — r1 = current Y and r2 = Y+6, so each glyph is queued as a sprite 6 px tall. After each
+  glyph both Y values advance by 0xC (12 px), stacking the glyphs vertically; entries with a zero first
+  byte are skipped but still consume a row. The 0x200 constant is loaded from off_8137FD8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop bound ''cmp r4, #7; blt'' and stride ''add r5,#2'' walk exactly 7 two-byte entries; ''ldrb
+    r1,[r5]; tst; beq'' skips blank entries, ''ldrb r0,[r5,#1]; lsl r0,#1; bl sub_813802C'' fetches a
+    glyph per entry; ''add r0,#0xc'' applied to both Y args each iteration stacks glyphs 12 px apart vertically;
+    caller sprite_renderCharGlyph (sprite/OAM work buffer rebuild) confirms this is glyph-into-OAM rendering'
+  refs:
+  - bn6f/asm/asm36.s:16873
+  - 0x08137F5C sprite_renderCharGlyph
+  - 0x08137FDC sub_8137FDC
+  - 0x0813802C sub_813802C
+  reproduce: python3 tools/asmcat.py 0x08137F8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and mechanics are accurate: r5 = r1 + r0*2 (stride 2), iterates 7 entries, advances
+    Y by 0xC each row, skips rows where byte[0]==0, calls sub_813802C and sub_8137FDC as described. Minor
+    inaccuracy: r0 in the call is the second byte *2 (tile lookup), not exactly a glyph index, and the
+    0x200 is OR''d into the pre-shifted X (fixed-point 2.0), not an X base value passed separately. The
+    name ''sprite_renderGlyphColumn'' fits but a more precise lowerCamel prefixed name reflecting sprite/OAM
+    stacking of 7 rows is appropriate.; run wf investigate investigate-20261019-030611; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of r0 vs r1 (pointer base vs offset), and what sub_813802C's table maps the second byte
+  to (tile index vs palette)
+- which UI element uses a 7-row glyph column
+- 'The summary and mechanics are accurate: r5 = r1 + r0*2 (stride 2), iterates 7 entries, advances Y by
+  0xC each row, skips rows where byte[0]==0, calls sub_813802C and sub_8137FDC as described. Minor inaccuracy:
+  r0 in the call is the second byte *2 (tile lookup), not exactly a glyph index, and the 0x200 is OR''d
+  into the pre-shifted X (fixed-point 2.0), not an X base value passed separately. The name ''sprite_renderGlyphColumn''
+  fits but a more precise lowerCamel prefixed name reflecting sprite/OAM stacking of 7 rows is appropriate.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8137F8C -> sprite_renderGlyphStack7
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137F8C

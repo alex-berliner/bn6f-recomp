@@ -1,0 +1,61 @@
+name: populateLookupEntriesFromStaging
+address: '0x0814673C'
+kind: function
+status: probable
+summary: For byte_2010288 iterations, copies 13 bytes from the 0x10-strided staging buffer unk_20098B0
+  into sub_81466F4(index), then 8 bytes from unk_2009750 into the entry's field-0x15 via get_lookupEntryField15Ptr;
+  writes the final iteration count to byte_2009470.
+interface: () -> r0 clobbered; byte_2009470 = entry count, list records and their field15 filled from
+  unk_20098B0/unk_2009750 staging buffers
+details: Zeroes byte_2009470, then loops byte_2010288 times. Per iteration it calls sub_81466F4(index)
+  to get a destination pointer and copies 13 bytes from the 0x10-stride staging buffer at unk_20098B0
+  via sub_81469F0(dest, src, len); then calls get_lookupEntryField15Ptr(index) and copies 8 bytes from
+  the 8-stride buffer at unk_2009750 into the record's field 0x15. Both staging pointers advance by their
+  record size each iteration, and the count byte is incremented, so the function materializes a list whose
+  size was set elsewhere into per-entry structures.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bound read from byte_2010288, count accumulated in byte_2009470 (strb/inc at 0x814677A-0x814677E);
+    sub_81469F0(r0=ptr from sub_81466F4, r1=staging buffer, r2=0xD) matches its known copy role with r0
+    as destination; get_lookupEntryField15Ptr result used as copy destination for 8 bytes, matching its
+    documented 'copy destination by list-building callers' role; staging pointers advance 0x10 and 8 per
+    iteration, mirroring the 13- and 8-byte copies; caller sub_803C76C calls it right after rfu_orFlags(2)
+    and sub_814665C, then clears a byte and writes 0x12C (300) to a halfword, consistent with a rebuild-then-restart-timer
+    sequence
+  refs:
+  - bn6f/asm/libs.s:5470
+  - 0x0803C76C sub_803C76C
+  - 0x081466C4 get_lookupEntryField15Ptr
+  - 0x081466F4 sub_81466F4
+  - 0x081469F0 sub_81469F0
+  reproduce: python3 tools/asmcat.py 0x0814673C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop body, call sequence, strides (0x10 and 8), and counter semantics all match the proposal.
+    Minor issue: the ''get_'' prefix is inappropriate since the function returns nothing meaningful (pop
+    {r0} just restores lr). Also, the summary says ''13-byte record'' when the copy length is 0xd but
+    the slot stride is 0x10 — the details correctly note the 0x10 stride. Name and summary are close but
+    improvable.; run wf investigate investigate-20261019-094015; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what game data the 13-byte and 8-byte staged records represent (mail header? chip/trade entry?), which
+  would pin the game-level purpose
+- what sub_81466F4 and sub_814665C do, and what structure the caller's byte/halfword (0 vs 0x12C) belong
+  to
+- 'The loop body, call sequence, strides (0x10 and 8), and counter semantics all match the proposal. Minor
+  issue: the ''get_'' prefix is inappropriate since the function returns nothing meaningful (pop {r0}
+  just restores lr). Also, the summary says ''13-byte record'' when the copy length is 0xd but the slot
+  stride is 0x10 — the details correctly note the 0x10 stride. Name and summary are close but improvable.'
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814673C -> populateLookupEntriesFromStaging
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814673C

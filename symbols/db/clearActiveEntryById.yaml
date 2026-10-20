@@ -1,0 +1,55 @@
+name: clearActiveEntryById
+address: '0x08035714'
+kind: function
+status: probable
+summary: Iterates the 32-entry, 8-byte-per-entry table at 0x020000DC0; on the first active slot (word
+  at +0 nonzero) whose id byte at +6 equals r0, clears the slot's word at +4 and active word at +0. On
+  match r0 is set to 0; otherwise the scan runs to the end and r0 is left as the input id.
+interface: (r0 = entry id byte) -> r0 = clobbered; no meaningful return
+details: Iterates 32 slots of 8 bytes each at dword_2000DC0. A slot is active when its word at +0 is nonzero;
+  each slot also holds a word at +4 and an id byte at +6. The first active slot whose id byte equals r0
+  gets its word at +4 and its active flag at +0 cleared, and the scan ends; otherwise the scan runs to
+  the end and nothing is cleared. No other fields are touched and no result is returned.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, off_8035784 / loop add r5,#8, cmp r4,#0x20: 32 slots of 8 bytes at dword_2000DC0; ldr
+    r3,[r5]; tst/beq: word at +0 is an active flag, zero slots are skipped; ldrb r1,[r5,#6]; cmp r0,r1;
+    bne: byte at +6 is matched against argument r0; str r0,[r5,#4]; str r0,[r5]: on match, value word
+    (+4) and active flag (+0) are zeroed, then return'
+  refs:
+  - bn6f/asm/asm03_1_0.s:3547
+  reproduce: python3 tools/asmcat.py 0x08035714
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is otherwise correct: the loop at 0x803571A iterates 32 slots of 8 bytes, checks the
+    active flag at +0 (tst/beq), compares r0 with the id byte at +6, and on match clears +4 and *0 (str
+    r0,[r5,#4]; str r0,[r5]) then exits. However, the summary says r0 is ''clobbered'' and ''no meaningful
+    return'' — in fact r0 is explicitly set to 0 on the matching path (mov r0,#0), so a more accurate
+    interface is r0 = entry id in, r0 = 0 out (always 0 since the fallthrough path also leaves r0 as the
+    input id, but the match path zeroes it; this should be clarified).; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so the meaning of the table at 2000DC0 (timers, requests, tasks?) and of r0's
+  id byte is unknown
+- What the word at +4 counts or holds, and what happens elsewhere when an entry is deactivated, needs
+  a caller or table writer to determine
+- 'The proposal is otherwise correct: the loop at 0x803571A iterates 32 slots of 8 bytes, checks the active
+  flag at +0 (tst/beq), compares r0 with the id byte at +6, and on match clears +4 and *0 (str r0,[r5,#4];
+  str r0,[r5]) then exits. However, the summary says r0 is ''clobbered'' and ''no meaningful return''
+  — in fact r0 is explicitly set to 0 on the matching path (mov r0,#0), so a more accurate interface is
+  r0 = entry id in, r0 = 0 out (always 0 since the fallthrough path also leaves r0 as the input id, but
+  the match path zeroes it; this should be clarified).'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8035714 -> clearActiveEntryById
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8035714

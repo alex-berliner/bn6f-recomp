@@ -1,0 +1,55 @@
+name: object_dispatchByState
+address: '0x0800834A'
+kind: function
+status: probable
+summary: 'Per-object state dispatcher: reads the state byte at [r5,#2], indexes off_800835C, and calls
+  the matching handler (object_wait60FramesThenDispatchEvent for 0, sub_800838A for 1) with r0 = state
+  byte.'
+interface: (r5 = object pointer, r0 = state byte at [r5,#2] passed through) -> jumps to handler off_800835C[state],
+  returns to caller; flags from callee
+details: 'Reads a byte at offset 2 of the object struct in r5, indexes off_800835C (a 2-entry Thumb pointer
+  table: object_wait60FramesThenDispatchEvent for state 0, sub_800838A for state 1), and tail-calls it
+  via mov lr,pc/bx r1. This is the classic BN6 object state-machine tick: state 0 waits 60 frames then
+  dispatches an event, state 1 runs sub_800838A (unknown). Only two states exist in the table; any index
+  >1 would jump to garbage. The callee receives r0 = the state byte, not the object pointer, so handlers
+  must recover the object from a register or global.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#2]; ldr r1,[r1,r0]; bx r1 — indexed dispatch on a struct field; off_800835C entries
+    are object_wait60FramesThenDispatchEvent+1 and sub_800838A+1, both Thumb, in the object subsystem;
+    mov lr,pc/bx r1 is the standard GBA long-call, so this is a tail-call dispatcher invoked as a function,
+    not inline code
+  refs:
+  - bn6f/asm/asm00_1.s:11465
+  reproduce: python3 tools/asmcat.py 0x0800834A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher mechanics match (ldrb r0,[r5,#2]; ldr r1,[r1,r0]; bx r1), but the proposed interface
+    overstates things: r0 is passed to the callee containing the state index read from [r5,#2], not passed
+    through from caller — and the pop {pc} is a function return, not a tail call (mov lr,pc; bx r1) followed
+    by pop. Still it''s a per-object state dispatcher. The name ''object_dispatchStateUpdate'' is reasonable
+    but ''object_dispatchByState'' is more precise about the indexing.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_800838A does (defines the state-1 behavior)
+- which object type uses this struct layout and where r5 is set up (no callers known)
+- whether r0 is meant as an argument or is incidental
+- 'The dispatcher mechanics match (ldrb r0,[r5,#2]; ldr r1,[r1,r0]; bx r1), but the proposed interface
+  overstates things: r0 is passed to the callee containing the state index read from [r5,#2], not passed
+  through from caller — and the pop {pc} is a function return, not a tail call (mov lr,pc; bx r1) followed
+  by pop. Still it''s a per-object state dispatcher. The name ''object_dispatchStateUpdate'' is reasonable
+  but ''object_dispatchByState'' is more precise about the indexing.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800834A -> object_dispatchByState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800834A

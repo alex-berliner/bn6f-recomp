@@ -1,0 +1,58 @@
+name: get_eLinkDiffState
+address: '0x0803F158'
+kind: function
+status: probable
+summary: Returns a 3-way wrapped-difference status (0 if small, 1 if diff >= 6, 2 if equal) between two
+  bytes (+3 and +1) of the eLink state block at byte_200AC20, for the link state handler at sub_803EC54.
+interface: () -> r0/r1 = status (0, 1, or 2); flags from tst/cmp in callers
+details: 'Reads bytes at 0x200AC23 and 0x200AC21 (fields of the byte_200AC20 state block), computes their
+  difference, and wraps it modulo 8 by adding 8 when negative. If the difference is zero it returns 2;
+  if the (wrapped) difference is >= 6 it returns 1; otherwise 0. The only caller stores this status at
+  [r5,#9] and branches: status 0 or 1 leads to a path calling get_eLinkStateUnk24/get_eLinkStateUnk38,
+  status 2 takes a separate path. The +8 wrap and threshold of 6 over an 8-wide range look like a ring-buffer/sequence-counter
+  lag check between two linked-GBA counters, but the meaning of the two counter bytes themselves is not
+  shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803F158 ldrb r0,[r5,#3] / ldrb r1,[r5,#1] then sub r0,r0,r1 — compares the two counter
+    bytes of byte_200AC20; asm adds 8 on negative diff and returns 1 when cmp r0,#6 blt fails, 2 when
+    diff is 0, else 0 — a 3-way classification of a mod-8 difference; caller sub_803EC54: bl sub_803F158;
+    strb r1,[r5,#9]; tst r1,r1; cmp r1,#2 beq — result is a state byte steering two branches; caller continues
+    with get_eLinkStateUnk24/get_eLinkStateUnk38, tying this byte_200AC20 block to the link/eLink state
+    code'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13060
+  - 0x0803EC54 sub_803EC54
+  reproduce: python3 tools/asmcat.py 0x0803F158
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it reads bytes at +3 and +1 of byte_200AC20, subtracts,
+    wraps negative by +8, and sets r3=2 on equal, r3=1 when >=6, else 0. The return into r1 matches the
+    caller''s `strb r1,[r5,#9]` and the dispatch on r1==0 / r1==2. However ''counter'' is a guess not
+    grounded in the asm; the bytes at 0x200AC21/23 are just fields of the link state block, and no counter
+    semantics appear in this function or the call site shown.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What the counters at 0x200AC21 and 0x200AC23 count (send/receive sequence numbers? packet slots?) —
+  need the writers of byte_200AC20 and the structure layout
+- What status 1 vs 0 vs 2 mean to the caller's branches at loc_803EC68/loc_803EC7C and what sub_803F118
+  does with the link state
+- 'The code matches the proposal''s mechanics: it reads bytes at +3 and +1 of byte_200AC20, subtracts,
+  wraps negative by +8, and sets r3=2 on equal, r3=1 when >=6, else 0. The return into r1 matches the
+  caller''s `strb r1,[r5,#9]` and the dispatch on r1==0 / r1==2. However ''counter'' is a guess not grounded
+  in the asm; the bytes at 0x200AC21/23 are just fields of the link state block, and no counter semantics
+  appear in this function or the call site shown.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803F158 -> get_eLinkDiffState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F158

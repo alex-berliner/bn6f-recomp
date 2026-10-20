@@ -1,0 +1,52 @@
+name: copy_tableEntryHalfword
+address: '0x0803C034'
+kind: function
+status: probable
+summary: Copies the 16-bit field at offset +2 of an 8-byte-stride table record (selected by index) into
+  the caller's halfword and returns it in r0.
+interface: (r0 = record index, r1 = table base (8 bytes per record), r2 = pointer to destination halfword)
+  -> r0 = the halfword read; flags from the strh
+details: Computes r1 + 8*r0 and loads the halfword at +2 of that record, then stores it to [r2] and returns
+  it in r0. The caller sub_803BFE8 first calls sub_803C018, a linear search over a pointer table r4 that
+  matches the halfword at [r6] and returns its index or 0xFF on failure; on a match it fetches a second
+  table pointer from r4 via a byte at [r7,#1] and calls this function with the found index, writing the
+  matched record's halfword back into [r6] before advancing r7 by 2 to the next entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803C034: mul r0,#8 / add r1,r1,r0 / ldrh r0,[r1,#2] / strh r0,[r2] — record stride 8, field
+    at +2 copied out; caller 0x0803C008: bl sub_803C018 (search, 0xFF = not found), then bl sub_803C034
+    with r1=[r4,r1] table pointer and r2=r6, then add r7,#2 loop; caller passes the same r6 whose halfword
+    was the search key, so the result overwrites the key field with the matched record''s value'
+  refs:
+  - bn6f/asm/asm03_1_1.s:6547
+  - 0x0803BFE8 sub_803BFE8
+  reproduce: python3 tools/asmcat.py 0x0803C034
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches: r0*8 + r1, ldrh at +2, strh to [r2], returns r0. Callers also match: a table index
+    byte at [r7,#1] indexes r4, and the function writes the fetched halfword back to [r6]. However the
+    name ''get_tableEntryHalfword'' implies only a fetch, but the function stores the value to [r2] as
+    a side effect, so ''copy'' fits better than ''get''.; run wf investigate investigate-20261019-045129;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What game system this table belongs to (no known callees or data identified for off_803C208 or the r4
+  table)
+- What sub_803C018 compares exactly and what the r6 struct is
+- 'The asm matches: r0*8 + r1, ldrh at +2, strh to [r2], returns r0. Callers also match: a table index
+  byte at [r7,#1] indexes r4, and the function writes the fetched halfword back to [r6]. However the name
+  ''get_tableEntryHalfword'' implies only a fetch, but the function stores the value to [r2] as a side
+  effect, so ''copy'' fits better than ''get''.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C034 -> copy_tableEntryHalfword
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C034

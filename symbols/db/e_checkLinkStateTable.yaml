@@ -1,0 +1,63 @@
+name: e_checkLinkStateTable
+address: '0x0803ED4C'
+kind: function
+status: probable
+summary: Iterates eLinkState+4 entries calling sub_8144D04, requires exactly two hits, then validates
+  unk_2009480 records (0x60 means fail, 0x62 marks found), copies matching fields into eLinkState+0x20/+0x40,
+  bumps state by 4, sets jump offset to 4, and returns 2 (or 4 via sub_803EA48 on failure).
+interface: (no args used) -> r0 = 2 if table verified and eStruct/eLinkState advanced, 4 if validation
+  failed or count != 2, 4/8 via sub_803EA48 on the exit paths; writes eLinkState[0], +1, +0xE, +0x20,
+  +0x30, +0x40 and eStruct200BC30 byte 5
+details: 'Reads a count from eLinkState+4 and calls sub_8144D04(i) over that many slots, counting how
+  many return 1; if not exactly 2, it exits through sub_803EA48 and returns 4. It then walks 8-byte-strided
+  records at unk_2009480: consecutive u16s must not be 0x60 (hard fail) while 0x62 sets eLinkState[0]=8
+  and calls sub_803E89C; a u16 pair (fields +0/+2) must equal eLinkState+0x1c for every entry or the routine
+  fails out. On success it stores two record fields as 32-bit words into eLinkState+0x20 and +0x40, gates
+  the 0x800 and 0x1000 record flags on sSubmenu == 0xC, bumps eLinkState+1 by 4 and copies it to eLinkState[0],
+  sets halfword +0xE = 2 and +0x30 = 0, sets the eStruct jump offset to 4 via e_setJumpOffset, and returns
+  2. The failure exits call sub_803EA48 with 2 or 8 and still return 4, so the return value alone does
+  not signal success.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_803ED6A: loop counts sub_8144D04(i)==1 and ''cmp r7,#2; bne'' exits unless exactly two
+    entries qualify; loc_803ED92: consecutive u16s at unk_2009480 fail on 0x60, and 0x62 triggers eLinkState[0]=8
+    + sub_803E89C; loc_803EDB8: combined u16 pair (field+0/+2) compared to eLinkState+0x1c each pass;
+    mismatch exits via sub_803EA48; loc_803EE28: success stores record words to eLinkState+0x20/+0x40,
+    eLinkState+1 += 4, sets jump offset 4 (e_setJumpOffset) and returns 2; dword_803EE8C/803EE94 = 0x800/0x1000
+    flags and the sSubmenu==0xC guard gate whether the success path is taken'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12379
+  - 0x0803EBE4 e_setJumpOffset
+  - 0x0803E78C sub_803E78C
+  - 0x0803E89C sub_803E89C
+  reproduce: python3 tools/asmcat.py 0x0803ED4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the broad flow reasonably well, but it misses that success returns 2 and failure
+    returns 4 via sub_803EA48 (the block at loc_803EE6A always calls sub_803EA48 with arg 2, not ''2 or
+    8''). Also the initial count loop uses sub_8144D04 per iteration of r4, not sub_8144D04(i) — r4 is
+    the loop counter. A better name reflects validation rather than verification of state.; run wf investigate
+    investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the in-game feature that owns eLinkState (link multiplayer, e-Reader, or another
+  system) is unconfirmed
+- What unk_2009480's 8-byte records represent and what sub_803E78C/sub_803E8B4 select from it
+- What sub_8144D04(i)==1 tests (per-slot connected/active condition) and why exactly 2 must pass
+- The summary captures the broad flow reasonably well, but it misses that success returns 2 and failure
+  returns 4 via sub_803EA48 (the block at loc_803EE6A always calls sub_803EA48 with arg 2, not '2 or 8').
+  Also the initial count loop uses sub_8144D04 per iteration of r4, not sub_8144D04(i) — r4 is the loop
+  counter. A better name reflects validation rather than verification of state.
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803ED4C -> e_checkLinkStateTable
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803ED4C

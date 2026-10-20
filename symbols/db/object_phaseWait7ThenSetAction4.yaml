@@ -1,0 +1,52 @@
+name: object_phaseWait7ThenSetAction4
+address: '0x080D86B0'
+kind: function
+status: probable
+summary: Battle-object phase handler that initializes a 6-tick timer and, once it expires, sets CurAction=4
+  while clearing CurPhaseAndPhaseInitialized to transition phases.
+interface: (r5 = oBattleObject *) -> void; flags clobbered
+details: On first run (oBattleObject_PhaseInitialized == 0) stores Timer = 6 and PhaseInitialized = 4.
+  Every call decrements oBattleObject_Timer; while the result is >= 0 it just returns. When the timer
+  underflows to -1 (after 7 total invocations) it writes oBattleObject_CurAction = 4 and zeroes oBattleObject_CurPhaseAndPhaseInitialized,
+  ending the phase. r5 is a battle object whose phase state machine calls this as one phase step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] / tst gates one-time init of Timer=6 (asm start);
+    ldrh Timer / sub #1 / strh / bge loops the decrement until underflow; on underflow stores CurAction=4
+    and CurPhaseAndPhaseInitialized=0, advancing the state machine; only oBattleObject_PhaseInitialized/Timer/CurAction/CurPhase
+    fields are touched, no other data'
+  refs:
+  - bn6f/asm/asm31.s:71421
+  reproduce: python3 tools/asmcat.py 0x080D86B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: on first call it sets Timer=6 and PhaseInitialized=4,
+    returns while the decremented timer is >=0, and on underflow writes CurAction=4 and zeros CurPhaseAndPhaseInitialized.
+    However, the summary says ''waits 7 frames'' but the timer is loaded with 6 and decremented before
+    the check, so it underflows after 7 decrements on the 8th call, not after 7 frames — the wait length
+    is implementation-defined without knowing the call cadence. Also ''ends the phase'' is fine but it
+    sets CurAction=4 to transition, not strictly end. Minor wording issue.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'no known callers: cannot confirm which object/behavior uses this phase or what CurAction=4 means for
+  it; a caller table mapping actions to phase handlers would confirm'
+- 'The code matches the proposal''s mechanics: on first call it sets Timer=6 and PhaseInitialized=4, returns
+  while the decremented timer is >=0, and on underflow writes CurAction=4 and zeros CurPhaseAndPhaseInitialized.
+  However, the summary says ''waits 7 frames'' but the timer is loaded with 6 and decremented before the
+  check, so it underflows after 7 decrements on the 8th call, not after 7 frames — the wait length is
+  implementation-defined without knowing the call cadence. Also ''ends the phase'' is fine but it sets
+  CurAction=4 to transition, not strictly end. Minor wording issue.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D86B0 -> object_phaseWait7ThenSetAction4
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D86B0

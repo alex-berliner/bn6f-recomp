@@ -1,0 +1,54 @@
+name: object_blinkTick
+address: '0x080E1054'
+kind: function
+status: probable
+summary: Per-frame timer tick that hides/shows a battle object via oObjectHeader_Flags bit 0x2 while oBattleObject_Timer
+  is nonzero, and calls sub_80E107C when the timer expires.
+interface: (r5 = battle object header, no args) -> r0 = undefined; updates object flags and timer, calls
+  sub_80E107C on expiry
+details: r5 points to a battle object header. Each call it first clears bit 0x2 of oObjectHeader_Flags,
+  then re-sets that bit iff bit 0x2 of oBattleObject_Timer is set, so as the timer decrements the flag
+  alternates on/off every two frames — a blink/invisibility pattern. The timer is decremented once per
+  call; while nonzero nothing else happens. When it reaches zero, sub_80E107C is invoked (presumably to
+  restore the object's state or despawn it). No return value is produced.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/bic/orr/strb on [r5,#oObjectHeader_Flags] with mask 2 sets flag = (Timer & 2) != 0; sub/tst
+    pattern on oBattleObject_Timer makes the flag alternate as the timer decrements; bne locret after
+    decrement means sub_80E107C runs only when the timer hits zero; r5 is used without setup, so callers
+    pass the object pointer in a register beforehand (typical object-update convention)
+  refs:
+  - bn6f/asm/asm31.s:90161
+  - 0x080E107C sub_80E107C
+  reproduce: python3 tools/asmcat.py 0x080E1054
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The blink logic (lines 4–10: clear bit 0x2 of Flags, re-set it if Timer & 0x2), the BNE skip (line
+    16), the Timer decrement (line 14), and the call to sub_80E107C on zero (line 16) match the proposal.
+    The proposal''s claim ''alternates on/off every two frames'' is correct since Timer is a halfword
+    decremented each call, so bit 0x2 flips each call. However the name ''object_blinkUpdate'' is fine
+    but a tighter ''object_blinkTick'' better conveys per-frame update semantics.; run wf investigate
+    investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80E107C does on timer expiry (restore visibility, free the object, or spawn something)
+- which semantic the flag bit 2 has (hidden/invisible vs something else) — callers that set the timer
+  and flag would confirm
+- 'The blink logic (lines 4–10: clear bit 0x2 of Flags, re-set it if Timer & 0x2), the BNE skip (line
+  16), the Timer decrement (line 14), and the call to sub_80E107C on zero (line 16) match the proposal.
+  The proposal''s claim ''alternates on/off every two frames'' is correct since Timer is a halfword decremented
+  each call, so bit 0x2 flips each call. However the name ''object_blinkUpdate'' is fine but a tighter
+  ''object_blinkTick'' better conveys per-frame update semantics.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1054 -> object_blinkTick
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1054

@@ -1,0 +1,57 @@
+name: battle_objectDespawnTimerHandler
+address: '0x080BA186'
+kind: function
+status: probable
+summary: 'Battle-object despawn step: on entry writes CurPhase=4/CurAnim=4 and sets the timer to 3, then
+  on each tick decrements the timer; when it expires it disables oCollisionData_Enabled via CollisionDataPtr
+  and writes CUR_STATE_DESTROY (0) into CurStateActionPhaseAndPhaseInitialized so the object is torn down.'
+interface: (r5 = battle object pointer; r0 clobbered) -> void; sets oBattleObject_CurPhase/CurAnim/Timer
+  on entry, state to CUR_STATE_DESTROY on expiry
+details: Runs as an object update/state handler using r5 as the object, not a normal argument-passing
+  call. On first entry (phase 0) it writes phase=4, anim=4, and timer=3, i.e. it kicks off the object's
+  final animation. On subsequent ticks it decrements oBattleObject_Timer; once it goes negative it clears
+  oCollisionData_Enabled via the object's CollisionDataPtr and writes CUR_STATE_DESTROY (likely 4) into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object loop tears it down. A 3-frame timer
+  is very short, so this looks like a quick fade/pop-out step shared by objects that vanish without further
+  scripting.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80BA186+4..+12: phase 0 branch sets CurPhase=4, CurAnim=4, TimerAndTimer2=3 before returning;
+    sub_80BA19C: decrements oBattleObject_Timer with sub/bge, i.e. waits the stored frame count; expiry
+    path: strb 0,[r1,#oCollisionData_Enabled] disables hitbox before teardown; expiry path: mov 0,#CUR_STATE_DESTROY
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized requests object destruction; reads/writes
+    only r5-relative battle-object fields (CurPhase, Timer, CollisionDataPtr), matching an object state-step
+    handler'
+  refs:
+  - bn6f/asm/asm31.s:4392
+  reproduce: python3 tools/asmcat.py 0x080BA186
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Behavior matches: init sets CurPhase=4, CurAnim=4, Timer=3, then decrements Timer each tick, clears
+    oCollisionData_Enabled via CollisionDataPtr, and writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized.
+    However, CUR_STATE_DESTROY is 0 in BN6, not 4 (the 4 is CurPhase), and the timer is written as a word
+    to TimerAndTimer2, so both fields are set. Name and prefix ''battle'' are fine; summary is essentially
+    correct but slightly misstates CUR_STATE_DESTROY''s value.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so what kind of object/attack uses this despawn step is unknown
+- The meaning of phase 4 / anim 4 for this object type is not confirmed
+- 'Behavior matches: init sets CurPhase=4, CurAnim=4, Timer=3, then decrements Timer each tick, clears
+  oCollisionData_Enabled via CollisionDataPtr, and writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized.
+  However, CUR_STATE_DESTROY is 0 in BN6, not 4 (the 4 is CurPhase), and the timer is written as a word
+  to TimerAndTimer2, so both fields are set. Name and prefix ''battle'' are fine; summary is essentially
+  correct but slightly misstates CUR_STATE_DESTROY''s value.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA186 -> battle_objectDespawnTimerHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA186

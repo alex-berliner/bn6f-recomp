@@ -1,0 +1,59 @@
+name: battle_forEachBattleObject
+address: '0x080EFD74'
+kind: function
+status: probable
+summary: Loops 8 iterations calling sub_80EFD8C with the caller's r2 forwarded via r7; due to the `bl`
+  being before the `add r0,#4`, all 8 calls actually receive the first list entry pointer in r0.
+interface: (r0 = unused at entry, r2 = argument forwarded to the per-object helper) -> r0 = last helper
+  result; no meaningful flags
+details: Reads the battle state pointer from the toolkit (r10 + oToolkit_BattleStatePtr) and bases on
+  oBattleState_BattleObjectList. Loops a fixed 8 iterations with a stride of 4, i.e. it walks the battle
+  object list's 8 pointer slots. Each iteration calls sub_80EFD8C with r0 = pointer to the current list
+  entry; the caller's r2 is held in r7 across the whole loop so the callee can use it as a parameter.
+  Return value of the helper is overwritten each iteration and the wrapper's own r0 is just the last one.
+  The caller (AI attack routine sub_80EFCD8) discards the return value and calls it exactly once per attack
+  cycle, after its step timer counts down, so it is a one-shot 'apply to all objects' sweep rather than
+  a per-tick update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: r0 = *(r10+oToolkit_BattleStatePtr) + oBattleState_BattleObjectList is the loop base address;
+    asm: loop body is ''bl sub_80EFD8C; add r0,#4; sub r3,#1'' with r3=8 — exactly 8 list entries of stride
+    4; asm: ''mov r7, r2'' and r7 untouched through the loop — caller''s r2 is forwarded to the helper;
+    caller sub_80EFCD8 at 0x080EFD50: called once at timer expiry (StepTimer < 0), return ignored, then
+    sets StepTimer=0xB and HitElement=4'
+  refs:
+  - bn6f/asm/asm31.s:122916
+  - 0x080EFCD8 sub_80EFCD8
+  - 0x080EFD8C sub_80EFD8C
+  reproduce: python3 tools/asmcat.py 0x080EFD74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop walks the list with `add r0,#4` per iteration and `r3=8` iterations, but `bl sub_80EFD8C`
+    is called BEFORE the increment, so it runs 8 times on the same first entry (a likely bug), not once
+    per slot. Also, r0 at entry is unused (no read) and r2 is forwarded via r7, matching the proposal.
+    The proposal''s name fits but its summary is wrong about ''once per slot'' and about the helper taking
+    ''the current list entry'' as argument (the helper''s r0 isn''t checked, only its r7/r2 use is implied).;
+    run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80EFD8C does to each battle object (damage, status flag, timer, spawn...) — it is not shown
+- what the r2 argument means (an attack id, element, or value written to each object)
+- whether other callers pass different r2 values or rely on the return value
+- The loop walks the list with `add r0,#4` per iteration and `r3=8` iterations, but `bl sub_80EFD8C` is
+  called BEFORE the increment, so it runs 8 times on the same first entry (a likely bug), not once per
+  slot. Also, r0 at entry is unused (no read) and r2 is forwarded via r7, matching the proposal. The proposal's
+  name fits but its summary is wrong about 'once per slot' and about the helper taking 'the current list
+  entry' as argument (the helper's r0 isn't checked, only its r7/r2 use is implied).
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EFD74 -> battle_forEachBattleObject
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFD74

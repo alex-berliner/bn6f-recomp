@@ -1,0 +1,67 @@
+name: ai_advanceAttackMoveStage
+address: '0x080F0EC0'
+kind: function
+status: probable
+summary: 'Per-stage AI attack movement driver: indexes a per-alliance velocity table by AttackBoost2,
+  optionally checks battle_countPanelsInColumnForAlliance (stage 1) or compares FuturePanel vs Panel (stages
+  3/4); when conditions are met it stores velX*AiAttackParam/velY*AiAttackParam into XVelocity/YVelocity
+  and increments AttackBoost2, returning 0. Returns 1 when the object has settled on the target panel
+  so the caller can finalize the attack.'
+interface: () -> r0 = 0 while still moving (velocity was set / stage advanced), r0 = 1 when the object
+  has arrived and the attack should connect; uses r5 = battle object, r7 = AI attack vars; no argument
+  registers.
+details: Indexes table byte_80F0F50 at alliance*0x14 + oAIAttackVars_AttackBoost2*4, giving a 4-byte entry
+  {target PanelX, target PanelY, s8 velX, s8 velY}. Stage 1 first calls battle_countPanelsInColumnForAlliance
+  and goes straight to the velocity step if panels exist; stages 3 and 4 instead compare FuturePanelX/Y
+  against PanelX/Y to wait until the object has settled. When a stage fires it stores velX*oAIAttackVars_AiAttackParam
+  into oBattleObject_XVelocity and velY*param into oBattleObject_YVelocity and increments AttackBoost2;
+  otherwise it returns 0 without changing anything. The caller (sub_80F0D64) then applies the movement
+  via object_setPanelsFromCoordinates/object_updateCollisionPanels, and on a nonzero return writes element
+  0xC to oAIAttackVars_HitElement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80F0EC0: ldrb r0,[r5,#oBattleObject_Alliance]; mul r0,#0x14; add r0,AttackBoost2<<2 selects
+    a 4-byte entry of byte_80F0F50; loc_80F0F36: stores signed table bytes * oAIAttackVars_AiAttackParam
+    into oBattleObject_XVelocity/YVelocity and increments AttackBoost2, returning 0; loc_80F0F16/F2A:
+    return 1 when FuturePanelX/Y equal PanelX/Y (object settled on target); caller 0x080F0DC8: on nonzero
+    result sets oAIAttackVars_HitElement=0xC; otherwise calls object_setPanelsFromCoordinates + object_updateCollisionPanels
+    to apply the movement; callee battle_countPanelsInColumnForAlliance (stage 1) gates the move on panels
+    present in the target column'
+  refs:
+  - bn6f/asm/asm31.s:125229
+  - 0x080F0D64 sub_80F0D64
+  - 0x080F0F78 battle_countPanelsInColumnForAlliance
+  reproduce: python3 tools/asmcat.py 0x080F0EC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The return convention is inverted in the proposal: r0=0 means still moving and r0=1 means arrived,
+    but the caller at 0x080F0DDA writes HitElement on the *nonzero* (r0=1) branch, and the code''s loc_80F0F16/loc_80F0F2A
+    set r0=1 only when FuturePanel==Panel (settled), while loc_80F0F36 sets velocity and falls through
+    to r0=0. The name ''ai_advanceAttackMoveStage'' fits, but the summary misstates ''r0=0 while still
+    moving, r0=1 when arrived'' as standard - actually that is correct, but it wrongly claims ''stage
+    advanced'' implies r0=0. Better summary clarifies return semantics.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what attack/boss this staged panel-dash belongs to and what element 0xC means here
+- exact arguments/semantics of battle_countPanelsInColumnForAlliance in the stage-1 check
+- full meaning of the per-alliance table entries beyond target X/Y and velocity deltas
+- 'The return convention is inverted in the proposal: r0=0 means still moving and r0=1 means arrived,
+  but the caller at 0x080F0DDA writes HitElement on the *nonzero* (r0=1) branch, and the code''s loc_80F0F16/loc_80F0F2A
+  set r0=1 only when FuturePanel==Panel (settled), while loc_80F0F36 sets velocity and falls through to
+  r0=0. The name ''ai_advanceAttackMoveStage'' fits, but the summary misstates ''r0=0 while still moving,
+  r0=1 when arrived'' as standard - actually that is correct, but it wrongly claims ''stage advanced''
+  implies r0=0. Better summary clarifies return semantics.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F0EC0 -> ai_advanceAttackMoveStage
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0EC0

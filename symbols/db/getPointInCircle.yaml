@@ -1,0 +1,52 @@
+name: getPointInCircle
+address: '0x080011F0'
+kind: function
+status: probable
+summary: Returns 1 if the point (x,y) is within radius r of center (cx,cy), else 0, using squared comparison.
+interface: (r0 = point x, r1 = point y, r2 = center x, r3 = center y, r4 = radius) -> r0 = 1 if (x-cx)^2
+  + (y-cy)^2 <= r^2, else 0; flags clobbered
+details: The function subtracts the center (r2,r3) from the point (r0,r1) to get the dx/dy deltas, then
+  squares each delta via the self-multiply idiom (mov r2,rX; mul rX,r2) and sums them into the squared
+  distance. It squares the radius in place the same way (mov r2,r4; mul r4,r2) and compares radius^2 against
+  distance^2 with a signed bmi, avoiding any sqrt. It returns 1 when the squared distance is less than
+  or equal to the squared radius (point inside/on the circle) and 0 otherwise. The r4 radius register
+  is clobbered (becomes r^2). No memory or structures are touched; it is a pure 5-argument arithmetic
+  test.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub r0,r0,r2 / sub r1,r1,r3 computes point-minus-center deltas (asm lines 1-2); mov r2,r0; mul
+    r0,r2 and same for r1 implement dx*dx + dy*dy (lines 6-10); mov r2,r4; mul r4,r2 squares the radius
+    before the compare (lines 4-5); cmp r4,r0; bmi -> return 0, fallthrough -> return 1 encodes the inside-circle
+    condition (lines 11-15)
+  refs:
+  - bn6f/asm/asm00_0.s:2342
+  reproduce: python3 tools/asmcat.py 0x080011F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal exactly: (r0,r1)-(r2,r3) deltas, squared via self-mul, summed, compared
+    vs squared radius with bmi returning 0, else 1. However ''isPointInCircle'' is a generic name; naming
+    rules require a ''get'' prefix for arithmetic tests like this, so ''getPointInCircle'' (or ''getInCircle'')
+    would be more idiomatic without digits.; run wf investigate investigate-20261019-052112; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the game-level meaning (which coordinate space, which entity's radius, hit detection
+  vs touch input vs camera) is unknown; a caller showing the argument sources would pin the subsystem
+  prefix and purpose
+- 'The code matches the proposal exactly: (r0,r1)-(r2,r3) deltas, squared via self-mul, summed, compared
+  vs squared radius with bmi returning 0, else 1. However ''isPointInCircle'' is a generic name; naming
+  rules require a ''get'' prefix for arithmetic tests like this, so ''getPointInCircle'' (or ''getInCircle'')
+  would be more idiomatic without digits.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80011F0 -> getPointInCircle
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80011F0

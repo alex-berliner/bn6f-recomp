@@ -1,0 +1,54 @@
+name: battle_calcConstDivSpeedTimer
+address: '0x080DE7A0'
+kind: function
+status: probable
+summary: Divides a per-type fixed-point constant (from table at 0x80DE7C0 indexed by byte at 0x64) by
+  the battle object's |YVelocity| and stores the low byte of the quotient as a timer at offset 0x62.
+interface: (r5 = battle object) -> r0 = byte timer stored to [r5+0x62]; uses svc Div (r0 = table[type],
+  r1 = |YVelocity|)
+details: Loads the byte at oBattleObject+0x64, indexes the word table at byte_80DE7C0 (entries 0x4000
+  and 0x1000, i.e. 16.16-ish fixed constants) with it, takes the absolute value of the object's YVelocity,
+  and invokes BIOS svc 6 (Div) to compute constant/speed. The quotient is truncated to a byte and saved
+  at object offset 0x62, which given the caller immediately advancing CurAction to 8 and CurPhase to 0
+  is presumably a frame counter/time field consumed by the next action. The table indexed by an object
+  type field makes the scaling type-dependent. Caller only invokes it when the byte at another offset
+  equals 1; the alternate branch (type != 1) instead snapshots Y and jumps to CurAction 4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: svc 6 with r0=table value, r1=|YVelocity| is BIOS Div; quotient stored via strb r0,[r5,#0x62];
+    byte at r5+0x64 used as *4 index into byte_80DE7C0 = per-type divisor table {0x4000, 0x1000}; caller
+    0x080DE544 calls it only when [r5,x]==1, then sets CurAction=8 and CurPhase=0, implying the byte at
+    0x62 is a timer for that state
+  refs:
+  - bn6f/asm/asm31.s:84765
+  - 0x080DE544 sub_80DE544
+  reproduce: python3 tools/asmcat.py 0x080DE7A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary fits: byte at 0x64 indexes the word table at 0x80DE7C0 (entries 0x00004000 and 0x00001000),
+    |YVelocity| is divided via svc 6, and the low byte is stored at 0x62. However, the proposed name ''battle_calcSpeedDivTimer''
+    is misleading — the table constants are numerators and YVelocity is the denominator, not the other
+    way around. A clearer name reflects division of a constant by speed.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what offset the ldrb before the call reads (which type/flag field at r5), so the two table entries'
+  meaning is unconfirmed
+- which field or state actually consumes the byte at 0x62 (no callees or further callers known)
+- 'The summary fits: byte at 0x64 indexes the word table at 0x80DE7C0 (entries 0x00004000 and 0x00001000),
+  |YVelocity| is divided via svc 6, and the low byte is stored at 0x62. However, the proposed name ''battle_calcSpeedDivTimer''
+  is misleading — the table constants are numerators and YVelocity is the denominator, not the other way
+  around. A clearer name reflects division of a constant by speed.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE7A0 -> battle_calcConstDivSpeedTimer
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE7A0

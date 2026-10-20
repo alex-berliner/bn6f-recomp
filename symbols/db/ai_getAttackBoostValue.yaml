@@ -1,0 +1,60 @@
+name: ai_getAttackBoostValue
+address: '0x08107F24'
+kind: function
+status: probable
+summary: Calls sub_800FE28 twice on byte_8107F40 and byte_8107F40+4 to look up AI attack boost parameters
+  (indexed by difficulty tier set just before in the caller), returning only the first result in r0; the
+  second result in r1 is unused.
+interface: () -> r0 = value from byte_8107F40[...] via sub_800FE28, r1 = value from byte_8107F40+4 lookup;
+  flags clobbered
+details: Takes no arguments; calls sub_800FE28 with &byte_8107F40, saves the result, then calls it again
+  with &byte_8107F40+4, returning the first result in r0 and the second in r1. byte_8107F40 is a small
+  ROM table {0x10,0x10,0xC,0xC,0x8,0x8,0x8,0x8}, and the base/+4 split suggests two adjacent sub-tables
+  (or a pair of values per entry) selected inside sub_800FE28, likely by the AI difficulty tier fetched
+  just before in the caller. The caller (sub_8108046, an AI attack initializer that sets InitFlag, loads
+  attack params with ai_loadAttackParams(1), and sets attack 0xb) uses only r0, storing it to both oAIAttackVars_AttackBoost2
+  and oAIAttackVars_TimerOrCycles; the r1 result is unused there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8107F24 body: two bl sub_800FE28 calls with byte_8107F40 and byte_8107F40+4, returning
+    first in r0, second in r1 (push/pop {r0}); caller 0x0810805E: strb r0 from sub_8107F24 into both oAIAttackVars_AttackBoost2
+    and oAIAttackVars_TimerOrCycles; caller context: battle_getAiDifficultyTier_800FE36 and ai_loadAttackParams(1)
+    immediately precede, so the lookup is part of AI attack setup; byte_8107F40 = {0x10,0x10,0xC,0xC,0x8,0x8,0x8,0x8}:
+    two 4-byte groups matching the base and base+4 lookups'
+  refs:
+  - bn6f/asm/asm31.s:173751
+  - 0x08108046 sub_8108046
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08107F24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms two calls to sub_800FE28 with byte_8107F40 and byte_8107F40+4, returning r0
+    and r1. However, the proposal''s interface says r1 is returned, but the code pops r0 back as the return
+    value and r1 is only moved into r1 (discarded since it''s not popped). The caller stores only r0 to
+    both AttackBoost2 and TimerOrCycles, so the r1 result is genuinely unused. A more accurate name reflecting
+    that this fetches an AI attack boost/duration parameter would be ''ai_getAttackBoostValue''.; run
+    wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_800FE28 does with the table pointer (index by difficulty tier, random pick, or sequential read)
+  — its disassembly is not shown
+- whether the r1 result is consumed by any other caller
+- exact meaning of AttackBoost2 vs TimerOrCycles fields
+- The assembly confirms two calls to sub_800FE28 with byte_8107F40 and byte_8107F40+4, returning r0 and
+  r1. However, the proposal's interface says r1 is returned, but the code pops r0 back as the return value
+  and r1 is only moved into r1 (discarded since it's not popped). The caller stores only r0 to both AttackBoost2
+  and TimerOrCycles, so the r1 result is genuinely unused. A more accurate name reflecting that this fetches
+  an AI attack boost/duration parameter would be 'ai_getAttackBoostValue'.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8107F24 -> ai_getAttackBoostValue
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107F24

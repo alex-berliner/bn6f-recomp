@@ -1,0 +1,55 @@
+name: eEaseToward
+address: '0x0811B990'
+kind: function
+status: probable
+summary: Returns current value moved halfway toward a target (r1), leaving it unchanged when the halved
+  distance rounds to 0 or 1; used by callers to ease a field toward a target until convergence.
+interface: (r0 = current value, r1 = target value) -> r0 = current moved by diff/2 toward target; unchanged
+  if |diff| <= 3
+details: 'Computes r0 = r1 - r0. For diff >= 0 it does an unsigned lsr #1 and adds the result to current;
+  for diff < 0 it negates to test magnitude, then uses asr #1 on the negative diff so the step is still
+  toward the target. If the halved difference is <= 1 (i.e. |diff| <= 3), it returns the current value
+  untouched, so the last few units are never closed by this function alone. No memory or flags are touched;
+  it is a pure math helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_811B990: sub r0,r1,r0 then lsr/asr #1 and add back — half-difference step toward r1; sub_811B990:
+    cmp r0,#1 / ble skip — deadzone returns current when |diff|/2 <= 1; sub_811B5FC 0x811B606: ldrsh r0,[r5,0x16],
+    ldrsh r1,[r5,0x14], result stored to [r5,0x14] — 0x14 eases toward 0x16; sub_811B5FC: cmp r0,r1 /
+    bne, then strb 8,[r5,0xa] and strh 2,[r5,0x12] — state change once the value settles'
+  refs:
+  - bn6f/asm/asm32.s:28493
+  - 0x0811B5FC sub_811B5FC
+  reproduce: python3 tools/asmcat.py 0x0811B990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Asm shows diff = r1 - r0 (target minus current), so the proposal''s ''r0 = r1 - r0'' matches. However
+    the negative branch uses `asr r1, r1, #1` on the negative diff, which floors toward negative infinity,
+    not the rounded value the proposal implies. The deadzone `<= 1` after halving means |diff| < 4 is
+    left untouched, not `<= 3`. The caller at 0x0811B606 writes the result back to a halfword position
+    field and triggers a state byte/word change on convergence, confirming this is an easing/movement
+    helper toward a target. The prefix ''e'' (entity ease) fits the caller context better than the proposal''s
+    name.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What structure r5 points to and what the fields at 0x14/0x16 represent (positions? counters?)
+- Whether other callers use it with different field semantics
+- 'Asm shows diff = r1 - r0 (target minus current), so the proposal''s ''r0 = r1 - r0'' matches. However
+  the negative branch uses `asr r1, r1, #1` on the negative diff, which floors toward negative infinity,
+  not the rounded value the proposal implies. The deadzone `<= 1` after halving means |diff| < 4 is left
+  untouched, not `<= 3`. The caller at 0x0811B606 writes the result back to a halfword position field
+  and triggers a state byte/word change on convergence, confirming this is an easing/movement helper toward
+  a target. The prefix ''e'' (entity ease) fits the caller context better than the proposal''s name.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B990 -> eEaseToward
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B990

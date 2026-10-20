@@ -1,0 +1,54 @@
+name: rfu_shutdown
+address: '0x0803C4EC'
+kind: function
+status: probable
+summary: 'Cleans up the wireless (RFU) link: invokes rfu_setStateEnded (state 9) then ORs bits 0x8 and
+  0x80 into the RFU shared state flags word at offset 0xC of the 0x200BC50 structure.'
+interface: () -> r0 = 0 (from last rfu_orFlags call, likely ignored); no flags used
+details: 'Trivial two-part teardown sequence: first calls rfu_setStateEnded (0x813D978) which writes state
+  value 9 into the RFU/wireless work structure at 0x200BC50 area and invokes the lower RFU state routine
+  with 0; then it ORs bits 0x8 and 0x80 into the flags word at offset 0xC of the RFU shared state at 0x200BC50
+  via rfu_orFlags. The r4-r7 push/pop is dead code (registers unused), a compiler artifact. The literal
+  eS200A290 is loaded but never actually used before the pop, suggesting stripped/partial logic.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl rfu_setStateEnded — callee known to record state 9 ('ended') in the wireless work struct;
+    two rfu_orFlags calls with r0=8 and r0=0x80 set shutdown-related bits in the RFU flags word at 0x200BC50+0xC;
+    ldr r5, =eS200A290 is dead — r5 never used, hinting the function is a fixed teardown sequence; no
+    return value consumed pattern; r0 ends as result of rfu_orFlags
+  refs:
+  - bn6f/asm/asm03_1_1.s:7333
+  - 0x0803CB00 rfu_orFlags
+  - 0x0813D978 rfu_setStateEnded
+  reproduce: python3 tools/asmcat.py 0x0803C4EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callee rfu_setStateEnded already records state 9 (ended), and the two rfu_orFlags calls set
+    bits 0x8 and 0x80, consistent with a shutdown/cleanup pattern. The eS200A290 literal is loaded into
+    r5 but r5 is never used before pop, so it is dead code as the proposal notes. The name ''rfu_shutdown''
+    fits the behavior well, but a slightly more precise summary is warranted since the state-ended helper
+    and OR''d flags together signal RFU cleanup rather than a generic ''ends session''.; run wf investigate
+    investigate-20261019-045129; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of flag bits 0x8 and 0x80 in the RFU flags word
+- which game code calls this (no callers known), so its trigger context (menu exit, link loss, power-off)
+  is unconfirmed
+- The callee rfu_setStateEnded already records state 9 (ended), and the two rfu_orFlags calls set bits
+  0x8 and 0x80, consistent with a shutdown/cleanup pattern. The eS200A290 literal is loaded into r5 but
+  r5 is never used before pop, so it is dead code as the proposal notes. The name 'rfu_shutdown' fits
+  the behavior well, but a slightly more precise summary is warranted since the state-ended helper and
+  OR'd flags together signal RFU cleanup rather than a generic 'ends session'.
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C4EC -> rfu_shutdown
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C4EC

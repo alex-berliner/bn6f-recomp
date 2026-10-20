@@ -1,0 +1,59 @@
+name: object_storyExplosionUpdate
+address: '0x080A98D4'
+kind: function
+status: probable
+summary: 'Per-frame dispatcher for a story-script explosion object: reads the state byte at work+0x08,
+  indexes off_80A98E8 to fetch a handler, and tail-calls it via ''mov lr,pc; bx r0'' so execution returns
+  to this function''s caller; handlers receive r0 = handler fn pointer and r1 = state index and re-obtain
+  the work pointer from r5.'
+interface: (r5 = story explosion object work, r0 = unused/ignored) -> tail-jumps to handler from off_80A98E8
+  indexed by [r5,#8]; handler receives r0 = table-entry value, r1 = state index
+details: 'Reads the object''s state byte at work+0x08 and uses it as a word index into off_80A98E8, then
+  does ''mov lr, pc; bx r0'' to tail-call the handler with return into this function''s caller. The three
+  handlers are object_storyExplosionInit (state 0), sub_80A9908 (state 1) and sub_80A9A04 (state 2), so
+  this is the per-frame update of a story-script explosion object whose init runs on state 0. Quirk: r0
+  is not preserved — the callee gets the loaded function pointer in r0 and the state byte in r1, so the
+  handlers presumably ignore r0 or re-derive the work pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; mov lr,pc; bx r0 — indexed dispatch on work+0x08; table off_80A98E8
+    = {object_storyExplosionInit, sub_80A9908, sub_80A9A04} — three sequential states, first is the object's
+    init; mov lr,pc / pop {pc} — tail-call pattern returning to this function's caller, typical per-frame
+    object update; state index comes from r5 object work, matching the object_* symbol family's work-struct
+    layout
+  refs:
+  - bn6f/asm/asm29.s:9353
+  reproduce: python3 tools/asmcat.py 0x080A98D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the dispatch behavior: ldrb r1,[r5,#8] reads the state byte, the table off_80A98E8
+    holds three thumb entrypoints (+1 set), and mov lr,pc / bx r0 tail-calls through it. However, the
+    interface is wrong: r0 is loaded from the table (function pointer), not ''unused/ignored''; the callee
+    receives r0=handler fn, r1=state index, and must re-derive the work pointer (r5). Also note the callee
+    is ''object_storyExplosionInit+1'' which is the tail-callable thumb entry, not the function label
+    directly, so ''Init'' is just state 0. Name/summary are close but the interface detail should be fixed.;
+    run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so whether this runs from the standard object update loop and what r0 should hold
+  on entry is unconfirmed
+- What sub_80A9908 and sub_80A9A04 do (the later explosion states) is unknown
+- 'The code matches the dispatch behavior: ldrb r1,[r5,#8] reads the state byte, the table off_80A98E8
+  holds three thumb entrypoints (+1 set), and mov lr,pc / bx r0 tail-calls through it. However, the interface
+  is wrong: r0 is loaded from the table (function pointer), not ''unused/ignored''; the callee receives
+  r0=handler fn, r1=state index, and must re-derive the work pointer (r5). Also note the callee is ''object_storyExplosionInit+1''
+  which is the tail-callable thumb entry, not the function label directly, so ''Init'' is just state 0.
+  Name/summary are close but the interface detail should be fixed.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A98D4 -> object_storyExplosionUpdate
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A98D4

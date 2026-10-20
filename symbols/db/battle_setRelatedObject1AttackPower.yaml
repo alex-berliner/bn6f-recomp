@@ -1,0 +1,65 @@
+name: battle_setRelatedObject1AttackPower
+address: '0x080E97BE'
+kind: function
+status: probable
+summary: Stores the attack power byte (r1) into the related battle object 1's AIData BPwrAtk field and
+  normalizes its B-button state (values 3/4 reset to 0, 0x2C changed to 0x2B), used after navi form/Beast-Out
+  setup.
+interface: '(r0 ignored, r1 = attack power value; r5 = battle object) -> r0 = ...; updates RelatedObject1''s
+  AIData: BPwrAtk = r1, BButton 3/4 -> 0 and 0x2C -> 0x2B'
+details: 'Dereferences r5->oBattleObject_RelatedObject1Ptr then its oBattleObject_AIDataPtr, and stores
+  the caller''s byte into oAIData_BPwrAtk. It then reads oAIData_BButton: if it is 3 or 4 it is reset
+  to 0; if it is 0x2C it is replaced with 0x2B; other values are left alone. The button fixups look like
+  they cancel an in-progress charge-shot state when the form is applied. Callers invoke it immediately
+  after spawning effect object 0x5B/0x5C and copying oBattleObject_Param2 into NaviStats offset 5, passing
+  the same Param2 in r1, indicating this is part of a navi form/transformation (e.g. Beast Out) setup
+  that boosts the related object''s attack power.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E97BE: strb r1,[r0,#oAIData_BPwrAtk] writes r1 into the related object''s AIData attack
+    power field; sub_80E97BE: oAIData_BButton == 3/4 -> store 0, == 0x2C -> store 0x2B, i.e. button/charge
+    state normalization; sub_80E96C6 0x080E96FE: r1 = ldrb [r5,oBattleObject_Param2] right before the
+    call, after effect object 0x5B spawn and NaviStats write; sub_80E9714 0x080E9762: same pattern with
+    effect object 0x5C, Param2 in r1, then plays SOUND_LOG_IN afterwards (transformation sequence)'
+  refs:
+  - bn6f/asm/asm31.s:109660
+  - 0x080E96C6 sub_80E96C6
+  - 0x080E9714 sub_80E9714
+  reproduce: python3 tools/asmcat.py 0x080E97BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms r1 is stored into RelatedObject1''s AIData->BPwrAtk and B-button fixups for
+    3/4 -> 0 and 0x2C -> 0x2B, matching the summary. However, the proposal''s interface claims ''r0 ignored'',
+    but the callers do not set r1 to attack power explicitly in the shown code; the call right before
+    the function stores Param2 into NaviStats offset 5 and the next-to-last line at 0x080E96FA loads r1
+    from Param2 but it''s not shown being passed to sub_80E97BE explicitly. Actually looking more carefully,
+    in caller sub_80E96C6 r1 is set to Param2 via ldrb before the call implicitly via r1 still holding
+    that value from the strb above. The name ''battle_setRelatedObjectAIDataAttackPower'' is reasonable
+    but a bit verbose; ''battle_setRelatedObject1AttackPower'' is cleaner.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of oAIData_BPwrAtk and the BButton values 3/4/0x2C (charge-shot state?) needs the AIData
+  structure documented
+- Which forms correspond to effect IDs 0x5B/0x5C (the two callers) is not shown here
+- The assembly confirms r1 is stored into RelatedObject1's AIData->BPwrAtk and B-button fixups for 3/4
+  -> 0 and 0x2C -> 0x2B, matching the summary. However, the proposal's interface claims 'r0 ignored',
+  but the callers do not set r1 to attack power explicitly in the shown code; the call right before the
+  function stores Param2 into NaviStats offset 5 and the next-to-last line at 0x080E96FA loads r1 from
+  Param2 but it's not shown being passed to sub_80E97BE explicitly. Actually looking more carefully, in
+  caller sub_80E96C6 r1 is set to Param2 via ldrb before the call implicitly via r1 still holding that
+  value from the strb above. The name 'battle_setRelatedObjectAIDataAttackPower' is reasonable but a bit
+  verbose; 'battle_setRelatedObject1AttackPower' is cleaner.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E97BE -> battle_setRelatedObject1AttackPower
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E97BE

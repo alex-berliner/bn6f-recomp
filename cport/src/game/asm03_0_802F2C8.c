@@ -242,7 +242,7 @@ Next camera_init_802FF4C(void) {
  * off_8030068, whose entries are:
  *   0x00, 0x04, 0x10 -> camera_updateDerivedOffsets_803007C (default/idle camera update)
  *   0x08             -> battle_clampCameraToBounds_80300AC
- *   0x0C             -> sub_8030104
+ *   0x0C             -> camera_applyNextPosToScroll
  *
  * The original clobbers r0/r1 before jumping: it loads the selected handler
  * address (Thumb bit set) into r0 and the selector byte into r1, and the
@@ -268,7 +268,7 @@ Next camera_dispatchUpdate_8030054(void) {
         break;
 
     case 0x0C:
-        GUEST_CALL(sub_8030104);
+        GUEST_CALL(camera_applyNextPosToScroll);
         break;
     }
 

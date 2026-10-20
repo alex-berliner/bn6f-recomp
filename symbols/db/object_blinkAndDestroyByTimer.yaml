@@ -1,0 +1,55 @@
+name: object_blinkAndDestroyByTimer
+address: '0x080D97EC'
+kind: function
+status: probable
+summary: Blinks a battle object (toggles oObjectHeader_Flags bit 0x2 based on oBattleObject_Timer bit
+  1) each frame, decrements the timer, and when it underflows clears the flag and sets CUR_STATE_DESTROY
+  to remove the object.
+interface: (r5 = battle object header ptr) -> void; sets CUR_STATE_DESTROY in oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  when Timer runs out
+details: Unconditionally sets bit 0x2 of oObjectHeader_Flags, then clears it again unless (oBattleObject_Timer
+  & 2) != 0, so the flag mirrors timer bit 1 each call — a 2-frame blink pattern. Decrements oBattleObject_Timer;
+  when the subtraction goes below zero (bge not taken) it clears the flag bit and stores CUR_STATE_DESTROY
+  into the state field, removing the object. The object pointer is passed in r5, not r0; r0 is only scratch.
+  No other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80D97EC: ldrb/orr/strb on [r5,#oObjectHeader_Flags] with 0x2 sets the flag bit every call;
+    tst [r5,#oBattleObject_Timer], #2 / bne vs bic-clear of 0x2 makes the flag follow timer bit 1 (blink);
+    sub r0,#1 / strh then bge locret: timer is a countdown in frames; after countdown ends, mov r0,#CUR_STATE_DESTROY
+    / str [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] destroys the object; no callees and
+    only r5-based access: a self-contained per-object state routine'
+  refs:
+  - bn6f/asm/asm31.s:73847
+  reproduce: python3 tools/asmcat.py 0x080D97EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code unconditionally sets flag bit 0x2, then clears it if timer bit 1 is 0, producing a 2-frame
+    blink, then decrements the timer by 1; when it goes negative (bge not taken) it clears the flag and
+    stores CUR_STATE_DESTROY. The summary''s ''remaining Timer frames'' phrasing and the name are mostly
+    right, but the proposed interface says r5 is the object header ptr, while it is the battle object
+    (oBattleObject_* fields). A better name focuses on the destroy-after-blink behavior.; run wf investigate
+    investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- meaning of bit 0x2 in oObjectHeader_Flags (hide? blink-off?) — needs a caller or the renderer that reads
+  the flag
+- which objects use it and what initial Timer value callers set
+- The code unconditionally sets flag bit 0x2, then clears it if timer bit 1 is 0, producing a 2-frame
+  blink, then decrements the timer by 1; when it goes negative (bge not taken) it clears the flag and
+  stores CUR_STATE_DESTROY. The summary's 'remaining Timer frames' phrasing and the name are mostly right,
+  but the proposed interface says r5 is the object header ptr, while it is the battle object (oBattleObject_*
+  fields). A better name focuses on the destroy-after-blink behavior.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D97EC -> object_blinkAndDestroyByTimer
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D97EC

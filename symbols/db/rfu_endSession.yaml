@@ -1,0 +1,53 @@
+name: rfu_endSession
+address: '0x0803C4DC'
+kind: function
+status: probable
+summary: Signals end of the wireless session by recording state value 9 in the RFU work struct and setting
+  bit 0x8 in the shared wireless state flags.
+interface: () -> void; r0/r1 clobbered
+details: 'Tiny wrapper around two RFU helpers: first calls rfu_setStateEnded (0x0813D978), which stores
+  state value 9 into the RFU work struct and drops the lower RFU state machine, then calls rfu_orFlags
+  with bit 0x8, OR-ing that bit into the flags word at offset 0xC of the shared wireless state at 0x200BC50.
+  The r5 load of eS200A290 (0x200A290) before the first call appears to hand an address to the callee
+  or is a scheduling artifact. No return value; suitable as a fire-and-forget shutdown/notification call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl rfu_setStateEnded directly after entry records state 9 (ended) in the RFU work struct; mov
+    r0,#8; bl rfu_orFlags sets flag bit 0x8 in the RFU state struct's flags word (0x200BC50+0xC); only
+    8 instructions; no other logic, so it is purely a state+flag signaling wrapper
+  refs:
+  - bn6f/asm/asm03_1_1.s:7323
+  - 0x0803CB00 rfu_orFlags
+  - 0x0813D978 rfu_setStateEnded
+  reproduce: python3 tools/asmcat.py 0x0803C4DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: ldr r5,=eS200A290 then bl rfu_setStateEnded, mov r0,#8,
+    bl rfu_orFlags, pop. However, the summary is a bit imprecise; rfu_setStateEnded stores state 9 and
+    calls a substate function, and rfu_orFlags ORs 0x8 into the shared state. The proposed name is acceptable
+    but ''rfu_endGameLink'' implies a game-link specific notion; given r5 loads eS200A290 (likely a wireless
+    work pointer passed to rfu_setStateEnded) and the bit 8 corresponds to a flag, a more accurate name
+    would be rfu_endSession.; run wf investigate investigate-20261019-045129; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so the in-game moment this fires (disconnect vs game end) is unconfirmed
+- role of eS200A290 loaded into r5 is unclear without rfu_setStateEnded's body
+- 'The code matches the proposal''s behavior: ldr r5,=eS200A290 then bl rfu_setStateEnded, mov r0,#8,
+  bl rfu_orFlags, pop. However, the summary is a bit imprecise; rfu_setStateEnded stores state 9 and calls
+  a substate function, and rfu_orFlags ORs 0x8 into the shared state. The proposed name is acceptable
+  but ''rfu_endGameLink'' implies a game-link specific notion; given r5 loads eS200A290 (likely a wireless
+  work pointer passed to rfu_setStateEnded) and the bit 8 corresponds to a flag, a more accurate name
+  would be rfu_endSession.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C4DC -> rfu_endSession
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C4DC

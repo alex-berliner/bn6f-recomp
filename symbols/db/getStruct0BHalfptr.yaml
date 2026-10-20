@@ -1,0 +1,56 @@
+name: getStruct0BHalfptr
+address: '0x08146724'
+kind: function
+status: probable
+summary: Returns a pointer to the halfword at offset 0xB of the struct produced by sub_8049DC4; the caller
+  dereferences it and stores the halfword into word_2023BB0 before calling sub_8146738 for the adjacent
+  field.
+interface: (r0 = pointer to result struct) -> r0 = pointer to halfword at struct+0xB; no flags used
+details: 'Body is just ''add r0, #0xb; bx lr'', a field-pointer accessor. The caller dereferences the
+  returned pointer with ldrh and stores the halfword into word_2023BB0, then calls sub_8146738 on the
+  same struct (likely the adjacent byte at +0xC, stored to byte_2023BC8), suggesting fields at 0xB/0xC
+  of the same record are consumed together before chatbox script 0x2E runs. The struct itself is produced
+  by sub_8049DC4 using values from sub_81468C8/sub_81468E0 and tables unk_201FD60/unk_201FD80.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8146724: add r0,#0xb; bx lr — pure pointer-offset accessor; caller 0x0812A31A: ''bl sub_8146724;
+    ldrh r0,[r0]; strh r0,[word_2023BB0]'' reads the halfword field; caller then ''bl sub_8146738; strb
+    r0,[byte_2023BC8]'' reads a neighboring byte from the same struct; caller calls sub_8049DC4(r6, unk_201FD60,
+    r7, unk_201FD80) to fill the struct passed to this getter; followed by chatbox_runScript with id 0x2E,
+    so the field feeds a text/UI script step'
+  refs:
+  - bn6f/asm/libs.s:5439
+  - 0x0812A2EC sub_812A2EC
+  reproduce: python3 tools/asmcat.py 0x08146724
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body is just `add r0, #0xb; bx lr`, so it is a field-pointer accessor, agreeing with the proposal.
+    However, the caller passes r7 (the second sub_81468E0 result) as the struct pointer and immediately
+    dereferences the returned pointer with `ldrh r0, [r0]`, then stores it to word_2023BB0 — this is the
+    read of the halfword field, so calling the function `get_resultHalfwordPtr` (a getter) is reasonable.
+    I''d shorten it to `get_resultHalfwordPtr` is fine, but a slightly more conventional name would be
+    `getStruct0BHalfptr`. Either way the summary and interface fit.; run wf investigate investigate-20261019-045129;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the struct built by sub_8049DC4 represents (unk_201FD60/unk_201FD80 tables unclear)
+- the game meaning of word_2023BB0/byte_2023BC8, needed for a semantic name
+- 'The body is just `add r0, #0xb; bx lr`, so it is a field-pointer accessor, agreeing with the proposal.
+  However, the caller passes r7 (the second sub_81468E0 result) as the struct pointer and immediately
+  dereferences the returned pointer with `ldrh r0, [r0]`, then stores it to word_2023BB0 — this is the
+  read of the halfword field, so calling the function `get_resultHalfwordPtr` (a getter) is reasonable.
+  I''d shorten it to `get_resultHalfwordPtr` is fine, but a slightly more conventional name would be `getStruct0BHalfptr`.
+  Either way the summary and interface fit.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8146724 -> getStruct0BHalfptr
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146724

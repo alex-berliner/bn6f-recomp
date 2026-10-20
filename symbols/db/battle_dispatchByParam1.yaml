@@ -1,0 +1,57 @@
+name: battle_dispatchByParam1
+address: '0x080E3560'
+kind: function
+status: probable
+summary: ARM bridge that reads oBattleObject_Param1 and dispatches to a Thumb handler from the 6-entry
+  table at off_80E3574, keeping r5 as the battle object.
+interface: (r5 = battle object) -> r0 = return value of the dispatched handler (passed to nothing at the
+  call site); no flags used
+details: Reads oBattleObject_Param1, multiplies it by 4, and indexes off_80E3574 to get a Thumb handler
+  address, then does the classic 'mov lr, pc; bx r1' long-call into it (ARM caller into Thumb code), with
+  r5 still pointing at the battle object so the handler can act on it. Entry 0 goes to sub_80E358C; entries
+  1-4 all point to the same sub_80E359E, so Param1 selects a special case versus a default. The return
+  value is captured in r4 at the call site but then unused, so it is likely a dummy/status value. Called
+  once during the first tick of battle_wait60ThenEndPhase, right after battle_clearImpactSlot and just
+  before sub_802CE8A (which gets RelatedObject1Ptr, ChipID, DamageAndStamina..., Z16Save), suggesting
+  it performs the chip/attack's per-type initial effect or animation setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E3560: ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,#2; ldr r1,[r1,r0]; mov lr,pc; bx r1
+    — table dispatch on Param1 with r5 = battle object; off_80E3574: first entry sub_80E358C, remaining
+    four all sub_80E359E — Param1==0 is a special case, 1-4 share a default; battle_wait60ThenEndPhase:
+    calls it once under the !PhaseInitialized branch, between battle_clearImpactSlot and sub_802CE8A,
+    i.e. during one-time setup before a 60-frame wait to end the phase'
+  refs:
+  - bn6f/asm/asm31.s:95452
+  - 0x080E3504 battle_wait60ThenEndPhase
+  reproduce: python3 tools/asmcat.py 0x080E3560
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The jump-table dispatch via oBattleObject_Param1 with 6 entries (not 5) and the r5-preserved call
+    match, but the name ''dispatchParam1Setup'' overstates the known role — the function only appears
+    once in one phase handler. r4 captures r0 after the call and is then overwritten before being reused
+    (strb r0, ... uses immediate #4), so it is not even a dummy status return in this caller. A more neutral
+    name reflects a simple handler dispatch by Param1.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80E358C and sub_80E359E actually do (likely chip-attack visual/stat setup), and what oBattleObject_Param1
+  means (attack type?), would confirm the exact semantics; the discarded r0 return is unexplained
+- 'The jump-table dispatch via oBattleObject_Param1 with 6 entries (not 5) and the r5-preserved call match,
+  but the name ''dispatchParam1Setup'' overstates the known role — the function only appears once in one
+  phase handler. r4 captures r0 after the call and is then overwritten before being reused (strb r0, ...
+  uses immediate #4), so it is not even a dummy status return in this caller. A more neutral name reflects
+  a simple handler dispatch by Param1.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E3560 -> battle_dispatchByParam1
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3560

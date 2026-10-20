@@ -1,0 +1,62 @@
+name: battle_runStateHandler
+address: '0x081378B4'
+kind: function
+status: probable
+summary: Dispatches through a 3-entry function table at off_81378C8 indexed by [r5+1], tail-calling handlers
+  like battle_initRoundState or submenu_runPromptFrameUpdate and returning their result; the caller uses
+  a nonzero return to advance the pre-battle scene state.
+interface: (r0 = unused/trashed, r5 = pointer to state struct) -> r0 = result of the dispatched handler
+  (nonzero = state finished); clobbers lr.
+details: Reads the byte at [r5,#1] as a state/mode index, loads a function pointer from the table at off_81378C8
+  (battle_initRoundState, submenu_runPromptFrameUpdate, sub_8137A7C), and tail-calls it via mov lr,pc
+  / bx r0, so the handler's r0 passes straight through. The struct pointer comes from the caller's global
+  unk_2037780. In the sole caller, a nonzero return means the current phase (e.g. a prompt or round-init
+  step) completed, triggering battle_initScene, gfx loading, and advancing the state bytes [r5+3]=0x10
+  and [r5+0x1e]=0. So the table entries are per-state 'update, return done?' handlers for a small pre-battle
+  state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#1]; ldr r0,[r0,r1]; mov lr,pc; bx r0 — dispatch table indexed by state byte, tail-call
+    with r0 passthrough; off_81378C8 holds battle_initRoundState+1, submenu_runPromptFrameUpdate+1, sub_8137A7C+1
+    — the three per-state handlers; caller 0x0812C03A: r5 = unk_2037780 before the call; tst r0,r0 / beq
+    exit — nonzero return means the phase finished; caller continues with battle_initScene_8129248 and
+    loadEntityJumpOffset00Gfx_812B530 only when the handler returned nonzero; caller then stores 0x10
+    to [r5+3] and 0 to [r5+0x1e], i.e. advances the same struct''s state fields'
+  refs:
+  - bn6f/asm/asm36.s:16077
+  - 0x0812C034 sub_812C034
+  reproduce: python3 tools/asmcat.py 0x081378B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic, jump table, and caller behavior all match: sub_81378B4 loads the byte at [r5,#1],
+    indexes off_81378C8, and tail-calls the chosen handler (battle_initRoundState, submenu_runPromptFrameUpdate,
+    sub_8137A7C). The only caller at 0x0812C03A tests the return and, on nonzero, calls battle_initScene_8129248,
+    loads gfx, and advances state bytes [r5+3]=0x10 / [r5+0x1e]=0—consistent with a pre-battle state-machine
+    dispatcher. The prefix ''t3'' has no justification in the code; ''battle'' fits the semantic context
+    (battle_initRoundState, battle_initScene) better, and r5 is simply an argument, not a ''task/state
+    struct'' peculiar to t3.; run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What struct unk_2037780 is (which task/subsystem owns it) and what sub_8137A7C does, to confirm the
+  game-level meaning
+- Whether byte [r5+1] is the only state selector or whether [r5+3]/[r5+0x1e] feed back into it elsewhere
+- 'The dispatch logic, jump table, and caller behavior all match: sub_81378B4 loads the byte at [r5,#1],
+  indexes off_81378C8, and tail-calls the chosen handler (battle_initRoundState, submenu_runPromptFrameUpdate,
+  sub_8137A7C). The only caller at 0x0812C03A tests the return and, on nonzero, calls battle_initScene_8129248,
+  loads gfx, and advances state bytes [r5+3]=0x10 / [r5+0x1e]=0—consistent with a pre-battle state-machine
+  dispatcher. The prefix ''t3'' has no justification in the code; ''battle'' fits the semantic context
+  (battle_initRoundState, battle_initScene) better, and r5 is simply an argument, not a ''task/state struct''
+  peculiar to t3.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81378B4 -> battle_runStateHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81378B4

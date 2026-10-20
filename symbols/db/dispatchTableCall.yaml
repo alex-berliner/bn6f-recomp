@@ -1,0 +1,58 @@
+name: dispatchTableCall
+address: '0x080A8870'
+kind: function
+status: probable
+summary: Loads a byte from [r5,#8], uses it to index a 4-entry Thumb function table at off_80A8884, and
+  tail-calls the selected entry via 'mov lr,pc; bx r0' so the callee returns directly to the caller.
+interface: (no args in r0-r3; caller must hold the object pointer in r5) -> calls table handler indexed
+  by [r5,#8]; returns to caller via the handler's return path
+details: Loads a byte from offset 0x08 of the struct in r5 and uses it as an index into the 4-entry table
+  off_80A8884, then performs an indirect call with the 'mov lr, pc; bx r0' idiom so control passes straight
+  to the selected handler (sub_80A8894, sub_80A88E2, sub_80A8918, sub_80A8980) without a normal BL return
+  link. Table entries carry the +1 Thumb bit, so the handlers are Thumb code reached across a state transition.
+  There is no prologue use of r0-r3, so all real arguments must already be in registers (notably r5) set
+  up by the caller. With no callers or handler bodies known, it can only be described as a 4-way virtual-call/state
+  dispatcher; the meaning of the index byte and the struct at r5 are unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#8] then ldr r0,[r0,r1] with r0=off_80A8884: index byte picks a function pointer;
+    mov lr,pc; bx r0: tail-dispatch into the selected handler rather than call-and-return here; off_80A8884
+    lists exactly four Thumb handlers (sub_80A8894/80A88E2/80A8918/80A8980), bounding the index to 0-3;
+    r5 is read but never set in the function, so the caller supplies the struct pointer in r5'
+  refs:
+  - bn6f/asm/asm29.s:7084
+  reproduce: python3 tools/asmcat.py 0x080A8870
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The description of a 4-way indirect call dispatched by [r5,#8] through off_80A8884 with a mov lr,pc
+    / bx r0 Tail-call is accurate. However, the ''no prologue use of r0-r3'' claim is wrong: the very
+    first two instructions are `push {r4-r7,lr}` and then `ldr r0, off_80A8880`, so r0 is clobbered by
+    this function. Also, calling it a ''state handler'' is speculation — no callers or struct context
+    are known, and the function itself never returns (it pops straight into pc), so ''dispatcher'' alone
+    is enough.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so nothing shows what structure r5 points to or what field +8 indexes (state?
+  type? AI phase?)
+- The four handlers sub_80A8894/80A88E2/80A8918/80A8980 are undocumented; their bodies would reveal the
+  subsystem (object AI, menu, cutscene, etc.)
+- The mov lr,pc; bx r0 idiom implies a nonstandard return path; confirming how handlers return would clarify
+  whether this is a state-machine step or a one-shot virtual call
+- 'The description of a 4-way indirect call dispatched by [r5,#8] through off_80A8884 with a mov lr,pc
+  / bx r0 Tail-call is accurate. However, the ''no prologue use of r0-r3'' claim is wrong: the very first
+  two instructions are `push {r4-r7,lr}` and then `ldr r0, off_80A8880`, so r0 is clobbered by this function.
+  Also, calling it a ''state handler'' is speculation — no callers or struct context are known, and the
+  function itself never returns (it pops straight into pc), so ''dispatcher'' alone is enough.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8870 -> dispatchTableCall
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8870

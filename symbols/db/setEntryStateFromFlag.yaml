@@ -1,0 +1,59 @@
+name: setEntryStateFromFlag
+address: '0x0814FAF0'
+kind: function
+status: probable
+summary: Zeros bytes +0x16 and +0x1A of a 0x50-byte entry, then ORs its header byte (+0x00) with 0xC if
+  +0x18 is zero, else with 0x03, selecting one of two 2-bit states.
+interface: (r0 = pointer to 0x50-byte entry) -> void; r0, r1 clobbered
+details: Zeroes the entry's bytes at +0x16 and +0x1A (looks like timers/counters), then reads byte +0x18
+  and ORs the flag byte at +0x00 with 0x3 if +0x18 is nonzero, else with 0xC — two disjoint 2-bit groups
+  in the low nibble, so byte +0x18 selects which of two states the entry enters. Both callers iterate
+  lists of these 0x50-byte entries, and only invoke it for entries whose flag byte (+0x00) has bit 0x80
+  set and only when r9 == 0, after writing a byte to +0x17 (first caller) or +0x19 (second caller). After
+  the loop, both callers store the FourCC 'Smsh' (0x68736d53) into their own struct at +0x34, suggesting
+  the entries belong to a subsystem tagged 'Smsh'. The function never clears bit 0x80 itself, so entries
+  remain selected on subsequent passes unless the caller changes that flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_814FAF0: strb r0,[r2,#0x1a] / strb r0,[r2,#0x16] zeroes two state bytes; sub_814FAF0 814FB02-814FB0C:
+    ldrb +0x18; orr with 0xC (if 0) or 0x3 (if nonzero) into flag byte +0; both call sites: ldrb r1,[r4];
+    and r0,#0x80; beq skip — only entries with bit 7 set get the call; callers write strb r8 to +0x17
+    (0x814FB5A) / +0x19 (0x814FBD0) immediately before the call; both callers end by storing dword_814FB84/FBF8
+    =0x68736d53 (''Smsh'') to [r6,#0x34], tagging the owning struct'
+  refs:
+  - bn6f/asm/libs.s:25693
+  - 0x0814FB14 sub_814FB14
+  - 0x0814FB88 sub_814FB88
+  reproduce: python3 tools/asmcat.py 0x0814FAF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The two-or-four OR assignment is correct per the assembly (cmp/beq selecting 0xC vs 3 at loc_814FB08/0C),
+    and +0x16/+0x1A zeroing matches strb instructions. However, the function only zeros +0x16 and +0x1A,
+    never clears bit 0x80, and the summary''s ''Reset two counter/state bytes'' is vague. ''clearEntryStateSetFlagBits''
+    is misleading because it doesn''t clear anything in the header—it ORs bits in. A better name reflects
+    toggling a 2-bit state field based on +0x18.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What structure the 0x50-byte entries are (the 'Smsh'-tagged owner at +0x34 is unknown), which would
+  reveal the meaning of bytes +0x16/+0x18/+0x1A
+- What the low-nibble flag groups 0x3 vs 0xC in the entry's byte +0x00 mean to other code that reads them
+- What values r8 and r9 hold at the call sites (r9 != 0 suppresses the call entirely)
+- The two-or-four OR assignment is correct per the assembly (cmp/beq selecting 0xC vs 3 at loc_814FB08/0C),
+  and +0x16/+0x1A zeroing matches strb instructions. However, the function only zeros +0x16 and +0x1A,
+  never clears bit 0x80, and the summary's 'Reset two counter/state bytes' is vague. 'clearEntryStateSetFlagBits'
+  is misleading because it doesn't clear anything in the header—it ORs bits in. A better name reflects
+  toggling a 2-bit state field based on +0x18.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814FAF0 -> setEntryStateFromFlag
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814FAF0

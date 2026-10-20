@@ -1,0 +1,55 @@
+name: t3_fillTextWindowTilemap
+address: '0x0812EFA4'
+kind: function
+status: probable
+summary: Fills a 4x10 tilemap buffer at unk_2025A70 with consecutive halfword tile indices starting at
+  0x21C0, used as the text window's tile map blitted to BG block 3.
+interface: () -> writes 0x78 bytes of halfword tile indices into unk_2025A70; r0-r4,r7 clobbered
+details: 'Writes sequential halfword values beginning at 0x21C0 into unk_2025A70, two entries per iteration:
+  one at offset r4 and one at r4+0x14, i.e. two rows of 10 halfwords per outer pass. Inner loop covers
+  10 halfwords (0x14 bytes); outer loop runs while r4 < 0x78, giving 6 outer passes x 20 halfwords = 120
+  entries (a 10-wide by 12-tall map) using tiles 0x21C0..0x2237 consecutively. The buffer layout matches
+  a 10x12 tilemap for the small text window, later blitted to background block 3 by the caller. No branches
+  other than the loop; no other state touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh r7,[r6,r4] / strh r7,[r6,r0] with r7 starting 0x21C0 and incrementing: sequential tile
+    indices; row offsets r4 and r4+0x14, outer step 0x28 bytes, bound 0x78: 10x12 halfword tilemap; sole
+    caller renderTextWindowToBg ''blits its tile map onto background block 3'' matches the buffer shape'
+  refs:
+  - bn6f/asm/asm35.s:703
+  - 0x0812EF60 renderTextWindowToBg
+  reproduce: python3 tools/asmcat.py 0x0812EFA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does write sequential halfwords starting at 0x21C0 into unk_2025A70 and the loop structure/buffer
+    layout match: inner 10 halfwords (cmp r1,#0x14; blt) and outer 4 passes (cmp r4,#0x78; blt) over offsets
+    stepping by 0x14, totaling 80 halfwords. However the description says 6 outer passes and 120 entries
+    (10x12), whereas the cmp #0x78 with stride 0x14 gives 4 outer iterations (offsets 0,0x14,0x28,0x3C)
+    → 4 rows of 10 = 40 entries total (0x21C0..0x21E7). Also per iteration only ONE halfword is written
+    at [r6,r4] and one at [r6,r4+0x14], so it fills two rows per outer pass, not one row written twice.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of tile base 0x21C0 (VRAM tile index vs map entry value) not confirmed from this function
+  alone
+- whether unk_2025A70 is shared/reused by other windows
+- 'The code does write sequential halfwords starting at 0x21C0 into unk_2025A70 and the loop structure/buffer
+  layout match: inner 10 halfwords (cmp r1,#0x14; blt) and outer 4 passes (cmp r4,#0x78; blt) over offsets
+  stepping by 0x14, totaling 80 halfwords. However the description says 6 outer passes and 120 entries
+  (10x12), whereas the cmp #0x78 with stride 0x14 gives 4 outer iterations (offsets 0,0x14,0x28,0x3C)
+  → 4 rows of 10 = 40 entries total (0x21C0..0x21E7). Also per iteration only ONE halfword is written
+  at [r6,r4] and one at [r6,r4+0x14], so it fills two rows per outer pass, not one row written twice.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812EFA4 -> t3_fillTextWindowTilemap
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EFA4

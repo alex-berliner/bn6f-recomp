@@ -1,0 +1,54 @@
+name: object_scaleStateStep
+address: '0x081175D0'
+kind: function
+status: probable
+summary: Tail-calling state dispatcher that selects one of three Thumb handlers via the object's r5+8
+  state byte and the table at off_81175E4, including the sprite-scale-clear routine as state 2.
+interface: (r5 = object work area; r5+8 = state index 0..2) -> tail-calls handler, returns its result;
+  no flags set by dispatcher itself
+details: Loads a byte from the object struct at r5+8 and uses it to index the three-entry jump table off_81175E4,
+  then does a ARM/Thumb switch (mov lr, pc; bx r0) so the selected handler runs and returns straight back
+  to this function's caller. State 2 is sprite_makeUnscalableAndClearScaleCycle, tying the object to the
+  sprite scaler/scale-cycle subsystem; states 0 and 1 are sub_81175F0 and sub_8117680 (unnamed). The dispatcher
+  itself holds no state — the struct byte is the state machine counter advanced by the handlers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8] + ldr r0,[r0,r1] indexes off_81175E4 by the object's state byte; mov lr, pc
+    / bx r0 tail-calls the selected handler, so r0 passes through; table entry 2 = sprite_makeUnscalableAndClearScaleCycle+1
+    places this in the sprite scaler subsystem; exactly three table entries with no bounds check implies
+    the state byte is guaranteed 0-2
+  refs:
+  - bn6f/asm/asm32.s:19152
+  reproduce: python3 tools/asmcat.py 0x081175D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher reads r5+8, indexes a three-entry Thumb table at off_81175E4, and tail-calls via
+    mov lr,pc/bx r0, so the proposal''s mechanics are correct. However it is called from no known site
+    and routes to a sprite-scale-clear function only in state 2, while the other handlers are unnamed
+    and not necessarily ''state step'' routines; calling it sprite_scaleStateStep overstates the certainty.
+    The handlers themselves advance r5+8, not this dispatcher. Renaming to object_scaleStateStep keeps
+    the prefix list valid and avoids implying sprite ownership.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_81175F0 and sub_8117680 do (the scale-in/scale-out halves of the cycle?)
+- which object spawns this step function and how its caller sets r5
+- The dispatcher reads r5+8, indexes a three-entry Thumb table at off_81175E4, and tail-calls via mov
+  lr,pc/bx r0, so the proposal's mechanics are correct. However it is called from no known site and routes
+  to a sprite-scale-clear function only in state 2, while the other handlers are unnamed and not necessarily
+  'state step' routines; calling it sprite_scaleStateStep overstates the certainty. The handlers themselves
+  advance r5+8, not this dispatcher. Renaming to object_scaleStateStep keeps the prefix list valid and
+  avoids implying sprite ownership.
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81175D0 -> object_scaleStateStep
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81175D0

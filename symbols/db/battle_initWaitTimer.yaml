@@ -1,0 +1,60 @@
+name: battle_initWaitTimer
+address: '0x0803C754'
+kind: function
+status: probable
+summary: Initializes a wait on the S200BC50 timer object by programming 50 frames into sub_813D9A0 and
+  clearing its activity flag, returning 1/0 so callers can then poll test0x200bc50_0x5_813D60C.
+interface: (r7 = wait object * S200BC50) -> r0 = 1, r1 = 0 (both unused by callers); calls sub_813D9A0
+  with r0 = 0x32 (50 frames)
+details: Loads the constant 50 and passes it to sub_813D9A0, which presumably programs the frame countdown
+  of the 0x200BC50 wait object, then stores 0 to the object's byte 0 (stopping its current activity) and
+  returns 1/0. Callers invoke it exactly once when a sub-phase begins, right after setting a phase-init
+  flag byte, and afterwards poll test0x200bc50_0x5_813D60C each frame; only when that test signals the
+  wait is over do they advance oBattleState to the next phase. One caller is the custom-screen charge
+  phase (guarded by battle_comparePhaseToCustCharge), others are 0x0812xxxx battle-flow routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, =0x32; bl sub_813D9A0 — a fixed wait length is passed to the timer-setup callee; strb
+    r0(0), [r7] — clears the wait object''s state byte 0 (its ''running'' activity); caller 0x08007C7E:
+    sets SubPhaseInitFlag=4, calls this once, then loops on test0x200bc50_0x5 before moving to the next
+    phase; caller 0x0812AC42: same init-once/poll pattern with flag byte [r5,#3]=2 before calling it;
+    return value (1,0) is never consumed — the function acts purely as a ''begin wait'' command'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7724
+  - 0x08007C50 sub_8007C50
+  - 0x0812AC1A sub_812AC1A
+  - 0x0812AC2A sub_812AC1A
+  - 0x0813D9A0 sub_813D9A0
+  reproduce: python3 tools/asmcat.py 0x0803C754
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the proposal: it loads 0x32 (50) and passes it to sub_813D9A0, then clears byte
+    0 of the S200BC50 object, returning 1/0. Callers do follow an init-flag-then-poll pattern, so ''starts
+    a wait'' is correct. However, the name ''battle_startWaitTimer'' uses a ''start'' prefix that doesn''t
+    match the function''s actual behavior (it configures + clears, not ''start'' in the sense of the prefix
+    convention used for entry-point style helpers), and ''battle_'' is redundant with the call-site context.;
+    run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_813D9A0 does with 0x32 (frame countdown vs. some other unit) and which fields of the 0x200BC50
+  object it programs
+- meaning of byte 0 of the 0x200BC50 object and what the cleared 'activity' was
+- whether r7 really is the self pointer at all call sites (sub_812AC1A sets r7=2 earlier)
+- 'The code confirms the proposal: it loads 0x32 (50) and passes it to sub_813D9A0, then clears byte 0
+  of the S200BC50 object, returning 1/0. Callers do follow an init-flag-then-poll pattern, so ''starts
+  a wait'' is correct. However, the name ''battle_startWaitTimer'' uses a ''start'' prefix that doesn''t
+  match the function''s actual behavior (it configures + clears, not ''start'' in the sense of the prefix
+  convention used for entry-point style helpers), and ''battle_'' is redundant with the call-site context.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C754 -> battle_initWaitTimer
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C754

@@ -1,0 +1,51 @@
+name: ow_getOverworldEntry
+address: '0x08146714'
+kind: function
+status: probable
+summary: returns the address of the 16-byte record at unk_20098B0[index] (r0 masked to 8 bits, scaled
+  by 16).
+interface: (r0 = entry index) -> r0 = &unk_20098B0[index*16]; flags clobbered
+details: 'The function masks r0 to 8 bits (lsl #0x18), then scales it by 16 via lsr #0x14, so it computes
+  base + index*16 and returns that address; the table unk_20098B0 therefore holds 16-byte records. The
+  sole caller loops a counter obtained from ow_checkJackInFlag, first calling sub_81466E4 on the same
+  index (result saved on the stack), then this function, then sub_803C434 with the index in r0 and the
+  returned pointer in r2 — i.e. the pointer is handed to a per-entry worker. Given the jack-in-flag guard,
+  the records are overworld jack-in related, but nothing here shows the record layout or what sub_803C434
+  does with it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl #0x18 / lsr #0x14 turns the index into index*16, added to unk_20098B0 — an array-getter
+    of 16-byte entries; caller 0x0803CADC: result in r2 passed with the same index in r0 to sub_803C434,
+    so it is an input record pointer, not a scratch value; caller guards the loop with ow_checkJackInFlag
+    and pairs this call with sub_81466E4 on the same index'
+  refs:
+  - bn6f/asm/libs.s:5427
+  - 0x0803CAC4 sub_803CAC4
+  reproduce: python3 tools/asmcat.py 0x08146714
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The address arithmetic (lsl #0x18 then lsr #0x14 = net shift of +4, i.e. *16) and base unk_20098B0
+    match the proposal. However the caller passes the returned address in r2 to sub_803C434 while passing
+    the index in r0, so the callee receives both index and pointer — consistent with a per-record accessor
+    but not uniquely a jack-in entry name.; run wf investigate investigate-20261019-045129; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what the 16-byte records at unk_20098B0 contain and what sub_803C434 does with the pointer
+- what sub_81466E4 returns and how it relates to each record
+- 'The address arithmetic (lsl #0x18 then lsr #0x14 = net shift of +4, i.e. *16) and base unk_20098B0
+  match the proposal. However the caller passes the returned address in r2 to sub_803C434 while passing
+  the index in r0, so the callee receives both index and pointer — consistent with a per-record accessor
+  but not uniquely a jack-in entry name.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8146714 -> ow_getOverworldEntry
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146714

@@ -3,51 +3,49 @@ address: '0x080FB366'
 kind: function
 status: probable
 summary: 'AI attack state handler: on first call sets AttackElement=4, CurAnim=0x14, calls sub_80E8770(r4=0xA),
-  loads StepTimer=22; on ticks decrements StepTimer, at 12 plays SFX 0x17B, calls sub_80FB81E, and shakes
-  camera (mag 2, 30 frames); when timer hits 0 finalizes by writing 0x14 to HitElement.'
-interface: (object in r5, oAIAttackVars state in r7; r0 unused input) -> r0 = clobbered, no meaningful
-  return; flags clobbered
-details: 'When oAIAttackVars_AttackElement is still 0 (first invocation), it performs setup: writes element
-  4, sets the object''s current animation to 0x14, calls sub_80E8770 with r4=0xA and stores the returned
-  pointer in ScratchPointerOrPanel, and loads the step timer (StepTimer) with 0x16 (22 frames). If the
-  ScratchVar pointer holds a nonzero value it calls sub_80E5410 and clears that field; if PanelParamFlags2
-  is set it calls sub_80E8894. On subsequent runs it decrements StepTimer: when it reaches 0xC (12) it
-  plays SFX 0x7B (123), calls sub_80FB81E, and starts a camera shake of magnitude 2 for 0x1E (30) frames;
-  when the timer reaches 0 it stores 0x14 into HitElement, finalizing the attack. The setup/run split
-  keyed on AttackElement==0 matches the engine''s per-attack state-handler pattern.'
+  loads StepTimer=22; on ticks decrements StepTimer, at 12 plays SFX 0x17B, calls sub_80FB81E, and shakes camera
+  (mag 2, 30 frames); when timer hits 0 finalizes by writing 0x14 to HitElement.'
+interface: (object in r5, oAIAttackVars state in r7; r0 unused input) -> r0 = clobbered, no meaningful return; flags
+  clobbered
+details: 'When oAIAttackVars_AttackElement is still 0 (first invocation), it performs setup: writes element 4, sets
+  the object''s current animation to 0x14, calls sub_80E8770 with r4=0xA and stores the returned pointer in ScratchPointerOrPanel,
+  and loads the step timer (StepTimer) with 0x16 (22 frames). If the ScratchVar pointer holds a nonzero value it
+  calls sub_80E5410 and clears that field; if PanelParamFlags2 is set it calls sub_80E8894. On subsequent runs it
+  decrements StepTimer: when it reaches 0xC (12) it plays SFX 0x7B (123), calls sub_80FB81E, and starts a camera
+  shake of magnitude 2 for 0x1E (30) frames; when the timer reaches 0 it stores 0x14 into HitElement, finalizing
+  the attack. The setup/run split keyed on AttackElement==0 matches the engine''s per-attack state-handler pattern.'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits setup phase (element==0) from countdown
-    phase; setup: anim 0x14 into oBattleObject_CurAnim, sub_80E8770(r4=0xa) result stored to ScratchPointerOrPanel,
-    StepTimer=0x16; countdown at 0xC: PlaySoundEffect(0x7c-1) then camera_initShakeEffect_80302a8(2, 0x1e)
-    — impact moment; countdown at <=0: strh 0x14 into oAIAttackVars_HitElement, terminating the state;
-    callees PlaySoundEffect and camera_initShakeEffect_80302a8 are known sound/camera-shake primitives'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits setup phase (element==0) from countdown phase;
+    setup: anim 0x14 into oBattleObject_CurAnim, sub_80E8770(r4=0xa) result stored to ScratchPointerOrPanel, StepTimer=0x16;
+    countdown at 0xC: PlaySoundEffect(0x7c-1) then camera_initShakeEffect_80302a8(2, 0x1e) — impact moment; countdown
+    at <=0: strh 0x14 into oAIAttackVars_HitElement, terminating the state; callees PlaySoundEffect and camera_initShakeEffect_80302a8
+    are known sound/camera-shake primitives'
   refs:
   - bn6f/asm/asm31.s:144862
   - 0x080005CC PlaySoundEffect
   - 0x080302A8 camera_initShakeEffect_80302a8
   - 0x080E5410 sub_80E5410
   reproduce: python3 tools/asmcat.py 0x080FB366
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The setup/run split on AttackElement==0, the element write of 4, the CurAnim=0x14, ScratchPointerOrPanel
-    via sub_80E8770(r4=0xA), StepTimer=0x16, and the final HitElement=0x14 all agree. However, SFX 0x7B
-    is wrong: the code does `mov r0,#0x7c; add r0,#0xff` = 0x17B (123 decimal), not 0x7B (123). 0x7B would
-    be 0x7B. Also the description''s element values don''t match: setup writes 0x04 to AttackElement,
-    finalize writes 0x14 to HitElement — neither is 4 in the finalize. The name is acceptable; the summary
-    is slightly off on the SFX.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The setup/run
+    split on AttackElement==0, the element write of 4, the CurAnim=0x14, ScratchPointerOrPanel via sub_80E8770(r4=0xA),
+    StepTimer=0x16, and the final HitElement=0x14 all agree. However, SFX 0x7B is wrong: the code does `mov r0,#0x7c;
+    add r0,#0xff` = 0x17B (123 decimal), not 0x7B (123). 0x7B would be 0x7B. Also the description''s element values
+    don''t match: setup writes 0x04 to AttackElement, finalize writes 0x14 to HitElement — neither is 4 in the finalize.
+    The name is acceptable; the summary is slightly off on the SFX.; run wf investigate investigate-20261019-010606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
 open_questions:
-- sub_80E5410, sub_80E8770 (r4=0xA allocation) and sub_80FB81E are unknown, so which visual object/panel
-  effect this attack spawns is unclear
-- what element 4 and hit element 0x14 denote in the element enum, and which enemy uses this handler (no
-  callers known), is not determinable from this function alone
-- 'The setup/run split on AttackElement==0, the element write of 4, the CurAnim=0x14, ScratchPointerOrPanel
-  via sub_80E8770(r4=0xA), StepTimer=0x16, and the final HitElement=0x14 all agree. However, SFX 0x7B
-  is wrong: the code does `mov r0,#0x7c; add r0,#0xff` = 0x17B (123 decimal), not 0x7B (123). 0x7B would
-  be 0x7B. Also the description''s element values don''t match: setup writes 0x04 to AttackElement, finalize
-  writes 0x14 to HitElement — neither is 4 in the finalize. The name is acceptable; the summary is slightly
-  off on the SFX.'
+- sub_80E5410, sub_80E8770 (r4=0xA allocation) and sub_80FB81E are unknown, so which visual object/panel effect
+  this attack spawns is unclear
+- what element 4 and hit element 0x14 denote in the element enum, and which enemy uses this handler (no callers
+  known), is not determinable from this function alone
+- 'The setup/run split on AttackElement==0, the element write of 4, the CurAnim=0x14, ScratchPointerOrPanel via
+  sub_80E8770(r4=0xA), StepTimer=0x16, and the final HitElement=0x14 all agree. However, SFX 0x7B is wrong: the
+  code does `mov r0,#0x7c; add r0,#0xff` = 0x17B (123 decimal), not 0x7B (123). 0x7B would be 0x7B. Also the description''s
+  element values don''t match: setup writes 0x04 to AttackElement, finalize writes 0x14 to HitElement — neither
+  is 4 in the finalize. The name is acceptable; the summary is slightly off on the SFX.'
 sources:
 - wf investigate investigate-20261019-010606
 changes:
@@ -59,5 +57,9 @@ changes:
   what: rename sub_80FB366 -> battle_aiAttackQuakeState
   where: bn6f 54bc3514
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
 previous_names:
 - sub_80FB366

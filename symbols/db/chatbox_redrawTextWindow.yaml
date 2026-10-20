@@ -1,0 +1,53 @@
+name: chatbox_redrawTextWindow
+address: '0x0804C3BC'
+kind: function
+status: probable
+summary: parameterless wrapper that re-invokes t3_loadTextWindowTiles to redraw the fixed 12x6 chatbox
+  text window; takes no args, returns r0 as the callee's result.
+interface: (no args) -> r0 = result of t3_loadTextWindowTiles; flags from callee
+details: The function only pushes r4-r7 and lr, calls t3_loadTextWindowTiles (which draws the 12x6 text
+  window tile data at byte_86A13F0 into tile block 3 and sets the render-info flag), then pops and returns.
+  It takes no arguments and forwards none, so it is simply a re-invocation/refresh wrapper for the text-window
+  tile load. Callers already use t3_loadTextWindowTiles directly at 0x0804C39A, so this wrapper likely
+  re-draws the window after some other state change without touching the tile data pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_804C3BC body: push {r4-r7,lr}; bl t3_loadTextWindowTiles; pop {r4-r7,pc} — pure wrapper,
+    no argument setup; callee t3_loadTextWindowTiles: ''Draws a fixed 12x6 tile window (byte_86A13F0)
+    into bg tile block 3 and sets a render-info flag''; caller sub_804C348 at 0x0804C39A calls t3_loadTextWindowTiles
+    directly, then at 0x0804C3A6 calls this wrapper after strb #4,[r5,#0x10]'
+  refs:
+  - bn6f/asm/asm03_2.s:10486
+  - 0x0804C348 sub_804C348
+  - 0x0804C3C4 t3_loadTextWindowTiles
+  reproduce: python3 tools/asmcat.py 0x0804C3BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The wrapper indeed just pushes r4-r7+lr, calls t3_loadTextWindowTiles, and pops; that''s consistent
+    with the summary. However the t3_ prefix is wrong: t3 is reserved for functions drawing into tile
+    block 3, but this function only forwards to t3_loadTextWindowTiles without specifying a block, and
+    its own meaning is generic (re-display the chatbox/text window). A more accurate name would use the
+    chatbox prefix. Revised accordingly.; run wf investigate investigate-20261019-045129; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- why sub_804C348 calls the wrapper immediately after calling t3_loadTextWindowTiles directly (perhaps
+  re-load after a screen/state switch)
+- which structure field [r5,#0x10] tracks and why it is set to 4 before the redraw
+- 'The wrapper indeed just pushes r4-r7+lr, calls t3_loadTextWindowTiles, and pops; that''s consistent
+  with the summary. However the t3_ prefix is wrong: t3 is reserved for functions drawing into tile block
+  3, but this function only forwards to t3_loadTextWindowTiles without specifying a block, and its own
+  meaning is generic (re-display the chatbox/text window). A more accurate name would use the chatbox
+  prefix. Revised accordingly.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804C3BC -> chatbox_redrawTextWindow
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C3BC

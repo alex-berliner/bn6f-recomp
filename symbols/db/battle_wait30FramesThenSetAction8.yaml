@@ -1,0 +1,53 @@
+name: battle_wait30FramesThenSetAction8
+address: '0x080BFBFA'
+kind: function
+status: probable
+summary: Per-frame update for a battle object (r5) that initializes a 30-frame timer on first call, then
+  transitions the object to action 8, phase 0 when the timer expires.
+interface: (r5 = battle object ptr) -> void; no return value
+details: Per-frame update for a battle object passed in r5. On the first call (oBattleObject_PhaseInitialized
+  == 0) it initializes oBattleObject_Timer to 0x1E (30 frames) and sets PhaseInitialized to 4. Each call
+  then decrements Timer; while Timer > 0 it returns. When the countdown expires it writes 8 to oBattleObject_CurAction
+  and clears oBattleObject_CurPhaseAndPhaseInitialized to 0, moving the object's state machine to action
+  8, phase 0. The trailing dword_ constants look like unrelated pool data for neighboring code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]/bne: one-time init path stores 0x1E into oBattleObject_Timer
+    and 4 into PhaseInitialized (80BFBFC-80BFC09); ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh;
+    bgt: frame-countdown loop until timer hits zero (80BFC0A-80BFC10); on expiry, mov r0,#8; strb r0,[r5,#oBattleObject_CurAction]
+    and zeroing CurPhaseAndPhaseInitialized transitions the state machine (80BFC12-80BFC18); r5-based
+    access with no r0 argument use matches the project''s battle-object phase-handler calling convention;
+    no known callers or callees, so the owning entity and meaning of action 8 are unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:17117
+  reproduce: python3 tools/asmcat.py 0x080BFBFA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r5 is the battle object, Timer is set to 0x1E (30), PhaseInitialized to 4, and
+    on expiry CurAction=8 with CurPhaseAndPhaseInitialized cleared to 0. The only issue is the trailing
+    dword_ entries are not ''unrelated pool data'' — they''re emitted via `.word` directives right after
+    `pop {pc}` inside the same aligned block and may be data referenced by the function or nearby code;
+    calling them unrelated overstates certainty. Otherwise the description fits.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object/entity runs this handler and what action 8 means for it
+- whether the 4 written to PhaseInitialized encodes a sub-state other callers depend on
+- 'The code matches: r5 is the battle object, Timer is set to 0x1E (30), PhaseInitialized to 4, and on
+  expiry CurAction=8 with CurPhaseAndPhaseInitialized cleared to 0. The only issue is the trailing dword_
+  entries are not ''unrelated pool data'' — they''re emitted via `.word` directives right after `pop {pc}`
+  inside the same aligned block and may be data referenced by the function or nearby code; calling them
+  unrelated overstates certainty. Otherwise the description fits.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BFBFA -> battle_wait30FramesThenSetAction8
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFBFA

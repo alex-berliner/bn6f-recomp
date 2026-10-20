@@ -1,0 +1,55 @@
+name: object_dispatchPhase
+address: '0x080B82C4'
+kind: function
+status: probable
+summary: Reads the battle object's current phase byte and jumps to one of two Thumb handlers from a small
+  jump table, then returns to the caller.
+interface: (r5 = battle object) -> calls handler[phase] with lr set for return; r0 = phase on entry, handler
+  receives it
+details: Loads the object's phase byte from [r5,#oBattleObject_CurPhase] and indexes a two-entry table
+  at off_80B82D8 (phases 0 and 1). It performs a long call with the classic 'mov lr, pc; bx r1' Thumb
+  pattern, so the selected handler (sub_80B82E0 for phase 0, sub_80B8338 for phase 1) runs and returns
+  here, then the function returns to its own caller. r1 initially holds the table base and is overwritten
+  with the handler address. With only two entries this looks like a small two-state phase machine for
+  one specific battle object; without the surrounding object's setup the states' meaning is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0] indexes a table by phase (asm lines 2-4);
+    mov lr,pc; bx r1 is the standard Thumb long-call, making it a dispatched handler call (lines 5-6);
+    off_80B82D8 holds exactly two function pointers, sub_80B82E0 and sub_80B8338, i.e. two phases; table
+    entries are +1 (Thumb addresses), confirming code pointers for bx; no other data or registers are
+    touched, so the function is purely a phase-to-handler dispatch
+  refs:
+  - bn6f/asm/asm31.s:113
+  reproduce: python3 tools/asmcat.py 0x080B82C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does dispatch via a two-entry table, but the interface is wrong: r5 holds the battle object,
+    while r0 is loaded from oBattleObject_CurPhase and is used to index the table, so r0 (not ''the handler'')
+    receives the phase on entry. The table entries are odd (+1, Thumb bit set) and r1 is overwritten with
+    the handler before bx, so the handler is invoked with r0 = phase, r1 = handler address. A better name
+    reflecting dispatch on a phase byte is object_dispatchPhase.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no known callers, so the object type and which of its two phases map to sub_80B82E0 vs sub_80B8338 is
+  unknown
+- what sub_80B82E0 and sub_80B8338 actually do (the phase behaviors) is not shown
+- 'The code does dispatch via a two-entry table, but the interface is wrong: r5 holds the battle object,
+  while r0 is loaded from oBattleObject_CurPhase and is used to index the table, so r0 (not ''the handler'')
+  receives the phase on entry. The table entries are odd (+1, Thumb bit set) and r1 is overwritten with
+  the handler before bx, so the handler is invoked with r0 = phase, r1 = handler address. A better name
+  reflecting dispatch on a phase byte is object_dispatchPhase.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B82C4 -> object_dispatchPhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B82C4

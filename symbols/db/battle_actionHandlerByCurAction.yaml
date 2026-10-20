@@ -1,0 +1,55 @@
+name: battle_actionHandlerByCurAction
+address: '0x080BE834'
+kind: function
+status: probable
+summary: Per-frame update step that dispatches via oBattleObject_CurPhase handler if oBattleObject_Param1
+  == 0, else indexes oBattleObject_CurAction into a 9-entry thumb handler table (off_80BE854).
+interface: (r5 = oBattleObject*) -> r0 = handler result; no flags guaranteed
+details: Reads oBattleObject_Param1 from the object in r5; if it is 0 it simply calls battle_phaseDispatchHandler
+  (the normal CurPhase dispatch). Otherwise it loads oBattleObject_CurAction and jumps through off_80BE854,
+  a 9-entry thumb handler table (sub_80BEA50 ... sub_80BF11A) including battle_dimmingRegionAttackPhaseDispatch,
+  with lr set so handlers return straight to the caller's pop {pc}. The sole caller sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE, may set CurAction = 8 when Param2 == 4, then tail-calls this as the state's update
+  step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80BE834: tst Param1 / beq battle_phaseDispatchHandler, else ldrb CurAction + table dispatch
+    off_80BE854; off_80BE854 table includes battle_dimmingRegionAttackPhaseDispatch, tying the whole family
+    to that phase; caller sub_80BE7BC stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    then bl sub_80BE834; caller conditionally sets oBattleObject_CurAction = 8 when Param1 != 0 and Param2
+    == 4 before calling; dispatch uses mov lr, pc / bx r1, so table entries are per-action sub-state handlers
+    of this phase'
+  refs:
+  - bn6f/asm/asm31.s:14467
+  - 0x080BE7BC sub_80BE7BC
+  - 0x080BE824 sub_80BE7BC
+  - 0x080BE878 battle_phaseDispatchHandler
+  reproduce: python3 tools/asmcat.py 0x080BE834
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080BE834 matches the description: it checks Param1, dispatches to battle_phaseDispatchHandler
+    if zero, otherwise loads CurAction and jumps through off_80BE854 with 9 thumb entries. However, calling
+    it ''dimmingRegionAttackPhaseUpdate'' overstates specificity — only one of the 9 entries is the dimming-region
+    dispatcher, so the function is a generic action handler table indexed by CurAction when Param1 !=
+    0.; run wf investigate investigate-20261019-094015; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the nine table handlers do individually (they are unrenamed) and which battle feature the 'dimming
+  region' phase implements (e.g. which enemy/attack uses Param2==4, CurAction==8)
+- 'The code at 0x080BE834 matches the description: it checks Param1, dispatches to battle_phaseDispatchHandler
+  if zero, otherwise loads CurAction and jumps through off_80BE854 with 9 thumb entries. However, calling
+  it ''dimmingRegionAttackPhaseUpdate'' overstates specificity — only one of the 9 entries is the dimming-region
+  dispatcher, so the function is a generic action handler table indexed by CurAction when Param1 != 0.'
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BE834 -> battle_actionHandlerByCurAction
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE834

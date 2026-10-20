@@ -1,0 +1,63 @@
+name: rfu_multiStartProbe
+address: '0x0814475C'
+kind: function
+status: probable
+summary: 'Performs one RFU/SIO multiplayer start-detection handshake step: sends 0x8FFF/0xA6C0 sync word,
+  snapshots all 4 players'' SIODATA32, counts responders, and returns 1 if the expected player count acknowledged.'
+interface: (no args; uses link phase byte_200F454 and comm struct at 0x200F460) -> r0 = 1 when the expected
+  number of players acknowledged the handshake, else 0
+details: 'Writes 0x8FFF or 0xA6C0 to the SIO 16-bit data register (0x4000120) depending on the toggled
+  flag at 0x200F460+0x10, then clears that flag. It copies the 8-byte SIODATA32 snapshot (all four players''
+  halfwords) to 0x200F460+4/+8 and scans the 4 halfwords: values matching 0xA6C0/0x8FFF(bit2 clear)/0xFF00
+  mark the slot''s status byte at base+0x2A+slot as 1 or 2 and increment a responder count; 0xFFFF matching
+  the expected index at +0x2 resets the count. The count is stored at +0x3 and mirrored to byte_2006E00;
+  the verdict ((count&3)+1 or 0/1) goes to +0x11. Returns 1 only when count > 1, equals byte_2006E00,
+  and slot 0 reads 0x8FFF. When byte_200F454 is not 0 or 2, a shorter variant just sends the sync word
+  and copies the SIODATA32 snapshot.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh of 0x8FFF/0xA6C0 into SIOData_Normal_8bitandUARTMode_ (0x4000120) at loc_81447B4/loc_81448EC
+    — SIO handshake words; ldr of SIOData0_Parent__Multi_PlayerMode_ (0x4000120) copied 8 bytes into 0x200F460+4
+    — snapshot of all four SIOMULTI slots; loop over 4 halfwords comparing against 0xA6C0/0x8FFF/0xFF00
+    with per-slot status bytes at base+0x2A — classifying player responses; returns 1 when r9>1, equals
+    byte_2006E00, and halfword0==0x8FFF — session detection success condition; called only from sio_linkStateUpdate,
+    the SIO per-frame state machine — fits a link handshake sub-step
+  refs:
+  - bn6f/asm/libs.s:939
+  - 0x081446AC sio_linkStateUpdate
+  reproduce: python3 tools/asmcat.py 0x0814475C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does perform a multiplayer SIO start-detection step: it writes 0x8FFF/0xA6C0 to SIODATA,
+    snapshots all 4 players'' halfwords, and counts responses. However, the function returns 0, not 1:
+    at loc_8144902 it sets r0=0 before exiting, and the ''mov r0,#1'' at 0x8144904 is only reached on
+    the success path but then falls through to the same epilogue which overwrites r0? No — 0x8144904 ''mov
+    r0,#1'' is the actual return value when count>1, equals byte_2006E00, and slot0==0x8FFF. So it does
+    return 1. The summary''s ''else 0'' is correct. However, the name should reflect it''s a multi-player
+    start/handshake probe, and the prefix should be rfu. A clearer name is ''rfu_multiStartProbe''.; run
+    wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of verdict values stored at 0x200F460+0x11 (players-joined count vs phase ID) would need
+  a consumer of that field
+- role of the byte at 0x200F460+0x2 (expected responder index) is inferred from context only
+- 'The code does perform a multiplayer SIO start-detection step: it writes 0x8FFF/0xA6C0 to SIODATA, snapshots
+  all 4 players'' halfwords, and counts responses. However, the function returns 0, not 1: at loc_8144902
+  it sets r0=0 before exiting, and the ''mov r0,#1'' at 0x8144904 is only reached on the success path
+  but then falls through to the same epilogue which overwrites r0? No — 0x8144904 ''mov r0,#1'' is the
+  actual return value when count>1, equals byte_2006E00, and slot0==0x8FFF. So it does return 1. The summary''s
+  ''else 0'' is correct. However, the name should reflect it''s a multi-player start/handshake probe,
+  and the prefix should be rfu. A clearer name is ''rfu_multiStartProbe''.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814475C -> rfu_multiStartProbe
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814475C

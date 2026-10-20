@@ -1,0 +1,55 @@
+name: submenu_dispatchStateHandler
+address: '0x08131FA0'
+kind: function
+status: probable
+summary: 'Dispatches a submenu state tick: reads a phase byte at [r5,#3] and tail-calls one of four Thumb
+  handlers from off_8131FB4 (sub_8131FC4, t4_tickSubsystemE290, sub_813202C, submenu_linkResultHandler),
+  all sharing the r5 context.'
+interface: (r5 = state object; handler index = byte [r5,#3]) -> calls table[off_8131FB4][index] as Thumb;
+  no return value used
+details: 'A tiny dispatcher: reads a byte at offset 3 of the object pointed to by r5 (a global/current
+  context, r5 is not set here), indexes the 4-entry Thumb pointer table off_8131FB4, and tail-calls it
+  with mov lr,pc; bx r0 so the handler returns straight to this function''s caller. The table entries
+  are sub_8131FC4, t4_tickSubsystemE290, sub_813202C, and submenu_linkResultHandler, so r5+3 acts as a
+  state/phase id advanced elsewhere. No arguments are forwarded; handlers presumably work off the same
+  r5 context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#3]; ldr r0,[table,r1]; mov lr,pc; bx r0 — indexed call into a 4-entry handler table;
+    table includes submenu_linkResultHandler, tying the dispatcher to the submenu state machine; r1 is
+    only the index, never passed as an argument, so the selector is state not data; mov lr,pc + bx (Thumb
+    bit set in table entries) makes it a plain call, handlers return to sub_8131FA0's caller
+  refs:
+  - bn6f/asm/asm36.s:3932
+  reproduce: python3 tools/asmcat.py 0x08131FA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher pattern (table index from r5+3, thumb call, no args) matches the code at sub_8131FA0.
+    However, this is clearly submenu-related: one callee is already named submenu_linkResultHandler, and
+    the other three (sub_8131FC4, t4_tickSubsystemE290, sub_813202C) plausibly are submenu sub-states
+    too. The name ''submenu_dispatchStateHandler'' is okay but ''submenu'' prefix is more accurate than
+    the proposed name, and the summary''s ''phase byte'' wording is fine.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what structure r5 points to and who advances the byte at +3
+- which menu/scene owns this dispatcher — the known callee submenu_linkResultHandler suggests a link/Cube
+  menu but the other three handlers are unidentified
+- 'The dispatcher pattern (table index from r5+3, thumb call, no args) matches the code at sub_8131FA0.
+  However, this is clearly submenu-related: one callee is already named submenu_linkResultHandler, and
+  the other three (sub_8131FC4, t4_tickSubsystemE290, sub_813202C) plausibly are submenu sub-states too.
+  The name ''submenu_dispatchStateHandler'' is okay but ''submenu'' prefix is more accurate than the proposed
+  name, and the summary''s ''phase byte'' wording is fine.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8131FA0 -> submenu_dispatchStateHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131FA0

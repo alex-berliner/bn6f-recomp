@@ -1,0 +1,48 @@
+name: copyBytes
+address: '0x0814D8CC'
+kind: function
+status: probable
+summary: Copies r2 bytes from src r0 to dst r1; loop counts down from count-1 to -1, copying one byte
+  per iteration.
+interface: (r0 = src ptr, r1 = dest ptr, r2 = byte count) -> void; clobbers r0-r4, flags
+details: 'Straightforward byte-copy loop: r3 = count-1, then each iteration loads a byte from [r4] (r4
+  = src, incremented) and stores it to [r1] (incremented), decrementing r3 until it reaches the -1 sentinel
+  set in r2 (count 0 skips the loop entirely via the beq). Equivalent to a minimal memcpy8 primitive with
+  no alignment or overlap handling.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r4] / strb r0,[r1] with r4 and r1 incremented each pass at loc_814D8DA shows a byte
+    copy; sub r3,r2,#1 and neg r2,r2 set the loop bound so exactly r2 bytes are copied; cmp r2,#0 / beq
+    loc_814D8E8 handles a zero-length copy as a no-op
+  refs:
+  - bn6f/asm/libs.s:20503
+  reproduce: python3 tools/asmcat.py 0x0814D8CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The function copies r2 bytes from r0 to r1 (r4 tracks src, r1 dest, loop counts down via r3 = count-1
+    until -1). However the proposed name ''copy_bytes'' is fine semantically but the summary says ''copies
+    a block of r2 bytes from source r0 to destination r1'' which matches. The interface lists clobbers
+    r0-r4, but r0 is only used as a temp in the loop and r4 is restored; flags is correct. A more standard
+    prefix would be ''copy'' per naming rules.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no known callers, so which subsystem uses this copy (and for what buffers/structures) is unknown
+- The function copies r2 bytes from r0 to r1 (r4 tracks src, r1 dest, loop counts down via r3 = count-1
+  until -1). However the proposed name 'copy_bytes' is fine semantically but the summary says 'copies
+  a block of r2 bytes from source r0 to destination r1' which matches. The interface lists clobbers r0-r4,
+  but r0 is only used as a temp in the loop and r4 is restored; flags is correct. A more standard prefix
+  would be 'copy' per naming rules.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814D8CC -> copyBytes
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814D8CC

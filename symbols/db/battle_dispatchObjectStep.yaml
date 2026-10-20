@@ -1,0 +1,54 @@
+name: battle_dispatchObjectStep
+address: '0x080E6316'
+kind: function
+status: probable
+summary: Dispatches to one of three battle-object step handlers selected by oBattleObject_Param1 via a
+  table at off_80E632C, returning the handler's result directly to its caller.
+interface: (r5 = battle object) -> returns the selected handler's result; r0-r3,lr clobbered
+details: Reads oBattleObject_Param1 from the object in r5, multiplies by 4, and loads a handler pointer
+  from the table at off_80E632C (sub_80E6338, battle_countTargetsInRow, sub_80E63D0), then calls it via
+  bx with lr=pc so the handler's return goes straight to this function's caller. Param1 is out of range
+  if >= 3 (no bounds check). The only caller (sub_80E62B4) invokes it once, guarded by oBattleObject_PhaseInitialized,
+  then stores 4 to PhaseInitialized and later advances the object's phase to 4 once sub_80E6438 signals
+  completion — a typical battle-object phase/step driver.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,r0,#2; ldr r1,[r1,r0]; bx r1 — indexed dispatch on
+    object Param1; off_80E632C holds three thumb handlers (sub_80E6338, battle_countTargetsInRow, sub_80E63D0),
+    so Param1 selects between three behaviors; caller sub_80E62B4 at 0x080E62BC calls it only when PhaseInitialized==0,
+    then writes 4 to oBattleObject_PhaseInitialized — one-shot step execution; callee battle_countTargetsInRow
+    suggests handlers implement per-object scripted logic (e.g., counting targets in a row)
+  refs:
+  - bn6f/asm/asm31.s:102122
+  - 0x080E62B4 sub_80E62B4
+  reproduce: python3 tools/asmcat.py 0x080E6316
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic matches: Param1 is shifted left 2 and used to load a handler from off_80E632C
+    (with three entries at lines storing sub_80E6338+1, battle_countTargetsInRow+1, sub_80E63D0+1), and
+    the bx with lr=pc trick makes the handler return to the caller. However, the summary overreaches by
+    calling this a ''phase/step driver''; the function is a pure indirect call dispatcher through a small
+    switch-like table, with no bounds check, so naming it ''dispatch'' is more accurate than ''runObjectParamStep''.;
+    run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what the three handlers (sub_80E6338, sub_80E63D0) do individually and what structure fields they touch
+- whether Param1 is a script/action id from a spawner or a hardcoded object variety
+- 'The dispatch logic matches: Param1 is shifted left 2 and used to load a handler from off_80E632C (with
+  three entries at lines storing sub_80E6338+1, battle_countTargetsInRow+1, sub_80E63D0+1), and the bx
+  with lr=pc trick makes the handler return to the caller. However, the summary overreaches by calling
+  this a ''phase/step driver''; the function is a pure indirect call dispatcher through a small switch-like
+  table, with no bounds check, so naming it ''dispatch'' is more accurate than ''runObjectParamStep''.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E6316 -> battle_dispatchObjectStep
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6316

@@ -1,0 +1,48 @@
+name: getCybercrowCrowsState3
+address: '0x081432D8'
+kind: function
+status: probable
+summary: Returns the count of Cybercrow lesson crow records whose state byte equals 3 (iterates 8 slots
+  of 0x14 bytes at byte_2000D20).
+interface: () -> r0 = count of slots at byte_2000D20 with +0 state byte == 3; sets flags via final tst
+details: 'Iterates the 8 fixed 0x14-byte records at byte_2000D20 (Cybercrow lesson crow slots: +0 state,
+  +2/+6 timers, +4 heading, +8..+0x10 position), reading only the state byte at +0. It increments a counter
+  each time the state equals 3, skipping all other values including 0. After the loop it moves the count
+  to r0 and returns it; no other fields are touched. The caller list is unknown, so the meaning of state
+  3 within the crow lesson logic is not established.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, off_8143398 = byte_2000D20 and step add r5, #0x14 with loop bound 8 match the 8 crow
+    record slots; ldrb r0,[r5] tests only the +0 state byte; cmp r0,#3 / add r6,#1 counts slots in state
+    3; mov r0,r6 / tst r0,r0 before pop returns the counter as the sole result'
+  refs:
+  - bn6f/asm/asm37_1.s:3041
+  reproduce: python3 tools/asmcat.py 0x081432D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal misreads the loop body. At loc_81432E0 it first tests if state == 0 (beq skips), then
+    compares r0 to 3 — but since r0 is non-zero after the first tst, only the cmp r0,#3 / bne matters.
+    The ''add r6,#1'' only fires when state==3, so r6 does count slots equal to 3. The description is
+    functionally correct. A clearer prefix would be ''get'' since it returns a count rather than acting
+    on the records.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'callers unknown: what state 3 means in the crow lesson state machine and how the count is used (e.g.
+  win/lose condition)'
+- The proposal misreads the loop body. At loc_81432E0 it first tests if state == 0 (beq skips), then compares
+  r0 to 3 — but since r0 is non-zero after the first tst, only the cmp r0,#3 / bne matters. The 'add r6,#1'
+  only fires when state==3, so r6 does count slots equal to 3. The description is functionally correct.
+  A clearer prefix would be 'get' since it returns a count rather than acting on the records.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81432D8 -> getCybercrowCrowsState3
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81432D8

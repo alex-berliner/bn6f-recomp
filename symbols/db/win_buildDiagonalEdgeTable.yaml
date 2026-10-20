@@ -1,0 +1,64 @@
+name: win_buildDiagonalEdgeTable
+address: '0x08006B94'
+kind: function
+status: probable
+summary: 'Fills an 8-byte-per-scanline table with window-register pairs: per row writes a dword encoding
+  WIN0H=(n,n+1) with WIN0V=0xFFFF (a 1-pixel-wide vertical window) followed by 0xFFFFFF00 (full-screen
+  WIN1H/WIN1V), stepping n by -0x101 each row to draw a diagonal window edge.'
+interface: (r0 = scanline table buffer, r1 = table size in bytes (rows*8), r2 = starting x for the window
+  line) -> fills table; clobbers r2, r3, r5.
+details: For each 8-byte row, stored back-to-front, it writes a dword 0xFFFF0000|(n<<8)|(n+1) at +0 and
+  the constant 0xFFFFFF00 at +4, decrementing n by 0x101 per row. Interpreted as a 32-bit write to 0x04000040,
+  the first dword is WIN0H=x2=n, x1=n+1 with WIN0V=0xFFFF (full height), i.e. a 1-pixel vertical window
+  line that shifts left one pixel per scanline, forming a diagonal edge; the second dword sets WIN1H/WIN1V
+  to the full screen. The byte length r1 is supplied as rows*8 by both callers (0xA0<<3 = 1280 for 160
+  scanlines), and the loop terminates when the decremented offset r1 goes negative.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_8006B94 builds 0xFFFF0000|(r2<<8)|(r2+1) and writes dword pairs every 8 bytes, subtracting
+    0x101 each iteration (loc_8006BA6).; Caller 0x08006920 passes unk_2008980 with r1=0xA0<<3, r2=0xA0,
+    then enqueues a task via req_enqueueTask with Window0HorizontalDimensions and DMA-style value 0xA2600000.;
+    Caller 0x08006A6C computes r7=r1-r2 clamped to 0xA0 and passes it as r2 with matching byte count,
+    showing the diagonal's x offset is animated per frame.; The second constant 0xFFFFFF00 per row matches
+    a fixed full-screen WIN1H/WIN1V pair following WIN0H/WIN0V in the register block at 0x04000040.
+  refs:
+  - bn6f/asm/asm00_1.s:7835
+  - 0x08006920 sub_8006920
+  - 0x08006A6C sub_8006A6C
+  reproduce: python3 tools/asmcat.py 0x08006B94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms the proposal: it builds pairs of dwords per scanline, the first being 0xFFFF0000|((n<<8)|(n+1))
+    with n decrementing by 0x101, the second the constant 0xFFFFFF00, and r1 is the byte size (rows*8)
+    used as a back-to-front index, matching both call sites. The name is fine, but a clearer one (given
+    this is window-table setup) is preferable. The summary''s ''HBlank DMA'' claim is not directly evident
+    from the code or callers, though the table is plausibly used that way; the per-row interpretation
+    as WIN0H/WIN0V/WIN1H/WIN1V is consistent with the constants.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of the empty (x1=x2+1) window line — whether the effect masks pixels inside or outside
+  the window (depends on WININ/WINOUT setup not shown)
+- What the struct fields at 0x20096A0+0x24/0x28/0x2C/0x3 set by sub_8006920 represent (likely transition
+  parameters)
+- Which game effect owns this (battle transition wipe vs. another window sweep) — the surrounding subsystem
+  isn't identified
+- 'The assembly confirms the proposal: it builds pairs of dwords per scanline, the first being 0xFFFF0000|((n<<8)|(n+1))
+  with n decrementing by 0x101, the second the constant 0xFFFFFF00, and r1 is the byte size (rows*8) used
+  as a back-to-front index, matching both call sites. The name is fine, but a clearer one (given this
+  is window-table setup) is preferable. The summary''s ''HBlank DMA'' claim is not directly evident from
+  the code or callers, though the table is plausibly used that way; the per-row interpretation as WIN0H/WIN0V/WIN1H/WIN1V
+  is consistent with the constants.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8006B94 -> win_buildDiagonalEdgeTable
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8006B94

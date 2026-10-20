@@ -1,0 +1,59 @@
+name: sprite_advancePointersByVelocity
+address: '0x0811C784'
+kind: function
+status: probable
+summary: Per-frame step that advances the two 32-bit pointer fields at r5+0x18 and r5+0x1c by the sprite's
+  signed x/y velocity from r5+0x14/r5+0x16, each scaled by 16.
+interface: (r0 = unused/scratch, r5 = sprite object) -> void; r5+0x18 and r5+0x1c incremented in place
+details: Reads signed halfword fields at r5+0x14 and r5+0x16 (apparently velocity x and y), shifts each
+  left by 4 (x16, i.e. fixed-point 1/16 subpixel scaling), and adds them to the 32-bit values at r5+0x18
+  and r5+0x1c, storing the results back. Because the accumulators are pointers, this scrolls two base
+  pointers through some data array rather than moving integer positions. The caller sub_811C654 calls
+  it unconditionally each frame after a sprite_isWithinScreenBounds cull check and before sub_811C7A0
+  and sprite_update, so it runs as part of the sprite's per-frame update. What structures r5+0x18/0x1c
+  point into (tile data, animation table, etc.) is not shown by the available code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_811C784: ldrsh r1,[r5,#0x14]/#0x16 then lsl r1,#4 and add into [r5,#0x18]/[r5,#0x1c] —
+    velocity-scaled pointer advance; caller 0x0811C6C2: bl sub_811C784 immediately followed by bl sub_811C7A0
+    and bl sprite_update in the per-frame sprite routine; caller 0x0811C6B6: sprite_isWithinScreenBounds
+    gate before the call shows it is a live on-screen sprite''s update step; shift by 4 implies velocity
+    fields are coarse values converted to 1/16-pixel subpixel accumulation'
+  refs:
+  - bn6f/asm/asm32.s:30154
+  - 0x0811C654 sub_811C654
+  reproduce: python3 tools/asmcat.py 0x0811C784
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x0811C784 loads [r5+0x18] and [r5+0x1c] as 32-bit pointers, adds sign-extended halfwords
+    from r5+0x14 and r5+0x16 shifted left by 4 (multiply by 16), and stores back. This pattern of ''advance
+    pointer by velocity*16'' matches a per-frame animation/tilemap walker, but the proposal''s framing
+    as ''sprite_scrollPointersByVelocity'' is acceptable. However, fields at 0x18/0x1c being ''pointers
+    into tile data/animation'' is speculative - without more context they could simply be accumulator
+    offsets. The name itself is fine but ''scroll'' is mildly opinionated; better to be neutral.; run
+    wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what r5+0x18 and r5+0x1c point into (tilemap, animation frames, buffer rows of 16 bytes?) — needed to
+  name the scroll target correctly
+- whether r5+0x14/0x16 are velocities or some other signed per-frame deltas
+- what sub_811C7A0 does, which would confirm the update-pipeline role
+- The code at 0x0811C784 loads [r5+0x18] and [r5+0x1c] as 32-bit pointers, adds sign-extended halfwords
+  from r5+0x14 and r5+0x16 shifted left by 4 (multiply by 16), and stores back. This pattern of 'advance
+  pointer by velocity*16' matches a per-frame animation/tilemap walker, but the proposal's framing as
+  'sprite_scrollPointersByVelocity' is acceptable. However, fields at 0x18/0x1c being 'pointers into tile
+  data/animation' is speculative - without more context they could simply be accumulator offsets. The
+  name itself is fine but 'scroll' is mildly opinionated; better to be neutral.
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811C784 -> sprite_advancePointersByVelocity
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811C784

@@ -1,0 +1,61 @@
+name: battle_renderTimeBcdDigits
+address: '0x08137E7C'
+kind: function
+status: probable
+summary: Renders 7 BCD time digits into per-digit display buffer slots using enable flags, packing two
+  position/attr words with a constant 0x200 flag.
+interface: (r0 = time-slot index, r1 = table of halfword enable flags, r2 = digit buffer base, r3/r4 =
+  packed position/attr values) -> r0 = last sub_8137F08 result; flags clobbered
+details: 'Builds two parameters (r3<<12|0x200, r4<<12|0x200) and walks 7 entries: for each, a halfword
+  flag at r1+2*index is checked, and if nonzero the indexed time counter (via get_indexedTimeBcd, selected
+  through unk_201CF00) is converted to packed BCD. Each iteration advances the buffer pointer by 0x1c,
+  so every digit slot owns a 28-byte record, with sub_8138210 called on the packed params plus the index
+  and sub_8137F08 called with the buffer and buffer+0xE (likely tens/ones halves of the BCD byte). The
+  0x200 flag OR''d into both shifted values is a constant attribute passed to the render helper. Likely
+  a clock/HUD digit layout routine rather than a raw OAM queue.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: get_indexedTimeBcd callee returns a counter as packed-BCD time, keyed by unk_201CF00+r0+1 with
+    r0 = 2*index; loop bound cmp r4,#7 with r5 += 2 walks 7 halfword enable flags from r1; buffer pointer
+    (sp+4) and buffer+0xE (sp+8) both advance by 0x1C per digit slot; (r3<<12)|0x200 and (r4<<12)|0x200
+    are prepared once and passed to sub_8138210 as constant placement/attribute params; sub_8137F08 is
+    called with the slot buffer and buffer+0xE, matching a two-digit BCD split
+  refs:
+  - bn6f/asm/asm36.s:16702
+  - 0x08137E4C sub_8137E4C
+  - 0x08137EF0 get_indexedTimeBcd
+  - 0x08137F08 sub_8137F08
+  - 0x08138210 sub_8138210
+  reproduce: python3 tools/asmcat.py 0x08137E7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the structure: 7-iteration loop, halfword enable flags at r1, 0x1c stride, BCD
+    via get_indexedTimeBcd, sub_8138210 with packed params, and sub_8137F08 with buffer/buffer+0xE. However,
+    the proposal misreads r1 as the flag table (it''s actually the table selector passed to get_indexedTimeBcd
+    at r1=unk_20018C0), and the enable flag is ldrb from r5 (r7+r1, halfword step). Name fits since it
+    really does render time BCD digits into per-digit buffers.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_8138210 and sub_8137F08 draw or write (OAM queue vs text buffer), which would confirm the rendering
+  path
+- meaning of the 0x200 bit and the <<12 packing in the caller's coordinate/attribute format
+- what the 7 slots represent (e.g. HH:MM:SS plus one extra digit) and which screen invokes caller sub_8137E4C
+- 'The code confirms the structure: 7-iteration loop, halfword enable flags at r1, 0x1c stride, BCD via
+  get_indexedTimeBcd, sub_8138210 with packed params, and sub_8137F08 with buffer/buffer+0xE. However,
+  the proposal misreads r1 as the flag table (it''s actually the table selector passed to get_indexedTimeBcd
+  at r1=unk_20018C0), and the enable flag is ldrb from r5 (r7+r1, halfword step). Name fits since it really
+  does render time BCD digits into per-digit buffers.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8137E7C -> battle_renderTimeBcdDigits
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137E7C

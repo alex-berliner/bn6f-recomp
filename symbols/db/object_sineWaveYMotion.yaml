@@ -1,0 +1,60 @@
+name: object_sineWaveYMotion
+address: '0x080DE6D0'
+kind: function
+status: probable
+summary: Updates a battle object's sine-wave Y bobbing by advancing its phase (+0x66 + +0x67), sampling
+  math_sinTable, scaling by 0xC00, sign-flipping via byte_80DE704 based on the +0x64 flag, adding to ExtraVars+8
+  and storing to oBattleObject_Y.
+interface: (r0 ignored; r5 = battle object) -> updates r5 object's oBattleObject_Y and its phase counter;
+  no meaningful return
+details: Reads a phase counter at object+0x67 and increments it, then fetches a halfword from math_sinTable
+  at index counter*2 (0..0xFF range). The sine value is scaled by 12<<8 (amplitude 0xC00) and multiplied
+  by a sign byte from byte_80DE704 indexed by (object+0x64)*4, which holds +1 for flag 0 and -1 for flag
+  1. The result is added to oBattleObject_ExtraVars+8 and stored to oBattleObject_Y, giving smooth up/down
+  oscillation. The caller toggles the +0x64 flag and negates YVelocity when the object reaches a turning
+  point, flipping the bob direction.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80DE6D0 reads object+0x67, increments it, and indexes math_sinTable with ldrh [r2,r3] after
+    lsl r3,#1; result scaled by 0xC<<8 then multiplied by byte_80DE704 entry (+1/-1) selected by flag
+    at object+0x64; sum added to oBattleObject_ExtraVars+8 and stored to oBattleObject_Y; caller at 0x080DE5CA
+    calls it right after applying XVelocity, then object_setPanelsFromCoordinates and object_updateOccupiedPanel;
+    caller loc_80DE5D8 eors flag object+0x64 and negates oBattleObject_YVelocity, matching a bounce turn-around
+  refs:
+  - bn6f/asm/asm31.s:84999
+  - 0x080DE594 sub_80DE594
+  reproduce: python3 tools/asmcat.py 0x080DE6D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080DE6D0 does read+increment the phase at +0x67, fetch from math_sinTable, scale by
+    0xC<<8, multiply by the sign word from byte_80DE704 indexed by (object+0x64)*4, and add to ExtraVars+8
+    writing Y — matching the summary. However the phase increment uses add r3,r3,r1 where r1 is the byte
+    at +0x66, so it''s not a simple counter; the proposed name ''object_sineWaveYMotion'' is fine but
+    the description of byte_80DE704 as +1/-1 is wrong (it''s 1,0,0,0 then 0xFF,0xFF,0xFF,0xFF — i.e. +1
+    for flag 0, -1 for flag 1 as signed 32-bit), which is essentially right but the per-byte breakdown
+    is off. The name is acceptable but could be clearer.; run wf investigate investigate-20261019-094015;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which object/entity uses this bobbing (no callee summaries or spawn site seen)
+- what ExtraVars+8 represents exactly (raw Y before sine offset vs. other state)
+- The code at 0x080DE6D0 does read+increment the phase at +0x67, fetch from math_sinTable, scale by 0xC<<8,
+  multiply by the sign word from byte_80DE704 indexed by (object+0x64)*4, and add to ExtraVars+8 writing
+  Y — matching the summary. However the phase increment uses add r3,r3,r1 where r1 is the byte at +0x66,
+  so it's not a simple counter; the proposed name 'object_sineWaveYMotion' is fine but the description
+  of byte_80DE704 as +1/-1 is wrong (it's 1,0,0,0 then 0xFF,0xFF,0xFF,0xFF — i.e. +1 for flag 0, -1 for
+  flag 1 as signed 32-bit), which is essentially right but the per-byte breakdown is off. The name is
+  acceptable but could be clearer.
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE6D0 -> object_sineWaveYMotion
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE6D0

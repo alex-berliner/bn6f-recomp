@@ -1,0 +1,52 @@
+name: battle_stepWaitAnimThenAdvance
+address: '0x080BA5AA'
+kind: function
+status: probable
+summary: 'Per-frame battle-object state step: on first entry sets CurPhase=4, CurAnim=0x11, Timer=7; on
+  each subsequent entry decrements Timer and when it reaches 0 sets CurAction=0x20 and clears CurPhaseAndPhaseInitialized
+  to 0 to hand back to the action dispatcher.'
+interface: (r5 = battle object, no args) -> void; updates oBattleObject_CurPhase, CurAnim, Timer, CurAction,
+  CurPhaseAndPhaseInitialized
+details: 'A per-frame state-machine handler for a battle object held in r5. If CurPhase is 0 it initializes
+  the state: phase = 4, CurAnim = 0x11, Timer = 7, and returns. On subsequent frames it decrements the
+  16-bit Timer; while it is still positive it just returns. When the timer reaches 0 it writes CurAction
+  = 0x20 and clears CurPhaseAndPhaseInitialized to 0, handing control back to the object''s action dispatcher
+  to run the next action. No other objects, OAM, or data are touched — it only manipulates the standard
+  battle-object state fields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne selects init-once vs. tick behavior; init branch
+    stores phase 4, anim 0x11, timer 7 (strb/strh to oBattleObject fields); tick branch decrements Timer
+    and 'bgt' waits until it hits 0; on expiry stores CurAction 0x20 and zeroes CurPhaseAndPhaseInitialized,
+    the standard way to yield to the action dispatcher
+  refs:
+  - bn6f/asm/asm31.s:4958
+  reproduce: python3 tools/asmcat.py 0x080BA5AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanism matches: init sets CurPhase=4, CurAnim=0x11, Timer=7, then per-frame decrements Timer
+    and on expiry sets CurAction=0x20 and writes 0 to CurPhaseAndPhaseInitialized (strh, not strb to CurPhase).
+    The summary''s ''resets the phase'' is slightly imprecise since CurPhase is left at 4 and the CurPhaseAndPhaseInitialized
+    byte is the one cleared. Name is fine.; run wf investigate investigate-20261019-055111; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which object/behavior uses this step (and what anim 0x11 and action 0x20 mean in
+  game terms, e.g. flinch/stun vs. custom animation) is unknown
+- Whether phase 4 is a shared state id or specific to this handler
+- 'The mechanism matches: init sets CurPhase=4, CurAnim=0x11, Timer=7, then per-frame decrements Timer
+  and on expiry sets CurAction=0x20 and writes 0 to CurPhaseAndPhaseInitialized (strh, not strb to CurPhase).
+  The summary''s ''resets the phase'' is slightly imprecise since CurPhase is left at 4 and the CurPhaseAndPhaseInitialized
+  byte is the one cleared. Name is fine.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA5AA -> battle_stepWaitAnimThenAdvance
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA5AA

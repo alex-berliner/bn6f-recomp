@@ -1,0 +1,55 @@
+name: ai_dispatchHitElementHandler
+address: '0x08015614'
+kind: function
+status: probable
+summary: Loads the HitElement byte from the AI attack vars at r7, uses it to index off_8015628, and bx-dispatches
+  to the selected handler (Thumb set bit); r0 holds the HitElement index and control passes via lr set
+  to pc, so the handler must return with bx lr.
+interface: (r7 = AI attack vars; reads oAIAttackVars_HitElement) -> calls table[HitElement] as ARM routine,
+  returns to caller via pop {pc}
+details: Loads the byte at r7+oAIAttackVars_HitElement, uses it to index the pointer table off_8015628,
+  then performs a long-call-style dispatch (mov lr, pc; bx r1) so the handler returns straight back into
+  this stub, which pops pc to return to its own caller. The only visible table entry is ai_attackEmergeAtTargetPanel+1,
+  i.e. thumb handler addresses. It is a pure element-based dispatcher for attack behaviors; r0 is passed
+  through unchanged to the handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes off_8015628 by the hit-element
+    byte (asm lines 3-5); mov lr,pc; bx r1 is the standard tail-call dispatch so the handler returns via
+    pop {pc}; off_8015628 contains ai_attackEmergeAtTargetPanel+1, a thumb attack-behavior handler, as
+    at least the element-0 entry
+  refs:
+  - bn6f/asm/asm00_2.s:15383
+  reproduce: python3 tools/asmcat.py 0x08015614
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly correctly indexes off_8015628 by HitElement and bx-dispatches (mov lr, pc; bx r1),
+    and r0 holds HitElement, not a pass-through. The ''returns to caller via pop {pc}'' is also wrong:
+    ''pop {pc}'' pops from the stack saved by ''push {lr}'', but since the handler was bx-called via lr=pc,
+    control does not return here — the pop {pc} only runs if the handler returns via bx lr, which contradicts
+    the stub''s design. The summary needs to reflect that r0 carries the HitElement index and the handler''s
+    return path is via lr, not this stub.; run wf investigate investigate-20261019-052112; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- full contents of off_8015628 (whether each element has a distinct handler or repeats ai_attackEmergeAtTargetPanel)
+- callers and the AI attack structure layout would confirm the exact meaning of HitElement and the handler's
+  arguments
+- 'The assembly correctly indexes off_8015628 by HitElement and bx-dispatches (mov lr, pc; bx r1), and
+  r0 holds HitElement, not a pass-through. The ''returns to caller via pop {pc}'' is also wrong: ''pop
+  {pc}'' pops from the stack saved by ''push {lr}'', but since the handler was bx-called via lr=pc, control
+  does not return here — the pop {pc} only runs if the handler returns via bx lr, which contradicts the
+  stub''s design. The summary needs to reflect that r0 carries the HitElement index and the handler''s
+  return path is via lr, not this stub.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8015614 -> ai_dispatchHitElementHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015614

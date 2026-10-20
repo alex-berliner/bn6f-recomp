@@ -1,0 +1,54 @@
+name: object_blinkCountdownUpdate
+address: '0x080DD8F0'
+kind: function
+status: probable
+summary: Per-frame update that ticks a battle object's Timer down; when it reaches zero the object is
+  marked for destruction, otherwise bit 2 of oObjectHeader_Flags is toggled based on the low bits of the
+  remaining Timer to make the object blink.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = clobbered; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when Timer reaches 0
+details: 'Decrements oBattleObject_Timer on r5; if the new value is zero it stores CUR_STATE_DESTROY into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized, requesting destruction. Otherwise it toggles oObjectHeader_Flags
+  bit 2 (0x02): sets it when the remaining timer has bit 1 set, clears it otherwise, so the object flashes
+  alternately as the countdown runs. r5 is the implicit object pointer, so the caller must hold the object
+  in r5; r0 is ignored on entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh — decrements the object's Timer field each
+    call; bne path stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    when Timer hits 0; tst r0,#2 then orr/bic of oObjectHeader_Flags bit 2 — toggles a blink/show flag
+    based on remaining time parity
+  refs:
+  - bn6f/asm/asm31.s:82767
+  reproduce: python3 tools/asmcat.py 0x080DD8F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: it decrements oBattleObject_Timer (ldrh/sub/strh), on zero
+    stores CUR_STATE_DESTROY into the state field, and otherwise toggles bit 2 of oObjectHeader_Flags
+    based on bit 1 of the new timer value (tst r0,#2). The only issue is the proposed name; ''object_blinkCountdownUpdate''
+    is reasonable but ''object_blinkAndCountdownUpdate'' or simpler ''object_blinkUpdate'' fits better
+    since the blink is the visible effect. Since the name is acceptable and the summary is accurate, I''ll
+    suggest a slight refinement.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so the blink flag's consumer (which rendering code reads flag bit 2) is unverified
+- what typical Timer values callers load and which object kinds use this countdown are unknown
+- 'The code matches the described behavior: it decrements oBattleObject_Timer (ldrh/sub/strh), on zero
+  stores CUR_STATE_DESTROY into the state field, and otherwise toggles bit 2 of oObjectHeader_Flags based
+  on bit 1 of the new timer value (tst r0,#2). The only issue is the proposed name; ''object_blinkCountdownUpdate''
+  is reasonable but ''object_blinkAndCountdownUpdate'' or simpler ''object_blinkUpdate'' fits better since
+  the blink is the visible effect. Since the name is acceptable and the summary is accurate, I''ll suggest
+  a slight refinement.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DD8F0 -> object_blinkCountdownUpdate
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD8F0

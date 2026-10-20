@@ -1,0 +1,52 @@
+name: sprite_initPlacementSettings
+address: '0x080027F4'
+kind: function
+status: probable
+summary: Initializes the global sprite-placement block (byte_20098A8=0x10, byte_20098A9=0 [isometric projection],
+  halfword at 0x20098AA=0xFF) during overworld scene reset.
+interface: () -> r0 = undefined; writes globals byte_20098A8..A9 and word_20098AA, clobbers flags
+details: Stores 0x10 into byte_20098A8, clears byte_20098A9 to 0 — which per the symdb selects camera
+  projection 0 (isometric) — and stores halfword 0xFF into word_20098AA (+2). It takes no arguments and
+  returns whatever the last store leaves in r0. It is called once, in the overworld scene-reset path right
+  after resetOverworldScene/resetAllGraphicsState/runSetupStepAndClearWorkArea and before camera_init,
+  so it primes the placement block before the camera and map data are set up.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80027F4 stores 0 into byte_20098A9, the field symdb documents as the camera projection selector
+    (0 = isometric, 4 = side view); It writes fixed constants 0x10 and 0xFFFF into byte_20098A8 and word_20098AA,
+    i.e. a fixed default-state initializer with no inputs; Sole call site 0x081387EE sits in a scene-reset
+    routine between resetAllGraphicsState_8005F40/runSetupStepAndClearWorkArea_8005F6C and camera_init_802FF4C;
+    camera_init is called with map_group 0xd0-style args right after, matching a fresh overworld load
+    that needs the projection reset first
+  refs:
+  - bn6f/asm/sprite.s:277
+  - 0x081387D8 sub_81387D8
+  reproduce: python3 tools/asmcat.py 0x080027F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — asm stores 0x10 at byte_20098A8 and 0 at byte_20098A9, matching the proposal''s values; only byte_20098A9
+    is the projection selector per symdb, so the summary oversells which byte carries the ''isometric''
+    selection. Call site at 0x081387EE sits between resetOverworldScene/copy and camera_init in sub_81387D8,
+    consistent with priming sprite placement before camera setup.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of byte 0 (0x10) and halfword +2 (0xFF) within the placement-settings struct; a consumer
+  of those fields would confirm
+- asm stores 0x10 at byte_20098A8 and 0 at byte_20098A9, matching the proposal's values; only byte_20098A9
+  is the projection selector per symdb, so the summary oversells which byte carries the 'isometric' selection.
+  Call site at 0x081387EE sits between resetOverworldScene/copy and camera_init in sub_81387D8, consistent
+  with priming sprite placement before camera setup.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80027F4 -> sprite_initPlacementSettings
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80027F4

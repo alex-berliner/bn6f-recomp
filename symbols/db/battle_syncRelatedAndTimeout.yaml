@@ -1,0 +1,55 @@
+name: battle_syncRelatedAndTimeout
+address: '0x080E318E'
+kind: function
+status: probable
+summary: Sync handler that copies 12 bytes from RelatedObject1Ptr+0x34 on each call, while counting 20
+  frames before clearing bit-1 of oObjectHeader_Flags and switching the object to CUR_STATE_DESTROY.
+interface: (r5 = battle object header; no args) -> updates object fields in place; no return value
+details: Runs with the object in r5. On first invocation (PhaseInitialized==0) it stores 0x14 (20) into
+  oBattleObject_Timer and 4 into oBattleObject_PhaseInitialized. Every frame it decrements oBattleObject_Timer;
+  while the timer is still >0 it keeps going, and when it reaches 0 it clears bit 1 (0x2) of oObjectHeader_Flags
+  and writes CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized, so the caller's
+  setup (which sets that bit and enters CUR_STATE_UPDATE) results in a self-destructing effect after 20
+  frames. Each frame it also copies three words from RelatedObject1Ptr+0x34 into this object's +0x34,
+  likely syncing position/animation data with the related object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller sub_80E3174 sets sprite anim, sets flag bit 2 and CUR_STATE_UPDATE, then calls this
+    as the update handler; asm at 0x80E3190: on PhaseInitialized==0 stores Timer=0x14 and PhaseInitialized=4,
+    i.e. 20-frame lifetime; asm at 0x80E31A2: timer decrement; on expiry clears flag bit 2 and writes
+    CUR_STATE_DESTROY; asm at 0x80E31B2: ldmia/stmia copies 3 words from RelatedObject1Ptr+0x34 to this
+    object+0x34 each frame'
+  refs:
+  - bn6f/asm/asm31.s:94909
+  - 0x080E3174 sub_80E3174
+  reproduce: python3 tools/asmcat.py 0x080E318E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the proposal: stores 0x14 then 4 to PhaseInitialized, decrements timer, clears bit
+    1 and writes CUR_STATE_DESTROY, and copies three words from RelatedObject1Ptr+0x34 to own +0x34. However,
+    the caller at 0x080E3174 is a generic object-setup helper (calls battle_setupObjectSpriteAnim and
+    sets a flag/state) - it doesn''t necessarily indicate a "battle effect"; the name is reasonable but
+    ''effect'' assumes context not in the code.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the 12 bytes copied at +0x34 are (position? OAM data?) depends on the object struct layout
+- which effect/spawn uses sub_80E3174 to know exactly what visual this is
+- 'Code matches the proposal: stores 0x14 then 4 to PhaseInitialized, decrements timer, clears bit 1 and
+  writes CUR_STATE_DESTROY, and copies three words from RelatedObject1Ptr+0x34 to own +0x34. However,
+  the caller at 0x080E3174 is a generic object-setup helper (calls battle_setupObjectSpriteAnim and sets
+  a flag/state) - it doesn''t necessarily indicate a "battle effect"; the name is reasonable but ''effect''
+  assumes context not in the code.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E318E -> battle_syncRelatedAndTimeout
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E318E

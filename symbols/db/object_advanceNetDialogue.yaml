@@ -2,50 +2,48 @@ name: object_advanceNetDialogue
 address: '0x08039C32'
 kind: function
 status: probable
-summary: 'Object advance-phase routine: passes a sequence of checks, then sets object state to 0x1C, stores
-  0x1E at object+0x28, runs net text script 0xE; otherwise dispatches via timer-based table sub_803A5F4(0x66)
-  before tail-calling sub_803A104.'
-interface: (r5 = object pointer, r0 = check selector on entry) -> r0 = 0 or 1; sets object state byte
-  [r5+1] and field [r5+0x28]
-details: 'The routine is a small state-machine step: it first probes sub_803CB00(1) and sub_803A558, then
-  sub_803CB18(2); if any check fails it goes straight to the tail call sub_803A104 and returns 1. When
-  sub_813D638 reports 0, it calls sub_803C320, writes state 0x1C to the object''s state byte at r5+1,
-  stores 0x1E into the object at offset 0x28 via sub_803BB7C, clears something with sub_803BB90(0), and
-  kicks off network-related text script 0xE via sub_803BB2C. Otherwise it polls sub_803A5F4(0x66), and
-  on a nonzero result indexes dword_8039C8C (entry 0 = null/keep, entries 1-2 = two identical handlers
-  sub_8039CB4) as a tail call with a bl-style LR. The 0x66 comparison looks like a wait-timer threshold;
-  the shared second handler suggests two timer outcomes behave identically.'
+summary: 'Object advance-phase routine: passes a sequence of checks, then sets object state to 0x1C, stores 0x1E
+  at object+0x28, runs net text script 0xE; otherwise dispatches via timer-based table sub_803A5F4(0x66) before
+  tail-calling sub_803A104.'
+interface: (r5 = object pointer, r0 = check selector on entry) -> r0 = 0 or 1; sets object state byte [r5+1] and
+  field [r5+0x28]
+details: 'The routine is a small state-machine step: it first probes sub_803CB00(1) and sub_803A558, then sub_803CB18(2);
+  if any check fails it goes straight to the tail call sub_803A104 and returns 1. When sub_813D638 reports 0, it
+  calls sub_803C320, writes state 0x1C to the object''s state byte at r5+1, stores 0x1E into the object at offset
+  0x28 via sub_803BB7C, clears something with sub_803BB90(0), and kicks off network-related text script 0xE via
+  sub_803BB2C. Otherwise it polls sub_803A5F4(0x66), and on a nonzero result indexes dword_8039C8C (entry 0 = null/keep,
+  entries 1-2 = two identical handlers sub_8039CB4) as a tail call with a bl-style LR. The 0x66 comparison looks
+  like a wait-timer threshold; the shared second handler suggests two timer outcomes behave identically.'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
   detail: 'bl sub_803CB00 #1 / bl sub_803A558 / bl sub_803CB18 #2 gate the transition branch (asm 0x08039C38-0x08039C42);
-    strb #0x1c,[r5,#1] writes the object state byte; sub_803BB7C(0x1e) stores obj+0x28 (known callee summary);
-    mov r0,#0xe; bl sub_803BB2C launches network text script 0xE per callee''s known summary; sub_803A5F4(0x66)
-    then lsl r0,#2 + ldr pc-relative table: a timer/counter dispatch into dword_8039C8C; Tail: bl sub_803A104
-    then bl sub_803CB0C(1), symmetric with the opening sub_803CB00(1)'
+    strb #0x1c,[r5,#1] writes the object state byte; sub_803BB7C(0x1e) stores obj+0x28 (known callee summary); mov
+    r0,#0xe; bl sub_803BB2C launches network text script 0xE per callee''s known summary; sub_803A5F4(0x66) then
+    lsl r0,#2 + ldr pc-relative table: a timer/counter dispatch into dword_8039C8C; Tail: bl sub_803A104 then bl
+    sub_803CB0C(1), symmetric with the opening sub_803CB00(1)'
   refs:
   - bn6f/asm/asm03_1_1.s:2176
   - 0x0803BB2C sub_803BB2C
   - 0x0803BB7C sub_803BB7C
   - 0x0803A104 sub_803A104
   reproduce: python3 tools/asmcat.py 0x08039C32
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The callees (sub_803BB2C, sub_803BB7C, sub_803C320) and the strb r0,[r5,#1] / object offset 0x28
-    use strongly suggest this is an object routine, and the proposal''s behavior matches: checks via sub_803CB00/sub_803CB18,
-    advance to state 0x1C, store 0x1E at +0x28, run net text 0xE. The ''object_netDialoguePhaseStep''
-    name is reasonable but slightly misleading since the routine just advances one phase, not a continuous
-    step; ''object_advanceNetDialogue'' fits better.; run wf investigate investigate-20261019-010606;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The callees
+    (sub_803BB2C, sub_803BB7C, sub_803C320) and the strb r0,[r5,#1] / object offset 0x28 use strongly suggest this
+    is an object routine, and the proposal''s behavior matches: checks via sub_803CB00/sub_803CB18, advance to state
+    0x1C, store 0x1E at +0x28, run net text 0xE. The ''object_netDialoguePhaseStep'' name is reasonable but slightly
+    misleading since the routine just advances one phase, not a continuous step; ''object_advanceNetDialogue'' fits
+    better.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - Which entity r5 points to (which overworld/NPC object type owns fields +1 and +0x28) — no known caller
 - What sub_803CB00/sub_803CB18/sub_813D638 actually test (dialog-open, flag, or phase selectors)
 - What the shared handler sub_8039CB4 and the null entry of the jump table do after the 0x66 timer expires
-- 'The callees (sub_803BB2C, sub_803BB7C, sub_803C320) and the strb r0,[r5,#1] / object offset 0x28 use
-  strongly suggest this is an object routine, and the proposal''s behavior matches: checks via sub_803CB00/sub_803CB18,
-  advance to state 0x1C, store 0x1E at +0x28, run net text 0xE. The ''object_netDialoguePhaseStep'' name
-  is reasonable but slightly misleading since the routine just advances one phase, not a continuous step;
-  ''object_advanceNetDialogue'' fits better.'
+- 'The callees (sub_803BB2C, sub_803BB7C, sub_803C320) and the strb r0,[r5,#1] / object offset 0x28 use strongly
+  suggest this is an object routine, and the proposal''s behavior matches: checks via sub_803CB00/sub_803CB18, advance
+  to state 0x1C, store 0x1E at +0x28, run net text 0xE. The ''object_netDialoguePhaseStep'' name is reasonable but
+  slightly misleading since the routine just advances one phase, not a continuous step; ''object_advanceNetDialogue''
+  fits better.'
 sources:
 - wf investigate investigate-20261019-010606
 changes:
@@ -57,5 +55,9 @@ changes:
   what: rename sub_8039C32 -> object_advanceNetDialogue
   where: bn6f 54bc3514
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
 previous_names:
 - sub_8039C32

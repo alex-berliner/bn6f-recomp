@@ -1,0 +1,58 @@
+name: battle_objectWaitPhaseThenNextAction
+address: '0x080CC892'
+kind: function
+status: probable
+summary: 'Battle-object phase step: on first entry (phase==0) sets phase=4, anim=1, timer=1; on later
+  entries decrements the 16-bit timer and, when it underflows, sets CurAction=8 and clears CurPhaseAndPhaseInitialized
+  to hand off to the dispatcher.'
+interface: (r0 = ignored/overwritten, r5 = battle object pointer) -> no meaningful return; clobbers r0-r1,
+  flags
+details: 'Reads oBattleObject_CurPhase from the object at r5. If the phase is 0 it initializes: writes
+  phase 4 to CurPhase, anim 1 to CurAnim, and timer 1 to oBattleObject_Timer, then returns. On later calls
+  it decrements oBattleObject_Timer; while the result stays >= 0 it just returns. When the timer underflows
+  it sets oBattleObject_CurAction = 8 and clears oBattleObject_CurPhaseAndPhaseInitialized to 0, handing
+  control back to the object''s action dispatcher. r0 is clobbered immediately, so any input argument
+  is unused; the object must be passed in r5, suggesting it is one entry of a per-phase function table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] + tst/bne splits first call (phase 0) from wait loop; first-call
+    branch stores phase 4, CurAnim 1, Timer 1 (asm 0x80CC898-0x80CC8A6); wait loop decrements oBattleObject_Timer
+    and bge returns until it hits -1; on expiry stores CurAction 8 and zeroes CurPhaseAndPhaseInitialized,
+    the standard phase-reset idiom
+  refs:
+  - bn6f/asm/asm31.s:45506
+  reproduce: python3 tools/asmcat.py 0x080CC892
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — On entry with phase=0, the code stores 4 to CurPhase, 1 to CurAnim, and a halfword 1 to oBattleObject_Timer
+    (strh), so the ''1-frame timer'' is a 16-bit write, fine. But it then ''returns'' by falling through
+    to locret_80CC8B8, which is just a pop; it does NOT decrement and re-enter. The decrement path is
+    only taken on subsequent calls when phase != 0. The summary''s phrase ''then counts the timer down
+    and switches'' reads like a single-pass loop but this is a state-machine entry called repeatedly.
+    Also the final write is strh of 0 to CurPhaseAndPhaseInitialized (halfword), not strb. The name is
+    acceptable but a better one emphasizes the wait-then-advance behavior.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which object/enemy uses this handler and what action 8 means for it (no callers known)
+- what anim 1 corresponds to for this object's animation table
+- On entry with phase=0, the code stores 4 to CurPhase, 1 to CurAnim, and a halfword 1 to oBattleObject_Timer
+  (strh), so the '1-frame timer' is a 16-bit write, fine. But it then 'returns' by falling through to
+  locret_80CC8B8, which is just a pop; it does NOT decrement and re-enter. The decrement path is only
+  taken on subsequent calls when phase != 0. The summary's phrase 'then counts the timer down and switches'
+  reads like a single-pass loop but this is a state-machine entry called repeatedly. Also the final write
+  is strh of 0 to CurPhaseAndPhaseInitialized (halfword), not strb. The name is acceptable but a better
+  one emphasizes the wait-then-advance behavior.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CC892 -> battle_objectWaitPhaseThenNextAction
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC892

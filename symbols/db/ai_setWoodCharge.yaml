@@ -1,0 +1,54 @@
+name: ai_setWoodCharge
+address: '0x080EF990'
+kind: function
+status: probable
+summary: Stores ChargeCycles=1 and HitElement=4 (Wood) into the AI attack vars struct at r7, with a dead
+  AiDifficultyTier branch; returns 4 in r0.
+interface: (r0 = unused despite being set, r7 = oAIAttackVars struct) -> stores ChargeCycles=1 and HitElement=4
+  into [r7]; returns r0=4, clobbers r1
+details: Loads the AI difficulty tier from [r7,#oAIAttackVars_AiDifficultyTier] and compares to 0, but
+  both branch paths set r0=1, so the check is dead code and the stored charge is always 1. It stores 1
+  as a halfword into oAIAttackVars_ChargeCycles and 4 into oAIAttackVars_HitElement (element id 4 = wood).
+  Returns 4 in r0, likely incidental from the last immediate load. The AiDifficultyTier read hints an
+  unfinished per-difficulty charge value. No callers known, so the choice of element/charge pairing (which
+  attack this configures) is inferred only from the element table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh r0, [r7,#oAIAttackVars_ChargeCycles] with r0=1 on both paths sets charge to 1; mov r0,#4
+    / strh r0,[r7,#oAIAttackVars_HitElement] sets element id 4 (wood); ldrb r1,[r7,#oAIAttackVars_AiDifficultyTier]
+    / cmp/beq is a no-op branch, both paths yield r0=1; field offsets are already named oAIAttackVars_*,
+    so r7 is the AI attack-vars struct
+  refs:
+  - bn6f/asm/asm31.s:122065
+  reproduce: python3 tools/asmcat.py 0x080EF990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r0 is set to 1, compared against AiDifficultyTier with both paths setting r0=1
+    (dead branch), then stores 1 to ChargeCycles and 4 to HitElement, returning 4. However, the proposed
+    name ''ai_setWoodChargeAttack'' assumes a specific attack configures this. The function merely sets
+    charge cycles and element on oAIAttackVars, with no attack ID written, so the name overstates what
+    the code does. A more accurate name would just reflect setting element and charge.; run wf investigate
+    investigate-20261019-033611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No callers known: which enemy/attack this configures and when it runs is unknown'
+- Whether HitElement=4 maps to wood in the element table should be confirmed
+- Whether the dead difficulty branch was meant to vary ChargeCycles
+- 'The code matches: r0 is set to 1, compared against AiDifficultyTier with both paths setting r0=1 (dead
+  branch), then stores 1 to ChargeCycles and 4 to HitElement, returning 4. However, the proposed name
+  ''ai_setWoodChargeAttack'' assumes a specific attack configures this. The function merely sets charge
+  cycles and element on oAIAttackVars, with no attack ID written, so the name overstates what the code
+  does. A more accurate name would just reflect setting element and charge.'
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EF990 -> ai_setWoodCharge
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF990

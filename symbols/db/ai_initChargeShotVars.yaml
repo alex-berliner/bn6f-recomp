@@ -1,0 +1,55 @@
+name: ai_initChargeShotVars
+address: '0x080EE3F0'
+kind: function
+status: probable
+summary: 'Initializes oAIAttackVars charge-shot fields: sets 1 charge cycle (2 for Falzar tier 0xb), zeroes
+  ScratchVar, and writes HitElement=8.'
+interface: (r0 = unused, overwritten; r7 = AI attack state struct) -> r0 = 0; no flags used
+details: Writes oAIAttackVars_ChargeCycles = 1, or 2 when oAIAttackVars_AiDifficultyTier == 0xb (a high/special
+  difficulty tier), then zeroes oAIAttackVars_ScratchVar and stores HitElement = 8 (probably the neutral/no-element
+  id for the charged attack). r0 input is ignored (immediately overwritten with 1). Returns 0 in r0 as
+  a standard success/void convention. All state lives in the oAIAttackVars struct addressed via r7.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r7,#oAIAttackVars_AiDifficultyTier]; cmp r1,#0xb; bne loc_80EE3FA — charge time depends
+    on difficulty tier 11; strh r0,[r7,#oAIAttackVars_ChargeCycles] — result stored as charge cycle count
+    (1 or 2); str r0,[r7,#oAIAttackVars_ScratchVar] with r0=0 — clears a scratch field; mov r0,#8; strh
+    r0,[r7,#oAIAttackVars_HitElement] — assigns element id 8 to the attack
+  refs:
+  - bn6f/asm/asm31.s:119477
+  reproduce: python3 tools/asmcat.py 0x080EE3F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches the proposal: r0 is set to 1 (mov r0,#1), overwritten with 2 when AiDifficultyTier==0xb
+    (cmp/beq/mov), stored as ChargeCycles (strh). Then ScratchVar is zeroed (mov r0,#0 / str) and HitElement=8
+    is written (strh r0,#8). Returns via mov pc,lr. However, the proposal''s interface is off: r0 input
+    is ''unused, overwritten'' but actually there is no r0 input read — r0 is immediately set to 1, so
+    it''s not a parameter at all. Also tier 0xb in BN6 is Falzar''s special difficulty (Falzar tier),
+    not a generic ''high difficulty''. The name and summary are close but could reflect that this writes
+    HitElement and tier check more clearly.; run wf investigate investigate-20261019-052112; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so why this initializer is invoked and by which AI routine is unknown
+- Whether difficulty tier 0xb is a special boss tier or a debug/test value
+- The meaning of HitElement = 8 in the element enum
+- 'The asm matches the proposal: r0 is set to 1 (mov r0,#1), overwritten with 2 when AiDifficultyTier==0xb
+  (cmp/beq/mov), stored as ChargeCycles (strh). Then ScratchVar is zeroed (mov r0,#0 / str) and HitElement=8
+  is written (strh r0,#8). Returns via mov pc,lr. However, the proposal''s interface is off: r0 input
+  is ''unused, overwritten'' but actually there is no r0 input read — r0 is immediately set to 1, so it''s
+  not a parameter at all. Also tier 0xb in BN6 is Falzar''s special difficulty (Falzar tier), not a generic
+  ''high difficulty''. The name and summary are close but could reflect that this writes HitElement and
+  tier check more clearly.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EE3F0 -> ai_initChargeShotVars
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE3F0

@@ -1,0 +1,57 @@
+name: battle_objectAnimPhase
+address: '0x080BF97C'
+kind: function
+status: probable
+summary: 'Battle object phase handler: on first entry starts animation 4 and a 3-frame timer, then clears
+  an object flag and transitions CurAction to 12 when the timer expires.'
+interface: (r0 = ???, r5 = battle object pointer) -> r0 = 0; called as an object update/phase step, return
+  value likely unused
+details: 'Standard two-stage phase handler keyed on oBattleObject_PhaseInitialized: on first entry it
+  sets oBattleObject_CurAnim = 4, calls sub_80B8E58 on the object''s oBattleObject_ExtraVars, loads oBattleObject_Timer
+  = 3, and marks the phase initialized. On every subsequent call it decrements oBattleObject_Timer; once
+  it reaches 0 it clears bit 1 of oObjectHeader_Flags (likely an ''active/busy'' or animation-hold flag),
+  sets oBattleObject_CurAction = 12, and zeroes the combined CurPhaseAndPhaseInitialized field so the
+  object''s action state machine advances. No callers are known, so which object/animation this belongs
+  to is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne guards a first-entry block setting CurAnim=4
+    and Timer=3; ldr r0,[r5,#oBattleObject_ExtraVars]; bl sub_80B8E58 passes the object''s extra-var pointer
+    to an unknown helper; after Timer expiry: bic bit 2 of oObjectHeader_Flags then strb, clearing an
+    object status flag; mov r0,#0xc; strb r0,[r5,#oBattleObject_CurAction] with phase reset advances the
+    action state machine to action 12; structure: no callers known, callee sub_80B8E58 is itself undocumented'
+  refs:
+  - bn6f/asm/asm31.s:16759
+  - 0x080B8E58 sub_80B8E58
+  reproduce: python3 tools/asmcat.py 0x080BF97C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described first-time init (CurAnim=4, call sub_80B8E58 on ExtraVars, Timer=3,
+    mark PhaseInitialized=4) and the post-timer cleanup (clear bit 1 of oObjectHeader_Flags, set CurAction=0xC,
+    zero CurPhaseAndPhaseInitialized). However the proposed name ''battle_objectAnim4Phase'' encodes the
+    literal CurAnim value 4 and a digit run, which the naming rules forbid; a name like battle_objectAnimPhase
+    or battle_objectAdvancePhase is more appropriate.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object uses this handler (no call sites found)
+- what animation 4 depicts for this object and what sub_80B8E58 does with ExtraVars
+- the exact meaning of oObjectHeader_Flags bit 1 and of CurAction 12
+- The code matches the described first-time init (CurAnim=4, call sub_80B8E58 on ExtraVars, Timer=3, mark
+  PhaseInitialized=4) and the post-timer cleanup (clear bit 1 of oObjectHeader_Flags, set CurAction=0xC,
+  zero CurPhaseAndPhaseInitialized). However the proposed name 'battle_objectAnim4Phase' encodes the literal
+  CurAnim value 4 and a digit run, which the naming rules forbid; a name like battle_objectAnimPhase or
+  battle_objectAdvancePhase is more appropriate.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BF97C -> battle_objectAnimPhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF97C

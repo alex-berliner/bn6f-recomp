@@ -1,0 +1,55 @@
+name: ai_getAttackBoostAndCycleDefaults
+address: '0x080FAEC4'
+kind: function
+status: probable
+summary: Returns two fixed tuning bytes (attack boost=2, cycles=30) from the table at byte_80FAEE0, stored
+  into oAIAttackVars_AttackBoost2 and oAIAttackVars_TimerOrCycles during AI attack init; difficulty-tier
+  indexing is not performed here.
+interface: () -> r0 = attack boost value, r1 = timer/cycle value; flags clobbered by calls
+details: The function reads two bytes from the table byte_80FAEE0 (=2,2,2,2,30,30,30,30) using helper
+  sub_800FE28, first at the table base and then at base+4, returning the first byte in r0 and the second
+  in r1. Its only caller, sub_80FAFB4 (an AI attack initializer), runs it right after fetching the AI
+  difficulty tier and the attack duration, then stores r0 into oAIAttackVars_AttackBoost2 and r1 into
+  oAIAttackVars_TimerOrCycles before setting up the panel-choose callback and target object. The table's
+  4+4 layout suggests one entry per AI difficulty tier, with the helper likely indexing by the current
+  tier; for the default tier the values would be boost=2 and cycles=30.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80FAEC4 calls sub_800FE28 on byte_80FAEE0 and byte_80FAEE0+4, returning both bytes as r0/r1;
+    table bytes 2,2,2,2,30,30,30,30 look like per-difficulty-tier pairs (4 tiers x 2 values); caller 0x080FAFB4
+    stores r0 to oAIAttackVars_AttackBoost2 and r1 to oAIAttackVars_TimerOrCycles; caller invokes it during
+    attack-state init right after battle_getAiDifficultyTier and sub_80FAEE8 (attack duration)
+  refs:
+  - bn6f/asm/asm31.s:145875
+  - 0x080FAFB4 sub_80FAFB4
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080FAEC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function returns fixed bytes (2 and 30) from offsets 0 and 4 of byte_80FAEE0, with no difficulty
+    tier passed to sub_800FE28 (r0 is just the table address each time, see the two `ldr r0, off_80FAEDC`
+    lines). The proposal''s tier-indexing claim contradicts this. The fields stored (AttackBoost2, TimerOrCycles)
+    match, so the fields are right but the indexing-by-tier rationale is wrong.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- whether sub_800FE28 indexes the table by the AI difficulty tier or some other global selector; its body
+  is unknown
+- what AttackBoost2 and TimerOrCycles control later in the attack behavior
+- The function returns fixed bytes (2 and 30) from offsets 0 and 4 of byte_80FAEE0, with no difficulty
+  tier passed to sub_800FE28 (r0 is just the table address each time, see the two `ldr r0, off_80FAEDC`
+  lines). The proposal's tier-indexing claim contradicts this. The fields stored (AttackBoost2, TimerOrCycles)
+  match, so the fields are right but the indexing-by-tier rationale is wrong.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FAEC4 -> ai_getAttackBoostAndCycleDefaults
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FAEC4

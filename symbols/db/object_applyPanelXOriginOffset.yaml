@@ -1,0 +1,55 @@
+name: object_applyPanelXOriginOffset
+address: '0x080DE8A4'
+kind: function
+status: probable
+summary: Adds panel-width subpixels (0x280000) times the distance of the object's PanelX from the side/flipped
+  reference column (4 - Alliance^DirectionFlip) into oBattleObject_ExtraVars, seeding the subpixel X offset.
+interface: (r5 = battle object) -> r0 = new oBattleObject_ExtraVars value; clobbers r0-r3
+details: Computes a column origin as 4 - (Alliance XOR DirectionFlip), so the reference column depends
+  on which side the object is on and how it's flipped. Then adds dword 0x280000 (panel-width subpixels)
+  times (PanelX - origin) to oBattleObject_ExtraVars and stores it back. The caller initializes ExtraVars
+  to a signed velocity (object_getFrontDirection * 0xff880000) and ExtraVars+4 to 0x300000 right before
+  the call, then sets oObjectHeader_Flags bit 1, so ExtraVars is a subpixel X-motion accumulator this
+  function seeds with the panel-column displacement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: eor Alliance,DirectionFlip; sub 4 -> column origin flips with side/facing (sub_80DE8A4 lines
+    2-5); mul 0x280000 by (PanelX - origin) and add into oBattleObject_ExtraVars (sub_80DE8A4 lines 6-12);
+    caller sub_80DE818 sets ExtraVars = frontDir*0xff880000 and ExtraVars+4 = 0x300000 immediately before
+    the call; after the call the caller sets oObjectHeader_Flags |= 2 and initializes sprite 0xc45/0x10c45,
+    consistent with a newly placed moving battle object
+  refs:
+  - bn6f/asm/asm31.s:84872
+  - 0x080DE818 sub_80DE818
+  reproduce: python3 tools/asmcat.py 0x080DE8A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is correct: the function computes origin = 4 - (Alliance ^ DirectionFlip) and adds 0x280000*(PanelX-origin)
+    into ExtraVars, consistent with the ldrb/eor/sub/mul/add/str sequence. However, the ExtraVars accumulator
+    is purely a subpixel X position/offset, not a velocity, since the caller initializes it with object_getFrontDirection*0xff880000
+    (a static direction offset) and 0x300000, not a delta, and there is no per-tick update; a name like
+    object_applyPanelXOriginOffset fits the role better.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of ExtraVars vs ExtraVars+4 in the physics step (which is position vs velocity)
+- why the origin is 4 for same-side and 3 for opposite-side/flip objects
+- what sprite 0xc45 represents
+- 'The summary is correct: the function computes origin = 4 - (Alliance ^ DirectionFlip) and adds 0x280000*(PanelX-origin)
+  into ExtraVars, consistent with the ldrb/eor/sub/mul/add/str sequence. However, the ExtraVars accumulator
+  is purely a subpixel X position/offset, not a velocity, since the caller initializes it with object_getFrontDirection*0xff880000
+  (a static direction offset) and 0x300000, not a delta, and there is no per-tick update; a name like
+  object_applyPanelXOriginOffset fits the role better.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE8A4 -> object_applyPanelXOriginOffset
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE8A4

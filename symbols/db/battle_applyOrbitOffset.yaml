@@ -1,0 +1,58 @@
+name: battle_applyOrbitOffset
+address: '0x080C075E'
+kind: function
+status: probable
+summary: Adds a circular X/Z offset (cos/sin table * radius, fixed-point <<8) onto three position words
+  copied from the related object, then increments Y16 and Z16 by 2 on the calling object.
+interface: (r0 = radius/amplitude, r1 = angle index 0-255 into 256-entry sin/cos tables) -> writes cosTable[angle]*r0<<8
+  and sinTable[angle]*r0<<8 into relatedObject+0x34 word0 and word2; no return value, flags clobbered
+details: Reads math_cosTable[angle] and math_sinTable[angle], multiplies each by r0 and shifts left 8
+  (fixed-point scaling), then copies the three words at RelatedObject1Ptr+0x34 into r1-r3, adds the cos
+  product to word0 and the sin product to word2, and stores them back at this-object+0x34..0x3B. Finally
+  increments the object's oBattleObject_Y16 and oBattleObject_Z16 by 2 each call. The caller feeds r0
+  = 2*Timer and r1 = (2*Timer*0x70)&0xFF, so the angle spins while the radius grows with the timer — an
+  expanding spiral motion; if the timer test fails the object is set to CUR_STATE_DESTROY instead.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80C075E loads off_80C07B4=math_cosTable and off_80C07B8=math_sinTable and indexes both with
+    r1*2; mul r6,r0 / lsl r6,#8 and mul r7,r0 / lsl r7,#8 scale cos/sin by r0 as fixed point; ldmia r0!,{r1-r3}
+    from RelatedObject1+0x34 and stmia back at obj+0x34 with r1+=cos, r3+=sin; caller 0x080C0758 passes
+    r0=2*Timer, r1=(2*Timer*0x70)&0xFF before bl sub_80C075E; caller sets oBattleObject_CurStateActionPhaseAndPhaseInitialized=CUR_STATE_DESTROY
+    when the timer check fails
+  refs:
+  - bn6f/asm/asm31.s:18805
+  - 0x080C072E sub_80C072E
+  reproduce: python3 tools/asmcat.py 0x080C075E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it reads cos/sin tables at angle r1, multiplies by r0 and shifts left 8, loads
+    three words from RelatedObject1Ptr+0x34, adds cos to word0 and sin to word2, stores them at this+0x34,
+    and bumps Y16/Z16 by 2. However the proposed name ''battle_applyExpandingOrbitOffset'' is accurate
+    but the angle+radius spiral is the caller''s construction (r0=2*Timer, r1=(Timer*0x70)&0xFF), not
+    the function''s intrinsic behavior; the function is better described as a generic ''battle_applyOrbitOffset''
+    that adds a circular offset to a battle object''s position fields.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What structure the +0x34 fields of the related object are (offset array? per-corner sprite positions?)
+- Why Y16 and Z16 are each incremented by 2 every call (drift? walk motion?)
+- What kind of object/effect uses this (caller's wider context not shown)
+- 'The code matches: it reads cos/sin tables at angle r1, multiplies by r0 and shifts left 8, loads three
+  words from RelatedObject1Ptr+0x34, adds cos to word0 and sin to word2, stores them at this+0x34, and
+  bumps Y16/Z16 by 2. However the proposed name ''battle_applyExpandingOrbitOffset'' is accurate but the
+  angle+radius spiral is the caller''s construction (r0=2*Timer, r1=(Timer*0x70)&0xFF), not the function''s
+  intrinsic behavior; the function is better described as a generic ''battle_applyOrbitOffset'' that adds
+  a circular offset to a battle object''s position fields.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C075E -> battle_applyOrbitOffset
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C075E

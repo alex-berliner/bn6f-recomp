@@ -1,0 +1,55 @@
+name: battle_objectWaitClearRelatedAndDestroy
+address: '0x080D677C'
+kind: function
+status: probable
+summary: Waits ~30 frames then clears the flags of the related object pointed to by RelatedObject1Ptr
+  and requests destruction of self via CUR_STATE_DESTROY.
+interface: (r5 = oBattleObject *) -> void; reads/writes oBattleObject_Timer, oBattleObject_PhaseInitialized,
+  oBattleObject_ExtraVars+4, oBattleObject_RelatedObject1Ptr, oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: On first invocation (PhaseInitialized == 0) it sets the object's Timer to 0x1E (30 frames) and
+  PhaseInitialized to 4, but only if ExtraVars+4 is zero — if that field is nonzero it returns without
+  initializing or counting, deferring until something clears it. Each subsequent call decrements Timer;
+  while it is still >= 0 the handler just returns. When the timer expires it stores 0 into the Flags byte
+  of the object pointed to by RelatedObject1Ptr (oObjectHeader_Flags), then writes CUR_STATE_DESTROY into
+  the object's combined state/phase word, i.e. requests its own destruction.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized; if 0, strh #0x1e into Timer and strb #4 into PhaseInitialized (one-time
+    init); bne locret when ExtraVars+4 != 0: waits for that field to be cleared before starting the countdown;
+    ldrh Timer / sub #1 / bge locret: standard frame countdown, returns while timer not expired; strb
+    r1(0),[RelatedObject1Ptr,#oObjectHeader_Flags]: clears the linked object''s flags once timer lapses;
+    str #CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized: self-destruct afterwards'
+  refs:
+  - bn6f/asm/asm31.s:67295
+  reproduce: python3 tools/asmcat.py 0x080D677C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and behavior match the code well: it sets Timer=0x1E and PhaseInitialized=4 on first call
+    (when ExtraVars+4==0), decrements Timer each tick, and on expiry clears the related object''s flags
+    and writes CUR_STATE_DESTROY. Minor nit: the stored value CUR_STATE_DESTROY is written to the combined
+    state/phase word (oBattleObject_CurStateActionPhaseAndPhaseInitialized), so a name like ''destroySelfAfterRelatedClear''
+    may be clearer than ''battle_objectWaitClearRelatedAndDestroy''.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What object uses this handler and why ExtraVars+4 must be cleared first (no callers known)
+- What the related object's Flags byte being cleared enables (probably frees it for reuse or unlocks its
+  behavior)
+- 'The name and behavior match the code well: it sets Timer=0x1E and PhaseInitialized=4 on first call
+  (when ExtraVars+4==0), decrements Timer each tick, and on expiry clears the related object''s flags
+  and writes CUR_STATE_DESTROY. Minor nit: the stored value CUR_STATE_DESTROY is written to the combined
+  state/phase word (oBattleObject_CurStateActionPhaseAndPhaseInitialized), so a name like ''destroySelfAfterRelatedClear''
+  may be clearer than ''battle_objectWaitClearRelatedAndDestroy''.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D677C -> battle_objectWaitClearRelatedAndDestroy
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D677C

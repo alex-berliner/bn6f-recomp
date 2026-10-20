@@ -1,0 +1,61 @@
+name: submenu_loadSelectedEntry
+address: '0x0812EC04'
+kind: function
+status: probable
+summary: Loads the halfword at word_2023FA0 indexed by (cursor+scrollOffset)*4 into slot 9 via sub_811BC00,
+  using submenu state at 0x2037780 fields +0x20 and +0x24.
+interface: () -> r0 = destroyed; uses submenu state at 0x2037780 fields +0x20/+0x24; no return value used
+  by callers
+details: Fetches the submenu state struct via submenu_getStatePtr (global 0x2037780), reads the halfword
+  cursor field at +0x20 and halfword at +0x24, adds them, and multiplies by 4 to index into the halfword
+  array word_2023FA0. The loaded halfword is passed to sub_811BC00 with r1=0, r2=9, and r3 = the 4-byte-scaled
+  table offset, which looks like a text/sprite loader with a destination slot or bank id. Callers run
+  it when the submenu state is set to 4 (after IsScreenFadeActive) or unconditionally at the end of per-frame
+  menu updates, right before sub_812EFD4. The combination with the neighboring sub_812ED58/sub_812E9AC
+  calls suggests it refreshes the text shown for the highlighted entry as the menu closes or each frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrh r4,[r5,#0x20]; ldrh r1,[r5,#0x24]; add/mul-by-4 indexes word_2023FA0, so the entry
+    is picked by state fields +0x20/+0x24; asm: ldrh r0,[r0]; ... bl sub_811BC00 with r2=#9, r3=r4 — the
+    loaded halfword is handed to a loader-like callee; caller 0x0812DBD0: after IsScreenFadeActive sets
+    state byte [r5,#2]=4, calls sub_812E9AC then this — a transition/close path; callers 0x0812DCEE and
+    0x0812E8FA: call it (state==4 check in the latter) then sub_812EFD4, a paired update/refresh pattern;
+    neighboring calls to sub_812ED58 in the same callers suggest menu redraw alongside this text load'
+  refs:
+  - bn6f/asm/asm35.s:212
+  - 0x0812DB44 sub_812DB44
+  - 0x0812DBE0 sub_812DBE0
+  - 0x0812E898 sub_812E898
+  - 0x0812ED2C submenu_getStatePtr
+  - 0x0811BC00 sub_811BC00
+  reproduce: python3 tools/asmcat.py 0x0812EC04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads two halfwords at +0x20 and +0x24 from the submenu state, sums them, multiplies by
+    4 to index word_2023FA0, then calls sub_811BC00 with r0=loaded halfword, r1=0, r2=9, r3=index. The
+    naming ''description'' is speculative since the callee and slot 9 purpose are unknown. The function
+    clearly loads a table entry selected by cursor+offset, so ''loadSelectedEntry'' is more accurate than
+    asserting it loads a description.; run wf investigate investigate-20261019-055111; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_811BC00(r0,0,9,offset) actually does (text engine load? sprite? sound?)
+- exact meaning of state fields +0x20 (cursor?) and +0x24 (scroll offset? count?)
+- contents/format of the word_2023FA0 table (text ids? string indices?)
+- The code reads two halfwords at +0x20 and +0x24 from the submenu state, sums them, multiplies by 4 to
+  index word_2023FA0, then calls sub_811BC00 with r0=loaded halfword, r1=0, r2=9, r3=index. The naming
+  'description' is speculative since the callee and slot 9 purpose are unknown. The function clearly loads
+  a table entry selected by cursor+offset, so 'loadSelectedEntry' is more accurate than asserting it loads
+  a description.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812EC04 -> submenu_loadSelectedEntry
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EC04

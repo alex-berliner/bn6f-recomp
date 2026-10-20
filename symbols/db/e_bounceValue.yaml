@@ -1,0 +1,57 @@
+name: e_bounceValue
+address: '0x08143FC4'
+kind: function
+status: probable
+summary: Advances a 16.16 fixed-point counter stored in eStruct2001010 by its velocity (which is then
+  incremented by acceleration). When the new value would fall below 0 it is clamped to 0; when it would
+  exceed 0x64<<16 it is clamped to 0x64<<16. In both clamp paths velocity is negated then has acceleration
+  added once. If the value on entry is 0, PlaySoundEffect is called with ID 440.
+interface: () -> void; no args, no return; operates on eStruct2001010+0x14 (value, 16.16 fixed), +0x18
+  (velocity), +0x1C (acceleration)
+details: Reads value/velocity/acceleration from eStruct2001010 fields 0x14/0x18/0x1C, computes value+=velocity
+  and velocity+=acceleration. If the new value would go below 0 it is clamped to 0 and velocity is negated
+  (new velocity = -velocity), and likewise clamped to 100<<16 (0x640000) at the top with velocity negated
+  — a bouncing spring/ease motion spanning 0..100 in 16.16 fixed point. If the value is currently 0 on
+  entry, it plays sound effect 440 (0xB9+0xFF), so the sound ticks while the counter sits at zero before
+  the velocity lifts it. Everything is stored back to the same three fields; no other state is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'add r0,r0,r1 / add r1,r1,r2 then str back to +0x14/+0x18/+0x1C: value+=vel, vel+=acc integration;
+    cmp r0,r3(=0x64<<16) / cmp with 0 branches clamp to 0..0x640000 and neg r1 flips velocity at both
+    ends; mov r0,#0xb9; add r0,#0xff; bl PlaySoundEffect guarded by [r5,#0x14]==0: SFX while counter at
+    minimum; single caller sub_8092F76 and no arguments: pure global-state stepper'
+  refs:
+  - bn6f/asm/asm37_1.s:4370
+  - 0x08092F76 sub_8092F76
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x08143FC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mischaracterizes the bounce logic: at the upper clamp (0x64<<16) the code does neg r1,
+    r1 + add r1, r1, r2, so velocity is negated and then acceleration is added once, not ''negated'' cleanly
+    — and the lower branch matches this pattern, not a bare negation. The SFX 440 is played when value
+    on entry is 0, not ''while at zero'' indefinitely. The name ''e_stepSpringValue'' is plausible but
+    ''e_bounceValue'' fits the bounce behavior better.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What game system owns eStruct2001010 and drives this 0..100 counter (caller sub_8092F76's purpose unknown),
+  and what SFX 440 is, would confirm the exact feature (e.g. a gauge/percent animation)
+- 'The summary mischaracterizes the bounce logic: at the upper clamp (0x64<<16) the code does neg r1,
+  r1 + add r1, r1, r2, so velocity is negated and then acceleration is added once, not ''negated'' cleanly
+  — and the lower branch matches this pattern, not a bare negation. The SFX 440 is played when value on
+  entry is 0, not ''while at zero'' indefinitely. The name ''e_stepSpringValue'' is plausible but ''e_bounceValue''
+  fits the bounce behavior better.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143FC4 -> e_bounceValue
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143FC4

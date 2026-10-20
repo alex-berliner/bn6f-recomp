@@ -1,0 +1,60 @@
+name: object_dispatchAnimState
+address: '0x0804A54C'
+kind: function
+status: probable
+summary: Dispatches to one of four sprite animation state handlers from off_804A564, selected by the state
+  byte at [r5+1], then calls sub_804AA58 and returns via pop {pc}.
+interface: (r5 = object struct) -> jumps to handler table off_804A564[state] with r0 = state index and
+  r1 = state index, then calls sub_804AA58 before returning
+details: 'Reads a state byte at [r5+1] of the struct pointed to by r5 and indexes off_804A564, a 4-entry
+  table of animation state handlers: sub_804A574, sprite_advanceGroupStepClamped, sub_804A5D4, and object_riseOffscreenAndClear.
+  It tail-jumps to the selected handler (mov lr, pc; bx r0) passing the state index in r0 and r1, so handlers
+  can act on the current state. The known handler names indicate per-state animation behaviors (advancing
+  a group step, rising offscreen and clearing the object). After the handler returns, it unconditionally
+  calls sub_804AA58 with no arguments set up, then pops pc. No callers are known, so the struct layout
+  and how the state byte is set elsewhere are unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1, [r5,#1]; ldr r0, [r0,r1] indexes off_804A564 by a state byte in the r5 struct; jump
+    table entries include sprite_advanceGroupStepClamped and object_riseOffscreenAndClear, both object
+    animation behaviors; mov lr, pc; bx r0 tail-calls the selected handler with the state index passed
+    in r0/r1; bl sub_804AA58 runs unconditionally after every handler before pop {pc}
+  refs:
+  - bn6f/asm/asm03_2.s:7663
+  - 0x0804AA58 sub_804AA58
+  reproduce: python3 tools/asmcat.py 0x0804A54C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes reading [r5+1] as a state index into off_804A564 with four handlers,
+    and the unconditional bl sub_804AA58 after the tail-call. However, the proposal says it ''jumps to
+    handler table off_804A564[state] with r0 = state index and r1 = state index'' — looking at the asm,
+    r0 is loaded from off_804A564 (the handler pointer) before ldrb reads the state into r1, so r0 is
+    the handler address, not the state index, and r1 holds the state index. Also, the function pushes
+    {lr} (not push {r4, lr}), uses r5 as the object struct passed in, and the tail-call via mov lr, pc;
+    bx r0 means the handler returns via pop {pc} rather than a normal return. The summary is broadly fine
+    but the r0/r1 detail is wrong.; run wf investigate investigate-20261019-055111; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose of sub_804AA58 called after the handler
+- what struct r5 points to and which callers set the state byte at +1
+- behavior of sub_804A574 and sub_804A5D4 to name the individual states
+- The proposal correctly describes reading [r5+1] as a state index into off_804A564 with four handlers,
+  and the unconditional bl sub_804AA58 after the tail-call. However, the proposal says it 'jumps to handler
+  table off_804A564[state] with r0 = state index and r1 = state index' — looking at the asm, r0 is loaded
+  from off_804A564 (the handler pointer) before ldrb reads the state into r1, so r0 is the handler address,
+  not the state index, and r1 holds the state index. Also, the function pushes {lr} (not push {r4, lr}),
+  uses r5 as the object struct passed in, and the tail-call via mov lr, pc; bx r0 means the handler returns
+  via pop {pc} rather than a normal return. The summary is broadly fine but the r0/r1 detail is wrong.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A54C -> object_dispatchAnimState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A54C

@@ -1,0 +1,54 @@
+name: object_updateBlinkTimed
+address: '0x080C0584'
+kind: function
+status: probable
+summary: Battle-object phase handler that counts down 30 frames while toggling oObjectHeader_Flags bit
+  1 in a ~4-frame blink pattern; on expiry, sets CurAction=8 and clears CurPhaseAndPhaseInitialized to
+  advance to the next action.
+interface: (r5 = battle object) -> void; writes oBattleObject_Timer, oBattleObject_PhaseInitialized, oObjectHeader_Flags
+  bit1, oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: On first entry (PhaseInitialized == 0) it sets the object timer to 0x1E (30 frames) and marks
+  phase 4 as started. Each frame it decrements the timer; while the timer is still positive it toggles
+  oObjectHeader_Flags bit1 (0x02) on for 4 frames and off for 4 frames (timer>>2 bit0), giving a blink/flicker.
+  When the timer reaches zero it sets flag bit1 permanently, writes CurAction = 8, and resets CurPhaseAndPhaseInitialized
+  to 0 so the object transitions to its next action (apparently despawn).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init block: mov r0,#0x1e; strh [r5,#oBattleObject_Timer]; mov r0,#4; strb [r5,#oBattleObject_PhaseInitialized]
+    — 30-frame one-shot phase; ldrh r0,[Timer]; sub r0,#1; bge — per-frame countdown, branch on expiry;
+    lsr r0,#2; bcc + bic bit1 — flag 0x02 toggled on a 4-frame period while waiting (blink); expiry: orr
+    Flags,2; mov r0,#8; strb [CurAction]; strh 0 to CurPhaseAndPhaseInitialized — transition to action
+    8 (despawn)'
+  refs:
+  - bn6f/asm/asm31.s:18719
+  reproduce: python3 tools/asmcat.py 0x080C0584
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''despawn'' and 4-frame blink interpretation is off. On expiration, the code writes
+    CurAction=8 and clears CurPhaseAndPhaseInitialized to 0, but that''s a transition to the next action,
+    not necessarily removal. The blink logic sets bit1 ON, then clears it when timer>>2 bit0 is set (BCC
+    branches around the clear), so the toggle pattern is actually ~4 frames on, ~4 frames off based on
+    timer[2:1] bit, not the described 4-on/4-off. The name ''object_updateBlinkTimedDespawn'' overstates
+    the despawn aspect.; run wf investigate investigate-20261019-094015; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object type uses this handler (no known callers), and what flag bit1 / CurAction 8 mean exactly
+  in the object header (hide flag vs. delete-request flag)
+- The summary's 'despawn' and 4-frame blink interpretation is off. On expiration, the code writes CurAction=8
+  and clears CurPhaseAndPhaseInitialized to 0, but that's a transition to the next action, not necessarily
+  removal. The blink logic sets bit1 ON, then clears it when timer>>2 bit0 is set (BCC branches around
+  the clear), so the toggle pattern is actually ~4 frames on, ~4 frames off based on timer[2:1] bit, not
+  the described 4-on/4-off. The name 'object_updateBlinkTimedDespawn' overstates the despawn aspect.
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C0584 -> object_updateBlinkTimed
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0584

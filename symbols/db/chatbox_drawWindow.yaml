@@ -1,0 +1,60 @@
+name: chatbox_drawWindow
+address: '0x08128FF0'
+kind: function
+status: probable
+summary: Per-frame redraw of the 32x12-tile chatbox window by calling sub_8129018 with a tilemap/data
+  pointer while the active flag at [r5,#0x1e] is set; shared across multiple state-machine callers.
+interface: (r5 = message-state struct; no args) -> void; reads flag halfword [r5,#0x1e]
+details: 'If [r5,#0x1e] is nonzero, calls sub_8129018 with (r0=2, r1=0x12, r2=0x20, r3=0xC, r4=&byte_8128CA8,
+  r6=0x40000000, r7=0x10002): r2/r3 look like box width/height in tiles (32x12), r4 points to static window
+  graphics/tilemap data, and 0x10002/0x40000000 look like tile/vram parameters. No arguments are taken;
+  all context lives in the r5 struct shared with callers, which store state bytes at [r5], [r5,#1..3]
+  and run this each frame before sub_812907C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8128FF0: tst of halfword [r5,#0x1e] gates a single draw call — an enable flag for the window;
+    sub_8128FF0: fixed args 0x20 x 0xC with data pointer byte_8128CA8 — a 32x12-tile window drawn from
+    static gfx; callers at 0x08128E1E/0x08128EB8/0x08128ED6 call it unconditionally each frame followed
+    by sub_812907C — a per-frame render/update pair; sub_8128E2C references eTextScript201BA00 and eDecompBuffer2013A00
+    and handles B-button/SetScreenFade — dialogue-text context; sub_8128DF4 stores state bytes ([r5,#2],[r5,#3])
+    around fade checks — a cutscene/dialog state machine owning r5'
+  refs:
+  - bn6f/asm/asm33.s:12125
+  - 0x08128DF4 sub_8128DF4
+  - 0x08128E2C sub_8128E2C
+  - 0x08128ED4 sub_8128ED4
+  - 0x08129018 sub_8129018
+  reproduce: python3 tools/asmcat.py 0x08128FF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x08128FF0 matches: it reads flag halfword [r5,#0x1e] and, when nonzero, calls sub_8129018
+    with the described args including r2=0x20 (32), r3=0xc (12). However, the function is also called
+    from sub_8128ED4 (a pet-navicust flow referencing unk_2037780 and CopyWords) and from sub_8128E2C
+    (which checks JOYPAD_B and references eTextScript201BA00), not just message-box code. The ''chatbox''
+    prefix fits sub_8128DF4 (which sets state and fades) and sub_8128E2C (which dismisses on B), but sub_8128ED4
+    is a distinct caller with its own state bytes, so ''chatbox'' is slightly too narrow.; run wf investigate
+    investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_8129018's actual role (tile blit? window compositor?) and meaning of 0x40000000/0x10002
+- exact meaning of r0=2/r1=0x12 (layer/position?) and the structure at r5
+- whether byte_8128CA8 is the chatbox frame graphics or a full tilemap
+- 'The code at 0x08128FF0 matches: it reads flag halfword [r5,#0x1e] and, when nonzero, calls sub_8129018
+  with the described args including r2=0x20 (32), r3=0xc (12). However, the function is also called from
+  sub_8128ED4 (a pet-navicust flow referencing unk_2037780 and CopyWords) and from sub_8128E2C (which
+  checks JOYPAD_B and references eTextScript201BA00), not just message-box code. The ''chatbox'' prefix
+  fits sub_8128DF4 (which sets state and fades) and sub_8128E2C (which dismisses on B), but sub_8128ED4
+  is a distinct caller with its own state bytes, so ''chatbox'' is slightly too narrow.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8128FF0 -> chatbox_drawWindow
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128FF0

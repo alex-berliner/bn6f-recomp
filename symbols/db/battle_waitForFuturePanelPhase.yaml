@@ -1,0 +1,61 @@
+name: battle_waitForFuturePanelPhase
+address: '0x080BF9CC'
+kind: function
+status: probable
+summary: Battle-object phase that on first run invokes sub_80BFCD0 with the object's panel coords and
+  related object, then idles each frame until oBattleObject_FuturePanelX clears, at which point it advances
+  CurPhaseAndPhaseInitialized to phase 4.
+interface: (r0 unused, r5 = battle object) -> void; sets oBattleObject_PhaseInitialized = 4 and writes
+  phase 4 to oBattleObject_CurPhaseAndPhaseInitialized when done
+details: 'Standard battle-object phase handler using the PhaseInitialized gate: on first invocation it
+  calls sub_80BFCD0 with the object''s PanelX/PanelY in r0/r1, zeros in r2/r3, 1 in r4, oBattleObject_RelatedObject1Ptr
+  in r5, this+0x14 in r7, and the object itself pushed on the stack; afterwards it stores 4 into PhaseInitialized
+  so the call happens only once. Each frame thereafter it reads oBattleObject_FuturePanelX: while it is
+  nonzero the phase keeps running (returns without changes), and once it reads 0 the handler writes phase
+  4 into CurPhaseAndPhaseInitialized, ending the phase. The DamageAndStaminaDamageCounterDisabler field
+  is loaded into r6 for the callee, suggesting the sub-action should not trigger counters. The exact effect
+  depends on sub_80BFCD0, which receives both the object, its related/owner object, the panel coordinates,
+  and a sub-structure at +0x14.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized with bne makes the sub_80BFCD0 call a one-time init;
+    4 is stored there right after (asm lines 2-22); init args are oBattleObject_PanelX/PanelY in r0/r1,
+    zeros in r2/r3, 1 in r4, RelatedObject1Ptr in r5, this+0x14 in r7, and this on the stack (asm lines
+    6-19); phase advance writes 4 to CurPhaseAndPhaseInitialized only when oBattleObject_FuturePanelX
+    == 0, otherwise returns (loc_80BF9F2-locret_80BF9FC); DamageAndStaminaDamageCounterDisabler is loaded
+    into r6 solely to pass to sub_80BFCD0, implying a panel/damage-related side effect
+  refs:
+  - bn6f/asm/asm31.s:16807
+  - 0x080BFCD0 sub_80BFCD0
+  reproduce: python3 tools/asmcat.py 0x080BF9CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it gates the sub_80BFCD0 call behind PhaseInitialized being 0, stores
+    4 into PhaseInitialized after, then loops while FuturePanelX is nonzero, finally writing 4 to CurPhaseAndPhaseInitialized.
+    However, the name ''moveToPanelPhase'' implies movement, which the code doesn''t actually verify—it
+    just waits for a future panel to clear. A more neutral name better fits the observed behavior.; run
+    wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80BFCD0 does with the panel coordinates, the +0x14 structure and the two object pointers (spawn
+  object, start movement, place trap?)
+- who clears oBattleObject_FuturePanelX to signal phase completion, and whether it is a destination panel
+  or a countdown
+- which battle objects/entities run this phase (no callers known)
+- 'The code matches the proposal: it gates the sub_80BFCD0 call behind PhaseInitialized being 0, stores
+  4 into PhaseInitialized after, then loops while FuturePanelX is nonzero, finally writing 4 to CurPhaseAndPhaseInitialized.
+  However, the name ''moveToPanelPhase'' implies movement, which the code doesn''t actually verify—it
+  just waits for a future panel to clear. A more neutral name better fits the observed behavior.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BF9CC -> battle_waitForFuturePanelPhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF9CC

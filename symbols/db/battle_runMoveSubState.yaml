@@ -1,0 +1,53 @@
+name: battle_runMoveSubState
+address: '0x08017CC0'
+kind: function
+status: probable
+summary: Dispatches the battle object's MoveSubState byte through a 3-entry function-pointer table (off_8017CD4)
+  to one of object_continuePanelMoveStep, sub_8017D64, or sub_8017E0A, then returns to the caller.
+interface: (r5 = battle object; r0 = [r5+oBattleObject_MoveSubState] as table index) -> tail-dispatches
+  to handler in off_8017CD4, no direct return
+details: 'Loads the battle object''s MoveSubState byte and uses it to index a 3-entry function-pointer
+  table, then does a long call (mov lr, pc; bx r1) to that handler, so each handler returns to this function''s
+  caller. The table entries are object_continuePanelMoveStep (state 0), sub_8017D64 (state 1), and sub_8017E0A
+  (state 2). No bounds check on the index. This is the per-frame stepper of a battle-object state machine:
+  the caller only initializes state when MoveSubState==0 and then invokes this dispatcher every tick.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_MoveSubState] + ldr r1,[r1,r0] indexes the handler table by the substate
+    byte; mov lr,pc; bx r1 long-calls the selected handler, returning here then to the caller (pop {pc});
+    off_8017CD4 entries object_continuePanelMoveStep/sub_8017D64/sub_8017E0A are the three state handlers;
+    caller sub_80DA37A at 0x080DA38A calls it unconditionally each invocation after one-time state-0 setup
+  refs:
+  - bn6f/asm/asm00_2.s:20453
+  - 0x080DA37A sub_80DA37A
+  reproduce: python3 tools/asmcat.py 0x08017CC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly at 0x08017CC0 does exactly what is described: it loads off_8017CD4, indexes it by MoveSubState,
+    and tail-dispatches via mov lr,pc / bx r1. However, the summary calls it a ''long call'' and the interface
+    says ''no direct return'', whereas the code pushes {lr} and pops {pc}, so each handler returns to
+    the caller normally (not tail-call). A better name is battle_runMoveSubState since it is a normal
+    dispatcher (not long call).; run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_8017D64 and sub_8017E0A do to name the individual states
+- which battle object/attack owns this state machine (caller's ExtraVars write suggests a specific object
+  type)
+- 'The assembly at 0x08017CC0 does exactly what is described: it loads off_8017CD4, indexes it by MoveSubState,
+  and tail-dispatches via mov lr,pc / bx r1. However, the summary calls it a ''long call'' and the interface
+  says ''no direct return'', whereas the code pushes {lr} and pops {pc}, so each handler returns to the
+  caller normally (not tail-call). A better name is battle_runMoveSubState since it is a normal dispatcher
+  (not long call).'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8017CC0 -> battle_runMoveSubState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017CC0

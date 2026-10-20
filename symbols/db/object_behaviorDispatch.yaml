@@ -1,0 +1,52 @@
+name: object_behaviorDispatch
+address: '0x0811CFA4'
+kind: function
+status: probable
+summary: Trampoline that reads a behavior selector byte at [r5,#9], indexes into the 6-entry Thumb jump
+  table at off_811CFB8, and tail-calls the matching object behavior handler.
+interface: (r5 = object ptr) -> r0 = whatever the selected handler returns; lr trick preserves return
+  address for Thumb callee
+details: 'Reads the byte at [r5,#0x9], uses it as an index into the jump table off_811CFB8 (bounds implicitly
+  limited to 0-5), and tail-calls the corresponding Thumb handler via ''mov lr, pc; bx r0''. The handler
+  set contains object-level behaviors: sub_811CFD0, sub_811CFEC, sprite_updateWhiteFlash, object_animCycleTimerStep,
+  sub_811D080, sub_811D0A8. Because lr is loaded with pc and the call uses bx, the callee returns straight
+  back to this function''s caller, making it a transparent trampoline. The r5 struct is the standard object/entity
+  record, with offset 0x9 acting as a behavior/state selector.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1, [r5,#9]; ldr r0, [r0,r1] indexes the table at off_811CFB8 by the object's byte 0x9;
+    jump table entries are all Thumb handlers incl. sprite_updateWhiteFlash and object_animCycleTimerStep
+    (update-style routines); mov lr, pc; bx r0 makes the call return to this function's caller, i.e. a
+    behavior dispatch inside an object update loop
+  refs:
+  - bn6f/asm/asm32.s:31068
+  reproduce: python3 tools/asmcat.py 0x0811CFA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic, byte index at r5+9, and the 6-entry Thumb jump table all match the proposal
+    exactly. The +1 values confirm Thumb targets and the ''mov lr, pc; bx r0; pop {pc}'' is a standard
+    transparent trampoline. However, naming it ''object_dispatchTypeHandler'' is slightly misleading since
+    it''s a general object behavior dispatch, not a ''type'' handler per se; ''object_behaviorDispatch''
+    fits the code more precisely.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so the exact meaning of the r5+0x9 field (type id vs. state/mode) and which entity
+  kinds use this dispatcher are unconfirmed
+- The dispatch logic, byte index at r5+9, and the 6-entry Thumb jump table all match the proposal exactly.
+  The +1 values confirm Thumb targets and the 'mov lr, pc; bx r0; pop {pc}' is a standard transparent
+  trampoline. However, naming it 'object_dispatchTypeHandler' is slightly misleading since it's a general
+  object behavior dispatch, not a 'type' handler per se; 'object_behaviorDispatch' fits the code more
+  precisely.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811CFA4 -> object_behaviorDispatch
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CFA4

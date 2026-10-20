@@ -1,0 +1,60 @@
+name: submenu_setRowStyleFlag
+address: '0x0803A238'
+kind: function
+status: probable
+summary: Sets or clears a per-row (0-3) bit in a 4-bit menu-state flag, choosing between the two row draw
+  styles at 0x0803A104 and 0x0803A1D8.
+interface: (r0 = row index 0-3, r1 = nonzero to set flag / 0 to clear) -> r0 clobbered by callee; no return
+  value
+details: 'Computes 1 << r0 and calls sub_803C302 to set or sub_803C30C to clear that bit in some global
+  state, so the two callees are set/clear thunks over the same bitmask (they sit 0x0A apart). Both callers
+  are row-drawing helpers for a 4-row menu (row stride 0x20 tiles): the caller at 0x0803A104 draws row
+  r6 with sub_803B9C0 (char 0x21, width 4) and then calls this with r1=1, while 0x0803A1D8 draws with
+  sub_803B814 (char 0x7b, width 7) and calls it with r1=0. The flag therefore tracks which variant was
+  last drawn, presumably so state changes only trigger a redraw when needed. The two draw styles differ
+  in both tile source and width, suggesting a normal vs. alternate/highlighted row appearance.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803A238: ''lsl r2, r0; tst r1, r1; bne'' then bl sub_803C30C or sub_803C302 — set/clear
+    of bit r0 chosen by r1; callee pair at 0x0803C302/0x0803C30C, only 0x0A apart — complementary set/clear
+    thunks on the same state; 0x0803A170 call site: after sub_803B9C0 with x=0x1a+0x20*r6, w=4, calls
+    with (r6, 1) inside a ''cmp r6, #4'' row loop; 0x0803A20E call site: after sub_803B814 with x=0x23+0x20*r6,
+    w=7, calls with (r6, 0) — opposite draw paired with flag clear'
+  refs:
+  - bn6f/asm/asm03_1_1.s:2980
+  - 0x0803A104 sub_803A104
+  - 0x0803A1D8 sub_803A1D8
+  - 0x0803C302 sub_803C302
+  - 0x0803C30C sub_803C30C
+  reproduce: python3 tools/asmcat.py 0x0803A238
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches: 1<<r0 produces a bitmask, tst r1, r1 branches to set (sub_803C302) or clear (sub_803C30C),
+    and both callees sit 0x0A apart. The callers do feed it row index and 1/0 as stated. However the proposal''s
+    phrase ''last drawn'' is slightly off — the two draw styles at 0x0803A104/0x0803A1D8 are mutually
+    exclusive per row (one branches to the other), so the bit stores the current style, not the last-draw
+    tracking. A slightly cleaner name avoids ''drawn'' nuance.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which global/state the callees index (bitmask array not shown)
+- what exactly sub_803B9C0 vs sub_803B814 draw (which menu/screen and why the two variants differ)
+- whether the flag is a dirty/redraw marker or a visible selected-state
+- 'The asm matches: 1<<r0 produces a bitmask, tst r1, r1 branches to set (sub_803C302) or clear (sub_803C30C),
+  and both callees sit 0x0A apart. The callers do feed it row index and 1/0 as stated. However the proposal''s
+  phrase ''last drawn'' is slightly off — the two draw styles at 0x0803A104/0x0803A1D8 are mutually exclusive
+  per row (one branches to the other), so the bit stores the current style, not the last-draw tracking.
+  A slightly cleaner name avoids ''drawn'' nuance.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803A238 -> submenu_setRowStyleFlag
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A238

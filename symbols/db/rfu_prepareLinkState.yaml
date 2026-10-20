@@ -1,0 +1,68 @@
+name: rfu_prepareLinkState
+address: '0x0803F334'
+kind: function
+status: probable
+summary: Dispatches on sub_803F17C's returned mask to call sub_803F0A4 with one of two state/buffer pairs
+  (possibly via sub_803F26C or after e_setFlagBits(2)), then clears a work flag; callee of wireless link
+  setup right before rfu_queuePushEntry.
+interface: (r0 = state/data pointer, r1 = 0x40 length/count) -> r0 = status flag from sub_803F17C path;
+  clobbers work flag via testAndClearWorkFlag, may set event flag bit 2
+details: 'First calls sub_803F17C and branches on its returned mask: mask==0 takes the plain path (two
+  sub_803F0A4 calls with the state pairs byte_200AC20/byte_200BC70 and unk_200AC30/word_200A010, then
+  testAndClearWorkFlag). If bits 0x1C are set it calls sub_803F26C(r0) before one sub_803F0A4 call; if
+  bit 3 is set it pushes flag bit 2 via e_setFlagBits before the same call. The two parallel state structures
+  look like RNG/generator states feeding a 64-byte (0x40) block. Both callers pass a game struct pointer
+  (byte_20101E0 / unk_20103A0) plus the constant 0x40, and caller 2 follows with rfu_queuePushEntry of
+  a 12-byte buffer, tying this to wireless adapter communication. The +0x3C byte of the caller struct
+  acts as a count/limit checked before invoking it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Both call sites pass (structPtr, 0x40) as the only arguments (0x08148AB2, 0x08149198); 0x08149198:
+    call is immediately followed by rfu_queuePushEntry(byte_2010390, 0xC), linking it to wireless packet
+    flow; sub_803F334 makes two sub_803F0A4(dest,0x40, statePtr, seedWord) calls with distinct state pairs
+    byte_200AC20/byte_200BC70 and unk_200AC30/word_200A010; Branching on sub_803F17C''s mask: bits 0x1C
+    trigger sub_803F26C, bit 3 triggers e_setFlagBits(2), else testAndClearWorkFlag; Caller checks a counter
+    at structPtr+0x3C against a tick count before invoking the function'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13300
+  - 0x08148A80 sub_8148A80
+  - 0x08149150 sub_8149150
+  - 0x0803EF48 e_setFlagBits
+  - 0x0803F324 testAndClearWorkFlag
+  - 0x0803F0A4 sub_803F0A4
+  reproduce: python3 tools/asmcat.py 0x0803F334
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code calls sub_803F17C and branches on its return: if 0, two sub_803F0A4 calls with different
+    state pairs; if bits 0x1C set, calls sub_803F26C then one sub_803F0A4; if bits 0x3 set, pushes e_setFlagBits(2)
+    then one sub_803F0A4; otherwise just one sub_803F0A4. Then testAndClearWorkFlag. The proposal''s structural
+    description matches, but calling it ''refreshRandomCommData'' is speculative — there''s no clear evidence
+    these are RNG states, and ''Comm'' is added from context (callers lead into rfu_queuePushEntry) rather
+    than from this function itself. A more neutral name based on what the code does (dispatching on flags
+    from sub_803F17C to call sub_803F0A4) fits better.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_803F0A4 does with r0/r1 (writes into the buffer, or only updates state?)
+- Meaning of the sub_803F17C flag mask and of the state structures byte_200AC20/unk_200AC30
+- What the 12-byte packet pushed after the call contains and what the 0x3C counter counts
+- 'The code calls sub_803F17C and branches on its return: if 0, two sub_803F0A4 calls with different state
+  pairs; if bits 0x1C set, calls sub_803F26C then one sub_803F0A4; if bits 0x3 set, pushes e_setFlagBits(2)
+  then one sub_803F0A4; otherwise just one sub_803F0A4. Then testAndClearWorkFlag. The proposal''s structural
+  description matches, but calling it ''refreshRandomCommData'' is speculative — there''s no clear evidence
+  these are RNG states, and ''Comm'' is added from context (callers lead into rfu_queuePushEntry) rather
+  than from this function itself. A more neutral name based on what the code does (dispatching on flags
+  from sub_803F17C to call sub_803F0A4) fits better.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803F334 -> rfu_prepareLinkState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F334

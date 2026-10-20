@@ -1,0 +1,58 @@
+name: e_countdownExpired
+address: '0x08093202'
+kind: function
+status: probable
+summary: Decrements the halfword frame counter at [r5,#0x18] and returns 1 when it underflows (timer expired),
+  else 0; used by Groundman minigame callers to gate per-frame sequencing.
+interface: (r5 = minigame state struct) -> r0 = 1 once the halfword counter at [r5,#0x18] underflows,
+  else 0 (and the counter is decremented); flags clobbered by bl/branch usage
+details: 'Decrements the halfword at [r5,#0x18]; while the result is >= 0 it stores it back and returns
+  0, and only when the value would go negative returns 1 without decrementing further (it saturates at
+  0xFFFF/underflow side). Callers treat a nonzero return as ''timer finished'': sub_8092FBE sets a done
+  flag at [r5,#8] and returns 0, while sub_8092F1E and sub_8092FD2 only advance the minigame (move the
+  player along grid coordinates, animate, spawn effects) when it has expired. So it acts as a wait/delay
+  countdown gating the minigame sequence, one call per frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8093202: ldrh r0,[r5,#0x18]; sub r0,#1; strh back unless negative, returns 0/1 accordingly;
+    sub_8092FBE: beq skips the [r5,#8]=1 done-flag write only when the return is 0 (still counting); sub_8092F1E:
+    only on nonzero return does it move the player via ConvertGroundmanMinigameGridCoordsToMapCoords and
+    set an animation; sub_8092FD2: on expiry converts grid coords and calls effect helpers sub_809323A/sub_80931FA
+    with 0x40/8, i.e. expiry triggers the next step'
+  refs:
+  - bn6f/asm/dat26.s:1279
+  - 0x08092F1E sub_8092F1E
+  - 0x08092FBE sub_8092FBE
+  - 0x08092FD2 sub_8092FD2
+  reproduce: python3 tools/asmcat.py 0x08093202
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s name ''groundmanMinigame_countdownExpired'' and its interface/semantics accurately
+    match the assembly: it decrements the halfword at [r5,#0x18], returns 0 while it stays >= 0, and returns
+    1 when it would underflow. However, the proposed name carries the ''groundmanMinigame_'' prefix which
+    isn''t in the allowed prefixes (battle/chatbox/t3/object/t4/sprite/req/ow/rfu/ai/t1/npc/snakearm/navicust/get/submenu/start/pet/spawn/e/clear/copy/init/camera/sound).
+    A better name using an allowed prefix is ''e_countdownExpired'' or ''t4_countdownExpired''. Summary
+    is otherwise correct.; run wf investigate investigate-20261019-045129; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact role of the struct at r5 and whether other fields (like [r5,#8]) mark minigame phase; a full view
+  of sub_8093258/sub_809322A would confirm what the countdown delays
+- 'The proposal''s name ''groundmanMinigame_countdownExpired'' and its interface/semantics accurately
+  match the assembly: it decrements the halfword at [r5,#0x18], returns 0 while it stays >= 0, and returns
+  1 when it would underflow. However, the proposed name carries the ''groundmanMinigame_'' prefix which
+  isn''t in the allowed prefixes (battle/chatbox/t3/object/t4/sprite/req/ow/rfu/ai/t1/npc/snakearm/navicust/get/submenu/start/pet/spawn/e/clear/copy/init/camera/sound).
+  A better name using an allowed prefix is ''e_countdownExpired'' or ''t4_countdownExpired''. Summary
+  is otherwise correct.'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8093202 -> e_countdownExpired
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8093202

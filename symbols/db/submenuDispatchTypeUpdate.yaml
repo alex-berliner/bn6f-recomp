@@ -1,0 +1,59 @@
+name: submenuDispatchTypeUpdate
+address: '0x0811B338'
+kind: function
+status: probable
+summary: Dispatches to a per-type update handler for a submenu object, tail-calling one of three handlers
+  from off_811B34C based on the type byte at [r5,#8].
+interface: (r5 = object struct; type id at [r5,#8]) -> tail-calls handler from off_811B34C with r6 = sSubmenu
+details: 'Loads the sSubmenu pointer into r6, then reads the byte at [r5,#8] as a type index into the
+  3-entry jump table off_811B34C and long-branches (mov lr, pc; bx) to that handler: sub_811B35C, object_dispatchTypeUpdate,
+  or sub_811B3EC. It is a pure dispatcher — no logic of its own — following the same dispatchTypeUpdate
+  pattern as the known object update dispatcher. Handlers receive the object pointer in r5 and the submenu
+  context in r6 (Thumb handlers, since entries are +1).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: off_811B34C holds three handler pointers (sub_811B35C, object_dispatchTypeUpdate, sub_811B3EC)
+    indexed by [r5,#8]; ldr r6, off_811B358 (=sSubmenu) sets up shared context before the dispatch; mov
+    lr, pc; bx r0 is the standard long-call tail dispatch into Thumb handlers; known callee object_dispatchTypeUpdate
+    mirrors the dispatchTypeUpdate naming pattern
+  refs:
+  - bn6f/asm/asm32.s:27644
+  reproduce: python3 tools/asmcat.py 0x0811B338
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it loads sSubmenu into r6 (which is a non-volatile caller-saved in the callees''
+    ABI, but that''s the handler''s contract), reads type at [r5,#8], indexes off_811B34C, and tail-calls
+    the handler (mov lr, pc; bx r0). The summary and name are accurate, but the prefix should follow convention.
+    Since it''s a dispatcher for submenu objects, ''submenu'' is a valid prefix, but the handler chain
+    (object_dispatchTypeUpdate as one of the entries) suggests it''s an object-level dispatch. A clearer
+    name following the prefix rules: submenuObjectDispatch. Wait — re-reading the rules: lowerCamel with
+    a prefix from the list. The existing function is named ''object_dispatchTypeUpdate'' (snake_case),
+    but the proposed prefix list uses lowerCamel. I''ll keep it consistent as submenuDispatchTypeUpdate
+    is fine, but the summary could note that r6 being set is for callee use rather than argument passing.;
+    run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so which object kind uses r5 and when this runs is unconfirmed
+- what sSubmenu is passed for inside each handler is only implied by the store into r6
+- 'The code matches: it loads sSubmenu into r6 (which is a non-volatile caller-saved in the callees''
+  ABI, but that''s the handler''s contract), reads type at [r5,#8], indexes off_811B34C, and tail-calls
+  the handler (mov lr, pc; bx r0). The summary and name are accurate, but the prefix should follow convention.
+  Since it''s a dispatcher for submenu objects, ''submenu'' is a valid prefix, but the handler chain (object_dispatchTypeUpdate
+  as one of the entries) suggests it''s an object-level dispatch. A clearer name following the prefix
+  rules: submenuObjectDispatch. Wait — re-reading the rules: lowerCamel with a prefix from the list. The
+  existing function is named ''object_dispatchTypeUpdate'' (snake_case), but the proposed prefix list
+  uses lowerCamel. I''ll keep it consistent as submenuDispatchTypeUpdate is fine, but the summary could
+  note that r6 being set is for callee use rather than argument passing.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811B338 -> submenuDispatchTypeUpdate
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B338

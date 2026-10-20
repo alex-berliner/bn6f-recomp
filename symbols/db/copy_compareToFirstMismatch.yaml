@@ -1,0 +1,56 @@
+name: copy_compareToFirstMismatch
+address: '0x0814D994'
+kind: function
+status: probable
+summary: Compares two byte buffers for up to n bytes and returns the address in buffer B of the first
+  mismatching byte, or 0 if all n bytes are equal.
+interface: (r0 = buffer A ptr, r1 = buffer B ptr, r2 = length in bytes) -> r0 = 0 if all length bytes
+  equal, else pointer into buffer B at first differing byte; flags clobbered
+details: Sets r4 = length-1 (with length 0 immediately returning 0) and r2 = -1 as a loop-end sentinel,
+  then walks both buffers byte by byte. On the first unequal byte pair it returns (current B pointer -
+  1), i.e. the address of the mismatching byte in buffer B; if the loop runs out it returns 0, meaning
+  the buffers match over the given length. It reads bytes with ldrb, so inputs are treated as unsigned
+  bytes, and it never writes to memory. Because the mismatch address is returned rather than an offset
+  or a comparison result, callers can use it both as an equality test (r0 == 0) and to locate where two
+  strings/blobs diverge.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_814D994: ldrb r1,[r3] / ldrb r0,[r5] / cmp r1,r0 / beq — byte-by-byte comparison of the
+    two pointers; sub_814D994: sub r4,r2,#1 and cmp r4,r2 / bne loop — iterates exactly r2 bytes before
+    returning 0; sub_814D994: sub r0,r3,#1 / b return — returns address of first differing byte in buffer
+    B; sub_814D994: cmp r2,#0 / beq loc_814D9BA — zero length is treated as an immediate match (returns
+    0); no callers or callees known; behavior read entirely from the 24-instruction body'
+  refs:
+  - bn6f/asm/libs.s:20625
+  reproduce: python3 tools/asmcat.py 0x0814D994
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: r4=r2-1 (loop count), r2=-1 (sentinel), early-return 0
+    when length==0, byte-by-byte compare with ldrb, returns B-1 on first mismatch or 0 on full match.
+    However, the name ''string_compareToFirstMismatch'' implies string/null-terminated semantics, but
+    the function compares exactly `length` bytes (capped via r4), not until a terminator. The prefix ''copy''
+    or ''get'' would fit the byte-buffer nature better than ''string''.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers are known, so which subsystem uses this (dialog text, string tables, save data, ...) and
+  what the two buffers actually hold is unconfirmed
+- whether callers treat the returned mismatch pointer or only test r0 == 0 is unknown
+- 'The code matches the described behavior: r4=r2-1 (loop count), r2=-1 (sentinel), early-return 0 when
+  length==0, byte-by-byte compare with ldrb, returns B-1 on first mismatch or 0 on full match. However,
+  the name ''string_compareToFirstMismatch'' implies string/null-terminated semantics, but the function
+  compares exactly `length` bytes (capped via r4), not until a terminator. The prefix ''copy'' or ''get''
+  would fit the byte-buffer nature better than ''string''.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814D994 -> copy_compareToFirstMismatch
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814D994

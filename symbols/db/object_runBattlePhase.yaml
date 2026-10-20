@@ -1,0 +1,54 @@
+name: object_runBattlePhase
+address: '0x080D4DCC'
+kind: function
+status: probable
+summary: 'Per-frame phase dispatcher for a battle object: reads the phase byte and tail-calls the handler
+  from off_80D4DE0 (vanish, unknown, animation, or kill).'
+interface: (r5 = battle object) -> r0 = whatever the chosen phase handler returns; flags from handler
+details: Loads the phase byte at oBattleObject_CurPhase from the object in r5, indexes off_80D4DE0 (a
+  table of 4 thumb handler pointers), and jumps to the selected handler as a tail call. The handlers are
+  object_runVanishPhase (phase 0), sub_80D4E64 (phase 1, unknown), battle_spawnAnimFrameEffect (phase
+  2), and object_kill (phase 3), which implies the object plays an effect and then removes itself. r5
+  is left as the object pointer for the callee, so handlers receive it implicitly. No result is processed
+  here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_CurPhase] then ldr r1, [r1,r0]; bx r1 — phase-indexed dispatch into
+    off_80D4DE0; off_80D4DE0 entries battle_spawnAnimFrameEffect and object_kill show a self-terminating
+    effect object lifecycle; object_runVanishPhase entry shows the object also runs a vanish phase; handler
+    table layout (exactly 4 entries, no bounds check) implies CurPhase is guaranteed 0-3 for this object
+    type
+  refs:
+  - bn6f/asm/asm31.s:63851
+  reproduce: python3 tools/asmcat.py 0x080D4DCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic matches (ldrb r0,[r5,#oBattleObject_CurPhase], ldr r1,[r1,r0], bx r1), and the
+    summary accurately describes a per-frame phase dispatch with the listed handlers at off_80D4DE0. However,
+    the name `battle_spawnEffectUpdate` over-specializes the function: it dispatches generic phases (vanish,
+    anim, kill) for a battle object, not only ''spawn effects''. Nothing in the code indicates spawn-specific
+    behavior, and there''s no caller to confirm.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the object type and how the phase byte advances (inside the handlers vs. caller)
+  is unconfirmed
+- sub_80D4E64 (phase 1 handler) is unknown; knowing it would confirm the effect's exact behavior
+- 'The dispatch logic matches (ldrb r0,[r5,#oBattleObject_CurPhase], ldr r1,[r1,r0], bx r1), and the summary
+  accurately describes a per-frame phase dispatch with the listed handlers at off_80D4DE0. However, the
+  name `battle_spawnEffectUpdate` over-specializes the function: it dispatches generic phases (vanish,
+  anim, kill) for a battle object, not only ''spawn effects''. Nothing in the code indicates spawn-specific
+  behavior, and there''s no caller to confirm.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D4DCC -> object_runBattlePhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4DCC

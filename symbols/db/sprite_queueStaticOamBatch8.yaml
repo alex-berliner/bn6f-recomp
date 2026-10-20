@@ -1,0 +1,64 @@
+name: sprite_queueStaticOamBatch8
+address: '0x08130250'
+kind: function
+status: probable
+summary: Queues 8 OAM entries from a static template array in a fixed loop, using one shared u16 attribute
+  word for every call.
+interface: () -> void; no inputs (r0 only used as zero index), no return value; calls sprite_queueOamEntry
+  8 times
+details: Loads two literal pointers, 0x58018 (into r4) and 0xB860 (into r6), then loops 8 times (r7 =
+  8, counted down). Each iteration calls sprite_queueOamEntry with a1 = current r4, a2 = current r6, a3
+  = 0, a4 = 5, then advances r4 by 8 and r6 by 2. The stride of 8 matches the size of one GBA OAM entry
+  (attr0/attr1/attr2/filler), so r4 walks an array of 8 prebuilt OAM entries at 0x58018; r6 walks a parallel
+  array of 8 u16 values at 0xB860, one per entry. The constants 0 and 5 are passed through unchanged,
+  likely a layer/flag and a priority or OAM-slot parameter of queueOamEntry. The function is parameterless
+  and fully static, so it draws one fixed 8-sprite image (or 8-entry sprite frame) wherever its callers
+  run. Both literal pools sit right after the code, confirming the arrays' addresses are hardcoded for
+  this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop setup: ''mov r7,#8'' with ''sub r7,#1 / bgt loc_813025E'' — exactly 8 queueOamEntry calls;
+    ''ldr r4,[r4,r0]'' loads 0x58018 and ''add r4,r4,#8<<16>>...'' advances by 8 per pass, the size of
+    one OAM entry; ''ldr r6,[r6,r0]'' loads 0xB860 and ''add r6,r6,#2'' advances by 2, a parallel array
+    of per-entry u16 attributes; ''bl sprite_queueOamEntryThunk_802FE28'' with r2 = 0 and r3 = 5 passes
+    fixed flags/priority on every call; no caller arguments are used: ''mov r0,#0'' is only the [rX,r0]
+    index, so the routine is self-contained'
+  refs:
+  - bn6f/asm/asm36.s:280
+  - 0x0812F920 sub_812F920
+  - 0x0813064C sub_813064C
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x08130250
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (8-iteration loop, strides, literal pool addresses, two
+    literals 0x58018 and 0xB860, a3=0, a4=5). However, a2 is loaded via `[r6, r0]` with r0=0, so each
+    pass passes a single fixed u16 (not an advancing ''parallel array''), and r6 is then incremented by
+    2 — meaning all 8 calls receive the same a2 value, contradicting ''each with its own attribute word.''
+    Also, r4 is loaded from a pointer-to-pointer ([r4,r0]) rather than directly, so r4 is the actual base
+    address at runtime. Better to describe it as a static 8-entry OAM template loop with a shared attribute
+    word.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of queueOamEntry's a2/a4 parameters (attribute vs. pointer deref, and what 5 selects)
+- what structure lives at 0x58018/0xB860 and which object or screen uses it — reading callers sub_812F920/sub_813064C
+  would confirm
+- The code matches the proposal's mechanics (8-iteration loop, strides, literal pool addresses, two literals
+  0x58018 and 0xB860, a3=0, a4=5). However, a2 is loaded via `[r6, r0]` with r0=0, so each pass passes
+  a single fixed u16 (not an advancing 'parallel array'), and r6 is then incremented by 2 — meaning all
+  8 calls receive the same a2 value, contradicting 'each with its own attribute word.' Also, r4 is loaded
+  from a pointer-to-pointer ([r4,r0]) rather than directly, so r4 is the actual base address at runtime.
+  Better to describe it as a static 8-entry OAM template loop with a shared attribute word.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8130250 -> sprite_queueStaticOamBatch8
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130250

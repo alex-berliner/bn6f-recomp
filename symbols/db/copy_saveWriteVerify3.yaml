@@ -1,0 +1,59 @@
+name: copy_saveWriteVerify3
+address: '0x0814DA28'
+kind: function
+status: probable
+summary: Writes r2 bytes from r0 to Game Pak address r1 and verifies via sub_814D9C4, retrying up to 3
+  times; returns the last verify result in r0.
+interface: (r0 = src ptr, r1 = dst Game Pak addr, r2 = byte count) -> r0 = verify result of last attempt
+  (0 = success); flags clobbered
+details: 'Copies r2 bytes from r0 to Game Pak address r1 via libSave_CopyToGamePak (which forces WS0 waitstate
+  3), then calls sub_814D9C4 with identical arguments, which by usage is a readback/compare verify of
+  the same range. The verify result in r3 decides the loop: nonzero keeps looping with the attempt counter
+  (r7, byte-sized) incremented, so at most 3 write+verify attempts occur before bailing out. The final
+  verify result is returned in r0. Argument meanings (src vs dst order) are inferred from libSave_CopyToGamePak''s
+  known summary.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl libSave_CopyToGamePak then bl sub_814D9C4 with identical r0-r2 (0x814DA3E-0x814DA4C): write
+    followed by same-args check; cmp r3, #0 / bne loc_814DA34 (0x814DA50): nonzero verify result triggers
+    retry; cmp r7, #2 / bhi loc_814DA58 with r7 incremented each failure (0x814DA34-0x814DA3A): hard cap
+    of 3 attempts; mov r0, r3 before pop (0x814DA58): returns the last verify result; callee libSave_CopyToGamePak
+    summary confirms Game Pak write with WS0=3'
+  refs:
+  - bn6f/asm/libs.s:20668
+  - 0x0814D954 libSave_CopyToGamePak
+  - 0x0814D9C4 sub_814D9C4
+  reproduce: python3 tools/asmcat.py 0x0814DA28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The retry logic uses r7 as a loop counter compared against 2 with bhi, and incremented as byte (lsl/lsr
+    #0x18), giving values 0,1,2 -> 3 iterations, matching the ''up to 3 times'' claim. However, libSave_CopyToGamePak
+    only writes (forcing WS0=3); the verify role belongs to sub_814D9C4 which is correctly inferred as
+    a compare/verify. The proposed name uses ''Retry'' which is reasonable, but no ''lib'' prefix convention
+    is established by the codebase. A cleaner name follows the allowed prefixes - ''copy'' or ''init''
+    would fit a write+verify save routine.; run wf investigate investigate-20261019-030611; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_814D9C4 is unverified as a compare/verify routine — its body would confirm
+- argument order (which of r0/r1 is source vs Game Pak destination) inferred from libSave_CopyToGamePak
+  only
+- no callers known, so the buffer/offset context (which save sector) is unknown
+- 'The retry logic uses r7 as a loop counter compared against 2 with bhi, and incremented as byte (lsl/lsr
+  #0x18), giving values 0,1,2 -> 3 iterations, matching the ''up to 3 times'' claim. However, libSave_CopyToGamePak
+  only writes (forcing WS0=3); the verify role belongs to sub_814D9C4 which is correctly inferred as a
+  compare/verify. The proposed name uses ''Retry'' which is reasonable, but no ''lib'' prefix convention
+  is established by the codebase. A cleaner name follows the allowed prefixes - ''copy'' or ''init'' would
+  fit a write+verify save routine.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814DA28 -> copy_saveWriteVerify3
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814DA28

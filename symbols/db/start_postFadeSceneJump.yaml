@@ -1,0 +1,55 @@
+name: start_postFadeSceneJump
+address: '0x0803578C'
+kind: function
+status: probable
+summary: After a fade completes, sets the main jumptable index to 4 and resets GameState to MapGroup=0,
+  MapNumber=0, SubsystemIndex=0, GameProgress=0x65, MapSubArea=0x62 to force a scene transition.
+interface: () -> void; writes Toolkit.MainJumptableIndex = 4 and GameState MapGroup/MapNumber/SubsystemIndex/GameProgress(0x65)/MapSubArea(0x62)
+details: 'Takes no arguments. Sets the toolkit''s main jumptable index to 4 so the next main-loop dispatch
+  runs that handler, then writes the GameState struct: MapGroup=0, MapNumber=0, SubsystemIndex=0 (which
+  triggers EnterMap via cbGameState_80050EC), GameProgress=0x65, and MapSubArea=0x62. The fixed map (0,0)
+  with progress 0x65 and sub-area 0x62 points to a specific fixed scene rather than normal overworld travel.
+  The sole caller is a delay counter that only fires once IsScreenFadeActive reports the fade is done,
+  so this is a post-fade scene transition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803578C: strb r1(4) into [r7,#oToolkit_MainJumptableIndexPtr] switches the main loop state;
+    sub_803578C: MapGroup/MapNumber/SubsystemIndex all set to 0, the cbGameState_80050EC EnterMap trigger;
+    sub_803578C: GameProgress=0x65 and MapSubArea=0x62 select one specific fixed scene; caller 0x0813874A:
+    fires only after a countdown hits 0 and IsScreenFadeActive is true, i.e. after a fade-out; caller
+    calls sub_8000F86 on [r5,#0x20] first, cleaning up an active object before the transition'
+  refs:
+  - bn6f/asm/asm03_1_0.s:3637
+  - 0x08138730 sub_8138730
+  reproduce: python3 tools/asmcat.py 0x0803578C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function sets MainJumptableIndex=4 and writes MapGroup=0, MapNumber=0, SubsystemIndex=0, GameProgress=0x65,
+    MapSubArea=0x62. The caller in sub_8138730 runs after a fade completes (IsScreenFadeActive check at
+    0x08138744), matching post-fade scene transition. However, ''start_returnToTitleScreen'' is misleading:
+    jumptable state 4 is not necessarily the title screen, and the function name should describe the action
+    rather than its presumed target, so a more neutral name is warranted.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what map (0,0)/progress 0x65/sub-area 0x62 actually renders (title screen vs. intro cutscene)
+- what sub_8138758 and the object at [r5+0x20] do, to confirm the triggering context
+- what main jumptable state 4 handles
+- 'The function sets MainJumptableIndex=4 and writes MapGroup=0, MapNumber=0, SubsystemIndex=0, GameProgress=0x65,
+  MapSubArea=0x62. The caller in sub_8138730 runs after a fade completes (IsScreenFadeActive check at
+  0x08138744), matching post-fade scene transition. However, ''start_returnToTitleScreen'' is misleading:
+  jumptable state 4 is not necessarily the title screen, and the function name should describe the action
+  rather than its presumed target, so a more neutral name is warranted.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803578C -> start_postFadeSceneJump
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803578C

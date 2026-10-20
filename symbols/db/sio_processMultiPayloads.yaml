@@ -1,0 +1,62 @@
+name: sio_processMultiPayloads
+address: '0x08144920'
+kind: function
+status: probable
+summary: Processes 4 per-player halfword payloads from a multiplayer SIO packet into eTimer struct and
+  per-player record arrays, with mode 0 clearing/flagging state and non-zero modes accumulating per-slot
+  OR/sum values across a 30-entry frame window.
+interface: () -> void; reads SIOData0_Parent/SIOData2_2ndChild multi-mode packets, writes struct 0x200F460
+  (+0x13,+0x14,+0x16,+0x18,+0x20,+0x28/+0x29,+0x2A+i,+0x214+), word_2006E04, byte_2006E01
+details: 'First copies 4 halfwords (indices 0-3, gated by byte_200F489) from the SIO multiplayer packet
+  into a stack buffer via sub_803F618. If the mode byte at 0x200F488 (+0x28) is 0, it compares each payload
+  against the running halfword sum at +0x16: value-1 entries matching it set 0xFF at +0x13 when byte_2006E01
+  is set, value-2 entries with payload 0xFF00 clear the per-slot halfword at +0x20+i; afterwards it zeroes
+  +0x16 and sets byte_2006E01=1. Otherwise it treats each entry as data: value-1 payloads are ORed into
+  word_2006E04, added into the sum at +0x16, and stored into a per-entry/per-slot/per-frame halfword array
+  at struct+0x214 laid out as [entry*480 + slot*60 + frame*2]; value-2 payloads are accumulated into halfwords
+  at +0x18+i (mode 4) or +0x20+i (modes 3/5, mode 3 adds payload+1). The frame counter at +0x29 increments
+  each call, wrapping 30 via (+0x994 + +0x995) mod 30 for the array index; when it hits 8 and the OR-sum
+  is nonzero, the counter at +0x995 increments and word_2006E04 clears. If counter +0x995 exceeds 0x1D,
+  bit 2 is set in the flag byte at +0x14.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loops r4=0..3 calling sub_803F618 with stack buffer, index, and byte_200F489 (loc_8144938);
+    branches on struct+0x28 mode byte with distinct value-1/value-2 handling per entry at +0x2A+i; payload
+    stored via r1 = slot*60 + computed*2 + entry*480 + 0x214 (loc_8144A1A), a per-player/per-frame array;
+    sum at +0x16 and OR into word_2006E04 with reset when +0x29 reaches 8 (loc_8144ABC); called per-frame
+    from sio_linkStateUpdate, the SIO link state machine
+  refs:
+  - bn6f/asm/libs.s:1190
+  - 0x081446AC sio_linkStateUpdate
+  - 0x0803F618 sub_803F618
+  reproduce: python3 tools/asmcat.py 0x08144920
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The +0x13 store writes 1 (r2=1 from the cmp #1 path), not 0xFF as claimed. The array layout formula
+    is misattributed: the explicit stride is entry*480 and frame*60, with slot offset coming from the
+    base address +0x214 (0x85*4), not slot*60. The frame index +0x29 is used as an array index but is
+    incremented regardless of the wrap check, which uses (+0x994 + +0x995) mod 30.; run wf investigate
+    investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what game feature the accumulated per-player halfwords represent (handshake, RNG seed exchange, or versus
+  sync)
+- meaning of byte_200F489 and the entry values 1/2 at struct+0x2A
+- exact layout/size of the array at 0x200F674 (+0x214) and what mode values 3/4/5 select
+- 'The +0x13 store writes 1 (r2=1 from the cmp #1 path), not 0xFF as claimed. The array layout formula
+  is misattributed: the explicit stride is entry*480 and frame*60, with slot offset coming from the base
+  address +0x214 (0x85*4), not slot*60. The frame index +0x29 is used as an array index but is incremented
+  regardless of the wrap check, which uses (+0x994 + +0x995) mod 30.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8144920 -> sio_processMultiPayloads
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144920

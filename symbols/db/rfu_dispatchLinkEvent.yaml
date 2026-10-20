@@ -1,0 +1,66 @@
+name: rfu_dispatchLinkEvent
+address: '0x081473EC'
+kind: function
+status: probable
+summary: 'Wireless link-event dispatcher: on a link event id, updates the wireless session state word
+  (eS200BC50+8), drives rfu_setLinkCommand/sub_813D94C, copies ready-flag bitmasks between word_200FE14
+  and byte_2010280/byte_2010284, and clears byte_2010368.'
+interface: (r0 = link event id, byte) -> r0 = undefined; no flags used by callers known
+details: A switch on the byte argument dispatches ~13 event codes (0x00,0x10,0x12,0x14,0x30,0x31,0x33,0x42,0x44,0x50,0xF0,0xF1,0xFF;
+  others fall through to loc_81475AA as no-ops). Most handlers write a new state value into eS200BC50+8
+  (word_200BC58, the wireless session state) — e.g. 0xB, 0x22, 0x34, 0x3F — and several call rfu_setLinkCommand
+  with a command byte (0xE, 0x14, 0x15, 0x1, 0xD). The 0x12 case expands the 4-bit field at eStruct200FE00+0x14
+  (word_200FE14) into a bit-mask stored at byte_2010284 (player-ready flags), while 0x13-range/0x30/0x33
+  cases OR/Clear those bits into byte_2010280. The 0xF0 case calls sub_813D94C(0x15), copies word_200FE14
+  into word_20102D0, clears byte_2010368, and sets state 0x3F; several paths also clear byte_2010368,
+  which looks like an event-pending/consume flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: switch over byte r0 with ~13 handled ids and fall-through no-op at loc_81475AA; multiple branches
+    write small constants into eS200BC50+8 (word_200BC58), a session-state word; loc_81474E8/loc_8147524/loc_8147598
+    call known callee rfu_setLinkCommand with command bytes 0xE/0x14/0xD; loc_8147490 loops 4 bits of
+    word_200FE14 building a mask at byte_2010284, mirroring OR/clear cases at loc_8147478 and loc_81474F0;
+    loc_8147550 (id 0xF0) calls sub_813D94C(0x15), copies word_200FE14 to word_20102D0 and sets state
+    0x3F
+  refs:
+  - bn6f/asm/libs.s:7178
+  - 0x0813D934 rfu_setLinkCommand
+  - 0x0813D94C sub_813D94C
+  reproduce: python3 tools/asmcat.py 0x081473EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is broadly accurate: a switch on the link event byte writes a state word to eS200BC50+8,
+    calls rfu_setLinkCommand in several cases (0xE at 0x81474E8, 0x14 at 0x8147524, 0x15 at 0x8147560,
+    0xD at 0x81475A2, 0x1 at 0x8147598), expands word_200FE14 into byte_2010284 at 0x8147490, and clears
+    byte_2010368 in multiple paths. However, the 0x14 case at 0x81474C4 writes state 0x22 (not 0x3F),
+    the 0x30 case at 0x81474F0 clears bits rather than just dispatching, and the description misses the
+    dword_2010CC0 dereference gating 0x14/0x30. The name ''rfu_dispatchLinkEvent'' fits, but the summary''s
+    event list (0x42 writes 0x34, 0x44 writes 0xB, 0x50 just clears byte_2010368, 0xF0 sets 0x3F) is correct;
+    minor case-list fixes are needed.; run wf investigate investigate-20261019-033611; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known caller, so the exact event-id numbering and which game flow (trade? versus? lib trade?) invokes
+  this is unconfirmed
+- the meaning of each numeric session state written into word_200BC58 is not established
+- role of byte_2010280 vs byte_2010284 (per-player ready flags?) needs the consumers of those bytes
+- 'The proposal is broadly accurate: a switch on the link event byte writes a state word to eS200BC50+8,
+  calls rfu_setLinkCommand in several cases (0xE at 0x81474E8, 0x14 at 0x8147524, 0x15 at 0x8147560, 0xD
+  at 0x81475A2, 0x1 at 0x8147598), expands word_200FE14 into byte_2010284 at 0x8147490, and clears byte_2010368
+  in multiple paths. However, the 0x14 case at 0x81474C4 writes state 0x22 (not 0x3F), the 0x30 case at
+  0x81474F0 clears bits rather than just dispatching, and the description misses the dword_2010CC0 dereference
+  gating 0x14/0x30. The name ''rfu_dispatchLinkEvent'' fits, but the summary''s event list (0x42 writes
+  0x34, 0x44 writes 0xB, 0x50 just clears byte_2010368, 0xF0 sets 0x3F) is correct; minor case-list fixes
+  are needed.'
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81473EC -> rfu_dispatchLinkEvent
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81473EC

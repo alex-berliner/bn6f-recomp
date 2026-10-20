@@ -1,0 +1,55 @@
+name: eStruct200BC30_setByte01
+address: '0x0803EA58'
+kind: function
+status: probable
+summary: Stores the byte argument into offset 0x1 of eStruct200BC30; callers at battle entry set it to
+  1, and sub_812CDF4 preserves the byte across a clearStruct200BC30_803EBAC reset.
+interface: (r0 = byte value) -> void; no flags
+details: Stores r0 to byte_200BC31, offset 0x1 of eStruct200BC30, then returns. Battle-entry callers (sub_803EABC/sub_803EAD0)
+  set it to 1 immediately after battle_clearScratchBuffers_803EFCC, so it is likely a battle-active/phase
+  byte initialized each battle. sub_812CDF4 saves the struct's jump offset 00, calls getter sub_803EA50,
+  clears the struct via clearStruct200BC30_803EBAC, restores the offset, and re-writes the saved byte
+  with this setter before triggering a screen fade (SetScreenFade 12,16) — showing the field must survive
+  struct resets. The paired getter sub_803EA50 presumably reads byte_200BC31.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldr r1,=eStruct200BC30; strb r0,[r1,#0x1] — pure setter for byte_200BC31; sub_803EABC/sub_803EAD0:
+    mov r0,#1 then bl after battle_clearScratchBuffers_803EFCC — battle start initializes it to 1; sub_812CDF4:
+    bl sub_803EA50 (getter) before clear, bl sub_803EA58 after — field is saved/restored across clearStruct200BC30_803EBAC;
+    sub_812CDF4 follows with SetScreenFade(0xc,0x10) — battle transition/restart context'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11890
+  - 0x0803EABC sub_803EABC
+  - 0x0803EAD0 sub_803EAD0
+  - 0x0812CDF4 sub_812CDF4
+  reproduce: python3 tools/asmcat.py 0x0803EA58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms it stores r0 as a byte at eStruct200BC30+1 (strb r0,[r1,#0x1]). The callers
+    (sub_803EABC/sub_803EAD0) pass r0=1 after battle_clearScratchBuffers_803EFCC, and sub_812CDF4 reads
+    via sub_803EA50 then re-writes the saved value after clearing the struct, consistent with a field
+    preserved across resets. However the function itself doesn''t reveal the field''s role; ''setByte01''
+    is fine but a battle-prefixed name like ''battle_setActiveFlag'' overstates certainty since the code
+    doesn''t settle the semantic.; run wf investigate investigate-20261019-045129; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- semantic meaning of byte_200BC31 (flag vs counter vs mode) — sub_803EA50's readers would confirm
+- why battle-entry callers hardcode 1 (probably 'battle in progress' or a phase counter)
+- The assembly confirms it stores r0 as a byte at eStruct200BC30+1 (strb r0,[r1,#0x1]). The callers (sub_803EABC/sub_803EAD0)
+  pass r0=1 after battle_clearScratchBuffers_803EFCC, and sub_812CDF4 reads via sub_803EA50 then re-writes
+  the saved value after clearing the struct, consistent with a field preserved across resets. However
+  the function itself doesn't reveal the field's role; 'setByte01' is fine but a battle-prefixed name
+  like 'battle_setActiveFlag' overstates certainty since the code doesn't settle the semantic.
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803EA58 -> eStruct200BC30_setByte01
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803EA58

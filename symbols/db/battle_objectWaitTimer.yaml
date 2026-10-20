@@ -1,0 +1,52 @@
+name: battle_objectWaitTimer
+address: '0x080DDEF4'
+kind: function
+status: probable
+summary: Battle-object wait helper that arms Timer from Param2 on first call, decrements it each subsequent
+  call, and once expired sets CurAction=4 and CurPhase=0 to return control to the action dispatcher.
+interface: (r5 = battle object) -> void; touches oBattleObject_CurPhase, Param2, Timer, CurAction
+details: Uses r5 as a battle object pointer. In phase 0 it stores 4 into CurPhase and copies the 16-bit
+  Param2 field into Timer, arming a frame countdown. In the following phases it decrements Timer each
+  call until it reaches 0, then writes 4 into CurAction and resets CurPhase to 0, handing control back
+  to the object's action dispatcher. It is effectively a generic 'pause for N frames, then move to next
+  action' state used inside a per-object state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'phase 0 branch: mov r1,#4; strb r1,[r5,#oBattleObject_CurPhase] then strh Param2 into Timer
+    (arming the delay); other phases: ldrh Timer; sub #1; strh; bgt ret — frame countdown; on expiry:
+    mov r0,#4; strb r0,[r5,#oBattleObject_CurAction] and CurPhase=0 (state-machine advance); r5 base with
+    oBattleObject_* offsets matches battle object layout used by other battle handlers'
+  refs:
+  - bn6f/asm/asm31.s:83558
+  reproduce: python3 tools/asmcat.py 0x080DDEF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: phase 0 arms Timer from Param2 and subsequent phases count down then write
+    4 to CurAction and 0 to CurPhase. However, the proposed name ''battle_objectWaitPhase'' is misleading
+    — it isn''t a phase handler but the object itself (r5), and the function advances to CurAction 4,
+    not a phase. A cleaner name following the prefix convention would be ''battle_objectWaitTimer'' or
+    similar. The summary minor issue: it says ''stores 4 into CurPhase'' on init but actually sets CurPhase
+    to 4 via strb r1 which matches; also Timer loads Param2 as a byte then stores as halfword which is
+    correct.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so which objects use this wait state and what CurAction 4 means for them is unconfirmed
+- 'The summary is accurate: phase 0 arms Timer from Param2 and subsequent phases count down then write
+  4 to CurAction and 0 to CurPhase. However, the proposed name ''battle_objectWaitPhase'' is misleading
+  — it isn''t a phase handler but the object itself (r5), and the function advances to CurAction 4, not
+  a phase. A cleaner name following the prefix convention would be ''battle_objectWaitTimer'' or similar.
+  The summary minor issue: it says ''stores 4 into CurPhase'' on init but actually sets CurPhase to 4
+  via strb r1 which matches; also Timer loads Param2 as a byte then stores as halfword which is correct.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DDEF4 -> battle_objectWaitTimer
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDEF4

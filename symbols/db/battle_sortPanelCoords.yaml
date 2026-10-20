@@ -1,0 +1,57 @@
+name: battle_sortPanelCoords
+address: '0x08012D24'
+kind: function
+status: probable
+summary: Builds a packed (PanelY<<4)|PanelX byte array from up to three battle objects, pads to three
+  entries, and sorts them ascending via sortThreeEntries.
+interface: (r0 = output byte array >=4 bytes, r4 = object count <=3, r6 = array of battle-object pointers,
+  caller's r6/r4 reused) -> r0 clobbered; writes zero word then count packed panel-coord bytes, pads to
+  3 and sorts via sortThreeEntries
+details: 'Zeroes 4 bytes at r0, then for each of r4 entries loads a pointer from [r6] (advancing r6 by
+  4) and stores (PanelY<<4)|PanelX of that battle object as one byte. If count is 2 the last byte is copied
+  once more; if 1, copied into both remaining slots, always yielding three entries at r0. Finally calls
+  sortThreeEntries to order the three packed coordinates ascending. Quirk: the source pointer array is
+  taken from the caller''s r6 and the count from the caller''s r4 rather than from arguments, so it only
+  works for this call site.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8012D24 loop: ldrb PanelX/PanelY from [r6] object, orr y<<4|x, strb to r0 array; cmp r4,#3/#2
+    branches duplicate the last packed byte to pad the list to three entries; bl sortThreeEntries orders
+    the three packed coordinates (known callee summary); caller 0x08012CE4: r0 = r6+0x10 (just past the
+    pointer slots) after object_getEnemyByNameRange(r1=0x100,r2=0x1c3); caller loc_8012CEC reads the result
+    bytes back as nibbles (lsr #4 = one coord, low bits = other)'
+  refs:
+  - bn6f/asm/asm00_2.s:9453
+  - 0x08012CB2 sub_8012CB2
+  - 0x08012D70 sortThreeEntries
+  reproduce: python3 tools/asmcat.py 0x08012D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it zeros a word at r0, loops r4 times reading pointers from [r6],
+    packs (PanelY<<4)|PanelX into bytes, pads to 3 entries based on count (1 or 2), then sorts via sortThreeEntries.
+    However, the prefix ''battle_'' is fine but the name could be clearer; the function sorts already-sorted
+    battle panels into a compact form. Also the output buffer at r0 is sized to 4 bytes (a word is zeroed),
+    consistent with >=4 bytes. A slightly more accurate name reflects the sort.; run wf investigate investigate-20261019-094015;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which game feature consumes the sorted panel list (which enemy/AI routine) — caller 0x08012CB2 is undocumented
+- What enemy name range 0x100-0x1c3 selects, and whether r4 counts found enemies or slots
+- 'The code matches the proposal: it zeros a word at r0, loops r4 times reading pointers from [r6], packs
+  (PanelY<<4)|PanelX into bytes, pads to 3 entries based on count (1 or 2), then sorts via sortThreeEntries.
+  However, the prefix ''battle_'' is fine but the name could be clearer; the function sorts already-sorted
+  battle panels into a compact form. Also the output buffer at r0 is sized to 4 bytes (a word is zeroed),
+  consistent with >=4 bytes. A slightly more accurate name reflects the sort.'
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8012D24 -> battle_sortPanelCoords
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012D24

@@ -1,0 +1,51 @@
+name: ai_attackDispatchStep
+address: '0x08105A96'
+kind: function
+status: probable
+summary: Dispatches the Falzar AI attack step handler selected by the current attack's element/type field
+  from a Thumb function table.
+interface: (r7 = AI attack vars struct) -> calls table[r7->HitElement] with r0 = that element byte; returns
+  handler's result
+details: Loads a byte from [r7, oAIAttackVars_HitElement] and indexes off_8105AA8, a 7-entry table of
+  thumb step functions (sub_8105AC4, ai_attackReservePanelStep, ai_attackDropObjectStep, sub_8105B84,
+  ai_falzarAttackRandomPanelStep, sub_8105C10, sub_8105C72). It performs a long-call via 'mov lr, pc;
+  bx r1' so the handler runs in ARM mode and returns to the pop. r0 passes the element/type byte to the
+  handler as its only visible argument. No other state is touched, so it is purely a keyed dispatcher.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — indexed call keyed by the attack
+    vars' element byte (sub_8105A96); table off_8105AA8 holds only ai_* attack step handlers, e.g. ai_falzarAttackRandomPanelStep,
+    ai_attackDropObjectStep; mov lr,pc; bx r1 with pop {r7,pc} — standard ARM-mode long-call trampoline,
+    handler result passed straight through
+  refs:
+  - bn6f/asm/asm31.s:168778
+  reproduce: python3 tools/asmcat.py 0x08105A96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it loads the HitElement byte, indexes off_8105AA8, and
+    tail-calls the handler with r0=element. However, the proposal incorrectly claims ''mov lr, pc; bx
+    r1'' runs the handler in ARM mode. The entries are stored as function+1 (Thumb bit set) and bx r1
+    switches to Thumb, so the handler runs in Thumb mode, not ARM. The name and summary are otherwise
+    fine.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of oAIAttackVars_HitElement (element vs attack subtype) and what r7's
+  struct is exactly is inferred from field naming
+- Purpose of the unnamed table entries sub_8105AC4, sub_8105B84, sub_8105C10, sub_8105C72
+- 'The code matches the proposal''s mechanics: it loads the HitElement byte, indexes off_8105AA8, and
+  tail-calls the handler with r0=element. However, the proposal incorrectly claims ''mov lr, pc; bx r1''
+  runs the handler in ARM mode. The entries are stored as function+1 (Thumb bit set) and bx r1 switches
+  to Thumb, so the handler runs in Thumb mode, not ARM. The name and summary are otherwise fine.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8105A96 -> ai_attackDispatchStep
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105A96

@@ -1,0 +1,54 @@
+name: battle_dispatchStatePhase
+address: '0x08009EE2'
+kind: function
+status: probable
+summary: Reads StatePhase from battle state in r5 and tail-calls the corresponding handler from jump table
+  off_8009EF4 (phase 0 = waitLinkResultsSyncPhase, phase 1 = stateChipSelectOpen).
+interface: (r5 = battle state struct) -> tail-call to table[StatePhase] handler; returns handler's result
+details: 'Reads the phase byte at oBattleState_StatePhase in the struct pointed to by r5, indexes off_8009EF4
+  (a function-pointer table), sets lr=pc and bx to the handler so it returns directly to this function''s
+  caller. Known entries: phase 0 = battle_waitLinkResultsSyncPhase, phase 1 = battle_stateChipSelectOpen;
+  the table likely has more entries beyond the two shown. This is a battle-state-machine per-frame step
+  dispatcher.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleState_StatePhase]; ldr r1, [table,r0]; mov lr, pc; bx r1 — indexed dispatch
+    on the state's phase field; off_8009EF4[0] = battle_waitLinkResultsSyncPhase+1, [1] = battle_stateChipSelectOpen+1
+    — thumb handlers indexed by phase; lr=pc before bx makes the handler return to this function's caller,
+    i.e. a tail-call wrapper, not a subroutine call
+  refs:
+  - bn6f/asm/asm00_1.s:15504
+  reproduce: python3 tools/asmcat.py 0x08009EE2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Core claim (jump-table dispatch via oBattleState_StatePhase at [r5,#0x..], tail-calling off_8009EF4
+    entries) matches lines 2-6. However the name ''battle_callPhaseHandler'' is redundant (''call'' in
+    a function that is itself a call); ''battle_dispatchStatePhase'' fits better. The summary''s ''returns
+    handler''s result'' is slightly imprecise — there is no explicit return; the bx r1 returns to *this
+    function''s* caller, not yielding a local return value. The two known phases (waitLinkResultsSync,
+    chipSelectOpen) are not obviously ''per-frame step'' entries, but the dispatch mechanism is correctly
+    described.; run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so when/where in the battle loop this runs and how r5 is set is unconfirmed
+- Full extent of the jump table off_8009EF4 unknown — only phases 0 and 1 are labeled; more handlers may
+  follow
+- Core claim (jump-table dispatch via oBattleState_StatePhase at [r5,#0x..], tail-calling off_8009EF4
+  entries) matches lines 2-6. However the name 'battle_callPhaseHandler' is redundant ('call' in a function
+  that is itself a call); 'battle_dispatchStatePhase' fits better. The summary's 'returns handler's result'
+  is slightly imprecise — there is no explicit return; the bx r1 returns to *this function's* caller,
+  not yielding a local return value. The two known phases (waitLinkResultsSync, chipSelectOpen) are not
+  obviously 'per-frame step' entries, but the dispatch mechanism is correctly described.
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8009EE2 -> battle_dispatchStatePhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009EE2

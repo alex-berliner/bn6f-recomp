@@ -1,0 +1,61 @@
+name: object_stepAnim
+address: '0x0801813A'
+kind: function
+status: probable
+summary: 'Advances a battle object''s animation by dispatching through a 2-entry table indexed by [r5+oBattleObject_PreventAnim]:
+  entry 0 (set) starts the erase animation, entry 1 (clear) runs the normal per-frame animation step.'
+interface: (r5 = battle object) -> r0 = result of the dispatched handler; calls through a 2-entry dispatch
+  table indexed by [r5+oBattleObject_PreventAnim]
+details: 'The function is a tiny dispatcher: it loads [r5+oBattleObject_PreventAnim] as an index into
+  a 2-entry table at off_801814C and tail-calls that handler with the caller''s lr chained for return.
+  Entry 0 is sub_8018186 (the normal per-frame animation step for the object), entry 1 is object_startErase
+  (begin the object''s erase/removal animation). Callers in the battle object update loop invoke it unconditionally
+  in two situations: after forcing PreventAnim to 0 (so the normal anim step runs), and when object flags
+  0x30000000 are set (leaving PreventAnim as-is, so the erase path is taken). Otherwise they run alternative
+  logic (battle_isTimeStop checks, sub_801823C) and skip this dispatcher.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrb r0,[r5,#oBattleObject_PreventAnim]; ldr r1,[table,r0]; bx r1 — dispatch on the object''s
+    PreventAnim state; off_801814C contains object_startErase+1 and sub_8018186+1 — the two handlers are
+    the normal anim step and the erase start; callers at 0x0801B584/0x0801B6C4/0x0801B804 call it right
+    after clearing PreventAnim or on flag 0x30000000, then exit the update branch; the alternate branch
+    calls battle_isTimeStop/sub_801823C instead, confirming this function is the normal animation-update
+    path'
+  refs:
+  - bn6f/asm/asm00_2.s:21054
+  - 0x0801B4D4 sub_801B4D4
+  - 0x0801B610 sub_801B610
+  - 0x0801B750 sub_801B750
+  reproduce: python3 tools/asmcat.py 0x0801813A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher structure is correct: r5 carries the object, it loads [r5+#oBattleObject_PreventAnim]
+    as an index into off_801814C, and bx r1 chains the caller''s lr. However the table entry 0 is `object_startErase+1`
+    (the erase path when PreventAnim != 0) and entry 1 is `sub_8018186+1` (the normal step). The proposal
+    swaps these and frames entry 0 as the ''normal'' step, which contradicts the off_801814C data. The
+    name and idea are right, just inverted.; run wf investigate investigate-20261019-052112; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- sub_8018186's body is unknown; seeing it would confirm it is the per-frame animation/sprite step and
+  refine the name
+- exact meaning of PreventAnim values beyond 0/1 (whether higher values index further handlers) is unconfirmed
+  since the table has only two entries
+- 'The dispatcher structure is correct: r5 carries the object, it loads [r5+#oBattleObject_PreventAnim]
+  as an index into off_801814C, and bx r1 chains the caller''s lr. However the table entry 0 is `object_startErase+1`
+  (the erase path when PreventAnim != 0) and entry 1 is `sub_8018186+1` (the normal step). The proposal
+  swaps these and frames entry 0 as the ''normal'' step, which contradicts the off_801814C data. The name
+  and idea are right, just inverted.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801813A -> object_stepAnim
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801813A

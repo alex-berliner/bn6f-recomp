@@ -1,0 +1,66 @@
+name: rfu_syncWirelessState
+address: '0x08147834'
+kind: function
+status: probable
+summary: Polls RFU wireless state; on state-byte change (byte_2010280 vs byte_201033C), sets dirty bit,
+  calls sub_814794C then rfu_NI_setSendData(cmd=0x43, buf=byte_2010290, size=0x40), and on success stores
+  the lowest set bit index of dword_2010CC0->field+2 into byte_2010328/byte_200AF84, returning 1 if a
+  send was queued.
+interface: () -> r0 = 1 if a send was queued this call, 0 otherwise; no flags used
+details: Keeps state in byte_201028C (bit 0x80 = disabled, bit 0x1 = connected, bit 0x2 = done, bit 0x4
+  = dirty) and bails out early if bit 0x80 or bit 0x2 is set or the struct at dword_2010CC0 has a nonzero
+  field +3. When the global value at eS200BC50+8 equals 0x22 it sets flag 0x45. It diffs byte_201033C
+  against byte_2010280 (last vs current value), setting the dirty bit (plus bit 0x1 from dword_2010CC0->field+2)
+  on change, then calls sub_814794C and rfu_NI_setSendData with command byte 0x43, buffer byte_2010290
+  and size 0x40. On success it scans dword_2010CC0->field+2 bits 0..3 for the first set bit, stores that
+  index into byte_2010328 and byte_200AF84, and marks state bit 0x2.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl rfu_NI_setSendData with r1=0x43, r2=byte_2010290, r3=0x40 (loc_8147928 area) shows a queued
+    64-byte wireless send; ldrh from eS200BC50+8 compared to 0x22 and flag 0x45 written to byte_201028C
+    ties it to a specific game/scene state; byte_201033C vs byte_2010280 comparison followed by setting
+    bit 0x4 is a change-detection/dirty-flag pattern; loop over dword_2010CC0->field+2 bits 0..3 storing
+    the first set index into byte_2010328/byte_200AF84 selects a connected peer slot; called 6 times from
+    sub_81475D4, consistent with a polled per-frame link-state updater
+  refs:
+  - bn6f/asm/libs.s:7697
+  - 0x081475D4 sub_81475D4
+  - 0x08147748 sub_81475D4
+  - 0x0814775C sub_81475D4
+  - 0x0814AB50 rfu_NI_setSendData
+  - 0x0814794C sub_814794C
+  reproduce: python3 tools/asmcat.py 0x08147834
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary, data flow, and rfu_NI_setSendData(0x43, byte_2010290, 0x40) match the asm (lines around
+    0x081478CC–0x081478EC). However, byte_200AF80 is loaded into r8 as the base, and the stored index
+    goes to byte_200AF84 (r8+4), not byte_200AF84 as a separate symbol — minor but the proposed name ''rfu_syncWirelessState''
+    is fine and accurately captures the poll-and-queue behavior. The bit assignments are slightly off:
+    bit 0x2 is checked at line 0x08147854, bit 0x80 is checked next, and bit 0x4 is set on dirty, cleared
+    via 0xfb, and bit 0x2 is set (not ''done'') after success. The +3 field check on dword_2010CC0 and
+    the +2 field scans are correct.; run wf investigate investigate-20261019-030611; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of command byte 0x43 and the 64-byte payload at byte_2010290
+- what game state 0x22 at eS200BC50+8 corresponds to (which wireless activity)
+- what dword_2010CC0 struct represents (link manager? peer table)
+- 'The summary, data flow, and rfu_NI_setSendData(0x43, byte_2010290, 0x40) match the asm (lines around
+  0x081478CC–0x081478EC). However, byte_200AF80 is loaded into r8 as the base, and the stored index goes
+  to byte_200AF84 (r8+4), not byte_200AF84 as a separate symbol — minor but the proposed name ''rfu_syncWirelessState''
+  is fine and accurately captures the poll-and-queue behavior. The bit assignments are slightly off: bit
+  0x2 is checked at line 0x08147854, bit 0x80 is checked next, and bit 0x4 is set on dirty, cleared via
+  0xfb, and bit 0x2 is set (not ''done'') after success. The +3 field check on dword_2010CC0 and the +2
+  field scans are correct.'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8147834 -> rfu_syncWirelessState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8147834

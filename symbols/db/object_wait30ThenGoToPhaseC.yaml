@@ -1,0 +1,52 @@
+name: object_wait30ThenGoToPhaseC
+address: '0x080BEB28'
+kind: function
+status: probable
+summary: Battle object phase handler that waits 30 frames on first entry (initializes timer to 0x1E and
+  PhaseInitialized to 4), then writes 0xC into oBattleObject_CurPhaseAndPhaseInitialized to transition
+  to phase 0xC.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized, oBattleObject_Timer, oBattleObject_CurPhaseAndPhaseInitialized
+details: On first run of the phase (PhaseInitialized == 0) it loads the timer with 30 (0x1E) and marks
+  the phase initialized with value 4. Each frame it decrements Timer; while the result is still positive
+  it returns. When the countdown reaches zero it writes 0xC to CurPhaseAndPhaseInitialized, which both
+  selects the next phase (0xC) and clears the initialized flag byte portion of that combined field, so
+  the next phase handler re-runs its own first-time setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x1e; strh [r5,#oBattleObject_Timer] seeds a 30-frame wait only when PhaseInitialized
+    is zero; ldrh/sub #1/strh on Timer with bgt keeps the object in this phase until the count hits zero;
+    mov r0,#0xc; strh [r5,#oBattleObject_CurPhaseAndPhaseInitialized] transitions to phase 0xC with no
+    initialized flag set; mirrors the standard BN6 battle-object phase pattern: init-once block, per-frame
+    timer, phase-field write at loc_80BEB38'
+  refs:
+  - bn6f/asm/asm31.s:14685
+  reproduce: python3 tools/asmcat.py 0x080BEB28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The countdown-to-0xC behavior and PhaseInitialized=4 init match the asm (timer=0x1E, sub #1, bgt
+    return, then mov r0,#0xc / strh to CurPhaseAndPhaseInitialized). However, the detail that the 0xC
+    write ''clears the initialized flag byte portion'' is suspect: strh writes a halfword of 0x0C, which
+    sets bits 2-3 rather than clearing. The name is also a bit terse.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers known, so which enemy/scene object uses this 30-frame wait and what phase 0xC does in that
+  object's state machine is unidentified; the semantic meaning of the 4 written to PhaseInitialized is
+  also unconfirmed
+- 'The countdown-to-0xC behavior and PhaseInitialized=4 init match the asm (timer=0x1E, sub #1, bgt return,
+  then mov r0,#0xc / strh to CurPhaseAndPhaseInitialized). However, the detail that the 0xC write ''clears
+  the initialized flag byte portion'' is suspect: strh writes a halfword of 0x0C, which sets bits 2-3
+  rather than clearing. The name is also a bit terse.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEB28 -> object_wait30ThenGoToPhaseC
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEB28

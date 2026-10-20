@@ -1,0 +1,54 @@
+name: objectDispatch
+address: '0x0811D1B8'
+kind: function
+status: probable
+summary: Tail-calls one of four Thumb handlers (sub_811D1DC, sub_811D20C, sub_811D248, sub_811D2C0) selected
+  by the byte at [r5,#9].
+interface: (r5 = object/state struct, r1..r3 passthrough) -> tail-calls handler, returns its result; no
+  return value consumed at this level
+details: Loads the byte at [r5,#9], uses it as an index into a 4-entry jump table at off_811D1CC, and
+  invokes the selected handler with mov lr,pc / bx r0 so the handler returns straight into pop {pc}. This
+  is the classic GBA 'call function pointer then return' idiom, so r0-r3 and flags pass through unchanged
+  to the handler. The table holds four Thumb pointers (sub_811D1DC, sub_811D20C, sub_811D248, sub_811D2C0),
+  so r5 is some small struct whose byte at offset 9 enumerates up to four modes/phases. Without callers
+  or handler summaries it is impossible to tell which subsystem owns r5 (object, AI, NPC script, etc.)
+  or what the four states mean.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#9]; ldr r0,[r0,r1] indexes the table with a struct byte, the standard state-select
+    pattern; off_811D1CC holds exactly four handler pointers, bounding the state value at 0-3; mov lr,pc;
+    bx r0 followed by pop {pc} makes this a pure dispatch trampoline with no logic of its own
+  refs:
+  - bn6f/asm/asm32.s:31386
+  reproduce: python3 tools/asmcat.py 0x0811D1B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary of a 4-entry Thumb dispatch on [r5,#9] matches the code: ldrb r1,[r5,#9]; ldr r0,[r0,r1]
+    indexes off_811D1CC and bx r0 invokes the +1 Thumb handler, with pop {pc} as the return idiom. The
+    only quibble is the proposed name ''dispatchR5State'' — ''R5'' leaks an implementation register into
+    the public name and ''State'' is a guess. A better, framework-style name is ''objectTick'' or similar;
+    given uncertainty a safer generic name is better.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which subsystem's struct uses a state byte at offset 9 (no callers known)
+- what the four handlers sub_811D1DC/811D20C/811D248/811D2C0 do, to name the states
+- whether other registers besides r5 are expected as handler arguments
+- 'The summary of a 4-entry Thumb dispatch on [r5,#9] matches the code: ldrb r1,[r5,#9]; ldr r0,[r0,r1]
+  indexes off_811D1CC and bx r0 invokes the +1 Thumb handler, with pop {pc} as the return idiom. The only
+  quibble is the proposed name ''dispatchR5State'' — ''R5'' leaks an implementation register into the
+  public name and ''State'' is a guess. A better, framework-style name is ''objectTick'' or similar; given
+  uncertainty a safer generic name is better.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811D1B8 -> objectDispatch
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D1B8

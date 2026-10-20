@@ -1,0 +1,59 @@
+name: battle_objPhase4Anim6Wait15
+address: '0x080BA81C'
+kind: function
+status: probable
+summary: On phase entry, sets CurPhase=4, CurAnim=6, calls sub_80E71A0(1) storing result in oBattleObject_ExtraVars,
+  and sets Timer=15; then each call decrements Timer and, when it reaches 0, sets CurAction=0xC and clears
+  CurPhaseAndPhaseInitialized.
+interface: (r5 = battle object ptr (implied), r4 = 1 passed to callee) -> r0 = sub_80E71A0 result stored
+  to oBattleObject_ExtraVars; updates CurPhase/CurAnim/Timer/CurAction fields.
+details: Reads oBattleObject_CurPhase from the object in r5. On phase 0 (state entry) it writes phase=4,
+  sets oBattleObject_CurAnim=6, calls sub_80E71A0 with r4=1 and stores its return value in oBattleObject_ExtraVars,
+  and sets oBattleObject_Timer=0xF. Otherwise it decrements Timer each call; while Timer>0 the state persists.
+  When the timer expires it writes CurAction=0xC and clears CurPhaseAndPhaseInitialized, handing control
+  back to the action dispatcher. Behavior is a self-contained wait/animation state of the battle-object
+  state machine; the meaning of anim 6, the ExtraVars value, and action 0xC are unknown from this function
+  alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'entry branch tests ldrb [r5,#oBattleObject_CurPhase] and writes phase=4/anim=6/timer=0xF on
+    the zero path; bl sub_80E71A0 with r4=1, result stored to [r5,#oBattleObject_ExtraVars]; timer decrement
+    loop (sub #1, bgt) keeps the object in the state for 15 frames; on expiry writes CurAction=0xC and
+    zeroes CurPhaseAndPhaseInitialized to end the state'
+  refs:
+  - bn6f/asm/asm31.s:5328
+  - 0x080E71A0 sub_80E71A0
+  reproduce: python3 tools/asmcat.py 0x080BA81C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code does set phase=4, anim=6, call sub_80E71A0 with r4=1, set Timer=0xF, decrement Timer each
+    frame, and on expiry write CurAction=0xC and clear CurPhaseAndPhaseInitialized — all matching the
+    proposal. However, it sets Timer with strh (0xF fits), and on entry also clears the initialized flag
+    implicitly via the state machine, but the summary''s mention of ''returns to action 0xC'' is correct.
+    The name ''battle_objPhase04Anim6WaitState'' is reasonable but the phase variable written is the ''curPhase''
+    only (top byte of PresPhase, init bit stays set), so a clearer name emphasizing just the timer-wait
+    aspect is preferable.; run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so which object type and which action 0xC this state belongs to is unknown
+- sub_80E71A0's return value semantics (stored to ExtraVars) are unexamined
+- what animation 6 depicts and why the fixed 15-frame wait matters in gameplay
+- The code does set phase=4, anim=6, call sub_80E71A0 with r4=1, set Timer=0xF, decrement Timer each frame,
+  and on expiry write CurAction=0xC and clear CurPhaseAndPhaseInitialized — all matching the proposal.
+  However, it sets Timer with strh (0xF fits), and on entry also clears the initialized flag implicitly
+  via the state machine, but the summary's mention of 'returns to action 0xC' is correct. The name 'battle_objPhase04Anim6WaitState'
+  is reasonable but the phase variable written is the 'curPhase' only (top byte of PresPhase, init bit
+  stays set), so a clearer name emphasizing just the timer-wait aspect is preferable.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BA81C -> battle_objPhase4Anim6Wait15
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA81C

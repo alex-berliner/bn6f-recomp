@@ -1,0 +1,52 @@
+name: battle_objectPhaseWaitThenAdvance
+address: '0x080CC3DC'
+kind: function
+status: probable
+summary: 'Battle object phase step: first call stores 4 to PhaseInitialized, 4 to CurAnim and 0xE (14)
+  to the 16-bit Timer; subsequent calls decrement Timer and on underflow store 4 into CurPhaseAndPhaseInitialized
+  to hand off to the next phase.'
+interface: (r5 = battle object; no register args) -> r0 = clobbered; writes object fields, no return value
+details: 'Standard battle phase-state step for one object in r5. If PhaseInitialized is clear it initializes
+  the phase: stores 4 to PhaseInitialized, 4 to CurAnim and 0xE (14) to the 16-bit Timer, then returns.
+  On subsequent frames it decrements Timer and returns while it is still >=0; the frame Timer underflows
+  (0-1 sets negative flag) it stores 4 into CurPhaseAndPhaseInitialized, which both records the phase
+  and marks it uninitialized, handing control to the next phase handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / strb #4 gates one-time phase setup; strb #4,[r5,#oBattleObject_CurAnim]
+    and strh #0xe,[r5,#oBattleObject_Timer] set anim 4 for 14 frames; sub r0,#1 / bge locret loops the
+    timer down one frame per call; strh #4,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] transitions
+    to phase 4 when timer underflows'
+  refs:
+  - bn6f/asm/asm31.s:44866
+  reproduce: python3 tools/asmcat.py 0x080CC3DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: on entry with PhaseInitialized clear it sets PhaseInitialized=4,
+    CurAnim=4, Timer=0xE (14), then decrements Timer and on underflow writes 4 to CurPhaseAndPhaseInitialized.
+    However the proposed name ''battle_objectPhaseWaitAnim4'' uses ''Anim4'' as if CurAnim=4 were the
+    focus, while the field name encodes the phase transition (4) and the anim is incidental; a name reflecting
+    ''wait 14 frames then advance to phase 4'' fits better.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object/entity and which phase number this handler serves, since no callers or the phase
+  dispatch table are known
+- 'The summary is largely correct: on entry with PhaseInitialized clear it sets PhaseInitialized=4, CurAnim=4,
+  Timer=0xE (14), then decrements Timer and on underflow writes 4 to CurPhaseAndPhaseInitialized. However
+  the proposed name ''battle_objectPhaseWaitAnim4'' uses ''Anim4'' as if CurAnim=4 were the focus, while
+  the field name encodes the phase transition (4) and the anim is incidental; a name reflecting ''wait
+  14 frames then advance to phase 4'' fits better.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CC3DC -> battle_objectPhaseWaitThenAdvance
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC3DC

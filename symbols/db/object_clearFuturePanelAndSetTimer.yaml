@@ -1,0 +1,53 @@
+name: object_clearFuturePanelAndSetTimer
+address: '0x080E9CA8'
+kind: function
+status: probable
+summary: Battle-object state handler that clears oBattleObject_FuturePanelX/Y to 0, reloads the Timer
+  halfword from oBattleObject_Param1, and transitions the object to CUR_STATE_UPDATE.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = 0; flags from strb/ldrb/str
+details: This is a per-object state routine (r5 holds the battle object, r0 is scratch). It stores 0 into
+  oBattleObject_FuturePanelX and oBattleObject_FuturePanelY, cancelling any queued panel-move target,
+  then copies the byte at oBattleObject_Param1 into oBattleObject_Timer as a new delay/counter. Finally
+  it writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object's
+  next dispatch runs its update handler. The pattern (clear movement target + set timer + advance state)
+  fits a transition out of a move/spawn state, but no caller is known to confirm which state it belongs
+  to.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0,[r5,#oBattleObject_FuturePanelX]/[Y] with r0=0 clears the future-panel target fields;
+    ldrb r0,[r5,#oBattleObject_Param1]; strh r0,[r5,#oBattleObject_Timer] seeds the timer from Param1;
+    mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] switches
+    the object's state; r5-only addressing with no r0/r1 use matches the project's battle-object state-handler
+    calling convention
+  refs:
+  - bn6f/asm/asm31.s:109946
+  reproduce: python3 tools/asmcat.py 0x080E9CA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does zero FuturePanelX/Y, reload Timer from Param1, and set state to CUR_STATE_UPDATE,
+    matching the description exactly. However, the summary says ''write CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized''
+    while strb/strb writes only 1 byte; at 0x080E9CB6 it is a ''str'' (4-byte) into that field, so the
+    str detail in interface is wrong. Also Timer is set with strh (halfword), not strb.; run wf investigate
+    investigate-20261019-033611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so which object type/state dispatches this handler is unknown
+- Whether FuturePanelX/Y=0 means 'no target' or panel (0,0) needs a caller or constant check
+- What Param1 represents for this object type (delay frames vs. other counter)
+- The code does zero FuturePanelX/Y, reload Timer from Param1, and set state to CUR_STATE_UPDATE, matching
+  the description exactly. However, the summary says 'write CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized'
+  while strb/strb writes only 1 byte; at 0x080E9CB6 it is a 'str' (4-byte) into that field, so the str
+  detail in interface is wrong. Also Timer is set with strh (halfword), not strb.
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E9CA8 -> object_clearFuturePanelAndSetTimer
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9CA8

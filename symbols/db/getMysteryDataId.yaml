@@ -1,0 +1,54 @@
+name: getMysteryDataId
+address: '0x0809F9BE'
+kind: function
+status: probable
+summary: Returns the current mystery-data ID stored at byte_2000210+8, used by chatbox scripts and mysteryData_lookupForNavi.
+interface: () -> r7 = word at byte_2000210+8; does not touch flags or other registers
+details: 'A two-instruction getter: loads the pointer at off_809F9C4 (=byte_2000210), then returns the
+  word at offset 8 in r7, which callers test with tst and store into the chat/work struct at +0x4c. In
+  npc_conditionalChat the value is placed in the chatbox struct''s 0x4c field and passed as the argument
+  to chat script 7 (the ''takes an argument'' script); in sub_8099E3C it is likewise stored at +0x4c and
+  then fed into mysteryData_lookupForNavi_809FC96, whose result is stored at +0x54/+0x58. This is consistent
+  with the field being the ID of the mystery data the player just opened/inspected, which drives the reward
+  text script and the navi lookup. byte_2000210 is presumably a mystery-data work/state area populated
+  elsewhere when a mystery data is opened.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_809F9BE: ldr r7,=byte_2000210; ldr r7,[r7,#0x8] — pure getter of word at +8; npc_conditionalChat:
+    tst r7,r7 branches, then str r0,[r4,#0x4c] before chatbox_runScript201C100 with script 7; sub_8099E3C:
+    str r0,[r6,#0x4c] then bl mysteryData_lookupForNavi_809FC96 — value pairs with mystery-data lookup;
+    byte_2000210 is the only data touched; the function has no side effects'
+  refs:
+  - bn6f/asm/npc.s:3875
+  - 0x0812471C npc_conditionalChat
+  - 0x08099E3C sub_8099E3C
+  reproduce: python3 tools/asmcat.py 0x0809F9BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x0809F9BE does indeed load word at byte_2000210+8 into r7, and callers test it (tst
+    r7,r7) and use it as a chatbox arg. However, the function does NOT load a pointer first; it directly
+    ldrs r7 from [r7,#8] using the address as immediate, so the summary''s claim of ''loads the pointer
+    at off_809F9C4'' is wrong. The function is a simple getter for a word at byte_2000210+8, used as the
+    current mystery-data ID.; run wf investigate investigate-20261019-045129; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact contents/meaning of the byte_2000210 struct and who writes field +8
+- whether +8 is the mystery-data ID, its contents index, or a count
+- The code at 0x0809F9BE does indeed load word at byte_2000210+8 into r7, and callers test it (tst r7,r7)
+  and use it as a chatbox arg. However, the function does NOT load a pointer first; it directly ldrs r7
+  from [r7,#8] using the address as immediate, so the summary's claim of 'loads the pointer at off_809F9C4'
+  is wrong. The function is a simple getter for a word at byte_2000210+8, used as the current mystery-data
+  ID.
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809F9BE -> getMysteryDataId
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809F9BE

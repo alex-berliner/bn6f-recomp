@@ -1,0 +1,63 @@
+name: battle_emotionUpdate
+address: '0x0811CE34'
+kind: function
+status: probable
+summary: 'Periodic battle task that runs every 16 frames: in mode 1 it sets a state byte to 0x1C and records
+  an emotion change via battle_recordEmotionChange, then clears field +0xE; otherwise it sets the byte
+  to 0xC and calls sub_811D6F4.'
+interface: (r5 = battle object/state struct, not passed in r0-r3) -> r0 = 0 (clobbered by calls); no meaningful
+  return value, flags from the counter test
+details: 'r5 is a task/state struct whose field +0xC is a frame countdown decremented each call; when
+  it reaches 0 it is reloaded with 0x10 (16 frames), so the body runs every 16 frames. The struct''s field
+  +4 selects a mode: in mode 1, field +9 is set to 0x1C, battle_recordEmotionChange is invoked to append
+  an EmotionData entry (type 0x3A, byte 9 = 0x1C) to the 0x02008450 emotion table, the timer is reloaded
+  to 0x10 again, and field +0xE is cleared. In the other mode, field +9 is set to 0xC and sub_811D6F4
+  is called instead, with no emotion entry. Field +9 looks like an animation/frame value, so the function
+  alternates a periodic visual state and logs it as an emotion change only in mode 1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xc]; sub r0,#1; strb; bne locret — field +0xC is a repeating 16-frame countdown
+    (reloaded to 0x10 on expiry); cmp r0,#1 / beq loc_811CE52 — struct field +4 selects between two update
+    paths; mode-1 path: mov r0,#0x1c; strb r0,[r5,#9]; bl battle_recordEmotionChange — logs an EmotionData
+    entry with byte 9 = 0x1C; other path: mov r0,#0xc; strb r0,[r5,#9]; bl sub_811D6F4 — sets a different
+    value in the same field and calls the unknown helper; strb r0,[r5,#0xe] with r0=0 — mode-1 path also
+    clears a flag/counter at +0xE'
+  refs:
+  - bn6f/asm/asm32.s:30839
+  - 0x0811DBD0 battle_recordEmotionChange
+  - 0x0811D6F4 sub_811D6F4
+  reproduce: python3 tools/asmcat.py 0x0811CE34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the 16-frame countdown (field +0xC reloaded with 0x10), the mode
+    check on field +4, and the two paths (set field+9 to 0x1C and call battle_recordEmotionChange in mode
+    1, vs set to 0xC and call sub_811D6F4 otherwise). However, battle_recordEmotionChange''s listed signature
+    says byte 9 = 0xC, but in mode 1 the code sets field+9 = 0x1C before calling, so the caller passes
+    0x1C, not the default 0xC; the proposal conflates the two. Better to drop ''emotionIcon'' since this
+    is an emotion-update task rather than icon rendering.; run wf investigate investigate-20261019-033611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so the owning task/actor and what the state struct at r5 represents is unconfirmed
+- sub_811D6F4 is undocumented, so the non-emotion path's exact effect is unknown
+- What field +9 and +0xE mean in the struct (animation id vs counter) and which on-screen element blinks
+  every 16 frames
+- The proposal correctly identifies the 16-frame countdown (field +0xC reloaded with 0x10), the mode check
+  on field +4, and the two paths (set field+9 to 0x1C and call battle_recordEmotionChange in mode 1, vs
+  set to 0xC and call sub_811D6F4 otherwise). However, battle_recordEmotionChange's listed signature says
+  byte 9 = 0xC, but in mode 1 the code sets field+9 = 0x1C before calling, so the caller passes 0x1C,
+  not the default 0xC; the proposal conflates the two. Better to drop 'emotionIcon' since this is an emotion-update
+  task rather than icon rendering.
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811CE34 -> battle_emotionUpdate
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CE34

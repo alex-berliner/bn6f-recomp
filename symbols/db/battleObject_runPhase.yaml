@@ -1,0 +1,59 @@
+name: battleObject_runPhase
+address: '0x080C3558'
+kind: function
+status: probable
+summary: Tail-calls a phase handler from a 6-entry Thumb dispatch table indexed by [r5+oBattleObject_CurPhase];
+  returns the handler's result in r0.
+interface: (r5 = battle object pointer, r0 unused on entry) -> calls handler for [r5+oBattleObject_CurPhase];
+  returns handler's result in r0
+details: Reads the phase byte at [r5+oBattleObject_CurPhase], indexes off_80C356C (a table of 6 Thumb
+  handler pointers, phases 0-5), sets lr to return through itself and tail-calls the handler with bx r1.
+  Uses the battle-engine 'this in r5' convention, so the object pointer is not passed in r0. Behaves as
+  the per-frame phase stepper of a single battle object's state machine. The handlers (sub_80C3584, sub_80C3598,
+  sub_80C35CE, sub_80C3630, sub_80C364A, sub_80C3678) are all undocumented here, so the phase semantics
+  are unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0] indexes the table by phase (asm at 0x080C355C-0x080C3564);
+    off_80C356C holds exactly 6 Thumb code pointers, one per phase value 0-5; mov lr,pc; bx r1 makes the
+    callee return to pop {pc}, i.e. a dispatched call, not a jump; sole caller sub_80C3550 is a bare push/bl/pop
+    wrapper, giving no extra argument context
+  refs:
+  - bn6f/asm/asm31.s:25309
+  - 0x080C3550 sub_80C3550
+  reproduce: python3 tools/asmcat.py 0x080C3558
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r5 holds the battle object, ldrb loads oBattleObject_CurPhase, the table at off_80C356C
+    has 6 Thumb entries (+1 set), and the function tail-calls via bx r1. However, naming should use the
+    ''e'' prefix for engine/element objects, and the function is a thin dispatcher rather than a phase
+    handler itself. ''battleObject_battleObjectPhaseHandler'' is redundant; ''e_battleObject_phaseHandler''
+    is unclear. ''battleObject_runPhaseHandler'' is fine. Summary says 6 entries (correct). The caller''s
+    `bl sub_80C3558; pop {pc}` confirms it''s a tail-jump trampoline, but calling it a ''phase stepper''
+    is overreaching since semantics are unknown.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which battle object this state machine belongs to (needs identification of the handlers or the enclosing
+  object's update path)
+- what each of the 6 phases does; the handlers sub_80C3584-sub_80C3678 are all unnamed
+- 'The code matches: r5 holds the battle object, ldrb loads oBattleObject_CurPhase, the table at off_80C356C
+  has 6 Thumb entries (+1 set), and the function tail-calls via bx r1. However, naming should use the
+  ''e'' prefix for engine/element objects, and the function is a thin dispatcher rather than a phase handler
+  itself. ''battleObject_battleObjectPhaseHandler'' is redundant; ''e_battleObject_phaseHandler'' is unclear.
+  ''battleObject_runPhaseHandler'' is fine. Summary says 6 entries (correct). The caller''s `bl sub_80C3558;
+  pop {pc}` confirms it''s a tail-jump trampoline, but calling it a ''phase stepper'' is overreaching
+  since semantics are unknown.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C3558 -> battleObject_runPhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3558

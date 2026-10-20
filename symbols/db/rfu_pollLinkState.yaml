@@ -1,0 +1,62 @@
+name: rfu_pollLinkState
+address: '0x0803C90C'
+kind: function
+status: probable
+summary: 'Polls the RFU link: if a local flag byte (byte_2010280) is set and sub_8146938 reports nonzero,
+  aborts with r0=2; once the RFU link (bit 0x04) is up, sends request 0x22 via sub_813D9A0 and advances
+  caller''s state byte (r7+3) to 8. Otherwise returns r0=r1=0.'
+interface: () -> r0 = result code (0 = done/continue, 2 = abort), r1 = 0; uses r7 = caller's state struct
+  (byte at +3 set to 8)
+details: Reads a global flag byte (byte_2010280); if it is set, it calls sub_8146938 and returns r0=2
+  if that reports nonzero, otherwise falls through. It then tests RFU status bit 0x04 via rfu_testStatusFlags;
+  when the link is up, it calls sub_813D9A0(0x22) (likely a wireless request/command code) and stores
+  8 into byte +3 of the state structure addressed by r7, which is set up by each of the three tiny caller
+  wrappers. All fall-through paths return r0=0, r1=0. The unused pool entries (byte_200AF80, unk_200FE70)
+  suggest shared literal-pool layout with neighbouring functions. This fits the wireless connection/trade
+  setup flow where each state-step function reports progress codes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'beq loc_803C91E / mov r0,#2 after sub_8146938: abort path returning 2; mov r0,#4; bl rfu_testStatusFlags:
+    tests RFU status flag 0x04 (link established); mov r0,#0x22; bl sub_813D9A0 then strb r0(8),[r7,#3]:
+    issues request 0x22 and sets state 8; callers 0x0803C888/8B4/8E8 are thin wrappers that only differ
+    in the r7 structure, i.e. per-context state machines; both exits set r1=0, consistent with a status/error-code
+    return pair'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7923
+  - 0x0803C888 sub_803C888
+  - 0x0803C8B4 sub_803C8B4
+  - 0x0803C8E8 sub_803C8E8
+  - 0x0803CB18 rfu_testStatusFlags
+  - 0x0813D9A0 sub_813D9A0
+  - 0x08146938 sub_8146938
+  reproduce: python3 tools/asmcat.py 0x0803C90C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms the RFU status bit 0x04 check, the call to sub_813D9A0(0x22), and storing 8 at
+    [r7,#3]. However, the summary''s phrasing ''returns a nonzero result while a local condition holds''
+    is slightly off: r0=2 is returned only when byte_2010280 is set AND sub_8146938 returns nonzero, otherwise
+    r0=0. The ''state struct at r7+3'' detail is correct. The name fits well enough.; run wf investigate
+    investigate-20261019-033611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of request code 0x22 in sub_813D9A0 (disconnect? send data?)
+- Which RFU status flag 0x04 represents (parent vs child established?)
+- Meaning of state value 8 and the layout of the r7 state struct; what byte_2010280 and sub_8146938 actually
+  gate
+- 'The code confirms the RFU status bit 0x04 check, the call to sub_813D9A0(0x22), and storing 8 at [r7,#3].
+  However, the summary''s phrasing ''returns a nonzero result while a local condition holds'' is slightly
+  off: r0=2 is returned only when byte_2010280 is set AND sub_8146938 returns nonzero, otherwise r0=0.
+  The ''state struct at r7+3'' detail is correct. The name fits well enough.'
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C90C -> rfu_pollLinkState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C90C

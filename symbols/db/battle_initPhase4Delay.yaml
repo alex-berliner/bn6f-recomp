@@ -1,0 +1,59 @@
+name: battle_initPhase4Delay
+address: '0x080BD134'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits one tick (Timer=0 on first call), then when the timer
+  expires sets Timer2=10 and advances the object to phase 4.
+interface: (r5 = battle object pointer, implied this; no register args) -> r0 = scratch only; sets fields
+  on the object, no return value
+details: Reads oBattleObject_PhaseInitialized; if zero (phase not yet started) it clears oBattleObject_Timer
+  to 0 and stores 4 into oBattleObject_PhaseInitialized to mark initialization done. Every call it decrements
+  oBattleObject_Timer and returns early while it is still positive. When the counter reaches 0 it writes
+  10 into oBattleObject_Timer2 and stores 4 into oBattleObject_CurPhaseAndPhaseInitialized, i.e. it hands
+  the object over to phase 4 which apparently starts with its own 10-frame timer. This is the standard
+  one-shot delay phase pattern shared by battle objects; the phase-4 target and the meaning of Timer2=10
+  depend on which object uses it, so no callers could confirm the concrete in-game behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized with 'mov r0,#4; strb' shows a first-run init that
+    stamps phase 4 as initialized; ldrh/sub/strh on oBattleObject_Timer with 'bgt locret' shows a per-frame
+    countdown that exits until the timer expires; 'mov r0,#0xa; strh [r5,#oBattleObject_Timer2]' then
+    'mov r0,#4; strh [r5,#oBattleObject_CurPhaseAndPhaseInitialized]' shows the transition to phase 4
+    with a fresh 10-frame Timer2; no known callers and no callees, so the object type and the meaning
+    of phase 4 here are unconfirmed
+  refs:
+  - bn6f/asm/asm31.s:11113
+  reproduce: python3 tools/asmcat.py 0x080BD134
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: it reads PhaseInitialized, on 0 resets Timer=0 and marks initialized=4, decrements
+    Timer, and on expiry writes Timer2=0xa and advances CurPhaseAndPhaseInitialized=4. However the proposal
+    misreads ''strh ... oBattleObject_PhaseInitialized'' (it''s halfword, not byte) and the initial marker
+    is 4 written as a halfword, not a byte. Functionally identical to many sister routines like sub_80BD0E4/sub_80BD0FC.
+    The name ''battle_waitPhaseTick'' is acceptable but doesn''t convey that it specifically sets up phase
+    4 with Timer2=10; ''battle_initPhase4Delay'' is more descriptive of the role.; run wf investigate
+    investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle object(s) use this handler and what their phase 4 does
+- whether Timer2=10 is consumed by the phase-4 handler as its own delay
+- what the object's Timer value should have been before this phase (it is forced to 0 here)
+- 'The behavior matches: it reads PhaseInitialized, on 0 resets Timer=0 and marks initialized=4, decrements
+  Timer, and on expiry writes Timer2=0xa and advances CurPhaseAndPhaseInitialized=4. However the proposal
+  misreads ''strh ... oBattleObject_PhaseInitialized'' (it''s halfword, not byte) and the initial marker
+  is 4 written as a halfword, not a byte. Functionally identical to many sister routines like sub_80BD0E4/sub_80BD0FC.
+  The name ''battle_waitPhaseTick'' is acceptable but doesn''t convey that it specifically sets up phase
+  4 with Timer2=10; ''battle_initPhase4Delay'' is more descriptive of the role.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BD134 -> battle_initPhase4Delay
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD134

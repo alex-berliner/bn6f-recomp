@@ -1,0 +1,54 @@
+name: rfu_stepLinkState
+address: '0x0803C86A'
+kind: function
+status: probable
+summary: Dispatches the RFU link state at [r7,#3] through a 3-entry Thumb jump table (off_803C87C) to
+  sub_803C888, rfu_updateLinkManager, or sub_803C8E8, returning the handler's r0 unchanged via pop {pc}.
+interface: (r0 = state obj * S200BC50 (r7), r1 = scratch) -> r0 = whatever the selected state handler
+  returns; flags clobbered
+details: 'Reads the byte at [r7,#3] of a struct held in r7 (project-annotated as S200BC50) and indexes
+  off_803C87C, a 3-entry Thumb jump table: state 0 -> sub_803C888, state 1 -> rfu_updateLinkManager, state
+  2 -> sub_803C8E8. It then calls the selected handler with lr manually set to pc+4 (mov lr, pc; bx r0),
+  which returns straight back to the dispatcher''s caller via pop {pc}, so the handler''s return value
+  in r0 passes through unchanged. The struct''s +3 byte thus acts as the current link state and the dispatcher
+  as the per-frame/per-tick state step. Note r1 is preloaded with the table address before being replaced
+  by the byte read, so no arguments beyond the object are set up.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#3]; ldr r0,[r1,r0]: state byte at struct+3 selects a handler from the table; off_803C87C
+    entries: sub_803C888+1, rfu_updateLinkManager+1, sub_803C8E8+1 — all wireless/rfu handlers; mov lr,pc;
+    bx r0; pop {pc}: tail-call pattern passing r0 through to the dispatcher''s caller; annotation ''(self:
+    * S200BC50 $r7) -> (u32?, bool)'' matches a state-object step returning a status/bool'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7888
+  reproduce: python3 tools/asmcat.py 0x0803C86A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the dispatch description: ldrb r0,[r7,#3] indexes off_803C87C (3 entries: sub_803C888,
+    rfu_updateLinkManager, sub_803C8E8), mov lr,pc / bx r0 returns to the pop {pc} so the handler''s r0
+    passes through. However, the proposal''s interface says ''r1 = scratch'' but r1 is just loaded with
+    the table address (off_803C87C) for indexing and is otherwise unused; it is not a scratch argument.
+    Minor wording fix only.; run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so when this runs per frame and what the return value means is unconfirmed
+- Field layout of S200BC50 besides +3 (state selector) is unknown; sub_803C888 and sub_803C8E8 state handlers
+  are undocumented
+- 'The code matches the dispatch description: ldrb r0,[r7,#3] indexes off_803C87C (3 entries: sub_803C888,
+  rfu_updateLinkManager, sub_803C8E8), mov lr,pc / bx r0 returns to the pop {pc} so the handler''s r0
+  passes through. However, the proposal''s interface says ''r1 = scratch'' but r1 is just loaded with
+  the table address (off_803C87C) for indexing and is otherwise unused; it is not a scratch argument.
+  Minor wording fix only.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C86A -> rfu_stepLinkState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C86A

@@ -1,0 +1,70 @@
+name: sprite_queueOamEntryFromTable
+address: '0x08132A9E'
+kind: function
+status: probable
+summary: Tail-calls sprite_queueOamEntry with a 16-bit attr2 loaded from a hardcoded tile/palette table
+  at 0x08132ABC indexed by (r0<<16)|r1, with r2 supplying the palette field and fixed args 2 and 7.
+interface: (r0:r1 = byte offset into table byte_8132ABC (r0<<16|r1), r2 = palette number) -> r0 = void;
+  calls sprite_queueOamEntry(table+offset, attr2 | palette<<12, 2, 7).
+details: The function forms a 32-bit offset from r0/r1, points it into the table at 0x8132ABC, and reads
+  an attr2-style halfword whose low bits are tile numbers in the 0x200+ range (palette field 0xB) plus
+  two special entries 0x1000 and 0x4000 (tile 0 in palettes 1 and 4). It ORs r2<<12 into the value (palette
+  select) and tail-calls sprite_queueOamEntry with fixed arguments 2 and 7. The table's tile pattern (even/odd
+  tile pairs per row, e.g. 0x02/0x04/0x06... then 0x01/0x03..., rows at 0x1x, 0x2x, 0x3x, 0x4x, 0x8x,
+  0x9x) looks like 2-tiles-wide (16x8) glyph cells, and the last ten irregular entries A0,A1,A2,A4,A3,A5,A6,A8,A7,A9
+  strongly resemble a 0-9 digit mapping with two swaps. This suggests the routine renders one character/number
+  of some on-screen numeric or text display. The exact source of the attr2 base value OR'd with r2<<12
+  is not fully visible in the provided listing (r5 is OR'd before any load is shown), so the read of the
+  table entry may be elided by the disassembly.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r4, byte_8132ABC + add r4, r4, r0: attr2 value is selected by index from the table at 0x8132ABC;
+    lsl r2, r2, #0xc; orr r5, r2: caller''s r2 is a palette number placed in attr2 bits 12-15; mov r2,
+    #2; mov r3, #7; bl sprite_queueOamEntryThunk_802FE28: fixed shape/priority-style args forwarded to
+    the OAM queue helper; table entries 0xB200..0xB2xx with even/odd pairs and rows 0x1x-0x9x match 2-tile-wide
+    glyph tiles in the 0x200 VRAM block; final table run A0,A1,A2,A4,A3,A5,A6,A8,A7,A9 is a 10-entry near-sequential
+    digit mapping (0-9 with two swaps)'
+  refs:
+  - bn6f/asm/asm36.s:5523
+  - 0x0811B098 sub_811B098
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x08132A9E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_8132A9E is only 8 instructions: it forms an offset, loads the base from 0x08132ABC
+    (which is 0), adds the offset, shifts r2 into the palette position, ORs into r5 (r5 holds the loaded
+    attr2 from the table), and tail-calls sprite_queueOamEntry with fixed args 2 and 7. The proposal''s
+    interface and table/tile analysis match the data block (e.g. first two entries 0x0000, 0x1000, then
+    0xB2XX even/odd pairs by row, last ten entries A0..A9 with two swaps). However the proposed name uses
+    ''Glyph'' which is not justified by the code (it could be digits or symbols), and the proposed interface
+    says ''r0:r1 = byte offset'' when really r0 is shifted left 16 and OR''d with r1 forming a 32-bit
+    table offset (likely an index, not a byte offset).; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact semantics of sprite_queueOamEntry's a1/a4 arguments (coordinates? packed attr0/attr1?) to confirm
+  what is being drawn and where
+- Why r5 is OR'd without a visible load in the listing — the instruction that fetches the table halfword
+  may be mistranscribed
+- Identity of the caller sub_811B098 and which on-screen counter/text uses this glyph table
+- 'The code at sub_8132A9E is only 8 instructions: it forms an offset, loads the base from 0x08132ABC
+  (which is 0), adds the offset, shifts r2 into the palette position, ORs into r5 (r5 holds the loaded
+  attr2 from the table), and tail-calls sprite_queueOamEntry with fixed args 2 and 7. The proposal''s
+  interface and table/tile analysis match the data block (e.g. first two entries 0x0000, 0x1000, then
+  0xB2XX even/odd pairs by row, last ten entries A0..A9 with two swaps). However the proposed name uses
+  ''Glyph'' which is not justified by the code (it could be digits or symbols), and the proposed interface
+  says ''r0:r1 = byte offset'' when really r0 is shifted left 16 and OR''d with r1 forming a 32-bit table
+  offset (likely an index, not a byte offset).'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8132A9E -> sprite_queueOamEntryFromTable
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132A9E

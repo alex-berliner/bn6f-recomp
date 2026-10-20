@@ -369,7 +369,7 @@ Next object_drawChipName(void) {
  *
  * Reads the object's current phase byte and jumps through the table at
  * off_800BDC4 to that phase's handler:
- *   phase 0 -> sub_800BDD0, phase 1 -> sub_800BE0C, phase 2 -> sub_800BE2C.
+ *   phase 0 -> sub_800BDD0, phase 1 -> battle_phaseWait30Frames, phase 2 -> sub_800BE2C.
  *
  * The jump is effectively a tail call: the original sets lr to the following
  * `pop {pc}`, which restores this function's caller, so the handler returns

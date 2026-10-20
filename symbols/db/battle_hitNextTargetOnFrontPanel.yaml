@@ -1,0 +1,69 @@
+name: battle_hitNextTargetOnFrontPanel
+address: '0x080DA3C0'
+kind: function
+status: probable
+summary: Resolves the front-panel cell from a battle object's PanelX/Y plus front direction and Param3-indexed
+  signed y-offset, bounds-checks against a 6x3 (x<7, y<3) board, and on each call invokes sub_80D94F2
+  with that panel, the object's Element, Param3, and DamageAndStaminaDamageCounterDisabler, writing one
+  result into the caller's r7+0x64 list; returns nonzero while more targets remain.
+interface: (r0 = oBattleObject_PanelX, r1 = oBattleObject_PanelY; reads r4 = object_getFrontDirection
+  result, r6 = signed y-offset from dword_80DA3E8[Param3], r7 = output list ptr, r5 = battle object) ->
+  r0 = nonzero while more targets to process
+details: The wrapper computes the target panel as (PanelX + frontDir, PanelY + dword_80DA3E8[Param3] signed
+  byte), where the table bytes are {-1,-1,0,1}; it returns 0 immediately if x+dir is outside 0..6 or y+dir
+  is outside 0..3, i.e. off the 6x3 battle board. Otherwise it calls sub_80D94F2 with the target panel
+  coords, the object's Element, Param3, DamageAndStaminaDamageCounterDisabler field, and r3 = object+0x64
+  as a 4-byte-per-entry output list. The caller loops the call, advancing the list pointer by 4 each iteration
+  until the function returns 0, so sub_80D94F2 appears to find/hit one object on that panel per call and
+  signal when none remain. After the loop the caller sets Timer=0x78, plays sound 0x9B(-1), and advances
+  the object's phase, consistent with a panel-targeting attack resolving.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'callee: add r0,r0,r4 / add r1,r1,r6 then cmp #6 / cmp #3 bounds-check against the 6x3 panel
+    grid, returning 0 when off-board; callee: loads oBattleObject_Element, Param3, DamageAndStaminaDamageCounterDisabler
+    and passes obj+0x64 as r3 to sub_80D94F2; caller 0x80DA2AE: loops bl sub_80DA3C0 with r7+=4 until
+    r0==0, filling a 4-byte-stride list at object+0x64; caller: dword_80DA3E8=0x100FF indexed by ldrsb
+    with Param3 gives y-offset {-1,-1,0,1}, combined with object_getFrontDirection; caller post-loop:
+    Timer=0x78, PlaySoundEffect(0x9B-0x100), phase=4 — attack-resolution behavior'
+  refs:
+  - bn6f/asm/asm31.s:75436
+  - 0x080DA290 sub_80DA290
+  - 0x080D94F2 sub_80D94F2
+  reproduce: python3 tools/asmcat.py 0x080DA3C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function bounds-checks (PanelX + frontDir) against 7 and (PanelY + signed y-offset) against
+    4, then calls sub_80D94F2 with the target panel coords and passes r7 (output list pointer), Param3,
+    Element, and DamageAndStaminaDamageCounterDisabler; loop semantics and post-loop actions match the
+    summary. However, the table at 0x80DA3E8 is a .word 0x100FF (low byte 0xFF=-1, next 0x00=0, next 0x01=1,
+    high byte 0x00=0), not ''-1,-1,0,1'' as claimed, and only the first byte is indexed by Param3 anyway.
+    Also the bounds check is `cmp r0,#6; bgt` and `cmp r1,#3; ble` (not `bge`), meaning valid y is <3,
+    i.e. row 0..2 not 0..3. A name without ''collect'' is more accurate since it''s a multi-target iterator.;
+    run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_80D94F2 is unknown — it presumably damages/filters objects on the target panel and fills the list
+  at r3; its body would confirm whether entries are object pointers or damage results
+- exact meaning of Param3 as direction index vs the getFrontDirection value
+- whether the loop re-runs are safe because sub_80D94F2 marks objects processed via the damage-counter
+  field
+- The function bounds-checks (PanelX + frontDir) against 7 and (PanelY + signed y-offset) against 4, then
+  calls sub_80D94F2 with the target panel coords and passes r7 (output list pointer), Param3, Element,
+  and DamageAndStaminaDamageCounterDisabler; loop semantics and post-loop actions match the summary. However,
+  the table at 0x80DA3E8 is a .word 0x100FF (low byte 0xFF=-1, next 0x00=0, next 0x01=1, high byte 0x00=0),
+  not '-1,-1,0,1' as claimed, and only the first byte is indexed by Param3 anyway. Also the bounds check
+  is `cmp r0,#6; bgt` and `cmp r1,#3; ble` (not `bge`), meaning valid y is <3, i.e. row 0..2 not 0..3.
+  A name without 'collect' is more accurate since it's a multi-target iterator.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DA3C0 -> battle_hitNextTargetOnFrontPanel
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA3C0

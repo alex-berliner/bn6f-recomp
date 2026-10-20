@@ -1,0 +1,60 @@
+name: battle_tickTimerThenAdvancePhase
+address: '0x0810E9B6'
+kind: function
+status: probable
+summary: 'Per-frame routine: decrements the object''s halfword Timer; when it underflows, sets CurAnim=5,
+  writes 9 to byte +0x10 of the struct at oBattleObject_ExtraVars+4, reloads Timer=0x20, and moves the
+  object to phase 0xC.'
+interface: (r5 = battle object, no args) -> r0 = final/new Timer value; updates object Timer, CurAnim,
+  ExtraVars+4 struct, and phase fields
+details: 'Decrements the object''s halfword Timer at oBattleObject_Timer and stores it back each call.
+  When the decremented value goes negative (bge fails), it fires a one-time transition: sets CurAnim (byte)
+  to 5, stores 9 into byte 0x10 of the structure pointed to by oBattleObject_ExtraVars+4, reloads Timer
+  with 0x20 (32 frames), and writes 0xC into the halfword oBattleObject_CurPhaseAndPhaseInitialized, moving
+  the object to phase 12. Uses a signed branch, so a Timer initialized to 0 fires immediately on the first
+  call. Presumably called every frame from this object''s phase-update dispatcher while it waits out the
+  delay.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on oBattleObject_Timer with sub #1 and bge locret: frame countdown that only acts
+    when the timer underflows; strb #5, [r5,#oBattleObject_CurAnim] and strh #0xC, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]:
+    on expiry the object''s animation and phase are both changed; strb #9, [r0,#0x10] via oBattleObject_ExtraVars+4:
+    also pokes a byte in a secondary per-object structure at the transition; Timer reloaded to 0x20 after
+    the transition, so the object waits another 32 frames in phase 0xC before whatever handler runs next'
+  refs:
+  - bn6f/asm/asm32.s:2030
+  reproduce: python3 tools/asmcat.py 0x0810E9B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The description of behavior (decrement timer, on expiry set CurAnim=5, write 9 to ExtraVars+4 struct
+    +0x10, reload timer to 0x20, set phase to 0xC) matches the asm exactly: `ldrh/sub/strh`, `bge locret`,
+    `mov r1,#5/strb`, `mov r1,#9/strb [r0,#0x10]`, `mov r0,#0x20/strh`, `mov r0,#0xc/strh`. However the
+    proposed name `battle_waitTimerThenPhaseC` uses ''phase'' rather than ''state'', and the local at
+    +0x10 is being written with 9, not the phase field. A cleaner lowerCamel with a battle_ prefix is
+    preferable; behavior is correct so only the name needs tweaking.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which battle object / enemy uses this routine and what phases 0xB (previous) and 0xC (next) mean in
+  its state machine
+- What the byte at offset 0x10 of the ExtraVars+4 structure means (flag? sub-state?)
+- No callers are known, so the frame-rate context and the identity of the phase-12 handler are unconfirmed
+- 'The description of behavior (decrement timer, on expiry set CurAnim=5, write 9 to ExtraVars+4 struct
+  +0x10, reload timer to 0x20, set phase to 0xC) matches the asm exactly: `ldrh/sub/strh`, `bge locret`,
+  `mov r1,#5/strb`, `mov r1,#9/strb [r0,#0x10]`, `mov r0,#0x20/strh`, `mov r0,#0xc/strh`. However the
+  proposed name `battle_waitTimerThenPhaseC` uses ''phase'' rather than ''state'', and the local at +0x10
+  is being written with 9, not the phase field. A cleaner lowerCamel with a battle_ prefix is preferable;
+  behavior is correct so only the name needs tweaking.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810E9B6 -> battle_tickTimerThenAdvancePhase
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E9B6

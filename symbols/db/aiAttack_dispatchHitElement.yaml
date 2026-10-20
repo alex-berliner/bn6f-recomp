@@ -1,0 +1,52 @@
+name: aiAttack_dispatchHitElement
+address: '0x080ED64C'
+kind: function
+status: probable
+summary: 'Reads the AI attack''s HitElement byte, uses it as an index into the two-entry table at off_80ED660,
+  and tail-calls the selected function (entry 0: sub_80ED668; entry 1: aiAttack_tickTimerAndExitWhenDone_80ECA0C),
+  returning directly to the original caller.'
+interface: (r7 = AI attack vars struct) -> jumps to table[HitElement] handler; returns via lr set to caller's
+  pc
+details: Reads the byte at oAIAttackVars_HitElement from the AI attack state in r7, uses it as an index
+  into off_80ED660 (a table with only two entries, so HitElement is effectively 0/1), and calls the selected
+  function via 'mov lr, pc; bx r1', so the callee returns straight back to this function's caller. Entry
+  0 is sub_80ED668 (unknown), entry 1 is aiAttack_tickTimerAndExitWhenDone_80ECA0C, so this is a per-element
+  behavior switch inside the AI attack system.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes the table by the attack's hit-element
+    field (sub_80ED64C lines 2-4); Table off_80ED660 entry 1 is aiAttack_tickTimerAndExitWhenDone_80ECA0C,
+    confirming an AI-attack element handler dispatch; mov lr, pc; bx r1 is a tail-call pattern, so the
+    chosen handler replaces this function's continuation; Only two table entries exist, so the field acts
+    as a boolean switch between two behaviors
+  refs:
+  - bn6f/asm/asm31.s:117552
+  reproduce: python3 tools/asmcat.py 0x080ED64C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior are correct: it indexes a two-entry table with HitElement and tail-calls
+    it, returning via pop {pc}. However, the proposed name ''aiAttack_callHitElementHandler'' uses the
+    banned ''call'' and ''Handler'' tokens; per the naming rules lowerCamel must use one of the listed
+    prefixes. A cleaner name is ''aiAttack_dispatchHitElement''.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_80ED668 (table entry 0) is unknown; a caller or that callee would confirm what the non-timer
+  element path does
+- 'The summary and behavior are correct: it indexes a two-entry table with HitElement and tail-calls it,
+  returning via pop {pc}. However, the proposed name ''aiAttack_callHitElementHandler'' uses the banned
+  ''call'' and ''Handler'' tokens; per the naming rules lowerCamel must use one of the listed prefixes.
+  A cleaner name is ''aiAttack_dispatchHitElement''.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ED64C -> aiAttack_dispatchHitElement
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED64C

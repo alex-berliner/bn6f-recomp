@@ -1,0 +1,55 @@
+name: reqBBS_addRangeRequests
+address: '0x0813FA24'
+kind: function
+status: probable
+summary: Iterates over the 2-entry base-id table at 0x813FA50 and calls reqBBS_addRequest for each id
+  in base..base+0x2F, registering 96 total requests.
+interface: () -> r0 = result of last reqBBS_addRequest call; no other visible effect
+details: 'Doubles over a table at 0x813FA50 (first entry 0x1B60): for each of 2 table entries it iterates
+  r2 = 0..0x2F (48 ids) and calls reqBBS_addRequest with id = base + r2, push/pop {r0-r3} keeping the
+  arguments intact across the call. Total 96 requests added. The second table word is not shown but is
+  presumably the base of the second block (e.g. 0x1B90). r4/r5 are saved but unused, suggesting a leftover/optimized
+  body.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_813FA2A/loc_813FA2E: outer loop cmp r1,#1, inner loop cmp r2,#0x30 — two bases x 48 ids;
+    ldr r0,[r3,r1]; add r0,r0,r2 — request id is table base plus index; bl reqBBS_addRequest_813F9A0 with
+    push/pop {r0-r3} — sole callee adds each request; off_813FA4C = dword_813FA50, first word 0x1B60 —
+    table of request-id bases'
+  refs:
+  - bn6f/asm/reqBBS.s:2753
+  - 0x0813F9A0 reqBBS_addRequest_813F9A0
+  reproduce: python3 tools/asmcat.py 0x0813FA24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function iterates r1=0..0 then inner r2=0..0x2F calling reqBBS_addRequest with id = table[r1]+r2,
+    which matches. However, r0 on return is discarded; the summary''s claim ''r0 = result of last call;
+    no other visible effect'' is fine but the proposed name ''reqBBS_addAllRequests'' is misleading -
+    it''s not adding all requests, just two blocks of 48. A better name reflects the loop over a table
+    of bases adding a range of ids per base. R4/r5 save/pop suggests it was once used, not that it''s
+    unused; ''leftover'' is plausible but not certain.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- value of the second table word at 0x813FA54 (second block base)
+- no caller known, so whether this is a debug board-fill or the normal init path is unconfirmed
+- exact meaning of the id passed to reqBBS_addRequest (text/string id vs request slot)
+- The function iterates r1=0..0 then inner r2=0..0x2F calling reqBBS_addRequest with id = table[r1]+r2,
+  which matches. However, r0 on return is discarded; the summary's claim 'r0 = result of last call; no
+  other visible effect' is fine but the proposed name 'reqBBS_addAllRequests' is misleading - it's not
+  adding all requests, just two blocks of 48. A better name reflects the loop over a table of bases adding
+  a range of ids per base. R4/r5 save/pop suggests it was once used, not that it's unused; 'leftover'
+  is plausible but not certain.
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813FA24 -> reqBBS_addRangeRequests
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813FA24

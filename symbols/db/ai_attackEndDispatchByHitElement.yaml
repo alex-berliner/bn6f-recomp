@@ -1,0 +1,54 @@
+name: ai_attackEndDispatchByHitElement
+address: '0x080EF970'
+kind: function
+status: probable
+summary: Dispatches to an element-specific post-attack handler by loading HitElement from the AI attack
+  vars struct at r7, indexing off_80EF984, and calling the entry via bx; the chosen handler returns here
+  and then the function pops {pc} back to its caller.
+interface: (r7 = AI attack vars struct, no args) -> r0 = return of the selected handler via tail-call
+  bx; no flags set by this function itself
+details: 'Loads the HitElement byte from the AI attack vars struct at r7, indexes off_80EF984 with it,
+  and tail-jumps (mov lr, pc; bx r1) to the matching handler. The table has three entries: sub_80EF990
+  (index 0), sub_80EF9A2 (index 1), and ai_attackEndWait (index 2), so elements 0-2 are valid; larger
+  values would jump through garbage since there is no bounds check. The bx-with-lr=pc pattern makes the
+  chosen handler return directly to this function''s caller. ai_attackEndWait as the default entry suggests
+  these handlers are attack-end variants, with element-specific extra behavior for two of the three elements.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0]: table indexed by hit element;
+    mov lr, pc; bx r1: tail-call into selected handler, sharing this function''s caller; off_80EF984 entries:
+    sub_80EF990, sub_80EF9A2, ai_attackEndWait — last named ai_attackEndWait, implying attack-end context;
+    Only three table slots with no range check: exactly three element cases handled'
+  refs:
+  - bn6f/asm/asm31.s:122376
+  reproduce: python3 tools/asmcat.py 0x080EF970
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The ''mov lr, pc; bx r1; pop {pc}'' pattern means the called handler returns to sub_80EF970 (one
+    instruction past bx), which then pop {pc}''s back to the original caller — a normal call sequence,
+    not a tail-call as claimed. The dispatch itself is correct: ldrb off r7''s HitElement, index off_80EF984,
+    bx through table. Name is okay but summary''s tail-call claim is wrong.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80EF990 and sub_80EF9A2 do (which elements map to indices 0 and 1) is unknown without their
+  bodies
+- No callers known, so what sets oAIAttackVars_HitElement and when this runs in the AI attack state machine
+  is unconfirmed
+- 'The ''mov lr, pc; bx r1; pop {pc}'' pattern means the called handler returns to sub_80EF970 (one instruction
+  past bx), which then pop {pc}''s back to the original caller — a normal call sequence, not a tail-call
+  as claimed. The dispatch itself is correct: ldrb off r7''s HitElement, index off_80EF984, bx through
+  table. Name is okay but summary''s tail-call claim is wrong.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EF970 -> ai_attackEndDispatchByHitElement
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF970

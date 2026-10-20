@@ -1,0 +1,53 @@
+name: ai_dispatchHitElementAttack
+address: '0x080F18AC'
+kind: function
+status: probable
+summary: Tail-calls a per-hitElement handler for an AI attack by indexing a 3-entry table at off_80F18C0
+  with the byte at oAIAttackVars_HitElement, passing r0=element and preserving r7=attack-vars, returning
+  to the caller's pop {r7,pc}.
+interface: (r0 = attack-vars struct ptr in r7, element read from oAIAttackVars_HitElement) -> tail-call
+  to table[element](r0=element, r7=struct); returns to caller's pop
+details: 'Reads the byte at [r7, oAIAttackVars_HitElement], indexes off_80F18C0 with it, and calls the
+  selected Thumb handler via mov lr,pc / bx r1, so the callee returns to the pop {r7,pc}. r0 (the element
+  value) is passed through to the callee, and r7 (the AI attack-vars struct pointer) is preserved. The
+  table has exactly three entries: sub_80F18CC, sub_80F1902, and the known ai_beginWoodAttack, implying
+  three supported elements for this attack. No bounds check on the element index.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] selects the table slot (asm lines 3-4); table entry 3
+    is ai_beginWoodAttack+1, confirming per-element AI attack handlers; mov lr,pc / bx r1 is a Thumb tail-call,
+    making this a pure dispatcher
+  refs:
+  - bn6f/asm/asm31.s:126653
+  reproduce: python3 tools/asmcat.py 0x080F18AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads oAIAttackVars_HitElement, indexes off_80F18C0 (3 entries: sub_80F18CC, sub_80F1902,
+    ai_beginWoodAttack), and tail-calls via mov lr,pc / bx r1 with r0=element, r7 preserved. That matches
+    the proposal. However, proposed_name ''ai_dispatchElementAttack'' implies it knows there are three
+    ''elements'' here; the code only shows these are attack-specific handlers indexed by a byte. A more
+    accurate name should reflect that this is an attack-handler dispatch, not a generic element dispatcher.;
+    run wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80F18CC and sub_80F1902 do (which elements they handle)
+- what game state r7 points to beyond oAIAttackVars_HitElement
+- no callers known, so when this runs is unconfirmed
+- 'The function reads oAIAttackVars_HitElement, indexes off_80F18C0 (3 entries: sub_80F18CC, sub_80F1902,
+  ai_beginWoodAttack), and tail-calls via mov lr,pc / bx r1 with r0=element, r7 preserved. That matches
+  the proposal. However, proposed_name ''ai_dispatchElementAttack'' implies it knows there are three ''elements''
+  here; the code only shows these are attack-specific handlers indexed by a byte. A more accurate name
+  should reflect that this is an attack-handler dispatch, not a generic element dispatcher.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F18AC -> ai_dispatchHitElementAttack
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F18AC

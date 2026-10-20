@@ -1,0 +1,55 @@
+name: spriteDispatchState
+address: '0x0811A78C'
+kind: function
+status: probable
+summary: Thumb dispatch stub that jumps to one of three functions in a 3-entry table at off_811A7A0, selected
+  by the state byte [r5,#8], using a tail call (pop {pc}) so the handler's return passes through.
+interface: (r5 = gui sprite object, no r0 args) -> dispatches to handler with r5 context; handler result
+  passes through as return value
+details: Loads a 3-entry function-pointer table at off_811A7A0, indexes it with the byte at [r5,#8] (the
+  object's state/stage field), and performs a tail call (mov lr, pc; bx r0) to the selected handler so
+  the handler's return value becomes this function's return. State 0 is initGuiSpriteObject, states 1
+  and 2 are the unnamed sub_811A818/sub_811A830. The r5 base register implies the caller keeps the object
+  pointer in r5, so this is likely an interbank/virtual dispatch stub called from a shared update loop.
+  No return-value processing happens here — it is purely a dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8] + ldr r0,[r0,r1] indexes the table off_811A7A0 by a state byte; table entries
+    are initGuiSpriteObject+1, sub_811A818+1, sub_811A830+1 (thumb addresses); mov lr,pc; bx r0; pop {pc}
+    is a tail dispatch, no post-call work; callee set (initGuiSpriteObject) shows this belongs to the
+    gui sprite subsystem
+  refs:
+  - bn6f/asm/asm32.s:26118
+  reproduce: python3 tools/asmcat.py 0x0811A78C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code shows a tail-call dispatch (pop {pc}, not real pop) using 3 entries in off_811A7A0 indexed
+    by state byte [r5,#8]. The proposal''s interface claims r5 holds the gui sprite object and the caller
+    keeps it; concrete register usage supports this. However, with no callers and no r0-arg usage, calling
+    it ''sprite_guiDispatchState'' implies a sprite type that the code does not confirm — the prefix ''sprite''
+    is plausible but the data table may serve other gui states. Name and summary are essentially correct,
+    just rename to better fit: ''guiDispatchState'' or ''submenuDispatchState''.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so when in the frame/update flow this runs is unconfirmed
+- What sub_811A818 and sub_811A830 do (the non-init states) is unknown
+- 'The code shows a tail-call dispatch (pop {pc}, not real pop) using 3 entries in off_811A7A0 indexed
+  by state byte [r5,#8]. The proposal''s interface claims r5 holds the gui sprite object and the caller
+  keeps it; concrete register usage supports this. However, with no callers and no r0-arg usage, calling
+  it ''sprite_guiDispatchState'' implies a sprite type that the code does not confirm — the prefix ''sprite''
+  is plausible but the data table may serve other gui states. Name and summary are essentially correct,
+  just rename to better fit: ''guiDispatchState'' or ''submenuDispatchState''.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811A78C -> spriteDispatchState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A78C

@@ -1,0 +1,50 @@
+name: camera_applyNextPosToScroll
+address: '0x08030104'
+kind: function
+status: probable
+summary: Converts oCamera_nextX/nextY fixed-point follow position to integer, applies offsets (+0x88 X,
+  +0xB0 Y), and stores to oCamera_ScrollX and oCamera_CameraYInt.
+interface: (r5 = oCamera struct pointer) -> void; writes oCamera_ScrollX and oCamera_CameraYInt
+details: Reads oCamera_nextX_3c and oCamera_nextY_40 (fixed-point, arithmetic shift right 16 to get the
+  integer part), adds 0x88 to X and 0xB0 (0x80+0x30) to Y, then halfword-stores the results into oCamera_ScrollX
+  and oCamera_CameraYInt. It is a leaf function operating entirely through the camera struct in r5, which
+  is evidently set up by the caller. The offsets suggest the scroll registers are relative to a tracked
+  entity's on-screen position rather than absolute map coordinates.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: asr r4,#0x10 on oCamera_nextX_3c/nextY_40 shows the fields are fixed-point and only the integer
+    part is used; constants 0x80+8 and 0x80+0x30 are added before storing to oCamera_ScrollX and oCamera_CameraYInt;
+    the function is a leaf writing only two halfword fields of the oCamera struct, so it is a pure coordinate-update
+    step
+  refs:
+  - bn6f/asm/asm03_0.s:21850
+  reproduce: python3 tools/asmcat.py 0x08030104
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: it reads nextX/nextY, shifts right 16, and stores into ScrollX and
+    CameraYInt. However, the X offset is 0x80+8=0x88 (correct) but the Y offset is 0x80+0x30=0xB0 (correct).
+    The summary''s wording is fine, but the name ''applyNextPosToScroll'' is reasonable; a slightly clearer
+    name emphasizing the fixed-point->integer conversion and offset application would be better.; run
+    wf investigate investigate-20261019-052112; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known callers, so the camera mode or game state in which this runs is unknown
+- which entity nextX/nextY track (player, object, or scripted target) is not shown
+- why X gets +0x88 while Y gets +0xB0, i.e. what screen anchoring this encodes, is unclear
+- 'The proposal is mostly correct: it reads nextX/nextY, shifts right 16, and stores into ScrollX and
+  CameraYInt. However, the X offset is 0x80+8=0x88 (correct) but the Y offset is 0x80+0x30=0xB0 (correct).
+  The summary''s wording is fine, but the name ''applyNextPosToScroll'' is reasonable; a slightly clearer
+  name emphasizing the fixed-point->integer conversion and offset application would be better.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8030104 -> camera_applyNextPosToScroll
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8030104

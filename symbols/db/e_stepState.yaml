@@ -1,0 +1,54 @@
+name: e_stepState
+address: '0x0813D9AC'
+kind: function
+status: probable
+summary: Dispatches via a 2-entry thumb handler table indexed by eS200BC50+1, returns sub_813D9F4's value
+  (4 = done), otherwise calls sub_8146B70 as a per-step wait.
+interface: (no args) -> r0 = new state/task value (4 appears to mean finished); no flags
+details: Loads the struct at 0x200BC50, reads its state byte at +1, and dispatches through a two-entry
+  thumb handler table (sub_813D9DC, sub_813D9E8) using the lr=pc long-call trick. It then calls sub_813D9F4
+  to obtain a status value; if that value is not 4, it calls sub_8146B70 (presumably a per-step update/wait
+  routine), otherwise it returns immediately. Caller sub_813DA0C seeds eStruct203F7D8+1 with 2 and, when
+  that struct's flag byte at +0 is set, replaces it with this function's return value, suggesting the
+  return is a next-mode/state selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_813D9AC reads byte_200BC51, shifts it left 2 and indexes off_813D9D4, a table of two handler
+    addresses (state dispatcher pattern); after the handler it calls sub_813D9F4, keeps r0, and only calls
+    sub_8146B70 when r0 != 4, so 4 acts as a terminal/done code; caller sub_813DA0C writes 2 to eStruct203F7D8+1,
+    then stores this function's return into that same byte, treating the return as a state/mode value;
+    the alternative caller path CopyWords from eStruct2036780 to unk_2039A00/20399F0 shows the flag byte
+    gates between this task and a direct copy path
+  refs:
+  - bn6f/asm/asm37_0.s:4599
+  - 0x0813DA0C sub_813DA0C
+  - 0x0813D9F4 sub_813D9F4
+  - 0x08146B70 sub_8146B70
+  reproduce: python3 tools/asmcat.py 0x0813D9AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly confirms it reads eS200BC50+1 as a state index into a 2-entry handler table, then calls
+    sub_813D9F4 and short-circuits on r0==4. The ''e_'' prefix and ''stepStateTask'' fit an eStruct-driven
+    state dispatcher, but ''Task'' isn''t in the allowed prefix list; ''e_'' is. The summary is accurate.;
+    run wf investigate investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_813D9DC/sub_813D9E8 (the two states) actually do, and what 0x200BC50 as a whole represents
+- what value 4 means in sub_813D9F4's return and what sub_8146B70 updates
+- why the caller's alternate branch copies 0x10 words from eStruct2036780
+- The assembly confirms it reads eS200BC50+1 as a state index into a 2-entry handler table, then calls
+  sub_813D9F4 and short-circuits on r0==4. The 'e_' prefix and 'stepStateTask' fit an eStruct-driven state
+  dispatcher, but 'Task' isn't in the allowed prefix list; 'e_' is. The summary is accurate.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813D9AC -> e_stepState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D9AC

@@ -1367,7 +1367,7 @@ enum SubmenuScreen {
     SUBMENU_UNK_20      = 0x20, /* unidentified (battleObject_dispatchUpdateByState_8133200) */
     SUBMENU_UNK_24      = 0x24, /* unidentified (beastsp_dispatchHandler_81356D4) */
     SUBMENU_UNK_28      = 0x28, /* unidentified (battleObject_runBeastSpFunction_8136DE0) */
-    SUBMENU_UNK_2C      = 0x2C, /* unidentified (sub_81378B4) */
+    SUBMENU_UNK_2C      = 0x2C, /* unidentified (battle_runStateHandler) */
     SUBMENU_UNK_30      = 0x30  /* unidentified (sub_8128CBC) */
 };
 
@@ -1409,7 +1409,7 @@ static void run_screen_handler(u8 screen, u32 submenu, u32 handler_arg2, u32 han
     case SUBMENU_UNK_20:      GUEST_CALL(battleObject_dispatchUpdateByState_8133200); break;
     case SUBMENU_UNK_24:      GUEST_CALL(beastsp_dispatchHandler_81356D4); break;
     case SUBMENU_UNK_28:      GUEST_CALL(battleObject_runBeastSpFunction_8136DE0); break;
-    case SUBMENU_UNK_2C:      GUEST_CALL(sub_81378B4); break;
+    case SUBMENU_UNK_2C:      GUEST_CALL(battle_runStateHandler); break;
     case SUBMENU_UNK_30:      GUEST_CALL(sub_8128CBC); break;
     default: break; /* remaining table slots are NULL; never selected in-game */
     }

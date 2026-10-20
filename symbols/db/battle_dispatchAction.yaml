@@ -1,0 +1,54 @@
+name: battle_dispatchAction
+address: '0x080C0526'
+kind: function
+status: probable
+summary: Dispatches execution to the handler indexed by the battle object's current action ID via the
+  function table at off_80C0538.
+interface: (r5 = battle object header) -> jumps to handler table entry [r5+oBattleObject_CurAction]; no
+  return value
+details: 'Reads the byte at r5+oBattleObject_CurAction and indexes off_80C0538 (3 entries: sub_80C0544,
+  sub_80C0584, sub_80C05C6), then does ''mov lr, pc; bx r1'' so the handler returns via pop {pc}. Relies
+  on r5 holding the object pointer set up by the caller. The caller invokes it immediately after setting
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE and playing the effect sound,
+  so the handlers are the per-phase state-update bodies for the object''s actions.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — dispatch keyed on the object''s
+    current action; off_80C0538 table has exactly 3 code pointers (sub_80C0544, sub_80C0584, sub_80C05C6),
+    one per action state; caller 0x080C04CC sets CurStateActionPhase = CUR_STATE_UPDATE then calls it,
+    ending its own flow with pop {r4,r7,pc}; mov lr,pc / bx r1 / pop {pc} makes it a call-through trampoline,
+    not a leaf computation'
+  refs:
+  - bn6f/asm/asm31.s:18454
+  - 0x080C04CC sub_80C04CC
+  reproduce: python3 tools/asmcat.py 0x080C0526
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads CurAction and dispatches via off_80C0538 to one of three handlers, then returns via
+    pop {pc}. The summary''s ''per-frame update'' is a reasonable inference but the caller only invokes
+    it after setting CUR_STATE_UPDATE, suggesting it is the dispatch for the current action/phase, which
+    the summary captures. However, ''CurAction'' in the name is fine, but ''per-frame'' is not strictly
+    evidenced; ''dispatch'' is accurate. A tighter name fits better.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the three action handlers (sub_80C0544/584/5C6) do, to confirm which boss/object this state machine
+  belongs to
+- The code reads CurAction and dispatches via off_80C0538 to one of three handlers, then returns via pop
+  {pc}. The summary's 'per-frame update' is a reasonable inference but the caller only invokes it after
+  setting CUR_STATE_UPDATE, suggesting it is the dispatch for the current action/phase, which the summary
+  captures. However, 'CurAction' in the name is fine, but 'per-frame' is not strictly evidenced; 'dispatch'
+  is accurate. A tighter name fits better.
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C0526 -> battle_dispatchAction
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0526

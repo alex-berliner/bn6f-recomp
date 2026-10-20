@@ -1,0 +1,57 @@
+name: battle_stateWait6FramesThenClearRelatedAndDestroy
+address: '0x080D8746'
+kind: function
+status: probable
+summary: 'Battle-object state handler: on first call sets Timer=6 frames and CurAnim=3; once the timer
+  underflows, clears the oObjectHeader_Flags of oBattleObject_RelatedObject1Ptr and switches this object
+  to CUR_STATE_DESTROY.'
+interface: (r0 = battle object, caller must also set r5 = object ptr) -> void; sets oBattleObject_Timer=6,
+  CurAnim=3, PhaseInitialized=4 once, then decrements Timer each frame; at expiry sets RelatedObject1Ptr->Flags=0
+  and CurState=CUR_STATE_DESTROY
+details: 'This is a per-frame state routine for a battle object, reading the object from r5. On the first
+  invocation (PhaseInitialized == 0) it initializes the state: Timer = 6 frames, CurAnim = 3, and sets
+  PhaseInitialized = 4 so init runs only once. Each call afterwards decrements Timer; while it is still
+  >= 0 the object just keeps animating. Once the timer goes negative it nulls the flags byte of the object
+  pointed to by oBattleObject_RelatedObject1Ptr (deactivating that companion object) and writes CUR_STATE_DESTROY
+  into the packed CurState/Action/Phase field, so the object is removed next update.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne guards one-time init that sets Timer=6 and
+    CurAnim=3; loose ldrh/strh decrement of oBattleObject_Timer with bge keeps the object alive for 6
+    frames; on expiry: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; strb r1(=0),[r0,#oObjectHeader_Flags]
+    deactivates the related object; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    schedules self-destruction'
+  refs:
+  - bn6f/asm/asm31.s:71517
+  reproduce: python3 tools/asmcat.py 0x080D8746
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Behavior matches: sets Timer=6, CurAnim=3, PhaseInitialized=4, decrements Timer each frame, then
+    on the frame after Timer goes negative (bge branch) zeros oObjectHeader_Flags of oBattleObject_RelatedObject1Ptr
+    and writes CUR_STATE_DESTROY to the packed state field. The summary''s ''when the timer runs out''
+    is slightly imprecise — cleanup fires when the decrement makes Timer negative, one frame after zero.
+    Name is wordy; a tighter form fits the helper style.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which object/state table references this handler (no callers known), so which entity uses this 6-frame
+  anim-3 death/despawn sequence
+- what oObjectHeader_Flags=0 means exactly for the related object (deactivate vs. free)
+- 'Behavior matches: sets Timer=6, CurAnim=3, PhaseInitialized=4, decrements Timer each frame, then on
+  the frame after Timer goes negative (bge branch) zeros oObjectHeader_Flags of oBattleObject_RelatedObject1Ptr
+  and writes CUR_STATE_DESTROY to the packed state field. The summary''s ''when the timer runs out'' is
+  slightly imprecise — cleanup fires when the decrement makes Timer negative, one frame after zero. Name
+  is wordy; a tighter form fits the helper style.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D8746 -> battle_stateWait6FramesThenClearRelatedAndDestroy
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8746

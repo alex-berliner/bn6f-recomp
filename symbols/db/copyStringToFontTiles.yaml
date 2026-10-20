@@ -1,0 +1,62 @@
+name: copyStringToFontTiles
+address: '0x08004C62'
+kind: function
+status: probable
+summary: Converts a NUL-terminated ASCII string at r2 into 16-bit font tile indices (byte - 0x20) stored
+  as halfwords at r1, looping up to r5 entries or 0xFF iterations, leaving r4=1.
+interface: (r0 = padding/unused, r1 = dest halfword buffer, r2 = source string, r5 = max entries) -> r0
+  unchanged, r4 = 1; clobbers r8 (counter, set to 0xFF if it was 0)
+details: 'Loops over bytes at r2: stops on NUL terminator, on r1 reaching the r5 limit, or after 0xFF
+  iterations (counter kept in r8, initialized to 0xFF if it entered as 0). Each valid byte is decremented
+  by 0x20 — mapping the font''s first glyph (space) to tile 0 — and stored as a halfword at r1, with r1
+  advancing by 2 per character. The pushed r0 is only stack alignment and is popped back unchanged, so
+  there is no r0 return value. r4 = 1 is set unconditionally before returning and r4 is not restored,
+  so it survives as an incidental output. r8 is used as the loop counter but is not restored on exit,
+  which suggests this code is an inlined fragment or shares r8 with its context. The halfword stride hints
+  the destination is an array of tile/character entries rather than a plain byte copy.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8004C62 loop: ldrb r3,[r2]; sub r3,#0x20; strh r3,[r1]; add r1,#2; add r2,#1 — per-char
+    tile-index store; bne on ldrb result and beq at 8004C8C show the NUL-terminated string stop condition;
+    cmp r1,r5 / bge bounds the write count by the r5 argument; mov r6,#0xff / mov r8,r6 initializes the
+    0xFF iteration cap only when r8 was zero; no callers or callees known, so the subsystem and buffer
+    meaning are unconfirmed'
+  refs:
+  - bn6f/asm/asm00_1.s:3854
+  reproduce: python3 tools/asmcat.py 0x08004C62
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: NUL-terminated source is converted via `sub r3, #0x20` and stored with
+    `strh` at advancing r1 (halfword stride), the loop counter is in r8 initialized to 0xFF (r6/r7/r8
+    are shuffled but r8 ends up as counter), bounded by NUL, r5 limit, and counter; r4=1 is set before
+    return and r8 is not restored. However, the name ''decodeStringToTileIndices'' is too specific; this
+    is a generic ASCII-to-tile (glyph index) converter, and the ''decode'' prefix isn''t warranted by
+    the asm. A simpler, more honest name fits the prefix rules better.; run wf investigate investigate-20261019-055111;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers are known, so the meaning of the destination buffer (text tile map? OAM tile list?) and which
+  game subsystem uses it is unverified
+- why r8 is used as the counter and left unrestored, and what normally initializes it
+- what r4 = 1 on exit is consumed as, if anything
+- whether the source strings are plain ASCII or a game-specific character encoding where -0x20 has another
+  meaning
+- 'The summary is accurate: NUL-terminated source is converted via `sub r3, #0x20` and stored with `strh`
+  at advancing r1 (halfword stride), the loop counter is in r8 initialized to 0xFF (r6/r7/r8 are shuffled
+  but r8 ends up as counter), bounded by NUL, r5 limit, and counter; r4=1 is set before return and r8
+  is not restored. However, the name ''decodeStringToTileIndices'' is too specific; this is a generic
+  ASCII-to-tile (glyph index) converter, and the ''decode'' prefix isn''t warranted by the asm. A simpler,
+  more honest name fits the prefix rules better.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8004C62 -> copyStringToFontTiles
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8004C62

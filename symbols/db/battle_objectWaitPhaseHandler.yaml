@@ -1,0 +1,51 @@
+name: battle_objectWaitPhaseHandler
+address: '0x080DF488'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: sets CurPhase=4, CurAnim=3, Timer=10 frames, then decrements Timer
+  each tick; when it expires, sets CurAction=0x10 and clears CurPhaseAndPhaseInitialized to advance to
+  the next handler.'
+interface: (r5 = battle object, uses oBattleObject_* fields) -> void; sets CurPhase/CurAnim/Timer on first
+  phase, decrements Timer and sets CurAction=0x10 when it reaches 0
+details: 'Reads oBattleObject_CurPhase from the object in r5. If phase is 0, it stores phase 4, animation
+  3, and a timer of 10 frames, then returns. On subsequent calls it decrements oBattleObject_Timer; when
+  it hits zero it writes CurAction=0x10 and clears oBattleObject_CurPhaseAndPhaseInitialized so the object''s
+  next handler runs. It is a pure state-machine step: a timed ''wait/pose'' phase before the object performs
+  action 0x10.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrb r0,[r5,#oBattleObject_CurPhase]; tst ... bne branches on phase==0 to set up the wait
+    state; asm: strb #4 CurPhase, strb #3 CurAnim, strh #0xa Timer = init a 10-frame wait with anim 3;
+    asm: ldrh Timer / sub #1 / strh / bgt = frame countdown each call; asm: on timeout stores #0x10 to
+    oBattleObject_CurAction and zeroes CurPhaseAndPhaseInitialized to hand control to the next handler'
+  refs:
+  - bn6f/asm/asm31.s:86447
+  reproduce: python3 tools/asmcat.py 0x080DF488
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The handler clears oBattleObject_CurPhaseAndPhaseInitialized (strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]),
+    contradicting the claim that it ''clears oBattleObject_CurPhase''. Also the initial phase stored is
+    4, not what the proposal implies, and there is no animation 3 setup contradiction - that part is correct.
+    The action 0x10 transition is confirmed.; run wf investigate investigate-20261019-055111; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers known, so which object(s) run this and what action 0x10 means for them is unconfirmed
+- what animation 3 visually represents for that object
+- The handler clears oBattleObject_CurPhaseAndPhaseInitialized (strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]),
+  contradicting the claim that it 'clears oBattleObject_CurPhase'. Also the initial phase stored is 4,
+  not what the proposal implies, and there is no animation 3 setup contradiction - that part is correct.
+  The action 0x10 transition is confirmed.
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF488 -> battle_objectWaitPhaseHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF488

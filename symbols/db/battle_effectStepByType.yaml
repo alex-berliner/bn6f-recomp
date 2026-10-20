@@ -1,0 +1,54 @@
+name: battle_effectStepByType
+address: '0x08008C58'
+kind: function
+status: probable
+summary: Reads a type byte at [r5,#2] from an effect state struct, uses it to index a 4-entry dispatch
+  table, and tail-calls the matching per-type handler with r5 in place.
+interface: (r5 = pointer to effect/state struct; dispatch index = [r5,#2]) -> tail-calls handler(r5);
+  no direct return value, flags from handler
+details: Loads a byte from offset 2 of the struct pointer in r5 and uses it as an index into a 4-entry
+  table at off_8008C6C, then performs a long-call (mov lr, pc; bx r1) to the selected handler with r5
+  still in place. The known third handler, battle_effectWaitCrossNetReady, indicates this family of routines
+  drives battle effect/scene states, so the dispatch selects the current phase's behavior (init/step/wait/finish
+  order implied by table position). Because the call sets lr=pc from Thumb, handlers return straight back
+  to sub_8008C58's caller. The struct's other fields are not read here; the byte at offset 2 acts as the
+  state/type selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r5,#2] / ldr r1, [r1,r0]: index byte at struct+2 selects the handler; off_8008C6C
+    holds exactly 4 code pointers (sub_8008C7C, sub_8008CAC, battle_effectWaitCrossNetReady, sub_8008CEE);
+    mov lr, pc / bx r1 makes a tail-position long call that returns to the original caller; known callee
+    battle_effectWaitCrossNetReady ties the handler set to battle effect processing'
+  refs:
+  - bn6f/asm/asm00_1.s:12763
+  reproduce: python3 tools/asmcat.py 0x08008C58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r5 is assumed as a struct pointer, byte at [r5,#2] indexes a 4-entry jump table
+    at off_8008C6C, and lr=pc/bx r1 tail-calls the selected handler with r5 preserved, returning to the
+    caller via pop {pc}. One callee being battle_effectWaitCrossNetReady supports the ''battle effect/state''
+    interpretation. The proposed name ''battle_effectUpdateDispatch'' is reasonable but ''battle_effectStepByType''
+    describes the behavior more concisely.; run wf investigate investigate-20261019-055111; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which subsystem owns the r5 struct and when this runs is unconfirmed
+- The behaviors of handlers sub_8008C7C, sub_8008CAC, and sub_8008CEE are unknown; they would confirm
+  the state order and semantics
+- 'The code matches: r5 is assumed as a struct pointer, byte at [r5,#2] indexes a 4-entry jump table at
+  off_8008C6C, and lr=pc/bx r1 tail-calls the selected handler with r5 preserved, returning to the caller
+  via pop {pc}. One callee being battle_effectWaitCrossNetReady supports the ''battle effect/state'' interpretation.
+  The proposed name ''battle_effectUpdateDispatch'' is reasonable but ''battle_effectStepByType'' describes
+  the behavior more concisely.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8008C58 -> battle_effectStepByType
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008C58

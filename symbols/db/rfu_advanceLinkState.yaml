@@ -1,0 +1,59 @@
+name: rfu_advanceLinkState
+address: '0x0803C7B4'
+kind: function
+status: probable
+summary: When byte_2010288 is set and sub_803CB24 returns a valid (non-0xFF) peer id, advances the link
+  state to 4 with a 180-frame timer and raises the 0x40 flag in the RFU shared state.
+interface: '(r7 = link-state struct: [r7,#3] state byte, [r7,#0xA] halfword timer) -> r0 = 0x40 passed
+  to rfu_orFlags; only writes when byte_2010288 != 0 and sub_803CB24() != 0xFF'
+details: First calls sub_803CB44 and, if it returns nonzero, sub_81467A0 (both side-effect-only here,
+  result of the second discarded). It then gates on the flag byte_2010288; if clear, nothing happens.
+  If set, it calls sub_803CB24 which appears to return a connection/peer id (0xFF meaning none/failure).
+  On success it stores 4 into the state byte at [r7,#3], stores 0xB4 (180) into the halfword timer at
+  [r7,#0xA], and ORs 0x40 into the RFU/wireless shared state flags at 0x200BC50+0xC via rfu_orFlags. r7
+  is not set up in this function, so the caller owns the link-state struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1, [byte_2010288]; beq skip — a global enable/attempt flag gates the whole body; bl sub_803CB24;
+    cmp r0, #0xFF; beq skip — id/status check, 0xFF treated as failure; mov r0,#4; strb r0,[r7,#3] plus
+    strh 0xB4,[r7,#0xA] — writes state=4 and a 180-count halfword into a caller-provided struct; mov r0,#0x40;
+    bl rfu_orFlags — sets bit 0x40 in the RFU shared state flags at 0x200BC50+0xC; callee rfu_orFlags
+    confirms this belongs to the wireless/RFU connection subsystem'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7732
+  - 0x0803CB00 rfu_orFlags
+  - 0x0803CB24 sub_803CB24
+  - 0x0803CB44 sub_803CB44
+  reproduce: python3 tools/asmcat.py 0x0803C7B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (poll sub_803CB44, gate on byte_2010288, call sub_803CB24,
+    store 4 into [r7,#3] and 0xB4 into [r7,#0xA], OR 0x40 via rfu_orFlags). However, the function does
+    not poll for ''link established''; it advances from a pending state into a new state on a peer-id
+    success. A name like rfu_advanceLinkState would more accurately describe the unconditional state advance
+    rather than implying polling for an established link.; run wf investigate investigate-20261019-033611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of sub_803CB24's return value (peer id? link status?) and what state 4 / 0xB4 mean in the r7
+  struct
+- No known caller, so where in the connect flow this runs and what r7 points to is unconfirmed
+- Role of sub_803CB44/sub_81467A0 pair (result of the second is unused, may be a pure side-effect update)
+- The code matches the proposal's mechanics (poll sub_803CB44, gate on byte_2010288, call sub_803CB24,
+  store 4 into [r7,#3] and 0xB4 into [r7,#0xA], OR 0x40 via rfu_orFlags). However, the function does not
+  poll for 'link established'; it advances from a pending state into a new state on a peer-id success.
+  A name like rfu_advanceLinkState would more accurately describe the unconditional state advance rather
+  than implying polling for an established link.
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803C7B4 -> rfu_advanceLinkState
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C7B4

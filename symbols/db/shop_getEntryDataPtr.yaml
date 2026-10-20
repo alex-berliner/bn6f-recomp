@@ -1,0 +1,53 @@
+name: shop_getEntryDataPtr
+address: '0x08048D9C'
+kind: function
+status: probable
+summary: Returns a pointer into the per-shop data buffer for the entry at the given index, computed as
+  entry[shop].offsetIntoData + Toolkit_ShopDataPtr.
+interface: (r0 = shop entry index) -> r0 = pointer into shop data at (entry+0x08 offset); clobbers r1,
+  r2
+details: Multiplies r0 by 16 and indexes the array at dword_8046B98 (RAM, 16-byte-per-entry records, so
+  a table of shop/descriptor structs). It reads the word at entry+0x08, which acts as an offset into the
+  shop data buffer, then adds Toolkit_ShopDataPtr loaded from the toolkit struct in r10 (r10 + oToolkit_ShopDataPtr).
+  The sum is returned in r0, giving a pointer to some per-entry item/data record inside the shop data
+  allocation. No flags are meaningful; r1 and r2 are scratch. Without known callers it's unclear whether
+  +0x08 is a byte offset or a precomputed sub-pointer, but the add implies it is an offset/base to combine
+  with the shop data pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0, r1 (r1=0x10) + add r2, r2, r0: table at dword_8046B98 has 16-byte records indexed by
+    r0; ldr r0, [r2,#8]: field at offset 8 of the record is used as the base offset; ldr r1, [r10,#oToolkit_ShopDataPtr];
+    add r0, r0, r1: result is shop-data-relative pointer, toolkit from r10; callee-free leaf ending in
+    mov pc, lr with r0 returned: pure pointer-computation helper'
+  refs:
+  - bn6f/asm/asm03_2.s:4495
+  reproduce: python3 tools/asmcat.py 0x08048D9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it indexes into dword_8046B98 by r0*0x10 and loads a word at +0x08,
+    adding it to Toolkit_ShopDataPtr. However, the proposal misreads the final operand: the load at entry+0x08
+    is treated as an offset into a preallocated buffer pointed to by Toolkit_ShopDataPtr, not a sub-pointer,
+    so a name reflecting ''offset into shop data buffer'' is more accurate. Naming follows get-prefix
+    convention.; run wf investigate investigate-20261019-033611; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- callers needed to confirm what r0 indexes (shop id vs. item slot) and what the +0x08 field points to
+  within the shop data
+- the meaning/contents of the dword_8046B98 table entries beyond offset 8
+- 'The code matches the proposal: it indexes into dword_8046B98 by r0*0x10 and loads a word at +0x08,
+  adding it to Toolkit_ShopDataPtr. However, the proposal misreads the final operand: the load at entry+0x08
+  is treated as an offset into a preallocated buffer pointed to by Toolkit_ShopDataPtr, not a sub-pointer,
+  so a name reflecting ''offset into shop data buffer'' is more accurate. Naming follows get-prefix convention.'
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8048D9C -> shop_getEntryDataPtr
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8048D9C

@@ -1,0 +1,54 @@
+name: object_dispatchHandler
+address: '0x08117780'
+kind: function
+status: probable
+summary: Dispatches a per-object handler selected by a byte at offset 8 of the object struct in r5, passing
+  the handler a pointer to shared IWRAM byte_2011C10 (also held in r6) via a fake ARM/Thumb interwork
+  call.
+interface: (r5 = object struct, r0 = pointer to byte_2011C10 on entry) -> calls handler from off_8117794[r1]
+  with r0=&byte_2011C10; r6 set to the same pointer, clobbers r6/lr
+details: Reads a selector byte at offset 8 of the object struct in r5 and uses it to index a three-entry
+  thumb jump table (sub_81177A4, object_updateSpriteAnimState, sub_8117818). Before the indirect call
+  it sets r6 to &byte_2011C10 and passes the same pointer in r0, so each type's handler operates on this
+  shared scratch/state area. It fakes an ARM interwork call with mov lr,pc / bx r0, then returns via pop
+  {pc}. r6 is clobbered without being saved, so callers must not rely on it (or the callees preserve it).
+  With no known callers the meaning of the selector byte and of byte_2011C10 is not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — jump-table dispatch on the object's type byte; off_8117794
+    holds three thumb handlers, one already named object_updateSpriteAnimState; ldr r0/r6, =byte_2011C10
+    — the handler argument is a single shared IWRAM byte; mov lr,pc / bx r0 / pop {pc} — plain BL-style
+    indirect call with no result handling
+  refs:
+  - bn6f/asm/asm32.s:19397
+  reproduce: python3 tools/asmcat.py 0x08117780
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it reads a selector byte at [r5,#8], indexes off_8117794 (3 entries) to get a
+    Thumb handler, and sets r6=&byte_2011C10 before the call with r0=that same address. However, the summary
+    says the handler is ''chosen by the object''s type byte'' — there is no evidence it''s a type byte;
+    offset 8 of an object struct is not necessarily a type field, and with no callers the semantics are
+    unknown. The name is fine but the summary overclaims what the code actually shows.; run wf investigate
+    investigate-20261019-055111; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- what the three handlers (sub_81177A4, sub_8117818) do and what byte_2011C10 stores
+- which code sets r5 and byte at offset 8 (no callers known), and the valid range of the type byte
+- 'The code matches: it reads a selector byte at [r5,#8], indexes off_8117794 (3 entries) to get a Thumb
+  handler, and sets r6=&byte_2011C10 before the call with r0=that same address. However, the summary says
+  the handler is ''chosen by the object''s type byte'' — there is no evidence it''s a type byte; offset
+  8 of an object struct is not necessarily a type field, and with no callers the semantics are unknown.
+  The name is fine but the summary overclaims what the code actually shows.'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8117780 -> object_dispatchHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117780

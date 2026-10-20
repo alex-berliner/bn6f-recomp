@@ -1,0 +1,61 @@
+name: battle_panelEffectTickHandler
+address: '0x080E2D30'
+kind: function
+status: probable
+summary: 'Per-tick handler for a battle object monitoring a field-panel effect: reloads a 30-frame timer,
+  scans the 18 panels for the flag, and advances the object to phase 8 when either no panels match or
+  its ExtraVars word counter expires.'
+interface: (r5 = battle object) -> r0 = panel match count from callee (clobbered); sets object Timer and
+  CurPhaseAndPhaseInitialized (8 = finish) on oBattleObject
+details: Battle object phase handler that decrements oBattleObject_Timer each frame; when it underflows
+  it is reloaded with 0x1E (30 frames) and battle_scanFieldPanelsEffect is called to test for panels carrying
+  the relevant flag (arguments apparently come from the object/globals, none are set here). If no panels
+  match, the object advances to phase 8, presumably its teardown/finalize phase. If panels do match, oBattleObject_ExtraVars
+  (used as a remaining-ticks counter) is decremented; when it reaches 0 the object also advances to phase
+  8. So the object lives as long as the panel effect persists, but no longer than (ExtraVars+1)*30 frames.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/sub/strh on oBattleObject_Timer with reload to 0x1E: a 30-frame periodic tick; bl battle_scanFieldPanelsEffect
+    followed by tst r0,r0 / beq: uses match count as ''effect still present'' test; oBattleObject_ExtraVars
+    decremented and phase set to 8 when it hits 0: bounded lifetime counter; only callee is battle_scanFieldPanelsEffect,
+    the panel-flag sweep/effect applier; mov r0,#8; strh to oBattleObject_CurPhaseAndPhaseInitialized
+    is the shared ''end this state'' exit for both paths'
+  refs:
+  - bn6f/asm/asm31.s:94229
+  - 0x080E2DE0 battle_scanFieldPanelsEffect
+  reproduce: python3 tools/asmcat.py 0x080E2D30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: Timer is decremented, reloaded to 0x1E (30) on underflow, battle_scanFieldPanelsEffect
+    is called, and if it returns 0 the object transitions to phase 8; otherwise ExtraVars is decremented
+    and if it reaches 0 phase 8 is set. However, the function sets phase 8 to *finish* in both branches,
+    so phrasing it as ''ends once the effect is gone or its countdown runs out'' is correct, but the name
+    ''battle_panelEffectTickHandler'' is fine. Minor: ExtraVars is loaded as a 32-bit value (ldr r0, [r5,#ExtraVars])
+    and stored back as 32-bit, so it''s a word counter, not a halfword.; run wf investigate investigate-20261019-052112;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which in-game effect/attack spawns this object and what panel flag battle_scanFieldPanelsEffect
+  tests here is unknown
+- What phase 8 means for this object type (deletion vs. transition) is inferred, not proven
+- How battle_scanFieldPanelsEffect gets its alliance/element arguments (globals vs. object fields) is
+  unclear since none are loaded here
+- 'The code matches the proposal well: Timer is decremented, reloaded to 0x1E (30) on underflow, battle_scanFieldPanelsEffect
+  is called, and if it returns 0 the object transitions to phase 8; otherwise ExtraVars is decremented
+  and if it reaches 0 phase 8 is set. However, the function sets phase 8 to *finish* in both branches,
+  so phrasing it as ''ends once the effect is gone or its countdown runs out'' is correct, but the name
+  ''battle_panelEffectTickHandler'' is fine. Minor: ExtraVars is loaded as a 32-bit value (ldr r0, [r5,#ExtraVars])
+  and stored back as 32-bit, so it''s a word counter, not a halfword.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E2D30 -> battle_panelEffectTickHandler
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2D30

@@ -1,0 +1,65 @@
+name: e_updateChecksumCopy2
+address: '0x0803E608'
+kind: function
+status: probable
+summary: Copies two bytes from [r5] into the dest buffer at [r2+r7] and adds each byte into a running
+  checksum at [r4+8]; called in a loop by callers to advance r7 by 2 each iteration and finally verify
+  the accumulated checksum against an expected value in [r6+0x40].
+interface: (r2 = dest buffer base, r5 = source data ptr, r6 = copy-state struct, r7 = bytes-copied/dest
+  offset, r4 = stats struct) -> r7 += 2, [r4+8] += sum of the 2 copied bytes; preserves r0-r7 per its
+  push/pop
+details: 'Per call it copies two bytes (r3 counts 0..1) from [r5] to [r2+r7], each byte also being added
+  into field +8 of the struct at r4 (dword_200F368, via eStruct200F360), which acts as a running checksum/total.
+  State lives in the r6 struct: +0x28 is the persistent copy offset (restored by callers after the loop),
+  +0x20 the expected total, +0x38/+0x3c hold buffer pointers loaded into r2. Both callers run it 7 times
+  (r1=0xe, r1-=2), advancing r7 by 2 and r5 by 8 each iteration, i.e. taking a 2-byte piece per 8-byte
+  stride of the source; afterwards they compare the accumulated [r4+8] against an expected value in [r6+0x40].
+  The tst on [r6+0x28] before the first ldrb has no effect since the byte is reloaded either way (dead
+  code).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803E608: strb r0,[r2,r7] + add r7,#1 copies two bytes into caller''s buffer; ldr r1,[r4,#8];
+    add r1,r1,r0; str r1,[r4,#8] accumulates each copied byte into the checksum field; both callers loop
+    7x with r7+=2, r1-=2 and str r7,[r6,#0x28], tracking progress in the state struct; callers then ldr
+    r0,[r6,#0x40]; ldr r1,[r4,#8]; cmp — checking computed sum against an expected value; second caller
+    ldr r4,off_803E698 = eStruct200F360, tying the accumulator to the eStruct data block'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11132
+  - 0x0803E598 sub_803E598
+  - 0x0803E628 sub_803E628
+  reproduce: python3 tools/asmcat.py 0x0803E608
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body copies exactly 2 bytes (r3 counts 0..1) from [r5,r3] to [r2,r7], accumulating into [r4+8]
+    as the proposal states. The tst/branch is indeed dead since ldrb r0 repeats. Callers do run it 7 times
+    (r1=0xe, sub #2 → bgt) and then compare [r4+8] against [r6+0x40], matching the proposal. However the
+    function itself only bumps r7 by 1 per byte, not 2; the ''+=2'' in the summary belongs to the caller''s
+    add r7,#2 between calls. Also the name ''e_copyChunkUpdateChecksum'' is misleading because the copy
+    is only 2 bytes per call and is more of a checksum-accumulating byte-copy helper than a chunk updater;
+    a tighter fit is e_updateChecksumCopy2.; run wf investigate investigate-20261019-052112; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- why the source pointer advances 8 bytes per 2-byte chunk (source data layout unknown)
+- exact identity of the r6 state struct and what the buffers at +0x38/+0x3c hold
+- whether dword_200F368 is a checksum compared for validation or just a byte total
+- 'The body copies exactly 2 bytes (r3 counts 0..1) from [r5,r3] to [r2,r7], accumulating into [r4+8]
+  as the proposal states. The tst/branch is indeed dead since ldrb r0 repeats. Callers do run it 7 times
+  (r1=0xe, sub #2 → bgt) and then compare [r4+8] against [r6+0x40], matching the proposal. However the
+  function itself only bumps r7 by 1 per byte, not 2; the ''+=2'' in the summary belongs to the caller''s
+  add r7,#2 between calls. Also the name ''e_copyChunkUpdateChecksum'' is misleading because the copy
+  is only 2 bytes per call and is more of a checksum-accumulating byte-copy helper than a chunk updater;
+  a tighter fit is e_updateChecksumCopy2.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803E608 -> e_updateChecksumCopy2
+  where: bn6f 1189566c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803E608

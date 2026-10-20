@@ -2,27 +2,24 @@ name: object_countValidPanelsAhead
 address: '0x080E650A'
 kind: function
 status: probable
-summary: Iterates the two panels ahead of a battle object (alliance-flipped direction) and increments
-  object+0x60 for each panel that matches the required tile-flag mask 0x0F880080, is unoccupied, and passes
-  a sub_80E6720 check.
-interface: (r5 = battle object) -> [object+0x60] = number of valid forward panels (0..2); calls helper
-  with panel coords (r0/r1), offset (r2), packed panel-flag mask (r3 = 0x0F880080), alliance (r2); no
-  meaningful r0 return
-details: Zeroes the counter at object+0x60, then loops r6 = 1..2. Each iteration calls sub_800D4D0 with
-  the object's alliance XOR 1, its DirectionFlip flag, and the loop offset to derive the coordinates of
-  the panel that far ahead of the object (the XOR makes 'ahead' correct for enemies). object_checkPanelParameters
-  then verifies the panel's tile flags against the packed mask 0x0F880080 (some bits required set, others
-  clear, e.g. normal/empty ground), and sub_800D668 (r2 = alliance) verifies the panel is not occupied.
-  If both checks pass, sub_80E6720 is invoked with the panel coords (r0/r1) and the object's Params pointer
-  (r4), and the counter at [r5+0x60] is incremented.
+summary: Iterates the two panels ahead of a battle object (alliance-flipped direction) and increments object+0x60
+  for each panel that matches the required tile-flag mask 0x0F880080, is unoccupied, and passes a sub_80E6720 check.
+interface: (r5 = battle object) -> [object+0x60] = number of valid forward panels (0..2); calls helper with panel
+  coords (r0/r1), offset (r2), packed panel-flag mask (r3 = 0x0F880080), alliance (r2); no meaningful r0 return
+details: Zeroes the counter at object+0x60, then loops r6 = 1..2. Each iteration calls sub_800D4D0 with the object's
+  alliance XOR 1, its DirectionFlip flag, and the loop offset to derive the coordinates of the panel that far ahead
+  of the object (the XOR makes 'ahead' correct for enemies). object_checkPanelParameters then verifies the panel's
+  tile flags against the packed mask 0x0F880080 (some bits required set, others clear, e.g. normal/empty ground),
+  and sub_800D668 (r2 = alliance) verifies the panel is not occupied. If both checks pass, sub_80E6720 is invoked
+  with the panel coords (r0/r1) and the object's Params pointer (r4), and the counter at [r5+0x60] is incremented.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: str r0,[r7] with r7=r5+0x60 zero-initializes a counter, later add r7,#1 per accepted panel;
-    ldrb alliance; eor with 1 before sub_800D4D0 flips facing so offsets 1..2 are 'in front' for either
-    side; bl object_checkPanelParameters with r3=0xF880080 filters panels by tile-flag mask; beq skips
-    on mismatch; bl sub_800D668 with alliance skips panels already occupied by an object; loop bound cmp
-    r6,#3 / ble means exactly two forward panels are examined per call
+  detail: str r0,[r7] with r7=r5+0x60 zero-initializes a counter, later add r7,#1 per accepted panel; ldrb alliance;
+    eor with 1 before sub_800D4D0 flips facing so offsets 1..2 are 'in front' for either side; bl object_checkPanelParameters
+    with r3=0xF880080 filters panels by tile-flag mask; beq skips on mismatch; bl sub_800D668 with alliance skips
+    panels already occupied by an object; loop bound cmp r6,#3 / ble means exactly two forward panels are examined
+    per call
   refs:
   - bn6f/asm/asm31.s:101838
   - 0x080E64C4 sub_80E64C4
@@ -30,27 +27,24 @@ evidence:
   - 0x0800D4D0 sub_800D4D0
   - 0x0800D668 sub_800D668
   reproduce: python3 tools/asmcat.py 0x080E650A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is mostly correct: r6 iterates 1..2 (loc_80E6516, cmp r6,#3 / ble), the counter at r5+0x60
-    is cleared and incremented, and the panel checks use the flag mask 0x0F880080. However, the proposal
-    misattributes the r2 argument to object_checkPanelParameters as ''0x10'' offset — the asm shows mov
-    r2,#0x10 passed before the mask, consistent with the helper''s (coord_x, coord_y, offset, mask) signature,
-    and sub_800D668 receives the Alliance in r2. The name ''object_countFreePanelsAhead'' is reasonable
-    but ''free'' is inaccurate since panels must match specific tile flags, not merely be unoccupied.;
-    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    is mostly correct: r6 iterates 1..2 (loc_80E6516, cmp r6,#3 / ble), the counter at r5+0x60 is cleared and incremented,
+    and the panel checks use the flag mask 0x0F880080. However, the proposal misattributes the r2 argument to object_checkPanelParameters
+    as ''0x10'' offset — the asm shows mov r2,#0x10 passed before the mask, consistent with the helper''s (coord_x,
+    coord_y, offset, mask) signature, and sub_800D668 receives the Alliance in r2. The name ''object_countFreePanelsAhead''
+    is reasonable but ''free'' is inaccurate since panels must match specific tile flags, not merely be unoccupied.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - Exact panel-type bits encoded in 0x0F880080 (which flags must be set vs clear)
-- What sub_80E6720 records per accepted panel (does it store coordinates, or is [object+0x60] purely a
-  count?)
-- Caller sub_80E64C4's purpose, to confirm the gameplay context (movement, AI target selection, attack
-  placement)
-- 'The summary is mostly correct: r6 iterates 1..2 (loc_80E6516, cmp r6,#3 / ble), the counter at r5+0x60
-  is cleared and incremented, and the panel checks use the flag mask 0x0F880080. However, the proposal
-  misattributes the r2 argument to object_checkPanelParameters as ''0x10'' offset — the asm shows mov
-  r2,#0x10 passed before the mask, consistent with the helper''s (coord_x, coord_y, offset, mask) signature,
-  and sub_800D668 receives the Alliance in r2. The name ''object_countFreePanelsAhead'' is reasonable
-  but ''free'' is inaccurate since panels must match specific tile flags, not merely be unoccupied.'
+- What sub_80E6720 records per accepted panel (does it store coordinates, or is [object+0x60] purely a count?)
+- Caller sub_80E64C4's purpose, to confirm the gameplay context (movement, AI target selection, attack placement)
+- 'The summary is mostly correct: r6 iterates 1..2 (loc_80E6516, cmp r6,#3 / ble), the counter at r5+0x60 is cleared
+  and incremented, and the panel checks use the flag mask 0x0F880080. However, the proposal misattributes the r2
+  argument to object_checkPanelParameters as ''0x10'' offset — the asm shows mov r2,#0x10 passed before the mask,
+  consistent with the helper''s (coord_x, coord_y, offset, mask) signature, and sub_800D668 receives the Alliance
+  in r2. The name ''object_countFreePanelsAhead'' is reasonable but ''free'' is inaccurate since panels must match
+  specific tile flags, not merely be unoccupied.'
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -62,5 +56,9 @@ changes:
   what: rename sub_80E650A -> object_countValidPanelsAhead
   where: bn6f 101226a8
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e4cd4d22
+  tool: tools/symdoc.py
 previous_names:
 - sub_80E650A
