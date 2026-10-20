@@ -1019,6 +1019,36 @@ Next battle_objectUpdate_8133400(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8133540 ── */
+/* Mode dispatcher for a battle object: the word at [objectPtr + 0x68] selects
+ * one of four handlers in the table at off_8133554 (offset 0, 4, 8 or 12).
+ * The selected handler runs with r0 = its own address and r1 = the mode index,
+ * and whatever registers it leaves behind (r5, r8-r12) are this function's
+ * outputs, so the call must happen in register form. */
+
+/* register form: the handler is reached through a computed code address, and
+ * the registers the handler leaves behind (r5, r8-r12) are the caller's
+ * outputs; they must pass through live, which a typed wrapper cannot do. */
+static void call_mode_handler(u32 handler, u32 modeIndex) {
+    R0 = handler;   /* the original still holds the handler's address in r0 */
+    R1 = modeIndex;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Typed body: pick the handler matching the object's current mode and run it. */
+static void dispatch_mode_handler(u32 objectPtr) {
+    u32 modeIndex = LD32(objectPtr + 0x68);
+    u32 handler = LD32(A_off_8133554 + modeIndex);
+    call_mode_handler(handler, modeIndex);
+}
+
+/* sub_8133540: dispatch on [r5+0x68]; outputs r5, r8-r12 are whatever the
+ * chosen handler leaves in those registers (r0 is a clobber, not a result). */
+Next sub_8133540(void) {
+    dispatch_mode_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81337C4 ── */
 /* Folder-edit menu state dispatcher (0x081337C4).
  *
@@ -2503,6 +2533,59 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81345FC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sub_813468C_result;
+/* register form: generated wrapper: battleObject_updateShieldOrStatusEffect_813468C has no typed C interface yet */
+static inline call_sub_813468C_result call_sub_813468C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(battleObject_updateShieldOrStatusEffect_813468C);
+    return (call_sub_813468C_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_81345FC: fixed-argument front end for battleObject_updateShieldOrStatusEffect_813468C.
+ *
+ * It always invokes the callee with r0=0x5A, r1=r2=0x20, r3=0x13,
+ * r4=&byte_81331F4 (data table address) and r6=0x40000000 (the literal
+ * pooled at byte_81346FC), forwarding the caller's r5 untouched.  Everything
+ * the caller sees afterwards - r0-r3 and the NZCV flags - is whatever
+ * battleObject_updateShieldOrStatusEffect_813468C left behind.
+ *
+ * The original keeps the caller's own r4-r7 alive across the call with
+ * push {r4-r7} / pop {r4-r7}, because r4 and r6 are reused to carry the
+ * callee's arguments, so the caller's values have to be put back afterwards. */
+
+/* register form: the original's pop {r4-r7} restores the caller's r4-r7
+ * after the call; typed C may not assign guest registers outside the
+ * adapter, so the restoration has to be done here in register form. */
+static void pop_saved_r4_to_r7(u32 saved_r4, u32 saved_r5, u32 saved_r6, u32 saved_r7) {
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+}
+
+static void run_sub_81345FC_body(u32 caller_r4, u32 caller_r5, u32 caller_r6, u32 caller_r7) {
+    /* bl battleObject_updateShieldOrStatusEffect_813468C with the fixed argument set; r0-r3 and the flags come
+     * straight back from the callee, so nothing is copied here. */
+    call_sub_813468C(0x5A, 0x20, 0x20, 0x13, A_byte_81331F4, caller_r5, 0x40000000);
+
+    /* pop {r4-r7}: hand the caller's registers back unchanged. */
+    pop_saved_r4_to_r7(caller_r4, caller_r5, caller_r6, caller_r7);
+}
+
+/* sub_81345FC(r5 forwarded, r10 untouched) -> r0 r1 r2 r3 nz c v lr from the callee */
+Next sub_81345FC(void) {
+    run_sub_81345FC_body(R4, R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── copyBackgroundTiles_sub_813471C ── */
 /* copyBackgroundTiles_sub_813471C: Copy background tiles for an object. The flag byte at r5+0xD
  * selects between a small (2x2) and large (0x15x2) source rectangle; the
@@ -3082,6 +3165,53 @@ Next registerBattleStartScript_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813676C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool v; } call_CopyBytes_result_sub_813676C;
+/* register form: generated wrapper: CopyBytes has no typed C interface yet */
+static inline call_CopyBytes_result_sub_813676C call_CopyBytes_sub_813676C(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyBytes);
+    return (call_CopyBytes_result_sub_813676C){ R3, OVERFLOW_FLAG() };
+}
+
+/* Copy 8 bytes from the save/work buffer at 0x2000090 into the battle
+ * work area at 0x2022B70 (probably refreshing a small mirrored block). */
+static void copy_work_block(void) {
+    call_CopyBytes_sub_813676C(A_unk_2000090, A_unk_2022B70, 8);
+}
+
+/* sub_813676C() -> void */
+Next sub_813676C(void) {
+    copy_work_block();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813677C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; bool c, v; } call_CopyBytes_result_sub_813677C;
+/* register form: generated wrapper: CopyBytes has no typed C interface yet */
+static inline call_CopyBytes_result_sub_813677C call_CopyBytes_sub_813677C(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyBytes);
+    return (call_CopyBytes_result_sub_813677C){ R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Copy the 8-byte buffer at 0x2022B70 (battle state slot) to 0x2000090 (work buffer). */
+static void copy_state_to_work_buffer(void) {
+    call_CopyBytes_sub_813677C(A_unk_2022B70, A_unk_2000090, 8);
+}
+
+/* sub_813677C() -> void */
+Next sub_813677C(void) {
+    copy_state_to_work_buffer();
+    RETURN_TO_CALLER();
+}
+
 /* ── navicust_boardCursorUp ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_navicust_boardCursorUp;
@@ -3242,6 +3372,127 @@ static void save_restore_pet_navi_stats(void) {
 /* battle_refreshPETNaviStats_8136C24() — no meaningful inputs used; outputs (r1,r2,c,v) left by last callee GUEST_CALL. */
 Next battle_refreshPETNaviStats_8136C24(void) {
     save_restore_pet_navi_stats();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8136EE4 ── */
+/* Increment the 16-bit phase timer at [r5+0xE]. Once the incremented count
+ * reaches 0x14 (the 21st tick of this phase), store state 4 into the object's
+ * state byte at [r5] to end the phase. */
+static void sub_8136EE4_typed(u32 obj) {
+    /* ldrh/add keeps the count in a 32-bit register: compare the full value
+     * (so 0xFFFF -> 0x10000 still trips the test) before the halfword store
+     * truncates it back to 16 bits. */
+    u32 count = LD16(obj + 0xE) + 1;
+    ST16(obj + 0xE, count);
+    if ((s32)count >= 0x14)
+        ST8(obj, 4);
+}
+
+Next sub_8136EE4(void) {
+    sub_8136EE4_typed(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81370C4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81370C4;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_81370C4 call_chatbox_mask_eFlags2009F38_sub_81370C4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_81370C4){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Chatbox-related: store 0x30 into the byte at r5 only while the
+ * chatbox eFlags2009F38 bit 0x80 is clear; do nothing once it is set. */
+static void store_30_when_chatbox_flag_clear(u32 destAddr) {
+    /* chatbox_mask_eFlags2009F38 tests eFlags2009F38 & mask:
+     * Z is set when the masked bits are all zero (flag not set). */
+    if (!call_chatbox_mask_eFlags2009F38_sub_81370C4(0x80).z)
+        return;                     /* flag already set: leave *destAddr alone */
+
+    ST8(destAddr, 0x30);
+}
+
+Next sub_81370C4(void) {
+    store_30_when_chatbox_flag_clear(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81371A0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81371A0;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_81371A0 call_chatbox_mask_eFlags2009F38_sub_81371A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_81371A0){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Test chatbox eFlags bit 0x80; if that flag is clear (the original's bne not
+ * taken), store 0x40 to the byte at dest. r0 ends as 0x40 on the store path
+ * and as the mask-test result otherwise, but callers treat r0 as clobbered. */
+static void store_40h_if_chatbox_flag_clear(u32 dest) {
+    call_chatbox_mask_eFlags2009F38_result_sub_81371A0 mask =
+        call_chatbox_mask_eFlags2009F38_sub_81371A0(0x80);
+    if (mask.z)                     /* Z set = masked flag value was zero */
+        ST8(dest, 0x40);
+}
+
+/* sub_81371A0(r5 = destination byte pointer) -> nothing (r0/nz clobbered) */
+Next sub_81371A0(void) {
+    store_40h_if_chatbox_flag_clear(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813725C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_813725C;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_813725C call_chatbox_mask_eFlags2009F38_sub_813725C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_813725C){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* If chatbox flag 0x80 (in eFlags2009F38) is clear, write 0x50 to the byte at r5.
+ * The 0x50 looks like a textbox/screen state code stored into the caller's object. */
+static void set_state_byte_if_flag_clear(u32 target) {
+    u32 mask = call_chatbox_mask_eFlags2009F38_sub_813725C(0x80).r0;
+    if (mask == 0)                      /* flag not set -> bne not taken -> store runs */
+        ST8(target, 0x50);
+}
+
+/* sub_813725C(r5 = target byte address) -> nothing (r1 preserved, r0/nz clobbered) */
+Next sub_813725C(void) {
+    set_state_byte_if_flag_clear(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8137368 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_8137368;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_8137368 call_chatbox_mask_eFlags2009F38_sub_8137368(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_8137368){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* When chatbox flag 0x80 is clear (mask test reports "equal"), set the byte at
+ * *r5 to 100. When the flag is set the original branches straight to the return,
+ * leaving both the byte and r0 untouched. Callers use no outputs. */
+static void reset_counter_if_flag_clear(u32 ptr) {
+    call_chatbox_mask_eFlags2009F38_result_sub_8137368 test = call_chatbox_mask_eFlags2009F38_sub_8137368(0x80);
+
+    if (test.z) {                      /* flag 0x80 clear: reset the counter */
+        ST8(ptr, 0x64);                /* store 100 */
+    }
+}
+
+Next sub_8137368(void) {
+    reset_counter_if_flag_clear(R5);
     RETURN_TO_CALLER();
 }
 

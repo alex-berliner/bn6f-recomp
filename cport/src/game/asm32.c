@@ -3032,6 +3032,108 @@ Next ai_attackStepDispatch_81151A0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811523C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r7; } call_ai_attackVarsTimerTick16_result;
+/* register form: generated wrapper: ai_attackVarsTimerTick16 has no typed C interface yet */
+static inline call_ai_attackVarsTimerTick16_result call_ai_attackVarsTimerTick16(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(ai_attackVarsTimerTick16);
+    return (call_ai_attackVarsTimerTick16_result){ R5, R7 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_811523C;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_sub_811523C call_object_getFrontDirection_sub_811523C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_sub_811523C){ R0 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_object_reservePanel_result;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result call_object_reservePanel(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result call_PlaySoundEffect(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r1, r5; } call_sub_8115492_result;
+/* register form: generated wrapper: sub_8115492 has no typed C interface yet */
+static inline call_sub_8115492_result call_sub_8115492(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(sub_8115492);
+    return (call_sub_8115492_result){ R1, R5 };
+}
+
+/* Sound played when the object lunges at its target (0x88 + 0xFF in the original). */
+#define SFX_PANEL_LUNGE 0x187u
+
+/* r1/r5 values the original leaves behind for its caller. */
+typedef struct { u32 r1; u32 r5; } AttackStepResult_sub_811523C;
+
+/* One step of the lunge attack driven by the AI state block in vars (r7):
+ * tick the step timer; while it still counts down nothing else happens. Once
+ * it expires, give the object (r5) an X velocity of front direction times the
+ * scratch multiplier, mark the current panel as the one it will move onto and
+ * reserve it, play the lunge sound and tag the hit element. The shared
+ * follow-up call runs on both paths. */
+static AttackStepResult_sub_811523C ai_attack_step(u32 obj, u32 vars) {
+    AttackStepResult_sub_811523C out;
+
+    call_ai_attackVarsTimerTick16_result tick = call_ai_attackVarsTimerTick16(obj, vars);
+    obj = tick.r5;
+    vars = tick.r7;
+
+    u32 timer = (u32)LD16(vars + oAIAttackVars_StepTimer) - 1;
+    ST16(vars + oAIAttackVars_StepTimer, (u16)timer);
+
+    if ((s32)timer < 0) {
+        u32 stride = LD32(vars + oAIAttackVars_ScratchVar);
+        u32 vx = call_object_getFrontDirection_sub_811523C(obj).r0 * stride;
+        ST32(obj + oBattleObject_XVelocity, vx);
+
+        u32 panelX = LD8(obj + oBattleObject_PanelX);
+        ST8(obj + oBattleObject_FuturePanelX, panelX);
+        u32 panelY = LD8(obj + oBattleObject_PanelY);
+        ST8(obj + oBattleObject_FuturePanelY, panelY);
+
+        /* The sound call takes r2 straight from reservePanel's leftover output. */
+        call_object_reservePanel_result reserved =
+            call_object_reservePanel(panelX, panelY, obj);
+        call_PlaySoundEffect(SFX_PANEL_LUNGE, reserved.r2);
+
+        ST16(vars + oAIAttackVars_HitElement, 8);
+    }
+
+    call_sub_8115492_result follow = call_sub_8115492(obj, vars);
+    out.r1 = follow.r1;
+    out.r5 = follow.r5;
+    return out;
+}
+
+/* sub_811523C(r5 = battle object, r7 = AI attack vars) -> r1 r5 (r10 as left
+ * by PlaySoundEffect on the lunge path, untouched otherwise). */
+Next sub_811523C(void) {
+    AttackStepResult_sub_811523C out = ai_attack_step(R5, R7);
+    R1 = out.r1;
+    R5 = out.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackVarsTimerTick16 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r5, r7; } call_ai_spawnHopRearEffect_result;
@@ -3154,6 +3256,120 @@ Next ai_spawnHopRearEffect(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8115492 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_8115492;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_sub_8115492 call_object_getFrontDirection_sub_8115492(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_sub_8115492){ R0 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_highlightPanelIfSomeCondition_8109660_result;
+/* register form: generated wrapper: highlightPanelIfSomeCondition_8109660 has no typed C interface yet */
+static inline call_highlightPanelIfSomeCondition_8109660_result call_highlightPanelIfSomeCondition_8109660(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(highlightPanelIfSomeCondition_8109660);
+    return (call_highlightPanelIfSomeCondition_8109660_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Advance the enemy's attack-step counter and, on the steps that actually
+ * attack, highlight the panel in front of the object.
+ *
+ * r5 = battle object, r7 = AI attack variable block. The counter at
+ * oAIAttackVars_AttackStepIndex is incremented every call; only when bit 2
+ * of the new count is clear does the attack run (the enemy attacks on four
+ * steps out of every eight). The attack target is one panel in front of the
+ * object, on the object's own row, on the side given by its alliance XOR its
+ * direction flip; the AI parameter block supplies the highlight's appearance.
+ *
+ * Returns the value the original leaves in r1: the constant 4 on the
+ * early-exit path (r1 still holds the test mask there), otherwise the r1
+ * left behind by highlightPanelIfSomeCondition_8109660 (whose r5 leftover
+ * also stays in place as this function's r5 output). */
+static u32 advance_attack_step(u32 object, u32 aiVars) {
+    u32 step = LD8(aiVars + oAIAttackVars_AttackStepIndex) + 1;
+    ST8(aiVars + oAIAttackVars_AttackStepIndex, step);
+
+    if ((step & 4) != 0)
+        return 4;                    /* off-step: nothing to attack this tick */
+
+    u32 dir = call_object_getFrontDirection_sub_8115492(object).r0;
+    u32 targetX = dir + LD8(object + oBattleObject_FuturePanelX);
+    u32 targetY = LD8(object + oBattleObject_PanelY);
+    u32 side = LD8(object + oBattleObject_Alliance)
+             ^ LD8(object + oBattleObject_DirectionFlip);
+    u32 param = LD32(aiVars + oAIAttackVars_AiAttackParam);
+
+    call_highlightPanelIfSomeCondition_8109660_result highlight =
+        call_highlightPanelIfSomeCondition_8109660(targetX, targetY, param, side);
+    return highlight.r1;
+}
+
+/* sub_8115492(r5 = battle object, r7 = AI attack vars) -> r1 (r5 comes from
+ * the highlight call itself on the attacking path, unchanged otherwise) */
+Next sub_8115492(void) {
+    R1 = advance_attack_step(R5, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81154B8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result;
+/* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
+static inline call_sprite_getFrameParameters_result call_sprite_getFrameParameters(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_getFrameParameters);
+    return (call_sprite_getFrameParameters_result){ R0, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_object_setFlag1_result;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result call_object_setFlag1(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result){ R1, R2 };
+}
+
+/* Animations used by this check. */
+#define ANIM_CHARGE_RELEASE 2   /* the animation that can be cut short here */
+#define ANIM_FORCE_IDLE     3   /* the animation forced on when cut short */
+#define FRAME_CUTOFF_BIT    0x80 /* frame-parameter bit meaning "cut short now" */
+
+/*
+ * If the battle object is playing animation 2 and the current animation
+ * frame reports the "cut short" bit in its frame parameters, end the
+ * animation early: switch to animation 3 and raise the object's guard flag.
+ *
+ * Returns the value the original leaves in r1:
+ *   - incoming r1 when the object is not in animation 2 (r1 never touched),
+ *   - 0x80 once sprite_getFrameParameters has run (the original loads the
+ *     test bit into r1 and leaves it there even when the test fails),
+ *   - object_setFlag1's r1 result when the flag path runs.
+ */
+static u32 maybe_cut_short_animation(u32 object, u32 r1) {
+    if (LD8(object + oBattleObject_CurAnim) != ANIM_CHARGE_RELEASE)
+        return r1;
+
+    call_sprite_getFrameParameters_result frame = call_sprite_getFrameParameters(object);
+    if (!(frame.r0 & FRAME_CUTOFF_BIT))
+        return FRAME_CUTOFF_BIT;              /* r1 was set to 0x80 for the test */
+
+    ST8(object + oBattleObject_CurAnim, ANIM_FORCE_IDLE);
+    return call_object_setFlag1(OBJECT_FLAGS_GUARD, object).r1;
+}
+
+/* sub_81154B8(r5 = battle object, r1 passed through) -> r1 */
+Next sub_81154B8(void) {
+    R1 = maybe_cut_short_animation(R5, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_negateExtraVars ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r4, r5, r6; } call_sub_811567E_result;
@@ -3187,6 +3403,73 @@ Next ai_negateExtraVars(void) {
     R4 = res.r4;
     R5 = res.r5;
     R6 = res.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81159C4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_battle_objectUpdateDispatchPhase_80165C2_result_sub_81159C4;
+/* register form: generated wrapper: battle_objectUpdateDispatchPhase_80165C2 has no typed C interface yet */
+static inline call_battle_objectUpdateDispatchPhase_80165C2_result_sub_81159C4 call_battle_objectUpdateDispatchPhase_80165C2_sub_81159C4(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(battle_objectUpdateDispatchPhase_80165C2);
+    return (call_battle_objectUpdateDispatchPhase_80165C2_result_sub_81159C4){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1; } call_sub_80B87A6_result;
+/* register form: generated wrapper: sub_80B87A6 has no typed C interface yet */
+static inline call_sub_80B87A6_result call_sub_80B87A6(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_80B87A6);
+    return (call_sub_80B87A6_result){ R1 };
+}
+
+/* sub_81159C4: run one update-dispatch phase for the battle object the caller
+ * selected, then — if that phase left the object at phase 8 with extra vars
+ * still pending — run the extra-var handler sub_80B87A6 on them.
+ *
+ * Every output register (r1 r5 r8 r9 r10 r11 r12) is produced by one of the
+ * two callees: the dispatch phase leaves r1/r5/r8-r12 behind, and when the
+ * extra-var handler runs it overwrites r1. Nothing is computed here, so the
+ * callees' own guest-register writes are the result; no values are routed
+ * through structs or return values. */
+
+static void update_phase_then_extra_vars(u32 r2, u32 r3, u32 r4, u32 r5,
+                                         u32 r6, u32 r7, u32 r8, u32 r9,
+                                         u32 r11, u32 r12) {
+    /* Dispatch the object's current update phase. It hands back the register
+     * set it leaves behind; r5 is the battle object it worked on. */
+    call_battle_objectUpdateDispatchPhase_80165C2_result_sub_81159C4 upd =
+        call_battle_objectUpdateDispatchPhase_80165C2_sub_81159C4(r2, r3, r4, r5, r6, r7, r8, r9, r11, r12);
+
+    u32 object = upd.r5;
+
+    /* Phase 8 with pending extra vars: run the extra-var handler.
+     * Its r1 result stays in the guest state, as the original leaves it. */
+    if (LD32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized) == 8) {
+        u32 extraVars = LD32(object + oBattleObject_ExtraVars);
+        if (extraVars != 0)
+            call_sub_80B87A6(extraVars);
+    }
+}
+
+/* inputs: c v r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr
+ * outputs: r1 r5 r8 r9 r10 r11 r12
+ * clobbers: nz c v r0 r2 r3 r4 r6 r7 lr
+ * The entry flags c/v reach the dispatch callee untouched, exactly as in the
+ * original (push {lr} does not touch flags). r10 passes through the callee
+ * untouched, so the wrapper keeps it as on entry. */
+Next sub_81159C4(void) {
+    update_phase_then_extra_vars(R2, R3, R4, R5, R6, R7, R8, R9, R11, R12);
     RETURN_TO_CALLER();
 }
 
@@ -3250,6 +3533,54 @@ static void delete_battle_object(u32 object) {
 /* battle_deleteBattleObject(r5 = object, r10 = battle state) -> r1 */
 Next battle_deleteBattleObject(void) {
     delete_battle_object(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81167D2 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r7; } call_battle_conditionalRngRoll_result;
+/* register form: generated wrapper: battle_conditionalRngRoll has no typed C interface yet */
+static inline call_battle_conditionalRngRoll_result call_battle_conditionalRngRoll(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_conditionalRngRoll);
+    return (call_battle_conditionalRngRoll_result){ R0, R7 };
+}
+
+typedef struct { u32 r0, r7; } call_GetPositiveSignedRNG_result;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result call_GetPositiveSignedRNG(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result){ R0, R7 };
+}
+
+/* sub_81167D2: pick a value from a 4x16 lookup table for a battle object.
+ * r5 = battle object. battle_conditionalRngRoll decides whether to roll at
+ * all: a result of 4 short-circuits and returns 4 unchanged. Otherwise a
+ * random roll (GetPositiveSignedRNG) picks the column and the object's
+ * Param1 picks the row of byte_81167F4. Both callees also leave a value in
+ * r7, which this routine passes through to its caller. */
+typedef struct { u32 value; u32 r7; } Sub_81167D2_Result;
+
+static Sub_81167D2_Result sub_81167D2_impl(u32 object) {
+    call_battle_conditionalRngRoll_result roll = call_battle_conditionalRngRoll(object);
+    if (roll.r0 == 4)
+        return (Sub_81167D2_Result){ roll.r0, roll.r7 };
+
+    call_GetPositiveSignedRNG_result rng = call_GetPositiveSignedRNG();
+
+    /* column = low 4 bits of the roll, row = Param1 * 16 */
+    u32 row = (u32)LD8(object + oBattleObject_Param1) << 4;
+    u32 index = (rng.r0 & 0xF) + row;
+    u32 value = LD8(A_byte_81167F4 + index);
+
+    return (Sub_81167D2_Result){ value, rng.r7 };
+}
+
+/* sub_81167D2(r5 = battle object) -> r0 = table value, r7 = passthrough */
+Next sub_81167D2(void) {
+    Sub_81167D2_Result res = sub_81167D2_impl(R5);
+    R0 = res.value;
+    R7 = res.r7;
     RETURN_TO_CALLER();
 }
 
@@ -5851,6 +6182,127 @@ Next sub_8117E60(void) {
     }
 
     GUEST_CALL(sprite_update);   /* R2/R3 outputs come from this leaf */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8118424 ── */
+/* Set the byte pointed to by the argument to 1 and return 1.
+ * The callers branch on the result (nz comes from the mov r0, #1). */
+static u32 set_flag_byte_true(u32 addr) {
+    ST8(addr, 1);
+    return 1;
+}
+
+/* sub_8118424(r5 = pointer to flag byte) -> r0 = 1, nz set */
+Next sub_8118424(void) {
+    R0 = set_flag_byte_true(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81185A8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81185A8;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_81185A8 call_chatbox_mask_eFlags2009F38_sub_81185A8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_81185A8){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Set *dest to 1 when bit 0x80 of the chatbox state at eFlags2009F38 is set;
+ * leaves *dest untouched otherwise. */
+
+static void set_byte_if_chatbox_flag_80(u32 dest)
+{
+    if (call_chatbox_mask_eFlags2009F38_sub_81185A8(0x80).r0 != 0)
+        ST8(dest, 1);
+}
+
+Next sub_81185A8(void)
+{
+    set_byte_if_chatbox_flag_80(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81187DC ── */
+/* Return a pointer to the sub-record selected by the high nibble of the byte
+ * at [base+2]: each nibble value addresses one 16-byte slot at base. */
+static u32 *nibble_record_pointer(u32 *base) {
+    u32 selector = LD8((u32)base + 2) & 0xF0;
+    return (u32 *)((u32)base + selector);
+}
+
+/* sub_81187DC(r5 = record base) -> r0 (pointer to the selected sub-record) */
+Next sub_81187DC(void) {
+    R0 = (u32)nibble_record_pointer((u32 *)R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8118B98 ── */
+/* Step from one record of a linked table to the next: the high nibble of
+ * the byte at offset 2 within each record holds the stride (in units of
+ * 16 bytes) to the following entry, so the returned pointer is the base
+ * plus that stride. This is the usual "follow the link" helper used when
+ * walking chains of these small records. */
+static u32 next_record(u32 record) {
+    u32 stride = (LD8(record + 2) >> 4) << 4;   /* high nibble * 16 */
+    return record + stride;
+}
+
+Next sub_8118B98(void) {
+    R0 = next_record(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8118C84 ── */
+/* Sets the byte at *dest to 1 — a simple "mark this flag/slot as set" helper.
+ * Returns 1, matching the value the original loads into r0 (and sets NZ from). */
+static u32 set_byte_one(u32 dest) {
+    ST8(dest, 1);
+    return 1;
+}
+
+/* sub_8118C84(r5 = destination byte) -> r0 = 1, nz set */
+Next sub_8118C84(void) {
+    R0 = set_byte_one(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8118F14 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_sprite_update_result_sub_8118F14;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_8118F14 call_sprite_update_sub_8118F14(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_8118F14){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8118F14 is nothing but a tail-call shim around sprite_update: the caller
+ * hands it a pointer in r5, it runs the sprite update, and every result --
+ * r0-r5, the N/Z/C/V flags, and even the LR the BL leaves behind -- passes
+ * straight through to its own caller. The typed function therefore only
+ * forwards the call; the adapter unpacks the register results. The flags and
+ * LR are outputs the original leaves behind from the callee, and the wrapper
+ * call has already left them in place, so they are not set again here. */
+
+static call_sprite_update_result_sub_8118F14 sub_8118F14_forward(u32 object)
+{
+    return call_sprite_update_sub_8118F14(object);
+}
+
+Next sub_8118F14(void) {
+    call_sprite_update_result_sub_8118F14 res = sub_8118F14_forward(R5);
+
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    R5 = res.r5;
+
     RETURN_TO_CALLER();
 }
 

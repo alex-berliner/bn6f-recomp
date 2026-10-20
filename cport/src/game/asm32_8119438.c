@@ -2872,6 +2872,71 @@ Next sub_811BED4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811C11C ── */
+/* Battle-state dispatcher: the byte at object+8 selects one of three handlers
+ * (battleObject_initBeastOutOverworldGui_811C13C / sub_811C18C / sub_811C1A4) from the table at off_811C130,
+ * which is then called. The handler's results (r2 r3 r5 r10 r11) are left
+ * behind in the guest registers by the callee itself, so nothing is passed
+ * back through return values here. */
+
+/* register form: indirect call through the handler table (mov lr, pc / bx r0);
+ * r0 and r1 hold the same values the original leaves in them at the bx */
+static void call_state_handler_sub_811C11C(u32 handler, u32 index) {
+    R0 = handler;
+    R1 = index;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Look up the handler for the object's current state and run it. */
+static void run_state_handler(u32 object) {
+    u32 index = LD8(object + 8);            /* raw table byte offset, not scaled */
+    u32 handler = LD32(A_off_811C130 + index);
+    call_state_handler_sub_811C11C(handler, index);
+}
+
+/* sub_811C11C(r5 = object, lr = return address) -> r2 r3 r5 r10 r11 from callee */
+Next sub_811C11C(void) {
+    run_state_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811C18C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: reqBBS_81406FC has no typed C interface yet */
+static inline void call_reqBBS_81406FC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_81406FC);
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_sprite_update_result_sub_811C18C;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_811C18C call_sprite_update_sub_811C18C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_811C18C){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_811C18C — per-frame update of the request BBS screen.
+ *
+ * The original swaps r5 for eReqBBSGui around the reqBBS_81406FC call
+ * (its one argument), then pops the caller's r5 back so sprite_update
+ * still sees it; r2/r3/r5 are whatever sprite_update leaves behind.
+ */
+static void sub_811C18C_body(u32 r5)
+{
+    /* Refresh the request BBS GUI; it is driven through the eReqBBSGui object. */
+    call_reqBBS_81406FC((u32)A_eReqBBSGui);
+
+    /* Advance the sprite update with the caller's r5 (the GUI object list). */
+    call_sprite_update_sub_811C18C(r5);
+}
+
+Next sub_811C18C(void)
+{
+    sub_811C18C_body(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchByClass_811C1AC ── */
 /* Dispatch on a battle object's class-selector byte at [obj+8].
  * The three handlers are outside this file with no typed C interface yet.
