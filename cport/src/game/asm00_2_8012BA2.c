@@ -3010,6 +3010,281 @@ Next battle_teardownObject_80165F8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_stepMoveToFuturePanel_8016730 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_object_removePanelReserve_result_battleObject_stepMoveToFuturePanel_8016730;
+/* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
+static inline call_object_removePanelReserve_result_battleObject_stepMoveToFuturePanel_8016730 call_object_removePanelReserve_battleObject_stepMoveToFuturePanel_8016730(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_removePanelReserve);
+    return (call_object_removePanelReserve_result_battleObject_stepMoveToFuturePanel_8016730){ R3 };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_stepMoveToFuturePanel_8016730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r0, r2, r3; } call_object_getPanelDataOffset_result;
+/* register form: generated wrapper: object_getPanelDataOffset has no typed C interface yet */
+static inline call_object_getPanelDataOffset_result call_object_getPanelDataOffset(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getPanelDataOffset);
+    return (call_object_getPanelDataOffset_result){ R0, R2, R3 };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag_battleObject_stepMoveToFuturePanel_8016730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+typedef struct { u32 r0, r3; } call_battle_getDirFromDelta_result;
+/* register form: generated wrapper: battle_getDirFromDelta has no typed C interface yet */
+static inline call_battle_getDirFromDelta_result call_battle_getDirFromDelta(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(battle_getDirFromDelta);
+    return (call_battle_getDirFromDelta_result){ R0, R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r8, r9, r10, r11, r12; bool v; } call_battle_objectResolveContactOffset_800E468_result;
+/* register form: generated wrapper: battle_objectResolveContactOffset_800E468 has no typed C interface yet */
+static inline call_battle_objectResolveContactOffset_800E468_result call_battle_objectResolveContactOffset_800E468(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(battle_objectResolveContactOffset_800E468);
+    return (call_battle_objectResolveContactOffset_800E468_result){ R0, R1, R2, R3, R4, R5, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r6, r7; bool z, n, v; } call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_stepMoveToFuturePanel_8016730;
+/* register form: generated wrapper: battle_objectCheckPanelByAlliance_800E5AC has no typed C interface yet */
+static inline call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_stepMoveToFuturePanel_8016730 call_battle_objectCheckPanelByAlliance_800E5AC_battleObject_stepMoveToFuturePanel_8016730(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_objectCheckPanelByAlliance_800E5AC);
+    return (call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_stepMoveToFuturePanel_8016730){ R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_object_reservePanel_result_battleObject_stepMoveToFuturePanel_8016730;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_battleObject_stepMoveToFuturePanel_8016730 call_object_reservePanel_battleObject_stepMoveToFuturePanel_8016730(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_battleObject_stepMoveToFuturePanel_8016730){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_clearFlag has no typed C interface yet */
+static inline void call_object_clearFlag_battleObject_stepMoveToFuturePanel_8016730(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag);
+}
+
+typedef struct { u32 r1, r2; } call_object_setCollisionPanelsToCurrent_result_battleObject_stepMoveToFuturePanel_8016730;
+/* register form: generated wrapper: object_setCollisionPanelsToCurrent has no typed C interface yet */
+static inline call_object_setCollisionPanelsToCurrent_result_battleObject_stepMoveToFuturePanel_8016730 call_object_setCollisionPanelsToCurrent_battleObject_stepMoveToFuturePanel_8016730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCollisionPanelsToCurrent);
+    return (call_object_setCollisionPanelsToCurrent_result_battleObject_stepMoveToFuturePanel_8016730){ R1, R2 };
+}
+
+typedef struct { u32 r3, r5, r6; bool z, n, c, v; } call_object_setPanelsFromCoordinates_result_battleObject_stepMoveToFuturePanel_8016730;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result_battleObject_stepMoveToFuturePanel_8016730 call_object_setPanelsFromCoordinates_battleObject_stepMoveToFuturePanel_8016730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result_battleObject_stepMoveToFuturePanel_8016730){ R3, R5, R6, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Sub-pixel movement per panel step (X = 0xA0000, Y = 0x60000). */
+#define SUBPIXEL_X_PER_PANEL  0xA0000u
+#define SUBPIXEL_Y_PER_PANEL  0x60000u
+
+#define DELTA_X_OFFSET  0x1C
+#define DELTA_Y_OFFSET  0x1D
+
+#define PANEL_TYPE_HOLE     7
+#define PANEL_TYPE_MIN      9
+#define PANEL_TYPE_MAX      0xC
+#define FLAG_SHIFT_MASK     0x24
+#define MOVE_STEP_TIMER     4
+#define CONTACT_FREEZE      5
+#define MOVE_COMPLETE_FLAG  (1u << 12)
+
+/* Advance the object one sub-pixel frame and refresh panel/collision state. */
+static void stepSubpixel(u32 obj) {
+    s32 dx = LDS8(obj + DELTA_X_OFFSET);
+    s32 dy = LDS8(obj + DELTA_Y_OFFSET);
+    ST32(obj + oBattleObject_X, LD32(obj + oBattleObject_X) + (s32)(SUBPIXEL_X_PER_PANEL * (u32)dx));
+    ST32(obj + oBattleObject_Y, LD32(obj + oBattleObject_Y) + (s32)(SUBPIXEL_Y_PER_PANEL * (u32)dy));
+    call_object_setPanelsFromCoordinates_battleObject_stepMoveToFuturePanel_8016730(obj);
+    call_object_setCollisionPanelsToCurrent_battleObject_stepMoveToFuturePanel_8016730(obj);
+}
+
+/* Finalize the move: compute direction, reset AI/contact, clear the move-complete flag. */
+static void finishMove(u32 obj) {
+    s32 dx = LDS8(obj + DELTA_X_OFFSET);
+    s32 dy = LDS8(obj + DELTA_Y_OFFSET);
+    u8 alliance = LD8(obj + oBattleObject_Alliance);
+    u32 dir = call_battle_getDirFromDelta((u32)dx, (u32)dy, (u32)alliance).r0;
+
+    ST8(LD32(obj + oBattleObject_CollisionDataPtr) + oCollisionData_Direction, dir);
+    ST8(obj + oBattleObject_AIType, 0);
+    call_object_clearFlag_battleObject_stepMoveToFuturePanel_8016730(MOVE_COMPLETE_FLAG, obj);
+    ST8(obj + oBattleObject_ContactState, 0);
+    call_object_setCollisionPanelsToCurrent_battleObject_stepMoveToFuturePanel_8016730(obj);
+}
+
+/* Decrement the shift counter and try to reserve the next panel.
+ * Returns 1 if a panel was reserved (caller should return early),
+ * 0 if the shift budget ran out or the panel was invalid (caller should finalize). */
+static int attemptShiftPanel(u32 *obj) {
+    u32 counter = LD8(*obj + oBattleObject_PanelShiftCounter) - 1;
+    ST8(*obj + oBattleObject_PanelShiftCounter, counter);
+    if ((s32)counter <= 0)
+        return 0;
+
+    s32 dx = LDS8(*obj + DELTA_X_OFFSET);
+    s32 dy = LDS8(*obj + DELTA_Y_OFFSET);
+    u32 nextX = (u32)((s32)LD8(*obj + oBattleObject_FuturePanelX) + dx);
+    u32 nextY = (u32)((s32)LD8(*obj + oBattleObject_FuturePanelY) + dy);
+
+    call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_stepMoveToFuturePanel_8016730 chk =
+        call_battle_objectCheckPanelByAlliance_800E5AC_battleObject_stepMoveToFuturePanel_8016730(nextX, nextY, *obj);
+    if (chk.z)
+        return 0;
+
+    *obj = chk.r5;
+    ST8(*obj + oBattleObject_MoveToFuturePanelStepTimer, MOVE_STEP_TIMER);
+    ST8(*obj + oBattleObject_FuturePanelX, chk.r6);
+    ST8(*obj + oBattleObject_FuturePanelY, chk.r7);
+    call_object_reservePanel_battleObject_stepMoveToFuturePanel_8016730(chk.r6, chk.r7, *obj);
+    return 1;
+}
+
+/* One frame of the staged move-to-future-panel sequence.
+ * obj (r5) is the battle object; all effects are memory/register side-effects. */
+static void stepMoveToFuturePanel(u32 obj) {
+    /* Tick the step timer down by 1. */
+    u32 timer = LD8(obj + oBattleObject_MoveToFuturePanelStepTimer) - 1;
+    ST8(obj + oBattleObject_MoveToFuturePanelStepTimer, timer);
+
+    /* Still walking: advance sub-pixels and refresh. */
+    if ((s32)timer > 0) {
+        stepSubpixel(obj);
+        return;
+    }
+
+    /* Timer expired – arrived at the future panel. Remove old reserve, snap position. */
+    call_object_removePanelReserve_battleObject_stepMoveToFuturePanel_8016730(
+        LD8(obj + oBattleObject_FuturePanelX),
+        LD8(obj + oBattleObject_FuturePanelY),
+        obj);
+    ST16(obj + oBattleObject_PanelXY, LD16(obj + oBattleObject_FuturePanelXY));
+    call_object_setCoordinatesFromPanels_battleObject_stepMoveToFuturePanel_8016730(obj);
+
+    /* Read panel type at the future panel. */
+    u32 panelPtr = call_object_getPanelDataOffset(
+        LD8(obj + oBattleObject_FuturePanelX),
+        LD8(obj + oBattleObject_FuturePanelY)).r0;
+    u32 ptype = LD8(panelPtr + oPanelData_Type);
+
+    /* Determine whether to shift, contact, or finalize.
+     * The assembly's fall-through structure:
+     *   type == 7 → check element → (≠2: inc counter, goto shift) or (==2: goto loc_8016768)
+     *   loc_8016768: type < 9 → shift;  type > 0xC → shift;  9 ≤ type ≤ 0xC → flag/contact check */
+
+    int goShift = 0;
+    int goContact = 0;
+
+    if (ptype == PANEL_TYPE_HOLE) {
+        u32 colPtr = LD32(obj + oBattleObject_CollisionDataPtr);
+        if (LD8(colPtr + oCollisionData_PrimaryElement) != 2) {
+            /* Non-liquid hole: grant one extra shift and go to shift. */
+            ST8(obj + oBattleObject_PanelShiftCounter,
+                LD8(obj + oBattleObject_PanelShiftCounter) + 1);
+            goShift = 1;
+        }
+        /* element == 2 falls through to loc_8016768; type 7 < 9 → shift (no extra increment). */
+    }
+
+    if (!goShift) {
+        /* loc_8016768 logic: check type range. */
+        if ((s32)ptype < PANEL_TYPE_MIN || (s32)ptype > PANEL_TYPE_MAX) {
+            goShift = 1;
+        } else {
+            /* 9 ≤ type ≤ 0xC: check the "no-shift" object flags. */
+            u32 flags = call_object_getFlag_battleObject_stepMoveToFuturePanel_8016730(obj);
+            if (flags & FLAG_SHIFT_MASK) {
+                goShift = 1;
+            } else {
+                goContact = 1;
+            }
+        }
+    }
+
+    if (goShift) {
+        if (attemptShiftPanel(&obj))
+            return;
+        finishMove(obj);
+        return;
+    }
+
+    /* goContact: panel type 9–0xC with no shift flags – handle contact. */
+    u8 contactState = LD8(obj + oBattleObject_ContactState);
+
+    if (contactState == 3) {
+        /* Already in contact: freeze AI, then finalize. */
+        ST16(LD32(obj + oBattleObject_AIDataPtr) + oAIData_CollisionFreezeTimer,
+             CONTACT_FREEZE);
+        finishMove(obj);
+        return;
+    }
+
+    /* First contact: record direction, set state, resolve offset. */
+    s32 cdx = LDS8(obj + DELTA_X_OFFSET);
+    s32 cdy = LDS8(obj + DELTA_Y_OFFSET);
+    u8 alliance = LD8(obj + oBattleObject_Alliance);
+    u32 dir = call_battle_getDirFromDelta((u32)cdx, (u32)cdy, (u32)alliance).r0;
+
+    ST8(LD32(obj + oBattleObject_CollisionDataPtr) + oCollisionData_Direction, dir);
+    ST8(obj + oBattleObject_ContactState, 3);
+
+    call_battle_objectResolveContactOffset_800E468_result off =
+        call_battle_objectResolveContactOffset_800E468((u32)alliance, obj);
+    obj = off.r5;
+    ST8(obj + oBattleObject_ContactPanelOffsetX, off.r0);
+    ST8(obj + oBattleObject_ContactOffsetY, off.r1);
+
+    if (off.r2 != 0) {
+        /* Resolve produced a non-zero offset: grant shift budget and try next panel. */
+        ST8(obj + oBattleObject_PanelShiftCounter,
+            LD8(obj + oBattleObject_PanelShiftCounter) + 1);
+        if (attemptShiftPanel(&obj))
+            return;
+        /* Shift failed (counter exhausted or panel invalid): finalize. */
+        finishMove(obj);
+    } else {
+        finishMove(obj);
+    }
+}
+
+/* battleObject_stepMoveToFuturePanel_8016730 – thin adapter. */
+Next battleObject_stepMoveToFuturePanel_8016730(void) {
+    stepMoveToFuturePanel(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_updateColorShader_8016860 ── */
 /* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
 static u32 get_battle_navi_stats_byte(u32 field) {

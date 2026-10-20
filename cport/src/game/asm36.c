@@ -899,6 +899,47 @@ Next gfx_fillAllBandedTilemaps_81330AC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_dispatchUpdateByState_8133200 ── */
+/* Jump table off_8133214 contains 5 word-sized handler addresses.
+   The byte at [r5+1] is used as a *byte* offset into this table
+   (so valid values are 0, 4, 8, 12, 16). */
+
+/* register form: indirect dispatch through the guest jump table at
+   A_off_8133214.  The handler address must be read from a guest-memory
+   table and invoked via GUEST_CALL_ADDR; r4-r7 are pushed/popped around
+   the call by the original, so they are saved and restored here as plain
+   u32 locals -- no way to express the bx-with-lr-return pattern in
+   ordinary typed C. */
+static void dispatch_battle_update(void) {
+    /* push {r4-r7, lr} */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    /* ldr r0, off_8133210  (=off_8133214)
+       ldrb r1, [r5,#1]
+       ldr r0, [r0,r1] */
+    u32 state_byte = LD8(R5 + 1);
+    R0 = LD32(A_off_8133214 + state_byte);
+    R1 = state_byte;
+
+    /* mov lr, pc ; bx r0 */
+    GUEST_CALL_ADDR(R0);
+
+    /* pop {r4-r7, pc} */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+}
+
+/* battleObject_dispatchUpdateByState_8133200
+   Inputs:  r2 r4 r5 r6 r7 r8 r10 lr
+   Outputs: nz c v r0 r1 r2 r3 r5 r8 r9 r10 r11 r12 lr   (from handler)
+   Preserved: r4 r5 r6 r7 */
+Next battleObject_dispatchUpdateByState_8133200(void) {
+    dispatch_battle_update();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchObjectUpdateOrEffect_81333A0 ── */
 /* battle_dispatchObjectUpdateOrEffect_81333A0: dispatch a battle object's type-specific update handler,
  * then sync fields, run entity handlers, and apply post-update effects.
@@ -2700,6 +2741,179 @@ Next battleObject_submenuRenderAngerGauge_8134740(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_selectAIDataHandler_81347A4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_battleObject_selectAIDataHandler_81347A4;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_battleObject_selectAIDataHandler_81347A4 call_IsButtonPressed_battleObject_selectAIDataHandler_81347A4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_battleObject_selectAIDataHandler_81347A4){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r5, r10; } call_PlaySoundEffect_result_battleObject_selectAIDataHandler_81347A4;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_selectAIDataHandler_81347A4 call_PlaySoundEffect_battleObject_selectAIDataHandler_81347A4(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_selectAIDataHandler_81347A4){ R5, R10 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_battle_fieldLockDispatch_8120018_result;
+/* register form: generated wrapper: battle_fieldLockDispatch_8120018 has no typed C interface yet */
+static inline call_battle_fieldLockDispatch_8120018_result call_battle_fieldLockDispatch_8120018(u32 r0, u32 r1, u32 r2, u32 r3, u32 r8) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R8 = r8;
+    GUEST_CALL(battle_fieldLockDispatch_8120018);
+    return (call_battle_fieldLockDispatch_8120018_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Select-A AI data handler for the battle object.
+ * When the A button is pressed: saves current selection indices into a stack
+ * buffer, plays the confirm sound, updates the toolkit navigation byte,
+ * dispatches a field-lock change, then scans up to 30 table entries to
+ * resolve the saved indices back to loop positions.  Returns 1 (Z clear)
+ * when A was pressed, 0 (Z set) otherwise. */
+
+#define SEL_STRIDE      0x20
+#define SEL_TABLE_COUNT 30
+
+struct select_aid_result {
+    u32 r8, r9, r10, r11, r12;
+    u32 nz_val; /* 1 = A pressed, 0 = not */
+};
+
+/* Read the u32 at table_base + index * 32. */
+static u32 sel_entry_battleObject_selectAIDataHandler_81347A4(u32 table_base, u32 index) {
+    return LD32(table_base + index * SEL_STRIDE);
+}
+
+static struct select_aid_result select_aid_data(
+        u32 r2_in, u32 r5_in,
+        u32 r8_in, u32 r9_in, u32 r10_in, u32 r11_in, u32 r12_in) {
+
+    struct select_aid_result out;
+    out.r8 = r8_in; out.r9 = r9_in; out.r10 = r10_in;
+    out.r11 = r11_in; out.r12 = r12_in;
+
+    /* Exit early when the A button is not pressed (Z set from IsButtonPressed). */
+    if (call_IsButtonPressed_battleObject_selectAIDataHandler_81347A4(JOYPAD_A).z) {
+        out.nz_val = 0;
+        return out;
+    }
+
+    /* ---- Save current selection indices to a 4-slot stack buffer ---- */
+    /* register form: the buffer lives at the guest SP and its slots are
+     * read back by address later in the function, exactly like the
+     * original's str/ldr against SP. */
+    SP -= 0x10;
+
+    u32 r5 = r5_in;
+    u32 alliance = LD8(r5 + 0xD);
+    u32 sound_r2 = r2_in;
+
+    if (alliance == 0) {
+        u32 flags = LD32(r5 + 0x4C);
+        u32 tbase = LD32(A_off_81348D4);
+        if (flags & 0x01) {
+            ST32(SP + 0x0, sel_entry_battleObject_selectAIDataHandler_81347A4(tbase, LD16(r5 + 0x1C)));
+            sound_r2 = 0x20;
+        }
+        if (flags & 0x20) {
+            ST32(SP + 0x8, sel_entry_battleObject_selectAIDataHandler_81347A4(tbase, LD32(r5 + 0x5C)));
+            ST32(SP + 0xC, sel_entry_battleObject_selectAIDataHandler_81347A4(tbase, LD32(r5 + 0x60)));
+            sound_r2 = 0x20;
+        }
+    }
+
+    /* ---- Play the menu-select sound; callee may change r5 and r10 ---- */
+    call_PlaySoundEffect_result_battleObject_selectAIDataHandler_81347A4 ps = call_PlaySoundEffect_battleObject_selectAIDataHandler_81347A4(SOUND_MENU_SELECT, sound_r2);
+    r5 = ps.r5;
+    u32 r10 = ps.r10;
+
+    /* ---- Update the toolkit navigation byte and lock flag ---- */
+    u8 alliance_now = LD8(r5 + 0xD);
+    u32 toolkit = LD32(r10 + oToolkit_S2001c04_Ptr);
+    u16 nav = (u16)LD16(r5 + 0x34);
+
+    u32 prev_off, flag_off;
+    if (alliance_now == 0) { prev_off = 0; flag_off = 1; }
+    else                   { prev_off = 2; flag_off = 3; }
+
+    u8 old_val = LD8(toolkit + prev_off);
+    ST8(toolkit + prev_off, nav);
+
+    if (nav != old_val) {
+        /* Selection changed: map through lookup table, XOR 4. */
+        u8 mapped = LD8(IWRAM_ROM(A_byte_30069A0) + nav);
+        ST8(toolkit + flag_off, mapped ^ 4);
+    } else {
+        /* Same selection: toggle the lock bit. */
+        ST8(toolkit + flag_off, LD8(toolkit + flag_off) ^ 4);
+    }
+
+    /* ---- Dispatch the field-lock change ---- */
+    u32 table_ptr = LD32(A_off_81348D4 + alliance_now);
+    u32 offset = alliance_now ? 0x28 : 0x1E;
+    u16 field_val = LD16(r5 + offset);
+    u32 r3 = LD8(toolkit + flag_off);
+
+    call_battle_fieldLockDispatch_8120018_result fl =
+        call_battle_fieldLockDispatch_8120018(table_ptr, field_val, nav, r3, r8_in);
+    r5 = fl.r5;
+    out.r8 = fl.r8; out.r9 = fl.r9; out.r10 = fl.r10;
+    out.r11 = fl.r11; out.r12 = fl.r12;
+
+    /* ---- Resolve saved indices: scan 30 entries back to loop positions ---- */
+    /* Only runs when alliance (post-dispatch r5) is zero. */
+    if (LD8(r5 + 0xD) == 0) {
+        u32 flags = LD32(r5 + 0x4C);
+        u32 tbase = LD32(A_off_81348D4);
+        u32 resolved = 0; /* bitmask: bit 0=A, bit 1=B, bit 2=C */
+
+        for (u32 i = 0; i < SEL_TABLE_COUNT; i++) {
+            u32 val = sel_entry_battleObject_selectAIDataHandler_81347A4(tbase, i);
+
+            /* A-index: gated by flag bit 0. */
+            if ((flags & 0x01) && !(resolved & 0x01) && val == LD32(SP + 0x0)) {
+                ST16(r5 + 0x1C, i);
+                resolved |= 0x01;
+                continue;
+            }
+            /* B and C are both gated by flag bit 5 (0x20). */
+            if (!(flags & 0x20))
+                continue;
+
+            if (!(resolved & 0x02) && val == LD32(SP + 0x8)) {
+                ST32(r5 + 0x5C, i);
+                resolved |= 0x02;
+                continue;
+            }
+
+            if (!(resolved & 0x04) && val == LD32(SP + 0xC)) {
+                ST32(r5 + 0x60, i);
+                resolved |= 0x04;
+            }
+        }
+    }
+
+    SP += 0x10; /* register form: matching the guest-SP buffer above */
+    out.nz_val = 1;
+    return out;
+}
+
+/* battleObject_selectAIDataHandler_81347A4(r2, r5, r8, r9, r10, r11, r12) -> nz r8-r12 */
+Next battleObject_selectAIDataHandler_81347A4(void) {
+    struct select_aid_result res = select_aid_data(R2, R5, R8, R9, R10, R11, R12);
+    R8 = res.r8; R9 = res.r9; R10 = res.r10; R11 = res.r11; R12 = res.r12;
+    SET_FLAGS_NZ(res.nz_val);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_alignRowCheck_81348DC ── */
 /* register form: calls battleObject_setFlags6Bit_81171F4 outside this file, which has no typed C interface yet */
 static void call_set_valid_flag(u32 val, u32 flag_obj) {
@@ -3165,6 +3379,75 @@ Next registerBattleStartScript_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_collectKeyItemSurplus ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_CheckKeyItem_result;
+/* register form: generated wrapper: CheckKeyItem has no typed C interface yet */
+static inline call_CheckKeyItem_result call_CheckKeyItem(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(CheckKeyItem);
+    return (call_CheckKeyItem_result){ R0, R2, R3, R4, R5, R6 };
+}
+
+typedef struct { u32 r0; } call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battle_collectKeyItemSurplus;
+/* register form: generated wrapper: toolkit_getUnk2004190EntryPtr_813B9FC has no typed C interface yet */
+static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battle_collectKeyItemSurplus call_toolkit_getUnk2004190EntryPtr_813B9FC_battle_collectKeyItemSurplus(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return (call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battle_collectKeyItemSurplus){ R0 };
+}
+
+typedef struct { u32 r0, r2; } call_battleObject_getByIndex_813B780_result_battle_collectKeyItemSurplus;
+/* register form: generated wrapper: battleObject_getByIndex_813B780 has no typed C interface yet */
+static inline call_battleObject_getByIndex_813B780_result_battle_collectKeyItemSurplus call_battleObject_getByIndex_813B780_battle_collectKeyItemSurplus(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battleObject_getByIndex_813B780);
+    return (call_battleObject_getByIndex_813B780_result_battle_collectKeyItemSurplus){ R0, R2 };
+}
+
+/* For each of four key-item IDs in a table, if CheckKeyItem reports the player owns
+ * surplus copies, scan the 0x19 toolkit entries subtracting one per ID match,
+ * then (if surplus remains and the battle-object byte-3 flag is set) append a
+ * (key_id, surplus) pair to the caller's output list and advance the write pointer. */
+static u32 collect_key_item_surplus(u32 out_ptr) {
+    for (s32 i = 0; i < 4; i++) {
+        u32 key_id = LD32(A_off_8135EDC + i * 4);
+
+        /* CheckKeyItem: r0 = number of surplus copies (0 = skip this ID) */
+        call_CheckKeyItem_result ck = call_CheckKeyItem(key_id);
+        s32 surplus = (s32)ck.r0;
+        if (surplus == 0)
+            continue;
+
+        /* Scan toolkit entries; each whose +0x90 field equals key_id uses one copy */
+        for (s32 e = 0; e < 0x19; e++) {
+            u32 ep = call_toolkit_getUnk2004190EntryPtr_813B9FC_battle_collectKeyItemSurplus((u32)e).r0;
+            if ((LD16(ep) + 0x90) == key_id)
+                surplus--;
+        }
+        if (surplus == 0)
+            continue;
+
+        /* Look up the battle object (index = key_id - 0x90); require its byte-3 flag */
+        call_battleObject_getByIndex_813B780_result_battle_collectKeyItemSurplus bo =
+            call_battleObject_getByIndex_813B780_battle_collectKeyItemSurplus(key_id - 0x90);
+        if (LD8(bo.r0 + 3) == 0)
+            continue;
+
+        /* Record (key_id, surplus) into the output list */
+        ST16(out_ptr, (u16)key_id);
+        ST16(out_ptr + 2, (u16)surplus);
+        out_ptr += 4;
+    }
+    return out_ptr;
+}
+
+/* battle_collectKeyItemSurplus(r6 = output list ptr, r10 = toolkit base) -> r2 r3 r5 r6 */
+Next battle_collectKeyItemSurplus(void) {
+    R6 = collect_key_item_surplus(R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_copyWorkBlockToBattleWork_813676C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool v; } call_CopyBytes_result_sub_813676C;
@@ -3372,6 +3655,137 @@ static void save_restore_pet_navi_stats(void) {
 /* battle_refreshPETNaviStats_8136C24() — no meaningful inputs used; outputs (r1,r2,c,v) left by last callee GUEST_CALL. */
 Next battle_refreshPETNaviStats_8136C24(void) {
     save_restore_pet_navi_stats();
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_runBeastSpFunction_8136DE0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r8, r9, r10, r11, r12; } call_beastsp_dispatchHandler_81356D4_result;
+/* register form: generated wrapper: beastsp_dispatchHandler_81356D4 has no typed C interface yet */
+static inline call_beastsp_dispatchHandler_81356D4_result call_beastsp_dispatchHandler_81356D4(u32 r2, u32 r4, u32 r5, u32 r6, u32 r7, u32 r9, u32 r11, u32 r12) {
+    R2 = r2;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(beastsp_dispatchHandler_81356D4);
+    return (call_beastsp_dispatchHandler_81356D4_result){ R8, R9, R10, R11, R12 };
+}
+
+/* battleObject_runBeastSpFunction_8136DE0
+ *
+ * Saves the 3-halfword dialog-function triple from [r10+4] into a scratch
+ * area at byte_2009390, clears the live triple, dispatches to one of 36
+ * thumb-mode dialog handlers via a jump table indexed by byte[2009390],
+ * calls beastsp_dispatchHandler_81356D4, then restores the triple.
+ *
+ * r4, r5, r6, r7 are preserved (push/pop in the original).
+ * r5 is also listed as an output but is restored before return, so it is
+ * effectively unchanged for callers. */
+
+/* register form: jump-table handler invoked by computed address;
+ * preserved registers (r4-r7) saved/restored around the guest call
+ * to emulate the original push/pop. */
+static call_beastsp_dispatchHandler_81356D4_result beastsp_run_handler(
+    u32 handler_addr, u32 idx, u32 scratch, u32 owner,
+    u32 r2, u32 r4, u32 r6, u32 r9, u32 r10, u32 r11, u32 r12) {
+
+    /* Save callee-saved-equivalent registers the original protects via push */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    /* Set up the argument registers the dialog handler expects */
+    R0  = handler_addr;
+    R1  = idx;
+    R2  = r2;
+    R4  = r4;
+    R5  = scratch;
+    R6  = r6;
+    R7  = owner;
+    R9  = r9;
+    R10 = r10;
+    R11 = r11;
+    R12 = r12;
+
+    /* mov lr, pc; bx r0 — invoke handler via computed address */
+    GUEST_CALL_ADDR(R0);
+
+    /* Read post-handler register state (handler may have modified anything) */
+    u32 h_r2  = R2;
+    u32 h_r4  = R4;
+    u32 h_r6  = R6;
+    u32 h_r7  = R7;
+    u32 h_r9  = R9;
+    u32 h_r10 = R10;
+    u32 h_r11 = R11;
+    u32 h_r12 = R12;
+
+    /* Original: mov r5, r10; ldr r5, [r5, #0x34] */
+    u32 owner_from_r10 = LD32(h_r10 + 0x34);
+
+    call_beastsp_dispatchHandler_81356D4_result res =
+        call_beastsp_dispatchHandler_81356D4(
+            h_r2, h_r4, owner_from_r10, h_r6, h_r7, h_r9, h_r11, h_r12);
+
+    /* Restore preserved registers (pop {r4-r7} in original) */
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    return res;
+}
+
+/* Typed implementation: save/clear triple, dispatch handler + sub-call,
+ * then restore triple. Returns the beastsp_dispatchHandler result struct. */
+static call_beastsp_dispatchHandler_81356D4_result run_beastsp_dialog(
+    u32 r2, u32 r4, u32 r6, u32 r9, u32 r10, u32 r11, u32 r12) {
+
+    u32 scratch = A_byte_2009390;
+    u32 owner   = LD32(r10 + 0x34);
+    u32 triple  = LD32(r10 + 4);
+
+    /* Copy the 3-halfword dialog function triple to scratch+8..+0xc */
+    ST16(scratch + 8,   LD16(triple));
+    ST16(scratch + 0xa, LD16(triple + 2));
+    ST16(scratch + 0xc, LD16(triple + 4));
+
+    /* Clear the live triple in the toolkit */
+    ST16(triple,     0);
+    ST16(triple + 2, 0);
+    ST16(triple + 4, 0);
+
+    /* Jump table: handler = *(off_8136E2C + LD8(scratch)) */
+    u32 idx = LD8(scratch);
+    u32 handler_addr = LD32(A_off_8136E2C + idx);
+
+    /* Dispatch to the selected dialog handler, then call the beast SP dispatcher */
+    call_beastsp_dispatchHandler_81356D4_result res =
+        beastsp_run_handler(handler_addr, idx, scratch, owner,
+                            r2, r4, r6, r9, r10, r11, r12);
+
+    /* Restore the triple from scratch into [r10+4] (r10 from wrapper) */
+    u32 triple2 = LD32(res.r10 + 4);
+    ST16(triple2,     LD16(scratch + 8));
+    ST16(triple2 + 2, LD16(scratch + 0xa));
+    ST16(triple2 + 4, LD16(scratch + 0xc));
+
+    return res;
+}
+
+/* battleObject_runBeastSpFunction_8136DE0
+ * inputs: r2 r4 r6 r9 r10 r11 r12  ->  outputs: r8 r9 r10 r11 r12
+ * preserved: r4 r5 r6 r7 */
+Next battleObject_runBeastSpFunction_8136DE0(void) {
+    call_beastsp_dispatchHandler_81356D4_result out =
+        run_beastsp_dialog(R2, R4, R6, R9, R10, R11, R12);
+    R8  = out.r8;
+    R9  = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }
 

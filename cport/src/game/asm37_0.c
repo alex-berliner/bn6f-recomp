@@ -339,6 +339,74 @@ Next getWorkAreaPtr_2006CC0_813BD14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_battleObject_getByIndex_813B780_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38;
+/* register form: generated wrapper: battleObject_getByIndex_813B780 has no typed C interface yet */
+static inline call_battleObject_getByIndex_813B780_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 call_battleObject_getByIndex_813B780_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battleObject_getByIndex_813B780);
+    return (call_battleObject_getByIndex_813B780_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38){ R0, R2 };
+}
+
+typedef struct { u32 r0, r2; } call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38;
+/* register form: generated wrapper: toolkit_getUnk2004190EntryPtr_813B9FC has no typed C interface yet */
+static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 call_toolkit_getUnk2004190EntryPtr_813B9FC_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return (call_toolkit_getUnk2004190EntryPtr_813B9FC_result_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38){ R0, R2 };
+}
+
+#define byte_2006C50_count 0x31
+
+/* Walk all slots of the byte_2006C50 lookup table.  For each non-zero slot
+ * that does NOT refer back to the caller's own entry, resolve it through
+ * the Unk2004190 toolkit, look up the battle object it references, and if
+ * that object's "type" byte (offset 3) matches the one we were given, bump
+ * the per-kind counter stored in the Unk200431c array. */
+static void increment_counters_for_matching_objects(u32 obj_index, u32 caller_entry, u32 tool_ptr) {
+    /* Remember the type byte of the object whose callers want the count */
+    u32 self_obj_ptr = call_battleObject_getByIndex_813B780_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(obj_index).r0;
+    u32 self_type = LD8(self_obj_ptr + 3);
+
+    /* The counter array is reached through the toolkit at a fixed offset */
+    u32 counter_base = LD32(tool_ptr + oToolkit_Unk200431c_Ptr);
+
+    for (u32 i = 0; i < byte_2006C50_count; i++) {
+        u32 slot = LD8(A_byte_2006C50 + i);
+        if (slot == 0)
+            continue;                       /* empty slot */
+
+        u32 entry_idx = slot - 1;
+        if (entry_idx == caller_entry)
+            continue;                       /* skip our own entry */
+
+        /* Resolve the Unk2004190 record for this entry */
+        u32 entry_ptr = call_toolkit_getUnk2004190EntryPtr_813B9FC_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(entry_idx).r0;
+        if (LD16(entry_ptr) == 0)
+            continue;                       /* record has no object reference */
+
+        /* Look up the battle object stored in the record */
+        u32 ref_obj_ptr = call_battleObject_getByIndex_813B780_battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(LD16(entry_ptr)).r0;
+        if (LD8(ref_obj_ptr + 3) != self_type)
+            continue;                       /* different kind – not a match */
+
+        /* Match found: increment the per-kind counter */
+        u32 counter_idx = LD8(ref_obj_ptr + 4);
+        ST8(counter_base + counter_idx, LD8(counter_base + counter_idx) + 1);
+    }
+}
+
+/* battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+ *  inputs:  r0 (object index), r6 (caller entry index), r10 (toolkit ptr), lr
+ *  outputs: r6 (preserved by push/pop)
+ *  clobbers: nz c v r0 r1 r2 lr
+ */
+Next battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38(void) {
+    increment_counters_for_matching_objects(R0, R6, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813BEA8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ByteFill has no typed C interface yet */

@@ -425,6 +425,118 @@ Next sprite_playAltAnimationOnce(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_gfx_renderLatticeOrSpinner_811E0BA ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline void call_ZeroFillByWord_battle_gfx_renderLatticeOrSpinner_811E0BA(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+typedef struct { u32 r3; bool c, v; } call_QueueEightWordAlignedGFXTransfer_result_battle_gfx_renderLatticeOrSpinner_811E0BA;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result_battle_gfx_renderLatticeOrSpinner_811E0BA call_QueueEightWordAlignedGFXTransfer_battle_gfx_renderLatticeOrSpinner_811E0BA(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result_battle_gfx_renderLatticeOrSpinner_811E0BA){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Fill the 0x140-byte GFX staging buffer at byte_2027200 with either a
+ * coloured lattice/spinner strip or a solid "0" flash strip, then queue
+ * a DMA transfer to VRAM at 0x6015580.
+ *
+ * When field_0x10 (tile count) is non-zero, the strip is a sprite made of
+ * tile-column entries.  A base palette index is selected by row count
+ * (0xC0 / 0xD0 / 0xE0); each iteration covers two adjacent columns and
+ * writes the combined nibble (base|alt) when both are in range, or only
+ * alt for the trailing odd column.  Entries are laid out with 4-byte
+ * stride inside a 0x20-byte row, advancing to the next row every 4 entries.
+ *
+ * When field_0x10 is zero the strip is a flashing placeholder: field_0x12
+ * ticks and from tick 0x20 onward the buffer is filled with 0xEE. */
+static void render_lattice_or_spinner(void) {
+    /* Zero the staging buffer: 0xA << 5 = 0x140 bytes. */
+    call_ZeroFillByWord_battle_gfx_renderLatticeOrSpinner_811E0BA(A_byte_2027200, 0xA << 5);
+
+    u32 state = A_eStruct2001010;
+    u32 tile_count = LD8(state + (A_dword_2001020 - 0x2001010));
+    u32 dst = A_byte_2027200;
+
+    if (tile_count != 0) {
+        /* Sprite / lattice path */
+        ST8(state + (A_dword_2001020 + 2 - 0x2001010), 0);
+
+        u32 base_pal;
+        if (tile_count >= 0x28)
+            base_pal = 0xC0;
+        else if (tile_count >= 0x14)
+            base_pal = 0xD0;
+        else
+            base_pal = 0xE0;
+
+        u32 alt_pal = base_pal >> 4;
+
+        /* r6 in the assembly advances by 2 per outer iteration. */
+        u32 col = 0;
+        while (col < tile_count) {
+            u32 color = alt_pal;
+            if (col + 1 < tile_count)
+                color |= base_pal;
+
+            /* One 8x8 tile column: 8 pixels at stride 4 in the 0x20 row. */
+            ST8(dst + 0x00, color);
+            ST8(dst + 0x04, color);
+            ST8(dst + 0x08, color);
+            ST8(dst + 0x0C, color);
+            ST8(dst + 0x10, color);
+            ST8(dst + 0x14, color);
+            ST8(dst + 0x18, color);
+            ST8(dst + 0x1C, color);
+
+            dst += 1;
+            col += 2;
+            if ((col & 7) == 0)
+                dst += 0x1C;
+        }
+    } else {
+        /* Flash "0" path */
+        u32 tick = (LD8(state + (A_dword_2001020 + 2 - 0x2001010)) + 1) & 0xFF;
+        ST8(state + (A_dword_2001020 + 2 - 0x2001010), tick);
+
+        if ((tick & 0x3F) >= 0x20) {
+            const u32 color = 0xEE;
+            u32 row = 0;
+            while (row < 0x50) {
+                ST8(dst + 0x00, color);
+                ST8(dst + 0x04, color);
+                ST8(dst + 0x08, color);
+                ST8(dst + 0x0C, color);
+                ST8(dst + 0x10, color);
+                ST8(dst + 0x14, color);
+                ST8(dst + 0x18, color);
+                ST8(dst + 0x1C, color);
+
+                dst += 1;
+                row += 2;
+                if ((row & 7) == 0)
+                    dst += 0x1C;
+            }
+        }
+    }
+
+    /* DMA the staging buffer to VRAM. */
+    call_QueueEightWordAlignedGFXTransfer_battle_gfx_renderLatticeOrSpinner_811E0BA(A_byte_2027200, 0x6015580, 0xA << 5);
+}
+
+/* battle_gfx_renderLatticeOrSpinner_811E0BA(r4 r5 r6 r7 -> r4 r5 r6 r7) */
+Next battle_gfx_renderLatticeOrSpinner_811E0BA(void) {
+    render_lattice_or_spinner();
+    RETURN_TO_CALLER();
+}
+
 /* ── TestPETMenuDataFlag ── */
 /* TestPETMenuDataFlag(r0 = flag mask):
  * Tests the PET menu flags byte (eFlags200DF25) against the mask in r0 and

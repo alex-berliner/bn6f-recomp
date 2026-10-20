@@ -100,6 +100,313 @@ Next reqBBS_813E616(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── OpenReqBBSMenu813F474 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_OpenReqBBSMenu813F474;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_OpenReqBBSMenu813F474 call_TestEventFlagFromImmediate_OpenReqBBSMenu813F474(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_OpenReqBBSMenu813F474){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3; bool z, n; } call_TestEventFlag_result;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result call_TestEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline void call_SetEventFlag_OpenReqBBSMenu813F474(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline void call_ClearEventFlagFromImmediate(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+typedef struct { u32 r5; } call_reqBBS_813FDA8_result;
+/* register form: generated wrapper: reqBBS_813FDA8 has no typed C interface yet */
+static inline call_reqBBS_813FDA8_result call_reqBBS_813FDA8(void) {
+    GUEST_CALL(reqBBS_813FDA8);
+    return (call_reqBBS_813FDA8_result){ R5 };
+}
+
+typedef struct { u32 r5; } call_reqBBS_813FE54_result;
+/* register form: generated wrapper: reqBBS_813FE54 has no typed C interface yet */
+static inline call_reqBBS_813FE54_result call_reqBBS_813FE54(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813FE54);
+    return (call_reqBBS_813FE54_result){ R5 };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7; } call_reqBBS_813FEB0_result;
+/* register form: generated wrapper: reqBBS_813FEB0 has no typed C interface yet */
+static inline call_reqBBS_813FEB0_result call_reqBBS_813FEB0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813FEB0);
+    return (call_reqBBS_813FEB0_result){ R2, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5; } call_reqBBS_copyTextDataToRAM_result;
+/* register form: generated wrapper: reqBBS_copyTextDataToRAM has no typed C interface yet */
+static inline call_reqBBS_copyTextDataToRAM_result call_reqBBS_copyTextDataToRAM(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_copyTextDataToRAM);
+    return (call_reqBBS_copyTextDataToRAM_result){ R5 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_reqBBS_renderRequestNames_result;
+/* register form: generated wrapper: reqBBS_renderRequestNames has no typed C interface yet */
+static inline call_reqBBS_renderRequestNames_result call_reqBBS_renderRequestNames(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(reqBBS_renderRequestNames);
+    return (call_reqBBS_renderRequestNames_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r5, r10, r11; } call_reqBBS_81405C0_result;
+/* register form: generated wrapper: reqBBS_81405C0 has no typed C interface yet */
+static inline call_reqBBS_81405C0_result call_reqBBS_81405C0(void) {
+    GUEST_CALL(reqBBS_81405C0);
+    return (call_reqBBS_81405C0_result){ R5, R10, R11 };
+}
+
+/* register form: generated wrapper: renderInfo_8001788 has no typed C interface yet */
+static inline void call_renderInfo_8001788(void) {
+    GUEST_CALL(renderInfo_8001788);
+}
+
+/* register form: generated wrapper: renderInfo_80017A0 has no typed C interface yet */
+static inline void call_renderInfo_80017A0(void) {
+    GUEST_CALL(renderInfo_80017A0);
+}
+
+typedef struct { u32 r2; } call_toolkit_applyOverlayPalette_80015FC_result;
+/* register form: generated wrapper: toolkit_applyOverlayPalette_80015FC has no typed C interface yet */
+static inline call_toolkit_applyOverlayPalette_80015FC_result call_toolkit_applyOverlayPalette_80015FC(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+    return (call_toolkit_applyOverlayPalette_80015FC_result){ R2 };
+}
+
+typedef struct { u32 r1, r2, r3, r5; } call_SetScreenFade_result;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result call_SetScreenFade(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result){ R1, R2, R3, R5 };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7; } call_battle_spawnEStructRecordsFromTable_80465A0_result;
+/* register form: generated wrapper: battle_spawnEStructRecordsFromTable_80465A0 has no typed C interface yet */
+static inline call_battle_spawnEStructRecordsFromTable_80465A0_result call_battle_spawnEStructRecordsFromTable_80465A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
+    return (call_battle_spawnEStructRecordsFromTable_80465A0_result){ R2, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5, r10, r11; } call_reqBBS_renderSelectedEntry_HeaderText_result;
+/* register form: generated wrapper: reqBBS_renderSelectedEntry_HeaderText has no typed C interface yet */
+static inline call_reqBBS_renderSelectedEntry_HeaderText_result call_reqBBS_renderSelectedEntry_HeaderText(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_renderSelectedEntry_HeaderText);
+    return (call_reqBBS_renderSelectedEntry_HeaderText_result){ R5, R10, R11 };
+}
+
+typedef struct {
+    u32 r10;
+    u32 r11;
+} req_bbs_menu_result;
+
+/* Open the Request BBS menu screen.
+ * If the intro event flag (0x173A) is set and the current request is new,
+ * mark it seen, clear the intro flag, and reset its slot.  Either way,
+ * clear the reqBBS state fields at r5, run the screen bring-up chain,
+ * apply overlays/fade, spawn entry graphics, and enter either the header
+ * view (unread entry selected) or the loading view.
+ * Returns final r10 and r11. */
+static req_bbs_menu_result open_req_bbs_menu(u32 r5, u32 r10) {
+    /* One-time intro-event cleanup */
+    if (!call_TestEventFlagFromImmediate_OpenReqBBSMenu813F474(0x17, 0x3A).z) {
+        u32 slot = LD8(A_eReqBBSGui + 0xF);
+        u32 new_flag = slot + LD32(A_reqBBS_textualPointers + (A_dword_813F364 - 0x813F34C));
+
+        if (!call_TestEventFlag(new_flag).z) {
+            u32 seen_flag = slot + LD32(A_reqBBS_textualPointers + (A_byte_813F354 + 0xC - 0x813F34C));
+            call_SetEventFlag_OpenReqBBSMenu813F474(seen_flag);
+            call_ClearEventFlagFromImmediate(0x17, 0x3A);
+            ST8(A_eReqBBSGui + 0xF, 0);
+        }
+    }
+
+    /* Clear reqBBS state fields */
+    ST8(r5 + 8, 0);
+    ST16(r5 + 0x20, 0);
+    ST16(r5 + 0x24, 0);
+    ST16(r5 + 0x26, 0);
+    ST8(r5 + 9, 0);
+    ST8(r5 + 0xB, 0);
+
+    /* Screen bring-up chain */
+    r5 = call_reqBBS_813FDA8().r5;
+    r5 = call_reqBBS_813FE54(r5).r5;
+    r5 = call_reqBBS_813FEB0(r5).r5;
+    r5 = call_reqBBS_copyTextDataToRAM(r5).r5;
+
+    call_reqBBS_renderRequestNames_result names = call_reqBBS_renderRequestNames(LD16(r5 + 0x24), r5);
+    r5 = names.r5;
+    u32 r11 = names.r11;
+    r10 = names.r10;
+
+    call_reqBBS_81405C0_result setup = call_reqBBS_81405C0();
+    r5 = setup.r5;
+    r10 = setup.r10;
+    r11 = setup.r11;
+
+    /* Info overlays and screen fade */
+    call_renderInfo_8001788();
+    call_renderInfo_80017A0();
+    call_toolkit_applyOverlayPalette_80015FC(0x17);
+    call_SetScreenFade(8, 0x10);
+
+    /* Spawn entry graphics records */
+    call_battle_spawnEStructRecordsFromTable_80465A0(A_reqBBS_entriesGfx);
+
+    /* Choose initial view: header for an unread selected entry, else loading */
+    if (LD16(r5 + 0x1E) != 0 && LD8(r5 + 5) == 0) {
+        ST8(r5, 4);
+        ST8(r5 + 8, 5);
+        call_reqBBS_renderSelectedEntry_HeaderText_result hdr = call_reqBBS_renderSelectedEntry_HeaderText(r5);
+        r10 = hdr.r10;
+        r11 = hdr.r11;
+        ST16(LD32(r10 + 8), 0x5E40);
+    } else {
+        ST8(r5, 0x28);
+        ST8(r5 + 8, 5);
+        ST16(LD32(r10 + 8), 0x5F40);
+    }
+
+    req_bbs_menu_result result;
+    result.r10 = r10;
+    result.r11 = r11;
+    return result;
+}
+
+Next OpenReqBBSMenu813F474(void) {
+    req_bbs_menu_result out = open_req_bbs_menu(R5, R10);
+    R10 = out.r10;
+    R11 = out.r11;
+    RETURN_TO_CALLER();
+}
+
+/* ── ExitReqBBSMenu813F590 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_reqBBS_813F8F0_result;
+/* register form: generated wrapper: reqBBS_813F8F0 has no typed C interface yet */
+static inline call_reqBBS_813F8F0_result call_reqBBS_813F8F0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813F8F0);
+    return (call_reqBBS_813F8F0_result){ R2, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r3; bool z, n, c, v; } call_IsScreenFadeActive_result;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r3; } call_owPlayer_unlockPlayerAfterNonNPCDialogue_809E122_result;
+/* register form: generated wrapper: owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 has no typed C interface yet */
+static inline call_owPlayer_unlockPlayerAfterNonNPCDialogue_809E122_result call_owPlayer_unlockPlayerAfterNonNPCDialogue_809E122(void) {
+    GUEST_CALL(owPlayer_unlockPlayerAfterNonNPCDialogue_809E122);
+    return (call_owPlayer_unlockPlayerAfterNonNPCDialogue_809E122_result){ R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_resetGameStateToOpening_8005F84_result;
+/* register form: generated wrapper: resetGameStateToOpening_8005F84 has no typed C interface yet */
+static inline call_resetGameStateToOpening_8005F84_result call_resetGameStateToOpening_8005F84(void) {
+    GUEST_CALL(resetGameStateToOpening_8005F84);
+    return (call_resetGameStateToOpening_8005F84_result){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* ExitReqBBSMenu813F590: exit the BBS request screen after the menu closes.
+ * Sets the render-info timer, drives the BBS request state machine, then
+ * either defers (fade still in progress) or tears down the overworld state
+ * and resets to the opening. Returns modified r10/r11 from reqBBS_813F8F0. */
+
+typedef struct {
+    u32 r10;
+    u32 r11;
+} ExitReqBBSOutput;
+
+static ExitReqBBSOutput exit_req_bbs_menu(u32 r5, u32 r10) {
+    /* Set the render-info fade timer to 0x1F40 (5000 ticks). */
+    u32 render_info = LD32(r10 + oToolkit_RenderInfoPtr);
+    ST16(render_info, 0x1F40);
+
+    /* Drive the BBS request state machine; it may modify r10 and r11. */
+    call_reqBBS_813F8F0_result reqBBS_res = call_reqBBS_813F8F0(r5);
+
+    ExitReqBBSOutput out;
+    out.r10 = reqBBS_res.r10;
+    out.r11 = reqBBS_res.r11;
+
+    /* If the screen fade is still active (Z set), the menu cannot close yet. */
+    call_IsScreenFadeActive_result fade = call_IsScreenFadeActive();
+    if (fade.z)
+        return out;
+
+    /* Fade complete – write the dialog-response byte into the NPC's field. */
+    u8 dialog_byte = LD8(r5 + 5);
+    u32 npc_base = LD32(r5 + 0x28);
+    ST32(LD32(npc_base + 0x20), dialog_byte);
+
+    call_owPlayer_unlockPlayerAfterNonNPCDialogue_809E122();
+
+    /* Clear/initialize the player-control block at toolkit+0x1C.
+     * Fields at +1,+3,+5,+7 = 0xFF (active), others = 0 (inactive). */
+    u32 ctrl = LD32(out.r10 + 0x1C);
+    ST8(ctrl + 9, 0);
+    ST8(ctrl + 0xA, 0);
+    ST8(ctrl + 1, 0xFF);
+    ST8(ctrl + 5, 0xFF);
+    ST8(ctrl + 3, 0xFF);
+    ST8(ctrl + 7, 0xFF);
+    ST8(ctrl + 0, 0);
+    ST8(ctrl + 4, 0);
+    ST8(ctrl + 2, 0);
+    ST8(ctrl + 6, 0);
+
+    /* Clear the overworld-state block at toolkit+0x20. */
+    u32 ow_state = LD32(out.r10 + 0x20);
+    ST8(ow_state, 0);
+    ST8(ow_state + 4, 0);
+    ST8(ow_state + 6, 0);
+
+    /* Reset the global game state back to the opening screen. */
+    call_resetGameStateToOpening_8005F84();
+
+    return out;
+}
+
+/* ExitReqBBSMenu813F590(r5, r10) -> r10, r11 */
+Next ExitReqBBSMenu813F590(void) {
+    ExitReqBBSOutput out = exit_req_bbs_menu(R5, R10);
+    R10 = out.r10;
+    R11 = out.r11;
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_initMemory_813F9DA ── */
 /* reqBBS_initMemory_813F9DA:
  * Reset the BBS (bulletin board) request state:

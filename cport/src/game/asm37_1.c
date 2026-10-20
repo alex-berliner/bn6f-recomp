@@ -139,6 +139,108 @@ Next ow_getPlayerTileMapIndex_8142990(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5; } call_battleObject_scenarioEffectStateAddr_81421D8_result;
+/* register form: generated wrapper: battleObject_scenarioEffectStateAddr_81421D8 has no typed C interface yet */
+static inline call_battleObject_scenarioEffectStateAddr_81421D8_result call_battleObject_scenarioEffectStateAddr_81421D8(void) {
+    GUEST_CALL(battleObject_scenarioEffectStateAddr_81421D8);
+    return (call_battleObject_scenarioEffectStateAddr_81421D8_result){ R0, R4, R5 };
+}
+
+typedef struct { bool c, v; } call_ZeroFillByWord_result;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result call_ZeroFillByWord_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r5, r6, r7; } call_sub_8142990_result;
+/* register form: generated wrapper: ow_getPlayerTileMapIndex_8142990 has no typed C interface yet */
+static inline call_sub_8142990_result call_sub_8142990(void) {
+    GUEST_CALL(ow_getPlayerTileMapIndex_8142990);
+    return (call_sub_8142990_result){ R0, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r4, r5, r6; } call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA;
+/* register form: generated wrapper: battle_getScenarioEffectStateField_81421D0 has no typed C interface yet */
+static inline call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA(void) {
+    GUEST_CALL(battle_getScenarioEffectStateField_81421D0);
+    return (call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA){ R0, R4, R5, R6 };
+}
+
+/* register form: generated wrapper: GetOWPlayerFacingDirection has no typed C interface yet */
+static inline u32 call_GetOWPlayerFacingDirection(void) {
+    GUEST_CALL(GetOWPlayerFacingDirection);
+    return R0;
+}
+
+/* Initialize a 4-entry (16-byte) player-offset matrix for a scenario-effect
+ * camera. Each table is indexed by a scenario-effect state field (0..3) and
+ * offset by the player's even facing (0,2,4,6). Records are 8 bytes; only the
+ * first two s8 bytes (dx,dy) are read, and a dx of 0x7F terminates the stream.
+ *
+ * For every (dx,dy) pair the function combines it with a per-component base
+ * word (low byte → x, high byte → y), producing a 16-bit packed offset written
+ * into the zero-filled destination buffer.
+ *
+ * Returns the dy byte of the terminating sentinel (always 0x7F in practice)
+ * which the original leaves in r3 on exit. */
+static u32 init_player_offset_matrix(void) {
+    /* Obtain the 16-byte destination buffer (scenario-effect state slot) */
+    call_battleObject_scenarioEffectStateAddr_81421D8_result state =
+        call_battleObject_scenarioEffectStateAddr_81421D8();
+    u32 dest = state.r0;
+
+    /* Zero-initialize the buffer */
+    call_ZeroFillByWord_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA(dest, 0x10);
+
+    /* Base word: low byte seeds x, upper bytes seed y */
+    call_sub_8142990_result base = call_sub_8142990();
+    u32 mode_word = base.r0;
+
+    /* Select one of the four facing-direction offset tables */
+    call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA sel =
+        call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA();
+    u32 table_index = sel.r0;
+
+    /* Table-of-pointers at off_8142A1C: word at [index*4] is the record base */
+    u32 table_base = LD32(A_off_8142A1C + (table_index << 2));
+
+    /* Facing: mask to even (0,2,4,6) to pick a 2-byte-aligned sub-record */
+    u32 facing = call_GetOWPlayerFacingDirection();
+    u32 p = table_base + ((facing >> 1) << 1);
+
+    /* Walk 8-byte records; read (dx,dy) s8 pair; stop when dx == 0x7F */
+    for (;;) {
+        s32 dx = LDS8(p);
+        s32 dy = LDS8(p + 1);
+        if (dx == 0x7F)
+            return (u32)dy;
+
+        u32 low  = (mode_word & 0xFF) + (u32)dx;
+        u32 high = ((mode_word >> 8) + (u32)dy) << 8;
+        ST32(dest, low | high);
+
+        dest += 4;
+        p += 8;
+    }
+}
+
+/* battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA:
+ *   inputs:  r10 lr  (r10 passes through to callees)
+ *   outputs: r3  (dy byte of terminating sentinel)
+ *            r5 is listed as output+preserved; the original's pop restores it,
+ *            so we do not write R5.
+ *   preserved: r4 r5 r6 r7 (restored by the original's push/pop; wrapper calls
+ *            modify them internally but the framework accounts for that). */
+Next battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA(void) {
+    R3 = init_player_offset_matrix();
+    RETURN_TO_CALLER();
+}
+
 /* ── init_queueBeastSpGfx ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;

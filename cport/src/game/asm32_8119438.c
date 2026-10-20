@@ -628,6 +628,117 @@ Next sprite_setUnk0x2cFromLoader_81198E8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_beastSpAdvanceAndDrawTiles_8119A48 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result call_chatbox_mask_eFlags2009F38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r5, r6, r7, r10; } call_PlaySoundEffect_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48 call_PlaySoundEffect_battleObject_beastSpAdvanceAndDrawTiles_8119A48(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48){ R2, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r1, r3, r4, r6, r7; bool c, v; } call_CopyBackgroundTiles_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48 call_CopyBackgroundTiles_battleObject_beastSpAdvanceAndDrawTiles_8119A48(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_battleObject_beastSpAdvanceAndDrawTiles_8119A48){ R1, R3, R4, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3; } call_copyBgTilesFromTable_result;
+/* register form: generated wrapper: copyBgTilesFromTable has no typed C interface yet */
+static inline call_copyBgTilesFromTable_result call_copyBgTilesFromTable(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(copyBgTilesFromTable);
+    return (call_copyBgTilesFromTable_result){ R2, R3 };
+}
+
+/* battleObject_beastSpAdvanceAndDrawTiles_8119A48:
+ * Advance the chatbox scroll counter; every 4th advance (when flag 0x80 is clear)
+ * play a tick sound. Redraw the chatbox background tile block, then optionally
+ * draw a cursor row from a tile table if the gate byte at [obj+4] is zero.
+ *
+ * Outputs r2 = scroll offset used for drawing (shifted), r3 = last callee's r3. */
+
+static s32 beast_sp_advance_and_draw(u32 obj) {
+    /* Advance the scroll position stored at obj+0x10 by 2 per call. */
+    u32 new_advance = LD32(obj + 0x10) + 2;
+    ST32(obj + 0x10, new_advance);
+
+    /* Maximum scroll = field at obj+0x14 shifted left 2. */
+    u32 cap = LD32(obj + 0x14) << 2;
+
+    /* scroll_target: default 0x28 (out-of-range), set to actual advance while in range. */
+    u32 scroll_target = 0x28;
+
+    if ((s32)new_advance < (s32)cap) {
+        scroll_target = new_advance;
+
+        /* Increment the per-object tick counter at obj+0x18. */
+        u32 ticks = LD32(obj + 0x18) + 1;
+        ST32(obj + 0x18, ticks);
+
+        /* Every 4th tick: check chatbox mask flag 0x80, play sound if clear. */
+        if ((ticks & 3) == 0) {
+            call_chatbox_mask_eFlags2009F38_result mask =
+                call_chatbox_mask_eFlags2009F38(0x80);
+            if (mask.z) {
+                call_PlaySoundEffect_battleObject_beastSpAdvanceAndDrawTiles_8119A48(SOUND_UNK_7E, scroll_target);
+            }
+        }
+    }
+
+    /* Redraw the 2-row × 10-col tile block for the chatbox area.
+     * The original pushes r2/r5, overwrites r5 with 2, calls the
+     * routine, then pops to restore r2 and r5. */
+    u32 saved_r2 = R2; /* register form: original push {r2,r5} before CopyBackgroundTiles */
+    /* CopyBackgroundTiles args: j=0x12, i=0xD, block=0, tile_ids, j_size=0xA, i_size=2 */
+    call_CopyBackgroundTiles_battleObject_beastSpAdvanceAndDrawTiles_8119A48(0x12, 0xD, 0, A_hword_8119904, 0xA, 2);
+    R2 = saved_r2;     /* register form: original pop {r2,r5} restores r2 */
+
+    /* r3 now holds CopyBackgroundTiles' output r3 (from wrapper). */
+
+    /* If the gate byte at obj+4 is set, the cursor row is managed elsewhere. */
+    if (LD8(obj + 4) != 0) {
+        /* r2 = scroll_target (or PlaySoundEffect's modification, restored by pop). */
+        R2 = scroll_target; /* register form: original pop {r2,r5} leaves r2 = pre-push value */
+        return 0;
+    }
+
+    /* Draw the cursor row via tile table: pass scroll_target >> 2 as r2. */
+    u32 shifted = scroll_target >> 2;
+    call_copyBgTilesFromTable(0x12, 0xF, shifted);
+    /* Wrapper leaves R2 = copyBgTilesFromTable's r2, R3 = its r3. */
+    return 1;
+}
+
+/* battleObject_beastSpAdvanceAndDrawTiles_8119A48(r5 = object ptr, r10 = bg ptr) -> r2 r3 r5 r10 */
+Next battleObject_beastSpAdvanceAndDrawTiles_8119A48(void) {
+    /* register form: wrappers clobber preserved R4-R7,R10; outer push/pop
+     * in the original restores them. Save here, restore before return. */
+    u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7, s10 = R10;
+    beast_sp_advance_and_draw(R5);
+    R4 = s4; R5 = s5; R6 = s6; R7 = s7; R10 = s10;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8119ACC ── */
 /* sub_8119ACC: indirect call through the three-entry jump table at
  * off_8119AE0. The byte at [r5+8] is used as a *byte offset* into the

@@ -358,6 +358,275 @@ Next sub_80178B6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_initMoveStep_80178D4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r8, r9, r10, r11, r12; } call_battle_dispatchActorTurnByTypeAndAIIdx_800F404_result;
+/* register form: generated wrapper: battle_dispatchActorTurnByTypeAndAIIdx_800F404 has no typed C interface yet */
+static inline call_battle_dispatchActorTurnByTypeAndAIIdx_800F404_result call_battle_dispatchActorTurnByTypeAndAIIdx_800F404(u32 r4, u32 r5, u32 r8) {
+    R4 = r4;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(battle_dispatchActorTurnByTypeAndAIIdx_800F404);
+    return (call_battle_dispatchActorTurnByTypeAndAIIdx_800F404_result){ R4, R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2; } call_object_setFlag1_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result_battleObject_initMoveStep_80178D4 call_object_setFlag1_battleObject_initMoveStep_80178D4(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result_battleObject_initMoveStep_80178D4){ R2 };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag_battleObject_initMoveStep_80178D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+typedef struct { u32 r2, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_8011450_result;
+/* register form: generated wrapper: sub_8011450 has no typed C interface yet */
+static inline call_sub_8011450_result call_sub_8011450(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8011450);
+    return (call_sub_8011450_result){ R2, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r3; } call_battleObject_clearPwrAtkState_8012EA8_result;
+/* register form: generated wrapper: battleObject_clearPwrAtkState_8012EA8 has no typed C interface yet */
+static inline call_battleObject_clearPwrAtkState_8012EA8_result call_battleObject_clearPwrAtkState_8012EA8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_clearPwrAtkState_8012EA8);
+    return (call_battleObject_clearPwrAtkState_8012EA8_result){ R3 };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initMoveStep_80178D4 call_object_getFlip_battleObject_initMoveStep_80178D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initMoveStep_80178D4){ R0 };
+}
+
+typedef struct { u32 r3; } call_sprite_setFlip_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battleObject_initMoveStep_80178D4 call_sprite_setFlip_battleObject_initMoveStep_80178D4(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battleObject_initMoveStep_80178D4){ R3 };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initMoveStep_80178D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r3, r4, r6; bool c, v; } call_object_updateCollisionPanels_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: object_updateCollisionPanels has no typed C interface yet */
+static inline call_object_updateCollisionPanels_result_battleObject_initMoveStep_80178D4 call_object_updateCollisionPanels_battleObject_initMoveStep_80178D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionPanels);
+    return (call_object_updateCollisionPanels_result_battleObject_initMoveStep_80178D4){ R3, R4, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_clearFlag has no typed C interface yet */
+static inline void call_object_clearFlag_battleObject_initMoveStep_80178D4(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag);
+}
+
+/* register form: generated wrapper: battle_resetCollisionState_80101C4 has no typed C interface yet */
+static inline void call_battle_resetCollisionState_80101C4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_resetCollisionState_80101C4);
+}
+
+/* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
+static inline void call_object_removePanelReserve_battleObject_initMoveStep_80178D4(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_removePanelReserve);
+}
+
+typedef struct { u32 r3; bool v; } call_tableAddSaturatedByte_800AB46_result;
+/* register form: generated wrapper: tableAddSaturatedByte_800AB46 has no typed C interface yet */
+static inline call_tableAddSaturatedByte_800AB46_result call_tableAddSaturatedByte_800AB46(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(tableAddSaturatedByte_800AB46);
+    return (call_tableAddSaturatedByte_800AB46_result){ R3, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r4, r5, r8, r9, r10, r11, r12; } call_sub_800E45E_result;
+/* register form: generated wrapper: sub_800E45E has no typed C interface yet */
+static inline call_sub_800E45E_result call_sub_800E45E(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sub_800E45E);
+    return (call_sub_800E45E_result){ R0, R1, R2, R4, R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r3, r5, r6, r7; bool z, n, v; } call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: battle_objectCheckPanelByAlliance_800E5AC has no typed C interface yet */
+static inline call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_initMoveStep_80178D4 call_battle_objectCheckPanelByAlliance_800E5AC_battleObject_initMoveStep_80178D4(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_objectCheckPanelByAlliance_800E5AC);
+    return (call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_initMoveStep_80178D4){ R1, R3, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_object_reservePanel_result_battleObject_initMoveStep_80178D4;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_battleObject_initMoveStep_80178D4 call_object_reservePanel_battleObject_initMoveStep_80178D4(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_battleObject_initMoveStep_80178D4){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battleObject_initMoveStep_80178D4: end-of-turn setup for a battle object.
+ *
+ * Dispatches the actor's AI/turn logic, resets per-turn state (flags,
+ * animation, sprite flip, panel coordinates, collision), then either
+ * commits a one-panel step (setting velocity and reserving the target
+ * panel) or falls through to a short idle wait. */
+
+#define FLAG_ACTED       0x500000u
+#define FLAG_ANIM_MASK   0x800u       /* 1 << 11 */
+#define FLAG_ANIM_IDLE   0x20000u
+#define FLAG_CLEAR_MOVE  0x1441u
+#define VEL_X_SCALE      0x000A0000u
+#define VEL_Y_SCALE      0x00060000u
+
+static void init_move_step(u32 r4_in, u32 r5_in, u32 r8_in, u32 r10_in) {
+    u32 r5 = r5_in;
+
+    /* Run the actor's turn/AI dispatch. */
+    {
+        call_battle_dispatchActorTurnByTypeAndAIIdx_800F404_result d =
+            call_battle_dispatchActorTurnByTypeAndAIIdx_800F404(r4_in, r5, r8_in);
+        r5 = d.r5;
+        /* r4, r8, r9, r10, r11, r12 are left in guest registers by the wrapper */
+    }
+
+    /* Set the "acted this turn" flag and clear scratch pointers. */
+    call_object_setFlag1_battleObject_initMoveStep_80178D4(FLAG_ACTED, r5);
+
+    ST32(r5 + oBattleObject_RelatedObject1Ptr, 0);
+    {
+        u32 ai = LD32(r5 + oBattleObject_AIDataPtr);
+        ST32(ai + oAIData_TempAttackObjectPtr, 0);
+    }
+
+    /* Pick an idle animation index based on two flag bits:
+     *   bit 0x800 set   -> 2, bit clear -> 1 unless bit 0x20000 set -> 0 */
+    {
+        u32 flags = call_object_getFlag_battleObject_initMoveStep_80178D4(r5);
+        s32 anim = 2;
+        if (!(flags & FLAG_ANIM_MASK)) {
+            anim = 1;
+            if (flags & FLAG_ANIM_IDLE)
+                anim = 0;
+        }
+        ST8(r5 + oBattleObject_CurAnim, (u8)anim);
+    }
+    ST8(r5 + oBattleObject_CurAnimCopy, 0xFF);
+
+    /* Update secondary state (sub_8011450 may change r5 and r8-r12). */
+    {
+        call_sub_8011450_result s = call_sub_8011450(r5);
+        r5 = s.r5;
+    }
+
+    call_battleObject_clearPwrAtkState_8012EA8(r5);
+
+    /* Mirror the sprite to match the object's facing. */
+    {
+        call_object_getFlip_result_battleObject_initMoveStep_80178D4 gf = call_object_getFlip_battleObject_initMoveStep_80178D4(r5);
+        call_sprite_setFlip_battleObject_initMoveStep_80178D4(gf.r0, r5);
+    }
+
+    /* Commit queued panel position and recompute world coordinates. */
+    {
+        u16 xy = LD16(r5 + oBattleObject_FuturePanelXY);
+        ST16(r5 + oBattleObject_PanelXY, xy);
+    }
+    call_object_setCoordinatesFromPanels_battleObject_initMoveStep_80178D4(r5);
+    call_object_updateCollisionPanels_battleObject_initMoveStep_80178D4(r5);
+
+    /* Reset z and clear move-related flags. */
+    ST16(r5 + oBattleObject_Z_3c, 0);
+    call_object_clearFlag_battleObject_initMoveStep_80178D4(FLAG_CLEAR_MOVE, r5);
+    call_battle_resetCollisionState_80101C4(r5);
+
+    /* Release the reservation on the previously-queued future panel. */
+    {
+        u32 fx = LD8(r5 + oBattleObject_FuturePanelX);
+        u32 fy = LD8(r5 + oBattleObject_FuturePanelY);
+        call_object_removePanelReserve_battleObject_initMoveStep_80178D4(fx, fy, r5);
+    }
+
+    /* Increment alliance turn counter (saturated to 3). */
+    {
+        u32 alliance = LD8(r5 + oBattleObject_Alliance);
+        call_tableAddSaturatedByte_800AB46(alliance, 3, 1);
+    }
+
+    /* Ask the AI helper for a contact offset (dx, dy) and a step timer. */
+    call_sub_800E45E_result ai = call_sub_800E45E(1, r5);
+    u32 dx = ai.r0;
+    u32 dy = ai.r1;
+    u32 timer2 = ai.r2;
+    r5 = ai.r5;
+
+    ST8(r5 + oBattleObject_ContactPanelOffsetX, dx);
+    ST8(r5 + oBattleObject_ContactOffsetY, dy);
+    ST16(r5 + oBattleObject_Timer2, timer2);
+
+    if (timer2 != 0) {
+        /* Step toward target panel: check alliance occupancy first. */
+        u32 target_x = (u8)(dx + (u8)LD8(r5 + oBattleObject_PanelX));
+        u32 target_y = (u8)(dy + (u8)LD8(r5 + oBattleObject_PanelY));
+
+        call_battle_objectCheckPanelByAlliance_800E5AC_result_battleObject_initMoveStep_80178D4 chk =
+            call_battle_objectCheckPanelByAlliance_800E5AC_battleObject_initMoveStep_80178D4(target_x, target_y, r5);
+        r5 = chk.r5;
+
+        if (!chk.z) {
+            /* Path is clear: apply velocity from signed direction bytes,
+             * queue the target panel, reserve it, enter moving state. */
+            s32 vel_x = (s32)VEL_X_SCALE * (s32)(s8)LD8(r5 + oBattleObject_ContactPanelOffsetX);
+            s32 vel_y = (s32)VEL_Y_SCALE * (s32)(s8)LD8(r5 + oBattleObject_ContactOffsetY);
+            ST32(r5 + oBattleObject_XVelocity, vel_x);
+            ST32(r5 + oBattleObject_YVelocity, vel_y);
+
+            ST8(r5 + oBattleObject_FuturePanelX, target_x);
+            ST8(r5 + oBattleObject_FuturePanelY, target_y);
+            call_object_reservePanel_battleObject_initMoveStep_80178D4(target_x, target_y, r5);
+            ST8(r5 + oBattleObject_MoveSubState, 4);
+            return;
+        }
+    }
+
+    /* Idle fallback: wait 0x18 ticks in sub-state 8. */
+    ST16(r5 + oBattleObject_Timer, 0x18);
+    ST8(r5 + oBattleObject_MoveSubState, 8);
+}
+
+Next battleObject_initMoveStep_80178D4(void) {
+    init_move_step(R4, R5, R8, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8017A38 ── */
 /* sub_8017A38: Battle object tick.
  * Decrement the object's Timer field; when it hits zero, branch on a flag

@@ -1463,6 +1463,75 @@ Next object_getClosestPanelMatchingRowFiltered(void) {
     }
 }
 
+/* ── battle_collectAdjacentPanelsByFlags ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getPanelParameters_result_battle_collectAdjacentPanelsByFlags;
+/* register form: generated wrapper: object_getPanelParameters has no typed C interface yet */
+static inline call_object_getPanelParameters_result_battle_collectAdjacentPanelsByFlags call_object_getPanelParameters_battle_collectAdjacentPanelsByFlags(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getPanelParameters);
+    return (call_object_getPanelParameters_result_battle_collectAdjacentPanelsByFlags){ R0 };
+}
+
+/* Collect panels just outside the player's 3×3 battle area whose flags
+ * include all of requiredFlags and share no bits with excludeFlags.
+ * Each match is stored as (rowOffset << 4) | colOffset in outputBuffer.
+ * Returns the number of matching panels found. */
+static s32 battle_collectAdjacentPanelsByFlags_impl(u32 requiredFlags,
+                                                    u32 excludeFlags,
+                                                    u32 battleObjPtr,
+                                                    u32 outputBuffer) {
+    s32 count = 0;
+    s32 panelX = (s32)LD8(battleObjPtr + oBattleObject_PanelX);
+    s32 panelY = (s32)LD8(battleObjPtr + oBattleObject_PanelY);
+
+    /* Scan a ring around the 3×3 area: offsets x∈{1..6}, y∈{1..3} */
+    for (s32 y = 3; y >= 1; y--) {
+        for (s32 x = 6; x >= 1; x--) {
+            /* Relative position inside the 3×3 grid (0-based) */
+            s32 relX = panelX - x + 1;
+            s32 relY = panelY - y + 1;
+
+            /* Inside the player's own area → not adjacent, skip */
+            if (relX >= 0 && relX <= 2 &&
+                relY >= 0 && relY <= 2)
+                continue;
+
+            /* Query the adjacent cell's panel flags.
+             * register form: object_getPanelParameters may clobber r2/r3
+             * which this function must preserve. */
+            u32 saved_r2 = R2;
+            u32 saved_r3 = R3;
+            u32 flags = call_object_getPanelParameters_battle_collectAdjacentPanelsByFlags((u32)x, (u32)y).r0;
+            R2 = saved_r2;
+            R3 = saved_r3;
+
+            /* Reject if any excluded bit is set */
+            if (flags & excludeFlags)
+                continue;
+
+            /* Reject if not all required bits are present */
+            if ((flags & requiredFlags) != requiredFlags)
+                continue;
+
+            /* Pack (row << 4 | col) into the output buffer */
+            ST8(outputBuffer + (u32)count, (u8)((y << 4) | x));
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/* battle_collectAdjacentPanelsByFlags(r2 = requiredFlags, r3 = excludeFlags,
+ *   r5 = battle object ptr, r7 = output buffer) -> r0 = count
+ *   preserves r2 r3 r4 r6 r7 */
+Next battle_collectAdjacentPanelsByFlags(void) {
+    R0 = (u32)battle_collectAdjacentPanelsByFlags_impl(R2, R3, R5, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_scanPanelsInFront_800D58C ── */
 /* battle_scanPanelsInFront_800D58C(r5 = battle object):
  * Sweep the panels in front of the acting object, one panel at a time in

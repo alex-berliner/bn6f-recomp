@@ -383,6 +383,87 @@ Next battle_flagAiTarget_80E1654(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_ai_findEnemyTargets_80E1670 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r7; } call_object_getEnemyByNameRange_result_battle_ai_findEnemyTargets_80E1670;
+/* register form: generated wrapper: object_getEnemyByNameRange has no typed C interface yet */
+static inline call_object_getEnemyByNameRange_result_battle_ai_findEnemyTargets_80E1670 call_object_getEnemyByNameRange_battle_ai_findEnemyTargets_80E1670(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_getEnemyByNameRange);
+    return (call_object_getEnemyByNameRange_result_battle_ai_findEnemyTargets_80E1670){ R0, R4, R5, R7 };
+}
+
+typedef struct { u32 r0, r4; } call_battleObject_computeMoveTargetPanel_80E16CC_result;
+/* register form: generated wrapper: battleObject_computeMoveTargetPanel_80E16CC has no typed C interface yet */
+static inline call_battleObject_computeMoveTargetPanel_80E16CC_result call_battleObject_computeMoveTargetPanel_80E16CC(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(battleObject_computeMoveTargetPanel_80E16CC);
+    return (call_battleObject_computeMoveTargetPanel_80E16CC_result){ R0, R4 };
+}
+
+#define ENEMY_LIST_BUF_SIZE   0x34
+#define ENEMY_LIST_MAX_ENTRIES 0x1C3
+
+/* Gather opposing-alliance enemies into a stack-allocated list, null-terminate it,
+ * then query the related object for move-target panels at targets 0, 1, 2.
+ * Returns the first non-zero result from computeMoveTargetPanel, or the last
+ * result (zero) if all three attempts fail. */
+static u32 find_enemy_targets(u32 battle_obj, u32 in_r6, u32 in_r7) {
+    /* register form: guest stack buffer whose address is passed to callees;
+     * R4 must be saved/restored because the wrappers below clobber it */
+    u32 saved_r4 = R4;
+    SP -= ENEMY_LIST_BUF_SIZE;
+    u32 buf = SP;
+
+    /* Determine opposing alliance: xor the object's alliance with 1 */
+    u32 opposing_alliance = LD8(battle_obj + oBattleObject_Alliance) ^ 1;
+
+    /* Collect enemy names into the stack buffer */
+    call_object_getEnemyByNameRange_result_battle_ai_findEnemyTargets_80E1670 list =
+        call_object_getEnemyByNameRange_battle_ai_findEnemyTargets_80E1670(buf, 0, ENEMY_LIST_MAX_ENTRIES,
+                                        opposing_alliance, buf, battle_obj,
+                                        in_r6, in_r7);
+
+    u32 enemy_count = list.r0;
+    /* Null-terminate the list at the callee's returned buffer pointer */
+    ST32(list.r4 + (enemy_count << 2), 0);
+
+    /* Repeatedly ask the related object for move-target panel validity,
+     * targets 0 through 2; stop at the first non-zero result. */
+    u32 related_obj = LD32(battle_obj + oBattleObject_RelatedObject1Ptr);
+    u32 r4_chain = list.r4;
+    u32 result = 0;
+
+    for (u32 target = 0; target < 3; target++) {
+        call_battleObject_computeMoveTargetPanel_80E16CC_result comp =
+            call_battleObject_computeMoveTargetPanel_80E16CC(target, related_obj, r4_chain);
+        result = comp.r0;
+        if (result != 0)
+            break;
+        r4_chain = comp.r4;
+    }
+
+    /* Restore preserved registers and reclaim stack */
+    R4 = saved_r4;
+    SP += ENEMY_LIST_BUF_SIZE;
+    return result;
+}
+
+/* battle_ai_findEnemyTargets_80E1670(r5=battle obj, r6, r7, r10) -> r0 */
+Next battle_ai_findEnemyTargets_80E1670(void) {
+    R0 = find_enemy_targets(R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_computeMoveTargetPanel_80E16CC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: battle_aiIterateOverBattleObjectsByRow_80E1704 has no typed C interface yet */
@@ -451,6 +532,55 @@ Next battleObject_computeMoveTargetPanel_80E16CC(void) {
     R4 = res.r4Out;
     R6 = r6In;
     R7 = r7In;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_aiIterateOverBattleObjectsByRow_80E1704 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r6, r7; } call_battle_pickClosestPanelObject_80E1730_result;
+/* register form: generated wrapper: battle_pickClosestPanelObject_80E1730 has no typed C interface yet */
+static inline call_battle_pickClosestPanelObject_80E1730_result call_battle_pickClosestPanelObject_80E1730(u32 r0, u32 r3, u32 r6) {
+    R0 = r0;
+    R3 = r3;
+    R6 = r6;
+    GUEST_CALL(battle_pickClosestPanelObject_80E1730);
+    return (call_battle_pickClosestPanelObject_80E1730_result){ R0, R4, R6, R7 };
+}
+
+/* Find the battle object in a row whose PanelX is closest to the row center.
+ * row_bits encodes the row: byte 0 = lower PanelX bound, bits 8+ = upper PanelX bound.
+ * list_ptr points to a NULL-terminated array of battle object pointers.
+ * Returns the best object pointer, or 0 if no object in the list falls in range. */
+static u32 battle_aiIterateOverBattleObjectsByRow(u32 row_bits, u32 r6, u32 list_ptr) {
+    u32 best = 0;
+    u32 cur = list_ptr;
+
+    u32 lower = row_bits & 0xFF;    /* byte 0 of row_bits: minimum PanelX */
+    u32 upper = row_bits >> 8;      /* bits 8+ of row_bits: maximum PanelX */
+
+    while (1) {
+        u32 obj = LD32(cur);
+        if (obj == 0)
+            break;
+
+        u32 panelX = LD8(obj + oBattleObject_PanelX);
+
+        if ((s32)panelX >= (s32)lower && (s32)panelX <= (s32)upper) {
+            if (best == 0)
+                best = obj;
+            else
+                best = call_battle_pickClosestPanelObject_80E1730(best, obj, r6).r0;
+        }
+
+        cur += 4;   /* next pointer in the list */
+    }
+
+    return best;
+}
+
+/* battle_aiIterateOverBattleObjectsByRow_80E1704(r4 = row_bits, r6, r7 = list_ptr) -> r0 */
+Next battle_aiIterateOverBattleObjectsByRow_80E1704(void) {
+    R0 = battle_aiIterateOverBattleObjectsByRow(R4, R6, R7);
     RETURN_TO_CALLER();
 }
 
@@ -1197,6 +1327,329 @@ Next t4_0x28_80E32B8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_initSpriteFromRelatedOrParam2_80E32D8 ── */
+#define oBattleObject_Param1_battleObject_initSpriteFromRelatedOrParam2_80E32D8 0x4u
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_initSpriteFromRelatedOrParam2_80E32D8 0x8u
+#define CUR_STATE_UPDATE_battleObject_initSpriteFromRelatedOrParam2_80E32D8 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r4; } call_enemy_getArmPosition_800F26C_result;
+/* register form: generated wrapper: enemy_getArmPosition_800F26C has no typed C interface yet */
+static inline call_enemy_getArmPosition_800F26C_result call_enemy_getArmPosition_800F26C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(enemy_getArmPosition_800F26C);
+    return (call_enemy_getArmPosition_800F26C_result){ R0, R1, R4 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_load_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R4, R5 };
+}
+
+typedef struct { u32 r0, r1; bool v; } call_unpackVerActorTyAndAIIdx_800F29C_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: unpackVerActorTyAndAIIdx_800F29C has no typed C interface yet */
+static inline call_unpackVerActorTyAndAIIdx_800F29C_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_unpackVerActorTyAndAIIdx_800F29C_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    return (call_unpackVerActorTyAndAIIdx_800F29C_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R0, R1, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_8010DF6_result;
+/* register form: generated wrapper: sub_8010DF6 has no typed C interface yet */
+static inline call_sub_8010DF6_result call_sub_8010DF6(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sub_8010DF6);
+    return (call_sub_8010DF6_result){ R2, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: battle_setExtraVars has no typed C interface yet */
+static inline void call_battle_setExtraVars(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(battle_setExtraVars);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_loadAnimationData_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_loadAnimationData_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R4, R5 };
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_update_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_update_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R2, R4, R5 };
+}
+
+typedef struct { u32 r1; } call_sprite_noShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline call_sprite_noShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_noShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+    return (call_sprite_noShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R1 };
+}
+
+typedef struct { u32 r1; } call_sprite_hasShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_hasShadow has no typed C interface yet */
+static inline call_sprite_hasShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_hasShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_hasShadow);
+    return (call_sprite_hasShadow_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R1 };
+}
+
+typedef struct { u32 r1; } call_sprite_removeShadow_result;
+/* register form: generated wrapper: sprite_removeShadow has no typed C interface yet */
+static inline call_sprite_removeShadow_result call_sprite_removeShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_removeShadow);
+    return (call_sprite_removeShadow_result){ R1 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r1, r2; } call_sprite_setFlip_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 call_sprite_setFlip_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8){ R1, R2 };
+}
+
+typedef struct { u32 r3; } call_sprite_setColorShader_result;
+/* register form: generated wrapper: sprite_setColorShader has no typed C interface yet */
+static inline call_sprite_setColorShader_result call_sprite_setColorShader_battleObject_initSpriteFromRelatedOrParam2_80E32D8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setColorShader);
+    return (call_sprite_setColorShader_result){ R3 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_battleObject_updateMysteryData_80E336E_result;
+/* register form: generated wrapper: battleObject_updateMysteryData_80E336E has no typed C interface yet */
+static inline call_battleObject_updateMysteryData_80E336E_result call_battleObject_updateMysteryData_80E336E(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateMysteryData_80E336E);
+    return (call_battleObject_updateMysteryData_80E336E_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Initialize a battle object's sprite: either by copying the name ID from a
+ * related object (Param1 == 0xFF) or directly from Param2, then configure
+ * animation, shadow, palette, flip, and color shader. */
+struct battleObject_initSprite_result {
+    u32 r5, r8, r9, r10, r11, r12;
+};
+
+static struct battleObject_initSprite_result
+battleObject_initSprite(u32 obj)
+{
+    /* Mark the object as having its sprite loaded (set flag bit 2) */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    u32 param1 = LD8(obj + oBattleObject_Param1_battleObject_initSpriteFromRelatedOrParam2_80E32D8);
+
+    if (param1 == 0xFF) {
+        /* Load by related object's name ID */
+        u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+        ST16(obj + oBattleObject_NameID, LD16(related + oBattleObject_NameID));
+
+        call_enemy_getArmPosition_800F26C_result arm =
+            call_enemy_getArmPosition_800F26C(LD16(obj + oBattleObject_NameID));
+        call_sprite_load_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 load = call_sprite_load_battleObject_initSpriteFromRelatedOrParam2_80E32D8(0x80, arm.r0, arm.r1, obj);
+        obj = load.r5;
+
+        call_unpackVerActorTyAndAIIdx_800F29C_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 unpacked =
+            call_unpackVerActorTyAndAIIdx_800F29C_battleObject_initSpriteFromRelatedOrParam2_80E32D8(LD16(obj + oBattleObject_NameID));
+        call_sub_8010DF6_result df6 = call_sub_8010DF6(unpacked.r0, unpacked.r1, 0, obj);
+        obj = df6.r5;
+
+        call_battle_setExtraVars(LD32(obj + oBattleObject_RelatedObject2Ptr), 1);
+    } else {
+        /* Load by Param2 sprite index */
+        call_sprite_load_result_battleObject_initSpriteFromRelatedOrParam2_80E32D8 load =
+            call_sprite_load_battleObject_initSpriteFromRelatedOrParam2_80E32D8(0x80, param1, LD8(obj + oBattleObject_Param2), obj);
+        obj = load.r5;
+    }
+
+    /* Set initial animation slot from Param3 */
+    u32 anim = LD8(obj + oBattleObject_Param3);
+    ST8(obj + oBattleObject_CurAnim, anim);
+    ST8(obj + oBattleObject_CurAnimCopy, anim);
+    call_sprite_setAnimation_battleObject_initSpriteFromRelatedOrParam2_80E32D8(anim, obj);
+
+    call_sprite_loadAnimationData_battleObject_initSpriteFromRelatedOrParam2_80E32D8(obj);
+    call_sprite_update_battleObject_initSpriteFromRelatedOrParam2_80E32D8(obj);
+
+    /* Shadow configuration lives at obj + 0x64 */
+    u32 shadow_data = obj + 0x64;
+    ST16(obj + oBattleObject_Timer2, LD16(shadow_data));
+
+    if (!LD8(shadow_data + 2)) {
+        call_sprite_noShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(obj);
+    } else {
+        call_sprite_hasShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(obj);
+        if (!LD8(shadow_data + 3))
+            call_sprite_removeShadow_battleObject_initSpriteFromRelatedOrParam2_80E32D8(obj);
+    }
+
+    /* Apply palette, flip, clear action timer, set color shader */
+    call_sprite_setPalette_battleObject_initSpriteFromRelatedOrParam2_80E32D8(LD32(obj + (oBattleObject_ExtraVars + 0x10)), obj);
+    call_sprite_setFlip_battleObject_initSpriteFromRelatedOrParam2_80E32D8(LD8(obj + oBattleObject_Param4), obj);
+    ST16(obj + oBattleObject_Timer, 0);
+    call_sprite_setColorShader_battleObject_initSpriteFromRelatedOrParam2_80E32D8(LD32(obj + oBattleObject_ExtraVars), obj);
+
+    /* Transition to the update phase */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_initSpriteFromRelatedOrParam2_80E32D8, CUR_STATE_UPDATE_battleObject_initSpriteFromRelatedOrParam2_80E32D8);
+
+    call_battleObject_updateMysteryData_80E336E_result mystery =
+        call_battleObject_updateMysteryData_80E336E(obj);
+
+    return (struct battleObject_initSprite_result){
+        .r5  = mystery.r5,
+        .r8  = mystery.r8,
+        .r9  = mystery.r9,
+        .r10 = mystery.r10,
+        .r11 = mystery.r11,
+        .r12 = mystery.r12,
+    };
+}
+
+/* battleObject_initSpriteFromRelatedOrParam2_80E32D8(r5 = battle object, r10) */
+Next battleObject_initSpriteFromRelatedOrParam2_80E32D8(void) {
+    struct battleObject_initSprite_result res = battleObject_initSprite(R5);
+    R5  = res.r5;
+    R8  = res.r8;
+    R9  = res.r9;
+    R10 = res.r10;
+    R11 = res.r11;
+    R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_updateMysteryData_80E336E ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_updateMysteryData_80E336E 0x8u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r6; } call_GetBattleNaviStatsByte_result_battleObject_updateMysteryData_80E336E;
+/* register form: generated wrapper: GetBattleNaviStatsByte has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_result_battleObject_updateMysteryData_80E336E call_GetBattleNaviStatsByte_battleObject_updateMysteryData_80E336E(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return (call_GetBattleNaviStatsByte_result_battleObject_updateMysteryData_80E336E){ R0, R6 };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isPaused_result;
+/* register form: generated wrapper: battle_isPaused has no typed C interface yet */
+static inline call_battle_isPaused_result call_battle_isPaused(void) {
+    GUEST_CALL(battle_isPaused);
+    return (call_battle_isPaused_result){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_battle_despawnEnemyObject_result;
+/* register form: generated wrapper: battle_despawnEnemyObject has no typed C interface yet */
+static inline call_battle_despawnEnemyObject_result call_battle_despawnEnemyObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_despawnEnemyObject);
+    return (call_battle_despawnEnemyObject_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5; } call_sprite_update_result_battleObject_updateMysteryData_80E336E;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_updateMysteryData_80E336E call_sprite_update_battleObject_updateMysteryData_80E336E(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_updateMysteryData_80E336E){ R2, R3, R4, R5 };
+}
+
+/* Destroy the mystery-data object: mark it for removal and run the despawn routine. */
+static void despawn_mystery_object(u32 obj) {
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_updateMysteryData_80E336E, CUR_STATE_DESTROY);
+    call_battle_despawnEnemyObject(obj);
+}
+
+/* Advance one mystery-data battle object each frame:
+ * check alliance / related-action gates, tick the timer, and flash
+ * the sprite visibility flag (bit 1) on 4-frame boundaries. */
+static void update_mystery_data(u32 obj) {
+    /* Gate 1: ExtraVars[3] == 1 → navi stat byte for this alliance must be in [0x0B, 0x18] */
+    if (LD32(obj + oBattleObject_ExtraVars + 0xC) == 1) {
+        u32 alliance = LD8(obj + oBattleObject_Alliance);
+        u32 stat = call_GetBattleNaviStatsByte_battleObject_updateMysteryData_80E336E(alliance, 0x2C).r0;
+        if ((s32)stat < (s32)0xB || (s32)stat > (s32)0x18) {
+            despawn_mystery_object(obj);
+            return;
+        }
+    }
+
+    /* Gate 2: ExtraVars[3] == 2 → related object's current action must be >= 0x10 */
+    if (LD32(obj + oBattleObject_ExtraVars + 0xC) == 2) {
+        u32 related = LD32(obj + oBattleObject_RelatedObject1Ptr);
+        if ((s32)LD8(related + oBattleObject_CurAction) < (s32)0x10) {
+            despawn_mystery_object(obj);
+            return;
+        }
+    }
+
+    /* Skip frame update while the battle is not paused (Z set = paused → continue). */
+    if (!call_battle_isPaused().z)
+        return;
+
+    /* Tick the timer; destroy the object once it reaches the configured duration. */
+    u32 new_timer = LD16(obj + oBattleObject_Timer) + 1;
+    if ((s32)new_timer >= (s32)LD16(obj + oBattleObject_Timer2)) {
+        despawn_mystery_object(obj);
+        return;
+    }
+
+    /* Timer still in range: store it and advance the sprite. */
+    ST16(obj + oBattleObject_Timer, new_timer);
+    u32 updated_obj = call_sprite_update_battleObject_updateMysteryData_80E336E(obj).r5;
+
+    /* Make the object visible (set header flag bit 1). */
+    ST8(updated_obj + oObjectHeader_Flags,
+        LD8(updated_obj + oObjectHeader_Flags) | 2);
+
+    /* ExtraVars[2] nonzero suppresses the visibility toggle. */
+    if (LD32(updated_obj + oBattleObject_ExtraVars + 8) != 0)
+        return;
+
+    /* Flash off every 4 frames: only clear bit 1 when timer bit 1 is 0. */
+    if (LD16(updated_obj + oBattleObject_Timer) & 2)
+        return;
+    ST8(updated_obj + oObjectHeader_Flags,
+        LD8(updated_obj + oObjectHeader_Flags) & ~2u);
+}
+
+/* battleObject_updateMysteryData_80E336E(r5 = battle object) */
+Next battleObject_updateMysteryData_80E336E(void) {
+    update_mystery_data(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_despawnEnemyObject ── */
 #define oBattleObject_Param1_battle_despawnEnemyObject 0x4u
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
@@ -1282,6 +1735,126 @@ static void finish_battle_object_phase(u32 obj) {
 /* battle_finishObjectPhase_80E3950(r5 = battle object) -> nothing */
 Next battle_finishObjectPhase_80E3950(void) {
     finish_battle_object_phase(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initBeastSp_80E39D0 ── */
+#define oBattleObject_Param1_battleObject_initBeastSp_80E39D0 0x4u
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_initBeastSp_80E39D0 0x8u
+#define CUR_STATE_UPDATE_battleObject_initBeastSp_80E39D0 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initBeastSp_80E39D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initBeastSp_80E39D0;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initBeastSp_80E39D0 call_sprite_load_battleObject_initBeastSp_80E39D0(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initBeastSp_80E39D0){ R4, R5 };
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initBeastSp_80E39D0;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initBeastSp_80E39D0 call_sprite_loadAnimationData_battleObject_initBeastSp_80E39D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initBeastSp_80E39D0){ R1, R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_initBeastSp_80E39D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initBeastSp_80E39D0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initBeastSp_80E39D0;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initBeastSp_80E39D0 call_sprite_setPalette_battleObject_initBeastSp_80E39D0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initBeastSp_80E39D0){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initBeastSp_80E39D0;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initBeastSp_80E39D0 call_object_getFlip_battleObject_initBeastSp_80E39D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initBeastSp_80E39D0){ R0 };
+}
+
+typedef struct { u32 r2; bool c, v; } call_sprite_setFlip_result_battleObject_initBeastSp_80E39D0;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battleObject_initBeastSp_80E39D0 call_sprite_setFlip_battleObject_initBeastSp_80E39D0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battleObject_initBeastSp_80E39D0){ R2, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_battleObject_runBeastSpActionHandler_80E3A32_result;
+/* register form: generated wrapper: battleObject_runBeastSpActionHandler_80E3A32 has no typed C interface yet */
+static inline call_battleObject_runBeastSpActionHandler_80E3A32_result call_battleObject_runBeastSpActionHandler_80E3A32(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_runBeastSpActionHandler_80E3A32);
+    return (call_battleObject_runBeastSpActionHandler_80E3A32_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+/* Initialize a Beast Link SP battle object: position it, load its sprite and
+ * animation, set the visible flag, configure flip, then hand off to the
+ * per-frame action handler which produces the state-register outputs. */
+static void battleObject_initBeastSp(u32 obj) {
+    /* Place the object on its panel, then shift Z and Y by 2 px upward. */
+    call_object_setCoordinatesFromPanels_battleObject_initBeastSp_80E39D0(obj);
+    ST16(obj + oBattleObject_Z16, 0);
+    ST16(obj + oBattleObject_Z16, (u16)(LD16(obj + oBattleObject_Z16) + 2));
+    ST16(obj + oBattleObject_Y16,  (u16)(LD16(obj + oBattleObject_Y16)  + 2));
+
+    /* Load default sprite tiles (0x80) with animation slots 0x10/0x20. */
+    (void)call_sprite_load_battleObject_initBeastSp_80E39D0(0x80, 0x10, 0x20, obj);
+    (void)call_sprite_loadAnimationData_battleObject_initBeastSp_80E39D0(obj);
+    call_sprite_noShadow_battleObject_initBeastSp_80E39D0(obj);
+
+    /* Set bit 1 of the object header flags ("visible/drawn"). */
+    ST8(obj + oObjectHeader_Flags, (u8)(LD8(obj + oObjectHeader_Flags) | 2));
+
+    /* Select an animation from the Param1-indexed table at word_80E3A30. */
+    u8 anim = LD8(A_word_80E3A30 + LD8(obj + oBattleObject_Param1_battleObject_initBeastSp_80E39D0));
+    ST8(obj + oBattleObject_CurAnim, anim);
+    ST8(obj + oBattleObject_CurAnimCopy, anim);
+
+    /* Apply animation, reload data, set palette to 0. */
+    call_sprite_setAnimation_battleObject_initBeastSp_80E39D0(anim, obj);
+    (void)call_sprite_loadAnimationData_battleObject_initBeastSp_80E39D0(obj);
+    (void)call_sprite_setPalette_battleObject_initBeastSp_80E39D0(0, obj);
+
+    /* Mirror the object's horizontal flip onto the sprite. */
+    call_object_getFlip_result_battleObject_initBeastSp_80E39D0 flip = call_object_getFlip_battleObject_initBeastSp_80E39D0(obj);
+    (void)call_sprite_setFlip_battleObject_initBeastSp_80E39D0(flip.r0, obj);
+
+    /* Arm the update phase and tail into the per-frame state machine;
+     * the handler sets r5, r8–r12 as our outputs. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_battleObject_initBeastSp_80E39D0, CUR_STATE_UPDATE_battleObject_initBeastSp_80E39D0);
+    (void)call_battleObject_runBeastSpActionHandler_80E3A32(obj);
+}
+
+Next battleObject_initBeastSp_80E39D0(void) {
+    battleObject_initBeastSp(R5);
     RETURN_TO_CALLER();
 }
 
@@ -1908,6 +2481,123 @@ static void scripted_effect_tick(u32 obj) {
 
 Next object_scriptedEffectTick(void) {
     scripted_effect_tick(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_sortEnemyPanelCoords ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r6, r7; } call_object_getEnemyByNameRange_result_ai_sortEnemyPanelCoords;
+/* register form: generated wrapper: object_getEnemyByNameRange has no typed C interface yet */
+static inline call_object_getEnemyByNameRange_result_ai_sortEnemyPanelCoords call_object_getEnemyByNameRange_ai_sortEnemyPanelCoords(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_getEnemyByNameRange);
+    return (call_object_getEnemyByNameRange_result_ai_sortEnemyPanelCoords){ R0, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r7; } call_GetPositiveSignedRNG_result_ai_sortEnemyPanelCoords;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result_ai_sortEnemyPanelCoords call_GetPositiveSignedRNG_ai_sortEnemyPanelCoords(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result_ai_sortEnemyPanelCoords){ R0, R7 };
+}
+
+typedef struct { u32 r0, r1, r3; } call_battle_orderPairByAllianceFlip_result;
+/* register form: generated wrapper: battle_orderPairByAllianceFlip has no typed C interface yet */
+static inline call_battle_orderPairByAllianceFlip_result call_battle_orderPairByAllianceFlip(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_orderPairByAllianceFlip);
+    return (call_battle_orderPairByAllianceFlip_result){ R0, R1, R3 };
+}
+
+/* Sort the panel coordinates of up to three enemies into the battle object's
+ * packed byte array at offset 0x64, ordered ascending by alliance-aware comparison. */
+static void ai_sortEnemyPanelCoords_impl(u32 input_r4, u32 battleObj,
+                                         u32 input_r6, u32 input_r7, u32 input_r10) {
+    /* register form: the enemy-pointer buffer must live at a guest-addressable
+     * stack slot because object_getEnemyByNameRange writes enemy pointers there. */
+    SP -= 0x10;
+    u32 buf = SP;
+
+    u32 allianceFlip = LD8(battleObj + oBattleObject_Alliance) ^ 1;
+
+    /* Collect enemies whose name IDs fall in [0, 0xAE); writes to buf[0..count1). */
+    call_object_getEnemyByNameRange_result_ai_sortEnemyPanelCoords first = call_object_getEnemyByNameRange_ai_sortEnemyPanelCoords(
+        buf, 0, 0xAE, allianceFlip, input_r4, battleObj, input_r6, buf);
+    u32 count1 = first.r0;
+
+    /* Collect enemies whose name IDs fall in [0x100, 0x1C3); writes to buf[count1..total). */
+    call_object_getEnemyByNameRange_result_ai_sortEnemyPanelCoords second = call_object_getEnemyByNameRange_ai_sortEnemyPanelCoords(
+        buf + (count1 << 2), 0x100, 0x1C3, allianceFlip,
+        count1, battleObj, input_r6, buf);
+    u32 total = count1 + second.r0;
+
+    if ((s32)total == 2) {
+        /* Exactly two matches: fill the third slot with the higher-HP enemy. */
+        u32 e0 = LD32(buf);
+        u32 e1 = LD32(buf + 4);
+        u32 hp0 = LD16(e0 + oBattleObject_HP);
+        u32 hp1 = LD16(e1 + oBattleObject_HP);
+        u32 chosen;
+        if (hp0 < hp1) {
+            chosen = e1;
+        } else if (hp0 > hp1) {
+            chosen = e0;
+        } else {
+            /* Tie: RNG masked with 4 selects buf[0] or buf[1]. */
+            u32 rng = call_GetPositiveSignedRNG_ai_sortEnemyPanelCoords().r0;
+            chosen = LD32(buf + (rng & 4));
+        }
+        ST32(buf + 8, chosen);
+    } else if ((s32)total < 2) {
+        /* Fewer than two matches: duplicate the first enemy in all three slots. */
+        u32 e0 = LD32(buf);
+        ST32(buf + 4, e0);
+        ST32(buf + 8, e0);
+    }
+    /* total > 2: both ranges already filled three distinct entries; nothing extra. */
+
+    /* Pack each enemy's (panelY << 4 | panelX) into the 3-byte array. */
+    u32 panelArr = battleObj + 0x64;
+    for (s32 i = 0; i < 3; i++) {
+        u32 enemy = LD32(buf + (i << 2));
+        u32 px = LD8(enemy + oBattleObject_PanelX);
+        u32 py = LD8(enemy + oBattleObject_PanelY);
+        ST8(panelArr + i, px | (py << 4));
+    }
+
+    /* Selection-sort style: pass 2 compares [0] vs [1] and [0] vs [2];
+     * pass 1 compares [1] vs [2].  Each pair goes through the alliance-aware comparator. */
+    for (s32 outer = 2; outer > 0; outer--) {
+        u32 a = panelArr + (2 - outer);
+        u32 b = a + 1;
+        for (s32 inner = outer; inner > 0; inner--) {
+            call_battle_orderPairByAllianceFlip_result pair =
+                call_battle_orderPairByAllianceFlip(LD8(a), LD8(b), battleObj);
+            ST8(a, pair.r0);
+            ST8(b, pair.r1);
+            b++;
+        }
+    }
+
+    SP += 0x10;
+}
+
+/* ai_sortEnemyPanelCoords(r4, r5=battleObj, r6, r10, lr) -> r5 preserved */
+Next ai_sortEnemyPanelCoords(void) {
+    /* register form: original push {r4,r6,r7,lr}/pop preserves these across
+     * wrapper calls that clobber them; no C equivalent exists. */
+    u32 s4 = R4, s6 = R6, s7 = R7;
+    ai_sortEnemyPanelCoords_impl(s4, R5, s6, s7, R10);
+    R4 = s4; R6 = s6; R7 = s7;
     RETURN_TO_CALLER();
 }
 

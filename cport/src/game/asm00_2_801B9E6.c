@@ -1722,6 +1722,80 @@ Next battle_updateObjectAnim_801CB38(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_loadBeastOutFormGfx_801CC34 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result_battleObject_loadBeastOutFormGfx_801CC34;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result_battleObject_loadBeastOutFormGfx_801CC34 call_QueueEightWordAlignedGFXTransfer_battleObject_loadBeastOutFormGfx_801CC34(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result_battleObject_loadBeastOutFormGfx_801CC34){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r5, r6; } call_battleObject_resolveEmotionPalette_801E6A8_result;
+/* register form: generated wrapper: battleObject_resolveEmotionPalette_801E6A8 has no typed C interface yet */
+static inline call_battleObject_resolveEmotionPalette_801E6A8_result call_battleObject_resolveEmotionPalette_801E6A8(u32 r4, u32 r5, u32 r6) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(battleObject_resolveEmotionPalette_801E6A8);
+    return (call_battleObject_resolveEmotionPalette_801E6A8_result){ R0, R5, R6 };
+}
+
+/* Load a Beast Out Form's tile and emotion-palette GFX into the DMA queue.
+ * object_id indexes a u8 palette-table at byte_801CDDC; r5 points at the
+ * object struct (fields: 0x10 anim-refresh flag, 0x15 current form, 0x17 emotion-pending).
+ * The original saves the object_id on the stack and restores it via pop, so
+ * the return value is always the input object_id unchanged. */
+static u32 load_beast_outform_gfx(u32 object_id, u32 r4, u32 r5, u32 r6) {
+    /* Look up palette index from the per-object table (byte_801CDDC) */
+    u32 palette_idx = LD8(A_byte_801CDDC + (object_id - 1));
+
+    /* Queue tile and palette GFX only if the form index differs from object_id */
+    u32 current_form = LD8(r5 + 0x15);
+    if (object_id != current_form) {
+        u32 tile_src = A_byte_872D094 + palette_idx * 0x100;
+        /* 0x100 bytes of tile data -> VRAM 0x6017680 */
+        (void)call_QueueEightWordAlignedGFXTransfer_battleObject_loadBeastOutFormGfx_801CC34(tile_src, 0x6017680, 0x100);
+        /* 0x80 bytes of sprite palette -> VRAM just past the tile block */
+        (void)call_QueueEightWordAlignedGFXTransfer_battleObject_loadBeastOutFormGfx_801CC34(A_byte_872D014, 0x6017780, 0x80);
+        /* Mark the object's GFX as needing a refresh */
+        ST8(r5 + 0x10, 0xFF);
+    }
+
+    /* Resolve the emotion palette (updates r5, r6 in place) */
+    call_battleObject_resolveEmotionPalette_801E6A8_result emo =
+        call_battleObject_resolveEmotionPalette_801E6A8(r4, r5, r6);
+    u32 new_r5 = emo.r5;
+    u32 emotion_state = emo.r0;
+
+    /* If the emotion-pending flag is set and the state is 3, select sub-palette 1 */
+    u32 anim_sub = 0;
+    if (LD8(new_r5 + 0x17) == 0xFF && emotion_state == 3)
+        anim_sub = 1;
+
+    /* Old flag is read (discarded) then replaced – mirrors the ldrb / strb pair */
+    u32 old_flag = LD8(new_r5 + 0x10);
+    (void)old_flag;
+    ST8(new_r5 + 0x10, anim_sub);
+
+    /* Queue the emotion palette GFX: 0x20 bytes at dword_872D694 + idx*0x40 + sub*0x20 */
+    u32 pal_src = A_dword_872D694 + palette_idx * 0x40 + anim_sub * 0x20;
+    (void)call_QueueEightWordAlignedGFXTransfer_battleObject_loadBeastOutFormGfx_801CC34(pal_src, A_byte_30016D0, 0x20);
+
+    /* Return the original object_id (the pop {r0,…} restored it from the stack) */
+    return object_id;
+}
+
+/* battleObject_loadBeastOutFormGfx_801CC34:
+ *   in: r0 r4 r5 r6 r10   out: r0 r4 r5 r6 r7 */
+Next battleObject_loadBeastOutFormGfx_801CC34(void) {
+    R0 = load_beast_outform_gfx(R0, R4, R5, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── palette_QueueObjectPalettePair_801CDEC ── */
 /* Palette-transfer destination descriptors. The object's byte at +0x12 is
  * shifted into bits 16-23, filling the low half of each descriptor and thus

@@ -648,6 +648,100 @@ Next battle_clearEntryFlagAndMakeUnscalable_80468EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_updateHitboxPanelOverlap_804692C ── */
+/* Walk the 5-byte panel hit-list for the current object frame, test each panel
+ * center against a camera-aligned AABB (optionally mirrored via flags at +0x13),
+ * and accumulate a per-panel hit mask.  Then fold that mask into the object's
+ * control byte at +3 and store the raw mask at +0x28.
+ * Returns the updated control byte (written to R3). */
+static u32 update_hitbox_panel_overlap(u32 obj) {
+    /* Signed panel-center origin */
+    s32 origin_x = (s32)LDS16(obj + 0x0C);
+    s32 origin_y = (s32)LDS16(obj + 0x0E);
+
+    /* Mirror flags in byte +0x13: bit4 = X flip, bit5 = Y flip */
+    u8 mirror_flags = LD8(obj + 0x13);
+    bool flip_x = (mirror_flags & 0x10) != 0;
+    bool flip_y = (mirror_flags & 0x20) != 0;
+
+    /* Resolve the panel entry-list pointer.
+     *   frame    = first byte of the pointer at obj+0x20
+     *   base     = *(obj+0x18) + *(*(obj+0x1C) + 0xC)
+     *   entry    = *(base + frame*4) + base
+     * Each entry is 5 bytes: {kind, dx, dy, pad, pad}; terminated by kind==0xFF. */
+    u8 frame = LD8(LD32(obj + 0x20));
+    u32 offset_table = LD32(obj + 0x18)
+                     + LD32(LD32(obj + 0x1C) + 0x0C);
+    u32 entry = LD32(offset_table + ((u32)frame << 2)) + offset_table;
+
+    u32 hit_mask = 0;
+    u32 bit      = 0x80000000u;
+
+    for (;;) {
+        if (LD8(entry) == 0xFF)
+            break;
+
+        /* X: signed delta from entry+1, optionally negated, then + origin_x.
+         * In-range: [-0x40, 0x131) i.e. [-64, 273). */
+        s32 px = (s32)LDS8(entry + 1) + origin_x;
+        if (flip_x)
+            px = -(s32)LDS8(entry + 1) + origin_x;
+
+        bool x_ok = (px >= -0x40 && px < 0x131);
+
+        /* Y: signed delta from entry+2, optionally negated, then + origin_y.
+         * In-range: [-0x20, 0xC1) i.e. [-32, 193). */
+        bool y_ok = false;
+        if (x_ok) {
+            s32 py = (s32)LDS8(entry + 2) + origin_y;
+            if (flip_y)
+                py = -(s32)LDS8(entry + 2) + origin_y;
+            y_ok = (py >= -0x20 && py < 0xC1);
+        }
+
+        if (y_ok)
+            hit_mask |= bit;
+
+        entry += 5;
+        bit >>= 1;
+    }
+
+    /* Store the full 32-bit hit mask */
+    ST32(obj + 0x28, hit_mask);
+
+    /* Fold the mask into the 8-bit control byte at obj+3.
+     * Bit 2 of ctrl selects the folding strategy. */
+    u8 ctrl = LD8(obj + 3);
+
+    if ((ctrl & 0x04) == 0) {
+        /* Normal path: two independent bits.
+         *   bit 3 (0x08) ← any hit except the top bit (mask & ~0x80000000 != 0)
+         *   bit 1 (0x02) ← any hit at all (mask != 0) */
+        ctrl &= (u8)~0x08;
+        if ((hit_mask & 0x7FFFFFFFu) != 0)
+            ctrl |= 0x08;
+
+        ctrl &= (u8)~0x02;
+        if (hit_mask != 0)
+            ctrl |= 0x02;
+    } else {
+        /* Alternate path: a single combined bit set (0x0A).
+         *   bits 1+3 (0x0A) ← any hit (mask != 0) */
+        ctrl &= (u8)~0x0A;
+        if (hit_mask != 0)
+            ctrl |= 0x0A;
+    }
+
+    ST8(obj + 3, ctrl);
+    return (u32)ctrl;
+}
+
+/* battleObject_updateHitboxPanelOverlap_804692C(r5 = obj pointer) -> r3 */
+Next battleObject_updateHitboxPanelOverlap_804692C(void) {
+    R3 = update_hitbox_panel_overlap(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_initRequestWorkArea_8046CC8 ── */
 /* reqBBS_initRequestWorkArea_8046CC8(r0 = BBS request slot index, r10 = toolkit):
  * Prepares the BBS request work area for the selected request:
@@ -3790,6 +3884,61 @@ Next tickActionTimer_804C214(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_flashTickFrames ── */
+/* battle_flashTickFrames(r5 = state object, r10 = toolkit):
+ * Drives a palette fade animation tick. When the step counter (state+0x11)
+ * is zero and the toolkit counter (toolkit+3) hasn't reached 0x10, it primes
+ * the palette slot (BGRA = 0x44, 0x3B, 0x10, 0) and arms a 2-frame duration
+ * timer. On each call the timer counts down; when it wraps to zero the timer
+ * is reset to 2, the palette's colour index is advanced (if < 0x10), and the
+ * ramp byte is decremented (if non-zero). */
+
+static void flash_tick_frames(u32 state_obj, u32 toolkit) {
+    /* --- Priming path: step counter at state+0x11 is zero --- */
+    u8 step = LD8(state_obj + 0x11);
+    if ((s32)step <= 0) {
+        u8 counter = LD8(toolkit + 3);
+        if ((s32)counter >= 0x10)
+            return;                         /* fade complete – skip timer tick */
+
+        u32 palette = LD32(toolkit + oToolkit_Unk2009740_Ptr);
+        ST8(palette,     0x44);             /* blue   */
+        ST8(palette + 1, 0x3B);             /* green  */
+        ST8(palette + 2, 0x10);             /* ramp   */
+        ST8(palette + 3, 0);                /* colour index */
+        ST8(state_obj + 0x18, 2);           /* arm 2-frame duration timer */
+        step = step + 1;
+        ST8(state_obj + 0x11, step);
+    }
+
+    /* --- Tick the duration timer --- */
+    u8 timer = LD8(state_obj + 0x18) - 1;
+    ST8(state_obj + 0x18, timer);
+    if (timer != 0)
+        return;
+
+    /* --- Timer expired: advance fade parameters --- */
+    ST8(state_obj + 0x18, 2);               /* re-arm timer */
+    u32 palette = LD32(toolkit + oToolkit_Unk2009740_Ptr);
+    u8 col_index = LD8(palette + 3);
+    if ((s32)col_index >= 0x10)
+        return;
+    col_index = col_index + 1;
+    ST8(palette + 3, col_index);
+
+    u8 ramp = LD8(palette + 2);
+    if (ramp == 0)
+        return;
+    ramp = ramp - 1;
+    ST8(palette + 2, ramp);
+}
+
+/* battle_flashTickFrames(r5 = state, r10 = toolkit) -> r5 preserved */
+Next battle_flashTickFrames(void) {
+    flash_tick_frames(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_copyNaviSpriteState_804C298 ── */
 /* chatbox_copyNaviSpriteState_804C298:
  *   inputs:  r5 (source struct), r10 (toolkit), lr
@@ -4114,6 +4263,100 @@ Next battle_setupBackgroundGfx(void) {
     R10 = out.r10;
     R11 = out.r11;
     R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initBattleFieldTilesAndSfxTimer_804C770 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r10; } call_sub_804C818_result;
+/* register form: generated wrapper: object_periodicSoundTimerTick_804C818 has no typed C interface yet */
+static inline call_sub_804C818_result call_sub_804C818(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_periodicSoundTimerTick_804C818);
+    return (call_sub_804C818_result){ R10 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_CopyBackgroundTiles_result_battleObject_initBattleFieldTilesAndSfxTimer_804C770;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_battleObject_initBattleFieldTilesAndSfxTimer_804C770 call_CopyBackgroundTiles_battleObject_initBattleFieldTilesAndSfxTimer_804C770(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_battleObject_initBattleFieldTilesAndSfxTimer_804C770){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct {
+    u32 r2, r8, r9, r10, r11, r12;
+} BattleFieldInitResult;
+
+/* register form: indirect call through jump table (mov lr, pc; bx r0).
+ * No typed wrapper exists for the three possible field-layout targets;
+ * they take R0–R5 as arguments and write R8/R9/R11/R12 as side-effects. */
+static void dispatch_field_layout(u32 target, u32 type_byte, u32 render_info, u32 battle_obj,
+                                  u32 *r8, u32 *r9, u32 *r11, u32 *r12) {
+    R0 = target;
+    R1 = type_byte;
+    R2 = 0x800;
+    R4 = render_info;
+    R5 = battle_obj;
+    GUEST_CALL_ADDR(target);
+    *r8  = R8;
+    *r9  = R9;
+    *r11 = R11;
+    *r12 = R12;
+}
+
+/* Adjust the render-info tile-mode flag and scroll window, dispatch the per-type
+ * stage tile layout through a jump table, compute the next-frame toolkit pointer,
+ * and upload the 32x32 background tile block for the active stage. */
+static BattleFieldInitResult init_battle_field_tiles(u32 battle_obj, u32 toolkit) {
+    /* register form: r4/r5 are preserved by the original (push/pop);
+     * GUEST_CALL_ADDR and call_CopyBackgroundTiles_battleObject_initBattleFieldTilesAndSfxTimer_804C770 clobber them. */
+    u32 saved_r4 = R4, saved_r5 = R5;
+
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+
+    /* Enable tile-rendering mode: set bit 11 of the render flags */
+    ST16(render_info, LD16(render_info) | 0x800);
+
+    /* Shift the battle-field scroll window: Y -= 12 px, X += 12 px */
+    ST16(render_info + 0x1A, LD16(render_info + 0x1A) - 0xC);
+    ST16(render_info + 0x18, LD16(render_info + 0x18) + 0xC);
+
+    /* Jump-table dispatch: build the stage-specific tile layout */
+    u32 type = LD8(battle_obj + 0xD);
+    u32 target = LD32(A_off_804C7B4 + type);
+    u32 r8, r9, r11, r12;
+    dispatch_field_layout(target, type, render_info, battle_obj, &r8, &r9, &r11, &r12);
+
+    /* Compute the toolkit pointer used on the next render frame */
+    u32 new_r10 = call_sub_804C818(battle_obj).r10;
+
+    /* Upload the 32x32 tile block (index 3) from the stage tile table */
+    call_CopyBackgroundTiles_result_battleObject_initBattleFieldTilesAndSfxTimer_804C770 bg =
+        call_CopyBackgroundTiles_battleObject_initBattleFieldTilesAndSfxTimer_804C770(0, 0, 3, A_byte_86A2C80, 0x20, 0x20);
+
+    /* Restore preserved registers before returning to the caller */
+    R4 = saved_r4;
+    R5 = saved_r5;
+
+    return (BattleFieldInitResult){ bg.r2, r8, r9, new_r10, r11, r12 };
+}
+
+/* battleObject_initBattleFieldTilesAndSfxTimer_804C770(r5 = battle_obj, r10 = toolkit)
+ * -> r2, r8, r9, r10, r11, r12 */
+Next battleObject_initBattleFieldTilesAndSfxTimer_804C770(void) {
+    BattleFieldInitResult res = init_battle_field_tiles(R5, R10);
+    R2  = res.r2;
+    R8  = res.r8;
+    R9  = res.r9;
+    R10 = res.r10;
+    R11 = res.r11;
+    R12 = res.r12;
     RETURN_TO_CALLER();
 }
 

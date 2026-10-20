@@ -1331,6 +1331,105 @@ Next pickBBSMsgForMapGroup_80A5764(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_updateBeastOutPwrAtk_80A5828 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r5, r6, r8, r9, r10, r11, r12; } call_sub_80A58E0_result;
+/* register form: generated wrapper: owPlayer_setupPrologue_80A58E0 has no typed C interface yet */
+static inline call_sub_80A58E0_result call_sub_80A58E0(u32 r4, u32 r5, u32 r6, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(owPlayer_setupPrologue_80A58E0);
+    return (call_sub_80A58E0_result){ R0, R5, R6, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_sub_80A58AC_result;
+/* register form: generated wrapper: sub_80A58AC has no typed C interface yet */
+static inline call_sub_80A58AC_result call_sub_80A58AC(u32 r4, u32 r5, u32 r6, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(sub_80A58AC);
+    return (call_sub_80A58AC_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r4, r5; } call_battle_setPlayerDirectionAndAnimFromAIState_80A5890_result;
+/* register form: generated wrapper: battle_setPlayerDirectionAndAnimFromAIState_80A5890 has no typed C interface yet */
+static inline call_battle_setPlayerDirectionAndAnimFromAIState_80A5890_result call_battle_setPlayerDirectionAndAnimFromAIState_80A5890(u32 r4, u32 r5, u32 r6) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(battle_setPlayerDirectionAndAnimFromAIState_80A5890);
+    return (call_battle_setPlayerDirectionAndAnimFromAIState_80A5890_result){ R4, R5 };
+}
+
+/* register form: generated wrapper: battle_copyActorIndexToBattleFlags_80A5A5C has no typed C interface yet */
+static inline void call_battle_copyActorIndexToBattleFlags_80A5A5C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_copyActorIndexToBattleFlags_80A5A5C);
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_battleObject_updateBeastOutPwrAtk_80A5828;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_updateBeastOutPwrAtk_80A5828 call_sprite_update_battleObject_updateBeastOutPwrAtk_80A5828(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_updateBeastOutPwrAtk_80A5828){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Update the BeastOutPwrAtk battle-object state machine each frame.
+ * obj   (r5): object pointer — byte 0 is state, byte 9 is the start-up phase counter.
+ * owner (r6): owner/parent pointer — byte 7 is the dispatch selector.
+ * r4, r7: passed through to child routines; r10 is the battle index. */
+static void updateBeastOutPwrAtk(u32 r4, u32 obj, u32 owner, u32 r7) {
+    (void)r7;
+    u8 dispatch = LD8(owner + 7);
+    u32 cur = obj;
+
+    if (dispatch == 0) {
+        /* Idle: refresh player direction / animation. */
+        cur = call_battle_setPlayerDirectionAndAnimFromAIState_80A5890(r4, cur, owner).r5;
+    } else if (dispatch == 3) {
+        /* Finishing: put the object into state 1, clear the dispatch byte. */
+        ST8(cur, 1);
+        ST8(owner + 7, 0);
+    } else if (dispatch == 1) {
+        /* Start-up: on the first frame copy three words from owner into the object. */
+        if (LD8(cur + 9) == 0) {
+            ST32(cur + 0xC, LD32(owner + 0x88));
+            ST32(cur + 0x10, LD32(owner + 0x8C));
+            ST32(cur + 0x14, LD32(owner + 0x90));
+            ST8(cur, 3);            /* state → 3 (playing) */
+            ST8(cur + 9, 1);        /* mark phase as done */
+        }
+        /* Advance the playback step. */
+        call_sub_80A58E0_result step = call_sub_80A58E0(r4, cur, owner, r7);
+        if (step.r0 == 0) {
+            /* Playback finished: reset dispatch & phase, fall into idle path. */
+            ST8(step.r6 + 7, 0);
+            ST8(step.r5 + 9, 0);
+            cur = call_battle_setPlayerDirectionAndAnimFromAIState_80A5890(
+                      r4, step.r5, step.r6).r5;
+        } else {
+            cur = step.r5;
+        }
+    } else {
+        /* Other dispatch values: generic play routine. */
+        cur = call_sub_80A58AC(r4, cur, owner, r7).r5;
+    }
+
+    /* Tail common to every path: refresh linked data, then update the sprite. */
+    call_battle_copyActorIndexToBattleFlags_80A5A5C(cur);
+    call_sprite_update_battleObject_updateBeastOutPwrAtk_80A5828(cur);
+}
+
+Next battleObject_updateBeastOutPwrAtk_80A5828(void) {
+    updateBeastOutPwrAtk(R4, R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── owPlayer_setupPrologue_80A58E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sub_80A5954 has no typed C interface yet */
@@ -1435,6 +1534,180 @@ Next addToWordAt_80A6E70(void) {
     u32 old = add_to_word(R5, R6, addend);
     R1 = old;
     SET_FLAGS_ADD(addend, old);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initBeastSpEnemy_80A6EBC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initBeastSpEnemy_80A6EBC;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initBeastSpEnemy_80A6EBC call_sprite_load_battleObject_initBeastSpEnemy_80A6EBC(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initBeastSpEnemy_80A6EBC){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initBeastSpEnemy_80A6EBC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initBeastSpEnemy_80A6EBC;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initBeastSpEnemy_80A6EBC call_sprite_loadAnimationData_battleObject_initBeastSpEnemy_80A6EBC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initBeastSpEnemy_80A6EBC){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_initBeastSpEnemy_80A6EBC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result call_applyLayerEffectToOWObject_8035694(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2; } call_sprite_setPriority_8002E14_result_battleObject_initBeastSpEnemy_80A6EBC;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_battleObject_initBeastSpEnemy_80A6EBC call_sprite_setPriority_8002E14_battleObject_initBeastSpEnemy_80A6EBC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_battleObject_initBeastSpEnemy_80A6EBC){ R1, R2 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_battleObject_initBeastSpEnemy_80A6EBC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: generated wrapper: sub_80A70C0 has no typed C interface yet */
+static inline u32 call_sub_80A70C0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A70C0);
+    return R0;
+}
+
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battleObject_initBeastSpEnemy_80A6EBC;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_battleObject_initBeastSpEnemy_80A6EBC call_TestEventFlagFromImmediate_battleObject_initBeastSpEnemy_80A6EBC(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_battleObject_initBeastSpEnemy_80A6EBC){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_battle_loadBeastSpEnemyStats_result;
+/* register form: generated wrapper: battle_loadBeastSpEnemyStats has no typed C interface yet */
+static inline call_battle_loadBeastSpEnemyStats_result call_battle_loadBeastSpEnemyStats(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_loadBeastSpEnemyStats);
+    return (call_battle_loadBeastSpEnemyStats_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r10; } call_battleObject_updateAnimation_80A6F2C_result;
+/* register form: generated wrapper: battleObject_updateAnimation_80A6F2C has no typed C interface yet */
+static inline call_battleObject_updateAnimation_80A6F2C_result call_battleObject_updateAnimation_80A6F2C(u32 r4, u32 r5, u32 r6, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battleObject_updateAnimation_80A6F2C);
+    return (call_battleObject_updateAnimation_80A6F2C_result){ R2, R3, R4, R5, R10 };
+}
+
+/* Initialize a Beast-type overworld enemy sprite: load graphics/animation,
+ * apply layer effect, set priority and palette, then copy position data from
+ * the beast parameter block (if available), optionally load battle stats for
+ * event flag 0x5E5, and spawn the object via the animation update. */
+static void init_beast_sp_enemy(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
+    /* Mark sprite state as "loading" (3). */
+    ST8(r5, 3);
+
+    /* Load sprite graphics: VRAM slot 0x80, palette 0x1C, slot 0x2F. */
+    call_sprite_load_result_battleObject_initBeastSpEnemy_80A6EBC sl = call_sprite_load_battleObject_initBeastSpEnemy_80A6EBC(0x80, 0x1C, 0x2F, r5);
+    r4 = sl.r4;
+    r5 = sl.r5;
+
+    /* Set initial animation frame to 0. */
+    call_sprite_setAnimation_battleObject_initBeastSpEnemy_80A6EBC(0, r5);
+
+    /* Load the full animation sequence data. */
+    call_sprite_loadAnimationData_result_battleObject_initBeastSpEnemy_80A6EBC lan = call_sprite_loadAnimationData_battleObject_initBeastSpEnemy_80A6EBC(r5);
+    r4 = lan.r4;
+    r5 = lan.r5;
+
+    /* Disable shadow rendering for this sprite. */
+    call_sprite_noShadow_battleObject_initBeastSpEnemy_80A6EBC(r5);
+
+    /* Apply the overworld layer-effect to the object field at sprite + 0xC. */
+    call_applyLayerEffectToOWObject_8035694_result lye =
+        call_applyLayerEffectToOWObject_8035694(r5 + 0xC);
+    r4 = lye.r4;
+    r5 = lye.r5;
+    r6 = lye.r6;
+    r7 = lye.r7;
+
+    /* Set OAM draw priority. */
+    call_sprite_setPriority_8002E14_battleObject_initBeastSpEnemy_80A6EBC(lye.r0, r5);
+
+    /* Assign palette index 1. */
+    call_sprite_setPalette_battleObject_initBeastSpEnemy_80A6EBC(1, r5);
+
+    /* Retrieve the beast parameter block (position table pointer). */
+    u32 params = call_sub_80A70C0(r5);
+    if (params == 0)
+        return;  /* No data available – exit early. */
+
+    /* Store X and Y positions (16-bit, shifted into upper halfword). */
+    r4 = params;
+    ST32(r5 + 0xC, (u32)LD16(r4) << 16);
+    ST32(r5 + 0x10, (u32)LD16(r4 + 2) << 16);
+
+    /* Zero-initialize remaining movement/animation fields. */
+    ST32(r5 + 0x14, 0);
+    ST32(r5 + 0x2C, 0);
+    ST32(r5 + 0x34, 0);
+    ST8(r5 + 6, 0);
+
+    /* Behavior code 0x11 = Beast-type enemy. */
+    ST32(r5 + 0x38, 0x11);
+
+    /* Load battle-specific stats only when event flag 0x5E5 is set
+     * (TestEventFlagFromImmediate returns Z clear ⇒ flag set). */
+    if (!call_TestEventFlagFromImmediate_battleObject_initBeastSpEnemy_80A6EBC(5, 0xE5).z) {
+        call_battle_loadBeastSpEnemyStats_result st = call_battle_loadBeastSpEnemyStats(r5);
+        r4 = st.r4;
+        r5 = st.r5;
+        r6 = st.r6;
+        r7 = st.r7;
+    }
+
+    /* Mark animation state = 4 and spawn the object. */
+    ST8(r5 + 8, 4);
+    call_battleObject_updateAnimation_80A6F2C(r4, r5, r6, r7);
+}
+
+/* battleObject_initBeastSpEnemy_80A6EBC(r4, r5, r6, r7, r10, lr) */
+Next battleObject_initBeastSpEnemy_80A6EBC(void) {
+    u32 saved_r4 = R4, saved_r5 = R5;  /* pop {r4-r7,pc} restores these */
+    init_beast_sp_enemy(R4, R5, R6, R7, R10);
+    R4 = saved_r4;
+    R5 = saved_r5;
     RETURN_TO_CALLER();
 }
 
@@ -1646,6 +1919,245 @@ Next addToByteAtR6_80A7BA2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_checkBeastSpTrigger_80A7BC0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6; bool z, n; } call_battle_isInputAllowedOrBattleBusy_80A7C58_result;
+/* register form: generated wrapper: battle_isInputAllowedOrBattleBusy_80A7C58 has no typed C interface yet */
+static inline call_battle_isInputAllowedOrBattleBusy_80A7C58_result call_battle_isInputAllowedOrBattleBusy_80A7C58(void) {
+    GUEST_CALL(battle_isInputAllowedOrBattleBusy_80A7C58);
+    return (call_battle_isInputAllowedOrBattleBusy_80A7C58_result){ R5, R6, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r4, r5, r7; } call_beast_getMapGroupIdBase_result;
+/* register form: generated wrapper: beast_getMapGroupIdBase has no typed C interface yet */
+static inline call_beast_getMapGroupIdBase_result call_beast_getMapGroupIdBase(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(beast_getMapGroupIdBase);
+    return (call_beast_getMapGroupIdBase_result){ R0, R4, R5, R7 };
+}
+
+typedef struct { u32 r1, r3; } call_SetEventFlag_result;
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline call_SetEventFlag_result call_SetEventFlag_battle_checkBeastSpTrigger_80A7BC0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+    return (call_SetEventFlag_result){ R1, R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_battle_checkBeastSpTrigger_80A7BC0;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battle_checkBeastSpTrigger_80A7BC0 call_PlaySoundEffect_battle_checkBeastSpTrigger_80A7BC0(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battle_checkBeastSpTrigger_80A7BC0){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r3; } call_sub_81418F0_result;
+/* register form: generated wrapper: sub_81418F0 has no typed C interface yet */
+static inline call_sub_81418F0_result call_sub_81418F0(void) {
+    GUEST_CALL(sub_81418F0);
+    return (call_sub_81418F0_result){ R3 };
+}
+
+typedef struct { u32 r1, r2, r5, r7; } call_battle_getAIDataVersionFields_81418E4_result;
+/* register form: generated wrapper: battle_getAIDataVersionFields_81418E4 has no typed C interface yet */
+static inline call_battle_getAIDataVersionFields_81418E4_result call_battle_getAIDataVersionFields_81418E4(void) {
+    GUEST_CALL(battle_getAIDataVersionFields_81418E4);
+    return (call_battle_getAIDataVersionFields_81418E4_result){ R1, R2, R5, R7 };
+}
+
+typedef struct { u32 r0, r4, r5; } call_battle_getEnemyIndexFromMapGroup_8142080_result;
+/* register form: generated wrapper: battle_getEnemyIndexFromMapGroup_8142080 has no typed C interface yet */
+static inline call_battle_getEnemyIndexFromMapGroup_8142080_result call_battle_getEnemyIndexFromMapGroup_8142080(void) {
+    GUEST_CALL(battle_getEnemyIndexFromMapGroup_8142080);
+    return (call_battle_getEnemyIndexFromMapGroup_8142080_result){ R0, R4, R5 };
+}
+
+typedef struct { u32 r0, r4, r5; } call_getSetFlagCount_result;
+/* register form: generated wrapper: getSetFlagCount has no typed C interface yet */
+static inline call_getSetFlagCount_result call_getSetFlagCount(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getSetFlagCount);
+    return (call_getSetFlagCount_result){ R0, R4, R5 };
+}
+
+typedef struct { u32 r1, r3; bool c, v; } call_SetEventFlagFromImmediate_result;
+/* register form: generated wrapper: SetEventFlagFromImmediate has no typed C interface yet */
+static inline call_SetEventFlagFromImmediate_result call_SetEventFlagFromImmediate(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    return (call_SetEventFlagFromImmediate_result){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: StartCutscene has no typed C interface yet */
+static inline void call_StartCutscene(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(StartCutscene);
+}
+
+/* battle_checkBeastSpTrigger_80A7BC0 – Beast-area special trigger check.
+ *
+ * Called with r5 = trigger object pointer, r10 = toolkit. Returns early unless
+ * input is allowed and the battle is idle, the player's game-state ID matches
+ * the trigger's ID, and the player is inside the trigger's bounding box.
+ * On success: resolves a map group → event flag, sets it, marks the trigger
+ * as fired (byte 8 ← 8), plays a sound effect, validates the AI-data flag
+ * count against a version field, sets event 0x1731, and launches the Beast
+ * cutscene script.
+ *
+ * All guest registers are maintained by the generated call wrappers.
+ */
+static void check_beast_sp_trigger(u32 toolkit)
+{
+    /* 1. Precondition: input allowed and battle not busy.
+     *    bne → if Z is clear (not allowed / busy), return without triggering. */
+    call_battle_isInputAllowedOrBattleBusy_80A7C58_result pre
+        = call_battle_isInputAllowedOrBattleBusy_80A7C58();
+    if (!pre.z)
+        return;
+
+    u32 trigger = pre.r5;   /* pointer to the active trigger object */
+
+    /* 2. Toolkit → GameState → OverworldPlayerObject. */
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player     = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+
+    /* 3. Game-state ID must match the trigger's target ID (offset 0x14). */
+    if (LD32(trigger + 0x14) != LD32(player + 0x24))
+        return;
+
+    /* 4. Bounding-box check:
+     *      origin = (dword_80A7C44, dword_80A7C48)    – both 0x80000
+     *      half   = (dword_80A7C4C, dword_80A7C50)    – both 0x100000
+     *    rel = (player_pos + origin) − trigger_pos;   need 0 ≤ rel ≤ half   */
+    s32 rel_x = (s32)(LD32(player + 0x1C) + LD32(A_dword_80A7C44))
+              - (s32)LD32(trigger + 0xC);
+    s32 rel_y = (s32)(LD32(player + 0x20) + LD32(A_dword_80A7C48))
+              - (s32)LD32(trigger + 0x10);
+    if (rel_x < 0)
+        return;
+    if (rel_y < 0)
+        return;
+    if (rel_x > (s32)LD32(A_dword_80A7C4C))
+        return;
+    if (rel_y > (s32)LD32(A_dword_80A7C50))
+        return;
+
+    /* 5. Resolve map-group id from trigger byte id, set the event flag. */
+    call_beast_getMapGroupIdBase(LD8(trigger + 4));
+    call_SetEventFlag_battle_checkBeastSpTrigger_80A7BC0(0);
+
+    /* 6. Mark trigger as fired. */
+    ST8(trigger + 8, 8);
+
+    /* 7. Activation sound (r2 is whatever the preceding calls left). */
+    call_PlaySoundEffect_battle_checkBeastSpTrigger_80A7BC0(SOUND_UNK_73, 0);
+
+    /* 8. Validate AI-data version fields against the number of set flags. */
+    call_sub_81418F0();
+    call_battle_getAIDataVersionFields_81418E4_result ai_ver
+        = call_battle_getAIDataVersionFields_81418E4();
+
+    /*    battle_getEnemyIndexFromMapGroup may touch r4, but we track
+     *    the version-field value in a local, matching the original's
+     *    r4 flow (mov r4, r2 before the call, preserved by getSetFlagCount). */
+    u32 field_count = ai_ver.r2;
+
+    call_battle_getEnemyIndexFromMapGroup_8142080();
+
+    call_getSetFlagCount_result set_cnt = call_getSetFlagCount(0);
+    if (set_cnt.r0 != field_count)
+        return;
+
+    /* 9. Set the cutscene event flag (0x1731) via the immediate helper. */
+    call_SetEventFlagFromImmediate(0x17, 0x31);
+
+    /* 10. Launch the Beast-area cutscene. */
+    call_battle_getEnemyIndexFromMapGroup_8142080_result final_grp
+        = call_battle_getEnemyIndexFromMapGroup_8142080();
+    call_StartCutscene(A_byte_8089DD8, final_grp.r0);
+}
+
+/* battle_checkBeastSpTrigger_80A7BC0(r5 = trigger, r10 = toolkit, lr)
+ * → r5 r6 r10 preserved */
+Next battle_checkBeastSpTrigger_80A7BC0(void) {
+    check_beast_sp_trigger(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_dispatchAIActionByAction_80A7E4C ── */
+/* battle_dispatchAIActionByAction_80A7E4C
+ *
+ * Dispatches to one of three AI-action handlers (ow_animWaitStep,
+ * object_waitThenSetAnim, sub_80A7EBE) chosen by a byte-offset into a
+ * jump table at A_off_80A7E60.  The byte at [r5+9] holds the table
+ * byte-offset directly (0, 4, or 8), not an index.
+ *
+ * The handler runs with the live guest register file and leaves its
+ * results in r8-r12 / r10.  r4-r7 are saved and restored around the
+ * call (the original's push {r4-r7,lr} / pop {r4-r7,pc}), so only
+ * r5 survives as both an unchanged output and a preserved register.
+ */
+
+struct AIActionOut {
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r10;
+    u32 r11;
+    u32 r12;
+};
+
+/* register form: the three handlers are reachable only through a jump-table
+ * address (no typed wrapper exists), they read/write the live register file,
+ * and their results land in r8-r12 which GUEST_CALL_ADDR cannot return.
+ * r4 and r6 are saved across the call because the original's push/pop
+ * protects them but a guest-register call does not. */
+static struct AIActionOut ai_dispatch_by_kind(u32 object, u32 arg7, u32 arg10) {
+    u32 table_off = LD8(object + 9);               /* byte offset (0/4/8) */
+    u32 handler   = LD32(A_off_80A7E60 + table_off); /* thumb code address  */
+
+    u32 save_r4 = R4;
+    u32 save_r6 = R6;
+
+    /* Set up the registers the handler expects to find live */
+    R5  = object;
+    R7  = arg7;
+    R10 = arg10;
+
+    GUEST_CALL_ADDR(handler);
+
+    /* Restore preserved registers (original's pop {r4-r7}) */
+    R4 = save_r4;
+    R5 = object;
+    R6 = save_r6;
+    R7 = arg7;
+
+    struct AIActionOut out;
+    out.r5  = object;           /* restored to the entry value */
+    out.r8  = R8;
+    out.r9  = R9;
+    out.r10 = R10;
+    out.r11 = R11;
+    out.r12 = R12;
+    return out;
+}
+
+/* battle_dispatchAIActionByAction_80A7E4C(r5 = object, r7, r10) -> r5, r8-r12 */
+Next battle_dispatchAIActionByAction_80A7E4C(void) {
+    struct AIActionOut out = ai_dispatch_by_kind(R5, R7, R10);
+    R5  = out.r5;
+    R8  = out.r8;
+    R9  = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_setPalette8IfFrameFlagSet_80A7F14 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result_sub_80A7F14;
@@ -1731,6 +2243,245 @@ static void dispatch_object_handler(u32 object) {
 
 Next battle_dispatchCustomJumptableByIndex_80A8208(void) {
     dispatch_object_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_setupBeastSprite ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_setupBeastSprite;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_setupBeastSprite call_sprite_load_battleObject_setupBeastSprite(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_setupBeastSprite){ R4, R5 };
+}
+
+typedef struct { u32 r5; } call_ow_swapMapEventFlags_result;
+/* register form: generated wrapper: ow_swapMapEventFlags has no typed C interface yet */
+static inline call_ow_swapMapEventFlags_result call_ow_swapMapEventFlags(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(ow_swapMapEventFlags);
+    return (call_ow_swapMapEventFlags_result){ R5 };
+}
+
+/* register form: generated wrapper: battleObject_checkSetPriorityByEventFlag_80A82DC has no typed C interface yet */
+static inline u32 call_battleObject_checkSetPriorityByEventFlag_80A82DC_battleObject_setupBeastSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_checkSetPriorityByEventFlag_80A82DC);
+    return R0;
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_setupBeastSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_setupBeastSprite;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_setupBeastSprite call_sprite_loadAnimationData_battleObject_setupBeastSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_setupBeastSprite){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_setupBeastSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline void call_sprite_setPriority_8002E14_battleObject_setupBeastSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: generated wrapper: getMapAreaDataTableEntry_80A82A4 has no typed C interface yet */
+static inline u32 call_sub_80A82A4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(getMapAreaDataTableEntry_80A82A4);
+    return R0;
+}
+
+typedef struct { u32 r2, r3; } call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C_result;
+/* register form: generated wrapper: battleObject_updateSpriteAndMaybeReloadAnim_80A827C has no typed C interface yet */
+static inline call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C_result call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateSpriteAndMaybeReloadAnim_80A827C);
+    return (call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C_result){ R2, R3 };
+}
+
+/*
+ * battleObject_setupBeastSprite – initialise a Beast-type battle object's sprite.
+ *
+ * Sets the sprite type to 3 (Beast), loads its graphics, queries draw
+ * priority from the current map-event flags, configures animation, shadow,
+ * and priority, then packs three 16-bit attribute words into the object's
+ * OAM-like upper halves.  Finally it updates the sprite (and possibly
+ * reloads its animation) and returns the r2/r3 the update routine leaves
+ * behind.
+ */
+
+/* Sprite type constant for Beast Link / Full Metal / Regall. */
+#define SPRITE_TYPE_BEAST 3
+
+/* Beast graphics: tileset, palette, base tile. */
+#define BEAST_TILESET     0x80
+#define BEAST_PALETTE     0x1C
+#define BEAST_BASE_TILE   0x56
+
+/* Draw-priority layer (2 = mid-ground in the GBA BG/OAM priority table). */
+#define BEAST_DRAW_PRIORITY 2
+
+/* Object field offsets used below. */
+#define oBeast_Type        0x0   /* u8  sprite type                          */
+#define oBeast_EvtPriority 0x5   /* u8  draw priority from event flags       */
+#define oBeast_State       0x8   /* u8  lifecycle state (4 = ready)          */
+#define oBeast_Attr0       0xC   /* u32 16-bit attr shifted into upper half  */
+#define oBeast_Attr1       0x10  /* u32 ditto                                */
+#define oBeast_Attr2       0x14  /* u32 ditto                                */
+
+static call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C_result
+setup_beast_sprite(u32 object)
+{
+    /* Mark the object as a Beast sprite. */
+    ST8(object + oBeast_Type, SPRITE_TYPE_BEAST);
+
+    /* Load Beast tileset / palette / base-tile into sprite memory. */
+    call_sprite_load_battleObject_setupBeastSprite(BEAST_TILESET, BEAST_PALETTE, BEAST_BASE_TILE, object);
+
+    /* Let the map-event-flag swap helper pick up any pending changes. */
+    call_ow_swapMapEventFlags(object);
+
+    /* Query whether an event flag overrides the normal draw priority. */
+    u32 priority = call_battleObject_checkSetPriorityByEventFlag_80A82DC_battleObject_setupBeastSprite(object);
+    ST8(object + oBeast_EvtPriority, priority);
+
+    /* Start the idle animation (animation id = the queried priority). */
+    call_sprite_setAnimation_battleObject_setupBeastSprite(priority, object);
+
+    /* Load animation data, disable shadow, set fixed draw priority. */
+    call_sprite_loadAnimationData_battleObject_setupBeastSprite(object);
+    call_sprite_noShadow_battleObject_setupBeastSprite(object);
+    call_sprite_setPriority_8002E14_battleObject_setupBeastSprite(BEAST_DRAW_PRIORITY, object);
+
+    /* Retrieve the three-attribute data block for this Beast. */
+    u32 attr = call_sub_80A82A4(object);
+
+    /* Each 16-bit attribute is placed into the upper half of a u32 field
+     * (the game uses the upper half for tile / position packing). */
+    ST32(object + oBeast_Attr0, LD16(attr)       << 16);
+    ST32(object + oBeast_Attr1, LD16(attr + 2)   << 16);
+    ST32(object + oBeast_Attr2, LD16(attr + 4)   << 16);
+
+    /* Transition to "ready" state. */
+    ST8(object + oBeast_State, 4);
+
+    /* Final sprite update; r2 and r3 are the outputs our caller expects. */
+    return call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(object);
+}
+
+/* battleObject_setupBeastSprite(r5 = object, r10 = game state) -> r2, r3 */
+Next battleObject_setupBeastSprite(void)
+{
+    call_battleObject_updateSpriteAndMaybeReloadAnim_80A827C_result result
+        = setup_beast_sprite(R5);
+
+    R2 = result.r2;
+    R3 = result.r3;
+
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_updateSpriteAndMaybeReloadAnim_80A827C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battleObject_checkSetPriorityByEventFlag_80A82DC has no typed C interface yet */
+static inline u32 call_battleObject_checkSetPriorityByEventFlag_80A82DC_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_checkSetPriorityByEventFlag_80A82DC);
+    return R0;
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C call_sprite_loadAnimationData_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C call_sprite_update_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Update a battle object's sprite, and if the event-flag-driven priority differs
+ * from the animation/priority byte stored on the object, reload the animation
+ * data and clear the shadow before ticking the sprite.
+ *
+ * Returns the resulting r2, r3 (from sprite_update) and r4, r5 (from
+ * sprite_loadAnimationData on the reload path, or the caller's r4 on the
+ * skip path). */
+typedef struct { u32 r2, r3, r4, r5; } battleObject_update_result;
+
+static battleObject_update_result battleObject_updateSpriteAndMaybeReloadAnim(u32 r4_in, u32 r5) {
+    /* Determine the priority dictated by current event flags. */
+    u32 priority = call_battleObject_checkSetPriorityByEventFlag_80A82DC_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(r5);
+
+    /* Compare against the animation ID byte stored at offset 5 of the object. */
+    u32 desired = LD8(r5 + 5);
+
+    u32 r4 = r4_in;
+    u32 r5_cur = r5;
+
+    if (priority != desired) {
+        /* Priority changed: set new animation, reload its data, clear shadow. */
+        call_sprite_setAnimation_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(priority, r5_cur);
+
+        call_sprite_loadAnimationData_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C loaded = call_sprite_loadAnimationData_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(r5_cur);
+        r4 = loaded.r4;
+        r5_cur = loaded.r5;
+
+        call_sprite_noShadow_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(r5_cur);
+    }
+
+    /* Always advance the sprite (position, frame, collision, etc.). */
+    call_sprite_update_result_battleObject_updateSpriteAndMaybeReloadAnim_80A827C updated = call_sprite_update_battleObject_updateSpriteAndMaybeReloadAnim_80A827C(r5_cur);
+
+    battleObject_update_result result = { updated.r2, updated.r3, r4, r5_cur };
+    return result;
+}
+
+/* battleObject_updateSpriteAndMaybeReloadAnim_80A827C(r5 = battle object,
+ *   r4 = saved value, r10 = toolkit ptr) -> r2 r3 r4 r5 */
+Next battleObject_updateSpriteAndMaybeReloadAnim_80A827C(void) {
+    battleObject_update_result res = battleObject_updateSpriteAndMaybeReloadAnim(R4, R5);
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    R5 = res.r5;
     RETURN_TO_CALLER();
 }
 

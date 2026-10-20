@@ -3652,6 +3652,67 @@ Next MapScriptCutsceneCmd_play_music(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_sound_cmd_80380ea ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptHalfword_result_MapScriptCutsceneCmd_sound_cmd_80380ea;
+/* register form: generated wrapper: ReadMapScriptHalfword has no typed C interface yet */
+static inline call_ReadMapScriptHalfword_result_MapScriptCutsceneCmd_sound_cmd_80380ea call_ReadMapScriptHalfword_MapScriptCutsceneCmd_sound_cmd_80380ea(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return (call_ReadMapScriptHalfword_result_MapScriptCutsceneCmd_sound_cmd_80380ea){ R4, R7 };
+}
+
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_MapScriptCutsceneCmd_sound_cmd_80380ea;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_MapScriptCutsceneCmd_sound_cmd_80380ea call_ReadMapScriptByte_MapScriptCutsceneCmd_sound_cmd_80380ea(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_MapScriptCutsceneCmd_sound_cmd_80380ea){ R4, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8, r9, r10, r12; } call_sound_80006A2_result;
+/* register form: generated wrapper: sound_80006A2 has no typed C interface yet */
+static inline call_sound_80006A2_result call_sound_80006A2(u32 r0, u32 r1, u32 r2, u32 r12) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R12 = r12;
+    GUEST_CALL(sound_80006A2);
+    return (call_sound_80006A2_result){ R2, R3, R4, R5, R6, R7, R8, R9, R10, R12 };
+}
+
+/* Map script sound command: reads a 16-bit sound ID and two 8-bit parameters
+ * from the script stream, plays the sound via the driver, then advances the
+ * script pointer past 5 bytes of command overhead. */
+
+static u32 sound_cmd(u32 script_ptr, u32 r12) {
+    call_ReadMapScriptHalfword_result_MapScriptCutsceneCmd_sound_cmd_80380ea half = call_ReadMapScriptHalfword_MapScriptCutsceneCmd_sound_cmd_80380ea(1, script_ptr);
+    u32 sound_id = half.r4;
+    script_ptr   = half.r7;
+
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_sound_cmd_80380ea b1 = call_ReadMapScriptByte_MapScriptCutsceneCmd_sound_cmd_80380ea(3, script_ptr);
+    u32 param1   = b1.r4;
+    script_ptr   = b1.r7;
+
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_sound_cmd_80380ea b2 = call_ReadMapScriptByte_MapScriptCutsceneCmd_sound_cmd_80380ea(4, script_ptr);
+    u32 param2   = b2.r4;
+    script_ptr   = b2.r7;
+
+    /* Driver call also advances r7; then we skip 5 overhead bytes (ADDS r7, #5) */
+    call_sound_80006A2_result snd = call_sound_80006A2(sound_id, param1, param2, r12);
+    return snd.r7 + 5;
+}
+
+/* MapScriptCutsceneCmd_sound_cmd_80380ea(r7 = script ptr, r12 = channel) -> nz, r7
+ * Flags always N=0 Z=0 from the final "mov r0, #1". */
+Next MapScriptCutsceneCmd_sound_cmd_80380ea(void) {
+    R7 = sound_cmd(R7, R12);
+    SET_FLAGS_NZ(1);
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCutsceneCmd_sound_cmd_803810e ── */
 /* MapScriptCutsceneCmd_sound_cmd_803810e: "play sound" cutscene script command.
  * Reads two bytes from the script (first via parameter bank 1, then bank 2),
@@ -4315,6 +4376,93 @@ Next MapScriptCutsceneCmd_add_mail_range(void) {
     R7 = result.scriptCursor;
     R0 = 1;            /* the command's status result */
     SET_FLAGS_NZ(1);   /* mov r0, #1: Z clear, N clear */
+    RETURN_TO_CALLER();
+}
+
+/* ── CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c call_ReadMapScriptByte_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c){ R4, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_storeGameProgressToGameProgressBuffer_8035364_result;
+/* register form: generated wrapper: storeGameProgressToGameProgressBuffer_8035364 has no typed C interface yet */
+static inline call_storeGameProgressToGameProgressBuffer_8035364_result call_storeGameProgressToGameProgressBuffer_8035364(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(storeGameProgressToGameProgressBuffer_8035364);
+    return (call_storeGameProgressToGameProgressBuffer_8035364_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_loadGameProgressFromGameProgressBuffer_8035354_result;
+/* register form: generated wrapper: loadGameProgressFromGameProgressBuffer_8035354 has no typed C interface yet */
+static inline call_loadGameProgressFromGameProgressBuffer_8035354_result call_loadGameProgressFromGameProgressBuffer_8035354(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(loadGameProgressFromGameProgressBuffer_8035354);
+    return (call_loadGameProgressFromGameProgressBuffer_8035354_result){ R4, R5, R6, R7 };
+}
+
+/* Cutscene script command: reads a 2-byte command value and a 1-byte selector
+ * from the map script, then either stores or loads game progress.
+ * Selector == 0 → store; otherwise → load.
+ * The game-state pointer (r2), toolkit alias (r3), store/load results (r4,r5),
+ * and the advanced script position (r7+3) are all returned to the caller. */
+
+typedef struct {
+    u32 r2;   /* game state pointer read from toolkit */
+    u32 r3;   /* toolkit pointer (r10 passed through) */
+    u32 r4;
+    u32 r5;
+    u32 r7;   /* script position after store/load call + 3 */
+} ProgressCmdResult;
+
+static ProgressCmdResult execute_progress_cmd(u32 r7, u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* Read 2-byte command value from the script */
+    call_ReadMapScriptByte_result_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c first = call_ReadMapScriptByte_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c(2, r7);
+    u32 cmd_value = first.r4;
+
+    /* Read 1-byte selector: 0 = store, nonzero = load */
+    call_ReadMapScriptByte_result_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c second = call_ReadMapScriptByte_CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c(1, first.r7);
+    u32 selector = second.r4;
+    u32 script_pos = second.r7;
+
+    u32 out_r4, out_r5, out_r7;
+    if (selector == 0) {
+        call_storeGameProgressToGameProgressBuffer_8035364_result res =
+            call_storeGameProgressToGameProgressBuffer_8035364(cmd_value);
+        out_r4 = res.r4;
+        out_r5 = res.r5;
+        out_r7 = res.r7;
+    } else {
+        call_loadGameProgressFromGameProgressBuffer_8035354_result res =
+            call_loadGameProgressFromGameProgressBuffer_8035354(cmd_value);
+        out_r4 = res.r4;
+        out_r5 = res.r5;
+        out_r7 = res.r7;
+    }
+
+    /* Advance past this command's 3 script bytes */
+    out_r7 += 3;
+
+    return (ProgressCmdResult){ .r2 = game_state, .r3 = toolkit,
+                                .r4 = out_r4, .r5 = out_r5, .r7 = out_r7 };
+}
+
+/* 0803843C: r7 = script pos, r10 = toolkit → r2 r3 r4 r5 r7, nz */
+Next CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c(void) {
+    ProgressCmdResult res = execute_progress_cmd(R7, R10);
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    R5 = res.r5;
+    R7 = res.r7;
+    SET_FLAGS_NZ(1);  /* mov r0, #1: Z=0, N=0 */
     RETURN_TO_CALLER();
 }
 

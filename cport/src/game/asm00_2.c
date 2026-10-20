@@ -690,6 +690,139 @@ Next scanFrontPanels_800FAF6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ai_tryUseChipAttack ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7; } call_getBattleObjectStateInfo_800EDD0_result;
+/* register form: generated wrapper: getBattleObjectStateInfo_800EDD0 has no typed C interface yet */
+static inline call_getBattleObjectStateInfo_800EDD0_result call_getBattleObjectStateInfo_800EDD0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(getBattleObjectStateInfo_800EDD0);
+    return (call_getBattleObjectStateInfo_800EDD0_result){ R0, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r2; } call_getChip8021DA8_result;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result call_getChip8021DA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result){ R0, R2 };
+}
+
+typedef struct { u32 r0, r2, r3, r5, r6, r7, r8, r9, r10, r11, r12; } call_useChipRelated_80127C0_result;
+/* register form: generated wrapper: useChipRelated_80127C0 has no typed C interface yet */
+static inline call_useChipRelated_80127C0_result call_useChipRelated_80127C0(u32 r0, u32 r4, u32 r5, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(useChipRelated_80127C0);
+    return (call_useChipRelated_80127C0_result){ R0, R2, R3, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: object_setAttack2 has no typed C interface yet */
+static inline void call_object_setAttack2(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setAttack2);
+}
+
+/*
+ * Try to have the AI use a chip attack.
+ *
+ * Looks up the battle object's state; if it denotes a usable chip, calls the
+ * chip-use routine, sets up the attack, and returns the chip ID.  Returns
+ * 0xFFFF on any rejection (invalid state, non-chip state 0x52/0x53, chip
+ * flag set, or useChipRelated failure sentinel).
+ */
+struct ai_chip_attack_result {
+    u32 r0;   /* chip ID, 0xFFFF, or useChipRelated sentinel result */
+    u32 r4;   /* preserved */
+    u32 r5;   /* updated by state-info / chip-use calls */
+    u32 r6;   /* preserved */
+    u32 r7;   /* preserved */
+    u32 r8;
+    u32 r9;
+    u32 r10;  /* preserved (not modified by called functions) */
+    u32 r11;
+    u32 r12;
+};
+
+/*
+ * Offset of the AI-attack-variables block within the battle object's
+ * AI data pointer (the assembly adds 0xA0 after loading the pointer).
+ */
+#define AI_ATTACK_VARS_OFFSET 0xA0
+
+static struct ai_chip_attack_result
+ai_tryUseChipAttack_calc(u32 r4, u32 r5, u32 r6, u32 r7,
+                         u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    /* Default failure: state 0xFFFF means "no usable chip". */
+    struct ai_chip_attack_result out;
+    out.r0 = 0xFFFF;
+    out.r4 = r4;  out.r6 = r6;  out.r7 = r7;  out.r10 = r10;
+    out.r8 = r8;  out.r9 = r9;  out.r11 = r11; out.r12 = r12;
+    out.r5 = r5;
+
+    /* Retrieve the battle object's current state and related registers. */
+    call_getBattleObjectStateInfo_800EDD0_result state =
+        call_getBattleObjectStateInfo_800EDD0(r5, 0);
+    out.r5 = state.r5;
+    u32 state_val = state.r0;
+
+    /* 0xFFFF = no valid state; 0x52/0x53 = special non-attack states. */
+    if (state_val == 0xFFFF || state_val == 0x52 || state_val == 0x53)
+        return out;
+
+    /* Fetch chip data and reject if the "not-usable" flag bit (bit 0 of
+     * byte at offset 9) is set. */
+    call_getChip8021DA8_result chip =
+        call_getChip8021DA8(state_val);
+    if (LD8(chip.r0 + 9) & 1)
+        return out;
+
+    /* Locate the AI attack-variables block via the object's AI data pointer. */
+    u32 ai_vars = LD32(state.r5 + oBattleObject_AIDataPtr) + AI_ATTACK_VARS_OFFSET;
+
+    /* Attempt to use the chip (r0 = 0 signals "first try"). */
+    call_useChipRelated_80127C0_result use =
+        call_useChipRelated_80127C0(0, state.r4, state.r5, ai_vars,
+                                   r8, r9, r11, r12);
+
+    /* The chip-use call leaves its modified registers as the new outputs. */
+    out.r5  = use.r5;
+    out.r8  = use.r8;
+    out.r9  = use.r9;
+    out.r11 = use.r11;
+    out.r12 = use.r12;
+
+    /* If useChipRelated returned the failure sentinel, give up. */
+    if (use.r0 == A_byte_800FCD5)
+        return out;
+
+    /* Chip accepted: configure the attack and mark it active. */
+    call_object_setAttack2(use.r0, use.r5);
+    ST8(use.r7 + oAIAttackVars_PwrAtkState, 1);
+    out.r0 = LD16(use.r7 + oAIAttackVars_ChipID);
+
+    return out;
+}
+
+/* ai_tryUseChipAttack(r4, r5, r8, r9, r10, r11, r12) ->
+ *   r0, r4, r5, r6, r7, r8, r9, r10, r11, r12 */
+Next ai_tryUseChipAttack(void) {
+    struct ai_chip_attack_result res =
+        ai_tryUseChipAttack_calc(R4, R5, R6, R7, R8, R9, R10, R11, R12);
+    R0 = res.r0, R4 = res.r4, R5 = res.r5, R6 = res.r6, R7 = res.r7;
+    R8 = res.r8, R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_drawCardToHand_800FC7C ── */
 /* battle_drawCardToHand_800FC7C(r5 = battle object):
  * Draw the next card from the alliance's deck into its battle hand.

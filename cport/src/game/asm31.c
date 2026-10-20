@@ -169,6 +169,146 @@ Next battleObject_initVisualsFromRelatedObject(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_syncVisualStateFromRelatedObject_80B863A ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_getColorShader has no typed C interface yet */
+static inline u32 call_sprite_getColorShader(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getColorShader);
+    return R0;
+}
+
+/* register form: generated wrapper: sprite_setColorShader has no typed C interface yet */
+static inline void call_sprite_setColorShader_battleObject_syncVisualStateFromRelatedObject_80B863A(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setColorShader);
+}
+
+typedef struct { u32 r1; } call_sprite_getFinalPalette_result;
+/* register form: generated wrapper: sprite_getFinalPalette has no typed C interface yet */
+static inline call_sprite_getFinalPalette_result call_sprite_getFinalPalette(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getFinalPalette);
+    return (call_sprite_getFinalPalette_result){ R1 };
+}
+
+typedef struct { u32 r0, r2; } call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result;
+/* register form: generated wrapper: obj_getSpriteFlag10AndRenderInfoHigh_8002F3E has no typed C interface yet */
+static inline call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(obj_getSpriteFlag10AndRenderInfoHigh_8002F3E);
+    return (call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result){ R0, R2 };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_syncVisualStateFromRelatedObject_80B863A;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_syncVisualStateFromRelatedObject_80B863A call_object_getFlip_battleObject_syncVisualStateFromRelatedObject_80B863A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_syncVisualStateFromRelatedObject_80B863A){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battleObject_syncVisualStateFromRelatedObject_80B863A(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r0, r2; } call_sprite_getMosaicScalingParameters_result_battleObject_syncVisualStateFromRelatedObject_80B863A;
+/* register form: generated wrapper: sprite_getMosaicScalingParameters has no typed C interface yet */
+static inline call_sprite_getMosaicScalingParameters_result_battleObject_syncVisualStateFromRelatedObject_80B863A call_sprite_getMosaicScalingParameters_battleObject_syncVisualStateFromRelatedObject_80B863A(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+    return (call_sprite_getMosaicScalingParameters_result_battleObject_syncVisualStateFromRelatedObject_80B863A){ R0, R2 };
+}
+
+typedef struct { u32 r2, r3, r7; bool z, n, c, v; } call_sprite_setAlpha_result_battleObject_syncVisualStateFromRelatedObject_80B863A;
+/* register form: generated wrapper: sprite_setAlpha has no typed C interface yet */
+static inline call_sprite_setAlpha_result_battleObject_syncVisualStateFromRelatedObject_80B863A call_sprite_setAlpha_battleObject_syncVisualStateFromRelatedObject_80B863A(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_setAlpha);
+    return (call_sprite_setAlpha_result_battleObject_syncVisualStateFromRelatedObject_80B863A){ R2, R3, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Propagate the hidden (bit 1) flag from the related object to self. */
+static void sync_hidden_flag(u32 self, u32 related) {
+    u32 merged = (LD8(self + oObjectHeader_Flags) & ~0x2u)
+               | (LD8(related + oObjectHeader_Flags) & 0x2u);
+    ST8(self + oObjectHeader_Flags, merged);
+}
+
+/* Apply the palette previously fetched into R1 (no typed wrapper exists). */
+static void apply_final_palette(u32 self) { /* register form: GUEST_CALL for sprite_setFinalPalette */
+    R5 = self;
+    GUEST_CALL(sprite_setFinalPalette);
+}
+
+/* Store the sprite-flag-10 / render-info-high pair obtained from the related object. */
+static void apply_render_info(u32 flag_val, u32 render_hi, u32 self) { /* register form: jump into loc_8002F02 */
+    R0 = flag_val;
+    R2 = render_hi;
+    R5 = self;
+    GUEST_CALL_ADDR(0x08002F03);
+}
+
+/* Tail-dispatch the per-action step handler through the jump table at off_80B8698. */
+static void dispatch_action_step(u32 target, u32 self, u32 render_base) { /* register form: jump-table call */
+    R5 = self;
+    R10 = render_base;
+    GUEST_CALL_ADDR(target);
+}
+
+/* Copy every visual property (flags, shader, palette, render info, flip, mosaic, alpha)
+ * from the related battle object onto this one, then run the current action's step routine. */
+static void sync_visual_state(u32 self, u32 render_base) {
+    u32 related = LD32(self + oBattleObject_RelatedObject1Ptr);
+
+    /* Flag bit 1 (hidden/invisible). */
+    sync_hidden_flag(self, related);
+
+    /* Colour shader: get from related, set on self. */
+    u32 shader = call_sprite_getColorShader(related);
+    call_sprite_setColorShader_battleObject_syncVisualStateFromRelatedObject_80B863A(shader, self);
+
+    /* Final palette: get from related (result in R1), apply to self. */
+    call_sprite_getFinalPalette(related);
+    apply_final_palette(self);
+
+    /* Sprite flag 10 + render info high byte. */
+    call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result ri =
+        call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(related);
+    apply_render_info(ri.r0, ri.r2, self);
+
+    /* Direction-flip byte. */
+    related = LD32(self + oBattleObject_RelatedObject1Ptr);
+    ST8(self + oBattleObject_DirectionFlip,
+        LD8(related + oBattleObject_DirectionFlip));
+
+    /* Sprite flip state. */
+    u32 flip = call_object_getFlip_battleObject_syncVisualStateFromRelatedObject_80B863A(self).r0;
+    call_sprite_setFlip_battleObject_syncVisualStateFromRelatedObject_80B863A(flip, self);
+
+    /* Mosaic scaling parameters → alpha on self. */
+    call_sprite_getMosaicScalingParameters_result_battleObject_syncVisualStateFromRelatedObject_80B863A m =
+        call_sprite_getMosaicScalingParameters_battleObject_syncVisualStateFromRelatedObject_80B863A(related);
+    call_sprite_setAlpha_battleObject_syncVisualStateFromRelatedObject_80B863A(m.r0, m.r2, self);
+
+    /* Jump through the action-step table and return its register state. */
+    u32 action = LD8(self + oBattleObject_CurAction);
+    u32 target = LD32(A_off_80B8698 + action);
+    dispatch_action_step(target, self, render_base);
+}
+
+/* battleObject_syncVisualStateFromRelatedObject_80B863A(r5 = self, r10 = render base, lr = return) */
+Next battleObject_syncVisualStateFromRelatedObject_80B863A(void) {
+    sync_visual_state(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_stepSprite_80B86A4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: battleObject_copyCoordsFromRelatedObject_80B8800 has no typed C interface yet */
@@ -1014,6 +1154,192 @@ Next t1_0x1b_80BC650(void) {
     R10 = result.r10;
     R11 = result.r11;
     R12 = result.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_beastSpecial_init_80BC670 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2; } call_chip_class_lookup_800FC9E_result;
+/* register form: generated wrapper: chip_class_lookup_800FC9E has no typed C interface yet */
+static inline call_chip_class_lookup_800FC9E_result call_chip_class_lookup_800FC9E(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(chip_class_lookup_800FC9E);
+    return (call_chip_class_lookup_800FC9E_result){ R1, R2 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_beastSpecial_init_80BC670 call_sprite_load_battleObject_beastSpecial_init_80BC670(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_beastSpecial_init_80BC670){ R4, R5 };
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_beastSpecial_init_80BC670 call_sprite_loadAnimationData_battleObject_beastSpecial_init_80BC670(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_beastSpecial_init_80BC670){ R1, R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_removeShadow has no typed C interface yet */
+static inline void call_sprite_removeShadow_battleObject_beastSpecial_init_80BC670(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_removeShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_beastSpecial_init_80BC670(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_beastSpecial_init_80BC670 call_sprite_setPalette_battleObject_beastSpecial_init_80BC670(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_beastSpecial_init_80BC670){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_beastSpecial_init_80BC670 call_object_getFlip_battleObject_beastSpecial_init_80BC670(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_beastSpecial_init_80BC670){ R0 };
+}
+
+typedef struct { u32 r2, r3; } call_sprite_setFlip_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battleObject_beastSpecial_init_80BC670 call_sprite_setFlip_battleObject_beastSpecial_init_80BC670(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battleObject_beastSpecial_init_80BC670){ R2, R3 };
+}
+
+typedef struct { u32 r2; } call_object_setCoordinatesFromPanels_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline call_object_setCoordinatesFromPanels_result_battleObject_beastSpecial_init_80BC670 call_object_setCoordinatesFromPanels_battleObject_beastSpecial_init_80BC670(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    return (call_object_setCoordinatesFromPanels_result_battleObject_beastSpecial_init_80BC670){ R2 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battleObject_beastSpecial_init_80BC670;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battleObject_beastSpecial_init_80BC670 call_object_getFrontDirection_battleObject_beastSpecial_init_80BC670(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battleObject_beastSpecial_init_80BC670){ R0 };
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_battle_objectNameIdToPopupHandler_8010DD0_result;
+/* register form: generated wrapper: battle_objectNameIdToPopupHandler_8010DD0 has no typed C interface yet */
+static inline call_battle_objectNameIdToPopupHandler_8010DD0_result call_battle_objectNameIdToPopupHandler_8010DD0(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(battle_objectNameIdToPopupHandler_8010DD0);
+    return (call_battle_objectNameIdToPopupHandler_8010DD0_result){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_forceWhitePalette_result;
+/* register form: generated wrapper: sprite_forceWhitePalette has no typed C interface yet */
+static inline call_sprite_forceWhitePalette_result call_sprite_forceWhitePalette(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_forceWhitePalette);
+    return (call_sprite_forceWhitePalette_result){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: GBA BIOS SVC 6 (Random) has no generated wrapper */
+static u32 bios_random(u32 max, u32 range) {
+    R0 = max;
+    R1 = range;
+    swi_call(6);
+    return R0;
+}
+
+/* Initialize a beast-special chip popup: loads sprite/animation data, computes
+ * screen position with a random X jitter and a Y/Z pop-in lift, creates the
+ * associated text popup, and sets CUR_STATE_UPDATE so the state machine advances. */
+static void init_chip_popup_sprite(u32 obj) {
+    /* Sprite name table ID: chip-class index + 0x1A0 */
+    u8 param1 = LD8(obj + oBattleObject_Param1);
+    ST16(obj + oBattleObject_NameID, (u16)(param1 + 0x1A0));
+
+    /* Look up sprite class for this chip index */
+    call_chip_class_lookup_800FC9E_result cls =
+        call_chip_class_lookup_800FC9E(param1, 0);
+
+    /* Load sprite tiles, animation frames, remove shadow */
+    call_sprite_load_battleObject_beastSpecial_init_80BC670(0x80, cls.r1, cls.r2, obj);
+    call_sprite_loadAnimationData_battleObject_beastSpecial_init_80BC670(obj);
+    call_sprite_removeShadow_battleObject_beastSpecial_init_80BC670(obj);
+
+    /* Mark object active (bit 1 of header flags), reset animation index */
+    ST8(obj + oObjectHeader_Flags,
+        (u8)(LD8(obj + oObjectHeader_Flags) | 0x2));
+    ST8(obj + oBattleObject_CurAnim, 0);
+    ST8(obj + oBattleObject_CurAnimCopy, 0);
+
+    /* Apply animation 0, reload frames, set palette 4 */
+    call_sprite_setAnimation_battleObject_beastSpecial_init_80BC670(0, obj);
+    call_sprite_loadAnimationData_battleObject_beastSpecial_init_80BC670(obj);
+    call_sprite_setPalette_battleObject_beastSpecial_init_80BC670(4, obj);
+
+    /* Copy facing from parent */
+    call_sprite_setFlip_result_battleObject_beastSpecial_init_80BC670 flipRes =
+        call_sprite_setFlip_battleObject_beastSpecial_init_80BC670(call_object_getFlip_battleObject_beastSpecial_init_80BC670(obj).r0, obj);
+
+    /* Clear anchor field at +0x68 */
+    ST32(obj + 0x68, 0xFFFFFFFF);
+
+    /* BIOS Random(0x280000, panelCol) → ExtraVars+4 */
+    u16 panelCol = LD16(obj + 0x62);
+    u32 rnd = bios_random(0x280000, panelCol);
+    ST32(obj + oBattleObject_ExtraVars + 4, rnd);
+
+    /* Anchor to panel, then add random X offset: X += rnd * panelCol * frontDir */
+    call_object_setCoordinatesFromPanels_battleObject_beastSpecial_init_80BC670(obj);
+    u32 frontDir = call_object_getFrontDirection_battleObject_beastSpecial_init_80BC670(obj).r0;
+    ST32(obj + oBattleObject_X,
+         LD32(obj + oBattleObject_X) + rnd * panelCol * frontDir);
+
+    /* Y/Z pop-in lift: (4 - panelY) * 0x180000 */
+    u32 lift = (4 - LD8(obj + oBattleObject_PanelY)) * 0x180000;
+    ST32(obj + oBattleObject_Y, LD32(obj + oBattleObject_Y) + lift);
+    ST32(obj + oBattleObject_Z, lift);
+    ST32(obj + oBattleObject_ExtraVars + 0xC, lift);
+
+    /* Z bias from per-chip table at byte_80BC758 */
+    u32 zBias = LD32(A_byte_80BC758 + ((u32)param1 << 2));
+    ST32(obj + oBattleObject_ExtraVars + 0x10, zBias);
+    ST32(obj + oBattleObject_Z, LD32(obj + oBattleObject_Z) + zBias);
+
+    /* Create popup text object; set its ExtraVars[0] = 1 for chip class 6 */
+    call_battle_objectNameIdToPopupHandler_8010DD0_result popupRes =
+        call_battle_objectNameIdToPopupHandler_8010DD0(flipRes.r3, obj);
+    obj = popupRes.r5;
+    if (LD8(obj + oBattleObject_Param1) == 6)
+        ST32(popupRes.r0 + oBattleObject_ExtraVars, 1);
+
+    /* Force white palette, clear ExtraVars+0x14, advance state machine */
+    call_sprite_forceWhitePalette(obj);
+    ST32(obj + oBattleObject_ExtraVars + 0x14, 0);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+}
+
+/* battleObject_beastSpecial_init_80BC670(r5 = obj, lr) -> r5 r8 r9 r10 r11 r12 */
+Next battleObject_beastSpecial_init_80BC670(void) {
+    init_chip_popup_sprite(R5);
     RETURN_TO_CALLER();
 }
 
@@ -4305,6 +4631,186 @@ static u32 type3_object_update(u32 object) {
 /* t3_0x6_80C57C0(r5 = object) -> r5 */
 Next t3_0x6_80C57C0(void) {
     R5 = type3_object_update(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_throwAndLandAction_80C58E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; } call_object_getCoordinatesForPanels_result_battleObject_throwAndLandAction_80C58E0;
+/* register form: generated wrapper: object_getCoordinatesForPanels has no typed C interface yet */
+static inline call_object_getCoordinatesForPanels_result_battleObject_throwAndLandAction_80C58E0 call_object_getCoordinatesForPanels_battleObject_throwAndLandAction_80C58E0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getCoordinatesForPanels);
+    return (call_object_getCoordinatesForPanels_result_battleObject_throwAndLandAction_80C58E0){ R0, R1 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; } call_math_getThrowSpeeds_result;
+/* register form: generated wrapper: math_getThrowSpeeds has no typed C interface yet */
+static inline call_math_getThrowSpeeds_result call_math_getThrowSpeeds(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(math_getThrowSpeeds);
+    return (call_math_getThrowSpeeds_result){ R0, R1, R2, R3, R5 };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_throwAndLandAction_80C58E0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r2, r3, r4, r6; bool c, v; } call_object_updateCollisionPanels_result_battleObject_throwAndLandAction_80C58E0;
+/* register form: generated wrapper: object_updateCollisionPanels has no typed C interface yet */
+static inline call_object_updateCollisionPanels_result_battleObject_throwAndLandAction_80C58E0 call_object_updateCollisionPanels_battleObject_throwAndLandAction_80C58E0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionPanels);
+    return (call_object_updateCollisionPanels_result_battleObject_throwAndLandAction_80C58E0){ R2, R3, R4, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; } call_object_setCollisionRegion_result_battleObject_throwAndLandAction_80C58E0;
+/* register form: generated wrapper: object_setCollisionRegion has no typed C interface yet */
+static inline call_object_setCollisionRegion_result_battleObject_throwAndLandAction_80C58E0 call_object_setCollisionRegion_battleObject_throwAndLandAction_80C58E0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionRegion);
+    return (call_object_setCollisionRegion_result_battleObject_throwAndLandAction_80C58E0){ R1 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool v; } call_PlaySoundEffect_result_battleObject_throwAndLandAction_80C58E0;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_throwAndLandAction_80C58E0 call_PlaySoundEffect_battleObject_throwAndLandAction_80C58E0(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_throwAndLandAction_80C58E0){ R1, R2, R3, R4, R5, R6, R7, R10, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_object_highlightPanel_result_battleObject_throwAndLandAction_80C58E0;
+/* register form: generated wrapper: object_highlightPanel has no typed C interface yet */
+static inline call_object_highlightPanel_result_battleObject_throwAndLandAction_80C58E0 call_object_highlightPanel_battleObject_throwAndLandAction_80C58E0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_highlightPanel);
+    return (call_object_highlightPanel_result_battleObject_throwAndLandAction_80C58E0){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Drive a BattleObject through its throw-arc animation each tick.
+ *
+ * On the first call (CurPhase == 0): compute destination panel coordinates,
+ * fill in throw-arc velocities via math_getThrowSpeeds, and start the timer
+ * at 0x30 frames.
+ *
+ * Every call: advance X/Y/Z by their velocities, subtract gravity from Z-vel,
+ * pick an animation frame from ExtraVars at specific timer checkpoints, then
+ * decrement the timer.  When the timer underflows the object snaps onto its
+ * target panel, refreshes collision, plays the landing SFX, and transitions
+ * to the next action.  A panel blink fires whenever bit 2 of the post-
+ * decrement timer is set.
+ *
+ * Output r1: highlight result if the blink fired, otherwise the ExtraVars
+ * pointer loaded earlier in the animation-selection block. */
+
+static u32 throw_and_land_tick(u32 obj) {
+    /* register form: R4, R6, R7 are preserved registers; wrapper calls
+       (math_getThrowSpeeds, updateCollisionPanels, PlaySoundEffect) write
+       them as arguments or return values and do not restore them. */
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    u32 saved_r7 = R7;
+
+    /* Phase 0 -> 1: initialize trajectory */
+    if (LD8(obj + oBattleObject_CurPhase) == 0) {
+        ST8(obj + oBattleObject_CurPhase, 1);
+
+        u32 panel_x = LD8(obj + oBattleObject_Param3);
+        u32 panel_y = LD8(obj + oBattleObject_Param4);
+        call_object_getCoordinatesForPanels_result_battleObject_throwAndLandAction_80C58E0 coords =
+            call_object_getCoordinatesForPanels_battleObject_throwAndLandAction_80C58E0(panel_x, panel_y);
+
+        ST16(obj + oBattleObject_Timer, 0x30);
+        call_math_getThrowSpeeds_result speeds = call_math_getThrowSpeeds(
+            obj + 0x34,          /* r0: velocity buffer address */
+            coords.r0,           /* r1: target coordinate n1 */
+            coords.r1,           /* r2: target coordinate n2 */
+            0xB0000,             /* r3: horizontal reach */
+            0x30,                /* r4: flight duration */
+            0xFFFFB000);         /* r6: gravity decrement per tick */
+
+        ST32(obj + oBattleObject_XVelocity, speeds.r0);
+        ST32(obj + oBattleObject_YVelocity, speeds.r1);
+        ST32(obj + oBattleObject_ZVelocity, speeds.r2);
+    }
+
+    /* Integrate position by velocity; apply Z gravity */
+    u32 xv = LD32(obj + oBattleObject_XVelocity);
+    u32 yv = LD32(obj + oBattleObject_YVelocity);
+    u32 zv = LD32(obj + oBattleObject_ZVelocity);
+    ST32(obj + oBattleObject_X, LD32(obj + oBattleObject_X) + xv);
+    ST32(obj + oBattleObject_Y, LD32(obj + oBattleObject_Y) + yv);
+    ST32(obj + oBattleObject_Z, LD32(obj + oBattleObject_Z) + zv);
+    ST32(obj + oBattleObject_ZVelocity, zv + 0xFFFFB000);
+
+    /* Select animation frame from ExtraVars at timer checkpoints */
+    u32 extra_vars = LD32(obj + oBattleObject_ExtraVars);
+    u32 timer = LD16(obj + oBattleObject_Timer);
+
+    if      (timer == 0x28) ST8(obj + oBattleObject_CurAnim, LD8(extra_vars + 1));
+    else if (timer == 0x20) ST8(obj + oBattleObject_CurAnim, LD8(extra_vars + 2));
+    else if (timer == 0x18) ST8(obj + oBattleObject_CurAnim, LD8(extra_vars + 3));
+    else if (timer == 0x10) ST8(obj + oBattleObject_CurAnim, LD8(extra_vars + 4));
+    else if (timer == 0x04) ST8(obj + oBattleObject_CurAnim, LD8(extra_vars + 5));
+
+    /* Decrement timer (SUBS in 32-bit, stored as u16) */
+    u32 new_timer = timer - 1;
+    ST16(obj + oBattleObject_Timer, (u16)new_timer);
+
+    /* Timer underflow (was 0) -> landing sequence */
+    if ((s32)new_timer < 0) {
+        u32 px = LD8(obj + oBattleObject_Param3);
+        u32 py = LD8(obj + oBattleObject_Param4);
+        ST8(obj + oBattleObject_PanelX, (u8)px);
+        ST8(obj + oBattleObject_PanelY, (u8)py);
+        ST32(obj + oBattleObject_Z, 0x30000);
+
+        call_object_setCoordinatesFromPanels_battleObject_throwAndLandAction_80C58E0(obj);
+        call_object_updateCollisionPanels_result_battleObject_throwAndLandAction_80C58E0 col =
+            call_object_updateCollisionPanels_battleObject_throwAndLandAction_80C58E0(obj);
+        call_object_setCollisionRegion_battleObject_throwAndLandAction_80C58E0(1, obj);
+        ST8(obj + oBattleObject_CurAnim, 5);
+        /* PlaySoundEffect(r0=0x1D0, r2=col.r2 from updateCollisionPanels) */
+        call_PlaySoundEffect_battleObject_throwAndLandAction_80C58E0(0x1D0, col.r2);
+        ST8(obj + oBattleObject_CurAction, 4);
+        ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    }
+
+    /* Blink destination panel when timer bit 2 is set */
+    u32 current_timer = LD16(obj + oBattleObject_Timer);
+    u32 out_r1 = extra_vars;  /* default r1: ExtraVars pointer from checkpoint block */
+    if ((current_timer >> 2) & 1) {
+        call_object_highlightPanel_result_battleObject_throwAndLandAction_80C58E0 hl =
+            call_object_highlightPanel_battleObject_throwAndLandAction_80C58E0(
+                LD8(obj + oBattleObject_Param3),
+                LD8(obj + oBattleObject_Param4));
+        out_r1 = hl.r1;
+    }
+
+    /* register form: restore preserved registers clobbered by wrapper
+       argument writes and callee side-effects */
+    R4 = saved_r4;
+    R6 = saved_r6;
+    R7 = saved_r7;
+
+    return out_r1;
+}
+
+/* battleObject_throwAndLandAction_80C58E0(r5 = object) -> r1 */
+Next battleObject_throwAndLandAction_80C58E0(void) {
+    R1 = throw_and_land_tick(R5);
     RETURN_TO_CALLER();
 }
 

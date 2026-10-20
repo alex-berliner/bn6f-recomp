@@ -2302,6 +2302,383 @@ Next soundChannel_tickPanVolume_814F4A0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CgbSound ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4; } call_soundChannel_tickPanVolume_814F4A0_result;
+/* register form: generated wrapper: soundChannel_tickPanVolume_814F4A0 has no typed C interface yet */
+static inline call_soundChannel_tickPanVolume_814F4A0_result call_soundChannel_tickPanVolume_814F4A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(soundChannel_tickPanVolume_814F4A0);
+    return (call_soundChannel_tickPanVolume_814F4A0_result){ R4 };
+}
+
+typedef struct { u32 r1; } call_soundStartChannel_814F44C_result;
+/* register form: generated wrapper: soundStartChannel_814F44C has no typed C interface yet */
+static inline call_soundStartChannel_814F44C_result call_soundStartChannel_814F44C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(soundStartChannel_814F44C);
+    return (call_soundStartChannel_814F44C_result){ R1 };
+}
+
+/* GB sound APU frame sequencer tick: advances the 14-step sequencer, then
+ * for each of 4 channels processes halt/trigger, length, envelope, timer,
+ * wave-RAM, and writes the emulated hardware registers. */
+
+/* Channel state offsets (r4-relative; channels are 0x40 apart) */
+#define CH_CTRL        0x00  /* control/status byte */
+#define CH_STEP_FLAGS  0x01  /* step 1/2 flags (bit3 = env enable for ch1-3) */
+#define CH_LENGTH      0x04  /* length counter */
+#define CH_LEN_RELOAD  0x05  /* length reload value */
+#define CH_ENV_DIR     0x06  /* envelope direction (0=down, 1=up) */
+#define CH_ENV_RELOAD  0x07  /* envelope reload */
+#define CH_ENV_VOL     0x09  /* current envelope volume */
+#define CH_ENV_PERIOD  0x0A  /* envelope period */
+#define CH_TIMER       0x0B  /* timer / envelope counter */
+#define CH_ENV_DIV     0x0C  /* envelope divisor */
+#define CH_FRAME_STEP  0x0D  /* frame sequencer step counter */
+#define CH_ENV_STEP    0x19  /* envelope step value (mode 1/2 target) */
+#define CH_VOLUME      0x1A  /* volume / DAC enable shadow */
+#define CH_LEFT_VOL    0x1B  /* left channel volume (NR51) */
+#define CH_RIGHT_VOL   0x1C  /* right channel volume (NR51) */
+#define CH_FLAGS       0x1D  /* internal flags: bit0=stereo, bit1=freq, bit2=? */
+#define CH_WAVE_ACTIVE 0x1E  /* wave active / trigger byte */
+#define CH_SWEEP_PER   0x1F  /* sweep period (ch1) */
+#define CH_FREQ_SHADOW 0x20  /* frequency shadow */
+#define CH_WAVE_PTR    0x24  /* wave/RAM source pointer */
+#define CH_LAST_WAVE   0x28  /* last copied wave bank pointer */
+#define CH_BLOCK       0x40  /* channel array stride */
+
+#define FRAME_RESET    0x0E  /* sequencer wraps to 14 */
+
+/* The original is a deeply interleaved state machine (BGB CGB core) whose
+ * forward and backward jumps into shared tails cannot be expressed as pure
+ * structured C without massive duplication.  Gotos below are justified: */
+/* register form: state-machine gotos into shared tails across if-branches */
+
+static void cgb_sound_tick(void) {
+    u32 state = LD32(A_byte_3007FF0);
+    u32 ftick = LD8(state + 0x0A);
+
+    ftick = (ftick == 0) ? FRAME_RESET : ftick - 1;
+    ST8(state + 0x0A, ftick);
+
+    u32 ch_base = LD32(state + 0x1C);
+
+    for (u32 ch = 1; ch <= 4; ch++) {
+        u32 ptr = ch_base + (ch - 1) * CH_BLOCK;
+
+        u32 ctrl = LD8(ptr);
+        if ((ctrl & 0xC7) == 0)
+            continue;
+
+        /* Hardware register addresses for this channel */
+        u32 nr_a, nr_b, nr_c, nr_d, nr_extra;
+        u32 ch_idx = ch - 1;
+        if (ch == 1) {
+            nr_a = A_Channel1Sweepregister_NR10_;
+            nr_b = (A_Channel1Duty_Length_Envelope_NR11_NR12_ + 1);
+            nr_c = A_Channel1Frequency_Control_NR13_NR14_;
+            nr_d = nr_b + 2;
+            nr_extra = nr_a + 2;
+        } else if (ch == 2) {
+            nr_a = (A_Channel1Sweepregister_NR10_ + 1);
+            nr_b = (A_Channel2Duty_Length_Envelope_NR21_NR22_ + 1);
+            nr_c = A_Channel2Frequency_Control_NR23_NR24_;
+            nr_d = nr_b + 4;
+            nr_extra = nr_a + 7;
+        } else if (ch == 3) {
+            nr_a = A_Channel3Stop_WaveRAMselect_NR30_;
+            nr_b = (A_Channel3Length_Volume_NR31_NR32_ + 1);
+            nr_c = A_Channel3Frequency_Control_NR33_NR34_;
+            nr_d = nr_b + 2;
+            nr_extra = nr_a + 2;
+        } else {
+            nr_a = (A_Channel3Stop_WaveRAMselect_NR30_ + 1);
+            nr_b = (A_Channel4Length_Envelope_NR41_NR42_ + 1);
+            nr_c = A_Channel4Frequency_Control_NR43_NR44_;
+            nr_d = nr_b + 4;
+            nr_extra = nr_a + 7;
+        }
+
+        /* Reload mutable locals from state (original uses SP slots) */
+        ftick = LD8(state + 0x0A);
+        u32 r8 = LD8(nr_b);
+
+        ctrl = LD8(ptr);
+
+        /* ===================== BIT 7 SET: halt/trigger path ===================== */
+        if (ctrl & 0x80) {
+            u32 r7 = 0x40;
+            u32 r5 = ctrl & 0x40;  /* trigger bit within halt */
+
+            if (r5 != 0) {
+                call_soundStartChannel_814F44C(ch);
+                ST8(ptr, 0);
+                goto flags_clear;
+            }
+
+            /* Initialize halted channel */
+            ST8(ptr, 3);
+            ST8(ptr + CH_FLAGS, 3);
+            r8 = call_soundChannel_tickPanVolume_814F4A0(ptr).r4;
+
+            if (ch == 1) {
+                ST8(nr_a, LD8(ptr + CH_SWEEP_PER));
+                ST8(nr_extra, (LD32(ptr + CH_WAVE_PTR) << 6) | LD8(ptr + CH_WAVE_ACTIVE));
+            } else if (ch == 2) {
+                ST8(nr_extra, (LD32(ptr + CH_WAVE_PTR) << 6) | LD8(ptr + CH_WAVE_ACTIVE));
+            } else if (ch == 3) {
+                u32 wptr = LD32(ptr + CH_WAVE_PTR);
+                if (wptr != LD32(ptr + CH_LAST_WAVE)) {
+                    ST8(nr_a, r7);
+                    u32 ram = A_Channel3WavePatternRAM_2banks___;
+                    for (u32 i = 0; i < 16; i++)
+                        ST8(ram + i, LD8(wptr + i));
+                    ST32(ptr + CH_LAST_WAVE, wptr);
+                }
+                ST8(nr_a, 0);  /* stop: r5==0 */
+                ST8(nr_extra, LD8(ptr + CH_WAVE_ACTIVE));
+                if (LD8(ptr + CH_WAVE_ACTIVE) != 0) {
+                    ST8(ptr + CH_VOLUME, 0xC0);
+                } else {
+                    ST8(ptr + CH_VOLUME, 0x80);
+                    goto timer_check;
+                }
+            } else {
+                /* ch4 */
+                ST8(nr_extra, LD8(ptr + CH_WAVE_ACTIVE));
+                ST8(nr_c, LD32(ptr + CH_WAVE_PTR) << 3);
+            }
+
+            /* Common post for ch1, ch2, ch4, and ch3 with wave_active!=0 */
+            r8 = LD8(ptr + CH_LENGTH) + 8;
+            ST8(ptr + CH_VOLUME, LD8(ptr + CH_WAVE_ACTIVE) ? 0x40 : 0);
+
+timer_check:
+            ST8(ptr + CH_TIMER, LD8(ptr + CH_LENGTH));
+            if (LD8(ptr + CH_LENGTH) != 0) {
+                ST8(ptr + CH_ENV_VOL, 0);
+                goto post;
+            }
+            goto length_expired;
+        }
+
+        /* ===================== BIT 7 CLEAR: running path ===================== */
+
+        /* NR52 global-enable check (only when length-enable bit2 is clear) */
+        if ((ctrl & 0x04) == 0) {
+            u32 nr52 = (s32)LD8(A_ControlSoundon_off_NR52_);
+            if ((nr52 >> ch_idx) & 1)
+                goto frame_step_do;
+        }
+
+        /* Decrement frame-step counter; on expiry, disable channel */
+        {
+            u32 fs = LD8(ptr + CH_FRAME_STEP) - 1;
+            ST8(ptr + CH_FRAME_STEP, fs);
+            if ((s32)((fs & 0xFF) << 24) <= 0) {
+                call_soundStartChannel_814F44C(ch);
+                ST8(ptr, 0);
+                goto flags_clear;
+            }
+            goto freq_write;
+        }
+
+frame_step_do:
+        /* Trigger bit processing (NR52 enabled but bit2 clear) */
+        ctrl = LD8(ptr);
+        if (ctrl & 0x40) {
+            /* Trigger set: reload envelope */
+            if ((ctrl & 3) != 0) {
+                ST8(ptr, ctrl & 0xFC);
+                ST8(ptr + CH_TIMER, LD8(ptr + CH_ENV_RELOAD));
+                if (LD8(ptr + CH_TIMER) != 0) {
+                    ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+                    goto post;
+                }
+                if (ch != 3)
+                    r8 = LD8(ptr + CH_ENV_RELOAD);
+                goto post;
+            }
+        } else {
+            /* Trigger clear: skip if timer still running */
+            if (LD8(ptr + CH_TIMER) != 0)
+                goto post;
+            if (ch == 3)
+                ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+        }
+
+        /* ----- Envelope / length tick ----- */
+        r8 = call_soundChannel_tickPanVolume_814F4A0(ptr).r4;
+        ctrl = LD8(ptr);
+        u32 mode = ctrl & 3;
+
+        if (mode == 0) {
+            u32 len = LD8(ptr + CH_LENGTH) - 1;
+            ST8(ptr + CH_LENGTH, len);
+            if ((s32)((len & 0xFF) << 24) > 0) {
+                r8 = LD8(ptr + CH_ENV_RELOAD);
+                goto post;
+            }
+            goto envelope_calc;
+        }
+        if (mode == 1) {
+            r8 = LD8(ptr + CH_ENV_STEP);
+            ST8(ptr + CH_LENGTH, r8);
+            goto post;
+        }
+        if (mode == 2) {
+            u32 len = LD8(ptr + CH_LENGTH) - 1;
+            ST8(ptr + CH_LENGTH, len);
+            if ((s32)(len << 24) > LDS8(ptr + CH_ENV_STEP)) {
+                r8 = LD8(ptr + CH_ENV_RELOAD);
+                goto post;
+            }
+            if (LD8(ptr + CH_ENV_DIR) == 0) {
+                ST8(ptr, LD8(ptr) & 0xFC);
+                goto envelope_calc;
+            }
+            ST8(ptr, LD8(ptr) - 1);
+            ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+            if (ch == 3) {
+                r8 = LD8(ptr + CH_ENV_STEP);
+                goto post;
+            }
+            r8 = 8;
+            goto post;
+        }
+        /* mode 3: increment */
+        {
+            u32 len = LD8(ptr + CH_LENGTH) + 1;
+            ST8(ptr + CH_LENGTH, len);
+            if ((len & 0xFF) >= LD8(ptr + CH_ENV_PERIOD))
+                goto length_expired;
+            r8 = LD8(ptr + CH_ENV_DIR);
+            goto post;
+        }
+
+        /* ----- Envelope calculation (shared tail) ----- */
+envelope_calc:
+        r8 = (LD8(ptr + CH_TIMER) * LD8(ptr + CH_ENV_PERIOD) + 0xFF) >> 8;
+        ST8(ptr + CH_ENV_VOL, r8);
+        if ((r8 & 0xFF) == 0) {
+            call_soundStartChannel_814F44C(ch);
+            ST8(ptr, 0);
+            goto flags_clear;
+        }
+        ST8(ptr, LD8(ptr) | 4);
+        ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+        if (ch == 3) {
+            r8 = 8;
+            goto freq_write;
+        }
+        r8 = 8;
+        goto freq_write;
+
+        /* ----- Length expired (shared tail) ----- */
+length_expired:
+        ctrl = LD8(ptr);
+        r8 = ctrl - 1;
+        ST8(ptr, r8);
+        r8 = LD8(ptr + CH_LEN_RELOAD);
+        ST8(ptr + CH_TIMER, r8);
+        if ((r8 & 0xFF) == 0) {
+            ST8(ptr + CH_ENV_VOL, 0);
+            goto freq_write;
+        }
+        ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+        ST8(ptr + CH_ENV_VOL, LD8(ptr + CH_ENV_PERIOD));
+        if (ch != 3)
+            r8 = LD8(ptr + CH_LEN_RELOAD);
+        goto post;
+
+        /* ----- Post: decrement timer, frame-sequencer interlock ----- */
+post:
+        r8 = LD8(ptr + CH_TIMER) - 1;
+        ST8(ptr + CH_TIMER, r8);
+        if (ftick != 0)
+            goto freq_write;
+        ftick = (u32)-1;
+        /* frame-tick wrapped: check if timer reached zero */
+        if (LD8(ptr + CH_TIMER) != 0) {
+            /* one more tick */
+            r8 = LD8(ptr + CH_TIMER) - 1;
+            ST8(ptr + CH_TIMER, r8);
+            goto freq_write;
+        }
+        if (ch == 3)
+            ST8(ptr + CH_FLAGS, LD8(ptr + CH_FLAGS) | 1);
+        goto post;
+
+        /* ----- Hardware register writes (frequency/PWM) ----- */
+freq_write:
+        if (LD8(ptr + CH_FLAGS) & 2) {
+            u32 freq = LD32(ptr + CH_FREQ_SHADOW);
+            if (ch != 4 && (LD8(ptr + CH_STEP_FLAGS) & 0x08)) {
+                if ((LD8(ptr + CH_FLAGS) & 2) != 0) {
+                    u32 pwm = LD8(A_SoundPWMControl + 1);
+                    if ((s32)pwm <= (s32)0x3F) {
+                        freq = (freq + 2) & 0x7FC;
+                        ST32(ptr + CH_FREQ_SHADOW, freq);
+                    } else if ((s32)pwm <= (s32)0x7F) {
+                        freq = (freq + 1) & 0x7FE;
+                        ST32(ptr + CH_FREQ_SHADOW, freq);
+                    }
+                }
+            }
+            if (ch == 4) {
+                u32 nr_c_val = LD8(nr_c) & 0x08;
+                freq = LD32(ptr + CH_FREQ_SHADOW) | nr_c_val;
+            }
+            ST8(nr_c, freq);
+
+            u32 vol = (LD8(ptr + CH_VOLUME) & 0xC0)
+                    | ((LD32(ptr + CH_FREQ_SHADOW) >> 8) & 0xFC);
+            ST8(ptr + CH_VOLUME, vol);
+            ST8(nr_d, vol & 0xFF);
+        }
+
+        /* ----- Stereo / volume register writes ----- */
+        if (LD8(ptr + CH_FLAGS) & 1) {
+            u32 stereo_addr = A_ControlStereo_Volume_Enable_NR50_NR51_ + 1;
+            u32 vol_en = LD8(stereo_addr);
+            vol_en = (vol_en & ~LD8(ptr + CH_RIGHT_VOL)) | LD8(ptr + CH_LEFT_VOL);
+            ST8(stereo_addr, vol_en);
+
+            if (ch == 3) {
+                ST8(nr_b, LD8(A_byte_81C067C + LD8(ptr + CH_ENV_VOL)));
+                if (LD8(ptr + CH_VOLUME) & 0x80) {
+                    ST8(nr_a, 0x80);
+                    ST8(nr_d, LD8(ptr + CH_VOLUME));
+                    ST8(ptr + CH_VOLUME, LD8(ptr + CH_VOLUME) & 0x7F);
+                }
+                goto flags_clear;
+            }
+
+            r8 &= 0x0F;
+            u32 out = (LD8(ptr + CH_ENV_VOL) << 4) + r8;
+            ST8(nr_b, out);
+            ST8(nr_d, LD8(ptr + CH_VOLUME) | 0x80);
+
+            if (ch == 1) {
+                if ((LD8(nr_a) & 0x08) == 0) {
+                    ST8(nr_d, LD8(ptr + CH_VOLUME) | 0x80);
+                }
+            }
+        }
+
+flags_clear:
+        ST8(ptr + CH_FLAGS, 0);
+    }
+}
+
+/* GBA sound tick: frame sequencer + channel processing for the emulated GB APU.
+ * Takes no meaningful arguments; produces no register outputs (lr is identity). */
+Next CgbSound(void) {
+    cgb_sound_tick();
+    RETURN_TO_CALLER();
+}
+
 /* ── object_setSmashFactor ── */
 /* object_setSmashFactor: applies a "smash factor" to a battle object.
  *

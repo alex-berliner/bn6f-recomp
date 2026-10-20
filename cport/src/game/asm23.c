@@ -8,6 +8,127 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── battleObject_scenarioEffectInputHandler_8089704 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r6; } call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInputHandler_8089704;
+/* register form: generated wrapper: battle_getScenarioEffectStateField_81421D0 has no typed C interface yet */
+static inline call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInputHandler_8089704 call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInputHandler_8089704(void) {
+    GUEST_CALL(battle_getScenarioEffectStateField_81421D0);
+    return (call_battle_getScenarioEffectStateField_81421D0_result_battleObject_scenarioEffectInputHandler_8089704){ R0, R4, R5, R6 };
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7; bool z, n; } call_battle_checkScenarioEffectActive_8142190_result;
+/* register form: generated wrapper: battle_checkScenarioEffectActive_8142190 has no typed C interface yet */
+static inline call_battle_checkScenarioEffectActive_8142190_result call_battle_checkScenarioEffectActive_8142190(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_checkScenarioEffectActive_8142190);
+    return (call_battle_checkScenarioEffectActive_8142190_result){ R0, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4; bool z, n; } call_sub_8142A84_result;
+/* register form: generated wrapper: sub_8142A84 has no typed C interface yet */
+static inline call_sub_8142A84_result call_sub_8142A84(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_8142A84);
+    return (call_sub_8142A84_result){ R2, R3, R4, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_battleObject_scenarioEffectInputHandler_8089704;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_scenarioEffectInputHandler_8089704 call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_scenarioEffectInputHandler_8089704){ R1, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+/* register form: generated wrapper: e_setScenarioEffectStateB has no typed C interface yet */
+static inline void call_e_setScenarioEffectStateB(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(e_setScenarioEffectStateB);
+}
+
+/* Handle one frame of the scenario-effect selection input during battle.
+ *
+ * Reads the joypad held-button word (offset +2) and shoulder word (offset +4) from
+ * the toolkit's joypad pointer.  Dispatches:
+ *   A (0x1):  attempt to advance the effect sub-state; on failure play CANT_JACK_IN,
+ *             on success play SELECT; sub_8142A84 gates whether the advance is allowed.
+ *   B (0x2):  play UNSELECT.
+ *   L (0x40): play 0x66, cycle the effect state backward (0→3 wrap).
+ *   R (0x80): play UNK_66, cycle the effect state forward (3→0 wrap).
+ *
+ * Returns an action code: 0 = nothing / blocked, 1 = shoulder cycled,
+ * 2 = A advanced, 3 = B unselected.  The caller tests Z on the return. */
+static u32 handle_scenario_effect_input(u32 toolkit, u32 r2) {
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+    u16 held   = LD16(joypad + 2);
+
+    /* A button */
+    if (held & 1) {
+        u32 state = call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInputHandler_8089704().r0;
+        call_battle_checkScenarioEffectActive_8142190_result act =
+            call_battle_checkScenarioEffectActive_8142190(state);
+
+        if (act.z) {
+            /* No active effect to jack into */
+            call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(SOUND_CANT_JACK_IN, r2);
+            return 0;
+        }
+
+        call_sub_8142A84_result gate = call_sub_8142A84(act.r0);
+        if (gate.z) {
+            /* Advance not allowed this frame */
+            return 0;
+        }
+
+        call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(SOUND_SELECT_67, gate.r2);
+        return 2;
+    }
+
+    /* B button */
+    if (held & 2) {
+        call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(SOUND_UNSELECT_68, r2);
+        return 3;
+    }
+
+    /* Shoulder buttons (separate joypad word at offset +4) */
+    u16 shoulder = LD16(joypad + 4);
+
+    if (shoulder & 0x40) {
+        /* L: cycle backward with wrap 0→3 */
+        call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(0x66, r2);
+        u32 cur = call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInputHandler_8089704().r0;
+        s32 dec = (s32)cur - 1;
+        if (dec < 0)
+            dec = 3;
+        call_e_setScenarioEffectStateB((u32)dec);
+        return 1;
+    }
+
+    if (shoulder & 0x80) {
+        /* R: cycle forward with wrap 3→0 */
+        call_PlaySoundEffect_battleObject_scenarioEffectInputHandler_8089704(SOUND_UNK_66, r2);
+        u32 cur = call_battle_getScenarioEffectStateField_81421D0_battleObject_scenarioEffectInputHandler_8089704().r0;
+        u32 inc = cur + 1;
+        if ((s32)inc >= 4)
+            inc = 0;
+        call_e_setScenarioEffectStateB(inc);
+        return 1;
+    }
+
+    return 0;
+}
+
+/* battleObject_scenarioEffectInputHandler_8089704
+ * (r2 = sound param, r10 = toolkit ptr, lr = return addr) -> r0, nz
+ *  r2 r3 r5 r7 r10 outputs are left by callee wrappers. */
+Next battleObject_scenarioEffectInputHandler_8089704(void) {
+    R0 = handle_scenario_effect_input(R10, R2);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_startChatScriptAtScenarioState2_8089792 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_sub_81421D0_result;

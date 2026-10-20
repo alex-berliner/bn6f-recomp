@@ -125,6 +125,198 @@ Next t3_0x1c_80C7C18(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_panelShaker_init_80C7C3C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_panelShaker_init_80C7C3C call_sprite_load_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_panelShaker_init_80C7C3C){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_panelShaker_init_80C7C3C call_sprite_loadAnimationData_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_panelShaker_init_80C7C3C){ R1, R2, R4, R5 };
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_panelShaker_init_80C7C3C call_sprite_setPalette_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_panelShaker_init_80C7C3C){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_panelShaker_init_80C7C3C call_object_getFlip_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_panelShaker_init_80C7C3C){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r0, r4; } call_object_createCollisionData_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_createCollisionData has no typed C interface yet */
+static inline call_object_createCollisionData_result_battleObject_panelShaker_init_80C7C3C call_object_createCollisionData_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_createCollisionData);
+    return (call_object_createCollisionData_result_battleObject_panelShaker_init_80C7C3C){ R0, R4 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battleObject_panelShaker_init_80C7C3C call_object_freeMemory_battleObject_panelShaker_init_80C7C3C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battleObject_panelShaker_init_80C7C3C){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r4, r6, r7; } call_object_setupCollisionData_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_setupCollisionData has no typed C interface yet */
+static inline call_object_setupCollisionData_result_battleObject_panelShaker_init_80C7C3C call_object_setupCollisionData_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_setupCollisionData);
+    return (call_object_setupCollisionData_result_battleObject_panelShaker_init_80C7C3C){ R1, R2, R4, R6, R7 };
+}
+
+/* register form: generated wrapper: object_setCollisionStatusEffect1 has no typed C interface yet */
+static inline void call_object_setCollisionStatusEffect1(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionStatusEffect1);
+}
+
+typedef struct { u32 r3; } call_object_setCollisionHitEffect_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_setCollisionHitEffect has no typed C interface yet */
+static inline call_object_setCollisionHitEffect_result_battleObject_panelShaker_init_80C7C3C call_object_setCollisionHitEffect_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionHitEffect);
+    return (call_object_setCollisionHitEffect_result_battleObject_panelShaker_init_80C7C3C){ R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8; } call_object_presentCollisionData_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_panelShaker_init_80C7C3C call_object_presentCollisionData_battleObject_panelShaker_init_80C7C3C(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_panelShaker_init_80C7C3C){ R1, R2, R3, R4, R5, R6, R7, R8 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_battleObject_panelShaker_init_80C7C3C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_panelShaker_init_80C7C3C call_PlaySoundEffect_battleObject_panelShaker_init_80C7C3C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_panelShaker_init_80C7C3C){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initialize a panel-shaker battle object: position, sprite, flags, animation,
+ * collision box, and state. Returns nothing; the object pointer and r8/r10
+ * are preserved through all callee interactions. */
+static void panelShaker_init(u32 object, u32 r8_val, u32 r10_val) {
+    /* r10 is implicitly available to callees via the preserved register. */
+    (void)r10_val;
+
+    call_object_setCoordinatesFromPanels_battleObject_panelShaker_init_80C7C3C(object);
+
+    /* Zero depth. */
+    ST16(object + oBattleObject_Z16, 0);
+
+    /* Load 128×20×20 sprite and disable shadow. */
+    call_sprite_load_battleObject_panelShaker_init_80C7C3C(0x80, 0x14, 0x14, object);
+    call_sprite_noShadow_battleObject_panelShaker_init_80C7C3C(object);
+
+    /* Set flag bit 2 on the object header. */
+    ST8(object + oObjectHeader_Flags, LD8(object + oObjectHeader_Flags) | 2);
+
+    /* Reset animation index, load first animation, palette 0. */
+    ST8(object + oBattleObject_CurAnim, 0);
+    ST8(object + oBattleObject_CurAnimCopy, 0);
+    call_sprite_setAnimation_battleObject_panelShaker_init_80C7C3C(0, object);
+    call_sprite_loadAnimationData_battleObject_panelShaker_init_80C7C3C(object);
+    call_sprite_setPalette_battleObject_panelShaker_init_80C7C3C(0, object);
+
+    /* Mirror the object's flip state onto the sprite. */
+    call_sprite_setFlip_battleObject_panelShaker_init_80C7C3C(call_object_getFlip_battleObject_panelShaker_init_80C7C3C(object).r0, object);
+
+    /* Allocate collision rectangle; abort if allocation fails. */
+    call_object_createCollisionData_result_battleObject_panelShaker_init_80C7C3C coll = call_object_createCollisionData_battleObject_panelShaker_init_80C7C3C(object);
+    if (coll.r0 == 0) {
+        call_object_freeMemory_battleObject_panelShaker_init_80C7C3C(object);
+        return;
+    }
+
+    /* Set collision box: wider (0xa) when Param1 == 1, narrower (4) otherwise. */
+    u8 param1 = LD8(object + oBattleObject_Param1);
+    u32 box_r1;
+    if (param1 == 1) {
+        box_r1 = call_object_setupCollisionData_battleObject_panelShaker_init_80C7C3C(coll.r0, 0xa, 5, 3, object).r1;
+        call_object_setCollisionStatusEffect1(0x10, object);
+    } else {
+        box_r1 = call_object_setupCollisionData_battleObject_panelShaker_init_80C7C3C(coll.r0, 4, 5, 3, object).r1;
+    }
+
+    call_object_setCollisionHitEffect_battleObject_panelShaker_init_80C7C3C(3, object);
+
+    /* Register collision box with the battle field. */
+    call_object_presentCollisionData_result_battleObject_panelShaker_init_80C7C3C pres =
+        call_object_presentCollisionData_battleObject_panelShaker_init_80C7C3C(box_r1, object, r8_val);
+
+    /* Play sound effect 0x12E (0x2F + 0xFF). */
+    call_PlaySoundEffect_battleObject_panelShaker_init_80C7C3C(0x2f + 0xff, pres.r2);
+
+    /* Advance the object to its update phase. */
+    ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+}
+
+/* battleObject_panelShaker_init_80C7C3C(r5 = object, r8, r10) -> r5 r8 r10 (preserved) */
+Next battleObject_panelShaker_init_80C7C3C(void) {
+    panelShaker_init(R5, R8, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── spawnThunderboltObject_80C7D50 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6, r7; } call_object_spawnType3_result_spawnThunderboltObject_80C7D50;
@@ -961,6 +1153,99 @@ Next battle_runObjects_80C8368(void) {
             GUEST_CALL(sub_80E1B3C);
         }
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_hitSelfAndFrontPanel ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r7, r10; } call_PlaySoundEffect_result_battle_hitSelfAndFrontPanel;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battle_hitSelfAndFrontPanel call_PlaySoundEffect_battle_hitSelfAndFrontPanel(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battle_hitSelfAndFrontPanel){ R5, R7, R10 };
+}
+
+typedef struct { u32 r5; } call_sub_80C8806_result;
+/* register form: generated wrapper: sub_80C8806 has no typed C interface yet */
+static inline call_sub_80C8806_result call_sub_80C8806(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_80C8806);
+    return (call_sub_80C8806_result){ R5 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battle_hitSelfAndFrontPanel;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battle_hitSelfAndFrontPanel call_object_getFrontDirection_battle_hitSelfAndFrontPanel(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battle_hitSelfAndFrontPanel){ R0 };
+}
+
+typedef struct { u32 r0, r2, r3; bool c, v; } call_object_getPanelParameters_result_battle_hitSelfAndFrontPanel;
+/* register form: generated wrapper: object_getPanelParameters has no typed C interface yet */
+static inline call_object_getPanelParameters_result_battle_hitSelfAndFrontPanel call_object_getPanelParameters_battle_hitSelfAndFrontPanel(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getPanelParameters);
+    return (call_object_getPanelParameters_result_battle_hitSelfAndFrontPanel){ R0, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Play the destroy sound, spawn an outgoing element effect on the object's own
+ * panel, check the panel one step ahead; if it is "solid" (bit 4), spawn an
+ * incoming effect there too.  Finally mark the object DESTROY. */
+static void hit_self_and_front_panel(u32 obj_ptr, u32 sfx_extra) {
+    /* Sound-effect index: 0x1E + 0xFF = 0x11D. */
+    call_PlaySoundEffect_battle_hitSelfAndFrontPanel(0x11D, sfx_extra);
+
+    /* Outgoing effect from the object's own panel (kind = 0x100, i.e. "front"). */
+    u32 panel_x  = LD8(obj_ptr + oBattleObject_PanelX);
+    u32 panel_y  = LD8(obj_ptr + oBattleObject_PanelY);
+    u32 element  = LD8(obj_ptr + oBattleObject_Element);
+    u32 param1   = LD8(obj_ptr + oBattleObject_Param1);
+    u32 disabler = LD32(obj_ptr + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+
+    call_sub_80C8806(panel_x, panel_y, element,
+                     0x100, param1 | 0x100, obj_ptr, disabler);
+
+    /* Determine the panel one step in the facing direction. */
+    u32 dir      = call_object_getFrontDirection_battle_hitSelfAndFrontPanel(obj_ptr).r0;
+    u32 target_x = dir + LD8(obj_ptr + oBattleObject_PanelX);
+    u32 target_y = LD8(obj_ptr + oBattleObject_PanelY);
+
+    /* Query that panel; bit 4 (0x10) means "solid" – spawn an incoming
+     * effect (kind = 0, no 0x100 flag) only when the panel is solid. */
+    if (call_object_getPanelParameters_battle_hitSelfAndFrontPanel(target_x, target_y).r0 & 0x10) {
+        element  = LD8(obj_ptr + oBattleObject_Element);
+        param1   = LD8(obj_ptr + oBattleObject_Param1);
+        disabler = LD32(obj_ptr + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+
+        call_sub_80C8806(target_x, target_y, element,
+                         0, param1, obj_ptr, disabler);
+    }
+
+    /* Transition to DESTROY state. */
+    ST32(obj_ptr + oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+         CUR_STATE_DESTROY);
+}
+
+/* battle_hitSelfAndFrontPanel(r2 = sfx extra, r5 = object ptr)
+ * -> preserves r4, r5, r6, r7, r10 */
+Next battle_hitSelfAndFrontPanel(void) {
+    /* register form: call_sub_80C8806 uses r4/r6 as input parameters and the
+     * callee clobbers them; the original preserves them via push/pop at entry/exit. */
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+    hit_self_and_front_panel(R5, R2);
+    R4 = saved_r4;
+    R6 = saved_r6;
     RETURN_TO_CALLER();
 }
 
@@ -4742,6 +5027,159 @@ Next t3_0x51_80CE70C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_initSnakeArm_80CE730 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initSnakeArm_80CE730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r0, r2, r4, r5, r6, r7; bool c, v; } call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: battleObject_initSpriteAndCollision_8011504 has no typed C interface yet */
+static inline call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initSnakeArm_80CE730 call_battleObject_initSpriteAndCollision_8011504_battleObject_initSnakeArm_80CE730(u32 r0, u32 r1, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battleObject_initSpriteAndCollision_8011504);
+    return (call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initSnakeArm_80CE730){ R0, R2, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result_battleObject_initSnakeArm_80CE730 call_spawn_t1_0x0_EffectObject_battleObject_initSnakeArm_80CE730(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result_battleObject_initSnakeArm_80CE730){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battleObject_initSnakeArm_80CE730 call_object_freeMemory_battleObject_initSnakeArm_80CE730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battleObject_initSnakeArm_80CE730){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_setCollisionHitEffect has no typed C interface yet */
+static inline void call_object_setCollisionHitEffect_battleObject_initSnakeArm_80CE730(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionHitEffect);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initSnakeArm_80CE730 call_sprite_setPalette_battleObject_initSnakeArm_80CE730(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initSnakeArm_80CE730){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8; } call_object_presentCollisionData_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_initSnakeArm_80CE730 call_object_presentCollisionData_battleObject_initSnakeArm_80CE730(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_initSnakeArm_80CE730){ R2, R3, R4, R5, R6, R7, R8 };
+}
+
+typedef struct { u32 r0; bool c, v; } call_object_getFrontDirection_result_battleObject_initSnakeArm_80CE730;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battleObject_initSnakeArm_80CE730 call_object_getFrontDirection_battleObject_initSnakeArm_80CE730(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battleObject_initSnakeArm_80CE730){ R0, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initialize the Snake Arm battle object:
+ * 1. set coordinates from panels
+ * 2. run sprite/collision init
+ * 3a. if sprite init returns 0, spawn the hit-effect, free the object, and exit
+ * 3b. otherwise, mark the header flags, set the hit-effect and palette,
+ *     present collision data, compute a directional X-velocity, and
+ *     switch to CUR_STATE_UPDATE
+ * Outputs: r5 (possibly updated through the call chain), r8 (only updated
+ *          in path 3b, via presentCollisionData). */
+
+typedef struct { u32 r5; u32 r8; } initSnakeArm_result;
+
+static initSnakeArm_result initSnakeArm(u32 r5, u32 r6, u32 r7, u32 r8) {
+    initSnakeArm_result ret;
+
+    /* Position the object from its panel data */
+    call_object_setCoordinatesFromPanels_battleObject_initSnakeArm_80CE730(r5);
+
+    /* Sprite/collision init (returns a status in r0; 0 means failure) */
+    call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initSnakeArm_80CE730 initRes =
+        call_battleObject_initSpriteAndCollision_8011504_battleObject_initSnakeArm_80CE730(0x70402, 0x4050300, r5, r6, r7);
+    r5 = initRes.r5;
+
+    if (initRes.r0 == 0) {
+        /* Failure path: spawn the hit-effect from the parameter block at r5+0x34,
+         * then release the object's memory. */
+        u32 base  = r5 + 0x34;
+        u32 effX  = LD32(base);
+        u32 effY  = LD32(base + 4);
+        u32 effZ  = LD32(base + 8) + 0x100000;  /* Z-offset bump */
+
+        call_spawn_t1_0x0_EffectObject_result_battleObject_initSnakeArm_80CE730 spawnRes =
+            call_spawn_t1_0x0_EffectObject_battleObject_initSnakeArm_80CE730(effX, effY, effZ, 0x14);
+        r5 = spawnRes.r5;
+
+        call_object_freeMemory_result_battleObject_initSnakeArm_80CE730 freeRes = call_object_freeMemory_battleObject_initSnakeArm_80CE730(r5);
+        r5 = freeRes.r5;
+
+        ret.r5 = r5;
+        ret.r8 = r8;
+        return ret;
+    }
+
+    /* Normal hit path: mark the header as having collided */
+    {
+        u8 flags = (u8)LD8(r5 + oObjectHeader_Flags);
+        ST8(r5 + oObjectHeader_Flags, (u8)(flags | 2));
+    }
+
+    call_object_setCollisionHitEffect_battleObject_initSnakeArm_80CE730(2, r5);
+    call_sprite_setPalette_battleObject_initSnakeArm_80CE730(0, r5);
+
+    /* Present collision (r1 = 2 carried through from the flag OR above) */
+    call_object_presentCollisionData_result_battleObject_initSnakeArm_80CE730 collRes =
+        call_object_presentCollisionData_battleObject_initSnakeArm_80CE730(2, r5, r8);
+    r5 = collRes.r5;
+    r8 = collRes.r8;
+
+    /* Directional X-velocity: front direction * ExtraVars scalar */
+    call_object_getFrontDirection_result_battleObject_initSnakeArm_80CE730 dirRes = call_object_getFrontDirection_battleObject_initSnakeArm_80CE730(r5);
+    {
+        u32 extra = LD32(r5 + oBattleObject_ExtraVars);
+        ST32(r5 + oBattleObject_XVelocity, dirRes.r0 * extra);
+    }
+
+    /* Switch the object to its per-frame update state */
+    ST8(r5 + oBattleObject_CurState, CUR_STATE_UPDATE);
+
+    ret.r5 = r5;
+    ret.r8 = r8;
+    return ret;
+}
+
+Next battleObject_initSnakeArm_80CE730(void) {
+    initSnakeArm_result res = initSnakeArm(R5, R6, R7, R8);
+    R5 = res.r5;
+    R8 = res.r8;
+    RETURN_TO_CALLER();
+}
+
 /* ── t3_0x5d_80D00A0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSpritePaused_result_t3_0x5d_80D00A0;
@@ -5289,6 +5727,199 @@ static u32 destroy_object_with_panel_release(u32 object) {
 /* battle_destroyObjectReleasePanel_80D035C(r5 = object) -> r5 */
 Next battle_destroyObjectReleasePanel_80D035C(void) {
     R5 = destroy_object_with_panel_release(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initSpawnedObject_80D03B8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_object_setCoordinatesFromPanels_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline call_object_setCoordinatesFromPanels_result_battleObject_initSpawnedObject_80D03B8 call_object_setCoordinatesFromPanels_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    return (call_object_setCoordinatesFromPanels_result_battleObject_initSpawnedObject_80D03B8){ R2 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battleObject_initSpawnedObject_80D03B8 call_object_getFrontDirection_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battleObject_initSpawnedObject_80D03B8){ R0 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initSpawnedObject_80D03B8 call_sprite_load_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initSpawnedObject_80D03B8){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_hasShadow has no typed C interface yet */
+static inline void call_sprite_hasShadow_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_hasShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initSpawnedObject_80D03B8 call_sprite_loadAnimationData_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initSpawnedObject_80D03B8){ R1, R2, R4, R5 };
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initSpawnedObject_80D03B8 call_sprite_setPalette_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initSpawnedObject_80D03B8){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initSpawnedObject_80D03B8 call_object_getFlip_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initSpawnedObject_80D03B8){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r0, r4; } call_object_createCollisionData_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_createCollisionData has no typed C interface yet */
+static inline call_object_createCollisionData_result_battleObject_initSpawnedObject_80D03B8 call_object_createCollisionData_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_createCollisionData);
+    return (call_object_createCollisionData_result_battleObject_initSpawnedObject_80D03B8){ R0, R4 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battleObject_initSpawnedObject_80D03B8 call_object_freeMemory_battleObject_initSpawnedObject_80D03B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battleObject_initSpawnedObject_80D03B8){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r4, r6, r7; } call_object_setupCollisionData_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_setupCollisionData has no typed C interface yet */
+static inline call_object_setupCollisionData_result_battleObject_initSpawnedObject_80D03B8 call_object_setupCollisionData_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_setupCollisionData);
+    return (call_object_setupCollisionData_result_battleObject_initSpawnedObject_80D03B8){ R1, R2, R4, R6, R7 };
+}
+
+typedef struct { u32 r3; } call_object_setCollisionHitEffect_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_setCollisionHitEffect has no typed C interface yet */
+static inline call_object_setCollisionHitEffect_result_battleObject_initSpawnedObject_80D03B8 call_object_setCollisionHitEffect_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionHitEffect);
+    return (call_object_setCollisionHitEffect_result_battleObject_initSpawnedObject_80D03B8){ R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8; } call_object_presentCollisionData_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_initSpawnedObject_80D03B8 call_object_presentCollisionData_battleObject_initSpawnedObject_80D03B8(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_initSpawnedObject_80D03B8){ R1, R2, R3, R4, R5, R6, R7, R8 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_battleObject_initSpawnedObject_80D03B8;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_initSpawnedObject_80D03B8 call_PlaySoundEffect_battleObject_initSpawnedObject_80D03B8(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_initSpawnedObject_80D03B8){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Per-object spawn speed table indexed by Param1 (entries are 32-bit words). */
+/* byte_80D0444: {0x00060000, 0x00068000, 0x00070000, 0x00078000} */
+
+/* Initialize a newly spawned battle object: position, sprite, animation,
+ * collision hitbox, and spawn sound.  Frees the object if collision
+ * allocation fails; otherwise transitions it to CUR_STATE_UPDATE. */
+static void init_spawned_object(u32 obj, u32 r8_val) {
+    /* Derive world coordinates from the panel grid */
+    call_object_setCoordinatesFromPanels_battleObject_initSpawnedObject_80D03B8(obj);
+
+    /* Drop to ground level, then half-tile offset in Y16 and Z16 */
+    ST32(obj + oBattleObject_Z, 0);
+    ST16(obj + oBattleObject_Y16, LD16(obj + oBattleObject_Y16) + 1);
+    ST16(obj + oBattleObject_Z16, LD16(obj + oBattleObject_Z16) + 1);
+
+    /* X velocity = facing direction * table[Param1] */
+    u32 dir = call_object_getFrontDirection_battleObject_initSpawnedObject_80D03B8(obj).r0;
+    u32 param = LD8(obj + oBattleObject_Param1);
+    u32 speed = LD32(A_byte_80D0444 + (param << 2));
+    ST32(obj + oBattleObject_XVelocity, dir * speed);
+
+    /* Load sprite (ID 0x80, cell-size 8, shadow flag 0xE) */
+    call_sprite_load_battleObject_initSpawnedObject_80D03B8(0x80, 8, 0xE, obj);
+    call_sprite_hasShadow_battleObject_initSpawnedObject_80D03B8(obj);
+
+    /* Mark shadow bit (1 << 1) in the header flags */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Set animation slot 0x3F and load its data / palette 0 */
+    ST8(obj + oBattleObject_CurAnim, 0x3F);
+    ST8(obj + oBattleObject_CurAnimCopy, 0x3F);
+    call_sprite_setAnimation_battleObject_initSpawnedObject_80D03B8(0x3F, obj);
+    call_sprite_loadAnimationData_battleObject_initSpawnedObject_80D03B8(obj);
+    call_sprite_setPalette_battleObject_initSpawnedObject_80D03B8(0, obj);
+
+    /* Mirror sprite to match object's facing */
+    call_sprite_setFlip_battleObject_initSpawnedObject_80D03B8(call_object_getFlip_battleObject_initSpawnedObject_80D03B8(obj).r0, obj);
+
+    /* Allocate collision data; bail out if the pool is exhausted */
+    u32 col = call_object_createCollisionData_battleObject_initSpawnedObject_80D03B8(obj).r0;
+    if (!col) {
+        call_object_freeMemory_battleObject_initSpawnedObject_80D03B8(obj);
+        return;
+    }
+
+    /* Configure hitbox axes (4 / 5 / 3) and hit-effect 6, then present it */
+    call_object_setupCollisionData_result_battleObject_initSpawnedObject_80D03B8 setup =
+        call_object_setupCollisionData_battleObject_initSpawnedObject_80D03B8(col, 4, 5, 3, obj);
+    call_object_setCollisionHitEffect_battleObject_initSpawnedObject_80D03B8(6, obj);
+    call_object_presentCollisionData_result_battleObject_initSpawnedObject_80D03B8 present =
+        call_object_presentCollisionData_battleObject_initSpawnedObject_80D03B8(setup.r1, obj, r8_val);
+
+    /* Spawn SFX and enter the per-frame update state */
+    call_PlaySoundEffect_battleObject_initSpawnedObject_80D03B8(0xB3, present.r2);
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+}
+
+/* battleObject_initSpawnedObject_80D03B8(r5 = obj, r8, r10) -> (r5, r8, r10 unchanged) */
+Next battleObject_initSpawnedObject_80D03B8(void) {
+    init_spawned_object(R5, R8);
     RETURN_TO_CALLER();
 }
 
@@ -6257,6 +6888,158 @@ Next t3_0x6e_80D2290(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_initObstacle_80D22B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initObstacle_80D22B0 call_sprite_load_battleObject_initObstacle_80D22B0(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initObstacle_80D22B0){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initObstacle_80D22B0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_loadAnimationData_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initObstacle_80D22B0 call_sprite_loadAnimationData_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initObstacle_80D22B0){ R4, R5 };
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_update_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_initObstacle_80D22B0 call_sprite_update_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_initObstacle_80D22B0){ R2, R4, R5 };
+}
+
+typedef struct { u32 r3; } call_sprite_hasShadow_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: sprite_hasShadow has no typed C interface yet */
+static inline call_sprite_hasShadow_result_battleObject_initObstacle_80D22B0 call_sprite_hasShadow_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_hasShadow);
+    return (call_sprite_hasShadow_result_battleObject_initObstacle_80D22B0){ R3 };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r0, r4; } call_object_createCollisionData_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: object_createCollisionData has no typed C interface yet */
+static inline call_object_createCollisionData_result_battleObject_initObstacle_80D22B0 call_object_createCollisionData_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_createCollisionData);
+    return (call_object_createCollisionData_result_battleObject_initObstacle_80D22B0){ R0, R4 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battleObject_initObstacle_80D22B0 call_object_freeMemory_battleObject_initObstacle_80D22B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battleObject_initObstacle_80D22B0){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r4, r6, r7; } call_object_setupCollisionData_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: object_setupCollisionData has no typed C interface yet */
+static inline call_object_setupCollisionData_result_battleObject_initObstacle_80D22B0 call_object_setupCollisionData_battleObject_initObstacle_80D22B0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_setupCollisionData);
+    return (call_object_setupCollisionData_result_battleObject_initObstacle_80D22B0){ R1, R4, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8; bool c, v; } call_object_presentCollisionData_result_battleObject_initObstacle_80D22B0;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_initObstacle_80D22B0 call_object_presentCollisionData_battleObject_initObstacle_80D22B0(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_initObstacle_80D22B0){ R1, R2, R3, R4, R5, R6, R7, R8, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+struct ObstacleInitResult {
+    u32 r5;
+    u32 r8;
+};
+
+/* Initialize a map obstacle: load its sprite, set stats (500 HP, name 0xCE),
+ * create and present collision data.  Returns updated r5 (object) and r8 (sprite list). */
+static struct ObstacleInitResult battleObject_initObstacle(u32 battleObj, u32 spriteList) {
+    /* Load obstacle sprite tilemap */
+    call_sprite_load_battleObject_initObstacle_80D22B0(0x80, 0x10, 8, battleObj);
+
+    /* Reset animation to frame 0 and initialize display */
+    ST16(battleObj + oBattleObject_CurAnimAndCurAnimCopy, 0);
+    call_sprite_setAnimation_battleObject_initObstacle_80D22B0(0, battleObj);
+    call_sprite_loadAnimationData_battleObject_initObstacle_80D22B0(battleObj);
+    call_sprite_update_battleObject_initObstacle_80D22B0(battleObj);
+    call_sprite_hasShadow_battleObject_initObstacle_80D22B0(battleObj);
+    call_object_setCoordinatesFromPanels_battleObject_initObstacle_80D22B0(battleObj);
+
+    /* Center on depth axis and lock to current panel */
+    ST32(battleObj + oBattleObject_Z, 0);
+    ST16(battleObj + oBattleObject_FuturePanelXY,
+         LD16(battleObj + oBattleObject_PanelXY));
+
+    /* Nudge rendering origin one pixel on Z and Y (tile-edge alignment) */
+    ST16(battleObj + oBattleObject_Z16, LD16(battleObj + oBattleObject_Z16) - 1);
+    ST16(battleObj + oBattleObject_Y16, LD16(battleObj + oBattleObject_Y16) - 1);
+
+    /* Obstacle identity: name 206, HP 500, idle timer 6000 frames */
+    ST16(battleObj + oBattleObject_NameID, 0xCE);
+    ST16(battleObj + oBattleObject_HP, 500);
+    ST16(battleObj + oBattleObject_MaxHP, 500);
+    ST16(battleObj + oBattleObject_Timer, 0x1770);
+
+    /* Allocate collision hitbox */
+    call_object_createCollisionData_result_battleObject_initObstacle_80D22B0 cd = call_object_createCollisionData_battleObject_initObstacle_80D22B0(battleObj);
+    if (cd.r0 == 0) {
+        /* Allocation failed – release the object */
+        call_object_freeMemory_result_battleObject_initObstacle_80D22B0 free = call_object_freeMemory_battleObject_initObstacle_80D22B0(battleObj);
+        return (struct ObstacleInitResult){ free.r5, spriteList };
+    }
+
+    /* Set hitbox geometry: 14 × 15 pixels, solid type */
+    call_object_setupCollisionData_result_battleObject_initObstacle_80D22B0 setup =
+        call_object_setupCollisionData_battleObject_initObstacle_80D22B0(cd.r0, 0xE, 0xF, 3, battleObj);
+
+    /* Register the obstacle's collision with the scene */
+    call_object_presentCollisionData_result_battleObject_initObstacle_80D22B0 present =
+        call_object_presentCollisionData_battleObject_initObstacle_80D22B0(setup.r1, battleObj, spriteList);
+
+    /* Obstacle transitions to its update state */
+    ST8(present.r5 + oBattleObject_CurState, CUR_STATE_UPDATE);
+
+    return (struct ObstacleInitResult){ present.r5, present.r8 };
+}
+
+/* battleObject_initObstacle_80D22B0(r5 = battleObj, r8 = spriteList) -> r5, r8 */
+Next battleObject_initObstacle_80D22B0(void) {
+    struct ObstacleInitResult res = battleObject_initObstacle(R5, R8);
+    R5 = res.r5;
+    R8 = res.r8;
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_runUpdateActionsAndCollisions_80D2320 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_clearFinalPalette has no typed C interface yet */
@@ -6354,6 +7137,48 @@ Next battleObject_runUpdateActionsAndCollisions_80D2320(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_clearActiveOnDeletionState_80D236C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battle_getFlags has no typed C interface yet */
+static inline u32 call_battle_getFlags_battleObject_clearActiveOnDeletionState_80D236C(void) {
+    GUEST_CALL(battle_getFlags);
+    return R0;
+}
+
+/* register form: generated wrapper: nullsub_10 has no typed C interface yet */
+static inline void call_nullsub_10(void) {
+    GUEST_CALL(nullsub_10);
+}
+
+/* Battle object deletion: if the battle is active (flag bit 0 set), clear the object's
+ * "active" bit, set the "inactive" bit, force CurAction = 8, and reset the current phase.
+ * If the battle is not active, run the null notifier and leave everything alone.
+ * Returns the value the original leaves in r1: 2 on the clearing path, 1 otherwise. */
+static u32 clear_active_on_deletion(u32 object) {
+    u32 flags = call_battle_getFlags_battleObject_clearActiveOnDeletionState_80D236C();
+
+    if (!(flags & 1)) {
+        call_nullsub_10();
+        return 1;
+    }
+
+    u8 headerFlags = LD8(object + oObjectHeader_Flags);
+    ST8(object + oObjectHeader_Flags, headerFlags & ~4u);
+
+    headerFlags = LD8(object + oObjectHeader_Flags);
+    ST8(object + oObjectHeader_Flags, headerFlags | 2u);
+
+    ST8(object + oBattleObject_CurAction, 8);
+    ST16(object + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+    return 2;
+}
+
+/* battleObject_clearActiveOnDeletionState_80D236C: r5=object, r10=battle ctx → r1 */
+Next battleObject_clearActiveOnDeletionState_80D236C(void) {
+    R1 = clear_active_on_deletion(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── stub_noOp_80D2398 ── */
 /* stub_noOp_80D2398 is an empty stub: its whole body is "push {lr}; pop {pc}",
  * which simply returns to the caller without touching any state. */
@@ -6404,6 +7229,174 @@ static void dispatch_object_state(u32 obj) {
  * -> r5 r8 r9 r10 r11 r12 left by the chosen handler */
 Next t3_0x6f_80D2460(void) {
     dispatch_object_state(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initAppearOrEntryFromSide_80D2480 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initAppearOrEntryFromSide_80D2480 call_sprite_load_battleObject_initAppearOrEntryFromSide_80D2480(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initAppearOrEntryFromSide_80D2480){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initAppearOrEntryFromSide_80D2480(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initAppearOrEntryFromSide_80D2480 call_sprite_loadAnimationData_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initAppearOrEntryFromSide_80D2480){ R2, R4, R5 };
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_hasShadow_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: sprite_hasShadow has no typed C interface yet */
+static inline call_sprite_hasShadow_result_battleObject_initAppearOrEntryFromSide_80D2480 call_sprite_hasShadow_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_hasShadow);
+    return (call_sprite_hasShadow_result_battleObject_initAppearOrEntryFromSide_80D2480){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initAppearOrEntryFromSide_80D2480 call_object_getFlip_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initAppearOrEntryFromSide_80D2480){ R0 };
+}
+
+typedef struct { u32 r3; } call_sprite_setFlip_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battleObject_initAppearOrEntryFromSide_80D2480 call_sprite_setFlip_battleObject_initAppearOrEntryFromSide_80D2480(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battleObject_initAppearOrEntryFromSide_80D2480){ R3 };
+}
+
+typedef struct { u32 r2; } call_object_setCoordinatesFromPanels_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline call_object_setCoordinatesFromPanels_result_battleObject_initAppearOrEntryFromSide_80D2480 call_object_setCoordinatesFromPanels_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+    return (call_object_setCoordinatesFromPanels_result_battleObject_initAppearOrEntryFromSide_80D2480){ R2 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battleObject_initAppearOrEntryFromSide_80D2480 call_object_getFrontDirection_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battleObject_initAppearOrEntryFromSide_80D2480){ R0 };
+}
+
+typedef struct { u32 r1, r2, r5, r6; } call_object_setPanelsFromCoordinates_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result_battleObject_initAppearOrEntryFromSide_80D2480 call_object_setPanelsFromCoordinates_battleObject_initAppearOrEntryFromSide_80D2480(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result_battleObject_initAppearOrEntryFromSide_80D2480){ R1, R2, R5, R6 };
+}
+
+typedef struct { u32 r3; } call_sprite_setPalette_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initAppearOrEntryFromSide_80D2480 call_sprite_setPalette_battleObject_initAppearOrEntryFromSide_80D2480(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initAppearOrEntryFromSide_80D2480){ R3 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_battleObject_initAppearOrEntryFromSide_80D2480;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_initAppearOrEntryFromSide_80D2480 call_PlaySoundEffect_battleObject_initAppearOrEntryFromSide_80D2480(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_initAppearOrEntryFromSide_80D2480){ R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_sub_80D24F0_result;
+/* register form: generated wrapper: battle_runObjectAction_80D24F0 has no typed C interface yet */
+static inline call_sub_80D24F0_result call_sub_80D24F0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_runObjectAction_80D24F0);
+    return (call_sub_80D24F0_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+static call_sub_80D24F0_result init_appear_or_entry_from_side(u32 r5) {
+    /* Mark object as appearing / entering from side */
+    ST8(r5 + oObjectHeader_Flags, LD8(r5 + oObjectHeader_Flags) | 2);
+
+    /* Load sprite appearance sheet (width 0x80, height 0xC, palette bank 0x44) */
+    r5 = call_sprite_load_battleObject_initAppearOrEntryFromSide_80D2480(0x80, 0xC, 0x44, r5).r5;
+
+    /* Start at animation frame 0 */
+    ST16(r5 + oBattleObject_CurAnimAndCurAnimCopy, 0);
+    call_sprite_setAnimation_battleObject_initAppearOrEntryFromSide_80D2480(0, r5);
+
+    /* Upload animation data */
+    r5 = call_sprite_loadAnimationData_battleObject_initAppearOrEntryFromSide_80D2480(r5).r5;
+
+    /* Query shadow attribute (result unused) */
+    call_sprite_hasShadow_battleObject_initAppearOrEntryFromSide_80D2480(r5);
+
+    /* Mirror the object horizontally for the side-entry pose */
+    u32 flip = call_object_getFlip_battleObject_initAppearOrEntryFromSide_80D2480(r5).r0;
+    call_sprite_setFlip_battleObject_initAppearOrEntryFromSide_80D2480(flip ^ 1, r5);
+
+    /* Convert grid panel positions to pixel coordinates */
+    call_object_setCoordinatesFromPanels_battleObject_initAppearOrEntryFromSide_80D2480(r5);
+
+    /* Shift X by 64 pixels per front-direction step (entry offset) */
+    s32 dir = (s32)call_object_getFrontDirection_battleObject_initAppearOrEntryFromSide_80D2480(r5).r0;
+    ST16(r5 + oBattleObject_X16,
+         (u16)(LD16(r5 + oBattleObject_X16) + (u32)(0x40 * dir)));
+
+    /* Initial horizontal velocity: opposite of facing, in 16.16 sub-pixel units */
+    ST32(r5 + oBattleObject_XVelocity, (s32)(-dir) * 0x80000);
+
+    /* Recompute panel grid from the adjusted coordinates */
+    call_object_setPanelsFromCoordinates_result_battleObject_initAppearOrEntryFromSide_80D2480 panels = call_object_setPanelsFromCoordinates_battleObject_initAppearOrEntryFromSide_80D2480(r5);
+    r5 = panels.r5;
+
+    /* Appearance animation lasts 8 frames */
+    ST16(r5 + oBattleObject_Timer, 8);
+
+    /* Palette slot 1 when Param1 is non-zero (alternate palette), else slot 0 */
+    u32 palette = LD8(r5 + oBattleObject_Param1) ? 1 : 0;
+    call_sprite_setPalette_battleObject_initAppearOrEntryFromSide_80D2480(palette, r5);
+
+    /* Play the appearance sound effect */
+    r5 = call_PlaySoundEffect_battleObject_initAppearOrEntryFromSide_80D2480(0xB0, panels.r2).r5;
+
+    /* Transition to the update phase */
+    ST32(r5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    /* Hand off to the shared state-transition routine */
+    return call_sub_80D24F0(r5);
+}
+
+/* battleObject_initAppearOrEntryFromSide_80D2480(r5) -> r5 r8 r9 r10 r11 r12 */
+Next battleObject_initAppearOrEntryFromSide_80D2480(void) {
+    call_sub_80D24F0_result out = init_appear_or_entry_from_side(R5);
+    R5  = out.r5;
+    R8  = out.r8;
+    R9  = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }
 
@@ -6788,6 +7781,151 @@ static u32 destroy_battle_object_sub_80D4464(u32 object) {
 /* battle_destroyObjectClearExtraVars_80D4464(r5 = object, lr = return address) -> r5 (unchanged) */
 Next battle_destroyObjectClearExtraVars_80D4464(void) {
     R5 = destroy_battle_object_sub_80D4464(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initActorStateT4_80D4472 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initActorStateT4_80D4472(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r0, r1, r2, r4, r5, r6, r7; bool c, v; } call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: battleObject_initSpriteAndCollision_8011504 has no typed C interface yet */
+static inline call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initActorStateT4_80D4472 call_battleObject_initSpriteAndCollision_8011504_battleObject_initActorStateT4_80D4472(u32 r0, u32 r1, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battleObject_initSpriteAndCollision_8011504);
+    return (call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initActorStateT4_80D4472){ R0, R1, R2, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result_battleObject_initActorStateT4_80D4472 call_spawn_t1_0x0_EffectObject_battleObject_initActorStateT4_80D4472(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result_battleObject_initActorStateT4_80D4472){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battleObject_initActorStateT4_80D4472 call_object_freeMemory_battleObject_initActorStateT4_80D4472(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battleObject_initActorStateT4_80D4472){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_setCollisionHitEffect has no typed C interface yet */
+static inline void call_object_setCollisionHitEffect_battleObject_initActorStateT4_80D4472(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionHitEffect);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initActorStateT4_80D4472 call_sprite_setPalette_battleObject_initActorStateT4_80D4472(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initActorStateT4_80D4472){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r8; } call_object_presentCollisionData_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_initActorStateT4_80D4472 call_object_presentCollisionData_battleObject_initActorStateT4_80D4472(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_initActorStateT4_80D4472){ R4, R5, R6, R7, R8 };
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_object_reservePanel_result_battleObject_initActorStateT4_80D4472;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_battleObject_initActorStateT4_80D4472 call_object_reservePanel_battleObject_initActorStateT4_80D4472(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_battleObject_initActorStateT4_80D4472){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Type-4 actor initialization: create sprite/collision, configure HP, palette,
+ * collision data, panel reservation, and transition to the update state.
+ * On failure the object is freed and an effect is spawned instead. */
+
+static void initActorStateT4(u32 obj, u32 panelX, u32 panelY, u32 r8) {
+    call_object_setCoordinatesFromPanels_battleObject_initActorStateT4_80D4472(obj);
+
+    call_battleObject_initSpriteAndCollision_8011504_result_battleObject_initActorStateT4_80D4472 sprite =
+        call_battleObject_initSpriteAndCollision_8011504_battleObject_initActorStateT4_80D4472(0x41F, 0xC0D0300,
+                                                         obj, panelX, panelY);
+
+    /* Creation failed (null returned): spawn effect then free the object. */
+    if (sprite.r0 == 0) {
+        u32 params = obj + 0x34;
+        u32 fxArg1 = LD32(params);
+        u32 fxArg2 = LD32(params + 4);
+        u32 fxArg3 = LD32(params + 8) + 0x00100000;   /* shift 0x10 by 16 */
+
+        call_spawn_t1_0x0_EffectObject_result_battleObject_initActorStateT4_80D4472 fx =
+            call_spawn_t1_0x0_EffectObject_battleObject_initActorStateT4_80D4472(fxArg1, fxArg2, fxArg3, 0x14);
+
+        call_object_freeMemory_battleObject_initActorStateT4_80D4472(fx.r5);
+        return;
+    }
+
+    obj = sprite.r5;
+
+    /* Successful creation: configure hit effect, HP, animation, palette. */
+    call_object_setCollisionHitEffect_battleObject_initActorStateT4_80D4472(0xA, obj);
+
+    ST16(obj + oBattleObject_HP, 1);
+    ST16(obj + oBattleObject_MaxHP, 1);
+
+    u32 param1 = LD8(obj + oBattleObject_Param1);
+    u32 palette;
+    u32 collisionParam;
+    if (param1 == 4) {
+        ST8(obj + oBattleObject_CurAnim, 4);
+        palette = 0;
+        collisionParam = 4;
+    } else {
+        palette = param1;
+        collisionParam = sprite.r1;
+    }
+
+    call_sprite_setPalette_battleObject_initActorStateT4_80D4472(palette, obj);
+
+    call_object_presentCollisionData_result_battleObject_initActorStateT4_80D4472 coll =
+        call_object_presentCollisionData_battleObject_initActorStateT4_80D4472(collisionParam, obj, r8);
+    obj = coll.r5;
+
+    /* ExtraVars[0] self-references the object. */
+    ST32(LD32(obj + oBattleObject_ExtraVars), obj);
+
+    /* Reserve the panel this actor occupies. */
+    u32 px = LD8(obj + oBattleObject_PanelX);
+    u32 py = LD8(obj + oBattleObject_PanelY);
+    call_object_reservePanel_battleObject_initActorStateT4_80D4472(px, py, obj);
+
+    /* Transition to the update state with a 30-frame timer. */
+    ST16(obj + oBattleObject_Timer, 0x1E);
+    ST8(obj + oBattleObject_CurState, CUR_STATE_UPDATE);
+}
+
+/* battleObject_initActorStateT4_80D4472(r5=obj, r6=panelX, r7=panelY, r8, r10) */
+Next battleObject_initActorStateT4_80D4472(void) {
+    initActorStateT4(R5, R6, R7, R8);
     RETURN_TO_CALLER();
 }
 
@@ -7496,6 +8634,77 @@ Next sub_80D85F0(void) {
     }
 
     R0 = object;
+    RETURN_TO_CALLER();
+}
+
+/* ── airspinObject_80D88E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isTimeStop_result_airspinObject_80D88E0;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result_airspinObject_80D88E0 call_battle_isTimeStop_airspinObject_80D88E0(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result_airspinObject_80D88E0){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result_airspinObject_80D88E0;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result_airspinObject_80D88E0 call_object_updateSprite_airspinObject_80D88E0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result_airspinObject_80D88E0){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+struct airspin_out {
+    u32 r5, r8, r9, r10, r11, r12;
+};
+
+/* Helper: jump-table dispatch (mov lr, pc; bx rN).  The tool marks this
+ * register-form helper automatically because of GUEST_CALL_ADDR. */
+static void airspin_state_dispatch(u32 addr, u32 r4, u32 r5, u32 r6,
+                                   u32 r7, u32 r8, u32 r10,
+                                   struct airspin_out *out) { /* register form: calls through a guest code address (noted by the tool) */
+    R4 = r4; R5 = r5; R6 = r6; R7 = r7; R8 = r8; R10 = r10;
+    GUEST_CALL_ADDR(addr);
+    out->r5  = R5;
+    out->r8  = R8;
+    out->r9  = R9;
+    out->r10 = R10;
+    out->r11 = R11;
+    out->r12 = R12;
+}
+
+/* AirSpin object tick: invoke the state handler (init / update / destroy)
+ * via the jump table, then refresh the sprite if time-stop is inactive. */
+static struct airspin_out airspin_update(u32 r4, u32 r5, u32 r6,
+                                         u32 r7, u32 r8, u32 r10) {
+    struct airspin_out out;
+
+    /* Look up handler from jump table indexed by the object's current state */
+    u32 state = LD8(r5 + oBattleObject_CurState);
+    u32 handler_addr = LD32(A_off_80D88FC + state);
+
+    /* Call state handler through the jump table */
+    airspin_state_dispatch(handler_addr, r4, r5, r6, r7, r8, r10, &out);
+
+    /* If time is not stopped, update the object's sprite (uses current r5) */
+    call_battle_isTimeStop_result_airspinObject_80D88E0 ts = call_battle_isTimeStop_airspinObject_80D88E0();
+    if (ts.z) {
+        call_object_updateSprite_result_airspinObject_80D88E0 sprite = call_object_updateSprite_airspinObject_80D88E0(out.r5);
+        out.r5 = sprite.r5;
+    }
+
+    return out;
+}
+
+/* airspinObject_80D88E0(r4, r5, r6, r7, r8, r10) -> r5, r8, r9, r10, r11, r12 */
+Next airspinObject_80D88E0(void) {
+    struct airspin_out out = airspin_update(R4, R5, R6, R7, R8, R10);
+    R5  = out.r5;
+    R8  = out.r8;
+    R9  = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }
 

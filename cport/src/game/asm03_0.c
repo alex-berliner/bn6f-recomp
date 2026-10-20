@@ -65,6 +65,79 @@ Next battle_beastJumpLockOn_8026554(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_checkFacingOffsets ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8026450_result_battle_checkFacingOffsets;
+/* register form: generated wrapper: sub_8026450 has no typed C interface yet */
+static inline call_sub_8026450_result_battle_checkFacingOffsets call_sub_8026450_battle_checkFacingOffsets(u32 r0, u32 r1, u32 r2, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(sub_8026450);
+    return (call_sub_8026450_result_battle_checkFacingOffsets){ R0, R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battle_checkFacingOffsets;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battle_checkFacingOffsets call_object_getFrontDirection_battle_checkFacingOffsets(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battle_checkFacingOffsets){ R0 };
+}
+
+/* Scan the facing-offset table (byte_8026735, terminated by 0x7F):
+ * for each signed offset, compute front_direction × offset + base and
+ * test it against the target position via sub_8026450.
+ * Returns the first non-zero hit, or 0 when the table is exhausted.
+ * Also returns r1-r3 as left by the final sub_8026450 call. */
+struct facing_offsets_result {
+    u32 r0, r1, r2, r3;
+};
+
+static struct facing_offsets_result scan_facing_offsets(u32 target, u32 objPtr, u32 base, u32 dir) {
+    struct facing_offsets_result out;
+    u32 candidate = base;
+    u32 table = A_byte_8026735;
+
+    for (;;) {
+        call_sub_8026450_result_battle_checkFacingOffsets res = call_sub_8026450_battle_checkFacingOffsets(candidate, dir, target, objPtr, base, dir);
+        if (res.r0 != 0) {
+            out.r0 = res.r0;
+            out.r1 = res.r1;
+            out.r2 = res.r2;
+            out.r3 = res.r3;
+            return out;
+        }
+
+        u32 front = call_object_getFrontDirection_battle_checkFacingOffsets(objPtr).r0;
+        s32 off = (s32)LDS8(table);
+        if (off == 0x7f) {
+            /* table terminator reached */
+            out.r0 = 0;
+            out.r1 = (u32)off;   /* r1 = 0x7f from the ldrsb */
+            out.r2 = res.r2;
+            out.r3 = res.r3;
+            return out;
+        }
+        table += 1;
+        candidate = front * (u32)off + base;
+    }
+}
+
+/* battle_checkFacingOffsets(r0 = target, r5 = object ptr, r6 = base, r7 = dir) -> r0 r1 r2 r3; nz c v */
+Next battle_checkFacingOffsets(void) {
+    struct facing_offsets_result r = scan_facing_offsets(R0, R5, R6, R7);
+    R0 = r.r0;
+    R1 = r.r1;
+    R2 = r.r2;
+    R3 = r.r3;
+    SET_FLAGS_CMP(R0, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_probePanelChainRows_8026622 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8026450_result;
