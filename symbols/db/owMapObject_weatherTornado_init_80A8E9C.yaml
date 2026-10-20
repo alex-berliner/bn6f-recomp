@@ -1,35 +1,74 @@
 name: owMapObject_weatherTornado_init_80A8E9C
 address: '0x080A8E9C'
 kind: function
-previous_names:
-- sub_80A8E9C
-status: probable
-summary: 'Tornado state 0 (init): sprite 0x80/0x1C/0x6C, animation 0x18, home position; restores a saved
-  state or frees itself if already caught, then enters state 4.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
-details: 'Loads the home from owMapObject_weatherTornado_loadHome_80A90B0. With flag 0xBFB set: caught
-  (owMapObject_weatherTornado_isCaught_80A91D4) -> state 0xC and free; else restore the saved state (owMapObject_weatherTornado_restoreState_80A9268).
-  Without it: mode +9 = 0, +0x28 = 0, move countdown +0x24 = 1. Then the parameters (owMapObject_weatherTornado_loadParams_80A908C),
-  state 4, and one active update.'
+status: confirmed
+summary: 'Initializes the weather-tornado overworld map object: loads its sprite/animation, tints it for the current
+  map layer, positions it, then decides dormant vs. wandering vs. already-caught behavior based on event flag BFB
+  and the player''s capture history.'
+interface: void owMapObject_weatherTornado_init(u8 *obj /*r5*/, u8 *sibling /*r6*/)
+details: "Sets obj[0] state byte to 3 (INIT).\nLoads tornado sprite: sheet 0x80, frame 0x1C, cell 0x6C via sprite_load;\n\
+  selects animation 0x18; loads animation sequence data; disables shadow.\nApplies the current overworld map-layer\
+  \ palette tint by passing obj+0xC\n(layer-offset field) to applyLayerEffectToOWObject_8035694, then sets the\n\
+  returned OAM priority on the sprite.\nCalls owMapObject_weatherTornado_loadHome_80A90B0 to restore the tornado's\n\
+  saved map coordinates.\nBranch on event flag BFB (page 0x0B, offset 0xFB):\n  Flag NOT set (dormant): zeros obj+0x28\
+  \ (timer), zeros obj+9 (sub-state),\n  sets obj+0x24 to 1 (dormant marker).\n  Flag IS set: calls owMapObject_weatherTornado_isCaught_80A91D4.\n\
+  \    Caught: sets obj+8 to 0xC (CAUGHT sub-state), calls sub_80A8FFC, returns.\n    Not caught: calls owMapObject_weatherTornado_restoreState_80A9268\
+  \ to\n      reload the last wandering position/state.\nCommon tail (dormant or not-caught): loads wandering parameters\
+  \ via\nowMapObject_weatherTornado_loadParams_80A908C, sets obj+8 to 4 (ACTIVE),\ncalls owMapObject_weatherTornado_active_80A8F08\
+  \ to begin movement.\nField offsets touched on obj: [0]=state, [8]=phase/sub-state, [9]=secondary\nsub-state,\
+  \ [0xC]=map-layer offset, [0x24]=dormant flag, [0x28]=wander timer.\nClobbers r0, r1, lr, and condition flags;\
+  \ writes through r2-r12 via callees.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_init_80A8E9C:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c owMapObject_weatherTornado_init_80A8E9C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_init_80A8E9C
+
+    ./wf verify --function owMapObject_weatherTornado_init_80A8E9C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_init_80A8E9C
+
+    ./wf verify --function owMapObject_weatherTornado_init_80A8E9C --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 89 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_init_80A8E9C
+
+    ./wf verify --function owMapObject_weatherTornado_init_80A8E9C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8e9c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A8E9C -> owMapObject_weatherTornado_init_80A8E9C
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What does event flag BFB represent narratively (tornado season active, quest trigger, or weather-event window)?
+- sub_80A8FFC (called on the caught path) – what finalization does it perform?
+- owMapObject_weatherTornado_isCaught_80A91D4 – which save-data field or flag does it read?
+- What does sibling (r6) provide to restoreState / active; is it a paired NPC or a second tornado instance?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

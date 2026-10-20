@@ -1,77 +1,78 @@
 name: object_runCollisionState_80D1D14
 address: '0x080D1D14'
 kind: function
-previous_names:
-- sub_80D1D14
-status: probable
-summary: 'Drives a battle object''s collision state machine: tears down prior collision data, spawns the
-  collision effect, then either destroys the object or routes through a per-CurAction jump table (with
-  branch overrides for time-stop and refresh).'
-interface: '(r5 = BattleObject*) -> void ; side effects: modifies the object (CurAction, CurPhaseAndPhaseInitialized,
-  CurState), its CollisionData, and battle collision regions; tail-call dispatches to per-action handlers'
-details: "- Caller-preserved: r5 holds the current BattleObject; the callee-saved set r4,r7,lr is pushed\
-  \ (the contract says it restores a lot, but the function only touches r5,r7 and the object in r5; the\
-  \ saved set in the listing is r4,r7,lr, with r4 written but not used — see evidence).\n- Always: bl\
-  \ object_removeCollisionData, then bl object_spawnCollisionEffect to reset/build collision state for\
-  \ this frame.\n- bl battle_isBattleOver; if true (returned nz), bne loc_80D1D76 jumps to the destroy\
-  \ path.\n- bl object_isCurrentPanelValid; if false (tst r0,r0 beq), also bne to destroy.\n- Loads r7\
-  \ = [r5,oBattleObject_CollisionDataPtr] = the CollisionData; reads r0 = [r7,oCollisionData_FlagsFromCollision]\
-  \ (offset 0x70).\n- If FlagsFromCollision != 0, then checks [r7,0x84] (last u16 field). If non-zero\
-  \ → destroy. Else masks r0 with 0x03800000 and 0x0c000000:\n    - If 0x03800000 set → destroy.\n   \
-  \ - Else if 0x0c000000 set → object_clearCollisionRegion, and if CurAction != 4 forces CurAction = 4\
-  \ and clears CurPhaseAndPhaseInitialized.\n- Falls into the time-stop branch: bl battle_isTimeStop.\n\
-  - If NOT time-stopped: dispatches via the off_80D1D84 table indexed by CurAction, jumping to sub_80D1D90,\
-  \ sub_80D1DEE, sub_80D1E7E (the action handlers at the table addresses 0x80D1D84/88/8C).\n- If time-stopped:\
-  \ bl object_presentCollisionData (refreshes state), then bl object_highlightCurrentCollisionPanels,\
-  \ then returns.\n- destroy path (loc_80D1D76): object_clearCollisionRegion, writes CUR_STATE_DESTROY\
-  \ (8) into CurStateActionPhaseAndPhaseInitialized (u32 at oBattleObject+0x8) and returns.\n- The pushed\
-  \ r4 is popped but never set inside the function — it's preserved through calls by the callee-saved\
-  \ ABI rather than touched here, which explains the `out`/`may_write` listing r4.\n- CurPhaseAndPhaseInitialized\
-  \ is a u16 (offset 0xa); the strh writing 0 to it is paired with the forced CurAction=4 transition (looks\
-  \ like \"kick the action into its first phase again\").\n"
+status: confirmed
+summary: 'Per-frame collision-state tick for a battle object: tears down and re-presents hit geometry, dispatches
+  the current collision action via jump table, decides whether to advance to attack on body-hit, or destroy the
+  object when the battle ends, the panel becomes invalid, or a fatal collision is recorded.'
+interface: void object_runCollisionState_80D1D14(u32 r4, u32 r5 /* objectPtr */, u32 r7, u32 r8, u32 r10); → writes
+  r5 r8 r9 r10 r11 r12; preserves r4 r7; clobbers r0-r3 r6 lr, flags n z c v
+details: 'Called each frame while a battle object is in the collision state. Sequence: (1) object_removeCollisionData
+  and object_spawnCollisionEffect reset and recreate hit visuals. (2) Early-destroy exits if battle_isBattleOver
+  is true or object_isCurrentPanelValid returns 0. (3) Reads oCollisionData_FlagsFromCollision from the object''s
+  collision-data pointer (r5+oBattleObject_CollisionDataPtr). If flags are zero, skips to step 4. If the halfword
+  at collision-data offset 0x84 (pending-hit counter) is non-zero, destroy. If flags & 0x3800000 (wall/shield-break
+  or fatal collision bits), destroy. If flags & 0xC000000 (enemy-body-hit), calls object_clearCollisionRegion and,
+  if the object is not already in action 4, sets oBattleObject_CurAction=4 and resets oBattleObject_CurPhaseAndPhaseInitialized
+  to 0. (4) Checks battle_isTimeStop; if time is NOT stopped, dispatches through a 3-entry jump table indexed by
+  oBattleObject_CurAction: [0]=object_updateMoveStep, [1]=battle_dispatchObjectPhaseHandler_80D1DEE, [2]=object_blinkOutUpdate.
+  If time IS stopped, skips the dispatch. (5) Calls object_presentCollisionData then object_highlightCurrentCollisionPanels
+  to re-project the hit region onto the grid. Destroy path at loc_80D1D76 calls object_clearCollisionRegion and
+  writes CUR_STATE_DESTROY into the packed oBattleObject_CurStateActionPhaseAndPhaseInitialized dword. Jump-table
+  entries are stored with thumb bit set (+1) and dispatched via bx.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {r4,r7,lr}` / `pop {r4,r7,pc}` show the callee-saved frame in the assembly. - `bl object_removeCollisionData`
-    then `bl object_spawnCollisionEffect` directly match the collision teardown + spawn pattern used elsewhere
-    in battle-object update. - `bl battle_isBattleOver` + `tst r0,r0` + `bne loc_80D1D76` — battle over
-    → destroy path. - `bl object_isCurrentPanelValid` + `beq loc_80D1D76` — invalid panel → destroy path.
-    - `ldr r7,[r5,#oBattleObject_CollisionDataPtr]` and `ldr r0,[r7,#oCollisionData_FlagsFromCollision]`
-    (offset 0x70) show the collision-data-driven decisions. - The mask constants `dword_80D2024=0x3800000`
-    and `dword_80D2028=0xc000000` matching OBJECT_FLAGS_AFFECTED_BY_ICE / OBJECT_FLAGS_UNK_26 and UNAFFECTED_BY_POISON
-    / UNK_28 (high bytes of ObjectFlags2 area), suggesting two "destroy me" ObjectFlags2 cases. - `str
-    r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` with r0 = CUR_STATE_DESTROY (0x8) writes
-    the destroy state (enum at oBattleObject+0x8). - `strb r0,[r5,#oBattleObject_CurAction]` and `strh
-    r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]` (offsets 0x9 and 0xa) match the BattleObject union
-    layout. - The dispatch table at off_80D1D84 lists the three CurAction handlers sub_80D1D90 / sub_80D1DEE
-    / sub_80D1E7E (each +1 because of Thumb bx r1). - `bl battle_isTimeStop` + `bne loc_80D1D6C` selects
-    the time-stop branch path (presentCollisionData + highlightCurrentCollisionPanels). - r5 = current
-    battle object (per the project convention; the helpers'' contracts take r5 as the BattleObject*).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080D1D14
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_runCollisionState_80D1D14
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_runCollisionState_80D1D14
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): object_runCollisionState_80D1D14
+    ./wf verify --function object_runCollisionState_80D1D14 --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_runCollisionState_80D1D14
 
-    '
-open_questions:
-- The exact meaning of the 0x03800000 and 0x0c000000 bit masks on FlagsFromCollision is unknown; the value
-  being read from FlagsFromCollision then masked with bits that match parts of the ObjectFlags2 enum is
-  suggestive but not certain — confirming which two status combos cause an early destroy would settle
-  it.
-- The CurAction values 0/1/2 mapped to sub_80D1D90/DEE/E7E are inferred but the function never inspects
-  CurAction values 3+ in the table; this dispatcher is presumably the "owner" CurAction for a particular
-  battle-object type and the three handlers are its three states.
-sources:
-- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+    ./wf verify --function object_runCollisionState_80D1D14 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 89 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_runCollisionState_80D1D14
+
+    ./wf verify --function object_runCollisionState_80D1D14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1d14 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d779321
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D1D14 -> object_runCollisionState_80D1D14
-  where: bn6f 7ddd2238
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What exact collision-type do flags 0x3800000 represent (wall hit vs shield break vs multiple bits)?
+- What does the halfword at collision-data offset 0x84 track—remaining multi-hit ticks or a pending resolution queue?
+- Action index 3 has no jump-table entry at off_80D1D84; is it reachable, or does a table overrun risk exist?
+- r9-r12 are listed as outputs but never explicitly written in this function; are they pass-through from callees
+  (presentCollisionData/highlight)?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

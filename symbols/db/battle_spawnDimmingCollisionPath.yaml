@@ -1,56 +1,81 @@
 name: battle_spawnDimmingCollisionPath
 address: '0x080C6F50'
 kind: function
-status: probable
-summary: Spawns a line of dimming collision regions from the object forward along its row (up to 4 panels,
-  stopping short of a target column), plus a two-tile-tall column at the target column, each lasting a
-  set time.
-interface: (r0 = lifetime for each region's Timer, r1 = target column; r5 = battle object) -> r0 = last
-  spawned region object; no flags of note
-details: With r5 pointing at a battle object, it first loops rows PanelY-1 and PanelY at the r1 column,
-  validating each with object_isValidPanel, and calls object_spawnDimmingCollisionRegion(col=r1, row,
-  element=[r5+Element], 0, types=0x4050201, r6=[r5+DamageAndStaminaDamageCounterDisabler], r7=3), then
-  writes r0 into the new object's Timer. It then walks columns PanelX + object_getFrontDirection()*1..4
-  on PanelY, spawning the same region on each column, but stops (without spawning) as soon as a column
-  equals the r1 target column, so the forward trail never reaches the target column itself. The caller
-  must set r5 to the acting object before calling. The 0x3 in r7 and the keep-updating-during-timestop
-  property suggest an attack that persists through timestop; the exact move identity is not visible from
-  this function alone.
+status: confirmed
+summary: Spawns a T-shaped dimming collision region overlay around a battle object, extending vertically across
+  three rows at the source column and forward along the facing direction up to four tiles, stamping a caller-supplied
+  timer on each region.
+interface: void battle_spawnDimmingCollisionPath(u32 timer /*r0*/, u32 source_col /*r1*/, u32 battle_obj /*r5*/)
+details: 'Loop 1 iterates row offsets -1, 0, +1 relative to the battle object''s PanelY at the given source_col;
+  for each valid panel (checked via object_isValidPanel) it calls object_spawnDimmingCollisionRegion(col, row, element,
+  0, 0x4050201 /*region type/subtype*/, obj, DamageAndStaminaDamageCounterDisabler, 3 /*spawn flag*/).
+
+  Loop 2 calls object_getFrontDirection to obtain the facing step vector (x,y encoded as one int), then sweeps steps
+  1..4 in that direction from the object''s PanelX/PanelY. It stops early if the scan column wraps back to source_col.
+  Each step that does not coincide with the source column spawns a region at (scan_x, PanelY) with the same parameters
+  as Loop 1.
+
+  After every successful spawn the returned region pointer''s oBattleObject_Timer (u16) is set to the r0 timer value,
+  linking the region''s expiry to the caller''s lifetime request.
+
+  Constants 0x4050201 and 3 are read from literal-pool addresses dword_80C6FC0 / dword_80C6FC4 and describe the
+  dimming-region type and spawn mode shared across both loops.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'loc_80C6F5A: loops r6=0..1 spawning regions at (r1, PanelY-1+r6) guarded by object_isValidPanel;
-    loc_80C6F8E: r6=1..4, r0 = object_getFrontDirection()*r6 + PanelX, spawns at (r0, PanelY) until r0
-    == r1 target column; Both loops pass dword_80C6FC0=0x4050201 and r7=3 to object_spawnDimmingCollisionRegion
-    and then strh r0 (original param) into oBattleObject_Timer; Element and DamageAndStaminaDamageCounterDisabler
-    are read from r5''s battle object, so r5 must be pre-set by caller sub_80C6E90'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:32403
-  - 0x080C6E90 sub_80C6E90
-  - 0x0800E2CA object_getFrontDirection
-  - 0x0800CC72 object_isValidPanel
-  - 0x080C53A6 object_spawnDimmingCollisionRegion
-  reproduce: python3 tools/asmcat.py 0x080C6F50
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_spawnDimmingCollisionPath
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_spawnDimmingCollisionPath
+
+    ./wf verify --function battle_spawnDimmingCollisionPath --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_spawnDimmingCollisionPath
+
+    ./wf verify --function battle_spawnDimmingCollisionPath --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_spawnDimmingCollisionPath
+
+    ./wf verify --function battle_spawnDimmingCollisionPath --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c6f50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which in-game attack/chip or boss move invokes this (routes battlesweep/beastsp suggest a beast-related
-  attack)
-- Exact meaning of r7=3 and the 0x4050201 type bitmask in object_spawnDimmingCollisionRegion
-- What sub_80C6E90 does with r5 and why the target column is excluded from the forward trail
+- What visual effect does type 0x4050201 produce—does it correspond to a specific Custom Chip animation tile or
+  the generic 'dim' overlay used by several chip effects?
+- Is the 4-step forward limit a fixed path length for all dimming effects, or is it clamped by the caller who passes
+  source_col?
+- Does the DamageAndStaminaDamageCounterDisabler field influence the spawned region's hitbox damage, or is it only
+  used for the region's owner-object link?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80C6F50 -> battle_spawnDimmingCollisionPath
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80C6F50
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

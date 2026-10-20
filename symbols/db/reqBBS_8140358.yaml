@@ -1,0 +1,71 @@
+name: reqBBS_8140358
+address: '0x08140358'
+kind: function
+status: confirmed
+summary: Routes a BBS joypad press (R/A/B/Start+Select) to the matching sub-handler, gated by the per-slot action
+  counter.
+interface: void bbsDispatchJoypadReq(u32 ignored_r0, u32 r2 /* forward param */, BbsStateBlock *r5, Toolkit *r10);
+  /* preserves r4-r7; r5,r10,r11 memory may be modified by sub-handlers */
+details: "Loads the joypad pointer from [r10 + oToolkit_JoypadPtr], reads the 16-bit Pressed field, then dispatches:\
+  \ - bit 1 (R): call reqBBS_81403A8 (open/refresh the BBS screen). - Gate: if [r5+0x1E] (u16 action counter) is\
+  \ zero, return immediately. - bit 4 (A): call reqBBS_8140414 (confirm/action). - bit 1 (B): call reqBBS_81403C0\
+  \ (cancel/back). - Otherwise check the Held-button field at [joypad+4] against mask 0x3C0\n  (Start+Select+L+R\
+  \ combo region); if any bit is set, call\n  menu_adjustCursorOrValue_811F7F8 with r1=8, r2=r3=0 and store the\
+  \ low\n  byte of the joypad pointer (left in r7) into [r5+0x0B].\nSub-handler results in r8-r11 propagate as this\
+  \ function's \"outputs\". r0 is saved to r8 but never read; it is effectively ignored.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_8140358
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_8140358
+
+    ./wf verify --function reqBBS_8140358 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_8140358
+
+    ./wf verify --function reqBBS_8140358 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_8140358
+
+    ./wf verify --function reqBBS_8140358 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08140358 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+related:
+- reqBBS_81403C0
+open_questions:
+- What does [r5+0x1E] count exactly—per-NPC-message actions remaining in the current BBS slot?
+- Why is the joypad pointer's low byte stored at [r5+0x0B] rather than a meaningful flag? Likely a quirk/TODO in
+  the original.
+- Are the sub-handlers reqBBS_81403A8 / 81403C0 / 8140414 themselves already catalogued?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

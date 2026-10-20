@@ -1,71 +1,94 @@
 name: pet_tryStartRandomEncounterStep_808CB0C
 address: '0x0808CB0C'
 kind: function
-previous_names:
-- sub_808CB0C
-status: probable
-summary: Overworld per-frame step that drives the random-encounter progress (PET-Navi footsteps / "LocEnemy"
-  state) and may start the encounter cutscene.
-interface: '(no input args, r10 = Toolkit) -> side effects: may set state in 0x2000B40 area, play SE 0x13B,
-  start a cutscene via StartCutscene; nothing returned in r0/r1.'
-details: "- Loads a pointer from dword_808CA44 into r5 (state struct at 0x2000B40 base; r5+0xc/0x3/0x1a/0x1c).\n\
-  \  - Tests event flag 0x9D6 (PET menu data bit via sub_808D11C gate) and 0x9D8; if not set, or if we're\
-  \ on map 0x85 and not flag-set, plays sound_8000672(0x1f, 0x13b) — likely the LocEnemy alert SFX.\n\
-  \  - Skips SFX when TestPETMenuDataFlag(1) is true or when state byte [r5+0xc] is non-zero.\n  - Captures\
-  \ OW player X/Y from ReadOWPlayerObjectCoords (>>16 to integer), stores them into [r5+0x1a]/[r5+0x1c]\
-  \ as the encounter origin point, and seeds a 0x20 countdown byte at [r5+0x3].\n  - Every frame decrements\
-  \ [r5+0x3]; when it hits zero, calls sub_808CCAC to roll an encounter and resets the countdown to 0x20.\n\
-  \  - Calls sub_808CD04 — if it returns nonzero (a \"force encounter now\" condition), calls sub_808CD24;\
-  \ otherwise clears event flag 0xBF1, runs sub_808CFB8, and if that returned 1, runs sub_808D108 (a different\
-  \ \"try\" path, probably SneakRun/LocEnemy variant).\n  - Finally calls sub_808CC34 — if nonzero, treats\
-  \ its return as a CutsceneScript pointer and hands it to StartCutscene(scriptPtr, paramInR0) to launch\
-  \ the encounter cutscene.\n  - The contract's \"void\"-like out set (no r0/r1) and the absence of captured\
-  \ callers indicates this is invoked once per VBlank from the overworld subsystem (PET/main loop), not\
-  \ a callable library routine.\n"
+status: confirmed
+summary: 'Per-step state machine that drives random encounters in the PET area: gates on event flags, ticks a 32-step
+  countdown, snapshots player position on first activation, then on expiry (or BBS touch trigger) either rewards
+  a Net PET encounter or attempts a jack-in battle.'
+interface: '/* r10 = toolkit pointer (toolkit+oToolkit_GameStatePtr → GameState), lr = return addr */
+
+  /* r2, r3, r10, r11 written back to caller; r4–r9, r12 preserved via push/pop */
+
+  /* no return-value register; side-effects via globals and event flags */
+
+  void pet_randomEncounterStepTick(u32 r10 /* toolkit */);
+
+  '
+details: "Operates on a 32-byte data block whose base pointer is loaded from dword_808CA44 (resolves to 0x2000B40\
+  \ area):\n  +0x0C (u8): \"active\" sentinel – 0 means this is the first activation.\n  +0x03 (u8): countdown step-counter,\
+  \ reset to 0x20 (32) on activation or re-roll.\n  +0x1A (u16): player X coordinate captured at first activation.\n\
+  \  +0x1C (u16): player Y coordinate captured at first activation.\n\nGate 1 – event flags: EVENT_9D6 AND EVENT_9D8\
+  \ must both be set; otherwise the function exits early.\nGate 2 – map exclusion: if GameState.MapGroup == 0x85\
+  \ the encounter is suppressed (no sound, no activation); execution falls through to the PET-menu check.\nSound:\
+  \ on a successful gate pass (map != 0x85) it plays sound ID 0x1F with parameter 0x13B via sound_8000672.\nGate\
+  \ 3 – PET menu: TestPETMenuDataFlag(1) – if the flag is NOT set (bne taken) the encounter is cancelled.\n\nFirst-activation\
+  \ path (byte+0x0C == 0):\n  Reads player tile coords via ReadOWPlayerObjectCoords (arithmetic right-shift 16 to\
+  \ extract 16-bit tile position), stores them at +0x1A/+0x1C, and writes 0x20 to the step counter.\n\nStep tick\
+  \ (every call):\n  Decrement +0x03.  When it reaches 0, call sub_808CCAC (re-roll / choose new encounter) and\
+  \ reset the counter to 0x20.\n\nBranch after the counter tick:\n  reqBBS_pollTouchTrigger_808CD04 tests the touchscreen\
+  \ (BBS) trigger.\n    If touched (non-zero / !zf): run pet_randomEncounterRewardStep_808CD24 (gives a Net PET\
+  \ reward or triggers the next encounter phase).\n    If not touched: clear EVENT_BF1, call jackIn_attemptJackInCheck_808CFB8;\
+  \ on success (r0==1) call ow_setupMapTiles_808D108 to prepare the jack-in transition.\n\nBattle init tail (always\
+  \ reached after the touch/jack branch):\n  battle_pickBattleStateInitPtr_808CC34 selects a battle-state init record;\
+  \ if non-null, StartCutscene is invoked to launch the encounter cutscene.\n\nQuirks:\n  - The \"active\" byte\
+  \ at +0x0C is read but never written in this function; it is presumably set by an earlier initialisation routine.\n\
+  \  - r5 is pushed/popped so the caller's r5 is invisible to changes made here, yet the lifter lists r5 as an \"\
+  output\" (likely a trace artifact from callee calls).\n  - EVENT_9D6/9D8/0xBF1 are 16-bit event-flag constants\
+  \ passed as two immediates via movflag pseudo-op.\n  - Map-group check uses only a single byte (oGameState_MapGroup),\
+  \ meaning entire map families are excluded rather than individual maps.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- r5 ← [dword_808CA44] (asm `ldr r5, [r5]`) gives the persistent encounter state struct at
-    0x2000B40. - `TestPETMenuDataFlag(1)` (loc_808CB3C entry) matches bn6 PET menu flag checks used elsewhere
-    for "random encounters enabled / Navi menu open". - `ReadOWPlayerObjectCoords` then `asr r0,r0,#0x10`
-    strips fixed-point to integer coords, stored at [r5+0x1a]/0x1c — clearly saving the encounter origin.
-    - `strb r0, [r5,#3]` of 0x20 then a per-frame `sub r0,#1` / `strb r0,[r5,#3]` is a classic frame-countdown
-    pattern for random encounters. - `sub_808CCAC` is called only when the countdown hits zero — its return
-    drives whether the encounter happens. - `mov r0, #0x1f; ldr r1, dword_808CB98 // =0x13B; bl sound_8000672`
-    is a sound-effect trigger; 0x13B is reused by 808CA44-area callers. - `ClearEventFlagFromImmediate(EVENT_BF1)`
-    resets the "force battle" / "LocEnemy in progress" flag. - Final `bl sub_808CC34` + `bl StartCutscene`
-    uses sub_808CC34''s return as the CutsceneScript* (StartCutscene takes (script*, u32)) — exactly how
-    battle-trigger cutscenes launch. - `TestEventFlagFromImmediate(EVENT_9D8)` plus the `cmp r1, #0x85
-    / beq` early-out ties this to a specific map and is consistent with the only encounters in the 0x85
-    region (Cyber City / random-encounter zone in BN6 Falzar).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808CB0C
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c pet_tryStartRandomEncounterStep_808CB0C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function pet_tryStartRandomEncounterStep_808CB0C
 
-    '
-  result: the body read as described above
+    ./wf verify --function pet_tryStartRandomEncounterStep_808CB0C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function pet_tryStartRandomEncounterStep_808CB0C
+
+    ./wf verify --function pet_tryStartRandomEncounterStep_808CB0C --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function pet_tryStartRandomEncounterStep_808CB0C
+
+    ./wf verify --function pet_tryStartRandomEncounterStep_808CB0C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808cb0c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Whether EVENT_9D6 vs EVENT_9D8 distinction is "PET menu data byte" vs "LocEnemy flag" or vice versa
-  — only the flag indices are visible, not names.
-- Exact semantics of sub_808CCAC/sub_808CD04/sub_808CD24/sub_808CFB8/sub_808D108 — they roll the encounter
-  and decide forced vs sneak-run paths, but the asm at this level only shows the dispatch.
-- Who calls this routine (the contract lists no callers); almost certainly wired into the overworld main-loop
-  jumptable, but the caller site is not in the provided context.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cb0c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808CB0C -> pet_tryStartRandomEncounterStep_808CB0C
-  where: bn6f 25419b15
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- What does sub_808D11C initialise – is it the PET-area encounter table or a per-area random-number seed?
+- What does sub_808CCAC (re-roll) do – does it select a new enemy / Net PET / warp tile?
+- Is map group 0x85 the PET-Home / LAN-building interior, or the final boss corridor?
+- What is the relationship between EVENT_9D6, EVENT_9D8, and EVENT_BF1 in the game's event-flag scripting?
+- 'pet_randomEncounterRewardStep_808CD24: does it give a Chip, a Net PET, or both, and how does it interact with
+  the saved coordinates at +0x1A/+0x1C?'
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

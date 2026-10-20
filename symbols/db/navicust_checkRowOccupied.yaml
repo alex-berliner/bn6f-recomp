@@ -1,56 +1,72 @@
 name: navicust_checkRowOccupied
 address: '0x0813BF60'
 kind: function
-status: probable
-summary: Scans the 7x7 Navi Customizer grid and returns whether any occupied cell lies on the middle row
-  within ±3 columns of the given column.
-interface: (r0 = unused/dispatch seed, r1 = column, r2 = row) -> r0 = 1 if a nonzero grid byte is found
-  in row 3 with column in [r1-3, r1+3], else 0
-details: Obtains a grid pointer by calling ai_dispatchFromGlobalByte (global byte at 20096D8 selects it),
-  then treats it as a 7x7 row-major byte map with stride 7. It walks the 7-row window arg2-3..arg2+3 (clipped
-  to 0..6) and, per row, the 7 column offsets clipped to arg1-3..arg1+3. A cell counts only if its byte
-  is nonzero AND the running row counter equals 3; hitting such a cell returns 1 at once, otherwise it
-  returns 0. Because arg2 is always a valid row, the row window always spans row 3, so arg2 mostly just
-  positions the scan; the effective test is 'row 3 occupied near column arg1'. Called from navicust_checkPiecePlacement,
-  so the boolean is one of the placement-validation outcomes; row 3 likely maps to the command-line arm
-  of the grid layout.
+status: confirmed
+summary: Checks whether the centre row (index 3) of the Navi Customizer's 7×7 placement grid contains any occupied
+  cell.
+interface: u32 navicust_checkRowOccupied(u32 gridByte /*r0, passed to ai_dispatchFromGlobalByte*/, u32 col /*r1*/,
+  u32 row /*r2*/); /* returns 1 or 0 in r0; sets Z on return; r4-r7 preserved per callee convention */
+details: 'Calls ai_dispatchFromGlobalByte(r0) to obtain a pointer to a 7×7 byte grid (one byte per cell, 0 = empty,
+  non-zero = occupied). Iterates over all 49 cells in row-major order (outer loop advances the row pointer by 7
+  each of 7 iterations; inner loop walks 7 columns via a byte-offset r3). For each cell it bounds-checks the logical
+  row and column indices (derived from the input col/row minus 3) against the 0–6 range. If a cell is non-zero AND
+  the current outer-loop row index r2 equals 3 (the centre row of the grid), the function returns 1 immediately.
+  Otherwise it returns 0 after exhausting all rows. The col and row arguments appear to define a window offset but
+  the only effective check is against the fixed centre row; the column is scanned across all seven positions. Quirk:
+  the inner loop uses push {r1}/pop {r1} around the bounds test to save and restore the column cursor, which is
+  functionally equivalent to a local variable.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl ai_dispatchFromGlobalByte; mov r7, r0 — result used as base pointer of a byte array, not
-    a scalar; ldr r4, [r7,r3] with r7 += 7 per outer iteration and r3 = 0..6 — 7x7 row-major byte grid;
-    cmp r1,#0 / cmp r1,#7 and cmp r2,#0 / cmp r2,#7 — both coordinates clipped to a 0..6 grid; cmp r2,#3;
-    bne skip plus tst r4,r4; beq skip — only nonzero bytes in row 3 trigger the early return 1; Caller
-    navicust_checkPiecePlacement validates placing the held part at the cursor cell, so this is a placement-occupancy
-    check
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm37_0.s:1295
-  - 0x08137378 navicust_checkPiecePlacement
-  - 0x08137028 sub_8137028
-  - 0x081371B0 sub_81371B0
-  - 0x0813B790 ai_dispatchFromGlobalByte
-  reproduce: python3 tools/asmcat.py 0x0813BF60
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c navicust_checkRowOccupied
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_checkRowOccupied
+
+    ./wf verify --function navicust_checkRowOccupied --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_checkRowOccupied
+
+    ./wf verify --function navicust_checkRowOccupied --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_checkRowOccupied
+
+    ./wf verify --function navicust_checkRowOccupied --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813bf60 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_0.c
 coverage:
 - beastsp
 open_questions:
-- 'Exact gameplay meaning of the return: which placement-failure dialog or rule in checkPiecePlacement
-  consumes it'
-- Whether row 3 of the buffer is the command-line arm or another special row
-- What the global byte at 20096D8 selects — the ai_dispatchFromGlobalByte summary may not cover this usage
-- Why the scan window is ±3 cells when only row 3 is tested (what arg2/arg1 conventions the unnamed callers
-  0x8137028/0x81371B0 use)
+- What does gridByte (r0) represent—does it select a particular Customizer sub-grid or a chip-slot region?
+- Why does the function take col and row if only the centre-row test is meaningful—was this once a generic rectangle-occupancy
+  check reduced to a single-row query?
+- Does ai_dispatchFromGlobalByte always return a pointer into the same 7×7 grid, or can it return different grids
+  depending on the byte?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_813BF60 -> navicust_checkRowOccupied
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_813BF60
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

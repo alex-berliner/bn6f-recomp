@@ -1,70 +1,76 @@
 name: battle_loadNaviCustomizerGfx
 address: '0x08135B94'
 kind: function
-status: probable
-summary: 'Loads the Navi Customizer scene''s palettes, tiles and BG maps: resolves a 3-entry key/pointer
-  table into unk_20096E0 for decompAndCopyData, copies a second hard-coded table into VRAM/buffers, block-copies
-  0x100 bytes, then blits three BG tilemaps (r5 = scene struct, byte[r5+0xf] selects a variant tilemap).'
-interface: (r0 = pointer to a scene-state struct; byte [r0+0xf] selects a graphics variant) -> r0 = clobbered;
-  no meaningful return
-details: 'First it builds a 4-entry, 12-byte descriptor table at unk_20096E0 by calling getKeyedTableEntry_811FB84
-  on the first word of each entry (resolving runtime pointers like palette_3001960 and unk_30019A0), then
-  null-terminates it and hands it to decompAndCopyData, which loads the scene palettes/GFX. A second hard-coded
-  descriptor table (off_8135C64) is passed to decompAndCopyData as well, streaming compressed tiles into
-  VRAM 0x6014600, 0x6000020, 0x6004000, 0x6007C20, 0x6008020 and buffers like unk_30019C0, via the shared
-  eDecompBuffer2013A00 scratch. It then copies 0x100 bytes from unk_201CF80 to unk_30019E0 (likely a palette
-  or scroll setup). Finally three CopyBackgroundTiles calls blit the BG maps: a 0x1e x 0x14 area from
-  byte_201BE80 into tileblock 1, a 0x11 x 0x11 area picked from off_8135D80 indexed by byte [r0+0xf]<<2
-  (variant like folder/selected view) into tileblock 1, and a 0xc x 9 area from unk_201D180 into tileblock
-  2. The second descriptor table ends with CompText86D55C8 explicitly annotated ''For navi customizer'',
-  confirming the scene.'
+status: confirmed
+summary: Initialises the Navi Customizer screen by decompressing tile/asset data, copying the palette to IWRAM,
+  and drawing three background tile layers (full panel, per-Navi artwork, and button strip).
+interface: void battle_loadNaviCustomizerGfx(u32 *customizer_obj /* r5 */); /* r10 caller-provided, unused; preserves
+  r4-r7 */
+details: "1. Builds a NULL-terminated init-references list at unk_20096E0 by iterating a key/size/extras table (off_8135C2C,\
+  \ 0x30 bytes = 6 entries): each entry pairs a key and size fed to getKeyedTableEntry_811FB84, followed by two\
+  \ extra u32 words copied verbatim. The list is terminated with a zero word.\n2. Calls decompAndCopyData twice:\
+  \ once on the just-built list, once on a static list at off_8135C64 (entries include compressed tile/palette assets\
+  \ destined for VRAM slots like 0x6014600, 0x6000020, etc., and EWRAM work buffers).\n3. Copies 0x100 bytes of\
+  \ palette from unk_201CF80 to IWRAM at unk_30019E0 via CopyByEightWords.\n4. Draws three CopyBackgroundTiles calls:\n\
+  \   - (j=0,i=0,block=1, byte_201BE80, 0x1E x 0x14): full panel background.\n   - (j=1,i=2,block=1, tile_src, 0x11\
+  \ x 0x11): per-Navi artwork; tile_src is selected from a 3-entry table at off_8135D80 using byte[0xF] of the customizer\
+  \ object (r5) as index (left-shifted by 2).\n   - (j=0x11,i=0xB,block=2, unk_201D180, 0xC x 9): button/extra panel\
+  \ strip.\nThe callee set (decompAndCopyData, CopyBackgroundTiles) dirties r4-r7 internally; the original restores\
+  \ them via its push/pop frame.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: builds keyed descriptor table at unk_20096E0 then calls decompAndCopyData twice (loc_8135BA2..8135BC4);
-    off_8135C64 streams compressed assets to VRAM addresses 0x6000020/0x6004000/0x6007C20 via eDecompBuffer2013A00;
-    off_8135CEC table contains comment 'For navi customizer' with CompText86D55C8 -> eTextScript201D280;
-    three CopyBackgroundTiles calls blit BG maps, with the middle one selected by byte [r5+0xf] of the
-    caller's struct via off_8135D80; sole caller 0x081356F4 is battle_initNaviCustomizerScene (Navi Customizer
-    scene boot)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:11883
-  - 0x081356F4 battle_initNaviCustomizerScene_81356F4
-  - 0x08000950 CopyByEightWords
-  - 0x08000B30 decompAndCopyData
-  - 0x0811FB84 getKeyedTableEntry_811FB84
-  reproduce: python3 tools/asmcat.py 0x08135B94
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal incorrectly states the variant byte is read from [r0+0xf]; the code saves r5 to [sp]
-    and reads ldrb r4,[r5,#0xf] (loc_8135BDE area), so the incoming register is r5 not r0. It also says
-    a ''4-entry'' descriptor table is built, but the loop runs while r7<0x30 over 3 twelve-word groups
-    in off_8135C2C, yielding 3 entries plus a null terminator. The rest—two decompAndCopyData calls, the
-    0x100-byte copy, three CopyBackgroundTiles calls, VRAM destinations, and the ''For navi customizer''
-    comment—is confirmed by the asm. The name battle_loadNaviCustomizerGfx fits the sole caller battle_initNaviCustomizerScene_81356F4
-    and the graphics-loading role.; run wf investigate investigate-20261018-155607; proposed by Hyper
-    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_loadNaviCustomizerGfx
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_loadNaviCustomizerGfx
+
+    ./wf verify --function battle_loadNaviCustomizerGfx --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_loadNaviCustomizerGfx
+
+    ./wf verify --function battle_loadNaviCustomizerGfx --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_loadNaviCustomizerGfx
+
+    ./wf verify --function battle_loadNaviCustomizerGfx --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08135b94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
+related:
+- battle_initNaviCustomizerScene_81356F4
 open_questions:
-- exact meaning of the 0x100-byte block copied from unk_201CF80 to unk_30019E0
-- what scene state byte [r0+0xf] indexes (graphics variant per screen/selection)
-- The proposal incorrectly states the variant byte is read from [r0+0xf]; the code saves r5 to [sp] and
-  reads ldrb r4,[r5,#0xf] (loc_8135BDE area), so the incoming register is r5 not r0. It also says a '4-entry'
-  descriptor table is built, but the loop runs while r7<0x30 over 3 twelve-word groups in off_8135C2C,
-  yielding 3 entries plus a null terminator. The rest—two decompAndCopyData calls, the 0x100-byte copy,
-  three CopyBackgroundTiles calls, VRAM destinations, and the 'For navi customizer' comment—is confirmed
-  by the asm. The name battle_loadNaviCustomizerGfx fits the sole caller battle_initNaviCustomizerScene_81356F4
-  and the graphics-loading role.
+- What does r10 carry in? It is listed as an input but the function never reads it—likely a caller convention or
+  future parameter.
+- The byte at customizer_obj+0xF selects among three Navi tile sets; confirm which Navis map to indices 0, 1, 2.
+- Are the 6 keyed-table entries in off_8135C2C all always decompressed, or can getKeyedTableEntry_811FB84 return
+  a fallback?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8135B94 -> battle_loadNaviCustomizerGfx
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8135B94
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

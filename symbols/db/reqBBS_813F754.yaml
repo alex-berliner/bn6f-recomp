@@ -1,0 +1,72 @@
+name: reqBBS_813F754
+address: '0x0813F754'
+kind: function
+status: confirmed
+summary: Sets up screen-fade transition parameters in the toolkit's fade block and, when no fade is already running,
+  injects a fast-forward command and stamps request code 0x0C into the caller buffer before dispatching the BBS
+  transition.
+interface: void reqBBS_813F754(u32 r5 /* caller request buffer */, u32 r10 /* toolkit base */); /* returns r0=0,
+  r10/r11 propagated from dispatch callee */
+details: "Writes six byte fields to the fade-parameter block at\nLD32(r10+oToolkit_Unk200f3a0_Ptr): offset 2=0xFF,\
+  \ 3=0,\n6=0x50, 7=0x50, 9=0x1A, 10=0x36 (durations/ranges for the\nscreen fade or wipe).  Calls IsScreenFadeActive;\
+  \ if the\nzero flag is clear (a fade IS active) the whole middle\nbranch is skipped and the function jumps straight\
+  \ to the\ndispatch call.  When NO fade is active it:\n  - loads the control block at LD32(r10+oToolkit_Unk2009740_Ptr),\n\
+  \  - writes 0xF7 to its byte 0 (fast-forward / skip signal),\n  - clears byte 4 and byte 6 (timers),\n  - writes\
+  \ 0x0C into byte 0 of the caller buffer r5 (request\n    type stamp),\n  - re-applies the same six fade-parameter\
+  \ bytes (belt-and-\n    braces in case the control-block write perturbed them).\nFinally calls reqBBS_813F8F0\
+  \ (the actual BBS request\ndispatcher) with r5 set, returns r0=0, and propagates\nr10/r11 out.  r8 and r9 are\
+  \ never touched.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_813F754
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_813F754
+
+    ./wf verify --function reqBBS_813F754 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_813F754
+
+    ./wf verify --function reqBBS_813F754 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_813F754
+
+    ./wf verify --function reqBBS_813F754 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813f754 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- What do the byte values 0x1A, 0x36, 0x50 mean in game terms (frame counts, intensity ranges, colour indices)?
+- Is 0xF7 a universal 'skip current transition' opcode or specific to this fade block?
+- Does request code 0x0C correspond to a named BBS transition (e.g. 'warp-out')?
+- Why are the fade parameters written twice—once before the check and once inside the no-fade branch?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

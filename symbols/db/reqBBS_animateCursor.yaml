@@ -1,0 +1,68 @@
+name: reqBBS_animateCursor
+address: '0x08140688'
+kind: function
+status: confirmed
+summary: Animates one frame of the blinking cursor sprite shown in the BBS request dialog
+interface: void reqBBS_animateCursor_8140688(ReqBBSGui *r5)
+details: "Called every frame while the BBS request GUI is visible. r5 points to the\nReqBBSGui object.\n\n1. Reads\
+  \ oReqBBSGui_AnimationTimer1 (per-GUI timer byte) and uses it to\n   index a 4-entry frame table at dword_81406E4+2\
+  \ (values 1,1,2,2).\n   Multiplies the resulting frame index by 128 (0x80) and offsets from the\n   cursor tileset\
+  \ base at unk_201AA04, then queues an 8-word-aligned GFX\n   DMA of 0x80 bytes to OBJ tile 0 (0x6017F80) via\n\
+  \   QueueEightWordAlignedGFXTransfer.\n\n2. Computes the sprite Y coordinate from the GUI object's row field\n\
+  \   [r5+0x20] as (row * 16 + 24) pixels.\n\n3. Advances the pose counter at [r5+9]. If the next pose value hits\
+  \ the\n   0xFF sentinel in the frame table, the counter resets to 1.\n\n4. Packs the OAM attribute word: OBJ_ENABLE\
+  \ (0x40000000) | tile-bank 3\n   (3 << 16) | Y, and queues the sprite through\n   sprite_queueOamEntryThunk_802FE28\
+  \ with tile 0xC3FC, no flip, priority 3.\n\nAll r0-r7 and lr are preserved across the two DMA/OAM calls via a\n\
+  push/pop pair.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_animateCursor
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_animateCursor
+
+    ./wf verify --function reqBBS_animateCursor --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 256 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_animateCursor
+
+    ./wf verify --function reqBBS_animateCursor --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_animateCursor
+
+    ./wf verify --function reqBBS_animateCursor --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08140688 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- Is the cursor always a single 8x8 or 16x16 sprite, or does the 0x80-byte tile transfer imply a wider glyph?
+- What triggers reqBBS_animateCursor in the request-GUI state machine—every vsync tick or a fixed timer?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

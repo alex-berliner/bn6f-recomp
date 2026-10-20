@@ -1,60 +1,93 @@
 name: initBackgroundTilemap
 address: '0x080279FC'
 kind: function
-status: probable
-summary: Initializes a 15x20 background tilemap in unk_2035000 by copying a base grid from byte_86E64B4,
-  stamping rectangle entries from byte_8027B2C via sub_8027CCC, and uploading the result to BG tile block
-  3.
-interface: () -> void; no args, writes tilemap VRAM via callees
-details: Copies 0x258 bytes (300 u16 tile ids) from byte_86E64B4 into the unk_2035000 grid buffer with
-  CpuFastSet. Iterates a 6-byte entry list at byte_8027B2C until a 0xFF terminator, calling sub_8027CCC
-  per entry with x=byte0, y=byte1, and start-index arg (byte4<<12)|0x9B — byte4 acting as a flag above
-  the 0xFFF mask (likely the 'number down columns' bit), 0x9B as the constant base tile id. Bytes 2, 3,
-  and 5 supply the callee's remaining rect parameters (width/height/etc.). Entries' return value (next
-  tile index) is ignored, so every stamp restarts at 0x9B. Finally CopyBackgroundTiles(0, 0, 3, unk_2035000,
-  15, 20) flushes the composed map into tile block 3 at the origin, covering the visible screen grid.
+status: confirmed
+summary: Copies the compressed tileset into the work buffer, builds 16-bit tile attributes from a 6-byte attribute
+  table (chained via sub_8027CCC), then blits the 15x20 tile block 3 into the background tilemap.
+interface: void initBackgroundTilemap(void /* preserves r4 r5 r6; clobbers r0-r3; reads r10 lr */);
+details: 'Phase 1: CopyByEightWords copies 0x258 (600) bytes of tile pixel data from ROM
+
+  (byte_86E64B4) into the working tile buffer at unk_2035000.
+
+
+  Phase 2: Iterates a 6-byte-per-entry attribute table starting at byte_8027B2C,
+
+  terminated by a 0xFF sentinel byte. Each iteration assembles a 16-bit tile attribute:
+
+  the low 12 bits come from r2 (initially 0x9B, then returned by sub_8027CCC on the
+
+  prior iteration — a chained carry), the high 4 bits come from byte[4] of the entry
+
+  shifted left 12. The five bytes [0],[1],[2],[3],[5] are passed as r0,r1,r3,r4,r5
+
+  alongside the assembled attribute in r2. sub_8027CCC presumably writes the final
+
+  tile-map entry into the work buffer and returns a modified r2 for the next chain.
+
+
+  Phase 3: CopyBackgroundTiles renders tile block 3 (a 32x32-pixel tileset block)
+
+  into a 15-column x 20-row background tilemap region starting at grid position (0,0),
+
+  using the populated tile-id grid at unk_2035000.
+
+
+  r4, r5, r6 are saved/restored via stack so the caller''s values are preserved despite
+
+  being clobbered by the loop and CopyBackgroundTiles.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: CopyByEightWords( byte_86E64B4, unk_2035000, 0x258 ) pre-fills the 15x20 tile-id buffer with
-    a default map; loop reads 6-byte records at byte_8027B2C, builds (byte4<<12)|0x9B, and calls known
-    rect-stamper sub_8027CCC; exits when byte0 == 0xFF; tail calls known CopyBackgroundTiles(j=0, i=0,
-    tileBlock=3, unk_2035000, j_size=0xF, i_size=0x14) — 15x20 = 300 = 0x258/2, matching the buffer size
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_0.s:3057
-  - 0x0802790C sub_802790C
-  - 0x08027AAE sub_8027AAE
-  - 0x08027ADE sub_8027ADE
-  - 0x08000950 CopyByEightWords
-  - 0x08027CCC sub_8027CCC
-  - 0x080018C2 CopyBackgroundTiles
-  reproduce: python3 tools/asmcat.py 0x080279FC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and mechanics match the asm: CpuFastSet copies 0x258 bytes from byte_86E64B4 to unk_2035000,
-    then the 6-byte entries at byte_8027B2C are stamped via sub_8027CCC with (byte0,byte1,width,height,flag<<12|0x9B,byte5),
-    ending at 0xFF, and CopyBackgroundTiles flushes 15x20 to tile block 3. The proposed name is fine but
-    ''bg_'' isn''t an allowed prefix; ''copy'' or ''init'' fit better.; run wf investigate investigate-20261018-182231;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c initBackgroundTilemap
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function initBackgroundTilemap
+
+    ./wf verify --function initBackgroundTilemap --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function initBackgroundTilemap
+
+    ./wf verify --function initBackgroundTilemap --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function initBackgroundTilemap
+
+    ./wf verify --function initBackgroundTilemap --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080279fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_0.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of entry bytes 2, 3 and 5 in sub_8027CCC's parameter mapping (width/height vs stride)
-- which in-game screen byte_86E64B4 depicts (callers sub_802790C/AAE/ADE only known by address)
-- 'The summary and mechanics match the asm: CpuFastSet copies 0x258 bytes from byte_86E64B4 to unk_2035000,
-  then the 6-byte entries at byte_8027B2C are stamped via sub_8027CCC with (byte0,byte1,width,height,flag<<12|0x9B,byte5),
-  ending at 0xFF, and CopyBackgroundTiles flushes 15x20 to tile block 3. The proposed name is fine but
-  ''bg_'' isn''t an allowed prefix; ''copy'' or ''init'' fit better.'
+- What does sub_8027CCC actually do to the tile buffer and how does it modify r2 for the chained attribute carry?
+- Is the 0x258 byte size the full tileset or a per-page chunk that assumes prior calls filled other pages?
+- Which background layer and screen region does tile block 3 at grid size 0xF x 0x14 target (likely a 128x160 pixel
+  submap)?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80279FC -> initBackgroundTilemap
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80279FC
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

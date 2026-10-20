@@ -1,0 +1,75 @@
+name: reqBBS_81406FC
+address: '0x081406FC'
+kind: function
+status: confirmed
+summary: Builds a 30-bit sprite animation-state mask from HP (offset 0x1E) and stock/charge (offset 0x5) by banding
+  each value into five tiers and XOR-ing tier-bit plus intra-tier-progress-bit into 0x3FFFFFFF, then writes the
+  mask onto the eStructArr2008450 sprite array via sprite_setUnk0x2c.
+interface: 'reqBBS_81406FC(r5: sprite_data*) -> void; preserves r5; clobbers r0-r3, nzcv, lr; tail-calls sprite_setUnk0x2c(r0=mask,
+  r5=eStructArr2008450)'
+details: HP half-word at r5+0x1E is banded into five tiers (floors 0x28/0x1E/0x14/0x0A/0). Each tier sets one band
+  bit in positions 0x0A-0x0E and one progress bit in positions 0-9 (progress = 9 - (value - tier_floor)). Stock
+  byte at r5+0x5 is banded identically, setting band bits 0x19-0x1D and progress bits offset by 0xF (so bits 0x0F-0x18).
+  All four XOR'd bits are inverted against the base mask 0x3FFFFFFF, producing a 30-bit value that encodes the sprite's
+  current HP-band, HP-within-band, stock-band, and stock-within-band simultaneously. The resulting mask is passed
+  as r0 to sprite_setUnk0x2c together with the global sprite array pointer eStructArr2008450, which presumably selects
+  which visual/animation layers are active for that sprite. r5 is saved/restored around the tail call because sprite_setUnk0x2c
+  overwrites r5 with the array address. The 'req' prefix and 'BBS' in the original name suggest this is invoked
+  as part of a per-frame sprite-update request loop, likely during battle or overworld rendering.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_81406FC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81406FC
+
+    ./wf verify --function reqBBS_81406FC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81406FC
+
+    ./wf verify --function reqBBS_81406FC --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81406FC
+
+    ./wf verify --function reqBBS_81406FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^081406fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What does 'BBS' abbreviate in this context—Battle Bonus Score, Beat/Battle System, or a chip-stock subsystem?
+- What exactly does sprite_setUnk0x2c do with the 30-bit mask (which animation layers or palette indices does each
+  bit control)?
+- Is offset 0x5 truly a 'stock' byte or a charge/failure counter; the banding thresholds (0x28=40, etc.) mirror
+  HP which may be coincidental.
+- Who are the callers; is this one of many reqXxx handlers dispatched by a sprite-update state machine?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

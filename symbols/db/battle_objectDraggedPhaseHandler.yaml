@@ -1,51 +1,79 @@
 name: battle_objectDraggedPhaseHandler
 address: '0x080D1E32'
 kind: function
-status: probable
-summary: Per-frame handler for a battle object being dragged panel-to-panel by an external mover, destroying
-  it when its duration expires.
-interface: (r5 = battle object) -> void; sets object panel coords, collision region, and state
-details: 'On first entry sets PhaseInitialized and a 5-tick Timer. Each frame, if the object''s ExtraVars+0x14
-  controller struct is set, copies its bytes 0x12/0x13 into PanelX/PanelY and recomputes pixel position
-  and collision panels. Timer counts down each call; when it reaches 0, Timer2 decrements: if Timer2 hits
-  0 the object''s collision region is cleared and CurState set to CUR_STATE_DESTROY; otherwise object_setCollisionRegion(1)
-  is applied and PhaseInitialized is reset so the 5-tick cycle repeats. So the object is repeatedly repositioned
-  to panels dictated by the controller struct and held in region 1 until a total duration (Timer2 x 5
-  ticks) ends.'
+status: confirmed
+summary: 'Per-frame update for a battle object in its dragged state: polls a drag-target panel, refreshes collision,
+  and runs a two-stage countdown that either re-arms collision or destroys the object.'
+interface: 'battle_objectDraggedPhaseHandler(r5: BattleObject*) -> r1: u32 /* collision-region update result */;
+  clobbers r0,r2,r3,lr,flags; preserves r4,r6'
+details: "Handles one tick of the Next-state phase for a battle object that the player has\ngrabbed and is dragging\
+  \ across the battlefield grid (e.g. Nav-mode cursor placement\nor a chip-target selection widget).\n\nFirst tick:\
+  \ sets oBattleObject_PhaseInitialized=1 and loads oBattleObject_Timer=5\n(a 5-frame collision-check window in\
+  \ 16-bit timer units).\n\nDrag target: reads a pointer from oBattleObject_ExtraVars+0x14. When non-null, the\n\
+  target's panel coordinates (bytes at offsets 0x12 and 0x13 in the target struct) are\ncopied into oBattleObject_PanelX\
+  \ / oBattleObject_PanelY, then\nobject_setCoordinatesFromPanels and object_updateCollisionPanels are invoked to\n\
+  reposition the drag sprite and recalculate which grid panels overlap it.\n\nTimer cascade:\n  - Decrement oBattleObject_Timer\
+  \ (16-bit, signed comparison after 32-bit sub).\n  - If still > 0, return collision result from updateCollisionPanels.\n\
+  \  - Once primary expires, decrement oBattleObject_Timer2.\n  - If Timer2 > 0: call object_setCollisionRegion(1,\
+  \ obj) to re-enable collision,\n    then clear PhaseInitialized so the 5-frame window restarts next cycle.\n \
+  \ - If Timer2 <= 0: call object_clearCollisionRegion(obj) and write\n    CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\n\
+  \    retiring the object.\n\nFields touched: oBattleObject_PhaseInitialized (byte), oBattleObject_Timer (u16),\n\
+  oBattleObject_Timer2 (u16), oBattleObject_PanelX (byte), oBattleObject_PanelY (byte),\noBattleObject_ExtraVars+0x14\
+  \ (u32 pointer),\noBattleObject_CurStateActionPhaseAndPhaseInitialized (u32 state word).\n\nQuirk: the Timer decrement\
+  \ is performed as a 32-bit subtraction then stored as 16-bit,\nso the bgt after the strh reads the sign-extended\
+  \ halfword rather than the full 32-bit\ndifference; values above 0x7FFF wrap but are irrelevant for small countdowns.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'loc init: strb #1 PhaseInitialized, strh #5 Timer only on first entry; copies [r1,#0x12]/[r1,#0x13]
-    from ExtraVars+0x14 into PanelX/PanelY then calls object_setCoordinatesFromPanels and object_updateCollisionPanels;
-    Timer2 expiry path: bl object_clearCollisionRegion then mov r0,#CUR_STATE_DESTROY stored to CurState...field;
-    non-expiry path: mov r0,#1; bl object_setCollisionRegion and PhaseInitialized reset to 0, restarting
-    the 5-tick cycle'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:55757
-  - 0x080D1E08 sub_80D1E08
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x0801A07C object_setCollisionRegion
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x080D1E32
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_objectDraggedPhaseHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_objectDraggedPhaseHandler
+
+    ./wf verify --function battle_objectDraggedPhaseHandler --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_objectDraggedPhaseHandler
+
+    ./wf verify --function battle_objectDraggedPhaseHandler --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 65 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_objectDraggedPhaseHandler
+
+    ./wf verify --function battle_objectDraggedPhaseHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1e32 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What fills ExtraVars+0x14 and writes fields 0x12/0x13 (the mover/chip that drags the object) — its caller
-  sub_80D1E08 would show which chip or object uses this
-- meaning of collision region index 1
+- What game feature creates the drag-target struct at ExtraVars+0x14 (Nav-mode chip targeting? Custom chip placement?
+  Multi-card drag?)
+- What is Timer2 initialised to by the code that spawns this object; does it represent total drag lifetime in frames?
+- Is the 5-frame Timer cycle used for a snap-to-panel feel or a collision recheck each drop attempt?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D1E32 -> battle_objectDraggedPhaseHandler
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D1E32
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

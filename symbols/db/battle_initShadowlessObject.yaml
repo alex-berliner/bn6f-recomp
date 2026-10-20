@@ -1,54 +1,75 @@
 name: battle_initShadowlessObject
 address: '0x080C6DFC'
 kind: function
-status: probable
-summary: 'First-time setup for a battle object''s appearance: places it at its panel, loads its sprite
-  with no shadow, resets animation/palette/flip, and hands control to its update state.'
-interface: (r0/r4 = battle object pointer, r5 = same) -> r0 = result of sub_80C6E50; object left in CUR_STATE_UPDATE
-  with phase fields reset
-details: 'The routine acts on a battle object: it first recomputes pixel coordinates from the panel grid
-  (object_setCoordinatesFromPanels), zeroes and then increments the Z16 and Y16 halfword fields, and loads
-  a sprite with fixed arguments (0x10, 0x20, 0x80) via sprite_load. It then marks the sprite shadowless,
-  sets oObjectHeader_Flags bit 0x2, resets both animation fields (CurAnim and CurAnimCopy) to 0 and applies
-  animation 0 and palette 0, and sets the horizontal flip from object_getFlip (alliance/DirectionFlip).
-  Finally it writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and calls
-  sub_80C6E50, likely the matching update handler. The pattern is the classic per-object state-0 ''init''
-  handler in BN6 battle code; which specific object/effect it belongs to is not shown here.'
+status: confirmed
+summary: 'Initialize a shadowless battle object: position from panels, load sprite without shadow, set initial animation/palette/flip,
+  then transition to update phase.'
+interface: void battle_initShadowlessObject(void); /* r5 = object pointer; outputs r5, r8, r9, r10, r11, r12 via
+  sub_80C6E50 */
+details: "Operates on the BattleObject pointed to by r5.\n- Calls object_setCoordinatesFromPanels to place the object\
+  \ on the battle grid.\n- Sets Z16 to 1 and increments Y16 by 1 (slight vertical offset; both are 16-bit fields\
+  \ at\n  oBattleObject_Z16 / oBattleObject_Y16). The Z16 write is done via a redundant\n  zero-then-add-1 sequence\
+  \ rather than a direct store, but the net result is Z16 = 1.\n- Loads the sprite via sprite_load(r0=0x80, r1=0x10,\
+  \ r2=0x20) then calls sprite_noShadow\n  to suppress the ground shadow that normal battle objects render.\n- ORs\
+  \ flag bit 1 (value 2) into oObjectHeader_Flags, marking the object as shadowless /\n  a special category.\n-\
+  \ Resets oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 0, calls\n  sprite_setAnimation(0) and sprite_loadAnimationData()\
+  \ to load frame-0 animation data,\n  then sprite_setPalette(0).\n- Reads the object's current flip direction (object_getFlip)\
+  \ and applies it to the\n  sprite (sprite_setFlip).\n- Writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\n\
+  \  transitioning the state machine to its per-frame update phase.\n- Tail-calls sub_80C6E50, which produces the\
+  \ final r5/r8/r9/r10/r11/r12 outputs that\n  this function returns to its caller.\nTypical callers would be initialization\
+  \ routines for battle effects, projectiles, or\nenvironmental objects that should not cast a shadow sprite.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_setCoordinatesFromPanels then Z16/Y16 updates: object is positioned from its panel
-    coords at spawn; sprite_load (0x10,0x20,0x80) + sprite_noShadow: gives the object its sprite and suppresses
-    its shadow; CurAnim/CurAnimCopy zeroed + sprite_setAnimation(0) + sprite_setPalette(0) + sprite_setFlip(object_getFlip()):
-    full sprite-state reset; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
-    then bl sub_80C6E50: transition to the update state handler; runs in battlesweep/beastsp/chips recorded
-    routes, consistent with a battle-scene object initializer'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:32170
-  - 0x0800E456 object_getFlip
-  - 0x0800E29C object_setCoordinatesFromPanels
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080C6DFC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_initShadowlessObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_initShadowlessObject
+
+    ./wf verify --function battle_initShadowlessObject --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_initShadowlessObject
+
+    ./wf verify --function battle_initShadowlessObject --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 55 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_initShadowlessObject
+
+    ./wf verify --function battle_initShadowlessObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080c6dfc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- Which sprite/asset ID is passed implicitly (sprite_load args' meaning unconfirmed), i.e. which in-game
-  object this is
-- What sub_80C6E50 (the presumed update handler) does, and which caller dispatches into this init state
+- What does sub_80C6E50 do after the state transition (further init, per-object-type setup, or just a generic tail-call)?
+- What specific sprite parameters do r0=0x80, r1=0x10, r2=0x20 encode (tilemap bank / OAM region / size)?
+- Which object types in the game actually call this vs. the shadowed variant?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80C6DFC -> battle_initShadowlessObject
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80C6DFC
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

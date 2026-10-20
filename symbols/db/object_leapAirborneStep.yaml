@@ -1,52 +1,72 @@
 name: object_leapAirborneStep
 address: '0x080D1394'
 kind: function
-status: probable
-summary: 'Airborne phase of a leap attack: integrates velocities each frame with optional gravity, then
-  on timer expiry snaps the object to its landing panel and switches to the landed action.'
-interface: () -> void; r5 = battle object pointer, no args or return; flags not meaningful
-details: Adds oBattleObject_XVelocity/YVelocity/ZVelocity into X/Y/Z each call. If Param4 != 0, subtracts
-  0x8000 from ZVelocity every frame (gravity). Timer2 (16-bit) counts down airtime; on reaching 0 it calls
-  object_setCoordinatesFromPanels and object_updateCollisionPanels to re-derive pixel position and collision
-  from the panel grid, stores Z = 0, selects collision region 1 or 0x18 via object_setCollisionRegion
-  depending on Param1, sets CurAction = 4 and clears CurPhaseAndPhaseInitialized. If Param4 != 0 it then
-  calls object_getFrontDirection and sets XVelocity = direction * 0x30000, giving a forward slide after
-  touchdown. Runs with the object in r5, so it is used as a per-frame state handler.
+status: confirmed
+summary: 'Advance a leaping/airborne battle object one frame: integrate velocity, apply gravity on Z, and land onto
+  the panel grid when the airborne timer expires'
+interface: void object_leapAirborneStep(u32 r5 /*battle object ptr*/) -> r1 /*Z velocity if still airborne; multiplier
+  or collision-region result on landing*/; clobbers nzcv r0 r2 r3 lr; preserves r4 r6
+details: 'Reads oBattleObject_X/Y/Z and their corresponding velocity fields, adds velocity to position (fixed-point
+  3D integration). If oBattleObject_Param4 (leap flag) is nonzero, subtracts 0x8000 from Z velocity each frame to
+  simulate gravity. Decrements oBattleObject_Timer2 (16-bit airborne countdown). While timer > 0 the object stays
+  airborne and r1 holds the (post-gravity) Z velocity. On timer expiry: calls object_setCoordinatesFromPanels and
+  object_updateCollisionPanels to snap the object to the panel grid, zeroes oBattleObject_Z, picks collision-region
+  size based on oBattleObject_Param1 (1 vs 0x18 for wide objects), sets oBattleObject_CurAction to 4 (idle), and
+  clears oBattleObject_CurPhaseAndPhaseInitialized. If the leap flag (Param4) is set, also computes oBattleObject_XVelocity
+  as object_getFrontDirection() * 0x30000 to give the object forward momentum on landing. The constant dword_80D1504
+  = 0xFFFF8000 is the per-frame gravity delta; dword_80D1508 = 0x30000 is the post-land forward speed.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'asm: X/Y/Z += respective Velocity fields each call, then ''add r0,r1,dword_80D1504(=0xffff8000)''
-    stored back to ZVelocity when Param4 != 0 (gravity); asm: ldrh Timer2 / sub #1 / bne skip — landing
-    sequence only fires when the airtime counter hits zero; asm: on expiry calls object_setCoordinatesFromPanels
-    and object_updateCollisionPanels, then ''mov r0,#4; strb CurAction'' and clears CurPhaseAndPhaseInitialized;
-    asm: mov r0,#1 / cmp Param1 / mov r0,#0x18 before bl object_setCollisionRegion — region depends on
-    Param1; asm: tail calls object_getFrontDirection, multiplies by dword_80D1508(=0x30000) into XVelocity
-    when Param4 != 0 (post-landing forward drift)'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:54359
-  - 0x0800E2CA object_getFrontDirection
-  - 0x0801A07C object_setCollisionRegion
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x080D1394
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_leapAirborneStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_leapAirborneStep
+
+    ./wf verify --function object_leapAirborneStep --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_leapAirborneStep
+
+    ./wf verify --function object_leapAirborneStep --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_leapAirborneStep
+
+    ./wf verify --function object_leapAirborneStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1394 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which attack/state table installs this handler and what CurAction 4 means downstream (the landed-state
-  handler) is not shown; a caller or the action table entry would confirm the attack identity and the
-  exact meaning of Param1/Param4.
+- What specific battle actions trigger this step (which CurAction value dispatches here)?
+- Is CurAction 4 truly idle or a specific landing/recovery state?
+- What is oBattleObject_Param4's semantic role beyond 'leap'—does it also mark jump attacks vs. hop movement?
+- What does object_setCollisionRegion return in r1 that matters to the caller?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D1394 -> object_leapAirborneStep
-  where: bn6f be30f643
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D1394
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

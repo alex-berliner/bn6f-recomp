@@ -1,53 +1,71 @@
 name: beastsp_handleInputAndScripts
 address: '0x081334C8'
 kind: function
-status: probable
-summary: 'Input/state step handler for a beast-SP-related text sequence: reacts to B+Select and chatbox
-  progress, playing sounds and advancing scripts 0xb/0x10/0x11 while updating a context''s state bytes.'
-interface: (r5 = context struct, caller-provided) -> r0 = last call's return; writes state bytes [r5+2],
-  [r5+3] and word [r5+0x68]
-details: 'If a submenu is open it returns immediately, except when the submenu state is 0x30, in which
-  case it sets [r5+3]=0xc; state 0x24 also just returns. Otherwise it checks chatbox flag bit 0x20 of
-  eFlags2009F38: if clear, it waits for B or Select, and on a new press sets [r5+2]=0x10, plays SOUND_EXIT_SUBMENU
-  and runs text script 0xb. If the chatbox flag is set, it plays SOUND_MENU_SELECT and branches on chatbox_GetState:
-  nonzero state leads to sub_8134FE0, [r5+0x68]=0xc, script 0x10 and [r5+3]=8; zero state runs script
-  0x11 with [r5+3]=4 and [r5+0x68]=0. The context r5 is never set up in this function, so the caller must
-  preload it. Scripts come from the eTextScript2028A20 archive via the chatbox trampoline. The pattern
-  (exit sound + B/Select + sequential scripts + small state machine fields) fits a scripted tutorial/cutscene
-  advance step.'
+status: confirmed
+summary: 'Per-frame tick handler for the Beast SP sub-menu: dispatches menu selection (OK/Cancel), chatbox script
+  advancement, and exit-on-SELECT+B logic.'
+interface: void beastsp_handleInputAndScripts(u32 r2 /*sound arg*/, u32 r4 /*battle state*/, u32 r5 /*submenu state
+  ptr*/, u32 r10 /*passthrough*/) → preserves r4, r6, r7, r10; outputs r5, r10; clobbers r0-r3, lr, flags
+details: 'Checks submenu_isOpen_81355D8. If open: reads submenu_getUnk02 highlight value—0x24 (OK) consumes input
+  silently, 0x30 (Cancel) writes 0x0C to state byte +3 and returns. If closed (or fell through): tests chatbox flag
+  bit 0x20 via chatbox_mask_eFlags2009F38. Flag set means a chatbox selection prompt is active—plays SOUND_MENU_SELECT,
+  then either advances the script (chatbox_GetState != 0 → sub_8134FE0, word +0x68 = 0x0C, runScript(0x10), byte
+  +3 = 0x08) or finishes it (chatbox_GetState == 0 → runScript(0x11), byte +3 = 0x04, word +0x68 = 0). Flag clear
+  means idle—polls SELECT|B via IsButtonPressed; on press writes exit flag 0x10 to byte +2, plays SOUND_EXIT_SUBMENU,
+  and runs script 0x0B. State struct fields touched: byte at +2 (exit flag), byte at +3 (phase/state code), word
+  at +0x68 (chatbox sub-state). r5 pointer and r10 are unchanged on return. Two unused .word references (byte_813316C,
+  byte_8133174) sit after the function, likely jump-table remnants.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl submenu_isOpen_81355D8 ... cmp r0,#0x24 / #0x30 with early returns shows it only runs when
-    no submenu (or a specific one) is active; bl IsButtonPressed with JOYPAD_SELECT|JOYPAD_B followed
-    by SOUND_EXIT_SUBMENU and script 0xb shows a dismiss/exit input path; bne on chatbox_mask_eFlags2009F38
-    bit 0x20 splits ''text waiting'' vs ''no text'' handling; three chatbox_runScript_803FD9C_on_eTextScript2028A20
-    calls with indices 0xb/0x10/0x11 and distinct state stores (0x8, 0x4, 0xc) show a script-sequenced
-    state machine; recorded execution on the beastsp route links it to the beast-SP sequence'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:6641
-  - 0x0811F7EC IsButtonPressed
-  - 0x080005CC PlaySoundEffect
-  - 0x08045F4C chatbox_GetState_8045F4C
-  reproduce: python3 tools/asmcat.py 0x081334C8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c beastsp_handleInputAndScripts
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function beastsp_handleInputAndScripts
+
+    ./wf verify --function beastsp_handleInputAndScripts --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function beastsp_handleInputAndScripts
+
+    ./wf verify --function beastsp_handleInputAndScripts --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function beastsp_handleInputAndScripts
+
+    ./wf verify --function beastsp_handleInputAndScripts --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081334c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- Which screen or cutscene owns the r5 context and what its fields 2, 3 and 0x68 mean downstream
-- What sub_8134FE0 does in the 'chatbox active' branch
-- What text scripts 0xb/0x10/0x11 of eTextScript2028A20 say (would confirm it is the beast-SP tutorial/cutscene)
+- What exactly do byte +3 values 0x04, 0x08, 0x0C represent in the Beast SP state machine?
+- What does submenu_getUnk02's 0x24 vs 0x30 correspond to visually (menu item IDs or screen transitions)?
+- Is sub_8134FE0 a chatbox page-advance or a script-pointer update?
+- Are the trailing .word references used by a nearby lookup table or are they dead data?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81334C8 -> beastsp_handleInputAndScripts
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81334C8
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

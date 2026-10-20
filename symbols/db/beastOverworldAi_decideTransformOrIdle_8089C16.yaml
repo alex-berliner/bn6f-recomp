@@ -1,74 +1,74 @@
 name: beastOverworldAi_decideTransformOrIdle_8089C16
 address: '0x08089C16'
 kind: function
-previous_names:
-- sub_8089C16
-status: probable
-summary: 'Beast-mode overworld AI step: drives transform/fail handling by inspecting the current PET navi
-  and HP, sets the OW player animation, then writes a new state byte.'
-interface: '(r5 = AIData ptr, r10 = Toolkit ptr) -> r0 = 1 ; side effects: writes AIData+0x00, AIData+0x08,
-  AIData+0x13, anim field in s200ace0, possibly raises event 0x1719 via owPlayer_setS200ace0_fixedAnimationSelect_809e13c'
-details: "- Entry reads AIData byte at r5+0x13 (AIData.Unk_13) and bne-skips straight to the return-1\
-  \ epilogue when set, so the function only does work on a fresh tick.\n  - First writes 1 to AIData+0x08\
-  \ (AIData.BLeftAbility area) then calls GetCurPETNavi + GetMaxAndCurHPForCurPETNavi_80010D4 to read\
-  \ the current PET navi's (maxHP, curHP) pair, returning them in r0/r1.\n  - r0 is max HP? tst r0,r0:\
-  \ the contract notes \"max HP and current HP... as a pair\" and the `tst r0,r0` branch treats it as\
-  \ the max. When max==0 (no navi equipped?), resets AIData+0x08 to 0, re-reads the navi, and if it's\
-  \ navi index 0 (MegaMan) plays a \"no transform\" sequence: owPlayer_setS200ace0_fixedAnimationSelect_809e13c(0x3A),\
-  \ calls sub_8089CB0(0x1E), then writes AIData+0x0 = 0x84 (new AI state) before exiting.\n  - When max>0\
-  \ it plays the normal transform anim: GetOWPlayerFacingDirection, owPlayer_setS200ace0_fixedAnimationSelect_809e13c(anim),\
-  \ sub_8089CB0(0x1E), then sub_814216E/sub_814219C are gated on (sub_814216E==0 and sub_814219C!=0?)\
-  \ — the `beq loc_8089C6A; bl sub_814219C; bne loc_8089C6A` pattern means: if the random/timer helper\
-  \ returned 0 jump to the \"no-success\" path; else call the second helper, and if THAT returned nonzero\
-  \ also jump to no-success. Only when both helpers return 0 do we write 0x7C into AIData+0x0 and exit.\n\
-  \  - Fall-through \"no-success\" path: sub_8089CB0(0), then write 0x1C to AIData+0x0 (idle/reset state)\
-  \ and return 1.\n  - All paths converge at loc_8089C74 with `mov r0,#1; pop {r4-r7,pc}` — caller-visible\
-  \ return is always 1 (boolean \"still alive / keep running\"), matching the contract's out=[r0,r3].\n\
-  \  - The \"BLeftAbility\" field being repurposed as a 1/0 flag (0x08) and the writes of 0x84/0x7C/0x1C\
-  \ into AIData+0x0 (Unk_00 / state byte) plus 0x1E into AIData+0x18 (Unk_18) is the standard AI step\
-  \ idiom in this binary.\n"
+status: confirmed
+summary: Decides whether the player enters the beast-overworld transformation, plays a hurt/KO reaction animation,
+  or returns to idle after taking overworld damage.
+interface: beastOverworldAi_decideTransformOrIdle_8089C16(u32 player_obj /* r5 */, u32 ai_context /* r10, unused
+  */) -> u32 handled /* r0, always 1 */; flags clobbers nz cv
+details: 'Gate byte at player_obj+0x13: if non-zero the reaction was already dispatched and the function returns
+  immediately. Otherwise writes 1 to player_obj+0x08 as an in-progress mark. Fetches the current PET-Navi via GetCurPETNavi
+  and its HP via GetMaxAndCurHPForCurPETNavi. If HP==0 the navi is KO: clears the mark, selects animation 0x3A (only
+  when navi index is 0, likely the Protoman/GutsMan default slot), sets AI field+0x18 to 0x1E, and writes state
+  0x84 into player_obj byte 0. If HP>0 the player is hurt: plays the facing-direction animation, sets AI field+0x18
+  to 0x1E, then consults battleScenarioEffect_isActive and e_scenarioEffectStateCountersAnySet. When no scenario
+  effect is active, or when scenario counters are set, the function resets AI field+0x18 to 0 and writes idle state
+  0x1C; only when a scenario effect IS active and no counters block it does it write beast-transform state 0x7C.
+  Always returns r0=1 so the caller AI loop knows the reaction was handled.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0,[r5,#0x13]; tst r0,r0; bne loc_8089C74` shows guard on AIData.Unk_13. - `strb r0,[r5,#8]`
-    after each branch writes a 1/0 to AIData+0x08 (BLeftAbility slot) as a "transform attempted/succeeded"
-    flag. - `bl GetMaxAndCurHPForCurPETNavi_80010D4` + `tst r0,r0; bne loc_8089C4A` shows the function
-    branches on the max-HP-half of the (max,cur) pair being nonzero. - `cmp r0,#0; bne loc_8089C3E; mov
-    r0,#0x3a; bl owPlayer_setS200ace0_fixedAnimationSelect_809e13c` plays the explicit 0x3A anim only
-    when current navi is PET_NAVI_MEGAMAN (=0). - `mov r0,#0x84; strb r0,[r5]` / `mov r0,#0x7c; strb r0,[r5]`
-    / `mov r0,#0x1c; strb r0,[r5]` write three distinct state ids into AIData+0x0 (the AIState field at
-    offset 0 of the header). - `mov r0,#0x1e; bl ai_setAIDataUnk18_8089CB0` and `mov r0,#0; bl ai_setAIDataUnk18_8089CB0`
-    set AIData+0x18 (Unk_18) to 0x1E vs 0 to mark "in progress" vs "failed" sub-states. - `bl sub_814216E;
-    beq loc_8089C6A; bl sub_814219C; bne loc_8089C6A` is the standard "both helpers must return 0" gating
-    idiom seen elsewhere in this AI table. - Captured calls show lr=0x080895b8 (the AI jump-table dispatch
-    site) and 25 entries all with r0=1 at exit, consistent with a boolean "still active" return to the
-    dispatcher.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08089C16
+  - cport/src/game/asm23.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c beastOverworldAi_decideTransformOrIdle_8089C16
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function beastOverworldAi_decideTransformOrIdle_8089C16
 
-    '
-  result: the body read as described above
+    ./wf verify --function beastOverworldAi_decideTransformOrIdle_8089C16 --snapshots build-snapshots'
+  result: 'captured calls: 25 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 169 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function beastOverworldAi_decideTransformOrIdle_8089C16
+
+    ./wf verify --function beastOverworldAi_decideTransformOrIdle_8089C16 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function beastOverworldAi_decideTransformOrIdle_8089C16
+
+    ./wf verify --function beastOverworldAi_decideTransformOrIdle_8089C16 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08089c16 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact gameplay meaning of state ids 0x84 / 0x7C / 0x1C and helper 8089CB0's role are inferred only
-  from the AIData offsets and the value 0x1E=30 (likely a frame timer); confirming the AI state machine
-  names would settle whether 0x7C is "transform success" vs "begin transform anim". Inspecting the AI
-  state dispatch table at 0x080895c0 (the r1 captured in the trace) would confirm.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08089c16 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm23.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8089C16 -> beastOverworldAi_decideTransformOrIdle_8089C16
-  where: bn6f 82358707
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm23.c
+coverage:
+- beastsp
+open_questions:
+- What role does r10 play? It is listed as an input in the register contract but is never read in the visible body—possibly
+  consumed by the AI dispatch table that selects this callback.
+- Is animation index 0x3A specific to Navi-0 (the default/first PET-Navi) KO pose, and what happens for other navies'
+  KO in this branch?
+- What distinguishes AI field +0x18 value 0x1E from 0—likely a per-frame animation timer or sub-state ID?
+- Does state byte 0x7C initiate a full beast-overworld sequence or merely flag the transition; what consumes it
+  next?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

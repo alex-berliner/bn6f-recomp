@@ -1,52 +1,99 @@
 name: object_initLoadSprite
 address: '0x080D00C4'
 kind: function
-status: probable
-summary: 'One-shot battle object init state: loads a sprite and animation from a Param2-indexed table,
-  then advances the object''s state machine to UPDATE.'
-interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
-details: Runs as an object state handler using r5 as the battle object. It recomputes the object's pixel
-  position from its panel coords, stores 0 to the Z16 field, and loads sprite (0x80, 8, 0xE) with the
-  shadow enabled. It sets bit 1 of oObjectHeader_Flags, then picks an animation index from table word_80D0130
-  indexed by oBattleObject_Param2 and writes it to CurAnim/CurAnimCopy before calling sprite_setAnimation,
-  sprite_loadAnimationData, palette 0, and the flip from object_getFlip. It zeroes Param3, and if Param2
-  == 0 nudges the object's Y and Z down by 1 (a one-pixel offset for that variant). Finally it stores
-  CUR_STATE_UPDATE into the state field, ending the init state; the trailing bl sub_80D01FE / object_freeMemory
-  are unreachable dead code.
+status: confirmed
+summary: 'Initializes a battle object''s sprite: sets panel-derived position, loads tile graphics, enables shadow,
+  assigns animation from a Param2-indexed lookup table, applies palette 0, sets flip, optionally nudges Y/Z up for
+  idle animation, then transitions the object to the update state.'
+interface: 'void object_initLoadSprite(void) /* in: r5 = battle object ptr; out: r5 unchanged; clobbers r0-r3, nzcv,
+  lr; preserves r4 */'
+details: 'Called with r5 pointing to a battle object. Sequence:
+
+  1. object_setCoordinatesFromPanels – computes X/Y from the object''s tile panels.
+
+  2. Clears the 16-bit fractional Z offset (oBattleObject_Z16).
+
+  3. sprite_load(0x80, 8, 0xE) – loads an 8×14-tile sprite with type 0x80 (likely a battle character/robot sprite
+  format).
+
+  4. sprite_hasShadow – enables shadow for this sprite; then sets flag bit 2 in oObjectHeader_Flags as the shadow-enabled
+  marker.
+
+  5. Reads oBattleObject_Param2 as an index into a per-animation-ID table (word_80D0130, containing .hword 0x3D3C
+  → byte 0 = 0x3C, byte 1 = 0x3D). Stores the result in both oBattleObject_CurAnim and oBattleObject_CurAnimCopy,
+  then calls sprite_setAnimation and sprite_loadAnimationData.
+
+  6. sprite_setPalette(0) – assigns the default palette.
+
+  7. object_getFlip → sprite_setFlip – mirrors the sprite if the object''s flip state says so.
+
+  8. Clears oBattleObject_Param3.
+
+  9. If Param2 == 0 (idle/default animation index), subtracts 1 from both Y and Z in 32-bit fixed-point to nudge
+  the sprite slightly upward.
+
+  10. Writes CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized, transitioning the object
+  to its per-frame update phase.
+
+  Dead code after the unconditional b to locret: calls battle_clearExtraVarsOwnerRef and object_freeMemory, unreachable
+  from the normal flow (likely a leftover from a cleanup path).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'reads/writes r5 battle-object fields (Z16, Flags, Param2/3, Y, Z, CurState...) with no r0 arg
-    setup, typical state-handler style; state store: ''mov r0, #CUR_STATE_UPDATE; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]''
-    before the return; sprite setup chain: sprite_load(0x80,8,0xE) -> sprite_hasShadow -> anim from word_80D0130[Param2]
-    -> sprite_setAnimation/loadAnimationData/palette/flip; Param2==0 branch shifts Y and Z down by 1,
-    a per-variant sprite offset; dead code ''bl sub_80D01FE; bl object_freeMemory'' after b locret is
-    unreachable, so no cleanup here'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:51824
-  - 0x0800E456 object_getFlip
-  - 0x0800E29C object_setCoordinatesFromPanels
-  - 0x08002E3C sprite_hasShadow
-  reproduce: python3 tools/asmcat.py 0x080D00C4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_initLoadSprite
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_initLoadSprite
+
+    ./wf verify --function object_initLoadSprite --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 259 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_initLoadSprite
+
+    ./wf verify --function object_initLoadSprite --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_initLoadSprite
+
+    ./wf verify --function object_initLoadSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d00c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- which enemy/object uses sprite id 0x80 with these args and what the values in word_80D0130 mean
-- no known caller (state table dispatch not captured), so the exact role of this state in the object's
-  lifecycle is unconfirmed
+- What sprite format does type 0x80 denote, and why 8×14 tiles specifically?
+- The animation lookup table word_80D0130 holds only one .hword entry visible here; is the full table larger or
+  is Param2 always 0/1 in practice?
+- Is the dead-code block (battle_clearExtraVarsOwnerRef + object_freeMemory) a vestige of an error/cleanup path
+  or was it meant to guard against a failed sprite load?
+- Why does the idle-animation Y/Z nudge subtract exactly 1 from both Y and Z in 32-bit? Is this a fixed-point pixel
+  offset to prevent the sprite from clipping into its shadow?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D00C4 -> object_initLoadSprite
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D00C4
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

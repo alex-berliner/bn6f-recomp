@@ -1,63 +1,74 @@
 name: cutscene_dispatchEventFlags_8142618
 address: '0x08142618'
 kind: function
-previous_names:
-- sub_8142618
-status: probable
-summary: 'Overworld per-frame cutscene dispatcher: checks soul-weapon / beast / cross-progress event flags
-  and fires the matching cutscene scripts, clearing them once handled.'
-interface: (in r10 = *Toolkit, lr = return) -> no caller-visible result; side effects = sets/clears EVENT_742/743/746/747
-  and may StartCutscene with one of three scripts
-details: "Runs from the overworld main loop. First it bails out unless the player is allowed to auto-advance\n\
-  \  forward (check_playerCanAdvanceForward_8034C36) and the current soul weapon is unlocked\n  (battle_getSoulWeaponBase_81427CE).\
-  \ With that gate passed it tests EVENT_742 and EVENT_743 (a pair of\n  \"beast / cross-transform\" progress\
-  \ flags) and reads the player AIData field at +0x11 (BeastOutAPwrAtk)\n  through GameStatePtr->CurBattleDataPtr\
-  \ (r10->0x3c). If beast-out is active the matching flag is set and\n  StartCutscene fires byte_8089554;\
-  \ otherwise the function clears both 742/743 and falls through.\n  Independently, EVENT_746 and EVENT_747\
-  \ each trigger their own StartCutscene (byte_80893CC, dword_8089128)\n  if set, after which they are\
-  \ cleared. The captured call site is the overworld script driver\n  (lr 0x08035e88, snap_beastsp_0180000),\
-  \ repeatedly called per frame.\n"
+status: confirmed
+summary: Starts one of several overworld cutscenes gated on event flags 742–747, using soul-weapon and advance-forward
+  checks as prerequisites.
+interface: void cutscene_dispatchEventFlags_8142618(u32 context_r10); /* modifies event flags and may call StartCutscene;
+  no register outputs (r4–r7 restored, r0/r1/lr clobbered by subcalls) */
+details: "Called during an overworld interaction with the NPC/player context in r10. Gate 1: check_playerCanAdvanceForward_8034C36\
+  \ must succeed (not Z). Gate 2: battle_getSoulWeaponBase_81427CE returns a flag id passed to TestEventFlag; the\
+  \ soul-weapon flag must be set. If both gates pass, the function enters a state machine on event flags in group\
+  \ 7: - If EVENT_742 is already set: check EVENT_743. If 743 is clear, set it and return\n  (first-visit bookkeeping).\
+  \ If 743 is also set, call sub_80357AE; on success start\n  the advance-forward cutscene script at byte_8089554,\
+  \ then clear both 742 and 743.\n- If EVENT_742 is clear: read the byte at (r10+0x3C)+0x11 (a player/battle-state\n\
+  \  sub-struct). If non-zero, set EVENT_742 for the next visit; skip clearing.\nIndependently of the 742/743 logic,\
+  \ EVENT_746 and EVENT_747 are tested; if set, their respective cutscene scripts (byte_80893CC, dword_8089128)\
+  \ are launched via StartCutscene(script, 0), and both flags are cleared unconditionally afterward. The three cutscene\
+  \ script pointers live in a literal pool at the end of the function. The trailing .byte 0x82,0x4E,… is a call-table\
+  \ entry (not code).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- bl check_playerCanAdvanceForward_8034C36 at 0x0814261e; beq skips the whole body. - bl battle_getSoulWeaponBase_81427CE
-    then bl TestEventFlag at 0x08142628: soul weapon must exist. - movflag EVENT_742 / EVENT_743 macros
-    followed by TestEventFlagFromImmediate and SetEventFlagFromImmediate at 0x08142638-0x0814265c. - ldr
-    r3,[r3,#0x3c] ; ldrb r0,[r3,#0x11] ; tst r0,r0 at 0x0814263c-0x08142644 reads BeastOutAPwrAtk on the
-    AIData reachable through Toolkit->0x3c. - ldr r0,off_81426B8 (=byte_8089554) ; mov r1,#0 ; bl StartCutscene
-    at 0x08142660-0x08142666 for the beast-out script. - movflag EVENT_746 / EVENT_747 blocks at 0x0814267c
-    and 0x08142690 each paired with their own StartCutscene (off_81426BC=byte_80893CC, off_81426C0=dword_8089128)
-    and ClearEventFlagFromImmediate at 0x081426a4/0x081426a8. - Captured calls from snap_beastsp_0180000_*
-    with lr=0x08035e88, which is the overworld main update loop. - exit r0 = 0x40 (stack) or 0x60 is incidental
-    (return value from ClearEventFlagFromImmediate), not used by'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08142618
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c cutscene_dispatchEventFlags_8142618
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function cutscene_dispatchEventFlags_8142618
 
-    '
-  result: the body read as described above
+    ./wf verify --function cutscene_dispatchEventFlags_8142618 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function cutscene_dispatchEventFlags_8142618
+
+    ./wf verify --function cutscene_dispatchEventFlags_8142618 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function cutscene_dispatchEventFlags_8142618
+
+    ./wf verify --function cutscene_dispatchEventFlags_8142618 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08142618 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact narrative meaning of EVENT_742/743 vs 746/747 and which soul weapon / story beat each script
-- represents; only the project-wide event flag list would settle that.
-- 'Why the script at byte_8089554 is loaded both for the soul-weapon branch and via EVENT_746: the asm
-  shows'
-- two different cutscene scripts (byte_8089554 / byte_80893CC / dword_8089128) but their textual identity
-- isn't visible from the disassembly.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142618 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8142618 -> cutscene_dispatchEventFlags_8142618
-  where: bn6f d34dcc4e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- What exactly does sub_80357AE check before allowing the advance-forward cutscene to start?
+- Is the byte at (r10+0x3C)+0x11 a 'soul unlocked' or 'chip in inventory' indicator?
+- Do flags 746/747 correspond to specific story beats (e.g. Cybeast encounters in Falzar)?
+- The register contract lists r5/r7 as both outputs and preserved; confirm the pop restores them cleanly for all
+  callers.
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

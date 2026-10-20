@@ -1,53 +1,69 @@
 name: object_updateMoveStep
 address: '0x080D1D90'
 kind: function
-status: probable
-summary: Per-frame handler that slides a battle object toward a target panel over Timer2 frames, destroying
-  it if its starting panel becomes invalid
-interface: (r5 = battle object) -> r0 = void; updates object X/Y, PanelX/PanelY, CurPhase, CurState/CurAction
-  on failure
-details: If the object's current panel is not a valid battlefield position, it clears the collision region,
-  sets CurStateActionPhase to CUR_STATE_DESTROY and CurAction to 2, i.e. removes the object. Otherwise
-  on phase 0 it latches the start panel as (PanelX | PanelY<<4) into ExtraVars+0x18, calls sub_80D1EF2
-  (likely computes X/YVelocity from start vs. target panel and Timer2), copies Timer2 into Timer, and
-  derives pixel coordinates from the panels. Each subsequent tick it adds X/YVelocity to X/Y, re-derives
-  panels from coordinates, syncs the collision record/facing via object_updateCollisionPanels, and decrements
-  Timer; when the timer expires CurPhase is reset to 0 so the move can be re-issued. This is the stepped-interpolation
-  tail of a move-to-panel action (slide/push/knockback-style movement).
+status: confirmed
+summary: 'Advances one frame of a battle-grid object''s movement: integrates velocity, refreshes panel occupancy
+  and collision, and resets the move phase when the step timer expires; destroys the object if it lands on an invalid
+  panel.'
+interface: void object_tickMoveStep_80D1D90(r5 = oBattleObject *obj, r10) -> (r1, r5 = obj)
+details: 'Phase-0 (first frame of a new move): stores CurPhase=1, packs PanelX|PanelY<<4 into ExtraVars+0x18 as
+  the origin panel, calls object_stepUpdateByVelocity to derive XVelocity/YVelocity, copies Timer2 into Timer, and
+  syncs 16.16 X/Y from panels. Each frame: adds XVelocity and YVelocity to the fixed-point X/Y, re-derives grid
+  panels via object_setPanelsFromCoordinates, refreshes collision via object_updateCollisionPanels, then decrements
+  Timer; on Timer reaching zero CurPhase is reset to 0 so the object can queue its next move. If object_isCurrentPanelValid
+  returns false the object is torn down: collision cleared, CurState set to CUR_STATE_DESTROY, CurAction set to
+  2.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bne loc_80D1DA8 after object_isCurrentPanelValid leads to clearCollisionRegion + CUR_STATE_DESTROY
-    + CurAction=2; phase-0 block packs ldrb PanelX / lsl PanelY,#4 / orr into ExtraVars+0x18 and copies
-    Timer2 to Timer; per-tick block adds XVelocity/YVelocity to X/Y then calls object_setPanelsFromCoordinates
-    and object_updateCollisionPanels; Timer countdown to 0 resets CurPhase to 0, so the handler is a resumable
-    multi-frame move step; callees object_setCoordinatesFromPanels / object_setPanelsFromCoordinates confirm
-    panel<->pixel coordinate interpolation
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:55669
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x0800CC66 object_isCurrentPanelValid
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x080D1D90
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_updateMoveStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_updateMoveStep
+
+    ./wf verify --function object_updateMoveStep --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_updateMoveStep
+
+    ./wf verify --function object_updateMoveStep --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 90 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_updateMoveStep
+
+    ./wf verify --function object_updateMoveStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1d90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- sub_80D1EF2 (velocity setup) is unknown, so the exact target-panel field and how velocity is derived
-  is unconfirmed
-- no known callers, so which move action (push, knockback, slide) invokes this step is unclear
+- What does CurAction == 2 signify in the destroy path versus other destroy actions?
+- Is ExtraVars+0x18 (origin-panel packing) read back by a later routine, or purely diagnostic?
+- Does r10 carry a caller-supplied parameter that this function never reads, or is it purely an ABI artifact?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D1D90 -> object_updateMoveStep
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D1D90
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

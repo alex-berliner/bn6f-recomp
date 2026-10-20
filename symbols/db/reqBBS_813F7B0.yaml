@@ -1,0 +1,71 @@
+name: reqBBS_813F7B0
+address: '0x0813F7B0'
+kind: function
+status: confirmed
+summary: Prepare a BBS request in the toolkit's f3a0 buffer, skip the pending mark during screen fades, then dispatch
+  the request via reqBBS_813F8F0.
+interface: void reqBBS_setupAndDispatch(u32 slot /*r5*/, u32 toolkit /*r10*/) -> r0=0; r10,r11 clobbered by callee;
+  nz set
+details: Reads the f3a0 toolkit sub-buffer pointer from [toolkit + oToolkit_Unk200f3a0_Ptr] and writes six fixed
+  bytes at offsets +2 (0xFF), +3 (0x00), +6 (0x50), +7 (0x50), +9 (0x1A), +0xA (0x36) — likely a request type/size/offset
+  header. Calls IsScreenFadeActive; if no fade is in progress (Z clear) it also writes a pending-request marker
+  (0xF7) to the BBS state buffer at [toolkit + oToolkit_Unk2009740_Ptr] offset 0, clears offsets 4 and 6, and stamps
+  the caller's slot byte at [r5] with 0x1C, then re-initialises the f3a0 header. Finally tail-calls reqBBS_813F8F0(slot)
+  to actually transmit the request. Returns r0 = 0 with NZ flags set.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_813F7B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_813F7B0
+
+    ./wf verify --function reqBBS_813F7B0 --snapshots build-snapshots'
+  result: 'captured calls: 17 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_813F7B0
+
+    ./wf verify --function reqBBS_813F7B0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_813F7B0
+
+    ./wf verify --function reqBBS_813F7B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0813f7b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What BBS request type 0xF7 represents (net-battle result, e-mail, trade, etc.).
+- Why the f3a0 header is written twice (before and after the fade-check branch); likely because the pending-mark
+  path mutates it.
+- Meaning of the fixed byte pattern 0xFF/0x00/0x50/0x50/0x1A/0x36 — possibly command opcode, sub-field, and two
+  0x50 screen/window coordinates.
+- What slot value 0x1C encodes for the caller's request-state enum.
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

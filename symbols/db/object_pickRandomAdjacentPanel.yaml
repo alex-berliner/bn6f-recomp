@@ -1,66 +1,76 @@
 name: object_pickRandomAdjacentPanel
 address: '0x080F811A'
 kind: function
-status: probable
-summary: Picks a random panel adjacent to a battle object's current panel that matches a required/forbidden
-  panel-flag mask, preferring neighbors not in the row stored at object+0x13; returns 0 in r0 if no neighbors
-  match.
-interface: (r0 = battle object ptr (r5 preserved input too), r2 = panel flag mask to require, r3 = panel
-  flag mask to forbid) -> r0 = chosen panel x (low 3 bits, 0 if none), r1 = chosen panel y (high nibble
-  of the packed byte)
-details: 'Iterates the four cardinal offsets in the table at 0x80F81B8 ((0,+1),(0,-1),(-1,0),(+1,0)) added
-  to the object''s PanelX/PanelY, calling object_checkPanelParameters on each neighbor with the caller''s
-  flag masks. Each hit is packed as (y<<4)|x into one of two on-stack buffers: sp+0xC when the neighbor''s
-  y differs from byte [obj+0x13] (preferred), sp+0x10 when it matches (fallback). If any preferred hits
-  exist it picks one with GetPositiveSignedRNG divided by the count (SWI 6 Div remainder), else falls
-  back to the same-row buffer, else returns r0=0 (with r1 left stale). The chosen byte is unpacked to
-  x = value & 7 in r0 and y = value >> 4 in r1. Note the returned x is truncated to 3 bits, so this only
-  works for x <= 7.'
+status: confirmed
+summary: Randomly selects a valid panel adjacent to a battle object, preferring off-row neighbours over same-row
+  ones.
+interface: 'object_pickRandomAdjacentPanel(u8 descriptor, u32 checkP2, u32 checkP3, u8 obj) -> (r0: u8 panelColumn,
+  r1: u8 panelRow)'
+details: "Iterates the four cardinal neighbours (down, up, left, right via a 2-byte signed (dx,dy) lookup table\
+  \ at 0x80F81B8) of the battle object whose panel coordinates live at oBattleObject_PanelX/Y (r5). Each candidate\
+  \ column/row is validated by object_checkPanelParameters(col, row, r2, r3).\nValid panels are packed into a byte\
+  \ as (row<<4 | col) and sorted into two on-stack lists (frame offsets 0x0C and 0x10):\n  * off-row list – neighbour\
+  \ row ≠ descriptor byte 0x13 (the object's own row)\n  * same-row list – neighbour row == own row\nSelection priority:\
+  \ if the off-row list is non-empty, draw uniformly from it via GetPositiveSignedRNG + swi 6 (modulo); otherwise\
+  \ draw from the same-row list. If both are empty, returns column 0 and leaves row at the last-tested value (a\
+  \ quirk callers must tolerate).\nOn a successful pick, unpacks the byte: r0 = low nibble (column, extracted with\
+  \ lsl #0x1d / lsr #0x1d to mask to 4 bits… actually it's the full low byte minus the shifted row), r1 = high nibble\
+  \ (row).\nStack frame is 0x14 bytes; r0, r2, r3 saved at offsets 0x00/0x04/0x08; candidate bytes at 0x0C–0x0F\
+  \ (off-row) and 0x10–0x13 (same-row). r4 (loop index), r6, r7 are pushed/popped and preserved.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'loc_80F812A: ldrsb signed dx/dy pairs from byte_80F81B8 added to oBattleObject_PanelX/PanelY
-    each of 4 iterations; bl object_checkPanelParameters with (x+dx, y+dy, [sp+4], [sp+8]) gates which
-    neighbors are collected; cmp r1, [r2,#0x13] splits matches into preferred (sp+0xC, count r6) vs same-row
-    (sp+0x10, count r7) buffers, stored as strb (y<<4)|x; bl GetPositiveSignedRNG; svc 6 (Div) uses remainder
-    r1 to index the non-empty buffer, then lsr #4 / lsl 0x1d unpack y and x; byte_80F81B8: 0,1, 0,-1,
-    -1,0, 1,0 — exactly the four cardinal neighbor offsets'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:136802
-  - 0x08001532 GetPositiveSignedRNG
-  - 0x0800CC86 object_checkPanelParameters
-  reproduce: python3 tools/asmcat.py 0x080F811A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal''s mechanics (iterating 4 offsets from 0x80F81B8, preferred/fallback packing, SVC 6
-    modulo, unpacking y>>4 and x&7) match the asm exactly. However, `ai_` prefix is unwarranted — no callers
-    are known and the routine takes a generic object ptr with panel flag masks, so `object_` is the correct
-    category. The `r5 preserved` claim is plausible (r5 is never written) but the signature inputs are
-    r0/r2/r3, not r5.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_pickRandomAdjacentPanel
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_pickRandomAdjacentPanel
+
+    ./wf verify --function object_pickRandomAdjacentPanel --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_pickRandomAdjacentPanel
+
+    ./wf verify --function object_pickRandomAdjacentPanel --snapshots build-snapshots'
+  result: 54 compared, 0 differed, 42 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_pickRandomAdjacentPanel
+
+    ./wf verify --function object_pickRandomAdjacentPanel --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f811a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- No callers are known, so the meaning of object field 0x13 (the row treated as lower priority) is unconfirmed
-  — likely the object's own PanelY or a row to avoid stepping into
-- The identity of the caller AI/attack script that uses this (routes suggest a boss move such as battlesweep)
-  and what the panel-flag masks passed in r2/r3 typically are
-- The proposal's mechanics (iterating 4 offsets from 0x80F81B8, preferred/fallback packing, SVC 6 modulo,
-  unpacking y>>4 and x&7) match the asm exactly. However, `ai_` prefix is unwarranted — no callers are
-  known and the routine takes a generic object ptr with panel flag masks, so `object_` is the correct
-  category. The `r5 preserved` claim is plausible (r5 is never written) but the signature inputs are r0/r2/r3,
-  not r5.
+- When no adjacent panel is valid the return is (0, last-row-tested); do callers treat r0==0 as 'no move available'
+  or could column 0 be a legitimate panel?
+- The packed byte uses row in the high nibble, limiting row to 0–15; confirm the battle grid never exceeds 15 rows.
+- Why is the off-row list preferred? Likely to encourage movement across rows (vertical repositioning) while still
+  allowing lateral steps.
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80F811A -> object_pickRandomAdjacentPanel
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80F811A
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

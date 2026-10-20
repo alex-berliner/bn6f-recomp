@@ -1,74 +1,93 @@
 name: battle_performBeastOutBattleAiTick_81419A0
 address: '0x081419A0'
 kind: function
-previous_names:
-- sub_81419A0
-status: probable
-summary: Beast-SP Battle AI per-frame dispatch (init sub-mode, run AI, conditionally run sub-routines)
-  returning 0.
-interface: (r10 = ToolkitPtr) -> r0 = 0 ; updates r4–r7/r8/r9/r12, calls many subsystems, may call chatbox_mask_eFlags2009F38
-details: "Reads `eStruct2001010` (a per-subsystem state struct at 0x02010100) into r5 and asks `sub_8141AA8`\
-  \ (next-subsystem mode helper) whether a transition is needed; if no, falls through. Otherwise clears\
-  \ `eStruct2001010+3`, runs two `sub_80468C6` setup calls (`(1,0,0)` then `(2,1,0)` — likely Beast-SP\
-  \ on/off and player/state selects), then continues.\n  Common tail (run regardless when no transition):\
-  \ `sub_8046818` (battle AI dispatch — wrapper), `sub_8046854` (battleObject_updateSpriteGfxForAll —\
-  \ refresh OAM for every BattleObject), and `sub_811E0BA` (likely battle housekeeping — possibly background\
-  \ anims/effects).\n  If no cutscene script is active (`IsCutsceneScriptNonNull`), OW player isn't busy\
-  \ (`owPlayer_isBusyOrCutsceneActive_809E462` returns Z), and a screen-fade is in progress (`IsScreenFadeActive`\
-  \ returns Z), it reads the chatbox/event-flag word (`chatbox_mask_eFlags2009F38` with `r0=0x80`). When\
-  \ the flag bit is *not* set, checks `GameState->SubsystemIndex == 4` (Battle subsystem). If yes, calls\
-  \ `sub_8141AD2` (likely \"is Beast-SP initialized?\"); based on its NZ result it picks `sub_8141A10`\
-  \ (Beast-SP tick) or `sub_8141A70` (Beast-SP init or alternate branch).\n  Always returns 0. The `snap_beastsp_*.bin`\
-  \ frames captured all enter with `r0=0x081419a1` (the low bit set — Thumb `+1` mode, typical of the\
-  \ call-site odd address), `r1=0x10`, `r2=1`, `r3=0x02001f6e`, and exit with `r0=0` — consistent with\
-  \ this being a Beast-SP-mode loop of the main battle ticker.\n  EWRAM touched: `eStruct2001010` (`off_8141B14`);\
-  \ chatbox/event-flag word at `eFlags2009F38`; GameState pointer via Toolkit.\n"
+status: confirmed
+summary: 'Per-frame Beast Out AI tick: initialises pet chip queues on first entry, runs battle helpers, gates on
+  cutscene/fade/chatbox/subsystem, then advances SP evolution or ticks the action cooldown.'
+interface: '// void battle_beastOutAiFrameTick_81419A0(
+
+  //   u32 r4, u32 r6, u32 r7, u32 r10, u32 lr);
+
+  // in  : r4 (caller context), r6 (caller context), r7 (caller context),
+
+  //       r10 (toolkit pointer), lr
+
+  // out : r8, r9, r10, r11, r12 (written by sub-calls)
+
+  // clobbers: r0-r3, lr, all flags
+
+  // preserved: r4, r5, r6, r7, r8, r9, r12 (r5 saved/restored via push {r4-r7,lr})
+
+  // always returns r0=0
+
+  '
+details: "Loads the pet struct pointer (eStruct2001010) into r5 and calls\npet_testIsMapGroupAllowed_8141AA8; bails\
+  \ early if the map group is\nnot battle-allowed.\n\nOne-shot init: byte_2001013 (offset +3 of eStruct2001010)\
+  \ acts as a\n\"first frame of this battle\" flag.  If set it is consumed (zeroed),\nsub_80468BA is called (likely\
+  \ resets battle-object slots), and two\nAI chip-queue slots are initialised via\nbattleObject_initAIChipQueueSlot_80468C6\
+  \ (slot 1 → (0,0), slot 2 →\n(1,0)) so the pet has a starting move queue.\n\nUnconditional per-frame work (runs\
+  \ even when later gates reject):\n  - battle_callAIDispatch_8046818  – dispatches normal AI tick\n  - battleObject_updateSpriteGfxForAll_8046854\
+  \ – refreshes sprite\n    gfx for every battle object; leaves toolkit ptr in r10\n  - battle_gfx_renderLatticeOrSpinner_811E0BA\
+  \  – draws lattice\n    grid / spinner effect\n\nGate chain (all must pass to reach the Beast Out decision):\n\
+  \  1. IsCutsceneScriptNonNull – no active cutscene script (Z set)\n  2. owPlayer_isBusyOrCutsceneActive_809E462\
+  \ – player idle (Z set)\n  3. IsScreenFadeActive – fade must be in progress (Z clear)\n  4. chatbox_mask_eFlags2009F38(0x80)\
+  \ – chatbox suppress flag\n     must be clear (Z set)\n  5. gameState.SubsystemIndex == 4 – pet subsystem must\
+  \ be active\n\nDecision:\n  battle_canBeastOut_8141AD2 checks whether the pet can trigger\n  Beast Out.  If Z\
+  \ (can evolve) → battle_beastSpEvolveStep_8141A10\n  advances one SP-evolution step.  Otherwise →\n  battleObject_tickBeastOutActionCooldown_8141A70\
+  \ decrements the\n  cooldown timer so Beast Out can be attempted next opportunity.\n\nAlways returns r0 = 0.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r5, off_8141B14 // =eStruct2001010` shows the EWRAM struct this function uses as scratch
-    state. - `bl sub_8046818` and `bl battleObject_updateSpriteGfxForAll_8046854` are standard battle-frame
-    calls (refresh sprites, run one AI tick). - `bl IsCutsceneScriptNonNull` / `bl owPlayer_isBusyOrCutsceneActive_809E462`
-    / `bl IsScreenFadeActive` form the standard "should we run real battle logic now?" gate used elsewhere
-    in battle tickers. - `bl chatbox_mask_eFlags2009F38` with `r0=0x80` plus the `bne` branch suggests
-    "if the player didn''t yet toggle Beast-SP mode this frame, skip." `cmp r0, #4` against `SubsystemIndex`
-    confirms Battle subsystem gating. - `sub_8141A10` / `sub_8141A70` / `sub_8141AA8` / `sub_8141AD2`
-    form a small sibling cluster at 0x8141A10–0x8141AD2; their proximity in IWRAM and the `bne` dispatcher
-    pattern match an exclusive Beast-SP sub-state machine (off → init → tick). - Snapshots all enter from
-    a single call-site (lr=0x08003b1a, near Beast-SP hook), and consistently return r0=0 → void-like main-loop
-    tick. - `bl sub_80468C6` twice with args (1,0,0) and (2,1,0) right after the mode switch matches "when
-    entering Beast-SP, set two related flags (e.g. battle-Type=Beast, dual-Navi on)."'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x081419A0
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_performBeastOutBattleAiTick_81419A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_performBeastOutBattleAiTick_81419A0
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_performBeastOutBattleAiTick_81419A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_performBeastOutBattleAiTick_81419A0
+
+    ./wf verify --function battle_performBeastOutBattleAiTick_81419A0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_performBeastOutBattleAiTick_81419A0
+
+    ./wf verify --function battle_performBeastOutBattleAiTick_81419A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^081419a0 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Exact role of `sub_80468BA` (called between clear and the two `sub_80468C6`); could be something like
-  "play Beast-SP enter sfx" or "broadcast a UI event."
-- The semantics of `eStruct2001010+3` (likely a "is-beast-mode-transitioning" or "beast-mode-armed" byte)
-  — not visible from this function alone.
-- Whether `sub_8046818` is the canonical "battle AI tick" or only Beast-SP AI; `sub_811E0BA`'s role (only
-  ever called in this Beast-SP branch, never seen in the canonical beastsp_0140000_N paths' tail apparently)
-  leaves some doubt, though it appears common to this caller.
-- What the matching standard-mode battle ticker calls at the same return address — would settle why this
-  is split off.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081419a0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f d4179034
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_81419A0 -> battle_performBeastOutBattleAiTick_81419A0
-  where: bn6f d0265620
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- What does sub_80468BA do exactly? Likely resets/clears battle object state but has no name.
+- Is the 0x80 flag in chatbox_mask_eFlags2009F38 a 'suppress beast-out overlay' bit or a general chatbox-active
+  bit?
+- Why must IsScreenFadeActive be true (Z clear) to proceed? Is Beast Out only triggered during an intentional fade-in
+  to the battle view?
+- What are the semantics of initAIChipQueueSlot slot indices 1 and 2 vs normal chip IDs?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

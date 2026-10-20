@@ -1,66 +1,75 @@
 name: object_initCollisionSelfDamage
 address: '0x080FFA22'
 kind: function
-status: probable
-summary: Resets collision state (clears flag 0x40, claims status slot, updates collision record, sets
-  region 1) and copies the object's DamageAndStaminaDamageCounterDisabler low halfword/low byte into SelfDamage
-  and StaminaDamageCounterDisabler; returns the damage field value in r0.
-interface: (r5 = battle object pointer, implicit; no args read from r0 on entry) -> r0 = collision data
-  pointer from object_setCollisionRegion; modifies the object's collision data and ObjectFlags1
-details: The battle object must be in r5 (the battle-engine convention for the current object). It first
-  clears bit 0x40 of the object's ObjectFlags1 via object_clearFlag, then claims a status-UI slot via
-  sub_801DC7C with name ID 0 and HP 0, and refreshes the collision record via object_updateCollisionData
-  with the constants (1, 2, 3). It then sets collision region 1. Finally it reads oBattleObject_DamageAndStaminaDamageCounterDisabler
-  from the object, stores the low halfword into oCollisionData_SelfDamage, and stores the low byte into
-  oCollisionData_StaminaDamageCounterDisabler, leaving the high halfword of the field unread for effect
-  only.
+status: confirmed
+summary: 'Initialises a battle object''s collision-data block for self-damage: clears flag 0x40, resets internal
+  state, sets collision region to 1, then writes the object''s DamageAndStaminaDamageCounterDisabler field (low
+  halfword → SelfDamage, low byte → StaminaDamageCounterDisabler) into its CollisionData.'
+interface: object_initCollisionSelfDamage(r5 = battleObject, r10 = ?, lr) -> r0 (low16 of damage field) r1 (high16
+  of damage field) r2 (CollisionData ptr) r3 r4 r6 r7 flags {n z c v} lr; r4 r6 r7 preserved across the call
+details: "Touches the following structures and fields via r5 (battle object) and its CollisionData pointer:\n- oBattleObject_DamageAndStaminaDamageCounterDisabler\
+  \ (u32 at r5): a packed field where the low 16 bits hold the self-damage value and the low byte additionally serves\
+  \ as the stamina-damage-counter disabler; the high 16 bits are retained in r1.\n- oBattleObject_CollisionDataPtr\
+  \ (u32 at r5): pointer to the CollisionData record.\n- oCollisionData_SelfDamage (u16 at colPtr): written from\
+  \ low16 of the packed field.\n- oCollisionData_StaminaDamageCounterDisabler (u8 at colPtr): written from low byte\
+  \ of low16 (i.e. field & 0xFF).\nInternal sequence:\n1. object_clearFlag(0x40) – clears bit 6 of the object's\
+  \ flag byte.\n2. sub_801DC7C(0, 0) – resets an unnamed collision/spawn state; preserves r4 r6 r7.\n3. object_updateCollisionData(r1=1,\
+  \ r2=2, r3=3) – updates collision data with mode parameters 1/2/3; modifies r2 r3 r4 r6 r7 and carry/overflow.\n\
+  4. object_setCollisionRegion(1) – assigns the object to collision region 1 (likely the active-playfield region).\n\
+  The final lsr r1, r1, #16 sets N/Z/C/V on the high-16 portion, which the caller may inspect.\nThe lsl/lsr pair\
+  \ on r0 isolates the low halfword without a sign-extension, confirming a pure unsigned split.\nopen_questions:\n\
+  \  - \"What does sub_801DC7C actually reset? The name is unknown and its effect on the collision pipeline is not\
+  \ traced.\"\n  - \"What is the semantic of the 0x40 flag cleared by object_clearFlag – does it gate a 'self-damage\
+  \ disabled' state?\"\n  - \"Are r10 and the exact mode triple (1,2,3) for object_updateCollisionData meaningful\
+  \ constants or caller-specific parameters?\"\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl object_clearFlag with r0=0x40 clears one ObjectFlags1 bit on the current object; bl sub_801DC7C
-    with r0=0, r1=0 registers the object in the status list with name 0 / HP 0; bl object_updateCollisionData
-    with fixed (1,2,3) then object_setCollisionRegion(1) initialize the collision record; ldr r0,[r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
-    then strh/strb write SelfDamage and StaminaDamageCounterDisabler in the collision data
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:151565
-  - 0x0801A15C object_clearFlag
-  - 0x0801A07C object_setCollisionRegion
-  - 0x0801A082 object_updateCollisionData
-  reproduce: python3 tools/asmcat.py 0x080FFA22
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The name and high-level summary fit, but the interface is wrong: after object_setCollisionRegion,
-    r0 is immediately overwritten by ldr r0,[r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler],
-    so the function returns the damage field value, not the collision pointer. Additionally, strb r0 stores
-    the low byte of r0 (the already-masked low halfword), not the high halfword; the lsr r1,r1,#0x10 computes
-    the high halfword into r1 but r1 is never used—this is genuinely dead code, not ''for effect only''
-    as the proposal implies. The rest (clearFlag 0x40, sub_801DC7C(0,0), updateCollisionData(1,2,3), setCollisionRegion(1))
-    matches the assembly lines exactly.; run wf investigate investigate-20261018-155607; proposed by Hyper
-    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_initCollisionSelfDamage
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_initCollisionSelfDamage
+
+    ./wf verify --function object_initCollisionSelfDamage --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_initCollisionSelfDamage
+
+    ./wf verify --function object_initCollisionSelfDamage --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_initCollisionSelfDamage
+
+    ./wf verify --function object_initCollisionSelfDamage --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, chips.'
+  reproduce: grep -l '^080ffa22 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - beastsp
 - chips
-open_questions:
-- No caller is recorded, so the meaning of flag 0x40 and which objects set DamageAndStaminaDamageCounterDisabler
-  before calling this are unknown
-- The exact parameter meanings of object_updateCollisionData's (1,2,3) constants are only known from its
-  summary, not this call site
-- 'The name and high-level summary fit, but the interface is wrong: after object_setCollisionRegion, r0
-  is immediately overwritten by ldr r0,[r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler], so the
-  function returns the damage field value, not the collision pointer. Additionally, strb r0 stores the
-  low byte of r0 (the already-masked low halfword), not the high halfword; the lsr r1,r1,#0x10 computes
-  the high halfword into r1 but r1 is never used—this is genuinely dead code, not ''for effect only''
-  as the proposal implies. The rest (clearFlag 0x40, sub_801DC7C(0,0), updateCollisionData(1,2,3), setCollisionRegion(1))
-  matches the assembly lines exactly.'
+open_questions: []
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80FFA22 -> object_initCollisionSelfDamage
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FFA22
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

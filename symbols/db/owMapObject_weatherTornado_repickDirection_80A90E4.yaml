@@ -1,31 +1,71 @@
 name: owMapObject_weatherTornado_repickDirection_80A90E4
 address: '0x080A90E4'
 kind: function
-previous_names:
-- sub_80A90E4
-status: probable
-summary: 'Tornado: re-picks a random direction different from the current one, undoing the step and retrying
-  while the new step is blocked; records the last directions in eWeatherCompState.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Rolls a new random compass direction for an overworld weather tornado, validates the target tile, shifts
+  direction history in the weather table, and bumps the spawn counter.
+interface: void owMapObject_weatherTornado_repickDirection(owMapWeatherTornado *tornado /*r5*/, u8 *weatherTable
+  /*r6*/); /* r10 context passed through; r8-r12 side-effects from isBlocked */
+details: 'Tornado object fields touched: +4 = weather slot index (byte), +5 = current direction (byte, 0-7), +6
+  = previous direction (byte), +0xC/+0x10 = current position backup (word), +0x18/+0x1C = saved position used for
+  rollback (word), +0x28 = spawn counter (byte). Calls reqBBS_81409D0(8) for the RNG roll (note: reqBBS clobbers
+  r6/r7, so r6 is reloaded from the call result). Calls owMapObject_weatherTornado_step_80A9038 to advance one tile,
+  then owMapObject_weatherTornado_isBlocked_80A90CC; Z=1 means the tile is free and the loop exits. If blocked,
+  position and direction are restored and the roll is retried. After a successful pick the function writes the history
+  chain in weatherTable: table[0x31+slot] is shifted to table[0x19+slot], and table[0x31+slot] receives the old
+  (previous) direction. Finally table[0x28] on the tornado is incremented. The byte tail (0,0) is alignment padding.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_repickDirection_80A90E4:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c owMapObject_weatherTornado_repickDirection_80A90E4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_repickDirection_80A90E4
+
+    ./wf verify --function owMapObject_weatherTornado_repickDirection_80A90E4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_repickDirection_80A90E4
+
+    ./wf verify --function owMapObject_weatherTornado_repickDirection_80A90E4 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 85 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_repickDirection_80A90E4
+
+    ./wf verify --function owMapObject_weatherTornado_repickDirection_80A90E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a90e4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A90E4 -> owMapObject_weatherTornado_repickDirection_80A90E4
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What does the isBlocked Z-flag semantics imply exactly (free vs blocked) versus the BEQ branch structure?
+- Are offsets 0x19 and 0x31 in the weather table confirmed as 'previous direction' and 'two-generations-ago direction'
+  slots?
+- Why does reqBBS_81409D0 clobber r6/r7—is the weather-table pointer r6 being restored correctly in all paths?
+- Is the spawn counter at +0x28 used to limit total tornado spawns per weather event?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

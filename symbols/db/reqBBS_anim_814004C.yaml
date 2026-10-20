@@ -1,0 +1,70 @@
+name: reqBBS_anim_814004C
+address: '0x0814004C'
+kind: function
+status: confirmed
+summary: Draws or blanks the 8 BBS request-entry tiles on the current sub-screen, cycling their tile block based
+  on the animation frame, then redraws the bottom border row.
+interface: u32 reqBBS_drawRequestTiles(u32 bbs_state /*r5*/, u32 toolkit /*r10*/) -> bbs_state /*r5*/; Z, N, C,
+  V, LR clobbered; r0-r7 preserved by caller-saves push/pop.
+details: 'Reads the request entry base index at bbs_state+0x24 and the current frame counter from the toolkit (oToolkit_CurFramePtr).
+  The low 5 bits of the frame select one of 16 tile-ID pointers from the pt_81400C8 table (two 64-byte arrays byte_8140148
+  and byte_8140188 holding tile IDs 0x80–0x87). For each of 8 entries (loop i=0..7): fetches the event-flag base
+  from bbs_state+0x28 sub-object offset 0xC, adds the per-entry flag ID from reqBBS_eRequestEntriesIDs[entry_base+i],
+  calls TestEventFlag. If the flag is set (Z clear), calls CopyBackgroundTiles(2, 2*i+3, 2, tile_ids, 2, 2) to paint
+  the entry''s 2×2 tile block; otherwise calls sub_3005EBA with tile_ids=0 to blank it. After the loop, redraws
+  the bottom border row via CopyBackgroundTiles(0x15, 0, 2, tile_ids, 2, 2). The BBS state pointer in r5 is returned
+  unchanged.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_anim_814004C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_anim_814004C
+
+    ./wf verify --function reqBBS_anim_814004C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_anim_814004C
+
+    ./wf verify --function reqBBS_anim_814004C --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_anim_814004C
+
+    ./wf verify --function reqBBS_anim_814004C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0814004c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What exactly does sub_3005EBA do when tile_ids is 0 (clear-fill vs. copy-zero)?
+- Is the 0x15 column coordinate for the border row fixed or screen-relative?
+- Does the 16-entry tile table correspond to a full 16-frame animation cycle for the request icons?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

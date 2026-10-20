@@ -1,50 +1,71 @@
 name: init_clearBeastSpEventFlagTable
 address: '0x0808CE28'
 kind: function
-status: probable
-summary: In Beast+ scenario setup, looks up a per-AI-mode table and, for each entry whose gate flag is
-  set, clears a consecutive range of event flags.
-interface: () -> void; reads current map group's AI mode, no args; clobbers r0-r3
-details: 'Gets the AI mode for the current map group (3 for map group 0x85, else the map''s MapNumber
-  byte) and uses it *4 as an index into the pointer table at off_808CEB8. Each table entry is 8 bytes:
-  a u16 gate flag at +0, a u16 start flag at +2, and a u16 count at +4. If TestEventFlag(gate) is true,
-  it calls ClearEventFlagRange(start, count), clearing that run of story flags; entries are otherwise
-  skipped. It iterates entries until the loop counter limit: 4 entries if the AI mode is >= 3, otherwise
-  3. Called once from init_beastSpScenario, matching its ''clears related story flags'' behavior; the
-  flag ranges presumably reset per-mode Beast+ scenario progress.'
+status: confirmed
+summary: Clears ranges of Beast special-event flags whose gate flag is set, selecting the flag table by the current
+  map-group AI mode.
+interface: 'void init_clearBeastSpEventFlagTable(void); /* in: r10 (caller ctx), lr; out: r2=3 (stale loop constant);
+  r4-r8 preserved */'
+details: 'Calls ai_getAIModeForMapGroup_808D084 (passing r8 as context, saved/restored across the call) to determine
+  the active AI mode for the current map group. Uses that mode as a word index into a jump-table at off_808CEB8
+  (which holds the address off_808CEBC) to select a pointer to an array of 8-byte Beast-SP flag entries. Entry layout:
+  +0 u16 gate flag, +2 u16 start of clear range, +4 u16 end of clear range. Iterates 3 entries for modes 0-2 or
+  4 entries for modes >= 3. For each entry calls TestEventFlag(gate); if the flag is SET (ZF clear → branch not
+  taken), reads the start and end u16s and calls ClearEventFlagRange(start, end). Leaves r2 holding the constant
+  3 from the loop-end comparison, which some caller may inspect. r7 is zeroed early but restored by the push/pop
+  frame so it is transparently preserved.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl ai_getAIModeForMapGroup_808D084 then ldr r4,[r4,r0] with r0=mode*4 selects the table by AI
-    mode (0x0808CE2C-0x0808CE38); ldrh [r4,r6] + bl TestEventFlag gates each 8-byte-strided entry (loc_808CE3C);
-    ldrh at +2 and +4 feed ClearEventFlagRange(r0=start, r1=count) (0x0808CE48-0x0808CE56); loop bound
-    is 4 when mode >= 3 else 3 (cmp r8,#3 / cmp r7,#4 vs cmp r7,#3); sole caller init_beastSpScenario
-    is documented as wiping work state and clearing related story flags
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm24.s:1601
-  - 0x0808CA68 init_beastSpScenario
-  - 0x0802F1AC ClearEventFlagRange
-  - 0x0802F168 TestEventFlag
-  - 0x0808D084 ai_getAIModeForMapGroup_808D084
-  reproduce: python3 tools/asmcat.py 0x0808CE28
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c init_clearBeastSpEventFlagTable
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function init_clearBeastSpEventFlagTable
+
+    ./wf verify --function init_clearBeastSpEventFlagTable --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function init_clearBeastSpEventFlagTable
+
+    ./wf verify --function init_clearBeastSpEventFlagTable --snapshots build-snapshots'
+  result: 85 compared, 0 differed, 11 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function init_clearBeastSpEventFlagTable
+
+    ./wf verify --function init_clearBeastSpEventFlagTable --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808ce28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
 coverage:
 - beastsp
 - maps
+related:
+- init_beastSpScenario
 open_questions:
-- contents of the table pointed to by off_808CEBC (which flags/ranges belong to which AI mode) not verified
-  from data dump
+- What game events or BeastCarnival encounters do the flag ranges guarded by the gate flags represent?
+- Is r2=3 read by any caller, or is it incidental?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_808CE28 -> init_clearBeastSpEventFlagTable
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_808CE28
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

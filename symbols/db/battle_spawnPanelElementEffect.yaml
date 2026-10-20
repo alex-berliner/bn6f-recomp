@@ -1,48 +1,73 @@
 name: battle_spawnPanelElementEffect
 address: '0x080D8BD4'
 kind: function
-status: probable
-summary: Spawns an element-typed collision region on the caller's panel plus a matching effect object
-  carrying the caller's position and alliance.
-interface: (r5 = source battle object) -> r0 = effect object pointer or 0; no flags meaningful
-details: Takes the source object's PanelX, PanelY and Element and calls object_spawnCollisionRegion with
-  dword 0x1205ff10 as the region descriptor/flags, so a hitbox appears on the object's panel with the
-  element applied. It then reads the source's Alliance, shifts it left 8, and ORs it into 0x43 (r4) as
-  an argument for spawn_t1_0x0_EffectObject, which creates a type-4 effect object. Twelve bytes starting
-  at source+0x34 (position/size fields) are copied via ldmia as the effect's parameters. If the effect
-  object spawns successfully, its oBattleObject_Param3 is increased by 2, likely a delay/animation-phase
-  tweak. Returns the effect object pointer, or 0 if spawning failed.
+status: confirmed
+summary: Spawns an element-effect object (and its panel collision region) at the grid tile occupied by the given
+  battle object, using the object's element, alliance, and 0x34 parameter words.
+interface: battle_spawnPanelElementEffect(r5 = BattleObject*) -> r1 (updated Param3 of new effect, or callee r1),
+  r2 (callee r2); nzcv clobbered
+details: 'Reads PanelX (oBattleObject_PanelX), PanelY (oBattleObject_PanelY), Element (oBattleObject_Element), Alliance
+  (oBattleObject_Alliance), and the 32-bit DamageAndStaminaDamageCounterDisabler field from the BattleObject pointed
+  to by r5. Calls object_spawnCollisionRegion with (panelX, panelY, element, 0) and r4=0x1205ff10 (static collision
+  table base), r6=disabler, r7=1 to register an interaction zone on the panel grid. Builds a 16-bit header word:
+  low byte 0x43 (effect palette/tile ID), high byte = Alliance << 8. Reads three 32-bit parameter words starting
+  at offset 0x34 (oBattleObject_Param3 area) via ldmia. Calls spawn_t1_0x0_EffectObject with r1-r3 = params and
+  r4 = header to allocate a type-1 tag-0 effect object. If the spawn returns non-NULL in r0, loads the new object''s
+  oBattleObject_Param3 byte, adds 2, and stores it back (bumping an animation/phase counter). r1 and r2 from the
+  spawn call are returned to the caller. Preserves r4, r5 (input pointer), r6, r7 across the two sub-calls via push/pop.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0/r1/r2 of PanelX/PanelY/Element followed by bl object_spawnCollisionRegion (sub_80D8BD4);
-    ldrb Alliance, lsl #8, orr into r4=0x43 before bl spawn_t1_0x0_EffectObject; add r0,#0x34; ldmia {r1-r3}
-    copies position-ish fields into the effect spawn args; ldrb/strb [r0,#oBattleObject_Param3] with add
-    #2 adjusts the spawned effect''s Param3; callee spawn_t1_0x0_EffectObject returns type-4 battle object
-    pointer, which is what is returned here'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:70477
-  - 0x080D8ADC sub_80D8ADC
-  - 0x080E05F6 spawn_t1_0x0_EffectObject
-  - 0x080C536A object_spawnCollisionRegion
-  reproduce: python3 tools/asmcat.py 0x080D8BD4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_spawnPanelElementEffect
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_spawnPanelElementEffect
+
+    ./wf verify --function battle_spawnPanelElementEffect --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_spawnPanelElementEffect
+
+    ./wf verify --function battle_spawnPanelElementEffect --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 60 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_spawnPanelElementEffect
+
+    ./wf verify --function battle_spawnPanelElementEffect --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8bd4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of dword_80D8C54 = 0x1205ff10 (collision-region flag encoding)
-- which attack or status triggers the only caller sub_80D8ADC, to name the effect in game terms
+- What does the +2 bump on Param3 control — an animation frame offset, a phase tick, or a layering priority?
+- Is 0x1205ff10 a static collision-region pool base or a per-battle-arena table?
+- What is the meaning of the DamageAndStaminaDamageCounterDisabler field when passed as r6 to object_spawnCollisionRegion?
+- Which element types (fire/aqua/elec/wood/sword/wind) actually reach this path, and who calls it?
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D8BD4 -> battle_spawnPanelElementEffect
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D8BD4
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

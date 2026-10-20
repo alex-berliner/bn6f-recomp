@@ -1,45 +1,77 @@
 name: ow_logoutDispatchState
 address: '0x080A9ECC'
 kind: function
-status: probable
-summary: Dispatches the logout sequence's current state (0=start effect, 1=middle step, 2=release map
-  object) by tail-calling its handler.
-interface: (r5 = logout state-machine object; state byte at [r5,#8] selects handler) -> tail-jump to handler;
-  returns to this function's caller
-details: Loads a handler table at off_80A9EE0, indexes it with the object's state byte [r5,#8], and performs
-  a Thumb tail-call via 'mov lr, pc; bx r0', so the chosen handler returns straight to whoever called
-  this dispatcher. State 0 = ow_startLogoutEffect, state 1 = sub_80A9F30 (likely the actual logout processing),
-  state 2 = ow_releaseMapObject. The object pointer arrives in r5 rather than r0, so callers keep it in
-  a callee-saved register. The state byte is presumably advanced by the handlers themselves; the dispatcher
-  does not clamp the index.
+status: confirmed
+summary: Dispatches a 3-step overworld object logout state machine (start effect, frame tick, release) selected
+  by a byte field in the object.
+interface: 'void ow_logoutDispatchState(u32 r5 /*object_ptr*/, u32 r10, u32 lr);
+
+  // reads: [r5+8] (u8 state index), jump table at 0x080A9EE0
+
+  // preserves r4-r7 across the indirect call; clobbers r0, r1, nzcv
+
+  // returns via pop {r4-r7, pc}
+
+  '
+details: "A thin indirect-call dispatcher for the per-object \"logout\" lifecycle\nthat runs when the player leaves\
+  \ an overworld area. The state index is a\nbyte at object+8 (valid values 0, 4, 8) and selects one of three handlers\n\
+  from a 3-entry table:\n  0 → ow_startLogoutEffect   – begins the visual/audio logout transition\n  4 → sprite_frameTickMarkState8_80A9F30\
+  \ – ticks one animation frame and\n      marks an internal state counter (frame-pipeline for the effect)\n  8\
+  \ → ow_releaseMapObject    – frees the map-object slot, final cleanup\nThe function pushes r4-r7 and lr, performs\
+  \ mov lr,pc / bx r0 to call the\nhandler, then pops and returns. Because the handlers may clobber r4-r7,\nthe\
+  \ push/pop acts as a caller-save guard so that the overworld object-loop\ncode calling this dispatcher sees its\
+  \ own saved registers intact.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1] indexes a 3-entry handler table by a state field; targets are
-    ow_startLogoutEffect, sub_80A9F30, ow_releaseMapObject — an ow logout sequence; mov lr,pc; bx r0 is
-    a Thumb tail-call, making this a dispatch trampoline; executed by recorded beastsp routes, matching
-    Beast Out logout transitions
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9961
-  reproduce: python3 tools/asmcat.py 0x080A9ECC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c ow_logoutDispatchState
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_logoutDispatchState
+
+    ./wf verify --function ow_logoutDispatchState --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_logoutDispatchState
+
+    ./wf verify --function ow_logoutDispatchState --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 43 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_logoutDispatchState
+
+    ./wf verify --function ow_logoutDispatchState --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9ecc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- what sub_80A9F30 (state 1) does
-- the exact structure laid out at r5 (field 8 = state; what else)
-- which engine code sets the state byte and calls this dispatcher
+- What structure does r5 point to, and are there other fields at offsets other than 8 used by the three handlers?
+- Is sub_80A9F30 a sprite frame-tick helper shared with the sprite subsystem, or specific to logout effects?
+- Does ow_releaseMapObject write a sentinel (e.g. 0xFF) back to [r5+8], or is the slot simply freed and the state
+  byte discarded?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A9ECC -> ow_logoutDispatchState
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9ECC
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

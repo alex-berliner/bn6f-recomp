@@ -1,63 +1,72 @@
 name: chatbox_centerTextX
 address: '0x08042990'
 kind: function
-status: probable
-summary: 'Chatbox text-script handler that positions the current text run centered on screen: width =
-  11*n+8, X base is 240 (or 176 if chatbox flag 0x2 set), shifted left by TextScriptCharIdx when flag
-  is clear; result is stored at chatbox+0x94 and a pointer at chatbox+0x7C is advanced by width*4. Returns
-  1.'
-interface: (r4 = text script cursor, r5 = chatbox object) -> r0 = 1; advances r4 past a 3-byte command
-details: 'Reads a byte n from [r4,#2] and treats the command as 3 bytes wide (r4 += 3 at the end), so
-  r4 points into the chatbox text script and this is one opcode handler. It computes a run width of 11*n
-  + 8 pixels, then centers it: base is 0xF0 (240, full screen width) or 0xB0 (176) depending on chatbox
-  flag bit 0x2 (queried twice via chatbox_maskFlags_3e), then r2 = (base - width)/2, minus the chatbox''s
-  TextScriptCharIdx when flag 0x2 is clear, i.e. the X of the current character relative to the centered
-  start. The resulting X byte is stored at chatbox+0x94, and chatbox+0x7C (pointer or per-char table cursor)
-  is advanced by 4*n. Returns 1 to the script dispatcher.'
+status: confirmed
+summary: Compute the centered horizontal pixel offset for the current character in a chatbox text script and write
+  it into the chatbox state.
+interface: 'void chatbox_centerTextX_08042990(u32 *r4 /*in: script entry, out: next entry, +3*/, u32 r5 /*chatbox
+  struct ptr*/); r0=1, r2=record byte-step (offset<<2), r3=centered x byte, flags clobbered.'
+details: 'r4 points to the current text-script entry; byte at r4+2 is the line/paragraph index. The per-character
+  cell offset is 11*lineIndex+8 (each entry is an 11-byte slot, offset 8 being the first glyph cell). A call to
+  chatbox_maskFlags_3e(2, r5) selects the box width: Z-set means full body width 0xF0, Z-clear means reduced width
+  0xB0 (e.g. when a portrait or side-panel narrows the text area). The centered offset is (width - cellOffset) >>
+  1. A second maskFlags_3e(2, r5) call, when Z is clear (bne taken), subtracts the active character index at r5+oChatbox_TextScriptCharIdx
+  so that multi-character lines shift the start position. The final x byte (offset + charIdx) is stored as a byte
+  at r5+0x94 (chatbox+0x94). A 4-byte-per-glyph advance (offset<<2) is added to the dword record pointer at r5+oChatbox_Unk_7C
+  (0x7C). r4 is advanced by 3 to point to the next script entry; r0 is set to 1 as a success/continue indicator.
+  r6/r7 are pushed but restored, used only as scratch for width constants 0xF0 and 0xB0.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'mul r0,r1 / add r0,#8 computes width 11*n+8 from the script byte at [r4,#2]; r2 = 0xF0 or 0xB0
-    chosen by chatbox_maskFlags_3e(2) before (base-width)/2 — screen vs narrower box centering; sub r2,
-    r2, r1 with ldrb r1,[r5,#oChatbox_TextScriptCharIdx] adjusts for characters already printed; strb
-    r3,[r5+0x94] stores the computed X into chatbox draw state; [r5+0x7C] += n*4; add r4,#3 / mov r0,#1
-    / pop: 3-byte script opcode consumed, returns 1 to the text-script interpreter'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/chatbox.s:6572
-  - 0x08040938 chatbox_maskFlags_3e
-  reproduce: python3 tools/asmcat.py 0x08042990
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal correctly identifies the centering math, the 3-byte opcode advance, the 0x94 store,
-    and the oChatbox_Unk_7C bump by width*4. But two details are off: r0 starts as #0xB and gets n*0xB+8
-    (11*n+8), not derived from the flag; the conditional `''b0'' when flag 0x2` reads as if 0xF0 is the
-    default — actually the code does the opposite (adds r7 only when flag set, since the beq falls through
-    to the r6 path). Also chatbox+0x7C is a pointer that gets += (width*4), not ''advanced by 4*n'', so
-    it''s a byte-to-32-bit stride lookup. The summary''s ''horizontally centered X'' is right; name is
-    fine.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by
-    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c chatbox_centerTextX
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_centerTextX
+
+    ./wf verify --function chatbox_centerTextX --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 252 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_centerTextX
+
+    ./wf verify --function chatbox_centerTextX --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 83 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_centerTextX
+
+    ./wf verify --function chatbox_centerTextX --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08042990 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/chatbox.c
 coverage:
 - beastsp
 open_questions:
-- No callers captured, so the caller-set r4/r5 convention and the opcode table this handler belongs to
-  are unconfirmed
-- Meaning of chatbox flag bit 0x2 (full-width vs 176px box) and of the 4*n advance of chatbox+0x7C are
-  inferred, not shown
-- 'The proposal correctly identifies the centering math, the 3-byte opcode advance, the 0x94 store, and
-  the oChatbox_Unk_7C bump by width*4. But two details are off: r0 starts as #0xB and gets n*0xB+8 (11*n+8),
-  not derived from the flag; the conditional `''b0'' when flag 0x2` reads as if 0xF0 is the default —
-  actually the code does the opposite (adds r7 only when flag set, since the beq falls through to the
-  r6 path). Also chatbox+0x7C is a pointer that gets += (width*4), not ''advanced by 4*n'', so it''s a
-  byte-to-32-bit stride lookup. The summary''s ''horizontally centered X'' is right; name is fine.'
+- What does the 0x94 byte field drive downstream—per-character x for glyph rendering, or a cursor position?
+- Is oChatbox_Unk_7C (0x7C) a per-line glyph-record pointer used by a secondary renderer pass?
+- Why is the second maskFlags_3e check inverted (bne = Z clear triggers the subtract) compared to the first?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8042990 -> chatbox_centerTextX
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8042990
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

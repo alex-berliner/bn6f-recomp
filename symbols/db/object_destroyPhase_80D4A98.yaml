@@ -1,72 +1,73 @@
 name: object_destroyPhase_80D4A98
 address: '0x080D4A98'
 kind: function
-previous_names:
-- sub_80D4A98
-status: probable
-summary: 'Destroy-phase handler for a battle object: tears down collision, spawns a death/hit effect,
-  optionally restores the panel it left, dispatches via CurAction table, then ticks sprite/collision.'
-interface: '(r5 = objectPtr) -> void ; side effects: collision data for r5 reset, effect sprite spawned
-  at r5+0x34..0x40, jumps via CurAction jumptable at 0x80D4AFC'
-details: "Opens with push {r4,r7,lr} and immediately calls object_removeCollisionData (bl at 0x080d4a9c)\
-  \ then object_spawnCollisionEffect (bl at 0x080d4aa0); r5 is the live BattleObject per the convention\
-  \ used by every callee.\n  Reloads r7 = [r5+0x54] (CollisionDataPtr) and tests [r7+0x70] (FlagsFromCollision).\
-  \ If any bit is set it stashes the current PanelXY ([r5+0x12]) into ExtraVars ([r5+0x60]) before calling\
-  \ object_clearCollisionRegion — so the panel the object died on gets remembered for a possible restore.\n\
-  \  Reaches the CurAction dispatch at 0x080d4ab2: r1 = *(0x80D4AF8)[r5+0x9] (CurAction), then mov lr,pc\
-  \ / bx r1 jumps to the action-specific code (the single entry in 0x80D4AFC currently points at sub_80D4B00+1,\
-  \ so the only implemented action is the immediate-destroy path).\n  After the action returns, the post-action\
-  \ block refreshes the per-frame collision: it rechecks CollisionDataPtr->Region (0x54->0x1). If region==0\
-  \ AND current PanelXY != remembered ExtraVars, it calls object_setCollisionRegion with r0=1 — i.e. it\
-  \ puts a \"body\"/grave one panel over.\n  Then the standard end-of-frame pair runs: object_updateSprite\
-  \ (bl at 0x080d4ad4) and object_presentCollisionData (bl at 0x080d4ad6).\n  The chunk after the second\
-  \ pop {pc} is the real body of sub_80D4B00 (the CurAction 0 case): it loads 12 bytes from r5+0x34 (Coords.x/y/z),\
-  \ bumps z by 0x100000 (mov r4,#0x10 ; lsl r4,r4,#0x10 ; add r3,r3,r4 — adds 0x100000 to the 16.16 Z\
-  \ at r5+0x3c), then calls spawn_t1_0x0_EffectObject with r4=0x14 to drop a death-effect sprite, calls\
-  \ object_clearCollisionRegion (clearing the remembered restore panel), writes 8 to [r5+0x8] (CurState=8\
-  \ = CUR_STATE_DESTROY completion), and pops {r4,r7,pc}.\n  In short: it is the destroy-phase update\
-  \ for a battle object that has already entered CurState=0x8, and the action-table slot 0 implements\
-  \ \"spawn a death puff sprite, clear collision region, finish destroy\".\n"
+status: confirmed
+summary: 'Per-tick handler for a battle object in its destroy/hit state: strips collision, spawns spark FX, advances
+  projectile motion, and presents the hitbox.'
+interface: void object_destroyPhaseTick(u32 r4, u32 r5, u32 r7, u32 r8, u32 r10)
+details: 'Called once per game-frame while a battle object (r5) is in a destroying or post-hit state. Sequence:
+  (1) removeCollisionData unregisters the object from the collision table; (2) spawnCollisionEffect draws the impact-spark
+  FX at the object''s position; (3) if oCollisionData_FlagsFromCollision is non-zero, the current oBattleObject_PanelXY
+  is stashed into oBattleObject_ExtraVars and clearCollisionRegion frees the grid tile; (4) a jump table keyed on
+  oBattleObject_CurAction dispatches either projectileAdvanceXTick (action 0, the common path that steps the projectile
+  one panel) or an effect-spawn-and-clear path (action 1, constructs a 0x14-byte EffectObject at offset 0x34 from
+  the battle object and clears the region); (5) after the tick, if oCollisionData_Region is still 0 and PanelXY
+  differs from the stashed value, setCollisionRegion(1) reclaims the tile; (6) updateSprite advances the sprite-sheet
+  frame; (7) presentCollisionData renders the hitbox for the frame. r5 may be updated by callee side-effects but
+  r4 and r7 are preserved across the function. The single-entry jump table at off_80D4AFC is padded to one 32-bit
+  word, suggesting additional action indices were planned but unused.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- The function is reached from sub_80D4A48 right after CurState==0x8 destroy entry, and runs
-    the standard object_* helper triplet (removeCollisionData / updateSprite / presentCollisionData) used
-    by every state phase. - CurAction dispatch via mov lr,pc / bx r1 with table off_80D4AFC and the only
-    entry being sub_80D4B00+1 matches the project''s CurAction-table pattern. - The sub-function path
-    (after the stray pop): `add r0,r0,r5` producing r5+0x34, `ldmia r0!,{r1-r3}` loads X/Y/Z (Coords at
-    oBattleObject_Coords), then `add r3,r3,r4` with r4=0x100000 bumps Z, and `bl spawn_t1_0x0_EffectObject`
-    spawns a t1 effect — consistent with a death/explosion effect at the object''s position with raised
-    Z. - `str r0,[r5,#8]` with r0=8 at the end of the sub-path writes CurState=8 (CUR_STATE_DESTROY) confirming
-    the function is the terminal step of the destroy phase. - `bl object_clearCollisionRegion` and `str
-    r0,[r5,#8]` clearing the prior collision/data close-out, exactly mirroring a destroy completion.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080D4A98
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_destroyPhase_80D4A98
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_destroyPhase_80D4A98
 
-    '
-  result: the body read as described above
+    ./wf verify --function object_destroyPhase_80D4A98 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_destroyPhase_80D4A98
+
+    ./wf verify --function object_destroyPhase_80D4A98 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 34 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_destroyPhase_80D4A98
+
+    ./wf verify --function object_destroyPhase_80D4A98 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080d4a98 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The names of the action-table slots beyond entry 0 are unknown; only entry 0 (immediate destroy) is
-  currently implemented per the dispatch at 0x80D4AFC.
-- Whether the PanelXY/ExtraVars snapshot then re-set-Region path is really a "drop a grave marker" or
-  a generic "object leaves a panel claim when destroyed" is not provable from assembly alone — settle
-  by finding a caller that triggers it and reading AI/object lifetimes.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4a98 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D4A98 -> object_destroyPhase_80D4A98
-  where: bn6f d43feadd
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game event triggers the transition into the destroy/hit state that causes this function to be called each
+  tick?
+- Is action-index 1 (the effect-spawn path at the unlinked tail) ever reachable, or is it dead code from an earlier
+  build?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

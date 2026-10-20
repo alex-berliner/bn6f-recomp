@@ -1,0 +1,75 @@
+name: genericAI_movementRelated_8109952
+address: '0x08109952'
+kind: function
+status: confirmed
+summary: State-machine dispatcher that routes a generic-AI attack sequence through its four movement phases (approach
+  target panel, finish move, step-expired timeout, exit-after-delay) via a jump table indexed by the state byte
+  at oAIAttackVars_HitElement in the r7 attack-vars block.
+interface: 'genericAI_dispatchAttackMoveState_8109952(r7=aiAttackVarsPtr) -> R0-R12, NZCV, LR : caller LR preserved;
+  r4,r5,r6,r10 ambient in; everything else clobbered/forwarded from handler.'
+details: 'push {lr} saves the caller''s return address.  LD8 r7+oAIAttackVars_HitElement reads the current attack-movement
+  state byte (0-3).  A jump table at off_8109964 is indexed by that byte to obtain one of four handler addresses
+  (all thumb): state 0 = ai_attackStepMoveToTargetPanel (advance toward the target panel), state 1 = ai_stepFinishMoveToPanel
+  (arrival / transition-to-attack), state 2 = ai_attackStepExpired (move timed out mid-sequence), state 3 = genericAI_exitAttackStateAfterDelay_81097BA
+  (cooldown / leave attack state). The "mov lr, pc; bx r1" idiom temporarily hijacks LR so the selected handler
+  returns to the pop {pc} site at 0x0810995E, which then restores the *original* caller LR and returns.  No fields
+  are written here; the function is a pure tail-call dispatcher. The register contract shows all outputs are transparently
+  forwarded from the handler, meaning callers see the handler''s R0 and flags directly.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c genericAI_movementRelated_8109952
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function genericAI_movementRelated_8109952
+
+    ./wf verify --function genericAI_movementRelated_8109952 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function genericAI_movementRelated_8109952
+
+    ./wf verify --function genericAI_movementRelated_8109952 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function genericAI_movementRelated_8109952
+
+    ./wf verify --function genericAI_movementRelated_8109952 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08109952 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Is oAIAttackVars_HitElement truly a state enum (0-3) or is it a hit-element field that happens to double as the
+  phase index in this AI variant?
+- What happens if the byte exceeds 3?  The jump table has only 4 entries; an out-of-range index would read past
+  off_8109964 into unexplored data.
+- Do callers (r4,r5,r6,r10) carry specific context the handlers need, or are they incidental ambient registers?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

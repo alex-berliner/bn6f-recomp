@@ -1,70 +1,72 @@
 name: battle_initSpawnMotion
 address: '0x080D149E'
 kind: function
-status: probable
-summary: 'Initializes a battle object''s spawn velocity and timer per Param4: when nonzero, throws the
-  object in a parabolic arc onto the panel one tile toward its facing side using math_getThrowSpeeds over
-  0xD frames; when zero, falls it straight down at -0x20000 Z with a facing-directed 0x1C000 X slide,
-  computing Timer2 as Z frames-to-landing and rewinding X so it lands on the current X.'
-interface: (r5 = battle object) -> void; sets XVelocity/YVelocity/ZVelocity and Timer2 on the object,
-  may modify PanelX and X
-details: 'Reads oBattleObject_Param4. If nonzero: adds object_getFrontDirection() (+1/-1) to oBattleObject_PanelX
-  (target shifted one panel toward the object''s facing side), converts the target panel to pixel coordinates,
-  sets oBattleObject_Timer2 = 0xD, and calls math_getThrowSpeeds(0x34, 0, x, y, 0, -0x8000-scaled constants)
-  to fill XVelocity/YVelocity/ZVelocity — a parabolic throw onto that panel over 13 frames. If Param4
-  is zero: YVelocity = 0, XVelocity = facing * 0x1C000, ZVelocity = -0x20000 (downward), then SWI 6 (Div)
-  computes Timer2 = Z / |ZVelocity| (frames until the object lands at Z=0) and rewinds X by Timer2 * XVelocity
-  so the slide lands exactly on the object''s current X. No return value.'
+status: confirmed
+summary: Initialises the spawn-trajectory velocities and timer for a battle object, choosing between a thrown arc
+  (Param4 != 0) and a straight vertical drop (Param4 == 0).
+interface: void battle_initSpawnMotion(u32 r5 /* battle-object ptr */); preserves r4-r7, clobbers r0-r3, lr, nzcv
+details: 'Reads oBattleObject_Param4 as a mode flag. When Param4 is nonzero the object is thrown forward one panel
+  in its facing direction (oBattleObject_PanelX += front_dir), screen coordinates are obtained via object_getCoordinatesForPanels,
+  Timer2 is set to 0x0D (13-frame throw), and math_getThrowSpeeds (called with the spawn-struct pointer at obj+0x34,
+  the target coords, a throw-height constant 0xFFFF8000, and the timer value) returns parabolic X/Y/Z velocities
+  that are stored into oBattleObject_XVelocity / _YVelocity / _ZVelocity. When Param4 is zero the object drops in
+  place: Y-velocity is set to 0, X-velocity is front_dir * 0x1C000, Z-velocity is 0xFFFE0000 (negative, i.e. falling).
+  The fall duration is computed as current Z divided by 0x00020000 (the per-frame gravity step, via the QuickDivide
+  BIOS svc), stored in Timer2, and the starting X is shifted backward by fall_time * X_velocity so the object lands
+  on its intended panel. R4/R5/R6 must be saved across the math_getThrowSpeeds call per the caller contract.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'caller battle_initSpawnState (''loads its fixed sprite at its panel position and sets up HP/animation'')
-    invokes this during spawn setup; ldrb [r5,#oBattleObject_Param4]; beq loc_80D14D2 selects the two
-    spawn-motion variants; branch 1: PanelX += frontDirection, Timer2 = 0xD, then math_getThrowSpeeds
-    results stored to X/Y/ZVelocity; branch 2: svc 6 with r0=[Z], r1=|ZVelocity| gives fall frame count
-    stored to Timer2; X -= quotient*XVelocity lands the slide on the same spot; constants 0x1C000/0xFFFE0000
-    in dwords_80D150C/80D1510 are per-frame fixed-point slide/fall speeds'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:54631
-  - 0x080D124E battle_initSpawnState
-  - 0x0800E276 object_getCoordinatesForPanels
-  - 0x0800E2CA object_getFrontDirection
-  - 0x08001330 math_getThrowSpeeds
-  reproduce: python3 tools/asmcat.py 0x080D149E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The Param4!=0 branch indeed adds front direction to PanelX, sets Timer2=0xD, and calls math_getThrowSpeeds
-    with #0x34, y, z, and 0xFFFF8000-ish args — agrees with the throw-arc story. The Param4==0 branch
-    sets YVelocity=0, XVelocity=facing*0x1C000, ZVelocity=-0x20000, then SWI 6 with oBattleObject_Z as
-    dividend and 0x20000 as divisor to get Timer2, and rewinds X by Timer2*XVelocity — agrees with fall-and-slide.
-    The split choice and motion setup match, but the prefix ''battle_'' is forced by callers (battle_initSpawnState);
-    ''init'' is a valid prefix but ''battle_initSpawnDrop'' misnames it — the function doesn''t ''init
-    spawn drop'' generally, it sets spawn motion per Param4. A name like battle_initSpawnMotion better
-    fits the dual-mode nature.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_initSpawnMotion
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_initSpawnMotion
+
+    ./wf verify --function battle_initSpawnMotion --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 180 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_initSpawnMotion
+
+    ./wf verify --function battle_initSpawnMotion --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 48 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_initSpawnMotion
+
+    ./wf verify --function battle_initSpawnMotion --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d149e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact meaning of Param4 (which enemies use arc vs. straight fall) and what 0x34 (r0 to math_getThrowSpeeds,
-  likely start height) represents
-- 'The Param4!=0 branch indeed adds front direction to PanelX, sets Timer2=0xD, and calls math_getThrowSpeeds
-  with #0x34, y, z, and 0xFFFF8000-ish args — agrees with the throw-arc story. The Param4==0 branch sets
-  YVelocity=0, XVelocity=facing*0x1C000, ZVelocity=-0x20000, then SWI 6 with oBattleObject_Z as dividend
-  and 0x20000 as divisor to get Timer2, and rewinds X by Timer2*XVelocity — agrees with fall-and-slide.
-  The split choice and motion setup match, but the prefix ''battle_'' is forced by callers (battle_initSpawnState);
-  ''init'' is a valid prefix but ''battle_initSpawnDrop'' misnames it — the function doesn''t ''init spawn
-  drop'' generally, it sets spawn motion per Param4. A name like battle_initSpawnMotion better fits the
-  dual-mode nature.'
+- What does the spawn-struct at obj+0x34 (oBattleObject_Param4's companion data) contain and who fills it?
+- Confirm the gravity step 0x00020000 matches the main physics loop's per-frame Z deceleration.
+- Is Timer2 here later consumed by the generic motion/update code to count down the spawn animation?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80D149E -> battle_initSpawnMotion
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D149E
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

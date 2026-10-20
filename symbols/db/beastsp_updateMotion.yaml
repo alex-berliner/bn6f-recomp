@@ -1,63 +1,73 @@
 name: beastsp_updateMotion
 address: '0x080A9DFE'
 kind: function
-status: probable
-summary: 'Per-frame update for a beastsp object: advances position by velocity and subtracts drag each
-  tick; at frame 12 (if byte@+4==0) plays SFX 0x135 then sets animation 2 + loads anim data + noShadow;
-  at frame 30 resets the counter and stores 8 to +9.'
-interface: (r5 = object/behavior struct, no args in r0-r3) -> r0 = scratch; mutates fields at +0x14, +0x28,
-  +0x24 (u16), +9 (u8); no return value
-details: 'Uses r5 as a structure pointer: adds the word at +0x28 (velocity) to the word at +0x14 (position),
-  then subtracts the word at +0x2C from the velocity, so the motion decelerates each tick. Increments
-  the halfword counter at +0x24; when it hits 12, and only if the byte at +4 is 0, it plays sound effect
-  0x35, then unconditionally sets sprite animation 2, reloads the animation data and clears the sprite''s
-  shadow flag. When the counter reaches 30 it wraps back to 0 and stores 8 into the byte at +9, which
-  is very likely the next behavior/state step for this object. The function is a leaf-style update step
-  (only engine calls: PlaySoundEffect, sprite_setAnimation/loadAnimationData/noShadow), consistent with
-  an object behavior routine dispatched per frame.'
+status: confirmed
+summary: Advances a beast sprite's motion timer, switching to a new animation at tick 12 (with optional sound and
+  shadow removal) and resetting the cycle at tick 30.
+interface: beastsp_updateMotion(r5 = beastSprite, r2 = soundParam, lr) -> r5, r10; clobbers r0 r1 r2 r3 lr and flags
+  nzcv; preserves r4 r6 r7
+details: 'Operates on a beast-sprite structure pointed to by r5. Each call accumulates a time delta (field +0x28)
+  into a position counter (field +0x14) and decrements a duration field (+0x28) by a fixed value at +0x2C. A 16-bit
+  tick counter at +0x24 is incremented. At tick 12 (BEASTSP_ANIM_SWITCH_TICK): if the byte at +4 is zero, plays
+  sound effect ID 0x135 (0x36+0xff) via PlaySoundEffect (which may update r5/r10); then calls sprite_setAnimation(2),
+  sprite_loadAnimationData, and sprite_noShadow to swap to animation index 2 without a shadow. At tick >= 30 (BEASTSP_TIMER_RESET_TICK):
+  resets the tick counter to 0 and writes 8 to the state byte at +9, presumably signalling the next phase of the
+  beast''s idle/transformation sequence. Fields touched: +0x04 (sound-flag byte), +0x09 (state byte), +0x14 (32-bit
+  position), +0x24 (16-bit tick), +0x28 (32-bit time-delta/duration), +0x2C (32-bit per-frame subtraction).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_80A9DFE+0x2..0x12: pos (+0x14) += vel (+0x28); vel -= (+0x2C) — decelerating motion each
-    tick; sub_80A9DFE+0x14..0x1a: counter at +0x24 incremented, compared against 12 and 30; sub_80A9E20
-    block: guarded by byte +4, PlaySoundEffect(0x35), sprite_setAnimation(2), sprite_loadAnimationData,
-    sprite_noShadow; loc_80A9E3E: counter reset to 0 and byte +9 set to 8 (next behavior state); Callees
-    are only the sprite and sound helpers on the object in r5; route ''beastsp'' is the recorded execution
-    context'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9737
-  - 0x080005CC PlaySoundEffect
-  - 0x080026A4 sprite_loadAnimationData
-  - 0x08002F90 sprite_noShadow
-  reproduce: python3 tools/asmcat.py 0x080A9DFE
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — Structure matches: position+velocity at +0x14/+0x28, drag at +0x2C, u16 counter at +0x24, reset
-    to 0 + store 8 at +9 when counter hits 0x1E, sprite_setAnimation(2)/loadAnimationData/noShadow at
-    counter 0xC guarded by byte@+4. However the sound ID is wrong: `mov r0,#0x36; add r0,#0xff` yields
-    0x135, not 0x35. The 30-frame loop description and field mutations are otherwise accurate.; run wf
-    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
-    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c beastsp_updateMotion
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function beastsp_updateMotion
+
+    ./wf verify --function beastsp_updateMotion --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 182 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function beastsp_updateMotion
+
+    ./wf verify --function beastsp_updateMotion --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function beastsp_updateMotion
+
+    ./wf verify --function beastsp_updateMotion --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9dfe ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- Which in-game object/attack owns this struct — the meaning of the 'beastsp' route and fields +0x14/+0x28/+0x2C
-  (fixed-point axes?) is not confirmed
-- What byte +4 flags (skips the SFX) and what behavior state 8 is; callers are unknown, so the state-machine
-  layout is unverified
-- 'Structure matches: position+velocity at +0x14/+0x28, drag at +0x2C, u16 counter at +0x24, reset to
-  0 + store 8 at +9 when counter hits 0x1E, sprite_setAnimation(2)/loadAnimationData/noShadow at counter
-  0xC guarded by byte@+4. However the sound ID is wrong: `mov r0,#0x36; add r0,#0xff` yields 0x135, not
-  0x35. The 30-frame loop description and field mutations are otherwise accurate.'
+- What does state byte 8 at +9 mean—does it trigger a beast transformation or return to idle?
+- What is the semantic of the byte at +4 that gates the sound effect (appears to be an 'already played' or 'mute'
+  flag).
+- What is sound effect 0x135—likely a beast growl or transition chime.
+- Which beasts or hub NPCs use this update routine versus the generic sprite_motionUpdate.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80A9DFE -> beastsp_updateMotion
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9DFE
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

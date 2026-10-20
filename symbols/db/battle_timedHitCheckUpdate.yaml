@@ -1,67 +1,74 @@
 name: battle_timedHitCheckUpdate
 address: '0x080D0168'
 kind: function
-status: probable
-summary: Battle-object phase that counts down 20 frames after init; at Timer=15, if Param2==0 it calls
-  sub_80D020E and sets Param3=1 when ExtraVars[+0x12] matches this object's PanelX; at Timer=10, if Param2==0
-  it plays SFX 0x180; at Timer=0 it transitions to CUR_STATE_DESTROY.
-interface: (r5 = battle object) -> void; sets oBattleObject_CurPhase=4 and Timer=0x14 on phase 0, Param3=1
-  on hit, CUR_STATE_DESTROY when timer expires
-details: 'Standard battle-object update running off r5: on CurPhase 0 it initializes phase to 4 and Timer
-  to 20 (0x14). Each frame it decrements oBattleObject_Timer. At Timer==0xF it calls sub_80D020E (still
-  unknown, presumably advances the attack or updates its graphics/state), then loads a pointer from oBattleObject_ExtraVars+4
-  and compares byte 0x12 of that structure with this object''s oBattleObject_PanelX; if equal it sets
-  oBattleObject_Param3=1, likely marking that the attack reached/connected with its target panel. At Timer==0xA
-  it plays sound effect 0x180 (mov 0x81 + add 0xFF). When the timer reaches 0 it writes CUR_STATE_DESTROY
-  into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object is removed. All branches are
-  guarded by oBattleObject_Param2 (nonzero skips both the check and the sound).'
+status: confirmed
+summary: 'Next-frame handler that drives a timed hit-check battle object through a 20-tick countdown: initializes
+  phase, spawns a panel collision check at tick 15, plays the hit SFX at tick 10, and self-destructs at tick 0.'
+interface: battle_timedHitCheckUpdate(u32 r5 /* BattleObject* */) -> (r5, r10) /* possibly re-read from PlaySoundEffect
+  */
+details: "Operates on a single BattleObject at r5, advancing its CurPhase/Timer state each frame.\nOn the first\
+  \ call (CurPhase == 0) it sets CurPhase = 4 and Timer = 0x14 (20 ticks) then returns.\nSubsequent calls decrement\
+  \ the 16-bit Timer and branch on the new value:\n  * Timer == 0xF (15): if Param2 is zero, calls battle_spawnSelfPanelCollisionRegion\
+  \ (which may\n    relocate r5), then compares ExtraVars+4 -> byte 0x12 against the object's PanelX. If they\n\
+  \    match, sets Param3 = 1 (hit confirmed).\n  * Timer == 0xA (10): if Param2 is zero, plays SFX ID 0x180 (hit\
+  \ sound) via PlaySoundEffect,\n    passing r2 through. r5 and r10 are refreshed from PlaySoundEffect's clobbers.\n\
+  \  * Timer <= 0: writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized, signalling\n    the object's\
+  \ main loop to tear it down.\nParam2 (non-zero) gates both the collision check and the sound, acting as a \"suppress\
+  \ effects\"\nflag set by the caller before spawning the object.\nr2 is only forwarded to PlaySoundEffect; it is\
+  \ not otherwise inspected.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; strb #4 phase; strh #0x14 timer — phase-0 init block;
-    sub r0,#1 on oBattleObject_Timer with cmp against 0xF/0xA/0 — scripted countdown events; ldr r0,[r5,#oBattleObject_ExtraVars+4];
-    ldrb r0,[r0,#0x12]; cmp with oBattleObject_PanelX; strb 1 to Param3 — hit/target-panel check; mov
-    r0,#0x81; add r0,#0xFF; bl PlaySoundEffect — sound 0x180 fired at Timer==0xA; mov r0,#CUR_STATE_DESTROY;
-    str [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — self-destruct at Timer==0'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:52121
-  - 0x080005CC PlaySoundEffect
-  - 0x080D020E sub_80D020E
-  reproduce: python3 tools/asmcat.py 0x080D0168
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The countdown values (0x14 init, checks at 0xF, 0xA, and 0) and the destroy-on-expiry behavior match
-    the proposal. However, the guard is oBattleObject_Param2 (the proposal conflates this with the hit/sound
-    branches, which is correct), and the hit check loads the byte at ExtraVars+0x12 and compares to PanelX
-    — not ''target panel'' as proposed, it''s just the own object''s panel X, so ''timedHitCheckUpdate''
-    is reasonable but the summary overstates it. The sound is 0x180 (mov 0x81 + add 0xff), which matches.
-    Name and summary are close; minor wording fix.; run wf investigate investigate-20261018-212108; proposed
-    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_timedHitCheckUpdate
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_timedHitCheckUpdate
+
+    ./wf verify --function battle_timedHitCheckUpdate --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 171 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_timedHitCheckUpdate
+
+    ./wf verify --function battle_timedHitCheckUpdate --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_timedHitCheckUpdate
+
+    ./wf verify --function battle_timedHitCheckUpdate --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d0168 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What sub_80D020E does (probably the attack's movement/damage step) and what structure oBattleObject_ExtraVars+4
-  points to — likely the target object whose byte 0x12 is its panel X
-- Which chip/attack object this is; the recorded routes (battlesweep, beastsp) suggest a sweep-type attack
-  but no direct caller was captured
-- Meaning of the Param2 guard and Param3 flag for the parent attack routine
-- The countdown values (0x14 init, checks at 0xF, 0xA, and 0) and the destroy-on-expiry behavior match
-  the proposal. However, the guard is oBattleObject_Param2 (the proposal conflates this with the hit/sound
-  branches, which is correct), and the hit check loads the byte at ExtraVars+0x12 and compares to PanelX
-  — not 'target panel' as proposed, it's just the own object's panel X, so 'timedHitCheckUpdate' is reasonable
-  but the summary overstates it. The sound is 0x180 (mov 0x81 + add 0xff), which matches. Name and summary
-  are close; minor wording fix.
+- What does Param3 = 1 trigger downstream—does the owning weapon or Custom Chip read it on the next tick?
+- Is SFX 0x180 the generic melee-impact sound, or specific to Falzar's timed hit-check mechanic?
+- Why is CurPhase forced to 4—does phase 4 designate the timed-hit-check sub-state machine in the parent object's
+  update switch?
+- Does battle_spawnSelfPanelCollisionRegion ever fail in a way that corrupts r5 or leaves ExtraVars+4 null?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80D0168 -> battle_timedHitCheckUpdate
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D0168
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

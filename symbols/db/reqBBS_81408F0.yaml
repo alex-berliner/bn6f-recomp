@@ -1,0 +1,74 @@
+name: reqBBS_81408F0
+address: '0x081408F0'
+kind: function
+status: confirmed
+summary: BBS request that validates PET/Navi slot availability and chatbox state, then sets event flags 0x173A/0x173C
+  and chains sub-request helpers to register the slot for Broadcast Beacon System use.
+interface: 'u32 reqBBS_validatePetNaviRegistration_81408F0(u32 r5 /* BBS toolkit ptr */) -> r0 /* result code 0x00,0x0D,0x0E,0x0F,0x10
+  */;
+
+  r10 and lr are inputs; r5 is read through helper calls but preserved on return.
+
+  '
+details: 'Five result codes: 0x00 (chatbox mask 0x20 absent or 0x110 present – request not applicable), 0x0E (chatbox
+  mask 0x80 absent, or helper pair 1 returned nonzero), 0x0F (event flag 0x173A already set – first-time gate),
+  0x10 (helper pair 2 returned nonzero), 0x0D (success: flags set and helper chain 3 executed, or PET Navi slot
+  occupied). Gates proceed in order: chatbox_mask_eFlags2009F38 checks bits 0x80, 0x20, 0x110; helper reqBBS_81408C8
+  loads a toolkit field into r5, reqBBS_8140868 / reqBBS_8140884 validate it; TestEventFlagFromImmediate(0x17,0x3A)
+  ensures the request hasn''t already run; EVENT_PET_NAVI_ACTIVE (0x17,0x1D) must be set while GetCurPETNavi must
+  return 0 (empty slot). On success SetEventFlagFromImmediate marks 0x173A and 0x173C, then reqBBS_81408C8 → reqBBS_81408A0
+  → reqBBS_81408DC execute the BBS sub-request dispatch. off_8140970 holds the constant 0x110 loaded via ldr for
+  the third mask check.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_81408F0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81408F0
+
+    ./wf verify --function reqBBS_81408F0 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 21 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81408F0
+
+    ./wf verify --function reqBBS_81408F0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81408F0
+
+    ./wf verify --function reqBBS_81408F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081408f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- What do result codes 0x0D through 0x10 mean to the BBS request dispatcher that calls this?
+- What does helper reqBBS_81408C8 do to r5 – does it advance a BBS toolkit cursor?
+- Are 0x173A and 0x173C paired flags for a one-time PET Navi BBS handshake, or reused by other request types?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

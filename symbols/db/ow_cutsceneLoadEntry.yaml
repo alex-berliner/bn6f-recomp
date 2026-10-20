@@ -1,52 +1,76 @@
 name: ow_cutsceneLoadEntry
 address: '0x08099164'
 kind: function
-status: probable
-summary: 'Loads a cutscene setup entry by ID: resolves its text archive and, if flagged, places the player
-  (facing, animation, coords) and camera for the scene start.'
-interface: (r5 = cutscene state struct, cutscene entry id at +6) -> r0 = 0; writes text archive ptr to
-  +0x30, entry byte to +6, bit7 of entry flags to +8
-details: Reads an entry id from r5+6 and indexes a 20-byte-per-entry table at byte_8098E9C. If the entry's
-  first word is nonzero it is treated as a (possibly compressed) text archive pointer, decompressed via
-  DecompressTextArchiveForCutscene and stored at r5+0x30. Entry byte 4 is copied back to r5+6 (advancing/selecting
-  the id). If entry byte 7 bit0 is set, it sets the player's facing direction (entry byte 5), a fixed
-  animation select (bytes 5+6), player x/y/z (entry halfwords 0x8/0xA/0xC), zeroes a camera field via
-  camera_writeUnk03_14_80301b2, sets camera x/y/z (entry halfwords 0xE/0x10/0x12), and clears EVENT_EVENT_CUR_DIR_LOCKED.
-  Finally bit7 of entry byte 7 is stored to r5+8 (likely a 'has setup' or continue flag) and the function
-  always returns 0.
+status: confirmed
+summary: 'Loads and applies one overworld cutscene entry: decompresses its text archive, advances the sequence index,
+  and optionally repositions the player and camera based on the entry''s flag byte.'
+interface: s32 ow_cutsceneLoadEntry(u32 context /* r5, cutscene state struct ptr */); /* returns 0, sets Z; preserves
+  r4-r7 */
+details: 'Reads the current entry index from context+6, multiplies by 0x14 to select a 20-byte record from the static
+  cutscene table at byte_8098E9C. If the record''s first word (archive pointer) is non-null, calls DecompressTextArchiveForCutscene
+  and stores the result at context+0x30. Advances context+6 to the ''next entry'' byte stored at table record+4.
+  If bit 0 of the flags byte at record+7 is set, executes a player/camera setup block: sets facing direction from
+  record+5, selects a fixed animation from record+5+record+6, sets player XYZ from signed shorts at record+8/+10/+12
+  (shifted left 16 for 16.16 fixed-point), zeroes a camera aux field via camera_writeUnk03_14, sets camera XYZ from
+  signed shorts at record+14/+16/+18, and clears event flag 0x17 (EVENT_EVENT_CUR_DIR_LOCKED). Regardless of the
+  flag gate, stores bit 7 of the flags byte into context+8 as the direction-lock indicator. Returns 0 so the caller
+  sees Z set. r10 is passed in by the caller (likely a global or table base) but is not directly used here.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r5,#6]; mul r1 by 0x14; ldr r7,=byte_8098E9C — table of 20-byte cutscene entries indexed
-    by struct field +6; bl DecompressTextArchiveForCutscene; str r0,[r5,#0x30] — entry word 0 is a text
-    archive ref stored in the scene struct; bl SetOWPlayerFacingDirection / owPlayer_setS200ace0_fixedAnimationSelect
-    / owPlayer_indirectlySetPlayerCoordsMaybe — entry bytes drive initial player placement; bl camera_writeUnk03_14_80301b2(0)
-    then SetCameraXYZ with entry halfwords 0xE/0x10/0x12 — initial camera position from the entry; movflag
-    EVENT_EVENT_CUR_DIR_LOCKED; bl ClearEventFlagFromImmediate — scene start clears direction-lock flag
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm28_0.s:349
-  - 0x0802F12C ClearEventFlagFromImmediate
-  - 0x08037AD0 DecompressTextArchiveForCutscene
-  - 0x080301DC SetCameraXYZ
-  reproduce: python3 tools/asmcat.py 0x08099164
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c ow_cutsceneLoadEntry
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_cutsceneLoadEntry
+
+    ./wf verify --function ow_cutsceneLoadEntry --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 230 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_cutsceneLoadEntry
+
+    ./wf verify --function ow_cutsceneLoadEntry --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 38 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_cutsceneLoadEntry
+
+    ./wf verify --function ow_cutsceneLoadEntry --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08099164 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - beastsp
 open_questions:
-- No callers known, so the r5 struct's identity and who sets the entry id at +6 are unconfirmed; a caller
-  would confirm whether this is a cutscene-script task step
-- Meaning of bit7 of entry byte 7 stored to r5+8 is only guessed
+- What is the layout of the 20-byte cutscene table record beyond the fields identified (archive ptr, next-index,
+  flags, facing, anim offset, player pos, camera pos)? Are there more entries in byte_8098E9C and how many?
+- What does context+8 (direction-lock indicator) control downstream—does the caller or another system read it to
+  block player movement?
+- Why does the caller pass r10 in if this function never reads it?
+- Is DecompressTextArchiveForCutscene writing to a fixed RAM buffer, and does context+0x30 pointer get consumed
+  by the chatbox/text-display subsystem?
+- The event flag 0x17 is cleared here—does setting it elsewhere (before cutscene starts) lock facing during scripted
+  sequences, and is bit 7 of the flags byte the signal to keep or release that lock?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8099164 -> ow_cutsceneLoadEntry
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8099164
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

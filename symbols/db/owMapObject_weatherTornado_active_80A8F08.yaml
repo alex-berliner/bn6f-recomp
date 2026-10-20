@@ -1,34 +1,68 @@
 name: owMapObject_weatherTornado_active_80A8F08
 address: '0x080A8F08'
 kind: function
-previous_names:
-- sub_80A8F08
-status: probable
-summary: 'Tornado state 4 (active): flag 0xBEF -> caught (state 8); else, outside cutscenes and the chatbox,
-  move (owMapObject_weatherTornado_moveOrPause_80A8F48) and check the hit on MegaMan (owMapObject_weatherTornado_checkHitPlayer_80A91A4);
-  then priority, sprite, save state.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
-details: Every frame ends with owMapObject_weatherTornado_setPriority_80A91F4, sprite_update and owMapObject_weatherTornado_saveState_80A9218
-  (save into eWeatherCompState).
+status: confirmed
+summary: 'Per-frame update for the weather-tornado overworld entity: handles caught-state transition, cutscene/dialog
+  suppression, normal movement, player-collision check, and sprite/priority/state persistence.'
+interface: owMapObject_weatherTornado_active_80A8F08(r5 = obj, r6 = data, r10 = ambient) -> r2 r3 r4 r5 r6 r7 r8
+  r9 r10 r11 r12 (clobbers r0 r1 lr flags)
+details: 'Dispatches on event flag 0xB:0xEF (tornado-caught marker). If set, writes byte 8 to obj+0x08 (state =
+  caught) and calls owMapObject_weatherTornado_caught_80A8FA0 for the post-capture animation. Otherwise, gates movement
+  behind three checks: original-cutscene script position (0x8036F40, 0x8036F58) and a chatbox/dialog mask flag 0x80
+  via chatbox_mask_eFlags2009F38; if any is active the tornado pauses. When free to move, calls owMapObject_weatherTornado_moveOrPause_80A8F48
+  and owMapObject_weatherTornado_checkHitPlayer_80A91A4. Regardless of branch, the frame-end sequence always runs:
+  set draw priority (0x80A91F4), generic sprite_update, and save state (0x80A9218). Touches obj+0x08 (u8 state field),
+  uses r5/r6 as object and companion-data pointers throughout.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_active_80A8F08:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c owMapObject_weatherTornado_active_80A8F08
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_active_80A8F08
+
+    ./wf verify --function owMapObject_weatherTornado_active_80A8F08 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_active_80A8F08
+
+    ./wf verify --function owMapObject_weatherTornado_active_80A8F08 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_active_80A8F08
+
+    ./wf verify --function owMapObject_weatherTornado_active_80A8F08 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8f08 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A8F08 -> owMapObject_weatherTornado_active_80A8F08
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What does state value 8 at obj+0x08 represent vs other state bytes the caught handler might use?
+- Is owMapObject_weatherTornado_caught_80A8FA0 a one-shot animation that removes the tornado or a looping idle?
+- Which overworld regions trigger this tornado (CPs, area names) and is it the same object reused across encounters?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

@@ -1,52 +1,73 @@
 name: battle_spawnRowPanelEffect
 address: '0x080C6FC8'
 kind: function
-status: probable
-summary: Spawns a series of ground/panel effect objects (via sub_80E3A92) along the battle object's row
-  toward a target panel X, with a variant selected by Param1.
-interface: (r0 = effect param A (byte packed into r4[8..15]), r1 = target panel X; r5 = battle object)
-  -> r0 = clobbered; no meaningful return
-details: Reads the object's Param1 and maps it through byte_80C7028 to a variant value (1 only when Param1==4,
-  else 0). It first calls sub_80E3A92 with r0=arg1(target X), r1=PanelY, r4 = variant<<16 | paramA<<8
-  | 1 (a 'first/leading' flag), r7=RelatedObject1Ptr. It then loops count 1..4, computing x = PanelX +
-  object_getFrontDirection()*count, and calls sub_80E3A92 again at each x with r2=target X and r4 = variant<<16
-  | paramA<<8 | 0, stopping as soon as x reaches the target panel. RelatedObject1Ptr is passed each time,
-  so the spawned effects are tied to the acting object. The 4-panel sweep with early exit at the target
-  panel suggests a traveling ground effect that spans the row between user and target.
+status: confirmed
+summary: Spawns a row-panel visual effect along the facing direction of a battle object, drawing up to 5 tiles until
+  the target X is reached.
+interface: void battle_spawnRowPanelEffect(u32 r0_arg_id, u32 r1_target_x, u32 r2_arg, BattleObject* r5) -> r5 preserved
+details: 'Reads the battle object''s Param1 byte and uses it to index a 8-entry lookup table (byte_80C7028) to retrieve
+  a per-object flag (only index 4 yields 1, all others 0). Builds a packed control word: bits 8-15 hold arg_id,
+  bits 16-23 hold the flag, bit 0 is a first-draw marker (1 for the initial call, 0 for subsequent). Calls sub_80E3A92
+  once at the object''s current PanelY with the first-draw word, passing target_x, PanelY, arg_r2, and the object''s
+  RelatedObject1Ptr. Then iterates step 1 through 4: queries object_getFrontDirection(r5) for the facing direction
+  (0 or 1), computes cur_x = PanelX + direction*step, and if cur_x equals target_x it breaks; otherwise calls sub_80E3A92
+  again at (cur_x, PanelY) with the non-first word. Preserves r4, r6, r7 via push/pop. The r2 argument is forwarded
+  to sub_80E3A92 as-is.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r5,#oBattleObject_Param1] + byte_80C7028 lookup gives variant, nonzero only for Param1==4;
-    bl object_getFrontDirection; mul r0,r6; add r0,PanelX walks panels 1..4 in facing direction; cmp r0,r2
-    / beq loc_80C701E stops the sweep when the target panel X is reached; first sub_80E3A92 call packs
-    r4 = variant<<16|paramA<<8|1, later calls use flag 0 (leading vs trailing spawn); r7 = [r5,#oBattleObject_RelatedObject1Ptr]
-    passed to sub_80E3A92 on every spawn
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:32504
-  - 0x080C6E90 sub_80C6E90
-  - 0x0800E2CA object_getFrontDirection
-  - 0x080E3A92 sub_80E3A92
-  reproduce: python3 tools/asmcat.py 0x080C6FC8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_spawnRowPanelEffect
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_spawnRowPanelEffect
+
+    ./wf verify --function battle_spawnRowPanelEffect --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_spawnRowPanelEffect
+
+    ./wf verify --function battle_spawnRowPanelEffect --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_spawnRowPanelEffect
+
+    ./wf verify --function battle_spawnRowPanelEffect --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c6fc8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- purpose of sub_80E3A92 (its r0/r2/r4 field meanings) is unknown, so the exact visual/attack (e.g. snake,
-  eruption, trap row) can't be confirmed
-- what Param1 and byte_80C7028 index 4 actually represent (element? panel type?)
-- why the first spawn occurs at the target X rather than the object's own panel
+- Exact semantics of the packed word passed to sub_80E3A92 (which panel row it highlights, animation type, etc.).
+- What the 8-entry byte table at 0x80C7028 represents beyond 'Param1 -> flag'; index 4 is the only nonzero entry—does
+  it correspond to a specific Custom Chip or Net Battle element?
+- Whether direction from object_getFrontDirection is always 0/1 or can take other values, and how that affects the
+  'row' orientation.
+- 'Role of the third argument (r2): it is stored on the stack but only forwarded as-is to sub_80E3A92; its purpose
+  is unclear from this function alone.'
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80C6FC8 -> battle_spawnRowPanelEffect
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80C6FC8
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

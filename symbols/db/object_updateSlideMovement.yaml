@@ -1,56 +1,78 @@
 name: object_updateSlideMovement
 address: '0x080D8A3C'
 kind: function
-status: probable
-summary: 'Battle-object movement phase: slides the object along X toward its FuturePanel target at XVelocity,
-  aborting if the target panel becomes invalid, then snaps panels and ends the action.'
-interface: (r5 = battle object pointer, r0 = 0 on entry for phase init) -> r0 = 0 when the move finishes,
-  else non-zero/returns while moving; flags clobbered
-details: 'Phase-gated via oBattleObject_PhaseInitialized: on first entry it calls sub_80D8C10(FuturePanelX,
-  FuturePanelY) and only arms the phase (sets PhaseInitialized = 4) if that check passes. Each tick it
-  computes newX = X + XVelocity and uses IsR2BetweenR0AndR1 with ExtraVars as a target X to detect when
-  the slide has reached or passed the destination. If the target X is crossed, sub_80D8BBC runs, the target
-  panels are re-validated, and Timer2 counts down frames before the move completes. Completion (loc_80D8A7E)
-  calls object_setCoordinatesFromPanels and object_updateCollisionPanels, sets CurAction = 4 and clears
-  CurPhaseAndPhaseInitialized; if mid-slide the target becomes invalid or the object already entered the
-  next panel, it finishes early by snapping the current coordinates instead. Otherwise it commits newX
-  to X and refreshes PanelX/PanelY and collision panels each step.'
+status: confirmed
+summary: Advances a sliding battle object by one frame, handling panel-boundary crossings, slide-timer expiry, and
+  transitioning back to stopped/idle when the slide cannot continue.
+interface: u32 object_updateSlideMovement(u32 obj /* r5 -> battle-object pointer */) -> r1 /* collision panel from
+  last object_updateCollisionPanels call */; flags clobbered
+details: "Called once per frame for a battle object in a slide state (e.g. a Navi gliding across the battlefield).\
+  \ r5 points to the oBattleObject structure.\n1. Lazily initializes the slide phase: reads FuturePanelX/Y, calls\n\
+  \   object_canSlideOntoPanel; if the target is invalid it immediately finishes\n   the slide (snaps to current\
+  \ panel, sets CurAction=4 which is likely\n   \"stopped/idle\", clears phase). Otherwise writes PhaseInitialized=4.\n\
+  \n2. Computes predicted next X = XVelocity + X (fixed-point, 32-bit fields).\n3. Checks whether the predicted\
+  \ X crosses a panel boundary by calling\n   IsR2BetweenR0AndR1 with the current X, predicted X, and an ExtraVars\n\
+  \   threshold. If it does:\n   - Calls sub_80D8BBC (unknown helper, possibly a boundary-cross event/hitcheck).\n\
+  \   - Re-validates the future panel via object_canSlideOntoPanel; if invalid,\n     finishes the slide.\n   -\
+  \ Decrements Timer2; if it reaches zero, finishes the slide.\n\n4. Converts the predicted pixel XY to panel coordinates\
+  \ via\n   convertBattleObjectXYToPanelXY_800E24C. If the object can slide onto that\n   panel AND its current\
+  \ PanelX differs from the new one (i.e. it is crossing\n   into a fresh panel), finishes the slide (snap to panel,\
+  \ CurAction=4).\n\n5. Otherwise commits: writes new X, recalculates panels from coordinates\n   (object_setPanelsFromCoordinates),\
+  \ refreshes collision panels, and returns\n   with the object still sliding.\n\nFields touched: PhaseInitialized,\
+  \ FuturePanelX, FuturePanelY, XVelocity, X, Y, ExtraVars, Timer2, PanelX, CurAction, CurPhaseAndPhaseInitialized.\
+  \ Quirk: PhaseInitialized is set to the same literal 4 that CurAction uses for \"stopped\"; this likely means\
+  \ the phase enum and action enum share numbering.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'add r0 = XVelocity + X with r1 = old X and r2 = ExtraVars passed to IsR2BetweenR0AndR1: arrival
-    test against a target X (loc around 80D8A50); sub_80D8C10(FuturePanelX, FuturePanelY) gates phase
-    init and re-validates the move target before each state change; Completion block calls object_setCoordinatesFromPanels
-    + object_updateCollisionPanels, sets CurAction = 4 and zero phase (loc_80D8A7E); Mid-slide branch
-    stores newX to oBattleObject_X then calls object_setPanelsFromCoordinates + object_updateCollisionPanels
-    (loc_80D8AAA); Recorded route is beastsp and callees are all battle-object movement helpers, matching
-    a dash/slide action phase'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:69992
-  - 0x0800E6E8 IsR2BetweenR0AndR1
-  - 0x0800E24C convertBattleObjectXYToPanelXY_800E24C
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x080D8A3C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_updateSlideMovement
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_updateSlideMovement
+
+    ./wf verify --function object_updateSlideMovement --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_updateSlideMovement
+
+    ./wf verify --function object_updateSlideMovement --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 91 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_updateSlideMovement
+
+    ./wf verify --function object_updateSlideMovement --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8a3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
 open_questions:
-- Purpose of sub_80D8BBC and exact meaning of the sub_80D8C10 return value (target-panel occupied vs.
-  still-valid) are unknown
-- Which action IDs feed this phase (what sets CurAction before it) and what CurAction = 4 means downstream
-- Semantics of ExtraVars as the destination X and Timer2 as a post-arrival delay are inferred, not confirmed
-  by a caller
+- What does sub_80D8BBC do? It is called on panel-boundary crossings but has no other references here.
+- What does ExtraVars represent in this context—likely the X boundary of the current panel?
+- CurAction=4—is that 'stopped', 'idle', or another terminal state after a slide?
+- Timer2 decrement and expiry—does this cap the total slide distance in panels?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D8A3C -> object_updateSlideMovement
-  where: bn6f 2b08d76c
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D8A3C
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

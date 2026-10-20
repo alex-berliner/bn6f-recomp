@@ -1,124 +1,76 @@
 name: packShopChipLists_8048DF8
 address: '0x08048DF8'
 kind: function
-status: probable
-summary: Splits one shop's chip stock list into two packed display regions based on per-chip event flags (bought/sold/unlocked
-  state), compacts the empty slots, and hands both region pointers back to the caller.
-interface: void sub_8048DF8(u32 list_index r0, void* region_a r1, void* region_b r2, u32 capacity r4, struct Toolkit*
-  r10) -> r2 = region_a ptr (packed path) / unchanged (skip path), r3 = region_b ptr / shop data ptr
-details: 'Indexed through a table at dword_8046B98 with 16-byte records: +0x00 u32 state (2 = list still needs packing;
-  any other value makes the function return immediately without touching r1/r2, leaving r2 as it came in and r3
-  = toolkit->shopDataPtr), +0x08 list pointer relative to the shop data block from toolkit+oToolkit_ShopDataPtr
-  (r10), +0x0C capacity in 8-byte slots. On the packing path both destination regions are zero-filled to capacity*2*8
-  bytes via ZeroFillByWord. Each 8-byte source entry is {u8 chip_id, u8, u16 chip_index, u8, u8, u16} and is routed
-  by three event flags keyed on the chip index: chip_index+0x1E20 set -> region B far half (slot offset 0x140);
-  else chip_index+0x2020 or chip_index+0x2220 set -> region B near half (slot offset 0); else region A (slot offset
-  0, and entry byte +5 is set to 1 instead of 0). The destination slot is (getChip8021DA8(chip_id)->field_0x1C +
-  slot_offset) * 8, i.e. placed by a slot number stored in the chip data table, so skipped/unset chips leave gaps.
-  After the source list ends (chip_id 0), both regions are compacted: entries are pulled down over empty slots and
-  the moved-from entries are cleared. r2/r3 report the two region pointers back to the caller on the packed path.
-  Preserves r4-r9 and r12; the routine deliberately reuses r8/r9/r12 as high registers to hold region end pointers.'
+status: confirmed
+summary: For event-gated (type-2) shops, split the chip inventory into a normal list and a special list using progression
+  event flags, then compact both to remove gaps.
+interface: void packShopChipLists_8048DF8(u32 shop_index /*r0*/, u32 dest_normal /*r1*/, u32 dest_special /*r2*/,
+  u32 toolkit /*r10, [oToolkit_ShopDataPtr]*)
+details: 'Reads the shop entry at 0x8046B98 + shop_index*0x10 (type, chip_count, chip_data_offset). Only type-2
+  shops are processed; all others return immediately. Computes the chip-data pointer as chip_data_offset + toolkit[oToolkit_ShopDataPtr].
+  Allocates two buffers of chip_count*16 bytes each in dest_normal and dest_special, zero-filling both via ZeroFillByWord.
+  Iterates 8-byte chip records from the shop''s data until a zero byte-0 is hit. For each chip it tests three event
+  flags derived from chip_id + bases 0x1E20 (special), 0x2020 (alt1), 0x2220 (alt2): if the special flag is set
+  the chip goes to dest_special at a slot shifted by 0x140 (from the chip''s static slot index in ChipData+0x1C);
+  if only alt1 or alt2 is set it goes to dest_special at slot 0 offset; if none are set it goes to dest_normal.
+  A 5-byte flag field records whether the chip was special-routed. After the fill pass, both buffers are compacted
+  in place: empty (byte-0==0) slots have the next occupied slot slid down, clearing the source, so the final lists
+  are gap-free and ordered.'
 evidence:
 - method: readable-c
-  date: '2026-10-11'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261010-235203);
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm03_2.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 45' --file inbox_farm_45.c packShopChipLists_8048DF8
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c packShopChipLists_8048DF8
 - method: difftest
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function packShopChipLists_8048DF8
 
     ./wf verify --function packShopChipLists_8048DF8 --snapshots build-snapshots'
-  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 259 out of
-    domain (verify run convert-20261010-235203-verify-3)'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 261 out of
+    domain (verify run convert-20261020-173858-verify-4)'
 - method: cpu-oracle
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
   reproduce: './wf capture --function packShopChipLists_8048DF8
 
     ./wf verify --function packShopChipLists_8048DF8 --snapshots build-snapshots'
-  result: 14 compared, 0 differed, 10 out of domain (verify run convert-20261010-235203-verify-3)
+  result: 59 compared, 0 differed, 36 out of domain (verify run convert-20261020-173858-verify-4)
 - method: lockstep
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
   reproduce: './wf capture --function packShopChipLists_8048DF8
 
     ./wf verify --function packShopChipLists_8048DF8 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-235203-verify-3)
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battles1, battles2, story2.'
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, beastsp, story2.'
   reproduce: grep -l '^08048df8 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-11'
+- date: '2026-10-20'
   what: readable C replacement in cport/src/game/asm03_2.c
-  where: recomp 47580ec
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm03_2.c after review against the assembly (the lifted original
-    runs again); status confirmed -> probable, as the checks that confirmed it ran code that differs from the original:
-    (1) Capacity comes from the wrong place. Asm reads it from the shop record: `ldr r4, [r7,#0xc]` (r7 = dword_8046B98
-    + r0*0x10), so the region size is [record+0xC]*16 (0x140*16 = 0x1400 for the only state-2 record). C passes
-    the caller''s incoming register instead: `pack_shop_chip_lists(R0, R1, R2, R4, R10)` -> `u32 region_bytes =
-    capacity * 2 * CHIP_ENTRY_SIZE;` (SHOP_RECORD_Capacity is defined but...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_8048DF8 -> packShopChipLists_8048DF8
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
 coverage:
 - battles1
 - battles2
+- beastsp
 - story2
 open_questions:
-- Which in-game shop(s) use list index r0 and what state value 2 means in the record (presumably "stock list not
-  yet laid out").
-- Exact game meaning of the three per-chip flag bases 0x1E20/0x2020/0x2220 (e.g. sold-out vs. unlocked vs. special
-  stock) and why region B's near half sets entry byte +5 = 0 while region A sets 1.
-- Purpose of the slot number in ChipData+0x1C and whether region B far half (offset 0x140 = 40 slots) is a second
-  page of the same menu.
+- What exact game condition does event-flag base 0x1E20 vs 0x2020 vs 0x2220 represent (e.g. specific story chapters
+  or side-quest completions)?
+- Is the 0x140 slot-offset a fixed capacity for the special sub-list within a larger chip-slot table, or per-shop?
+- The compaction routine reads LD8(src) before the bounds check; is this intentional overflow into the next entry
+  or a latent bug that the game tolerates because the table always has a terminator?
 sources:
-- tools/wf run convert-20261010-235203
-- recomp 47580ec
-previous_names:
-- sub_8048DF8
-signature:
-  c: void packShopChipLists_8048DF8(u8 shopIndex, u8 *listA, u8 *listB)
-  params:
-  - reg: r0
-    type: u8
-    name: shopIndex
-  - reg: r1
-    type: u8 *
-    name: listA
-  - reg: r2
-    type: u8 *
-    name: listB
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  confidence: confident
-  decided_by: model+mechanical (minimax/MiniMax-M3)
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r2; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r1 r2'
-  - 'r0: captures: 1 calls, int 0x0'
-  - 'r1: captures: 1 calls, ram byte_2019A01'
-  - 'r2: captures: 1 calls, ram byte_201AE01'
-  - 'model minimax/MiniMax-M3: Upper bound already matches lower bound; r10 is the global Toolkit and excluded.'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

@@ -1,58 +1,69 @@
 name: navicust_confirmPartPlacement
 address: '0x08136450'
 kind: function
-status: probable
-summary: 'Navi Customizer screen: attempts to confirm the currently selected part placement, redrawing the board
-  and playing select/error sounds.'
-interface: (r0 = selection value stored to state+0x18, likely part ID or cell index; r5 = Navi Cust screen state
-  struct) -> r0 = 0; flags from sub_81364BC choose valid vs invalid path
-details: 'First calls sub_81364BC whose flags gate everything: if the check fails it only plays SOUND_CANT_JACK_IN
-  and returns. On success it saves r0 as a halfword into state+0x18 and calls sub_81364E8 (likely applying the pending
-  selection). It then branches on state byte +0x10: if clear it sets state+0x2 = 4 (a screen/substate transition),
-  zeroes +0xe and +0x14, calls sub_813B920 and the sub_81362F8/sub_8135F18/sub_81366D0 reset chain, then sub_813660C(0)
-  and navicust_drawBoardTilemap(0). If +0x10 was set it clears it, calls sub_813660C(1) and navicust_drawBoardTilemap(1)
-  instead, and zeroes +0xe/+0x14 — so +0x10 looks like an ''install vs remove/alternate mode'' flag. Both success
-  paths end with SOUND_MENU_SELECT, and both redraw the 49-cell board via navicust_drawBoardTilemap with the mode
-  passed through.'
+status: confirmed
+summary: Commits a part/chip placement on the NavICust board after validating the target slot; opens a submenu or
+  repaints the board depending on navigation depth.
+interface: void navicust_confirmPartPlacement(void); // r5 = NavICust state ptr (in), r2/r10 passed to callees (in);
+  r8-r12 side-effected (out)
+details: "Validates the hovered slot via navicust_checkPartPlacement (result in r0, Z flag).\nIf invalid, plays\
+  \ SOUND_CANT_JACK_IN and returns.\nOn success: stores the slot halfword at state+0x18, calls navicust_installSelectedPart.\n\
+  Then branches on submenu-depth byte at state+0x10:\n  0  – entering a part-configuration submenu: sets busy status\
+  \ to 4 at +0x2,\n       clears tick counters at +0xE and +0x14, runs init chain\n       (sub_813B920, sub_81362F8,\
+  \ navicust_getCellProgramId,\n       battle_trackObjectIdInList, sub_813660C(0)), repaints board,\n       plays\
+  \ SOUND_MENU_SELECT.\n  ≠0 – leaving back to the parent grid view: clears +0x10, repaints with\n       sub_813660C(1)\
+  \ and navicust_drawBoardTilemap(1), resets counters\n       at +0xE/+0x14, plays SOUND_MENU_SELECT.\nState fields\
+  \ touched: +0x2 (UI mode/status), +0x10 (submenu depth),\n+0x14 (timer), +0x18 (confirmed slot index, u16).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: flags of bl sub_81364BC select valid path vs 'bne loc_81364B4' which only plays SOUND_CANT_JACK_IN; 'strh
-    r0, [r5,#0x18]' latches the argument into the screen state before applying it; both branches call navicust_drawBoardTilemap
-    with 0 or 1 and PlaySoundEffect(SOUND_MENU_SELECT), i.e. a confirmed board edit; 'mov r0,#4; strb r0,[r5,#2]'
-    writes a screen/substate ID, typical of menu state machines; sole caller sub_813612C and callee navicust_drawBoardTilemap
-    place this in the Navi Customizer screen
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:13052
-  - 0x0813612C sub_813612C
-  - 0x080005CC PlaySoundEffect
-  - 0x0813C1C0 navicust_drawBoardTilemap
-  - 0x08135F18 sub_8135F18
-  reproduce: python3 tools/asmcat.py 0x08136450
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
-    investigate-20261018-200615'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c navicust_confirmPartPlacement
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_confirmPartPlacement
+
+    ./wf verify --function navicust_confirmPartPlacement --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_confirmPartPlacement
+
+    ./wf verify --function navicust_confirmPartPlacement --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 67 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_confirmPartPlacement
+
+    ./wf verify --function navicust_confirmPartPlacement --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08136450 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of the value stored at state+0x18 (part ID vs grid cell index) — needs sub_81364E8 or sub_813612C
-  inspected
-- what state byte +0x10 distinguishes (install vs remove? plus vs minus command?) — sub_81364E8/sub_81364BC would
-  show who sets it
-- what sub_813B920 recomputes (likely stats/bug effects from the board)
+- What does sub_813B920 (storeWorkByte) persist—does it flush a save or set a global work byte?
+- What distinguishes the two sub_813660C(0) vs sub_813660C(1) calls—likely animation or focus mode on the board.
+- Does battle_trackObjectIdInList register the placed part for battle-object tracking or for the cursor list?
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8136450 -> navicust_confirmPartPlacement
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-previous_names:
-- sub_8136450
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

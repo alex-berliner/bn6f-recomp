@@ -1,50 +1,76 @@
 name: init_applyBeastSpScenarioEventFlags
 address: '0x0808CE70'
 kind: function
-status: probable
-summary: 'Applies a per-AI-mode preset of Beast+ scenario event flags: sets one flag and clears a run
-  of flags for each entry of the table selected by the current map group''s AI mode.'
-interface: () -> void; reads current map-group AI mode via ai_getAIModeForMapGroup_808D084
-details: 'Fetches an AI-mode value (0..3) from ai_getAIModeForMapGroup_808D084 and uses it to index a
-  4-entry table of pointers (off_808CEBC) to 8-byte flag records. Each record is {u16 flagToSet, u16 clearRangeStart,
-  u16 clearCount, u16 pad}: it calls SetEventFlag with the first halfword, then ClearEventFlagRange with
-  start and count from the next two. It iterates 3 entries normally, but 4 entries when the AI mode is
-  >= 3 (map group 0x85), giving that mode an extra record (0xFFA-0xFFD). Data values fall in 0x9DD-0x9F9
-  for modes 0-2 and 0xFC6-0xFFD for mode 3, consistent with Beast+ story flag IDs. Only side effects are
-  the event flags; no return value.'
+status: confirmed
+summary: Sets one event flag and clears a small range of flags per entry, choosing the table by the current map-group
+  AI mode, to initialise Beast Spread scenario progression.
+interface: void (void) — reads r8, calls ai_getAIModeForMapGroup; clobbers r0-r3 lr; returns r7 (loop counter) to
+  caller; preserves r4-r8.
+details: 'Queries the active AI mode via ai_getAIModeForMapGroup_808D084, then indexes a 4-entry jump table at 0x0808CEBC
+  (one per mode 0-3). Each mode selects an 8-byte-stride array at 0x0808CECC / 0x0808CEE4 / 0x0808CEFC / 0x0808CF14.
+  Modes 0-2 carry 3 entries; mode 3 carries 4. Every entry is [u16 setFlag, u16 clearStart, u16 clearEnd, u16 pad].
+  For each entry the routine calls SetEventFlag(setFlag) then ClearEventFlagRange(clearStart, clearEnd), effectively
+  marking the current scenario beat as reached while wiping the preceding beats'' flags. Flag numbers fall in two
+  blocks: 0x9DD-0x9FE (modes 0-2) and 0xFC6-0xFCD (mode 3, the 0xFAF/0xFBF/0xFCF/0xFDF high-nibble variant). r8
+  is saved/restored around the call so the AI-mode scratch does not leak outward. The loop counter ends in r7, which
+  is declared as an output in the contract.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl ai_getAIModeForMapGroup_808D084; ldr r4,[r4,r0] selects one of 4 record tables by AI mode
-    (0x0808CE70-0x808CE8A); bl SetEventFlag with halfword at offset 0 of each 8-byte record (loc_808CE84
-    loop); bl ClearEventFlagRange with r0=record+2, r2=record+4, i.e. start and count of a flag run; cmp
-    r8,#3 / cmp r7,#4 vs #3: loops 4 records only when AI mode >= 3; Sole caller init_beastSpScenario
-    wipes state and clears story flags, matching a flag-preset applier'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm24.s:1642
-  - 0x0808CA68 init_beastSpScenario
-  - 0x0802F1AC ClearEventFlagRange
-  - 0x0802F114 SetEventFlag
-  - 0x0808D084 ai_getAIModeForMapGroup_808D084
-  reproduce: python3 tools/asmcat.py 0x0808CE70
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c init_applyBeastSpScenarioEventFlags
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function init_applyBeastSpScenarioEventFlags
+
+    ./wf verify --function init_applyBeastSpScenarioEventFlags --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function init_applyBeastSpScenarioEventFlags
+
+    ./wf verify --function init_applyBeastSpScenarioEventFlags --snapshots build-snapshots'
+  result: 76 compared, 0 differed, 20 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function init_applyBeastSpScenarioEventFlags
+
+    ./wf verify --function init_applyBeastSpScenarioEventFlags --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808ce70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
 coverage:
 - beastsp
 - maps
+related:
+- init_beastSpScenario
 open_questions:
-- Exact meaning/IDs of the individual event flags (e.g. whether 0x9F6 etc. are Beast+ story progression
-  flags) would need the flag table or in-game context
+- What game state does the AI mode (0-3) correspond to at scenario-initialise time — is it a net-battle difficulty
+  tier or a story chapter?
+- Mode 3's flag block (0xFC6+) sits in a different 0x1000-range than modes 0-2; does a later scenario or side-event
+  reference those flags?
+- Why does the entry count differ (3 vs 4) for mode 3 — is there an extra 'epilogue' beat for that difficulty tier?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_808CE70 -> init_applyBeastSpScenarioEventFlags
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_808CE70
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

@@ -1,37 +1,63 @@
 name: object_destroySpawnEffectAndDespawn
 address: '0x080C6A50'
 kind: function
-status: probable
-summary: 'Common battle-object teardown: refreshes the hitbox, spawns a destruction/hit effect at the
-  object''s panel (flip-aware for some object types), plays a sound if flagged, then moves the object
-  to phase 4 (despawn).'
-interface: (r5 = battle object pointer) -> r0 = ...; object's CurPhaseAndPhaseInitialized set to 4
-details: First refreshes the object's collision data from its extra vars and copies extra-vars byte 0
-  into the collision data's Region field. Then, depending on oBattleObject_Param1 (0xC, 0xE, 0x10, 0x11,
-  0x12 take a special path), it either calls sub_801BD3C to place the effect at the object's current panel
-  (panelX/panelY from collision data, alliance and Z from the object, effect id/offset from extra-vars
-  byte 2) or computes a horizontally flipped position (object_getFlip() << 8 + extra-vars byte 2) and
-  copies three halfword-ish fields from object+0x34 into a freshly spawned type-4 effect object via spawn_t1_0x0_EffectObject.
-  If extra-vars halfword at +4 is nonzero its value is passed to PlaySoundEffect. Finally sets the object's
-  phase to 4, which per callers/callees is the despawned/inactive phase.
+status: confirmed
+summary: 'Battle-object destruction handler: refreshes collision, spawns the death visual effect or resolves a tile-panel
+  reaction, plays the queued sound, and advances the object to phase 4 (despawned).'
+interface: void object_destroySpawnEffectAndDespawn(u32 obj /*r5*/, u32 toolkit /*r10*/) -> r1; clobbers r0,r2,r3,lr,nz,c,v
+details: 'Reads obj''s CollisionDataPtr and ExtraVars. Calls battle_refreshObjectCollisionFromExtraVars to sync
+  the live collision record, then copies ExtraVars[0] (region byte) into CollisionData.Region. Branches on Param1:
+  for values 0x0C, 0x0E, 0x10, 0x11, 0x12 it builds a flip-encoded arg4 = (flip << 8) | ExtraVars[2], loads three
+  u32 fields at obj+0x34/0x38/0x3C, and calls spawn_t1_0x0_EffectObject to create the death/despawn visual effect.
+  For all other Param1 values it calls sub_801BD3C with (PanelX, PanelY, ExtraVars[2], region, Alliance, Z) to resolve
+  a tile-panel reaction. After the effect path, checks ExtraVars u16 at +4; if non-zero, passes it as a sound ID
+  to PlaySoundEffect. Finally writes 4 into CurPhaseAndPhaseInitialized, marking the object as fully despawned.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: opens with ldr r7,[r5,#oBattleObject_CollisionDataPtr]; bl battle_refreshObjectCollisionFromExtraVars_80C6AB8
-    and writes extra-vars byte 0 to oCollisionData_Region; branch table on oBattleObject_Param1 (0xC/0xE/0x10/0x11/0x12)
-    chooses flip-based spawn via object_getFlip + spawn_t1_0x0_EffectObject vs panel-based spawn via sub_801BD3C;
-    extra-vars halfword +4 is passed straight to PlaySoundEffect (bl PlaySoundEffect at loc after tst
-    r0,r0); ends with mov r0,#4; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] — the phase-4
-    (despawn) transition; reads position/effect params from object+0x34 (ldmia r0!,{r1-r3}) as the effect
-    spawn arguments
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:31676
-  - 0x080005CC PlaySoundEffect
-  - 0x080C6AB8 battle_refreshObjectCollisionFromExtraVars_80C6AB8
-  - 0x0800E456 object_getFlip
-  reproduce: python3 tools/asmcat.py 0x080C6A50
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_destroySpawnEffectAndDespawn
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_destroySpawnEffectAndDespawn
+
+    ./wf verify --function object_destroySpawnEffectAndDespawn --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_destroySpawnEffectAndDespawn
+
+    ./wf verify --function object_destroySpawnEffectAndDespawn --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 78 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_destroySpawnEffectAndDespawn
+
+    ./wf verify --function object_destroySpawnEffectAndDespawn --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, chips, story2, story6, story7.'
+  reproduce: grep -l '^080c6a50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31.c
 coverage:
 - battles1
 - battles2
@@ -42,21 +68,9 @@ coverage:
 - story6
 - story7
 open_questions:
-- exact meaning of oBattleObject_Param1 values 0xC/0xE/0x10/0x11/0x12 (which object/effect types need
-  the flip path)
-- what sub_801BD3C does with its (r2=extra byte2, panelX, panelY, alliance, Z) arguments — presumably
-  effect placement at a panel
-- whether phase 4 is strictly 'removed' or still serviceable by the object scheduler
+- What exactly does sub_801BD3C do—tile hit-confirmation, panel flash, damage assignment?
+- Is the Param1 range 0x0C–0x12 specifically for boss/mini-boss destruction effects vs. regular enemies?
+- Does phase 4 trigger deallocation of the battle-object slot or just stop its update loop?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80C6A50 -> object_destroySpawnEffectAndDespawn
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80C6A50
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

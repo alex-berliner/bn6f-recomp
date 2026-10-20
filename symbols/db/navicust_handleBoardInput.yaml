@@ -1,55 +1,73 @@
 name: navicust_handleBoardInput
 address: '0x08135830'
 kind: function
-status: probable
-summary: 'Per-frame input handler for the Navi Customizer board screen: dispatches button presses (select/confirm/cancel/compress
-  actions) and cursor movement, then updates the selected-cell state.'
-interface: (r5 = navicust screen state struct, no r0 args) -> r0 = 0/bool; updates struct fields 0x02,
-  0x0c, 0x0d, 0x13, 0x22, 0x26, 0x38, 0x3a
-details: 'Saves the current cursor/scroll halfwords (0x20, 0x24) into prev-slots (0x22, 0x26) and at exit
-  copies them again into 0x38/0x3a, clearing byte 0x13. If byte 0x0d is set it skips input (busy/animating).
-  SELECT calls sub_81367C0 (likely compress/board special action), START calls sub_81367A0 + sub_8135F18,
-  B+START calls sub_813627C (cancel/exit), A calls sub_8136218 (open part menu / confirm). Right held
-  (0x10 of held) calls sub_8136804; a press of bit 0x20 plays SOUND_MENU_SELECT, sets state byte 0x02
-  = 8, runs sub_8135FA4/sub_8135F5C/sub_813660C(1) and redraws the board via navicust_drawBoardTilemap(1).
-  Otherwise menu_adjustCursorOrValue_811F7F8 (mask 4, low-sensitivity held) moves the selection: on change
-  it redraws via sub_8135F18, sets byte 0x0d = 0x7f, and sub_8135EEC resolves the new selected cell index
-  (compared against max 0xc) into byte 0x0c.'
+status: confirmed
+summary: Per-frame joypad input dispatcher for the in-battle NavCust board; routes SELECT/START/A/B/D-pad to cursor
+  movement, cell confirm/cancel, beast-spirit code input, or sub-menu, then snapshots coordinates to the draw back-buffer.
+interface: void navicust_handleBoardInput(u32 r2 /* initial cursor param */, u32 r5 /* board object */, u32 r10
+  /* toolkit */); outputs r5 r8-r12; clobbers r0-r3, flags, lr
+details: 'Field layout on the object (r5): +0x02 = state byte (set to 8 on cell-select), +0x0C = board state-machine
+  phase (skip advance if 0xC), +0x0D = busy/animation counter (skip all input if nonzero), +0x13 = draw-flag cleared
+  every frame, +0x17 = cancel-pending flag (cleared each frame outside code-input mode), +0x20/+0x22 = x / prev-x
+  (u16), +0x24/+0x26 = y / prev-y (u16), +0x38/+0x3A = committed draw x/y (u16). Reads joypad via toolkit+oToolkit_JoypadPtr;
+  checks raw held (bit 0x10 for beast code mode), pressed (bit 0x20 for select), and low-sensitivity-held (D-pad
+  repeat) fields. Dispatches to: object_setState30IfAnyUnk2004190EntryActive (SELECT), navicust_boardCursorUp +
+  navicust_getCellProgramId (START), beastsp_feedBoardCodeInput (code-input mode), navicust_boardInputCancelExit
+  (START|B), navicust_handleBoardConfirm (A), navicust_loadSelectedCellParams + sub_8135F5C + sub_813660C + navicust_drawBoardTilemap
+  + PlaySoundEffect(SOUND_MENU_SELECT) (cell select), menu_adjustCursorOrValue_811F7F8 (D-pad cursor move, sets
+  busy to 0x7F), navicust_getMoveDir (state-machine advance). Final commit writes +0x20/+0x24 into +0x38/+0x3A and
+  zeroes +0x13.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: callees navicust_drawBoardTilemap and menu_adjustCursorOrValue_811F7F8 place it on the Navi
-    Customizer board screen; PlaySoundEffect(SOUND_MENU_SELECT) + state byte [r5,#2]=8 before drawBoardTilemap
-    is a state transition on input (loc_8135896); branch tree over IsButtonPressed masks SELECT/START/START|B/A
-    dispatches distinct screen actions; menu_adjustCursorOrValue result feeds sub_8135EEC which writes
-    the selected index to [r5,#0xc] (max checked against 0xc); cursor fields 0x20/0x24 copied to prev
-    fields 0x22/0x26 and 0x38/0x3a each frame is per-frame menu bookkeeping
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:11454
-  - 0x0811F7EC IsButtonPressed
-  - 0x080005CC PlaySoundEffect
-  - 0x0811F7F8 menu_adjustCursorOrValue_811F7F8
-  reproduce: python3 tools/asmcat.py 0x08135830
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c navicust_handleBoardInput
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_handleBoardInput
+
+    ./wf verify --function navicust_handleBoardInput --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_handleBoardInput
+
+    ./wf verify --function navicust_handleBoardInput --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 45 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_handleBoardInput
+
+    ./wf verify --function navicust_handleBoardInput --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08135830 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- exact meanings of the dispatched handlers sub_8136218/813627C/81367A0/81367C0 (confirm vs cancel vs
-  compress)
-- which joypad bit 0x20 in oJoypad_Pressed maps to here (looks like Left, which is odd for a select sound)
-  and what state 8 in byte 0x02 represents
-- full layout of the r5 navicust screen state struct
+- What does the 0x10 bit in the raw joypad held field represent? Is it a 'code input' mode toggle set elsewhere?
+- What do sub_8135F5C and sub_813660C(1) do in the cell-select path—animation setup and tilemap dirty-flag?
+- Why is busy set to 0x7F (not 1) after cursor movement—does it encode an animation frame count?
+- Confirm whether r2 passed in is truly an initial cursor index or a generic pointer reused by navicust_boardCursorUp.
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8135830 -> navicust_handleBoardInput
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8135830
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

@@ -1,64 +1,75 @@
 name: navicust_checkPieceOverlap
 address: '0x0813BB68'
 kind: function
-status: probable
-summary: Returns whether the placed NaviCust part, anchored with its 7x7 shape's top-left at (gridX-3,
-  gridY-3), overlaps any occupied cell of the 7x7 customizer board; on hit returns 1 with the obstructing
-  board cell's byte in r1, otherwise 0.
-interface: (r0 = passes through to ai_dispatchFromGlobalByte, r1 = unused, r2 = grid x, r3 = grid y) ->
-  r0 = 1 with r1 = overlapping board cell value, else r0 = 0; flags clobbered
-details: Gets the placed part's 7x7 shape buffer from ai_dispatchFromGlobalByte (part id read from the
-  global byte at 20096D8). Computes the board top-left as (x-3, y-3) and indexes the 7x7 board at *(toolkit->Unk200414c)
-  with (y-3)*7 + (x-3). A double loop over 7 rows x 7 cols skips cells outside 0..6 (so the part may hang
-  off the board edge), and for each in-range cell tests both shape[r3] and board[r3] bytes; if both are
-  nonzero it returns 1 in r0 and the board cell's value in r1, otherwise returns 0. The nonzero r1 return
-  gives the caller the id/value of the obstructing cell, which navicust_checkPiecePlacement presumably
-  uses to pick the failure dialog.
+status: confirmed
+summary: Scans a 7×7 window of the NaviCust board to detect whether a candidate piece's AI-derived footprint overlaps
+  any cell already occupied in the toolkit's placement grid.
+interface: u32 navicust_checkPieceOverlap(u32 dispatchArg /*r0*/, u32 col /*r2*/, u32 row /*r3*/, u32 r1, struct*
+  toolkit /*r10*/) -> nz r0 /*1=overlap,0=none*/ r1 /*hit byte or col residue*/ r2 /*row residue*/
+details: Calls ai_dispatchFromGlobalByte(dispatchArg) to obtain a 7×7 byte grid (grid A) representing the piece's
+  shape/footprint as computed by the AI dispatch routine. Retrieves a pointer to the toolkit's Unk200414c byte table
+  (grid B, the occupied-cells map) via r10. Offsets grid B by (col−3, row−3) so the top-left of grid B aligns with
+  the piece's centre cell on the 7×7 NaviCust board. Iterates 7 rows × 7 columns; for each cell within [0,7) bounds
+  in both grids, if grid A byte is non-zero AND grid B byte is non-zero, returns r0=1, r1=grid B byte value, r2=current
+  row (flags NZ set from r0). If the full 7×7 scan finds no overlap, returns r0=0 with loop residue in r1/r2. The
+  inner loop's column index (r3) and row pointer advances (r6/r7 += 7) are straightforward. r4–r7 are saved and
+  restored; r8–r12/r10 survive from ai_dispatch's return. The (col−3, row−3) offset means the caller passes the
+  piece's centre coordinates on the 7×7 board.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl ai_dispatchFromGlobalByte; mov r7,r0 — r7 is the 7x7 shape buffer of the part being placed;
-    sub r1,#3 / sub r2,#3 ... mul r3,r2; add r3,r3,r1; add r6,r6,r3 — board pointer offset (y-3)*7+(x-3)
-    into toolkit Unk200414c; inner loop bounds cmp r1,#0 / cmp r1,#7 — out-of-grid cells of the centered
-    7x7 shape are ignored; ldrb r4,[r7,r3]; tst; ldrb r0,[r6,r3]; tst — returns 1 only when both the shape
-    cell and the board cell are nonzero; caller 0x08137378 navicust_checkPiecePlacement validates part
-    placement and shows failure dialogs, matching an overlap/collision test
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm37_0.s:676
-  - 0x08137378 navicust_checkPiecePlacement
-  - 0x081371B0 sub_81371B0
-  - 0x0813BAEC sub_813BAEC
-  - 0x0813B790 ai_dispatchFromGlobalByte
-  reproduce: python3 tools/asmcat.py 0x0813BB68
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and most details match (gridY-3)*7 + (gridX-3) board offset, 7x7 over-edge skip, both-nonzero
-    test, r0=1 with board cell value in r1 on hit). However the interface is wrong: r0 is not passed through
-    — the prologue str''s it then `bl ai_dispatchFromGlobalByte` overwrites r0 (line `bl ai_dispatchFromGlobalByte`
-    / `mov r7, r0`), so r0 is consumed as junk. Also on the miss path r1 is not ''unused'' — it holds
-    the stale r1 = gridX-3 from the prologue (`ldr r1, [sp,#8]; sub r1, #3`).; run wf investigate investigate-20261018-212108;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c navicust_checkPieceOverlap
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_checkPieceOverlap
+
+    ./wf verify --function navicust_checkPieceOverlap --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_checkPieceOverlap
+
+    ./wf verify --function navicust_checkPieceOverlap --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_checkPieceOverlap
+
+    ./wf verify --function navicust_checkPieceOverlap --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813bb68 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_0.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of r0 (passed through to the dispatcher) and the unused r1 argument
-- what the board cell byte values encode (part color vs part id) and how the caller uses the returned
-  r1 value
-- 'The summary and most details match (gridY-3)*7 + (gridX-3) board offset, 7x7 over-edge skip, both-nonzero
-  test, r0=1 with board cell value in r1 on hit). However the interface is wrong: r0 is not passed through
-  — the prologue str''s it then `bl ai_dispatchFromGlobalByte` overwrites r0 (line `bl ai_dispatchFromGlobalByte`
-  / `mov r7, r0`), so r0 is consumed as junk. Also on the miss path r1 is not ''unused'' — it holds the
-  stale r1 = gridX-3 from the prologue (`ldr r1, [sp,#8]; sub r1, #3`).'
+- What exactly does ai_dispatchFromGlobalByte return in r0? Is it always a 7×7 row-major grid of shape bits, or
+  could it be a pointer to a different structure?
+- What is the semantic meaning of the Unk200414c grid? Is it a per-cell occupancy bitmask (NaviCust board) or a
+  multi-slot piece registry?
+- What does r1 (the raw toolkit byte at the overlap hit) represent to the caller—is it a piece-slot index or a type
+  flag?
+- Is r1's input (str r1, [sp,#4]) ever read in this function? It is stored to the stack but never loaded back—possibly
+  a calling-convention artifact from a shared prologue.
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 165ede43
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_813BB68 -> navicust_checkPieceOverlap
-  where: bn6f 989c7258
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_813BB68
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

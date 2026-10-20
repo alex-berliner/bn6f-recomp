@@ -1,60 +1,85 @@
 name: ow_startLogoutEffect
 address: '0x080A9EEC'
 kind: function
-status: probable
-summary: 'Initializes an overworld object as a log-out effect: sets its state, fetches position values, loads sprite
-  0x1C with animation 0 and no shadow, plays the LOG_OUT sound, and advances its state machine.'
-interface: (r5 = object/actor struct, set by caller/global) -> void; calls sub_809C890 which returns r1/r2/r3 stored
-  into the object, then tail-calls sub_80A9F30
-details: 'The function operates on an object whose pointer is already in r5 (a global/caller-set register): it writes
-  state 3 to the object''s first byte and calls sub_809C890, storing its three results at +0xC, +0x10, +0x14 (likely
-  position/coordinates used for layering). It then loads sprite id 0x1C with args (0x80, 0x1C, 0), sets animation
-  0 via sprite_setAnimation, loads the animation data, and disables the shadow with sprite_noShadow. applyLayerEffectToOWObject_8035694
-  on r5+0xC followed by sprite_setPriority_8002E14 sets the correct draw layer/priority for an overworld sprite.
-  It plays SOUND_LOG_OUT_76, writes state 4 to object+8 (the state/step counter used by the object''s update handler),
-  and tail-calls sub_80A9F30 for the next step. The sound name and the whole sprite-setup sequence point at a jack-out/log-out
-  visual effect actor.'
+status: confirmed
+summary: Overworld state-machine step that spawns the internet-log-out visual effect, plays the logout SFX, and
+  advances to the done state.
+interface: void ow_startLogoutEffect_80A9EEC(u8 *r5_owObject, u32 r10); /* r5 = OW object base, r10 unused here;
+  writes r5[0], r5[0xC], r5[0x10], r5[0x14], r5[8]; clobbers r0-r3,r8-r12,flags */
+details: 'Sets the OW object''s state byte (r5[0]) to 3 (LOGOUT_START). Calls
+
+  ow_applyCutsceneDirOffset to compute a screen-anchored (x, y, depth) tuple
+
+  and stores them at r5+0xC, r5+0x10, r5+0x14. Loads sprite tile 0x80,
+
+  graphic set 0x1C on layer 0 via sprite_load; sets animation index 0, loads
+
+  animation data, and disables the shadow. Calls applyLayerEffectToOWObject
+
+  on the position struct (r5+0xC) to map the sprite onto the overworld depth
+
+  layer, then sprite_setPriority to assign BG/object rendering priority from
+
+  the mapped Y. Plays SOUND_LOG_OUT (SFX index 0x76). Finally writes state 4
+
+  (LOGOUT_DONE) to r5[8] and calls sprite_frameTickMarkState8_80A9F30 to
+
+  advance the frame-tick state machine. r10 is passed in by the caller but
+
+  never dereferenced inside this handler.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: strb r0(=3) [r5] and later strb r0(=4) [r5,#8] — two-state setup of an object state machine; bl sprite_load
-    (0x80,0x1C,0) + sprite_setAnimation(0) + sprite_loadAnimationData + sprite_noShadow — full sprite bring-up on
-    the current object; bl applyLayerEffectToOWObject_8035694 on r5+0xC then sprite_setPriority_8002E14 — overworld
-    draw layering of that object; mov r0,#SOUND_LOG_OUT_76; bl PlaySoundEffect — log-out jingle ties the object
-    to jacking out; str r1/r2/r3 (from sub_809C890) to r5+0xC/+0x10/+0x14 — position-like fields feeding the layer
-    effect
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9871
-  - 0x080005CC PlaySoundEffect
-  - 0x08035694 applyLayerEffectToOWObject_8035694
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080A9EEC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
-    investigate-20261018-155607'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c ow_startLogoutEffect
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_startLogoutEffect
+
+    ./wf verify --function ow_startLogoutEffect --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_startLogoutEffect
+
+    ./wf verify --function ow_startLogoutEffect --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_startLogoutEffect
+
+    ./wf verify --function ow_startLogoutEffect --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9eec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- What sub_809C890 returns exactly (position vs. animation params) is unconfirmed
-- sub_80A9F30's role (next state handler vs. follow-up setup) is unknown
-- Which caller/trigger spawns or invokes this object — no known callers to confirm the in-game context
+- What visual does sprite 0x80 / graphic 0x1C render exactly (logout arrow, portal fade, text icon)?
+- Is state byte 3 / byte 8 = 4 the correct enum label, or could byte 0 and byte 8 be separate phase/state fields?
+- What does sprite_frameTickMarkState8_80A9F30 do beyond advancing the state machine (timer countdown, next-state
+  dispatch)?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A9EEC -> ow_startLogoutEffect
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-20'
-  what: doc comment (symdb block) at the definition
-  where: bn6f c38aec27
-  tool: tools/symdoc.py
-previous_names:
-- sub_80A9EEC
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

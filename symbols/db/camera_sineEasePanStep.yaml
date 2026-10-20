@@ -1,72 +1,75 @@
 name: camera_sineEasePanStep
 address: '0x080A7A40'
 kind: function
-status: probable
-summary: Sine-eased lerp of a camera/scroll position from start to end coordinates across a countdown, snapping
-  to end and returning 1 when done (via sub_80A7BA2), blocked by battle_isInputAllowedOrBattleBusy; used in beast-sp
-  cutscene panning.
-interface: (r0 = unused, r6 = move descriptor {u16 counter@6, u32 step@0x24, start x/y@0x14/0x18, end x/y@0x1c/0x20},
-  r5 = destination state {x@0xc, y@0x10}) -> r0 = 1 when the move finished, 0 while blocked/in progress; no flags
-  meaningful
-details: 'First calls battle_isInputAllowedOrBattleBusy; if it returns nonzero the function exits with r0=0 without
-  touching state. Otherwise it subtracts the step at r6+0x24 from the u16 counter at r6+6; if the counter is exhausted
-  (<= step), it copies the end coordinates r6+0x1c/0x20 straight into r5+0xc/0x10, calls sub_80A7BA2(1), and returns
-  1. While still running it computes a sine-table factor: index = (0x40 - (counter>>8))<<1 into math_sinTable, giving
-  an eased 0..1 weight. It then lerps start (r6+0x14/0x18) toward end (r6+0x1c/0x20) as (end-start)>>8 * sinVal
-  added to start, storing the intermediate x/y into r5+0xc/0x10 and returning 0. The descending counter with sine
-  lookup gives an ease-out style motion; the descriptors appear to be static/inline data rather than a heap object.'
+status: confirmed
+summary: Per-tick sinusoidal ease-out interpolation of the battle camera X/Y from a start position toward a target
+  position, using a timer-driven sine lookup.
+interface: void camera_sineEasePanStep(u32 r5 /*entity*/, u32 r6 /*panConfig*/, u32 r10); -> NZ flag (0 = still
+  easing or blocked, nonzero = finished), r5/r6 preserved.
+details: "Guard: calls battle_isInputAllowedOrBattleBusy_80A7C58; if Z is not set (input blocked / motion inactive)\
+  \ the function returns immediately with r0=0.\nPan config struct (pointed to by r6, possibly refreshed by the\
+  \ busy-check):\n  +0x06 (u16): remaining tick counter\n  +0x0C/+0x10: written to entity – current camera X/Y\n\
+  \  +0x14 (s32): start X\n  +0x18 (s32): start Y\n  +0x1C (s32): end/target X\n  +0x20 (s32): end/target Y\n  +0x24\
+  \ (u32): expired-threshold for the timer\nEach tick the timer at +0x06 is decremented by the threshold at +0x24\
+  \ and stored back. If the result is <=0 the pan is complete: the entity's X/Y (offsets +0x0C/+0x10) are snapped\
+  \ to the config's end values (+0x1C/+0x20), a completion byte is written via addToByteAtR6_80A7BA2(1, r6), and\
+  \ r0=1 (Z clear) signals \"done\".\nOtherwise a sine-table index is computed as (64 − timer/256)*2, the 16-bit\
+  \ signed value from math_sinTable is the ease factor, and the interpolated position is:\n  X = ((endX − startX)\
+  \ >> 8) * ease + startX\n  Y = ((endY − startY) >> 8) * ease + startY\nThese are stored to entity offsets +0x0C\
+  \ and +0x10. r0=0 (Z set) signals \"still in progress\".\nClobbers r0,r1,r3,lr; preserves r4,r5,r6,r7 via stack\
+  \ push/pop.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl battle_isInputAllowedOrBattleBusy_80A7C58 + 'bne loc_80A7A88' — returns 0 while battle/cutscene busy,
-    doing nothing; ldr r0, off_80A7AA0 (=math_sinTable); ldrsh r4,[r0,r4] with r4=(0x40-(counter>>8))<<1 — sine-eased
-    interpolation weight; sub/mul chain on ([r6+0x1c]-[r6+0x14]) and ([r6+0x20]-[r6+0x18]) >>8 then added to [r6+0x14]/[r6+0x18],
-    stored to [r5+0xc]/[r5+0x10] — lerp of x/y start→end; loc_80A7A8C copies [r6+0x1c]/[r6+0x20] to [r5+0xc]/[r5+0x10],
-    'mov r0,#1; bl sub_80A7BA2', returns 1 — completion/snap path; strh r4,[r6,#6] stores counter-step each call
-    — per-frame countdown by the step field
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:5150
-  - 0x080A7C58 battle_isInputAllowedOrBattleBusy_80A7C58
-  - 0x080A7BA2 sub_80A7BA2
-  reproduce: python3 tools/asmcat.py 0x080A7A40
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
-    is mostly accurate: a sine-eased lerp with end snap, gated by battle_isInputAllowedOrBattleBusy, returning 1
-    on completion (matching `loc_80A7A8C` setting r0=1, calling sub_80A7BA2(1)), and 0 otherwise (`loc_80A7A88`).
-    The interface description has the argument roles swapped: `r6` is the *destination state* (x stored at [r5,#0xc],
-    y at [r5,#0x10] — r5 is the output), while r5 holds the descriptor with counter at +6, step at +0x24, start
-    at +0x14/0x18, end at +0x1c/0x20. Also, the eased factor is `(end-start)>>8 * sinVal`, not >>8 then *sinVal
-    — the asr happens before the mul, which is correctly described actually, but applied per-axis. Name fits the
-    prefix rules.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c camera_sineEasePanStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function camera_sineEasePanStep
+
+    ./wf verify --function camera_sineEasePanStep --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 131 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function camera_sineEasePanStep
+
+    ./wf verify --function camera_sineEasePanStep --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function camera_sineEasePanStep
+
+    ./wf verify --function camera_sineEasePanStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a7a40 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- No captured callers, so r5 (fields 0xc/0x10) and r6 (offsets 6, 0x14-0x24) structs are inferred, not confirmed
-  — a caller showing the camera/scroll state struct would confirm the camera interpretation
-- Purpose of sub_80A7BA2(1) on completion (probably marks the pan command done) is unknown
-- Whether the sine index direction makes this ease-out or ease-in depends on the sinTable layout and the counter's
-  initial value
-- 'The summary is mostly accurate: a sine-eased lerp with end snap, gated by battle_isInputAllowedOrBattleBusy,
-  returning 1 on completion (matching `loc_80A7A8C` setting r0=1, calling sub_80A7BA2(1)), and 0 otherwise (`loc_80A7A88`).
-  The interface description has the argument roles swapped: `r6` is the *destination state* (x stored at [r5,#0xc],
-  y at [r5,#0x10] — r5 is the output), while r5 holds the descriptor with counter at +6, step at +0x24, start at
-  +0x14/0x18, end at +0x1c/0x20. Also, the eased factor is `(end-start)>>8 * sinVal`, not >>8 then *sinVal — the
-  asr happens before the mul, which is correctly described actually, but applied per-axis. Name fits the prefix
-  rules.'
+- What game event or object type owns the panConfig struct (r6)? Is it a dedicated camera object or a per-arena
+  scroll descriptor?
+- Is the timer at +0x06 decremented by a fixed per-frame threshold at +0x24, or does +0x24 store the initial value
+  and the subtraction is timer − threshold?
+- What does addToByteAtR6_80A7BA2(1, r6) actually flag—completion of the pan, or a broader battle-sequence step?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80A7A40 -> camera_sineEasePanStep
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-- date: '2026-10-20'
-  what: doc comment (symdb block) at the definition
-  where: bn6f c38aec27
-  tool: tools/symdoc.py
-previous_names:
-- sub_80A7A40
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

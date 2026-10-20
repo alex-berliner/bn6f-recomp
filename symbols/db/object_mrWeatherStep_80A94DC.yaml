@@ -1,60 +1,72 @@
 name: object_mrWeatherStep_80A94DC
 address: '0x080A94DC'
 kind: function
-previous_names:
-- sub_80A94DC
-status: probable
-summary: 'Per-frame step for the Mr. Weather comp map object: if story event 0xBFC is unset, hand it off
-  to the proximity trigger; then run generic step and sprite update.'
-interface: (r5 = OverworldMapObject*, r6/r10 preserved, lr = return) -> r0 = OverworldMapObject* ; no
-  other outputs the caller relies on
-details: "Entry contract keeps the toolkit in r10 and the per-instance object pointer in r5.\n  1. Loads\
-  \ the immediate flag id 0xBFC and calls TestEventFlagFromImmediate; if the flag\n     is set (NZ, branch\
-  \ taken) it skips the proximity path entirely.\n  2. If the flag is clear it falls through to `bl sub_80A95A8`\
-  \ (the proximity/state-8\n     handler that sets the per-instance event flag, plays sound 0x1A4 and\
-  \ removes the\n     shadow once MegaMan is within 12 px and at the same Z).\n  3. Unconditionally calls\
-  \ `sub_80A95EC` (the generic per-instance step / cur-state\n     dispatcher).\n  4. Calls `sprite_update(r5)`\
-  \ to advance the OAM.\n  5. Restores r4-r7 and returns via lr pop (so all callee-saved registers are\
-  \ live\n     for the caller, matching sub_80A9458's contract).\n  Mirrors the structure of other comp\
-  \ map-object step functions in this file region\n  (test story flag -> optional proximity handler ->\
-  \ generic step -> sprite update).\n"
+status: confirmed
+summary: 'Per-frame step for the Mr. Weather overworld object: tests the weather event flag, checks player proximity
+  to trigger an event, recomputes draw-layer priority from the player''s world Z, and advances the object''s sprite
+  animation.'
+interface: 'object_mrWeatherStep_80A94DC(r5: object_ptr, r6: prox_data, r10: state) -> r2, r3, r4, r5, r8, r9, r10,
+  r11, r12 (via sub-call side effects)'
+details: Called each frame from the overworld object dispatch loop (Next chain). First checks event flag EVENT_BFC
+  (page 0xB, offset 0xFC) via TestEventFlagFromImmediate; if the flag is set (Z=1) it calls object_mrWeatherProximityTrigger_80A95A8(r5,
+  r6) to test whether the player has entered the weather-trigger proximity zone. Regardless of the flag, it then
+  calls owMapObject_updateLayerPriorityForPlayerZ_80A95EC(r5) to set the map object's draw-layer priority so Mr.
+  Weather renders correctly relative to the player's world Z, and finally calls sprite_update(r5) to tick the sprite
+  frame/animation. The r5 pointer (object struct) is threaded through all three sub-calls; r6 and r10 are consumed
+  by the proximity trigger and re-read afterward. The function preserves r4–r9 and r12 via push {r4-r7,lr} but exposes
+  whatever the sub-calls leave in r2, r3, r10, r11 to the caller.
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `movflag EVENT_BFC` then `bl TestEventFlagFromImmediate` (asm29.s:8578-8580) shows the specific
-    story flag gating. - `bne loc_80A94EC` skips `bl sub_80A95A8` (the probable "within 12 px / same Z"
-    trigger described in its callee summary) when the flag is already set. - `bl sub_80A95EC` then `bl
-    sprite_update` with `r5` as the object pointer match the standard comp map-object step tail (sprite_update
-    takes r5 per its contract). - push/pop `{r4-r7,lr}`/`{r4-r7,pc}` preserves r5/r6/r10/r12 exactly as
-    the caller sub_80A9458 expects (its in/out sets list r5/r6/r10/lr only). - The "Mr. Weather comp map
-    object (type 0x1C)" attribution on sub_80A95A8 is the only such attribution in this code region, anchoring
-    the type for the containing step.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080A94DC
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c object_mrWeatherStep_80A94DC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_mrWeatherStep_80A94DC
 
-    '
-  result: the body read as described above
+    ./wf verify --function object_mrWeatherStep_80A94DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_mrWeatherStep_80A94DC
+
+    ./wf verify --function object_mrWeatherStep_80A94DC --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_mrWeatherStep_80A94DC
+
+    ./wf verify --function object_mrWeatherStep_80A94DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080a94dc '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The function's exact object-type binding is inferred from the only nearby callee that
-- identifies itself as a Mr. Weather handler. The ROM does not show a constant table here,
-- so verifying the object type would require inspecting the caller sub_80A9458 or the
-- dispatch table that selects it.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a94dc ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A94DC -> object_mrWeatherStep_80A94DC
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What does object_mrWeatherProximityTrigger_80A95A8 actually trigger—does it start a cutscene, set a flag, or spawn
+  a Net-Battler encounter?
+- What are r6 and r10 at entry—are they the player's tile coords and a tick counter, or object-specific state?
+- Is EVENT_BFC the flag that marks the weather event as 'still pending', or one that marks it as 'already completed'
+  (i.e. suppresses re-trigger)?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

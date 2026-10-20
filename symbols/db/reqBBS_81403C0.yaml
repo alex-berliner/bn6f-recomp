@@ -1,0 +1,75 @@
+name: reqBBS_81403C0
+address: '0x081403C0'
+kind: function
+status: confirmed
+summary: 'Opens a BBS (Buddy Battle System) menu entry: stamps the state as ''opening'', configures the window-animation
+  slot, plays SELECT, runs the easing/layout pass, redraws the header text, and resets the message-box pointer.'
+interface: 'void reqBBS_openEntry_81403C0(void) // in: r2, r5 (entry-state struct ptr), r10 (toolkit ptr), lr; out:
+  r10 (updated toolkit ptr), r11 (header-render result); clobbers: r0-r4, r7, r12, nzcv'
+details: 1. Sets byte 0 of the r5 entry-state struct to 0x18 ('opening' phase). 2. Loads a window-animation struct
+  pointer from [r10 + oToolkit_Unk200f3a0_Ptr] and writes six configuration bytes (offsets +2=0xFF, +3=0x00, +6=0x50,
+  +7=0x50, +9=0x1B, +A=0x36) to set up the fade/expand animation. 3. Plays SOUND_SELECT_67 via PlaySoundEffect.
+  4. Sets r5+8 (sub-state/animation-phase field) to 6. 5. Calls the fixed-layout easing pass at 0x3005EBA with args
+  (0, 0, 3, 0, 0x1E, 0x14) — a 0x1E×0x14 grid, size 3, no offset. 6. Calls reqBBS_renderSelectedEntry_HeaderText
+  (passing r5) which returns updated r10 and r11. 7. Loads the message-box pointer from [new r10 + 0x20], stamps
+  byte 0 with 0xF7 ('ready'), clears bytes at +4 and +6. 8. Returns with r10, r11 updated for the caller's toolkit
+  context.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c reqBBS_81403C0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81403C0
+
+    ./wf verify --function reqBBS_81403C0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81403C0
+
+    ./wf verify --function reqBBS_81403C0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81403C0
+
+    ./wf verify --function reqBBS_81403C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081403c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+related:
+- reqBBS_8140358
+open_questions:
+- Exact semantics of window-animation fields +6/+7 (both 0x50) and +9/+A (0x1B/0x36) — likely pixel-width and duration
+  constants for the BBS entry expand animation.
+- 'Meaning of easing-pass args (0, 0, 3, 0, 0x1E, 0x14): is 0x1E×0x14 the on-screen grid cell dimensions in pixels?'
+- Does byte value 0xF7 at the message-box header act as a sentinel/ready flag, and why is r2 passed but apparently
+  ignored there?
+- Relationship between oToolkit_Unk200f3a0_Ptr and toolkit+0x20 (message-box) — are they the same toolkit structure
+  viewed through different offsets?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

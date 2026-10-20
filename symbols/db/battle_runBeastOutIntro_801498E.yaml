@@ -1,61 +1,73 @@
 name: battle_runBeastOutIntro_801498E
 address: '0x0801498E'
 kind: function
-previous_names:
-- sub_801498E
-status: probable
-summary: Triggers and runs the fade/screen transition for the Beast Out pet-transformation intro and dispatches
-  the next battle step.
-interface: '(r5 = beast-state scratch, r10 = toolkit) -> r0 = 1 if fade is still active (exits early),
-  otherwise void-like ; side effects: starts a screen fade, writes [r5,#0] and [r5,#3], dispatches a battle
-  step'
-details: "Reads a stage byte at [r5,#3]; if non-zero (already started) it skips the fade kickoff.\n  Otherwise\
-  \ picks a fade mode via GetBattleMode: 0x6c for mode 1 (Beast Out intro),\n  0x40 otherwise, then calls\
-  \ SetScreenFade(mode, 0x10) and stores 4 at [r5,#3].\n  Once IsScreenFadeActive returns false (fade\
-  \ complete), calls\n  battle_IsBattleEnding_800A97A and selects a \"next battle dispatch\" constant\
-  \ by\n  battle mode: mode 1 -> 0x40A0; else if TestBattleFlag_0x40 is unset -> 0x4090, else\n  -> 0x24080.\
-  \ If IsBattleEnding was true, the constant is overwritten with 0x4080.\n  Finally calls dispatch_801DA48(constant)\
-  \ and stores 8 at [r5,#0] to advance the\n  controller's state. Returns r0=1 when it exits early while\
-  \ the fade is still\n  in progress; otherwise no useful result is left in r0. The constants\n  (0x40A0/0x4090/0x24080/0x4080)\
-  \ are battle-state / battle-result dispatch IDs.\n"
+status: confirmed
+summary: 'Drives the two-tick Beast-Out battle-intro state machine: starts a screen fade on the first tick, then
+  dispatches the appropriate intro variant once the fade completes and advances the battle object to the next phase.'
+interface: void battle_runBeastOutIntro_801498E(u32 r5 /* battleObject */); /* r10, lr passed through; r5,r6,r7
+  preserved */
+details: "Operates on a battle-object structure via r5.\nSub-phase byte at offset 3: 0 = not yet started, 4 = fade\
+  \ in progress.\nMain state word at offset 0 is set to 8 when the intro dispatches, advancing the outer state machine\
+  \ past this stage.\nTick 1 (step==0): queries GetBattleMode; fade kind 0x6C for mode 1, 0x40 otherwise; calls\
+  \ SetScreenFade(kind, 0x10); sets step byte to 4.\nTick 2+ (step==4): polls IsScreenFadeActive; returns immediately\
+  \ (stays at state 4) while the fade is running.\nOnce the fade finishes:\n  - battle_IsBattleEnding_800A97A returns\
+  \ non-zero → param 0x4080 (ending override, checked last so it wins).\n  - GetBattleMode==1 → param 0x40A0 (mode-1\
+  \ specific intro).\n  - TestBattleFlag_0x40 zero (flag not set) → param 0x4090 (no-flag variant).\n  - TestBattleFlag_0x40\
+  \ non-zero (flag set) → param 0x24080 (flag-set variant).\nCalls dispatch_801DA48(param) to queue the next battle-intro\
+  \ script segment.\nThe literal pool at dword_80149EC (0x20080) is present but unreferenced in this function (likely\
+  \ used by a sibling or was a previous code path).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- ldrb r0,[r5,#3]; tst r0,r0; bne loc_80149AE: only runs fade kickoff the first time. - bl
-    GetBattleMode; cmp r0,#1; ... mov r0,#0x6c else mov r0,#0x40: different fade modes per battle mode.
-    - mov r1,#0x10; bl SetScreenFade: SetScreenFade(fadeMode, 0x10). - mov r0,#4; strb r0,[r5,#3]: marks
-    stage 4 = fade requested. - bl IsScreenFadeActive; tst r0,r0; bne locret_80149EA: returns r0=1 while
-    fade is active. - bl battle_IsBattleEnding_800A97A; ... ldr r1,dword_80149F0/dword_80149F4/dword_80149F8/dword_80149FC:
-    chooses one of four dispatch constants by (battle mode, TestBattleFlag_0x40, IsBattleEnding). - bl
-    dispatch_801DA48 with the chosen constant: hands the next battle step off. - mov r0,#8; str r0,[r5]:
-    writes state value 8 to the r5 struct. - captured-call lr=0x080148d8 / sp=0x03007DA8 / r1=0x0801498F
-    consistent with this being called from a battle step controller at 0x080148d8 that pushes r5/r10.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0801498E
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_runBeastOutIntro_801498E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_runBeastOutIntro_801498E
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_runBeastOutIntro_801498E --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 188 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_runBeastOutIntro_801498E
+
+    ./wf verify --function battle_runBeastOutIntro_801498E --snapshots build-snapshots'
+  result: 20 compared, 0 differed, 76 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_runBeastOutIntro_801498E
+
+    ./wf verify --function battle_runBeastOutIntro_801498E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0801498e '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact meaning of the four dispatch constants (0x40A0/0x4090/0x24080/0x4080) inside dispatch_801DA48
-  is unknown without more of its body.
-- What the u32 at [r5,#0] (state index) and u8 at [r5,#3] (sub-state) represent structurally; r5 looks
-  like a small per-battle-controller state struct but is not declared in the included struct headers.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0801498e ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 22c74dca
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_801498E -> battle_runBeastOutIntro_801498E
-  where: bn6f 448690a3
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- beastsp
+open_questions:
+- What does dispatch_801DA48 do with each parameter—does it push a script or a battle-phase routine?
+- What is the meaning of the unreferenced literal 0x20080 at dword_80149EC?
+- Are the dispatch codes (0x40A0, 0x4090, 0x24080, 0x4080) documented anywhere, or are they opaque script/event
+  IDs?
+- What does battle-object state 8 represent in the overall MMBN6 battle state machine?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

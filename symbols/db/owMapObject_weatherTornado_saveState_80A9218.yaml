@@ -1,31 +1,65 @@
 name: owMapObject_weatherTornado_saveState_80A9218
 address: '0x080A9218'
 kind: function
-previous_names:
-- sub_80A9218
-status: probable
-summary: 'Tornado: saves its state into eWeatherCompState every active frame (mode, direction, both countdowns,
-  moves since the last pause, X/Y as s16 pixels), per instance.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Persist a weather-tornado overworld object's runtime fields into the per-slot save buffer.
+interface: owMapObject_saveTornadoState(u32 *map_obj /*r5*/, u8 *save_buf /*r6*/) -> u32 r2 = slot*2
+details: Reads slot index from map_obj+4, then copies five byte fields from map_obj offsets 9, 5, 0x24, 0x25, 0x28
+  into save_buf at base offsets 0x28, 0x31, 0x37, 0x3A, 0x3D (each offset + slot). Two 32-bit fields at map_obj+0xC
+  and map_obj+0x10 have their upper halfword extracted via arithmetic shift right 16 and stored as u16 at save_buf+0x40
+  and save_buf+0x46 (offset + slot*2). The halfword-stride value slot*2 is left in r2 as an incidental output from
+  the addressing computation and is read back by some callers.
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_saveState_80A9218:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c owMapObject_weatherTornado_saveState_80A9218
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_saveState_80A9218
+
+    ./wf verify --function owMapObject_weatherTornado_saveState_80A9218 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 257 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_saveState_80A9218
+
+    ./wf verify --function owMapObject_weatherTornado_saveState_80A9218 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 88 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_saveState_80A9218
+
+    ./wf verify --function owMapObject_weatherTornado_saveState_80A9218 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9218 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A9218 -> owMapObject_weatherTornado_saveState_80A9218
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What game meaning do the five byte fields (offsets 9,5,0x24,0x25,0x28 in the object) carry—animation timer, tornado
+  size, spawn state?
+- Which save-block region does save_buf point into; is the 0x28-0x47 range the only tornado-slot area?
+- Do callers actually use r2 or is it dead output left by the addressing arithmetic?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

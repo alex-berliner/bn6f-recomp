@@ -1,51 +1,76 @@
 name: ow_initSpriteObject
 address: '0x080A9D30'
 kind: function
-status: probable
-summary: 'Initializes an overworld object: records its position, attaches sprite resource 0x80/0x1c/0x9e
-  with animation 0 and no shadow, and sets up its render/state fields.'
-interface: () -> void; operates on the global object pointer held in r5 (sprite_* callees are argument-less)
-details: 'Stores 1 at byte 0 of the object, then calls sub_809C890 whose r1-r3 results (likely the object''s
-  position/coords) are saved twice: to fields 0x0c/0x10/0x14 and duplicated to 0x30/0x34/0x38 (current
-  vs. previous position). Loads sprite (0x80, 0x1c, 0x9e) via sprite_load, sets animation 0, loads animation
-  data, disables the shadow, applies the layer-effect/priority logic via applyLayerEffectToOWObject_8035694
-  and sprite_setPriority. Clears halfwords 0x24/0x26, writes constants 0x2aaaa to 0x28 and 0x16c1 to 0x2c
-  (likely timing/counter config), sets byte 8 = 4 and byte 9 = 0 (state/type tags), and finishes by calling
-  sub_80A9D86. This is a spawn/initializer for one specific OW object; which one depends on the sprite
-  resource IDs, not shown by any known caller.'
+status: confirmed
+summary: 'Initializes a single overworld NPC/sprite object: marks it active, resolves its cutscene-adjusted position,
+  loads tile graphics and animation, disables shadow, applies map-layer draw priority, sets movement mode 4, and
+  runs the first per-frame update.'
+interface: void ow_initSpriteObject(void) /* r5 = pointer to ow_sprite_object; clobbers r0,r1,lr,flags; preserves
+  r4-r8 */
+details: 'Expects r5 to hold a pointer to an overworld sprite-object struct. (1) Sets the active flag at +0x00 to
+  1. (2) Calls ow_applyCutsceneDirOffset to retrieve (r1,r2,r3) = adjusted x, y, facing for the current cutscene
+  context. (3) Writes those three values to both the "current position" block (+0xC..+0x14) and the "previous position"
+  block (+0x30..+0x38), so the object has no movement delta on its first frame. (4) Calls sprite_load(0x80, 0x1C,
+  0x9E) to load graphics: tileset/ID 0x80 with sheet dimensions 0x1C × 0x9E. (5) Sets animation 0, loads animation
+  frame data, and disables shadow rendering. (6) Calls applyLayerEffectToOWObject_8035694 on the position block
+  (+0xC) to resolve map-layer parallax/scroll offset. (7) Calls sprite_setPriority_8002E14 to assign draw priority
+  from the resolved layer. (8) Zeroes the two 16-bit animation counters at +0x24, +0x26, then writes fixed-point
+  timing constants 0x2AAAA to +0x28 and 0x16C1 to +0x2C. (9) Sets movement/behavior mode to 4 at +0x08 and clears
+  the sub-state byte at +0x09. (10) Calls ow_spriteObjectUpdate once to advance the object''s first tick.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: strb r0,#1,[r5] then sub_809C890 results stored at 0x0c..0x14 and 0x30..0x38 (asm lines 3-10);
-    sprite_load(0x80,0x1c,0x9e) followed by sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow;
-    applyLayerEffectToOWObject_8035694(r5+0xc) then sprite_setPriority configure draw layer/priority;
-    constant stores 0x2aaaa->[r5,0x28], 0x16c1->[r5,0x2c] and byte 8=4, byte 9=0 look like per-object
-    config; recorded route 'beastsp' runs it, consistent with an OW object setup routine
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9631
-  - 0x08035694 applyLayerEffectToOWObject_8035694
-  - 0x080026E4 sprite_load
-  - 0x080026A4 sprite_loadAnimationData
-  reproduce: python3 tools/asmcat.py 0x080A9D30
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c ow_initSpriteObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_initSpriteObject
+
+    ./wf verify --function ow_initSpriteObject --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_initSpriteObject
+
+    ./wf verify --function ow_initSpriteObject --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 54 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_initSpriteObject
+
+    ./wf verify --function ow_initSpriteObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9d30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- 'Which object/entity this spawns: no caller is known, so the meaning of sprite ids 0x80/0x1c/0x9e and
-  the constants 0x2aaaa/0x16c1 is unconfirmed'
-- What sub_80A9D86 and sub_809C890 return/do
-- Field layout of the object struct beyond the offsets touched here
+- What does graphics ID 0x80 with sheet size 0x1C x 0x9E represent—is it a specific NPC sprite sheet or a generic
+  placeholder?
+- Are 0x2AAAA and 0x16C1 animation speed / inter-frame delay in a known fixed-point format (e.g. 16.16)?
+- Movement mode 4 is assigned here but what behavior does it encode versus modes 0-3 seen elsewhere?
+- Does ow_applyCutsceneDirOffset modify the object pointer (r5) or just return position values in r1-r3?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A9D30 -> ow_initSpriteObject
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9D30
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

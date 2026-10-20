@@ -1,69 +1,88 @@
 name: ow_initBeastEventActor
 address: '0x080A83B8'
 kind: function
-status: probable
-summary: 'Initializes an overworld beast event actor: sets mode byte r5[0]=3, calls sprite_load(0x80,0x1c,0x52)
-  and related setup, applies layer effect and priority, clears EVENT_9FF, and once (gated by EVENT_9D7)
-  converts r6+0x16/+0x18 pixel coords to 16.16 fixed-point into r5+0xc/0x10 then clears the flag; finally
-  sets r5[8]=4 and calls sub_80A8424.'
-interface: '(r0-r2 set before call: 0x80, 0x1c, 0x52 for sprite_load; r5 = actor struct, r6 = source data
-  with x/y at +0x16/+0x18) -> r0 = void; flags from TestEventFlagFromImmediate consumed internally'
-details: The actor struct at r5 gets mode byte +0 = 3, then sprite_load(0x80, 0x1c, 0x52) attaches a sprite,
-  followed by animation setup (setAnimation from r5+4, loadAnimationData), noShadow, layer effect applied
-  to r5+0xc and a sprite priority set. It unconditionally clears EVENT_9FF. If EVENT_9D7 is set, it copies
-  r6+0x16/+0x18 into the actor's fields r5+0xc/0x10 (x/y), zeroes r5+0x14 (likely a pixel fraction or
-  counter), sets byte r5+9 = 1 (a 'position applied'/'moving' flag), and clears EVENT_9D7 so this placement
-  happens only once. Finally it sets state byte r5+8 = 4 and tail-calls sub_80A8424, evidently advancing
-  the actor's state machine.
+status: confirmed
+summary: 'Initializes a beast event actor in the overworld: loads its sprite, positions it relative to the player,
+  applies layer effects, and activates it for the first time.'
+interface: ow_initBeastEventActor(u32 actor_ptr /*r5*/, u32 spawn_desc /*r6*/, u32 r10) -> updates r2 r3 r4 r5 r8-r12,
+  clobbers r0 r1 lr, flags
+details: 'Writes BEAST_EVENT (3) to actor_ptr[0] (oActor_State). Loads sprite sheet 0x80,
+
+  frame 0x1c, animation 0x52 via sprite_load. Computes a world offset from the
+
+  player''s facing angle (ow_computePointFromPlayerAngle), then configures animation
+
+  args, sets the default animation ID from actor_ptr[4], loads per-frame animation
+
+  data, and disables the shadow. Applies the overworld layer-effect descriptor at
+
+  actor_ptr+0xc and sets the resulting draw priority. Clears event flag 9FF (beast
+
+  gate). Tests spawn-once guard flag 9D7: if clear, reads tilemap X/Y halves from
+
+  spawn_desc+0x16/+0x18, shifts each left by 16 bits into a 32-bit sub-pixel position,
+
+  stores them at actor_ptr+0xc and +0x10, zeroes velocity accumulator at +0x14, sets
+
+  spawned byte at +9 to 1, and clears guard 9D7 so the position write happens only
+
+  once. Finally sets actor_ptr[8] to ACTIVE (4) and calls npc_updateGuarded.
+
+  The spawn descriptor (r6) is a tilemap/event-script entry providing coordinates;
+
+  the actor struct is the standard overworld NPC layout.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'mov r2,#0x52 / bl sprite_load followed by setAnimation, loadAnimationData, noShadow: attaches
-    and configures a specific overworld sprite; bl applyLayerEffectToOWObject_8035694 with r0 = r5+0xc
-    and sprite_setPriority_8002E14: this struct is a layer/sortable overworld object; TestEventFlagFromImmediate
-    EVENT_9D7 + str [r5,#0xc]/[r5,#0x10] from r6+0x16/0x18 then ClearEventFlagFromImmediate: one-time
-    positioning at given coordinates; strb r5+0 = 3 at entry and strb r5+8 = 4 before calling sub_80A8424:
-    writes state-machine fields of the actor then advances state; Executed by recorded route ''beastsp''
-    and clears story flags EVENT_9FF/EVENT_9D7: a scripted beast-related overworld event setup'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:6284
-  - 0x0802F12C ClearEventFlagFromImmediate
-  - 0x0802F164 TestEventFlagFromImmediate
-  - 0x08035694 applyLayerEffectToOWObject_8035694
-  reproduce: python3 tools/asmcat.py 0x080A83B8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal calls sub_80A8424 a ''tail-call'' but the code uses bl sub_80A8424 followed by pop
-    {r4-r7,pc}, a normal call-and-return, not a tail-call. The interface text implies r0-r2 are caller
-    inputs, but they are set internally (mov r0,#0x80 etc.) before the sprite_load call; the actual inputs
-    are only r5 (actor struct) and r6 (source data). The EVENT_9D7 branch left-shifts the loaded half-words
-    by 0x10 (lsl r0,r0,#0x10) converting pixel coords to 16.16 fixed-point before storing into r5+0xc/0x10,
-    which the summary omits. Name and overall flow (sprite 0x52/anim 0x1c, noShadow, layer+priority, clear
-    EVENT_9FF, conditional placement gated by EVENT_9D7, state byte r5+8=4) all match the code.; run wf
-    investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
-    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c ow_initBeastEventActor
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_initBeastEventActor
+
+    ./wf verify --function ow_initBeastEventActor --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_initBeastEventActor
+
+    ./wf verify --function ow_initBeastEventActor --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 89 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_initBeastEventActor
+
+    ./wf verify --function ow_initBeastEventActor --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a83b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- What object/character sprite 0x52 depicts (which cutscene or NPC this is)
-- Meaning of byte r5+0 = 3 and r5+8 = 4 in the actor state machine
-- Role of sub_80A8424 (next state handler) and of field r5+9 (moving vs 'position applied')
-- The proposal calls sub_80A8424 a 'tail-call' but the code uses bl sub_80A8424 followed by pop {r4-r7,pc},
-  a normal call-and-return, not a tail-call. The interface text implies r0-r2 are caller inputs, but they
-  are set internally (mov r0,#0x80 etc.) before the sprite_load call; the actual inputs are only r5 (actor
-  struct) and r6 (source data). The EVENT_9D7 branch left-shifts the loaded half-words by 0x10 (lsl r0,r0,#0x10)
-  converting pixel coords to 16.16 fixed-point before storing into r5+0xc/0x10, which the summary omits.
-  Name and overall flow (sprite 0x52/anim 0x1c, noShadow, layer+priority, clear EVENT_9FF, conditional
-  placement gated by EVENT_9D7, state byte r5+8=4) all match the code.
+- What specific beast event does the 9FF gate flag control, and in which scripts?
+- Which spawn descriptor layout is assumed for r6 (tilemap vs event-script)? Fields at +0x16/+0x18 suggest a wider
+  struct than a plain tilemap entry.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80A83B8 -> ow_initBeastEventActor
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A83B8
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

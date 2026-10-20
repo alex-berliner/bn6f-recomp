@@ -1,48 +1,68 @@
 name: camera_followOverworldPlayer
 address: '0x08099DAC'
 kind: function
-status: probable
-summary: Cutscene-called native that points the camera's tracking struct at the overworld player object
-  (value 1), presumably re-locking the camera onto the player.
-interface: (r0 unused on entry) -> r0 = 0; reads r10 toolkit, no flags meaningful
-details: Loads the toolkit from r10, follows GameStatePtr -> oGameState_OverworldPlayerObjectPtr, and
-  takes the object + 0x1C (its camera-related sub-struct). It calls camera_writeUnk03_14_80301b2 with
-  r0=1 and that pointer; the callee writes a byte and a word into the camera struct and leaves the pointer
-  in r2. The function always returns 0. It sits at the head of a cutscene-script blob for the beastsp
-  route and is meant to be invoked via cs_call_native_with_return_value, alongside other natives like
-  sub_8099E3C that also poke GameState/camera-adjacent fields. The literal 1 suggests an enable/mode flag
-  rather than data.
+status: confirmed
+summary: Commands the camera subsystem to follow the overworld player by passing mode 1 and the player-object position
+  field (+0x1C) to the camera write helper.
+interface: void camera_followOverworldPlayer(r10 = toolkit); -> r0 = 0, nz set, r2 from callee; clobbers c v r0
+  r1 lr; preserves r4 r5 r6 r7
+details: Reads oToolkit_GameStatePtr from r10, then oGameState_OverworldPlayerObjectPtr from that game-state block.
+  Adds 0x1C to the player-object pointer (the field holding the player's map/position data consumed by the camera).
+  Calls camera_writeUnk03_14_80301b2 with r0=1 (follow mode) and r1 = playerObj+0x1C. The callee returns a value
+  in r2 which the contract lists as an output. The function then zeroes r0 and returns. The surrounding data at
+  0x08099DC0 onward are cutscene-script byte sequences unrelated to the function body.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r1,[r1,#oToolkit_GameStatePtr]; ldr r1,[r1,#oGameState_OverworldPlayerObjectPtr]; add r1,#0x1c
-    — argument is the player object''s camera sub-struct; mov r0,#1 passed as the only value argument
-    to camera_writeUnk03_14_80301b2, whose summary says it writes a byte and word into the camera struct;
-    mov r0,#0 / pop — fixed 0 return, typical of script natives; surrounding data is cutscene script bytes
-    (cs_lock_player..., cs_call_native...) with end_cutscenescript_8099E2A, confirming a script-callable
-    native context; route record: beastsp, matching an overworld cutscene that would adjust camera tracking'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm28_0.s:834
-  - 0x080301B2 camera_writeUnk03_14_80301b2
-  reproduce: python3 tools/asmcat.py 0x08099DAC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c camera_followOverworldPlayer
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function camera_followOverworldPlayer
+
+    ./wf verify --function camera_followOverworldPlayer --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function camera_followOverworldPlayer
+
+    ./wf verify --function camera_followOverworldPlayer --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function camera_followOverworldPlayer
+
+    ./wf verify --function camera_followOverworldPlayer --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08099dac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aee2128b
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - beastsp
 open_questions:
-- exact semantics of the byte/word the callee writes at offsets 3/0x14 of the camera struct
-- whether r0=1 is an enable flag, a mode id, or a value to store
-- which cs_call_native entry point invokes 0x08099DAC specifically (no direct caller captured)
+- What exact fields live at player-object offset 0x1C (tile coords, pixel coords, or a combined position struct)?
+- What do mode 0 vs mode 1 (and other values) mean in camera_writeUnk03_14_80301b2?
+- The register contract lists r2, r4, r5, r7 as outputs; r4/r5/r6/r7 are pushed and restored around the single BL,
+  so only r2 (from callee) is truly produced—verify whether r4/r5/r7 outputs are a lifter artifact or intentional
+  passthrough.
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8099DAC -> camera_followOverworldPlayer
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8099DAC
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

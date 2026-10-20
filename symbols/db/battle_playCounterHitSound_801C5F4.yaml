@@ -1,60 +1,79 @@
 name: battle_playCounterHitSound_801C5F4
 address: '0x0801C5F4'
 kind: function
-previous_names:
-- sub_801C5F4
-status: probable
-summary: Plays a "counter hit" SFX from a small lookup table when the AIData's Anger/Timer tier increases
-  between ticks, but only if battle flag 0x40 is set.
-interface: '(r5 = AIData*, r10 = Toolkit*, lr) -> no meaningful r0 return; side effects: PlaySoundEffect(r0=???)'
-details: "Reads `MainJumptableIndexPtr` (r10[oToolkit_MainJumptableIndexPtr]) and bails if its low byte\
-  \ is 0x50, suggesting this hook is only valid inside a particular main sub-state.\n  Saves the previous-tier\
-  \ byte at `AIData+0x18` into `AIData+0x19`, then computes the new tier from `AIData+0x20` (TotalDamageTaken,\
-  \ a u16) using three ascending thresholds: `Timer < 0x1500` -> 0, `< 0x2A00` -> 1, `>= 0x4000` (only\
-  \ exact match in the third compare) -> 2; the result is stored to `AIData+0x18`. The thresholds and\
-  \ 0x18/0x19 fields look like a tier/anger bucket tracker rather than a direct damage total.\n  Calls\
-  \ `battle_testFlag0x40_800A8F8`. If it returns 1 AND the new tier (`AIData+0x18`) is strictly greater\
-  \ than the previous (`AIData+0x19`, compared with `ble`), `AIData+0x18`-1 is used as a halfword index\
-  \ into `byte_801C6E8` (via `off_801C6E4`) and the resulting sfx id is passed to `PlaySoundEffect`.\n\
-  \  In game terms: when the battle has the \"anger increases\" flag set and the AIData's anger/tier bucket\
-  \ ticks up, play a tier-specific counter/hit SFX from a 2-entry table.\n"
+status: confirmed
+summary: Plays an escalating hit-combo sound when the consecutive-hit counter crosses into a higher threshold during
+  a counter-hit sequence.
+interface: void battle_playCounterHitSound_801C5F4(u32 r5_battleObj, u32 r10_toolkit); clobbers r0 r1 r2 flags;
+  preserves r3 r4 r5 r6 r7 r10
+details: 'Reads the toolkit''s main jump-table index pointer; if the index equals 0x50 (counter-hit phase active)
+  the function returns immediately, meaning it is skipped while the counter animation is playing.
+
+  Otherwise it saves the current hit-sfx level field (battleObj+0x18) into the previous-level field (battleObj+0x19),
+  then maps the 16-bit hit counter at battleObj+0x20 to a new level 0–3 using three thresholds (0x1500, 0x2A00,
+  0x4000).
+
+  It calls battle_testFlag0x40_800A8F8 to confirm the "active counter" flag is set (returns 1); if not, it returns.
+
+  If the newly computed level is strictly greater than the saved previous level, it indexes a u16 sound-ID table
+  at 0x0801C6E8 with (level-1)*2 and calls PlaySoundEffect with that ID and the level value.
+
+  The sound is therefore triggered only on level *upgrades*, producing a pitch/volume escalation as the hit combo
+  grows.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0, r10; ldr r0, [r0,#oToolkit_MainJumptableIndexPtr]; ldrb r1, [r0]; cmp r1, #0x50;
-    beq locret_801C63E` shows the 0x50 subsystem gate. - `ldrb r0, [r5,#0x18]; strb r0, [r5,#0x19]` backs
-    up the previous tier byte to +0x19. - The ladder of `ldrh r0, [r5,#0x20]` against `0x1500`, `0x2A00`,
-    `0x4000` with `strb r2, [r5,#0x18]` writes the new tier to the same byte. - The size of the timer
-    range and the fact that "+1 twice" means r2 ends up 0/1/2 is consistent with a 3-bucket anger/tier
-    counter. - `bl battle_testFlag0x40_800A8F8; cmp r0, #1; bne locret_801C63E` makes the SFX contingent
-    on flag 0x40. - `cmp r0, r1; ble locret_801C63E; sub r0, #1; lsl r0, r0, #1; ldr r1, off_801C6E4;
-    ldrh r0, [r1,r0]; bl PlaySoundEffect` indexes a halfword lookup table by the new tier and plays it.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0801C5F4
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_playCounterHitSound_801C5F4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_playCounterHitSound_801C5F4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_playCounterHitSound_801C5F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_playCounterHitSound_801C5F4
+
+    ./wf verify --function battle_playCounterHitSound_801C5F4 --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-173858-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_playCounterHitSound_801C5F4
+
+    ./wf verify --function battle_playCounterHitSound_801C5F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^0801c5f4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What 0x50 means as a main-jumptable value, and the exact semantics of `AIData+0x20` here (Anger vs TotalDamageTaken;
-  the project's struct currently lists 0x34 as Anger and 0x20 as TotalDamageTaken; the code uses 0x20
-  as a u16 with absolute thresholds better fitting a battle-phase timer). Settling it requires matching
-  callers to confirm what kinds of AIData this routine is installed on.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801c5f4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 9443e53
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 147865dc
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_801C5F4 -> battle_playCounterHitSound_801C5F4
-  where: bn6f 717c16f5
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What do the sound IDs in byte_801C6E8 correspond to in-game (different combo-hit tones)?
+- Flag 0x40 tested by battle_testFlag0x40_800A8F8—what exact condition sets/clears it?
+- Is the hit counter at battleObj+0x20 incremented by the same routine that advances the jump table, or is it a
+  separate accumulation?
+sources:
+- tools/wf run convert-20261020-173858
+- recomp 9443e53

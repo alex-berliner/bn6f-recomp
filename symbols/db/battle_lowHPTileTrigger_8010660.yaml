@@ -1,82 +1,73 @@
 name: battle_lowHPTileTrigger_8010660
 address: '0x08010660'
 kind: function
-status: probable
-summary: When the battle-effects low-HP flag and navi stats low-HP bit are set and HP has dropped to 25%
-  or less of max, clears the navi stats flag and fires a panel tile effect at the object's position.
-interface: u32 battle_lowHPTileTrigger_8010660(u32 objPtr /*r5*/, u32 r2, u32 r3) -> r0..r3, C, V
-details: "Gate 1: GetBattleEffects() must have bit 3 (0x08) set — the global battle-effects low-HP trigger\
-  \ flag. Gate 2: GetBattleNaviStatsByte(0xD /*alliance*/) must return a valid byte (not 0xFF) with bit\
-  \ 2 (LOW_HP_BIT=0x04) set. Gate 3: Current HP (r5->HP) must be <= maxHP>>2 (25% threshold); threshold\
-  \ < hp fails the check. On success the function:\n  - clears LOW_HP_BIT from the navi stats byte via\
-  \ SetBattleNaviStatsByte(0xD, ...);\n  - calls sub_80E90FE with panel-action code 0x17B at the object's\
-  \ PanelX/PanelY (params r2=0,r3=0,r4=2,r6=0,r7=0x17B), returning the result in r2;\n  - calls sub_800BF16\
-  \ to notify the alliance (r0=object's Alliance byte, r1=1, r2=panel result), returning extra state in\
-  \ r1/r3/flags.\nReturns r0=1 on the success path, r0=0 on any early gate failure. r4/r6/r7 are pushed/popped\
-  \ so they are preserved across the call despite appearing in the output contract.\n"
+status: confirmed
+summary: One-shot handler that fires a special navi panel-tile effect when a battle object's HP drops to 25% or
+  below.
+interface: u32 battle_lowHPTileTrigger_8010660(BattleObject *obj /*r5*/, u32 callerCtx /*r10*/) → r0 = 1 if trigger
+  fired / 0 if conditions unmet; clobbers nzcv, r1-r3; preserves r4-r6
+details: 'Gates in sequence: (1) effect bit 3 (mask 0x8) must be set in the global battle-effects word (GetBattleEffects).  (2)
+  The navi-alliance (0xD) stats byte obtained via GetBattleNaviStatsByte_AllianceFromBattleObject must exist (≠0xFF)
+  and carry the low-HP flag (bit 2, mask 0x4). (3) oBattleObject_HP must be ≤ oBattleObject_MaxHP>>2 (≤25 %). If
+  all three pass, the low-HP flag is cleared with SetBattleNaviStatsByte_AllianceFromBattleObject (one-shot), then
+  the panel-action dispatcher sub_80E90FE is called at the object''s (PanelX,PanelY) tile with action code 0x17B
+  and mode 2.  The return value of that dispatch is queued to the object''s alliance via battle_queueEffectRequest
+  (r0=alliance, r1=1, r2=action).  Any gate failure returns 0.  r5 is the BattleObject* (fields oBattleObject_MaxHP,
+  oBattleObject_HP, oBattleObject_PanelX, oBattleObject_PanelY, oBattleObject_Alliance).  r10 is a caller-passed
+  context word not dereferenced inside this function; it may be consumed by the external calls or simply ignored.
+
+  '
 evidence:
 - method: readable-c
-  date: '2026-10-11'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-003942);
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-173858);
     reviewed by Claude before the commit.
   refs:
   - cport/src/game/asm00_2.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 57' --file inbox_farm_57.c
-    battle_lowHPTileTrigger_8010660
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 111' --file leaves_farm_111.c battle_lowHPTileTrigger_8010660
 - method: difftest
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: Readable vs lifted on the original's captured calls and on random inputs.
   reproduce: './wf capture --function battle_lowHPTileTrigger_8010660
 
     ./wf verify --function battle_lowHPTileTrigger_8010660 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
-    300 out of domain (verify run convert-20261011-003942-verify-2)'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-173858-verify-4)'
 - method: cpu-oracle
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: The original (mGBA, real BIOS) and the readable version from the same real states.
   reproduce: './wf capture --function battle_lowHPTileTrigger_8010660
 
     ./wf verify --function battle_lowHPTileTrigger_8010660 --snapshots build-snapshots'
-  result: 7 compared, 0 differed, 17 out of domain (verify run convert-20261011-003942-verify-2)
+  result: 37 compared, 0 differed, 59 out of domain (verify run convert-20261020-173858-verify-4)
 - method: lockstep
-  date: '2026-10-11'
+  date: '2026-10-20'
   detail: Palette, VRAM and OAM identical to the original at every checkpoint.
   reproduce: './wf capture --function battle_lowHPTileTrigger_8010660
 
     ./wf verify --function battle_lowHPTileTrigger_8010660 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-003942-verify-2)
+  result: 16/16 routes identical (verify run convert-20261020-173858-verify-4)
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9.'
+  date: '2026-10-20'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
   reproduce: grep -l '^08010660 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-11'
+- date: '2026-10-20'
   what: readable C replacement in cport/src/game/asm00_2.c
-  where: recomp 35dfb62
+  where: recomp 9443e53
   tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: 'readable C taken out of cport/src/game/asm00_2.c after review against the assembly (the lifted
-    original runs again); status confirmed -> probable, as the checks that confirmed it ran code that
-    differs from the original: Success path (all gates pass) leaves r4/r6/r7 changed; the original restores
-    them. asm: `push {r4,r6,r7,lr}` ... `mov r4, #2; mov r6, #0; ldr r7, =0x17b; bl sub_80E90FE` ... `pop
-    {r4,r6,r7,pc}`. C: guest_panel_action does `R4 = 2; ... R6 = 0; R7 = PANEL_ACTION_CODE;` and nothing
-    in check_low_hp / the Next adapter restores R4/R6/R7 (the adapter only rewrites R0..R3). The contract
-    lists r4 and r6 as...'
-  tool: review (Claude, workstream J)
-- date: '2026-10-11'
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
+  where: bn6f aee2128b
   tool: tools/symdoc.py
-- date: '2026-10-11'
-  what: rename sub_8010660 -> battle_lowHPTileTrigger_8010660
-  where: bn6f 4e85acae
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - battle
 - battles1
 - battles2
 - battlesweep
+- beastsp
 - chips
 - fuzz
 - menus2
@@ -89,37 +80,11 @@ coverage:
 - story8
 - story9
 open_questions:
-- What in-game chip, sync, or effect sets battle-effects bit 3 and navi-stats bit 2 together? Likely an
-  HP-limit Custom Chip or a specific NaviAbility.
-- What visual/functional result does panel-action code 0x17B produce on the field (heal tile, damage tile,
-  etc.)?
-- Does the 0xD alliance constant correspond to the player side or a specific navi slot?
-- Is the 25% threshold (>>2) a game-design constant or adjustable per battle?
+- What visual/gameplay effect does panel-action code 0x17B produce at the navi's tile?
+- Which upstream routine sets the low-HP bit (0x4) in the navi-alliance 0xD stats byte, and does it also set effect
+  bit 3?
+- r10 is listed as an input in the register contract but is never referenced in the body—confirm it is truly unused
+  or only feeds an external call's register expectations.
 sources:
-- tools/wf run convert-20261011-003942
-- recomp 35dfb62
-previous_names:
-- sub_8010660
-signature:
-  c: bool battle_lowHPTileTrigger_8010660(T1BattleObject *self)
-  params:
-  - reg: r5
-    type: T1BattleObject *
-    name: self
-  ret:
-    reg: r0
-    type: bool
-  globals:
-  - toolkit
-  confidence: unsure
-  decided_by: '-'
-  evidence:
-  - 'contract (lifter, refined): may read r5; result r0:r1'
-  - 'liveness: r5, but through a callee it could not narrow'
-  - 'r5: captures: 40 calls, struct eT1BattleObject0'
-  - 'result: captures at exit: r0 int 0x0'
-  - 'model minimax/MiniMax-M3: All non-r5 registers in upper bound are scratch/locals set within the function.'
-  - 'disagreement: result r0 outside r0:r1..r0:r1'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
+- tools/wf run convert-20261020-173858
+- recomp 9443e53
