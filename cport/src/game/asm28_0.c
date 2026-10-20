@@ -346,6 +346,250 @@ Next sub_809AF7C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_periodicObjectSpawner ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; bool c, v; } call_SpawnOverworldMapObject_result;
+/* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
+static inline call_SpawnOverworldMapObject_result call_SpawnOverworldMapObject(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(SpawnOverworldMapObject);
+    return (call_SpawnOverworldMapObject_result){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Periodic overworld map-object spawner (per-frame tick handler of an
+ * overworld object, r5 = object, r10 = toolkit).
+ *
+ * The object's signed 16-bit lifetime at +0x1A is decremented every tick.
+ * Whether the spawner is "armed" depends on the object's mode bytes:
+ *   - byte +6 == 2: armed once the lifetime has run out (<= 0),
+ *   - otherwise:    armed while the lifetime is still running (> 0)
+ *                   and byte +7 == 2.
+ * While armed, a tick counter at +0x18 is incremented and every 8th tick a
+ * map object is spawned through SpawnOverworldMapObject, taking its position
+ * data from the map state block reached via toolkit->+0x3C.
+ *
+ * Register contract: outputs nz (set from the final r0 = 1), r2/r3 are left
+ * behind by SpawnOverworldMapObject on the spawn path (the wrapper leaves
+ * them in place), and r4-r7 are restored to their entry values by the
+ * original's push/pop — so they are passed in and handed back unchanged even
+ * though the callee runs over them. */
+typedef struct {
+    u32 r4, r5, r6, r7;    /* saved-register values to restore afterwards */
+} OwPeriodicSpawnRegs;
+
+static OwPeriodicSpawnRegs periodic_object_spawn(u32 r4, u32 r5, u32 r6, u32 r7, u32 toolkit)
+{
+    OwPeriodicSpawnRegs regs;
+    regs.r4 = r4; regs.r5 = r5; regs.r6 = r6; regs.r7 = r7;
+
+    /* Count the signed lifetime down; the decrement is done in 32 bits but
+     * only the low half is stored back. */
+    s32 life = (s32)LDS16(r5 + 0x1A) - 1;
+    ST16(r5 + 0x1A, (u16)life);
+
+    bool armed;
+    if (LD8(r5 + 6) == 2) {
+        armed = life <= 0;                          /* fire after expiry */
+    } else {
+        armed = life > 0 && LD8(r5 + 7) == 2;       /* fire while alive  */
+    }
+    if (!armed)
+        return regs;
+
+    /* Period gate: bump the tick counter at +0x18, act on every 8th tick. */
+    u32 tick = LD16(r5 + 0x18) + 1;
+    ST16(r5 + 0x18, (u16)tick);
+    if (tick & 7)
+        return regs;
+
+    /* toolkit->+0x3C is the map state, its +0x18 the spawn parameter block:
+     * +1C/+20/+24 are the three spawn arguments, and the object's mode byte
+     * +7 selects the object kind (folded into the high half of r4's constant). */
+    u32 map_state  = LD32(toolkit + 0x3C);
+    u32 spawn_data = LD32(map_state + 0x18);
+    u32 kind       = 0x48000001u | ((u32)LD8(r5 + 7) << 16);
+
+    call_SpawnOverworldMapObject(0xB,
+                                 LD32(spawn_data + 0x1C),
+                                 LD32(spawn_data + 0x20),
+                                 LD32(spawn_data + 0x24),
+                                 kind);
+    return regs;
+}
+
+/* ow_periodicObjectSpawner (0x0809B0D8)
+ * inputs: r5 r10 lr; outputs: nz r2 r3 r4 r5 r7; preserved: r4 r5 r6 r7 */
+Next ow_periodicObjectSpawner(void) {
+    OwPeriodicSpawnRegs regs = periodic_object_spawn(R4, R5, R6, R7, R10);
+    R4 = regs.r4, R5 = regs.r5, R6 = regs.r6, R7 = regs.r7;
+    R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── owPlayer_setFixedAnimationFromLookup ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool c, v; } call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result;
+/* register form: generated wrapper: owPlayer_setS200ace0_fixedAnimationSelect_809e13c has no typed C interface yet */
+static inline call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(owPlayer_setS200ace0_fixedAnimationSelect_809e13c);
+    return (call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Result registers of owPlayer_setFixedAnimationFromLookup: r3 is whatever the
+ * animation-select callee leaves there; r4/r5/r7 are the saved registers the
+ * original pushes and pops, so they come back unchanged. */
+typedef struct {
+    u32 r3;
+    u32 r4;
+    u32 r5;
+    u32 r7;
+} FixedAnimFromLookupResult;
+
+/* Apply the fixed animation looked up from the player's state:
+ * [player+0x70] points at the shared state block, whose byte 0x0C indexes the
+ * table at dword_809C82C (1,3,5,7) to pick the animation id. r10 must still
+ * hold the caller's value for the callee; r4/r5/r7 are passed through because
+ * the callee may clobber them and the original restores them on return. */
+static FixedAnimFromLookupResult setFixedAnimationFromLookup(u32 player, u32 r4, u32 r7) {
+    FixedAnimFromLookupResult out;
+
+    u32 state = LD32(player + 0x70);
+    u32 poseIndex = LD8(state + 0xC);
+    u32 animId = LD8(A_dword_809C82C + poseIndex);
+
+    call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result call =
+        call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c(animId);
+
+    out.r3 = call.r3;
+    out.r4 = r4;
+    out.r5 = player;
+    out.r7 = r7;
+    return out;
+}
+
+/* owPlayer_setFixedAnimationFromLookup(r5 = player, r10 = context) -> nz r3 r4 r5 r7 */
+Next owPlayer_setFixedAnimationFromLookup(void) {
+    FixedAnimFromLookupResult out = setFixedAnimationFromLookup(R5, R4, R7);
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    R7 = out.r7;
+    SET_FLAGS_NZ(0);   /* mov r0, #0: Z set, N clear */
+    RETURN_TO_CALLER();
+}
+
+/* ── ow_applyCutsceneDirOffset ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; } call_ow_getPlayerPosition_result;
+/* register form: generated wrapper: ow_getPlayerPosition has no typed C interface yet */
+static inline call_ow_getPlayerPosition_result call_ow_getPlayerPosition(void) {
+    GUEST_CALL(ow_getPlayerPosition);
+    return (call_ow_getPlayerPosition_result){ R1, R2, R3 };
+}
+
+/* Result of the cutscene direction offset: r1/r2/r3 carry the adjusted
+ * tile coordinates (each sum shifted back into the high half, as the
+ * original does), r5 passes through untouched. */
+typedef struct {
+    u32 x;    /* r1 */
+    u32 y;    /* r2 */
+    u32 z;    /* r3 */
+    u32 actor; /* r5, unchanged */
+} CutsceneDirOffsetResult;
+
+/* Read the player's position, add the per-direction offset selected by
+ * the cutscene state's facing byte, and hand the result back in tile
+ * coordinates. The actor byte at +4 selects one of the 8-byte offset
+ * slots inside the chosen direction's table row. */
+static CutsceneDirOffsetResult cutscene_dir_offset(u32 actor) {
+    CutsceneDirOffsetResult res;
+
+    call_ow_getPlayerPosition_result pos = call_ow_getPlayerPosition();
+    u32 px = pos.r1 >> 16; /* high halfword: tile x */
+    u32 py = pos.r2 >> 16; /* high halfword: tile y */
+    u32 pz = pos.r3 >> 16; /* high halfword: tile z */
+
+    /* Cutscene state -> current facing direction (0-3). */
+    u32 state = LD32(A_eCutsceneState + 0x70);
+    u32 dir = LD8(state + 0xC);
+
+    /* Pick the direction's offset row, then the slot within it. */
+    u32 row = LD32(A_off_809C8CC + (dir << 2));
+    u32 slot = LD8(actor + 4) << 3;
+    u32 offsets = row + slot;
+
+    res.x = (px + LD16(offsets)) << 16;
+    res.y = (py + LD16(offsets + 2)) << 16;
+    res.z = (pz + LD16(offsets + 4)) << 16;
+    res.actor = actor;
+    return res;
+}
+
+/* ow_applyCutsceneDirOffset(r5 = actor, r10 = context) -> r1 r2 r3 r5 */
+Next ow_applyCutsceneDirOffset(void) {
+    CutsceneDirOffsetResult res = cutscene_dir_offset(R5);
+    R1 = res.x;
+    R2 = res.y;
+    R3 = res.z;
+    R5 = res.actor;
+    RETURN_TO_CALLER();
+}
+
+/* ── e_setEventFlagFromStruct ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool c, v; } call_SetEventFlag_result_e_setEventFlagFromStruct;
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline call_SetEventFlag_result_e_setEventFlagFromStruct call_SetEventFlag_e_setEventFlagFromStruct(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+    return (call_SetEventFlag_result_e_setEventFlagFromStruct){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* e_setEventFlagFromStruct: raise the event flag recorded in an object's state block.
+ *
+ * r5 points to an object whose field at +0x70 holds a pointer to a state block;
+ * the event flag id is the word at +0x10 of that block. It is passed to
+ * SetEventFlag (with r10 as the context the wrapper keeps intact), which leaves
+ * its r1/r3 results and the C/V flags behind. Afterwards r0 is zeroed, and that
+ * constant zero is what callers see in the N/Z flags (N clear, Z set).
+ * r4-r7 are pushed/popped by the original, so r4, r5 and r7 - which callers read
+ * afterwards - simply keep their entry values; r6 is preserved as well. */
+
+typedef struct {
+    u32 r4;
+    u32 r5;
+    u32 r7;
+} EventFlagFromStructResult;
+
+static EventFlagFromStructResult set_event_flag_from_struct(u32 object, u32 r4, u32 r7) {
+    EventFlagFromStructResult out;
+
+    u32 state = LD32(object + 0x70);
+    u32 flagId = LD32(state + 0x10);
+    call_SetEventFlag_e_setEventFlagFromStruct(flagId);
+
+    out.r4 = r4;
+    out.r5 = object;
+    out.r7 = r7;
+    return out;
+}
+
+/* inputs: r5 r10 lr; outputs: nz r3 r4 r5 r7; clobbers: c v r0 r1 lr */
+Next e_setEventFlagFromStruct(void) {
+    EventFlagFromStructResult out = set_event_flag_from_struct(R5, R4, R7);
+    R4 = out.r4;
+    R5 = out.r5;
+    R7 = out.r7;
+    SET_FLAGS_NZ(0);              /* mov r0, #0 after the call */
+    RETURN_TO_CALLER();
+}
+
 /* ── tryStartBbsGuiCutscene_809CF2C ── */
 /* tryStartBbsGuiCutscene_809CF2C: try to start the BBS GUI cutscene.
  * If the player can advance forward and a BBS request is pending, start the

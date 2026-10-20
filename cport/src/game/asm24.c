@@ -73,6 +73,74 @@ Next battle_checkPlayerActorStoryFlag_808CC10(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_storePlayerPosDup ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2; } call_ReadOWPlayerObjectCoords_result_ow_storePlayerPosDup;
+/* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
+static inline call_ReadOWPlayerObjectCoords_result_ow_storePlayerPosDup call_ReadOWPlayerObjectCoords_ow_storePlayerPosDup(void) {
+    GUEST_CALL(ReadOWPlayerObjectCoords);
+    return (call_ReadOWPlayerObjectCoords_result_ow_storePlayerPosDup){ R0, R1, R2 };
+}
+
+/* Copy the player's overworld position (fixed point, >>16 to get the integer
+ * part) into both position pairs of the object at r5: fields 0x16/0x18 and
+ * the duplicates at 0x1A/0x1C. */
+static void store_player_pos(u32 playerObj) {
+    call_ReadOWPlayerObjectCoords_result_ow_storePlayerPosDup coords = call_ReadOWPlayerObjectCoords_ow_storePlayerPosDup();
+
+    s16 x = (s16)((s32)coords.r0 >> 16);
+    s16 y = (s16)((s32)coords.r1 >> 16);
+
+    ST16(playerObj + 0x16, (u16)x);
+    ST16(playerObj + 0x18, (u16)y);
+    ST16(playerObj + 0x1A, (u16)x);
+    ST16(playerObj + 0x1C, (u16)y);
+}
+
+/* ow_storePlayerPosDup(r5 = player object, r10 = coords source) -> no outputs */
+Next ow_storePlayerPosDup(void) {
+    store_player_pos(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_pollTouchTrigger_808CD04 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r8, r9, r10, r11, r12; } call_reqBBS_81409E4_result;
+/* register form: generated wrapper: reqBBS_81409E4 has no typed C interface yet */
+static inline call_reqBBS_81409E4_result call_reqBBS_81409E4(void) {
+    GUEST_CALL(reqBBS_81409E4);
+    return (call_reqBBS_81409E4_result){ R0, R2, R3, R4, R5, R8, R9, R10, R11, R12 };
+}
+
+/* Poll the touch trigger (reqBBS_81409E4) and record the button id.
+ *
+ * The callee reports which touch input occurred in r0.  If it is one of the
+ * ids 0xC0..0xCC, the id is stored into the work area's trigger byte
+ * (byte_2000B45, reached through the pointer at dword_808CA44) and the
+ * function reports success.  Returns nonzero when a trigger id was recorded.
+ *
+ * r2/r5/r9/r10/r11/r12 on exit are whatever reqBBS_81409E4 left behind; the
+ * generated wrapper already leaves them in place, so nothing here touches them.
+ */
+static u32 poll_touch_trigger(void) {
+    u32 workBase = LD32(A_dword_808CA44);   /* pointer to the work area (0x2000B40) */
+    u32 triggerId = call_reqBBS_81409E4().r0;
+
+    if ((s32)triggerId >= (s32)0xC0 && (s32)triggerId <= (s32)0xCC) {
+        ST8(workBase + 5, triggerId);       /* byte_2000B45: last touch id */
+        return 1;
+    }
+    return 0;
+}
+
+/* reqBBS_pollTouchTrigger_808CD04: no register inputs (r10 passes through to
+ * the callee untouched); r0 = result, NZ from the result. */
+Next reqBBS_pollTouchTrigger_808CD04(void) {
+    R0 = poll_touch_trigger();
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_checkLockedEventTable_808CDC4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ai_getAIModeForMapGroup_808D084 has no typed C interface yet */

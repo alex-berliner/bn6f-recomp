@@ -2109,6 +2109,17 @@ Next CallBGScrollCallback1(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_36 ── */
+/* nullsub_36 is an empty stub: the original just returns to the caller without
+ * touching any register or memory. It is kept so call sites still link. */
+static void nullsub_36_body(void) {
+}
+
+Next nullsub_36(void) {
+    nullsub_36_body();
+    RETURN_TO_CALLER();
+}
+
 /* ── BGScrollCB_BG1Diagonal3to2Scroll ── */
 /* Field offsets used here (not present in game.h for this build). */
 #define oBGScrollCBCounters_Counter0 0

@@ -1970,6 +1970,101 @@ Next m4aSoundVSync(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── mplay_initPlayer ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_mplay_trackHandler_814ECB4_result;
+/* register form: generated wrapper: mplay_trackHandler_814ECB4 has no typed C interface yet */
+static inline call_mplay_trackHandler_814ECB4_result call_mplay_trackHandler_814ECB4(u32 r0, u32 r4) {
+    R0 = r0;
+    R4 = r4;
+    GUEST_CALL(mplay_trackHandler_814ECB4);
+    return (call_mplay_trackHandler_814ECB4_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* mplay_initPlayer (0x0814F08C) — link a music player into the m4a driver.
+ *
+ * r0 = player struct, r1 = first track slot (0x50 bytes each), r2 = track
+ * count, read as a byte: 0 aborts, values above 0x10 are clamped to 0x10.
+ *
+ * The driver control block is *byte_3007FF0. Its first word is the "Shsm"
+ * structure tag: this routine increments it to claim the driver while the
+ * player is being linked and restores it at the end. If the tag does not
+ * match, or the count is 0, the driver is left completely untouched.
+ *
+ * The original saves r4-r7 on entry and pops them on exit, so r4-r7 end as
+ * they started; mplay_trackHandler_814ECB4 keeps r5-r7 across the call, and
+ * r8-r12 end exactly as that callee leaves them (on paths that never reach
+ * the call they are simply untouched).
+ */
+#define MPLAY_DRIVER_PTR   A_byte_3007FF0   /* -> driver control block */
+#define MPLAY_TAG          0x68736D53u      /* "Shsm" structure tag */
+#define MPLAY_MAX_TRACKS   0x10u
+#define MPLAY_TRACK_SIZE   0x50u
+
+/* Typed body. Returns the value the original leaves in r4, which is its
+ * entry value on every path (pushed on entry, popped on exit). */
+static u32 mplay_link_player(u32 player, u32 tracks, u32 count_raw, u32 r4_in) {
+    u32 count = (count_raw << 24) >> 24;    /* the count arrives as a byte */
+    u32 driver;
+    u32 pending;
+
+    if (count == 0)
+        return r4_in;                       /* nothing to link */
+    if (count > MPLAY_MAX_TRACKS)
+        count = MPLAY_MAX_TRACKS;
+
+    driver = LD32(MPLAY_DRIVER_PTR);
+    if (LD32(driver) != MPLAY_TAG)
+        return r4_in;                       /* driver not initialised */
+
+    /* Claim the driver while linking (tag word + 1). */
+    ST32(driver, LD32(driver) + 1);
+
+    /* Initialise the player's track structures. The callee is entered with
+     * the track count in r4 and preserves r4-r7, so the locals below still
+     * describe this player afterwards. Its r8-r12 results stay in the guest
+     * registers, which is where the original leaves them too. */
+    (void)call_mplay_trackHandler_814ECB4(player, count);
+
+    ST32(player + 0x2C, tracks);            /* track list base */
+    ST8(player + 8, count);                 /* active track count */
+    ST32(player + 4, 0x80000000u);          /* player status word */
+
+    /* Clear the first byte of every track slot. */
+    while (count != 0) {
+        ST8(tracks, 0);
+        tracks += MPLAY_TRACK_SIZE;
+        count--;
+    }
+
+    /* If the driver still holds a queued player, hand its saved state to
+     * the new player before dropping it. */
+    pending = LD32(driver + 0x20);
+    if (pending != 0) {
+        ST32(player + 0x38, pending);
+        ST32(player + 0x3C, LD32(driver + 0x24));
+        ST32(driver + 0x20, 0);
+    }
+
+    /* Hook the player into the driver: it becomes the queued player,
+     * MPlayMain takes over as the driver's tick routine, and the tag word
+     * is restored both in the driver and in the player. */
+    ST32(driver + 0x24, player);
+    ST32(driver + 0x20, A_MPlayMain + 1);
+    ST32(driver, MPLAY_TAG);
+    ST32(player + 0x34, MPLAY_TAG);
+
+    return r4_in;
+}
+
+/* Thin adapter: r4 passes through unchanged (the original pops it back),
+ * r5-r7 are never modified, and r8-r12 are left behind by the wrapper's
+ * call exactly as the original leaves them. */
+Next mplay_initPlayer(void) {
+    R4 = mplay_link_player(R0, R1, R2, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_calcPanelScreenCoord_814F3A4 ── */
 /* battle_calcPanelScreenCoord_814F3A4 – packed-table interpolation lookup.
  *
@@ -2204,6 +2299,71 @@ static void sub_814F4A0_impl(u32 channel) {
  * The original returns no flags or scalar value — just falls off the tail. */
 Next soundChannel_tickPanVolume_814F4A0(void) {
     sub_814F4A0_impl(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_setSmashFactor ── */
+/* object_setSmashFactor: applies a "smash factor" to a battle object.
+ *
+ * r0 = object pointer, r1 = 16-bit input value.
+ * Only objects whose kind word at +0x34 is the magic "Smsh" (0x68736D53)
+ * are affected: the value is stored at +0x1E and the product of that value
+ * with the rate at +0x1C, shifted right by 8, is stored at +0x20.
+ *
+ * Register leftovers the callers rely on (outputs r1/r2/r3):
+ *   r2 = object pointer,
+ *   r3 = kind word read from +0x34,
+ *   r1 = the masked 16-bit input on the "not smash" path, but the rate
+ *        read from +0x1C on the smash path (it is the last thing loaded
+ *        into r1 there). r0 and the flags are clobbered.
+ */
+
+/* Battle object field offsets used here. */
+#define OBJ_KIND          0x34  /* kind word, compared against the magic */
+#define OBJ_SMASH_VALUE   0x1E  /* receives the raw input value */
+#define OBJ_SMASH_RATE    0x1C  /* multiplier read back from the object */
+#define OBJ_SMASH_RESULT  0x20  /* receives value * rate >> 8 */
+
+/* Kind word 'Smsh' marking smash-sensitive objects. */
+#define SMASH_MAGIC 0x68736D53u
+
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 r3;
+} SmashFactorOut;
+
+static SmashFactorOut object_setSmashFactor_typed(u32 object, u32 value) {
+    SmashFactorOut out;
+    u16 amount = (u16)value;
+
+    u32 kind = LD32(object + OBJ_KIND);
+    out.r2 = object;
+    out.r3 = kind;
+
+    if (kind != SMASH_MAGIC) {
+        /* Not a smash object: nothing is written, r1 keeps the masked value. */
+        out.r1 = amount;
+        return out;
+    }
+
+    ST16(object + OBJ_SMASH_VALUE, amount);
+
+    u16 rate = LD16(object + OBJ_SMASH_RATE);
+    out.r1 = rate;               /* r1 ends up holding the rate on this path */
+
+    u32 product = (u32)amount * rate;
+    s32 scaled = (s32)product >> 8;   /* arithmetic shift, as in the original */
+    ST16(object + OBJ_SMASH_RESULT, (u32)scaled);
+
+    return out;
+}
+
+Next object_setSmashFactor(void) {
+    SmashFactorOut out = object_setSmashFactor_typed(R0, R1);
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
     RETURN_TO_CALLER();
 }
 

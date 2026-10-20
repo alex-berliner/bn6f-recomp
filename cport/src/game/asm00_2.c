@@ -427,6 +427,40 @@ Next battle_getObjectAllianceTeam_800F49E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── clearEntryOfBattleStateBattleObjectList_800F656 ── */
+/* Walk the six slots of the current battle state's BattleObjectList and
+ * zero any slot that still points at the given object. Reports the final
+ * loop count and the last slot's value so the adapter can leave r1/r2 and
+ * the C/V flags exactly as the original does. */
+static void clear_battle_object_list(u32 object, u32 toolkit, u32 *countOut, u32 *lastEntryOut)
+{
+    u32 slot = LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_BattleObjectList;
+    u32 count = 0;
+    u32 entry = 0;
+
+    while (count < 6) {
+        entry = LD32(slot);
+        if (entry == object) {
+            entry = 0;
+            ST32(slot, 0);
+        }
+        slot += 4;
+        count++;
+    }
+
+    *countOut = count;
+    *lastEntryOut = entry;
+}
+
+Next clearEntryOfBattleStateBattleObjectList_800F656(void) {
+    u32 count, lastEntry;
+    clear_battle_object_list(R5, R10, &count, &lastEntry);
+    R1 = count;
+    R2 = lastEntry;
+    SET_FLAGS_CMP(count, 6);
+    RETURN_TO_CALLER();
+}
+
 /* ── dirOffsetFromAlliance_800F9DE ── */
 /* register form: calls object_getAllianceDirection outside this file, which has no typed C interface yet;
  * preserves r4 across the GUEST_CALL to mirror the push {r4,lr}/pop {r4,pc} frame in the original. */
@@ -1516,6 +1550,45 @@ Next battle_object_detachRelatedObject2_80111B8(void) {
         SET_FLAGS_NZ(R0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── object_freeRelatedObjectAndExtraVars ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_battle_objectSetStateActionPhase8_result;
+/* register form: generated wrapper: battle_objectSetStateActionPhase8 has no typed C interface yet */
+static inline call_battle_objectSetStateActionPhase8_result call_battle_objectSetStateActionPhase8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_objectSetStateActionPhase8);
+    return (call_battle_objectSetStateActionPhase8_result){ R1 };
+}
+
+/* Release the battle object's related object and its extra-vars object.
+ * Each non-NULL pointer is passed to battle_objectSetStateActionPhase8 (which
+ * presumably queues it for teardown) and then cleared. r1 comes back from the
+ * last such call; when neither pointer is set, r1 is left as it came in. */
+static u32 free_related_object_and_extra_vars(u32 objectPtr, u32 r1In) {
+    u32 r1 = r1In;
+
+    u32 related = LD32(objectPtr + oBattleObject_RelatedObject2Ptr);
+    if (related != 0) {
+        r1 = call_battle_objectSetStateActionPhase8(related).r1;
+        ST32(objectPtr + oBattleObject_RelatedObject2Ptr, 0);
+    }
+
+    u32 extraVars = LD32(objectPtr + oBattleObject_ExtraVars);
+    if (extraVars != 0) {
+        r1 = call_battle_objectSetStateActionPhase8(extraVars).r1;
+        ST32(objectPtr + oBattleObject_ExtraVars, 0);
+    }
+
+    return r1;
+}
+
+/* object_freeRelatedObjectAndExtraVars(r5 = object, lr = return address)
+ * -> r1 = last callee's r1, lr unchanged */
+Next object_freeRelatedObjectAndExtraVars(void) {
+    R1 = free_related_object_and_extra_vars(R5, R1);
     RETURN_TO_CALLER();
 }
 

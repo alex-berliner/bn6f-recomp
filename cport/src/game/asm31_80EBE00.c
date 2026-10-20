@@ -1574,6 +1574,16 @@ Next battle_aiAttackTickDown_80EF608(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_104 ── */
+/* nullsub_104 does nothing; it exists only to fill a call slot in its caller. */
+static void nullsub_104_noop(void) {
+}
+
+Next nullsub_104(void) {
+    nullsub_104_noop();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_EndRelatedObject2Anim_80F06CE ── */
 /* battle_EndRelatedObject2Anim_80F06CE(r4, r5 = battle object):
  * If the battle object has a secondary ("related object 2") sprite attached,

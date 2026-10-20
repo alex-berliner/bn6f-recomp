@@ -3082,6 +3082,56 @@ Next registerBattleStartScript_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── navicust_boardCursorUp ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_navicust_boardCursorUp;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_navicust_boardCursorUp call_PlaySoundEffect_navicust_boardCursorUp(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_navicust_boardCursorUp){ R2, R3, R4, R5, R6, R7, R10 };
+}
+
+/* Offsets into the Navicust board state struct (passed in r5). */
+#define BOARD_CURSOR_SLOT    0x1E  /* halfword: slot the cursor is on */
+#define BOARD_CURSOR_TARGET  0x24  /* halfword: slot the cursor moves to */
+#define BOARD_MOVE_AUX       0x20  /* halfword: companion value for the move */
+#define BOARD_REFRESH_TIMER  0x0C  /* byte: refresh/state timer */
+
+/* Move the Navicust board cursor up one row (four slots). The destination
+ * slot is written to +0x24 (clamped to 0 when the cursor is already on the
+ * top row), with a companion value in +0x20: 3 on a normal move, or the old
+ * slot minus 1 on the clamped one. The refresh timer at +0xC is set to 12
+ * and the menu-select sound plays. r2 reaches the sound call untouched, and
+ * r5/r10 end up as PlaySoundEffect leaves them. */
+static void navicust_board_cursor_up(u32 sound_arg2, u32 board) {
+    u32 slot = LD16(board + BOARD_CURSOR_SLOT);
+
+    u32 target;
+    u32 aux;
+    if ((s32)slot >= 4) {
+        target = slot - 4;      /* one row up */
+        aux = 3;
+    } else {
+        target = 0;             /* already on the top row */
+        aux = slot - 1;
+    }
+
+    ST16(board + BOARD_CURSOR_TARGET, target);
+    ST16(board + BOARD_MOVE_AUX, aux);
+    ST8(board + BOARD_REFRESH_TIMER, 0xC);
+
+    call_PlaySoundEffect_navicust_boardCursorUp(SOUND_MENU_SELECT, sound_arg2);
+}
+
+/* inputs: r2 (sound-call context, passed through), r5 (board state), lr */
+/* outputs: r5 r10 (left in place by the PlaySoundEffect wrapper) */
+Next navicust_boardCursorUp(void) {
+    navicust_board_cursor_up(R2, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_refreshPETNaviStats_8136C24 ── */
 /* Register-form helpers for the PET Navi stats API (no typed C interface yet). */
 

@@ -2607,6 +2607,81 @@ Next battleObject_initFromRelatedAndLoadSprite_80C4550(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_sprite_getMosaicScalingParameters_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C;
+/* register form: generated wrapper: sprite_getMosaicScalingParameters has no typed C interface yet */
+static inline call_sprite_getMosaicScalingParameters_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C call_sprite_getMosaicScalingParameters_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+    return (call_sprite_getMosaicScalingParameters_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C){ R0, R2 };
+}
+
+typedef struct { u32 r1, r2, r3, r7; bool c, v; } call_sprite_setAlpha_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C;
+/* register form: generated wrapper: sprite_setAlpha has no typed C interface yet */
+static inline call_sprite_setAlpha_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C call_sprite_setAlpha_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_setAlpha);
+    return (call_sprite_setAlpha_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C){ R1, R2, R3, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: battle_getStateUnk5c_800139A has no typed C interface yet */
+static inline u32 call_battle_getStateUnk5c_800139A_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(void) {
+    GUEST_CALL(battle_getStateUnk5c_800139A);
+    return R0;
+}
+
+typedef struct { u32 r5; } call_battleObject_updateSprite_80C464C_result;
+/* register form: generated wrapper: battleObject_updateSprite_80C464C has no typed C interface yet */
+static inline call_battleObject_updateSprite_80C464C_result call_battleObject_updateSprite_80C464C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateSprite_80C464C);
+    return (call_battleObject_updateSprite_80C464C_result){ R5 };
+}
+
+/* Update a battle object's mosaic-scaled sprite, then force it into its
+ * "done acting" state unless the battle state says the mosaic is still in
+ * effect. r5 is the battle object; r10 is the battle state, untouched here. */
+
+/* Typed body: takes the object pointer, returns the object pointer as the
+ * original leaves it in r5 (unchanged on the early-exit path, or whatever
+ * battleObject_updateSprite_80C464C leaves behind). */
+static u32 battleObject_updateSpriteMosaicAndExitIfNotScaled(u32 self)
+{
+    /* Fetch the mosaic scaling of the related sprite and apply it as alpha. */
+    call_sprite_getMosaicScalingParameters_result_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C mosaic =
+        call_sprite_getMosaicScalingParameters_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(LD32(self + oBattleObject_RelatedObject1Ptr));
+    call_sprite_setAlpha_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(mosaic.r0, mosaic.r2, self);
+
+    /* Bit 1 of the battle state word decides whether we bail out early
+     * (lsr #2 puts that bit into the carry flag; bcc exits when it is clear). */
+    u32 state = call_battle_getStateUnk5c_800139A_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C();
+    if (((state >> 2) & 1u) == 0u)
+        return self;
+
+    /* While acting, clear the object's "active" flag if Param3 says so. */
+    if (LD8(self + oBattleObject_Param3) == 0) {
+        u32 flags = LD8(self + oObjectHeader_Flags);
+        ST8(self + oObjectHeader_Flags, flags & ~4u);
+    }
+
+    /* Record that the object has finished its current action... */
+    ST8(self + oBattleObject_CurAction, 4);
+    ST16(self + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+
+    /* ...and refresh its sprite. */
+    return call_battleObject_updateSprite_80C464C(self).r5;
+}
+
+/* inputs: r5 r10 lr; outputs: r5; clobbers: nz c v r0-r3 lr */
+Next battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C(void)
+{
+    R5 = battleObject_updateSpriteMosaicAndExitIfNotScaled(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_updateSprite_80C464C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2; } call_sprite_getMosaicScalingParameters_result;
@@ -2715,6 +2790,23 @@ static u32 battle_setObjectStateActionPhase8_impl(u32 object) {
 
 Next battle_setObjectStateActionPhase8(void) {
     R1 = battle_setObjectStateActionPhase8_impl(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_setFlag ── */
+/* Set the "flag" slot of a battle object's extra vars to 1.
+ * (object_setFlag: writes 1 to [object + oBattleObject_ExtraVars + 8].)
+ * Returns 1 — the value stored, which is also what the original leaves in r1
+ * and tests for the N/Z flags. */
+static u32 object_setFlag_impl(u32 object) {
+    ST32(object + oBattleObject_ExtraVars + 8, 1);
+    return 1;
+}
+
+/* object_setFlag(r0 = battle object) -> r1 = 1, nz from the stored value */
+Next object_setFlag(void) {
+    R1 = object_setFlag_impl(R0);
+    SET_FLAGS_NZ(R1);
     RETURN_TO_CALLER();
 }
 

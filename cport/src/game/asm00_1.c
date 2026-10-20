@@ -3731,6 +3731,96 @@ Next startInMapWarpCutscene_80059D0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_startJackOutMapEnterCutscene ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ClearEventFlagFromImmediate_result_ow_startJackOutMapEnterCutscene;
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline call_ClearEventFlagFromImmediate_result_ow_startJackOutMapEnterCutscene call_ClearEventFlagFromImmediate_ow_startJackOutMapEnterCutscene(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+    return (call_ClearEventFlagFromImmediate_result_ow_startJackOutMapEnterCutscene){ R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_StartCutscene_result;
+/* register form: generated wrapper: StartCutscene has no typed C interface yet */
+static inline call_StartCutscene_result call_StartCutscene(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(StartCutscene);
+    return (call_StartCutscene_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Play the "jack-out finished" map-enter cutscene: first clear event flag 0x1703
+ * (the flag that triggered the jack-out sequence), then start the cutscene script
+ * CutsceneScriptOnMapEnterAfterJackOut with no parameter. */
+static void ow_startJackOutMapEnterCutscene_impl(void) {
+    call_ClearEventFlagFromImmediate_ow_startJackOutMapEnterCutscene(EVENT_1703 >> 8, EVENT_1703 & 0xFF); /* group 0x17, mask 3 */
+    call_StartCutscene(A_CutsceneScriptOnMapEnterAfterJackOut_8098a2e, 0);
+}
+
+/* ow_startJackOutMapEnterCutscene() -> () */
+Next ow_startJackOutMapEnterCutscene(void) {
+    ow_startJackOutMapEnterCutscene_impl();
+    RETURN_TO_CALLER();
+}
+
+/* ── gameState_fadeToOverworldAfterEvent ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: SetEventFlagFromImmediate has no typed C interface yet */
+static inline void call_SetEventFlagFromImmediate_gameState_fadeToOverworldAfterEvent(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+typedef struct { u32 r1, r2, r5; } call_SetScreenFade_result_gameState_fadeToOverworldAfterEvent;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_gameState_fadeToOverworldAfterEvent call_SetScreenFade_gameState_fadeToOverworldAfterEvent(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_gameState_fadeToOverworldAfterEvent){ R1, R2, R5 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; bool c, v; } call_timer_tickCountdownTable_8035738_result;
+/* register form: generated wrapper: timer_tickCountdownTable_8035738 has no typed C interface yet */
+static inline call_timer_tickCountdownTable_8035738_result call_timer_tickCountdownTable_8035738(void) {
+    GUEST_CALL(timer_tickCountdownTable_8035738);
+    return (call_timer_tickCountdownTable_8035738_result){ R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Flag IDs are encoded as word-in-the-high-byte, bit-index-in-the-low-byte;
+ * SetEventFlagFromImmediate takes the two halves as separate arguments. */
+
+/* Fade out and return to the overworld after an event/cutscene finishes:
+ * clear the cutscene event flags, start a screen fade, keep the countdown
+ * table ticking, then arm the state timer and switch the game state to the
+ * overworld map subsystem (state pointer in r5). */
+static void fade_to_overworld_after_event(u32 state)
+{
+    /* EVENT_1703: the event/cutscene has finished */
+    call_SetEventFlagFromImmediate_gameState_fadeToOverworldAfterEvent(EVENT_1703 >> 8, EVENT_1703 & 0xFF);
+    /* EVENT_1738: leaving the map after the event */
+    call_SetEventFlagFromImmediate_gameState_fadeToOverworldAfterEvent(EVENT_1738 >> 8, EVENT_1738 & 0xFF);
+
+    /* fade parameters: 12 frames down, 16 frames per step */
+    call_SetScreenFade_gameState_fadeToOverworldAfterEvent(0xC, 0x10);
+
+    call_timer_tickCountdownTable_8035738();
+
+    ST32(state + oGameState_FrameCountdown, 0xA0);
+
+    /* trigger overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC */
+    ST8(state + oGameState_SubsystemIndex, 0x10);
+}
+
+/* gameState_fadeToOverworldAfterEvent(r5 = self: * GameState, r10 = flag bank) -> void */
+Next gameState_fadeToOverworldAfterEvent(void) {
+    fade_to_overworld_after_event(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── checkThenStartBattle_8005A8C ── */
 /* Event flags (bank 0x17) that suppress an automatic battle start.
  * TestEventFlagFromImmediate takes the bank byte in r0 and the index byte in r1. */

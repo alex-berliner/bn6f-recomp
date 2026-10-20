@@ -845,6 +845,127 @@ Next initPetSelectScreen_811EF28(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_renderMapNameHudGfx ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4; } call_sub_8123360_result;
+/* register form: generated wrapper: sub_8123360 has no typed C interface yet */
+static inline call_sub_8123360_result call_sub_8123360(void) {
+    GUEST_CALL(sub_8123360);
+    return (call_sub_8123360_result){ R0, R4 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result call_GetCurPETNavi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result){ R0, R3 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNaviStatsHword_result;
+/* register form: generated wrapper: GetCurPETNaviStatsHword has no typed C interface yet */
+static inline call_GetCurPETNaviStatsHword_result call_GetCurPETNaviStatsHword(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetCurPETNaviStatsHword);
+    return (call_GetCurPETNaviStatsHword_result){ R0, R3 };
+}
+
+typedef struct { u32 r5, r6, r7, r8, r9, r10, r11, r12; } call_renderTextGfx_8045F8C_result;
+/* register form: generated wrapper: renderTextGfx_8045F8C has no typed C interface yet */
+static inline call_renderTextGfx_8045F8C_result call_renderTextGfx_8045F8C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(renderTextGfx_8045F8C);
+    return (call_renderTextGfx_8045F8C_result){ R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: sprite_repackAndQueueTiles_811F5DC has no typed C interface yet */
+static inline void call_sprite_repackAndQueueTiles_811F5DC(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
+}
+
+/* Map-name HUD refresh (overworld).
+ *
+ * What the original does, in order:
+ *   1. Fetches the toolkit's "unk200a220" record and either clears its two
+ *      cached stat words or refreshes them from the current PET navi
+ *      (stats 0x40 and 0x42), depending on what sub_8123360 reports.
+ *   2. Renders the current map's name text (9 glyphs) into the scratch tile
+ *      buffer at 0x200BEA0 via renderTextGfx_8045F8C.
+ *   3. Repacks that buffer and queues the tiles to VRAM at 0x06015000.
+ *
+ * Register behaviour: the original pushes r4-r7 and pops them, so those four
+ * exit unchanged; r8-r12 are whatever renderTextGfx_8045F8C leaves behind
+ * (sprite_repackAndQueueTiles_811F5DC preserves them), so they pass straight
+ * through from that call. r0-r3, the flags and lr are free.
+ */
+struct mapname_hud_regs {
+    u32 r4, r5, r6, r7;        /* restored to their entry values */
+    u32 r8, r9, r10, r11, r12; /* pass-through from renderTextGfx_8045F8C */
+};
+
+static struct mapname_hud_regs render_map_name_hud_gfx(u32 toolkit, u32 r4,
+                                                       u32 r5, u32 r6, u32 r7)
+{
+    struct mapname_hud_regs out;
+    call_renderTextGfx_8045F8C_result gfx;
+
+    u32 pet_stats = LD32(toolkit + oToolkit_Unk200a220_Ptr);
+
+    if (call_sub_8123360().r0 == 0) {
+        /* Nothing to read from the PET: clear both cached stat words. */
+        ST32(pet_stats + 0x8, 0);
+        ST32(pet_stats + 0xC, 0);
+    } else {
+        /* Cache the current navi's stat words 0x40 and 0x42. */
+        u32 navi = call_GetCurPETNavi().r0;
+        ST32(pet_stats + 0x8, call_GetCurPETNaviStatsHword(navi, 0x40).r0);
+        ST32(pet_stats + 0xC, call_GetCurPETNaviStatsHword(navi, 0x42).r0);
+    }
+
+    /* Render the map-name text into the scratch tile buffer at 0x200BEA0. */
+    gfx = call_renderTextGfx_8045F8C(A_TextScriptMapNames, /* text script: map names */
+                                     0xF0,                 /* render flags */
+                                     A_unk_200BEA0,        /* tile buffer */
+                                     0,
+                                     9,                    /* glyph count */
+                                     1,
+                                     A_dword_86A5D60,      /* glyph/layout table */
+                                     0);
+
+    /* Repack the rendered tiles and queue them to VRAM at 0x06015000. */
+    call_sprite_repackAndQueueTiles_811F5DC(A_unk_200BEA0, A_byte_200CC20,
+                                            0x6015000, 9);
+
+    out.r4 = r4;
+    out.r5 = r5;
+    out.r6 = r6;
+    out.r7 = r7;
+    out.r8 = gfx.r8;
+    out.r9 = gfx.r9;
+    out.r10 = gfx.r10;
+    out.r11 = gfx.r11;
+    out.r12 = gfx.r12;
+    return out;
+}
+
+Next ow_renderMapNameHudGfx(void) {
+    struct mapname_hud_regs out = render_map_name_hud_gfx(R10, R4, R5, R6, R7);
+    R4 = out.r4, R5 = out.r5, R6 = out.r6, R7 = out.r7;
+    R8 = out.r8, R9 = out.r9, R10 = out.r10, R11 = out.r11, R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── updateMapNameDisplay_811F014 ── */
 /* updateMapNameDisplay_811F014: refresh the map-name display.
  *

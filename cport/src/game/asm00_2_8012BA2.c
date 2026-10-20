@@ -1597,6 +1597,19 @@ Next nullsub_51(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── nullsub_56 ── */
+/* nullsub_56: an empty placeholder function (a no-op hook point).
+ * It takes no arguments, changes nothing, and simply returns to its caller. */
+static void nullsub_56_body(void) {
+    /* nothing to do */
+}
+
+/* sub_080145C0(nullsub_56) */
+Next nullsub_56(void) {
+    nullsub_56_body();
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_clearObjectStatusUnlessPhase1 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; bool z, n; } call_battle_clearObjectStatusFlagsAndTimers_801A264_result;
@@ -1750,6 +1763,83 @@ static void inspect_battle_slots(u32 slot_a, u32 slot_b, u32 result_ptr) {
 /* sub_801486C(r5 = result ptr, r6 = slot A, r7 = slot B; r10, lr in) -> writes [r5] */
 Next sub_801486C(void) {
     inspect_battle_slots(R6, R7, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_aiAttackVarsExitState_8014F04 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ClearAIDataUnk0x48Flag_result;
+/* register form: generated wrapper: ClearAIDataUnk0x48Flag has no typed C interface yet */
+static inline call_ClearAIDataUnk0x48Flag_result call_ClearAIDataUnk0x48Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(ClearAIDataUnk0x48Flag);
+    return (call_ClearAIDataUnk0x48Flag_result){ R3 };
+}
+
+typedef struct { u32 r2; } call_battle_clearFlags_result;
+/* register form: generated wrapper: battle_clearFlags has no typed C interface yet */
+static inline call_battle_clearFlags_result call_battle_clearFlags(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_clearFlags);
+    return (call_battle_clearFlags_result){ R2 };
+}
+
+typedef struct { u32 r3; } call_ClearAIData_Unk_44_Flag_result;
+/* register form: generated wrapper: ClearAIData_Unk_44_Flag has no typed C interface yet */
+static inline call_ClearAIData_Unk_44_Flag_result call_ClearAIData_Unk_44_Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(ClearAIData_Unk_44_Flag);
+    return (call_ClearAIData_Unk_44_Flag_result){ R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result;
+/* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
+static inline call_object_exitAttackState_result call_object_exitAttackState(u32 r5, u32 r6, u32 r7) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_exitAttackState);
+    return (call_object_exitAttackState_result){ R0, R1, R2, R3, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Exit the AI's attack state for one object.
+ *   r5  = AI data pointer (passed through to the flag-clearing helpers)
+ *   r6  = battle object
+ *   r7  = AI attack vars block
+ *   r10 = battle context (battle_clearFlags reads it from r10 itself)
+ *
+ * A freshly started attack (element 0) first gets its countdown set up:
+ * a step timer of 20 and attack element 4. Each call then ticks the timer
+ * down; while it is still non-negative nothing else happens. Once it goes
+ * negative (it was 0 and wrapped), the AI's queued flag bits are cleared
+ * and the object is handed back to its normal state machine.
+ */
+static void ai_attack_vars_exit_state(u32 ai_data, u32 object, u32 attack_vars) {
+    /* First entry with no element assigned: initialize the attack countdown. */
+    if (LD8(attack_vars + oAIAttackVars_AttackElement) == 0) {
+        ST16(attack_vars + oAIAttackVars_StepTimer, 0x14);
+        ST8(attack_vars + oAIAttackVars_AttackElement, 4);
+    }
+
+    /* Tick the step timer; the 32-bit decrement wraps to a negative value
+     * when the 16-bit timer was zero, which is what ends the attack. */
+    u32 timer = (u32)LD16(attack_vars + oAIAttackVars_StepTimer) - 1;
+    ST16(attack_vars + oAIAttackVars_StepTimer, timer);
+    if ((s32)timer >= 0)
+        return;
+
+    /* Timer expired: clear this AI's pending flag bits and exit the attack. */
+    call_ClearAIDataUnk0x48Flag(0x80, ai_data);
+    call_battle_clearFlags(0x20);
+    call_ClearAIDataUnk0x48Flag(0x80000, ai_data);
+    call_ClearAIData_Unk_44_Flag(0x80008600, ai_data);
+    call_object_exitAttackState(ai_data, object, attack_vars);
+}
+
+Next object_aiAttackVarsExitState_8014F04(void) {
+    ai_attack_vars_exit_state(R5, R6, R7);
     RETURN_TO_CALLER();
 }
 

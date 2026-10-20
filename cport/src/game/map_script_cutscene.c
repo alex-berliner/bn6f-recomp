@@ -1385,6 +1385,45 @@ Next cutscene_checkOriginalCutsceneScriptPos_8036F58(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── cutscene_checkOriginalCutsceneScriptPos_8036F70 ── */
+/* Compares the given script position with the cutscene state's saved
+ * "original cutscene script position". When the two match, the cutscene is
+ * playing the original script, and the result is the magic script value
+ * CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1; otherwise the result is 0.
+ *
+ * Returns the result (the original's r0 and r2, which are the same value).
+ * Writes the loaded original script position to *posOut (the original's r1)
+ * and the result again to *flagOut (the original's r2). */
+static u32 check_original_cutscene_script_pos(u32 scriptPos, u32 toolkit,
+                                              u32 *posOut, u32 *flagOut) {
+    u32 cutsceneState = LD32(toolkit + oToolkit_CutsceneStatePtr);
+    u32 originalPos = LD32(cutsceneState + oCutsceneState_originalCutsceneScriptPos_40);
+
+    u32 result;
+    if (originalPos == scriptPos)
+        result = CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1;
+    else
+        result = 0;
+
+    *posOut = originalPos;
+    *flagOut = result;
+    return result;
+}
+
+/* cutscene_checkOriginalCutsceneScriptPos_8036F70:
+ *   inputs:  r0 = script position to compare, r10 = toolkit
+ *   outputs: r0 = result, r1 = loaded original script position, r2 = result,
+ *            nz set from r0 (the original's final tst r0, r0 leaves c/v alone)
+ */
+Next cutscene_checkOriginalCutsceneScriptPos_8036F70(void) {
+    u32 posOut, flagOut;
+    R0 = check_original_cutscene_script_pos(R0, R10, &posOut, &flagOut);
+    R1 = posOut;
+    R2 = flagOut;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── TryCutsceneSkip ── */
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
 static bool check_screen_fade(u32 *r1_out) {

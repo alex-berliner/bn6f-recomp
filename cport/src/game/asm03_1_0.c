@@ -395,6 +395,18 @@ Next battle_resetState_8033AC4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── noop_8033B08 ── */
+/* Do nothing: this is an empty stub called for its side-effect-free placeholder role. */
+
+static void noop_8033B08_typed(void) {
+    /* The original simply pushes lr and returns immediately. */
+}
+
+Next noop_8033B08(void) {
+    noop_8033B08_typed();
+    RETURN_TO_CALLER();
+}
+
 /* ── onUpdateInInternet_8033B1E ── */
 /* onUpdateInInternet_8033B1E(self: *S2011E30 in r5): per-frame update hook
  * while the player is navigating the Internet. Runs the common Internet
@@ -2124,6 +2136,34 @@ Next initGameProgressBuffer_803532c(void) {
     ST8(gameState + 6 /* oGameState_GameProgress */, 0);
 
     R3 = i; /* 0x19 */
+    RETURN_TO_CALLER();
+}
+
+/* ── loadGameProgressFromGameProgressBuffer_8035354 ── */
+/* Load one byte of game-progress data from the save buffer into the live game state.
+ * r0 selects the byte within gameProgressBuffer, r10 holds the toolkit pointer.
+ * The original saves/restores r4-r7, so they are passed through unchanged. */
+typedef struct { u32 r4, r5, r6, r7; } PreservedRegs;
+
+static PreservedRegs copy_game_progress_byte(u32 slot, u32 toolkit,
+                                             u32 r4, u32 r5, u32 r6, u32 r7) {
+    u32 src = A_gameProgressBuffer_20010f0 + slot;
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+
+    ST8(gameState + oGameState_GameProgress, LD8(src));
+
+    PreservedRegs out = { r4, r5, r6, r7 };
+    return out;
+}
+
+/* sub_8035354(r0 = buffer slot, r10 = toolkit, lr = return address)
+ * -> r4-r7 unchanged */
+Next loadGameProgressFromGameProgressBuffer_8035354(void) {
+    PreservedRegs out = copy_game_progress_byte(R0, R10, R4, R5, R6, R7);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
     RETURN_TO_CALLER();
 }
 

@@ -974,6 +974,31 @@ Next ReadOWPlayerObjectCoords(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_getPlayerPosition ── */
+/* ow_getPlayerPosition reads the overworld player object's position.
+ * Input:  r10 = toolkit pointer
+ * Outputs: r1 = player X, r2 = player Y, r3 = player Z (object fields 0x1C/0x20/0x24) */
+
+typedef struct { u32 x, y, z; } PlayerPos;
+
+static PlayerPos read_player_position(u32 toolkit) {
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player = LD32(gameState + oGameState_OverworldPlayerObjectPtr);
+    PlayerPos pos;
+    pos.x = LD32(player + 0x1C);
+    pos.y = LD32(player + 0x20);
+    pos.z = LD32(player + 0x24);
+    return pos;
+}
+
+Next ow_getPlayerPosition(void) {
+    PlayerPos pos = read_player_position(R10);
+    R1 = pos.x;
+    R2 = pos.y;
+    R3 = pos.z;
+    RETURN_TO_CALLER();
+}
+
 /* ── owPlayer_offsetS200ace0Coords_809e1fa ── */
 /* owPlayer_offsetS200ace0Coords_809e1fa(r0 = dx, r1 = dy, r2 = dz):
  * offset the player's overworld position by the given delta. The struct
@@ -1413,6 +1438,61 @@ Next overworld_CheckPlayerAdvanceForwardTrigger_809E46E(void) {
 }
 
 #undef EVENT_1717_PLAYER_ADVANCE_FORWARD
+
+/* ── owPlayer_setAlpha_8002c7a_809e4a0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r7; bool z, n, c, v; } call_sprite_setAlpha_8002c7a_result;
+/* register form: generated wrapper: sprite_setAlpha_8002c7a has no typed C interface yet */
+static inline call_sprite_setAlpha_8002c7a_result call_sprite_setAlpha_8002c7a(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAlpha_8002c7a);
+    return (call_sprite_setAlpha_8002c7a_result){ R0, R1, R2, R3, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* OwPlayer_setAlpha: fade/alpha helper for the overworld player sprite.
+ *
+ * The original fetches the overworld player object out of the toolkit's game
+ * state (r10 -> toolkit -> GameState -> OverworldPlayerObject), passes it to
+ * sprite_setAlpha_8002c7a together with the alpha value in r0, and restores
+ * its own saved r5 afterwards.  Callers observe r2/r3/r7 as left by the
+ * sprite helper and r5 unchanged from entry (the push/pop pair), so all four
+ * are returned explicitly. */
+
+typedef struct {
+    u32 r2;
+    u32 r3;
+    u32 r5;
+    u32 r7;
+} OwPlayerAlphaResult;
+
+/* Typed body: apply the alpha (r0) to the overworld player object.
+ * toolkit_reg is the toolkit base pointer the guest keeps in r10;
+ * saved_r5 is the caller's r5, which the original restores on exit. */
+static OwPlayerAlphaResult ow_player_set_alpha(u32 alpha, u32 toolkit_reg, u32 saved_r5) {
+    OwPlayerAlphaResult out;
+
+    u32 game_state = LD32(toolkit_reg + oToolkit_GameStatePtr);
+    u32 player_obj = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+
+    call_sprite_setAlpha_8002c7a_result res = call_sprite_setAlpha_8002c7a(alpha, player_obj);
+
+    out.r2 = res.r2;
+    out.r3 = res.r3;
+    out.r5 = saved_r5;   /* pop {r5} in the original: entry value, not the object pointer */
+    out.r7 = res.r7;
+    return out;
+}
+
+/* owPlayer_setAlpha_8002c7a_809e4a0(r0 = alpha, r10 = toolkit) -> r2 r3 r5 r7 */
+Next owPlayer_setAlpha_8002c7a_809e4a0(void) {
+    OwPlayerAlphaResult res = ow_player_set_alpha(R0, R10, R5);
+    R2 = res.r2;
+    R3 = res.r3;
+    R5 = res.r5;
+    R7 = res.r7;
+    RETURN_TO_CALLER();
+}
 
 /* ── owPlayer_toggleUsingCopybot_809e4bc ── */
 /* owPlayer_toggleUsingCopybot_809e4bc (0x0809E4BC):

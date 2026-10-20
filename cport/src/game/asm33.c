@@ -1482,6 +1482,88 @@ Next sub_8123E08(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── pet_menu_drawStatusIcons_8123E58 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_GetCurPETNaviStatsByte_result_pet_menu_drawStatusIcons_8123E58;
+/* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_GetCurPETNaviStatsByte_result_pet_menu_drawStatusIcons_8123E58 call_GetCurPETNaviStatsByte_pet_menu_drawStatusIcons_8123E58(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (call_GetCurPETNaviStatsByte_result_pet_menu_drawStatusIcons_8123E58){ R0 };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r7; } call_battleObject_queueOamFromTableRow_811FAF4_result;
+/* register form: generated wrapper: battleObject_queueOamFromTableRow_811FAF4 has no typed C interface yet */
+static inline call_battleObject_queueOamFromTableRow_811FAF4_result call_battleObject_queueOamFromTableRow_811FAF4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
+    return (call_battleObject_queueOamFromTableRow_811FAF4_result){ R2, R3, R5, R6, R7 };
+}
+
+/* PET menu: draw the two status icons for the current Navi and tick their
+ * shared animation counter.
+ *
+ * ctx is the PET menu state block:
+ *   +0x14  value fed to GetCurPETNaviStatsByte, which selects the frame pair
+ *   +0x11  toggle choosing between the two frame-table sets
+ *   +0x10  animation step counter, 0..5, wrapping every 6 steps
+ *
+ * Each step queues two OAM entries: the emblem icon (first table) and the
+ * status icon (second table). The frame index (stats byte * 4) selects a
+ * word from each table, which holds the packed row data for the OAM helper;
+ * the remaining arguments (0x20005, 0, the table pointer, and the attribute
+ * mask 0x80004000/0x8000) are fixed per call. */
+static void pet_menu_draw_status_icons(u32 ctx) {
+    u32 frame; /* byte offset of the current frame's entry within a table */
+    u32 step;
+
+    frame = call_GetCurPETNaviStatsByte_pet_menu_drawStatusIcons_8123E58(LD8(ctx + 0x14), 0x2D).r0 << 2;
+
+    if (LD8(ctx + 0x11) == 0) {
+        /* Normal table set: emblem icon, then status icon */
+        call_battleObject_queueOamFromTableRow_811FAF4(
+            LD32(A_byte_8123EC8 + frame), 0x20005, 0,
+            A_dword_81233BC, 0x80004000);
+        call_battleObject_queueOamFromTableRow_811FAF4(
+            LD32(A_byte_8123EE4 + frame), 0x20005, 0,
+            A_dword_81233C0, 0x8000);
+    } else {
+        /* Alternate table set (same frames, other OAM table pointers) */
+        call_battleObject_queueOamFromTableRow_811FAF4(
+            LD32(A_byte_8123F00 + frame), 0x20005, 0,
+            A_dword_81233C4, 0x80004000);
+        call_battleObject_queueOamFromTableRow_811FAF4(
+            LD32(A_byte_8123F1C + frame), 0x20005, 0,
+            A_dword_81233C8, 0x8000);
+    }
+
+    /* Advance the step counter; every 6 steps, swap the table set. */
+    step = LD8(ctx + 0x10) + 1;
+    if ((s32)step >= 6) {
+        ST8(ctx + 0x11, LD8(ctx + 0x11) ^ 1);
+        step = 0;
+    }
+    ST8(ctx + 0x10, step);
+}
+
+/* inputs: r5 r10 lr -> outputs: r5 (unchanged); preserves r4 r5 r6 r7.
+ * The OAM helper wrapper leaves the callee's outputs (r2 r3 r5 r6 r7) in the
+ * guest registers, so the adapter restores the preserved ones after the call. */
+Next pet_menu_drawStatusIcons_8123E58(void) {
+    u32 ctx = R5, keep4 = R4, keep6 = R6, keep7 = R7;
+    pet_menu_draw_status_icons(ctx);
+    R4 = keep4;
+    R5 = ctx;
+    R6 = keep6;
+    R7 = keep7;
+    RETURN_TO_CALLER();
+}
+
 /* ── submenu_subchip_dispatch_812407C ── */
 /* submenu_subchip_dispatch_812407C(r5 = sub-chip submenu state):
  * Dispatch on the submenu's phase (/4 value in [state,#2]) and, once the

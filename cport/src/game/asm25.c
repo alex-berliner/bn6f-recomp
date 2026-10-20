@@ -217,6 +217,57 @@ Next busStation_runBusMoveSequence_controller_808F900(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_startBeastOutHit ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: GetOWPlayerFacingDirection has no typed C interface yet */
+static inline u32 call_GetOWPlayerFacingDirection(void) {
+    GUEST_CALL(GetOWPlayerFacingDirection);
+    return R0;
+}
+
+typedef struct { u32 r1, r2, r3, r4, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_ow_startBeastOutHit;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_ow_startBeastOutHit call_PlaySoundEffect_ow_startBeastOutHit(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_ow_startBeastOutHit){ R1, R2, R3, R4, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* ow_startBeastOutHit -- overworld "Beast Out seized by a hit" kickoff.
+ *
+ * Writes two bytes into the overworld player object (the pointer at
+ * off_808F5D4, object base 0x2000310): the hit direction, looked up from the
+ * direction the player is facing, and a 15-frame timer.  Then plays the hit
+ * sound effect.  r2 is untouched by the original before the sound call, so it
+ * goes straight through as PlaySoundEffect's second argument; r5 is saved and
+ * restored, so it leaves as it entered. */
+
+/* Field offsets in the overworld player object. */
+#define PLAYER_HIT_DIR     0x18   /* byte_2000328: direction/pose for the hit */
+#define PLAYER_HIT_TIMER   0x17   /* dword_2000324+3: countdown, 15 frames */
+
+static u32 start_beast_out_hit(u32 soundArg2, u32 savedR5) {
+    u32 player = LD32(A_off_808F5D4);
+
+    /* byte_808FD14 maps facing direction -> hit direction (5,5,7,7,1,1,3,3). */
+    u32 facing = call_GetOWPlayerFacingDirection();
+    u32 hitDir = LD8(A_byte_808FD14 + facing);
+
+    ST8(player + PLAYER_HIT_DIR, hitDir);
+    ST8(player + PLAYER_HIT_TIMER, 0xF);
+
+    call_PlaySoundEffect_ow_startBeastOutHit(SOUND_HIT_6B, soundArg2);
+
+    return savedR5;   /* r5 is only scratch here; the original pops it back */
+}
+
+Next ow_startBeastOutHit(void) {
+    R5 = start_beast_out_hit(R2, R5);
+    SET_FLAGS_NZ(0);          /* movs r0, #0 before the return */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_runBattleFrameForCyberWorld_808FEA4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5; } call_battleObject_togglePlayerAllyLockout_808FF44_result;

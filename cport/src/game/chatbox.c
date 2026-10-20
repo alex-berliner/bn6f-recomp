@@ -3557,6 +3557,33 @@ Next chatbox_formatBcdNumber_8042A14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_8042EE8 ── */
+/* Compare one chatbox entry against a byte buffer.
+ * r0 selects the entry (index * 8 into the table at byte_8045CCC),
+ * r1 is the byte count (treated as signed by the original's bgt loop),
+ * r5 points at a record whose +0x4C buffer is compared.
+ * Returns 1 if all bytes match, 0 on the first difference.
+ * Note: like the original, one byte is compared even when the count is <= 0. */
+static u32 chatbox_entry_matches(u32 index, s32 count, u32 record) {
+    u32 entry = A_byte_8045CCC + (index << 3);
+    u32 buf = record + 0x4C;
+    u32 i = 0;
+
+    do {
+        if (LD8(entry + i) != LD8(buf + i))
+            return 0;
+        i++;
+    } while (--count > 0);
+
+    return 1;
+}
+
+/* chatbox_8042EE8(r0 = entry index, r1 = byte count, r5 = record base) -> r0 */
+Next chatbox_8042EE8(void) {
+    R0 = chatbox_entry_matches(R0, (s32)R1, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_setCutsceneStateByte_8042FF4 ── */
 /* chatbox_setCutsceneStateByte_8042FF4(r4 = chatbox script command pointer, r10 = toolkit):
  * Chatbox script opcode handler. Copies the byte at cmd[3] into the
@@ -3578,6 +3605,26 @@ Next chatbox_setCutsceneStateByte_8042FF4(void) {
 
     R0 = 1;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_8045EDC ── */
+/* Write one 32-bit word into the chatbox's word buffer.
+ * r0 = slot index (scaled by 4), r1 = value to store, r10 = toolkit whose
+ * oToolkit_ChatboxPtr field points at the active chatbox.
+ * The buffer starts at offset 0x4C in the chatbox structure.
+ * The original preserves r5 (push/pop), but callers treat it as an output,
+ * so it is passed in and returned unchanged. */
+static u32 chatbox_store_word(u32 slot, u32 value, u32 toolkit, u32 r5_unchanged) {
+    u32 chatbox = LD32(toolkit + oToolkit_ChatboxPtr);
+
+    ST32(chatbox + 0x4C + (slot << 2), value);
+    return r5_unchanged;
+}
+
+/* chatbox_8045EDC(r0 = slot index, r1 = value, r10 = toolkit) -> r5 (unchanged) */
+Next chatbox_8045EDC(void) {
+    R5 = chatbox_store_word(R0, R1, R10, R5);
     RETURN_TO_CALLER();
 }
 

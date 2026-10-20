@@ -179,6 +179,74 @@ Next sub_80E1332(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── snakearm_initObject ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result call_sprite_load(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result){ R4, R5 };
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_snakearm_initObject;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_snakearm_initObject call_sprite_loadAnimationData_snakearm_initObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_snakearm_initObject){ R2, R4, R5 };
+}
+
+typedef struct { u32 r3; } call_sprite_noShadow_result_snakearm_initObject;
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline call_sprite_noShadow_result_snakearm_initObject call_sprite_noShadow_snakearm_initObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+    return (call_sprite_noShadow_result_snakearm_initObject){ R3 };
+}
+
+typedef struct { u32 r5; } call_battleObject_snakeArmTick_80E1566_result;
+/* register form: generated wrapper: battleObject_snakeArmTick_80E1566 has no typed C interface yet */
+static inline call_battleObject_snakeArmTick_80E1566_result call_battleObject_snakeArmTick_80E1566(u32 r5, u32 r6, u32 r7) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battleObject_snakeArmTick_80E1566);
+    return (call_battleObject_snakeArmTick_80E1566_result){ R5 };
+}
+
+/* Initialise a SnakeArm battle object (runs once when the object spawns):
+ * load its sprite resources, mark the header as sprite-initialised, switch
+ * the object to the generic UPDATE state handler, and run one tick of its
+ * state machine.  Returns the (possibly updated) object pointer. */
+static u32 snakearm_init_object(u32 obj, u32 tickR6, u32 tickR7)
+{
+    /* sprite_load(gfx 0x80, 0xC, 9, obj) fills in the object's sprite and
+     * returns the object pointer (r5) alongside the loaded sprite (r4). */
+    obj = call_sprite_load(0x80, 0xC, 9, obj).r5;
+    obj = call_sprite_loadAnimationData_snakearm_initObject(obj).r5;
+    call_sprite_noShadow_snakearm_initObject(obj);          /* snake arms cast no shadow */
+
+    /* Set the "sprite initialised" bit in the object header flags. */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Hand the object over to the UPDATE state handler. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    /* Run one tick of the snake arm state machine; its r5 result is ours. */
+    return call_battleObject_snakeArmTick_80E1566(obj, tickR6, tickR7).r5;
+}
+
+/* snakearm_initObject(r5 = object, r6/r7 = tick state, r10 = context) -> r5 */
+Next snakearm_initObject(void)
+{
+    R5 = snakearm_init_object(R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_getTargetObjectPos ── */
 /* ai_getTargetObjectPos: read the target object's x/y position bytes through
  * the battle object's AI data block. r5 = battle object -> returns r0 = byte
@@ -1474,6 +1542,139 @@ Next battle_spawnLinkedObj3C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_scriptedEffectTick ── */
+#define oBattleObject_Param1_object_scriptedEffectTick 0x4u
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_object_scriptedEffectTick 0x8u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r3; } call_battle_isBattleOver_result_object_scriptedEffectTick;
+/* register form: generated wrapper: battle_isBattleOver has no typed C interface yet */
+static inline call_battle_isBattleOver_result_object_scriptedEffectTick call_battle_isBattleOver_object_scriptedEffectTick(void) {
+    GUEST_CALL(battle_isBattleOver);
+    return (call_battle_isBattleOver_result_object_scriptedEffectTick){ R0, R1, R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r5, r7; } call_sub_80CE6E6_result;
+/* register form: generated wrapper: sub_80CE6E6 has no typed C interface yet */
+static inline call_sub_80CE6E6_result call_sub_80CE6E6(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_80CE6E6);
+    return (call_sub_80CE6E6_result){ R1, R2, R3, R5, R7 };
+}
+
+/* Per-frame tick for a scripted-effect battle object.
+ *
+ * - If the battle is already over, the object is destroyed immediately.
+ * - On the first tick of its action (CurAction == 0) the action is marked
+ *   started, one byte is consumed from the object's extra-data stream, and
+ *   sub_80CE6E6 spawns the scripted effect from its fields (low 3 bits,
+ *   high nibble, element, param1); the action Timer is then seeded with 8.
+ * - Every tick the Timer counts down; when it expires, Param2 counts the
+ *   remaining repetitions: while any remain, CurAction is cleared so the
+ *   effect runs again, otherwise the object is destroyed. */
+static void scripted_effect_tick(u32 obj) {
+    /* register form: sub_80CE6E6 clobbers r4/r6, but this routine must
+       preserve both - the original push {r4,r6} / pop around its call */
+    u32 saved_r4 = R4; /* register form: save entry r4 across the callee call */
+    u32 saved_r6 = R6; /* register form: save entry r6 across the callee call */
+
+    bool destroyed = false;
+
+    /* battle_isBattleOver reads r10 (battle state): non-zero means over */
+    if (call_battle_isBattleOver_object_scriptedEffectTick().r0 != 0) {
+        destroyed = true;
+    } else {
+        /* First frame of the scripted action: kick off the sub-effect. */
+        if (LD8(obj + oBattleObject_CurAction) == 0) {
+            ST8(obj + oBattleObject_CurAction, 1);
+
+            /* Consume one extra-data byte and split it into fields. */
+            u32 extra = LD32(obj + oBattleObject_ExtraVars);
+            ST32(obj + oBattleObject_ExtraVars, extra + 1);
+            u8 script = LD8(extra);
+            u32 low3  = script & 0x07;  /* lsl #29 / lsr #29 */
+            u32 high4 = script >> 4;    /* lsr #4 */
+
+            u32 element  = LD8(obj + oBattleObject_Element);
+            u32 param1   = LD8(obj + oBattleObject_Param1_object_scriptedEffectTick);
+            u32 disabler = LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+
+            call_sub_80CE6E6(low3, high4, element, 0, param1, obj, disabler);
+            R4 = saved_r4; /* register form: restore r4 (original pop) */
+            R6 = saved_r6; /* register form: restore r6 (original pop) */
+
+            ST16(obj + oBattleObject_Timer, 8);
+        }
+
+        /* Countdown the action timer, then the repetition counter. */
+        s32 timer = (s32)LD16(obj + oBattleObject_Timer) - 1;
+        ST16(obj + oBattleObject_Timer, (u32)timer);
+        if (timer <= 0) {                       /* bgt stays in the loop only while positive */
+            u32 repeats = LD8(obj + oBattleObject_Param2) - 1;
+            ST8(obj + oBattleObject_Param2, repeats);
+            if (repeats != 0)
+                ST8(obj + oBattleObject_CurAction, 0);  /* restart the action */
+            else
+                destroyed = true;                        /* no repetitions left */
+        }
+    }
+
+    if (destroyed)
+        ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_object_scriptedEffectTick,
+             CUR_STATE_DESTROY);
+}
+
+Next object_scriptedEffectTick(void) {
+    scripted_effect_tick(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_dispatchPhaseHandler ── */
+/* object_dispatchPhaseHandler — hand a battle object to the handler for the
+ * phase it is currently in.
+ *
+ * The original reads the object's CurPhase byte, uses it to index the
+ * two-entry handler table at off_80E52A8, and calls the handler found there
+ * with r0 = phase byte and r1 = handler address (mov lr, pc; bx r1). The
+ * handler works on the object pointer in r5 and leaves the dispatcher's
+ * results in r5 and r8-r12; the dispatcher itself only tails into it, so
+ * those registers pass straight through to the dispatcher's caller.
+ */
+
+/* register form: the phase handler has no fixed entry point — its address
+ * comes out of the jump table, so no generated wrapper covers it. The
+ * original enters it with r0 = phase byte and r1 = handler address; the
+ * remaining registers (r5 object, r10 context, and the scratch registers the
+ * dispatcher is allowed to clobber) must reach it exactly as the caller of
+ * the dispatcher left them, so they are not touched here. */
+static void call_phase_handler(u32 phase, u32 handler) {
+    R0 = phase;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Read the object's current phase, look up its handler in the jump table and
+ * run it. Everything the handler leaves in r5/r8-r12 stays in place for the
+ * dispatcher's caller. */
+static void dispatch_phase_handler(u32 object) {
+    u32 phase = LD8(object + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80E52A8 + phase);
+    call_phase_handler(phase, handler);
+}
+
+/* object_dispatchPhaseHandler(r5 = battle object, r10 = context)
+ * -> r5 r8 r9 r10 r11 r12 as left by the phase handler (results the handler
+ * leaves behind, not values this code computes). */
+Next object_dispatchPhaseHandler(void) {
+    dispatch_phase_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_scanPanelRunEnd ── */
 #define oBattleObject_Param1_battle_scanPanelRunEnd 0x4u
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
@@ -2128,6 +2329,143 @@ Next battle_commitPanelMove(void) {
     u32 savedR6 = R6;    /* preserved overall, but clobbered by a callee */
     battle_commitPanelMove_run(R3, R5);
     R6 = savedR6;
+    RETURN_TO_CALLER();
+}
+
+/* ── getSlashBeastWaveAttackLockonTypeMaybe_80EAF26 ── */
+/* If the object's current action is "slash beast wave attack" (0x41), return the
+ * lock-on type from a per-AI-difficulty lookup table; otherwise return 0. */
+static u32 get_lockon_type(u32 objectPtr, u32 aiVarsPtr) {
+    if (LD8(objectPtr + oBattleObject_CurAction) != 0x41)
+        return 0;
+    return LD8(A_byte_80EB028 + LD8(aiVarsPtr + oAIAttackVars_AiDifficultyTier));
+}
+
+/* getSlashBeastWaveAttackLockonTypeMaybe_80EAF26(r5 = battle object, r7 = AI attack vars, lr) -> r0 */
+Next getSlashBeastWaveAttackLockonTypeMaybe_80EAF26(void) {
+    R0 = get_lockon_type(R5, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── spawnBattleIllusion ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getFlip_result;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result call_object_getFlip(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result){ R0 };
+}
+
+typedef struct { u32 r0, r2, r3, r5; } call_spawnIllusionObject_80E33FA_result;
+/* register form: generated wrapper: spawnIllusionObject_80E33FA has no typed C interface yet */
+static inline call_spawnIllusionObject_80E33FA_result call_spawnIllusionObject_80E33FA(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(spawnIllusionObject_80E33FA);
+    return (call_spawnIllusionObject_80E33FA_result){ R0, R2, R3, R5 };
+}
+
+typedef struct { u32 r0; } call_GetBattleNaviStatsByte_result;
+/* register form: generated wrapper: GetBattleNaviStatsByte has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_result call_GetBattleNaviStatsByte(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return (call_GetBattleNaviStatsByte_result){ R0 };
+}
+
+/* register form: generated wrapper: sub_80E341E has no typed C interface yet */
+static inline void call_sub_80E341E(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_80E341E);
+}
+
+/*
+ * Spawn a holographic illusion copy of a battle object, then program its
+ * flicker rate from the owning navi's stats.
+ *
+ * Register dance worth noting in the original: r0-r3 are stashed on the
+ * stack around the object_getFlip call and popped back shifted one slot
+ * (pop {r1-r3}; pop {r0}), so the spawner receives r1=old r0, r2=old r1,
+ * r3=old r2, while the old r3 only offsets the OAM attr1 base. r4, r6 and
+ * r7 are saved on entry and popped back before returning, so they must
+ * reach the caller exactly as they arrived.
+ */
+
+#define ILLUSION_ATTR2       0x83E0u     /* dword_80EB01C: fixed attr2 word */
+#define ILLUSION_ATTR1_BASE  0x1010014u  /* dword_80EB020: attr1 base, minus old r3 */
+#define DEFAULT_PALETTE      0xFu        /* palette slot used by most name IDs */
+#define NAME_ID_FIRST        0xA2        /* special name IDs 0x1A1..0x1AB */
+#define NAME_ID_LAST         0xAC
+#define STATS_INDEX          0x2C        /* navi stats byte queried for flicker */
+#define STAT_MID_LO          0xB         /* fast flicker while stat is 0x0B..0x18 */
+#define STAT_MID_HI          0x18
+#define FLICKER_FAST         1u
+#define FLICKER_SLOW         2u
+
+/* OAM attr2 for the illusion: flip state in the top byte, palette slot 0xFF
+ * in the low byte; the slot nibble is 0xF unless the object's name ID falls
+ * in the special 0x1A1-0x1AB range, where it becomes 0. */
+static u32 illusion_attr2(u32 obj) {
+    u32 flip = call_object_getFlip(obj).r0;
+    u32 palette = DEFAULT_PALETTE;
+
+    s32 name_id = (s32)LD16(obj + oBattleObject_NameID) - 0xFF;
+    if (name_id >= NAME_ID_FIRST && name_id <= NAME_ID_LAST)
+        palette = 0;
+
+    return (((flip << 8) + palette) << 16) + 0xFF;
+}
+
+/* Exit state: r4/r6/r7 restored, r5 as the spawner leaves it. */
+typedef struct { u32 r4, r6, r7; } SpawnBattleIllusionResult;
+
+static SpawnBattleIllusionResult spawn_battle_illusion(u32 a0, u32 a1, u32 a2, u32 a3,
+                                                       u32 obj, u32 r4_in, u32 r6_in,
+                                                       u32 r7_in) {
+    u32 attr2 = illusion_attr2(obj);
+    u32 attr1 = ILLUSION_ATTR1_BASE - a3;
+
+    /* r5 rides through the spawner unchanged and is read again below. */
+    call_spawnIllusionObject_80E33FA_result spawned =
+        call_spawnIllusionObject_80E33FA(a0, a1, a2, attr2, obj,
+                                         ILLUSION_ATTR2, attr1);
+
+    if (spawned.r0 != 0) {
+        /* Pick the flicker rate from the navi stats of the alliance. */
+        u32 illusion = spawned.r0;
+        u32 alliance = LD8(spawned.r5 + oBattleObject_Alliance);
+        s32 stat = (s32)call_GetBattleNaviStatsByte(alliance, STATS_INDEX).r0;
+
+        u32 flicker;
+        if (stat >= STAT_MID_LO && stat <= STAT_MID_HI)
+            flicker = FLICKER_FAST;
+        else
+            flicker = FLICKER_SLOW;
+        call_sub_80E341E(illusion, flicker);
+    }
+
+    SpawnBattleIllusionResult res;
+    res.r4 = r4_in;   /* the original pops these back before returning */
+    res.r6 = r6_in;
+    res.r7 = r7_in;
+    return res;
+}
+
+/* spawnBattleIllusion(r0-r3 = spawn arguments, r5 = battle object) -> r5 r6 */
+Next spawnBattleIllusion(void) {
+    SpawnBattleIllusionResult res =
+        spawn_battle_illusion(R0, R1, R2, R3, R5, R4, R6, R7);
+    R4 = res.r4;
+    R6 = res.r6;
+    R7 = res.r7;
     RETURN_TO_CALLER();
 }
 

@@ -760,6 +760,50 @@ Next sub_813C678(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── navicust_NCP_SlipRunr ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_SetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: SetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_SetCurPETNaviStatsByte_result call_SetCurPETNaviStatsByte(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+    return (call_SetCurPETNaviStatsByte_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* NaviCust program "SlipRunner": turn the program on in the current PET's
+ * stats (SetCurPETNaviStatsByte(0, 0x35, 1)). r10 is untouched and flows
+ * through to SetCurPETNaviStatsByte, which reads it as its hidden argument. */
+static void ncp_slip_runr_apply(void) {
+    call_SetCurPETNaviStatsByte(0, 0x35, 1);
+}
+
+/* inputs: r10 lr; outputs: -; clobbers: nz c v r0 r1 r2 r3 lr */
+Next navicust_NCP_SlipRunr(void) {
+    ncp_slip_runr_apply();
+    RETURN_TO_CALLER();
+}
+
+/* ── navicust_NCP_HPPlus400 ── */
+/* Navicust program "HP+400": add 400 to the current max-HP bonus.
+ * r10 holds the toolkit pointer; the bonus lives in the halfword pointed to
+ * by toolkit->Unk2004334 (field offset 0). */
+static void ncp_add_hp_plus_400(u32 toolkit)
+{
+    u32 bonusPtr = LD32(toolkit + oToolkit_Unk2004334_Ptr);
+    u16 hpBonus  = LD16(bonusPtr);
+
+    hpBonus += 0x190;               /* +400 HP */
+    ST16(bonusPtr, hpBonus);
+}
+
+/* navicust_NCP_HPPlus400(r10 = toolkit) -> nothing */
+Next navicust_NCP_HPPlus400(void) {
+    ncp_add_hp_plus_400(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_813CBCC ── */
 /* sub_813CBCC: Process PETNavi stat slots 1..0xF by dispatching each slot's
  * registered handler from a computed function-pointer table.

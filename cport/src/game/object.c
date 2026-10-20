@@ -2236,6 +2236,85 @@ Next playerObjectMovingToPanelValidityRelated_800E618(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_checkEnemyOrAllyPanel_800E680 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n, c, v; } call_object_isValidPanel_result;
+/* register form: generated wrapper: object_isValidPanel has no typed C interface yet */
+static inline call_object_isValidPanel_result call_object_isValidPanel(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_isValidPanel);
+    return (call_object_isValidPanel_result){ ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+typedef struct { bool z, n; } call_object_isPanelSolid_result;
+/* register form: generated wrapper: object_isPanelSolid has no typed C interface yet */
+static inline call_object_isPanelSolid_result call_object_isPanelSolid(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_isPanelSolid);
+    return (call_object_isPanelSolid_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5; } call_object_checkPanelParameters_result;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result call_object_checkPanelParameters(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result){ R0, R2, R3, R4, R5 };
+}
+
+/* object_checkEnemyOrAllyPanel_800E680
+ *
+ * Decides which panel-parameter pair applies to an object and hands it, along
+ * with the position the caller supplied, to object_checkPanelParameters.
+ * If the position is not a valid panel, returns 0 right away.
+ *
+ * The parameter pair comes from a table indexed by base + alliance * 8, where
+ * base is 0x10 for objects carrying flag 0x10 or whose own panel reads as
+ * non-solid, and 0 otherwise:
+ *   base 0x00: {0x10, 0x07800000}, {0x10, 0x0B800000}   (alliance 0 / 1)
+ *   base 0x10: {0x00, 0x07800000}, {0x00, 0x0B800000}   (alliance 0 / 1) */
+static u32 check_enemy_or_ally_panel(u32 x, u32 y, u32 obj) {
+    /* object_isValidPanel sets Z when the position is not a valid panel. */
+    if (call_object_isValidPanel(x, y).z)
+        return 0;
+
+    u32 base;
+    if ((call_object_getFlag(obj) & 0x10) != 0) {
+        base = 0x10;
+    } else if (call_object_isPanelSolid(LD8(obj + oBattleObject_PanelX),
+                                        LD8(obj + oBattleObject_PanelY)).z) {
+        /* isPanelSolid returned zero -> use the 0x10 base as well. */
+        base = 0x10;
+    } else {
+        base = 0;
+    }
+
+    u32 entry = A_byte_800E6C8 + base + (LD8(obj + oBattleObject_Alliance) << 3);
+    u32 kind = LD32(entry);
+    u32 attrs = LD32(entry + 4);
+
+    return call_object_checkPanelParameters(x, y, kind, attrs).r0;
+}
+
+/* inputs: r0 r1 r5 lr; outputs: r0 (r2/r3/r4 are the callee's leftovers,
+ * r5-r7 pass through untouched; flags are clobbered, not returned). */
+Next object_checkEnemyOrAllyPanel_800E680(void) {
+    R0 = check_enemy_or_ally_panel(R0, R1, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── IsR2BetweenR0AndR1 ── */
 /* IsR2BetweenR0AndR1: 0800E6E8 THUMB
  * Returns whether r2 lies in (min(r0,r1), max(r0,r1)] — note the lower
