@@ -1947,7 +1947,7 @@ def repair(D):
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
-             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('split', try_split), ('kill', try_kill), ('skipahead', try_skipahead), ('die', lambda D: try_kill(D, 0)),
+             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('split', try_split), ('skipahead', try_skipahead), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
