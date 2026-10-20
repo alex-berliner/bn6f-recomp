@@ -1589,7 +1589,7 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         if wD is None: return None
         log(f'  {who} through black: deleting at {Wd}, our black at {black} (the video\'s {gB})')
         if black is None: return None
-        if abs(black - gB) <= 1: break
+        if abs(black - gB) <= 3: break         # (the black starts on some frames only: run10l 1278355/1278367 for 1278365)
         Wd += gB - black
         if Wd < D: return None
     else:
@@ -1600,7 +1600,9 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         w3 = (J, slot, h, vD + int(round((J - D) * bm.RATE)) - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), node)
         r = evaluate([(ck_file(w3), [], J + 300, 'KB')] * 2)['KB']
         log(f'  {who} through black: deleting at {Wd}, the sync from {J} reaches {r[0]} (mean cost {r[1]:.3f})')
-        if r[0] >= J + 300 and r[1] < kill_cost():
+        # (a loss asked for: the black lined up is the battle's end, and what differs on the map after it is the next
+        # handlers' (run10l 1278083: our black on the video's frame, the map then off at J + 45))
+        if (r[0] >= J + 300 and r[1] < kill_cost()) or (FORCED_NOW[0] and abs(black - gB) <= 3 and r[0] >= J + 40):
             FREE.append((D, J))
             return w3, ([hold] if hold else []) + [[Wd, kill]]
     return None
