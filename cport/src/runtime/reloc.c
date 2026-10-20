@@ -16,8 +16,8 @@ typedef struct {
 } Relocatable;
 
 static const Relocatable kRelocatable[] = {
-    { 0x0814D8CCu, 0x24, sub_814D8CC },   /* ReadSram core   (copied by sub_814D8F0) */
-    { 0x0814D994u, 0x30, sub_814D994 },   /* VerifySram core (copied by sub_814D9C4) */
+    { 0x0814D8CCu, 0x24, copyBytes },   /* ReadSram core   (copied by sub_814D8F0) */
+    { 0x0814D994u, 0x30, copy_compareToFirstMismatch },   /* VerifySram core (copied by sub_814D9C4) */
 };
 
 GuestFn reloc_lookup(u32 addr) {
