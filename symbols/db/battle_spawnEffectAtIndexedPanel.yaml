@@ -1,0 +1,64 @@
+name: battle_spawnEffectAtIndexedPanel
+address: '0x08105254'
+kind: function
+status: probable
+summary: Spawns a type-0 effect battle object at one of two (column,row) panel positions selected by an
+  index and the spawner object's alliance side, with mirrored panel assignments between ally/enemy, and
+  the r4 computation (flip*256+0x4C+index*512) appears to be unused/dead code.
+interface: (r0 = entry index, r5 = battle object whose Alliance field is read) -> r0 = spawned effect
+  object pointer; r4 clobbered
+details: 'The input in r0 is a small index (0-3), not a pointer: it is doubled and offset by Alliance*4
+  to select one of eight byte pairs in byte_810528C, interpreted as (column,row) panel coordinates — the
+  pairs are (2,2),(3,2),(3,2),(2,2), identical for both alliance groups. These are converted to 16.16
+  fixed-point screen pixels by object_getCoordinatesForPanels, then spawn_t1_0x0_EffectObject is called
+  with x, y and r3 = 0x100000 (16.0 fixed-point, likely a height or size parameter). object_getFlip is
+  called on the same object and its result is folded into r4 = flip*0x100 + 0x4C + index*0x200, but r4
+  is never used afterwards — this looks like dead or leftover code, perhaps an animation/resource id that
+  was meant to parameterize the effect. The mirror-side behavior comes purely from the alliance-indexed
+  table, not from the flip value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0/[r1]/ldrb r1,[r1,#1] off byte_810528C + index*2 + Alliance*4: table of (col,row) panel
+    pairs per side; bl object_getCoordinatesForPanels immediately after loading the pair converts panel
+    col/row to pixel coords; bl spawn_t1_0x0_EffectObject with r3 = 0x10<<16 spawns the type-0 effect
+    at the computed position; r4 = flip*0x100 + 0x4C + index*0x200 is computed (uses object_getFlip result)
+    but never read — dead code quirk; caller sub_810486A at 0x0810486A supplies r5 (object) and the index
+    in r0'
+  refs:
+  - bn6f/asm/asm31.s:165539
+  - 0x0810486A sub_810486A
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08105254
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s table reading is wrong: pairs are (2,2),(3,2),(3,2),(2,2) but for alliance 1 they
+    become index 0→(3,2) and index 1→(2,2), so they are NOT identical across alliances — the mirror comes
+    from this offset math. Also `lsl r0, r6, #9` means index is shifted by 9, not doubled. Otherwise the
+    flow (object_getFlip → coordinate lookup → spawn_t1_0x0_EffectObject) matches.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What effect type 0 renders (dust, flash, telegraph) — needs the effect object's handler or a known caller
+  summary for sub_810486A
+- Why r4 (flip*0x100 + 0x4C + index*0x200) is computed but unused — possibly an animation id meant for
+  the effect spawn
+- Meaning of the r3 = 0x100000 argument to the spawn wrapper
+- 'The proposal''s table reading is wrong: pairs are (2,2),(3,2),(3,2),(2,2) but for alliance 1 they become
+  index 0→(3,2) and index 1→(2,2), so they are NOT identical across alliances — the mirror comes from
+  this offset math. Also `lsl r0, r6, #9` means index is shifted by 9, not doubled. Otherwise the flow
+  (object_getFlip → coordinate lookup → spawn_t1_0x0_EffectObject) matches.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8105254 -> battle_spawnEffectAtIndexedPanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105254

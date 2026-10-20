@@ -1,0 +1,50 @@
+name: clearVramAndTilemap
+address: '0x0803CD58'
+kind: function
+status: probable
+summary: Clears VRAM and zeroes the BG tile ID block buffer as part of a graphics reset.
+interface: () -> (); no return value
+details: 'A parameterless helper that wipes the display memory: it calls zeroFillVRAM to clear VRAM 0x6000000-0x600DFFF,
+  then ZeroFillGFX30025c0 to zero the 0x2000-byte BG tile ID block buffer used by the background layer.
+  It takes no arguments and returns nothing, only preserving r4-r7 across the two calls. This pairs naturally
+  with video reset/startup sequences where both the hardware VRAM and the toolkit''s tilemap tile data
+  must start blank.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: body is only ''bl zeroFillVRAM'' then ''bl ZeroFillGFX30025c0'' followed by pop, no args
+    or return; callee zeroFillVRAM summary: clears all VRAM 0x6000000-0x600DFFF during video reset/startup;
+    callee ZeroFillGFX30025c0 summary: zero-fills the 0x2000-byte BG tile ID block buffer of the toolkit'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8441
+  - 0x0803CCFC sub_803CCFC
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x080017AA zeroFillVRAM
+  reproduce: python3 tools/asmcat.py 0x0803CD58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callees are correctly identified (zeroFillVRAM at 0x080017AA and ZeroFillGFX30025c0 at 0x0800183C),
+    and the function does indeed clear VRAM and zero the BG tile ID buffer. However, the proposed name
+    ''clear_vramAndGfxBuffer'' mixes two operations into one name, and the ''GFX30025c0'' portion looks
+    like it carries a placeholder/digit run from the buffer address, violating naming rules.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Purpose of sole caller sub_803CCFC unknown; seeing its context would confirm whether this is part of
+  scene load or video reinit
+- The callees are correctly identified (zeroFillVRAM at 0x080017AA and ZeroFillGFX30025c0 at 0x0800183C),
+  and the function does indeed clear VRAM and zero the BG tile ID buffer. However, the proposed name 'clear_vramAndGfxBuffer'
+  mixes two operations into one name, and the 'GFX30025c0' portion looks like it carries a placeholder/digit
+  run from the buffer address, violating naming rules.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803CD58 -> clearVramAndTilemap
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CD58

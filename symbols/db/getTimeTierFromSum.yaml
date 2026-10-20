@@ -1,0 +1,52 @@
+name: getTimeTierFromSum
+address: '0x0800B734'
+kind: function
+status: probable
+summary: 'Sums 12 halfwords from word_2000FA0 and returns a tier: 0 if sum > 10800, 1 if sum > 7200, else
+  2.'
+interface: () -> r0 = 0 if sum > 10800, 1 if sum > 7200, else 2; flags clobbered
+details: Loads word_2000FA0 and adds its 12 halfword entries (ldrh loop, r1 counting 1..12) into r3, then
+  compares the sum against 0x2A30 (10800) and 0x1C20 (7200) seconds — i.e. 3 and 2 hours — returning 0,
+  1, or 2 for the bracket the sum falls into. The two callers are MapScriptCmd handlers, so the return
+  value is presumably stored into a script variable used as a branch condition. The 12-entry halfword
+  array and the exact hour thresholds strongly suggest accumulated play time (possibly split across 12
+  segments), with tier 0 meaning the most time played.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh loop at loc_800B73A sums 12 halfwords from word_2000FA0 (r1 counts 1..0xC); cmp r3, #0x2A30
+    / bgt returns 0; cmp r3, #0x1C20 / bgt returns 1; else 2 — exact 3h/2h second counts; both callers
+    are MapScriptCmd_cmd_8035cd6/cmd_8035cf8 script-command handlers using r0 as the command result'
+  refs:
+  - bn6f/asm/asm00_1.s:19454
+  - 0x08035CD6 MapScriptCmd_cmd_8035cd6
+  - 0x08035CF8 MapScriptCmd_cmd_8035cf8
+  reproduce: python3 tools/asmcat.py 0x0800B734
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: the loop sums 12 halfwords from word_2000FA0 (r1: 1..12, cmp #0xd), then branches
+    on 0x2A30/0x1C20 returning 0/1/2, matching the proposal''s logic and thresholds exactly. However,
+    ''mapScript'' is not an allowed prefix; ''get'' fits since the function retrieves/computes a tier
+    from time data. The name ''mapScript_checkTimeSumTier'' should be renamed to follow conventions.;
+    run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What the 12 halfwords at word_2000FA0 individually record (per-chapter/per-month play time vs something
+  else)
+- Which script variable the callers store the returned tier into, to confirm it gates an in-game event
+- 'The code matches: the loop sums 12 halfwords from word_2000FA0 (r1: 1..12, cmp #0xd), then branches
+  on 0x2A30/0x1C20 returning 0/1/2, matching the proposal''s logic and thresholds exactly. However, ''mapScript''
+  is not an allowed prefix; ''get'' fits since the function retrieves/computes a tier from time data.
+  The name ''mapScript_checkTimeSumTier'' should be renamed to follow conventions.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800B734 -> getTimeTierFromSum
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B734

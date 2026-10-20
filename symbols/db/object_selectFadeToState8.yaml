@@ -1,0 +1,60 @@
+name: object_selectFadeToState8
+address: '0x08039888'
+kind: function
+status: probable
+summary: Object state step that, when Select is pressed or sub_80398DC reports ready, calls SetScreenFade(4,0xFF),
+  plays SE 0xD7, and writes 8 to the object's state byte at r5+2.
+interface: (r10 = toolkit, r4/r5 = object struct) -> void; exits with flags from sub_80398DC's return
+  (or the key test), and writes state byte [r5+2] = 8 on transition
+details: Reads oToolkit_JoypadPtr from r10 and tests bit 0x04 (Select) of oJoypad_Pressed. If Select is
+  pressed, or if sub_80398DC returns 0 (fall-through after bne locret), it calls SetScreenFade(4, 0xff),
+  plays sound effect 0xD7 via PlaySoundEffect, and stores 8 into the byte at r5+2, likely a state/phase
+  field of a menu or screen object. If sub_80398DC returns nonzero it just returns, so sub_80398DC acts
+  as a readiness/animation check that delays the transition. The Z-flag on exit leaks from the tst or
+  the callee's return value. No return value is otherwise produced.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r0,#oJoypad_Pressed]; mov r1,#4; tst r0,r1 — Select-key test gating the transition;
+    bl SetScreenFade with r0=4, r1=0xff followed by PlaySoundEffect(0xD7) — screen fade + jingle on entry;
+    strb r0,[r5,#2] with r0=8 — writes a new state value into the object struct; bl sub_80398DC; bne locret
+    — fall-through means callee returning 0 also triggers the transition, i.e. it is a wait/poll check;
+    mov r0,r10; ldr r0,[r0,#oToolkit_JoypadPtr] — uses the global toolkit, consistent with a per-frame
+    menu handler
+  refs:
+  - bn6f/asm/asm03_1_1.s:1690
+  - 0x080005CC PlaySoundEffect
+  - 0x08006270 SetScreenFade
+  - 0x080398DC sub_80398DC
+  reproduce: python3 tools/asmcat.py 0x08039888
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it tests Select (bit 2 = 0x04) on oJoypad_Pressed, calls sub_80398DC, and on either
+    Select pressed or sub_80398DC returning 0 it calls SetScreenFade(4,0xff), PlaySoundEffect(0xD7), and
+    writes 8 at r5+2. However, the prefix ''submenu_'' is unjustified: nothing in sub_8039888 or its callees
+    identifies a submenu, and no callers are known. A more neutral prefix like ''object_'' (generic object
+    state step) fits better.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What screen/menu object owns this handler — no known callers and r5's struct layout is unidentified
+- What sub_80398DC checks (animation timer? cursor state?) — its body would pin down when the transition
+  fires
+- Meaning of fade mode 4/0xff argument and of sound 0xD7 in the BN6 sound table
+- Whether bit 0x04 is Select in this game's key mapping vs. a custom remap
+- 'The code matches: it tests Select (bit 2 = 0x04) on oJoypad_Pressed, calls sub_80398DC, and on either
+  Select pressed or sub_80398DC returning 0 it calls SetScreenFade(4,0xff), PlaySoundEffect(0xD7), and
+  writes 8 at r5+2. However, the prefix ''submenu_'' is unjustified: nothing in sub_8039888 or its callees
+  identifies a submenu, and no callers are known. A more neutral prefix like ''object_'' (generic object
+  state step) fits better.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8039888 -> object_selectFadeToState8
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039888

@@ -1,0 +1,58 @@
+name: battle_applyFormColorCyclingShader
+address: '0x08016A38'
+kind: function
+status: probable
+summary: For the current battle object's navi sprite, picks a halfword from a 26-entry RGB555 color ramp
+  (alternate ramp when form id == 0x18) indexed by (battleState_Unk_40 mod 26), and stores it via sprite_setColorShader
+  to produce a cycling shader effect.
+interface: (r0 = form/variant id; 0x18 selects the alternate shader table) -> r0 = chosen shader id given
+  to sprite_setColorShader; no meaningful flags
+details: Reads the battle state counter via battle_getStateUnk40_800A704, divides it by 0x1A with SVC
+  Div, and uses remainder*2 as a halfword offset into a 26-entry color table (byte_8016A68, or byte_8016A9C
+  when r0 == 0x18). Both tables are RGB555 color ramps — the first rises 0x0041→0x2204 then falls symmetrically,
+  the second begins with four black entries like a fade-in. The selected halfword is stored as the sprite's
+  color shader via sprite_setColorShader. The modulus of 26 makes the shader cycle/pulse through the ramp
+  as the counter advances.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r1, #0x1a; svc 6; lsl r1, r1, #1; ldrh r0, [r4,r1] — counter mod 26 indexes a halfword
+    table; byte_8016A9C - byte_8016A68 = 0x34 = 26 halfwords, confirming two 26-entry ramps; table values
+    0x0461/0x0881/0x0CC2... are RGB555 gradients, not pointers or flags; ldr r4 = byte_8016A68 or byte_8016A9C
+    when cmp r0, #0x18 — form id picks the ramp; caller battle_refreshNaviPaletteFromForm + tail bl sprite_setColorShader
+    — shader applied to navi sprite'
+  refs:
+  - bn6f/asm/asm00_2.s:17842
+  - 0x080100EC battle_refreshNaviSpritePaletteFromForm_80100EC
+  - 0x0800A704 battle_getStateUnk40_800A704
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x08016A38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: r0 selects the table (byte_8016A68 vs byte_8016A9C),
+    battle_getStateUnk40_800A704 supplies the counter, SVC div by 0x1A yields remainder, lsl#1 indexes
+    the halfword ramp, and sprite_setColorShader stores it. However, the caller is battle_refreshNaviSpritePaletteFromForm_80100EC
+    which deals with the *palette* (not ''navi sprite color shader''), and r0/r1 aren''t formally named—it''s
+    an internal helper rather than a navi-specific API.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of r0 (form id vs transform variant) — 0x18's identity in the caller's form table
+- what oBattleState_Unk_40 counts (frames vs animation step) driving the 26-step cycle
+- 'The code matches the proposal''s mechanics: r0 selects the table (byte_8016A68 vs byte_8016A9C), battle_getStateUnk40_800A704
+  supplies the counter, SVC div by 0x1A yields remainder, lsl#1 indexes the halfword ramp, and sprite_setColorShader
+  stores it. However, the caller is battle_refreshNaviSpritePaletteFromForm_80100EC which deals with the
+  *palette* (not ''navi sprite color shader''), and r0/r1 aren''t formally named—it''s an internal helper
+  rather than a navi-specific API.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8016A38 -> battle_applyFormColorCyclingShader
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016A38

@@ -85,10 +85,10 @@ static void copy_palette_data(u32 src, u32 dest, u32 size) {
     GUEST_CALL(CopyWords);
 }
 
-/* register form: calls sub_8010CE0 outside this file, which has no typed C interface yet */
+/* register form: calls getChipField1AOrTableLookup outside this file, which has no typed C interface yet */
 static u32 get_chip_filler_high_power(u16 chip_id) {
     R0 = chip_id;
-    GUEST_CALL(sub_8010CE0);
+    GUEST_CALL(getChipField1AOrTableLookup);
     return R0;
 }
 

@@ -1,0 +1,63 @@
+name: pet_applyNaviStatUpdates
+address: '0x08123208'
+kind: function
+status: probable
+summary: 'Commits the accumulated updates from the scratch struct at word_200DCF0 into the NaviStats record
+  of the currently selected PET navi: adds halfword/byte deltas to stats 0x42/1/2/3/0xB/0xA (clamped to
+  0xFFFF/4/4/4/10/8) and, when nonzero, one-shots flag halfwords +0x0C/+0x0E/+0x10/+0x12/+0x14 into stat
+  bytes 7/0x1C/0x1B/0x23/7.'
+interface: (void) -> void; reads scratch struct at word_200DCF0, writes via SetCurPETNaviStats* on the
+  current navi
+details: 'Gets the current PET navi, then adds each halfword of the scratch struct at word_200DCF0 into
+  a NaviStats field: +0x00 into u16 stat 0x42 unclamped, +0x02/+0x08/+0x0A into byte stats 1/2/3 clamped
+  to 4, +0x04 into byte stat 0xB clamped to 10, +0x06 into byte stat 0xA clamped to 8. It then treats
+  halfwords at +0x0C, +0x0E, +0x10, +0x12, +0x14 as flags: when nonzero it sets byte stat 7 to 0x30, stat
+  0x1C to 1, stat 0x1B to 1, stat 0x23 to 1, and stat 7 to 0x34 respectively. The pattern of read-modify-write
+  with per-field clamps and one-shot flag writes looks like committing accumulated upgrades/bonuses into
+  the persistent navi record; the scratch struct''s producer is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetCurPETNavi then repeated Get/SetCurPETNaviStats* pairs operate on the current navi''s
+    NaviStats; ldrh r2,[r4]; add r2,r2,r0; SetCurPETNaviStatsHword(navi,0x42) adds scratch +0 into u16
+    stat 0x42 without clamping; cmp r2,#4 / ble / mov r2,#4 around byte stats 1,2,3 and cmp #10 / #8 for
+    stats 0xB / 0xA show per-field clamping; tst r2,r2 / beq guards on word_200DCF0+0xC..+0x14 gate constant
+    writes (stat 7 = 0x30/0x34, stats 0x1C/0x1B/0x23 = 1); sole caller sub_8121154 at 0x08121154 runs
+    this in PET/menu context (scratch buffer at word_200DCF0)'
+  refs:
+  - bn6f/asm/asm33.s:109
+  - 0x08121154 sub_8121154
+  - 0x080010B6 GetCurPETNavi
+  - 0x080137B6 GetCurPETNaviStatsByte
+  - 0x080137FE GetCurPETNaviStatsHword
+  reproduce: python3 tools/asmcat.py 0x08123208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately describes the code: each field of the scratch struct at word_200DCF0 is read
+    and either added (with clamps at 4, 10, 8) into the corresponding NaviStats field, or used as a flag
+    to set one-shot byte values. Names like pet_applyNaviStatBonuses are reasonable, but ''Bonuses'' implies
+    they are bonuses specifically; since the pattern with clamps and flag-style writes is generic, ''applyNaviStatUpdates''
+    is more neutral and accurate.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which code fills word_200DCF0..word_200DD04 (the pending bonuses) — needed to tell if this is the Navi
+  Customizer apply, a shop purchase, or a scenario reward
+- Exact meaning of NaviStats fields 0x42, 1-3, 0xA, 0xB, 7, 0x1B, 0x1C, 0x23 (values 0x30/0x34 for field
+  7 are unexplained)
+- 'The summary accurately describes the code: each field of the scratch struct at word_200DCF0 is read
+  and either added (with clamps at 4, 10, 8) into the corresponding NaviStats field, or used as a flag
+  to set one-shot byte values. Names like pet_applyNaviStatBonuses are reasonable, but ''Bonuses'' implies
+  they are bonuses specifically; since the pattern with clamps and flag-style writes is generic, ''applyNaviStatUpdates''
+  is more neutral and accurate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8123208 -> pet_applyNaviStatUpdates
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8123208

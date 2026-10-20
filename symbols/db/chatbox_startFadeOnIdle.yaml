@@ -1,0 +1,61 @@
+name: chatbox_startFadeOnIdle
+address: '0x0804A4D4'
+kind: function
+status: probable
+summary: If chatbox/cutscene flags 0x80 and 0x20 are both set, then either advance sub_804AF20 with [r5+0x1e]
+  while the chatbox is still busy, or set mode 0x10 and call SetScreenFade(0xC, 0x10) when the chatbox
+  is idle, before tail-calling sub_804AA58.
+interface: () -> r0 = 0 always; reads/writes state struct at r5, may start a screen fade via SetScreenFade
+details: 'Each call first requires both bit 0x80 and bit 0x20 of the chatbox/cutscene flag word eFlags2009F38
+  to be set, otherwise it skips straight to the tail call sub_804AA58 and returns 0. It then reads the
+  chatbox state via chatbox_GetState_8045F4C: if the state is nonzero it stores 4 into byte [r5], clears
+  byte [r5+3], and calls sub_804AF20 with the halfword at [r5+0x1e] (likely closing/advancing something
+  keyed by that value). If the state is zero, it stores 0x10 into byte [r5] (a new mode) and calls SetScreenFade(0xC,
+  0x10), i.e. starts a fade (mode 12, speed/steps 16). r5 is some global per-scene state struct (fields
+  +0, +3, +0x1e) whose identity is unknown. Returns 0 unconditionally; no callers are known, so its role
+  in the frame/update loop is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'twice bl chatbox_mask_eFlags2009F38 with 0x80 then 0x20, both beq to exit — event only proceeds
+    when both flag bits are set; bl chatbox_GetState_8045F4C; tst/beq splits an ''still active'' vs ''finished''
+    path; finished path: mov r0,#0x10; strb [r5]; mov r0,#0xC; mov r1,#0x10; bl SetScreenFade — starts
+    a fade-out; active path: strb #4 [r5], strb #0 [r5,#3], ldrh [r5,#0x1e] into bl sub_804AF20 — acts
+    on a struct keyed by a halfword id; always ends bl sub_804AA58; mov r0,#0 — fixed per-frame tail and
+    constant 0 return, typical of a polled handler'
+  refs:
+  - bn6f/asm/asm03_2.s:7531
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0804A4D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed summary and name are reasonable but not quite right. The function checks bits 0x80
+    and 0x20 of eFlags2009F38, reads the chatbox state, and branches: if chatbox is busy it stores mode
+    4 and calls sub_804AF20; if chatbox is idle it stores mode 0x10 and calls SetScreenFade(0xC, 0x10)
+    — i.e. starts a fade, not fades out after close. So the name should reflect it starts a fade, not
+    that it waits for close.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the owning subsystem (cutscene? overworld event? menu?) and when this handler runs
+  are unknown
+- What struct r5 points to is unknown (fields +0, +3, +0x1e); its other writers would disambiguate
+- sub_804AF20, sub_804AA58 and the meaning of SetScreenFade(0xC, 0x10) arguments are undocumented
+- 'The proposed summary and name are reasonable but not quite right. The function checks bits 0x80 and
+  0x20 of eFlags2009F38, reads the chatbox state, and branches: if chatbox is busy it stores mode 4 and
+  calls sub_804AF20; if chatbox is idle it stores mode 0x10 and calls SetScreenFade(0xC, 0x10) — i.e.
+  starts a fade, not fades out after close. So the name should reflect it starts a fade, not that it waits
+  for close.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A4D4 -> chatbox_startFadeOnIdle
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A4D4

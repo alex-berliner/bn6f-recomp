@@ -1,0 +1,59 @@
+name: battle_updateFrame
+address: '0x08130904'
+kind: function
+status: probable
+summary: 'Per-frame battle tick: dispatches a sub-state handler from a 13-entry table, then runs entity
+  update handlers and the eStruct sprite pipeline unless bit 0x8 of [r5,#0x1b] is set, and refreshes the
+  custom-screen chip cursor OAM/tile upload when the 0x200BC30 jump offset is nonzero.'
+interface: (r5 = scene/state context struct, preserved) -> r0 = result of dispatched handler or OAM-call
+  result; no meaningful return
+details: Indexes a 13-entry dispatch table (off_8130938) with the byte at [r5,#2] and long-calls the selected
+  handler via mov lr,pc / bx. After it returns, tests bit 0x8 of [r5,#0x1b]; if clear it runs the per-frame
+  entity update walk (entity_runAllUpdateHandlers) and the eStruct sprite pipeline (battle_updateEStructSprites),
+  so that bit acts as a freeze/hide-entities gate. It then reads eStruct200BC30_getJumpOffset00 and, when
+  nonzero, calls battleObject_setupCustomChipCursorState with (0,0) each frame so the chip-cursor OAM
+  entry and cursor tile upload keep refreshing during battle. r5 is the caller's context and is never
+  written, so the frame state lives in the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#2]; ldr r0,[r0,r1]; bx r0 with table off_8130938 = 13 handler pointers; tst of
+    [r5,#0x1b] with #8 gates bl entity_runAllUpdateHandlers_80465BC and bl battle_updateEStructSprites_80465F8;
+    cmp r0,#0 after eStruct200BC30_getJumpOffset00 gates bl battleObject_setupCustomChipCursorState_803C59C
+    with r0=r1=0; callee summaries: entity walk over 15 0x58-byte records and per-frame eStruct sprite
+    pipeline match a battle frame update; chip-cursor callee ''appends OAM entry and uploads cursor tile
+    each frame'' confirms per-frame custom-screen upkeep'
+  refs:
+  - bn6f/asm/asm36.s:1151
+  - 0x0803C59C battleObject_setupCustomChipCursorState_803C59C
+  - 0x080465F8 battle_updateEStructSprites_80465F8
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  reproduce: python3 tools/asmcat.py 0x08130904
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s description of the dispatch and post-dispatch logic matches the asm (ldrb r1,[r5,#2];
+    ldr r0,[r0,r1]; mov lr,pc; bx r0; then tst 0x8 with entity/sprite calls, then jump-offset check calling
+    the chip-cursor helper with (0,0)). The only issue is the proposed name ''battle_sceneFrameUpdate''
+    mixes a generic ''scene'' prefix; per the naming rules a better fit is ''battle_updateFrame''.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which scene/game mode owns r5 and what the 13 state handlers (sub_813096C..sub_8131150) each do
+- Meaning of the state byte at r5+2 and of bit 0x8 at r5+0x1b (freeze vs. hide)
+- No caller known, so when in the battle flow this runs is inferred only from callees
+- The proposal's description of the dispatch and post-dispatch logic matches the asm (ldrb r1,[r5,#2];
+  ldr r0,[r0,r1]; mov lr,pc; bx r0; then tst 0x8 with entity/sprite calls, then jump-offset check calling
+  the chip-cursor helper with (0,0)). The only issue is the proposed name 'battle_sceneFrameUpdate' mixes
+  a generic 'scene' prefix; per the naming rules a better fit is 'battle_updateFrame'.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8130904 -> battle_updateFrame
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130904

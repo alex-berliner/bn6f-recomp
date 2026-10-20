@@ -1,0 +1,58 @@
+name: object_syncSpriteFlip
+address: '0x080BFF56'
+kind: function
+status: probable
+summary: If the given battle object pointer is non-null, fetch its effective horizontal facing via object_getFlip
+  and apply it to the object's sprite via sprite_setFlip.
+interface: (r0 = battle object pointer) -> r0 = undefined; calls object_getFlip then sprite_setFlip with
+  the resulting flip value
+details: The function returns immediately when r0 is null (tst r0,r0 / beq), so r0 is an object pointer,
+  not just a flag. Otherwise it saves the pointer, calls object_getFlip to get the object's effective
+  horizontal facing (alliance XOR DirectionFlip override), and passes that value to sprite_setFlip, which
+  stores the flip into mask 0x30 bits of sprite bytes 0x13 and 0x16. This keeps an object's rendered sprite
+  mirrored in step with its battle facing. It is a tiny wrapper likely called whenever an object's direction
+  changes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq locret: null-object early exit, so r0 is a pointer; bl object_getFlip: reads
+    the object''s effective facing; bl sprite_setFlip with its result: writes flip mask 0x30 bits into
+    sprite bytes 0x13/0x16; callee summaries: object_getFlip returns alliance XOR DirectionFlip; sprite_setFlip
+    mirrors NPCs when passed 1'
+  refs:
+  - bn6f/asm/asm31.s:17253
+  - 0x080E8FC8 sub_80E8FC8
+  - 0x0800E456 object_getFlip
+  - 0x08002F5C sprite_setFlip
+  reproduce: python3 tools/asmcat.py 0x080BFF56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code agrees with the proposal: tst/beq null-check, saves r0 in r5, calls object_getFlip then
+    sprite_setFlip, matching object_getFlip returning the effective facing and sprite_setFlip writing
+    0x30 mask bits. The prefix should be ''object'' per naming rules, and ''syncSpriteFlip'' is fine,
+    but the proposed name ''object_syncSpriteFlip'' is reasonable; minor wording nit: r5 is saved but
+    never used after the two calls (sprite_setFlip takes the object implicitly), so it''s just callee-preserved
+    bookkeeping. Name and summary are otherwise accurate.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- How the sprite pointer reaches sprite_setFlip (global current-sprite pointer vs. a second argument)
+  — the caller sub_80E8FC8 is itself unnamed, so its call context is unknown
+- 'The code agrees with the proposal: tst/beq null-check, saves r0 in r5, calls object_getFlip then sprite_setFlip,
+  matching object_getFlip returning the effective facing and sprite_setFlip writing 0x30 mask bits. The
+  prefix should be ''object'' per naming rules, and ''syncSpriteFlip'' is fine, but the proposed name
+  ''object_syncSpriteFlip'' is reasonable; minor wording nit: r5 is saved but never used after the two
+  calls (sprite_setFlip takes the object implicitly), so it''s just callee-preserved bookkeeping. Name
+  and summary are otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BFF56 -> object_syncSpriteFlip
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFF56

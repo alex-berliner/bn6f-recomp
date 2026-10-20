@@ -1,0 +1,56 @@
+name: ai_stepWoodAttackAnim
+address: '0x080EE860'
+kind: function
+status: probable
+summary: 'AI attack step for an enemy: plays the windup animation with wood element set, then on the frame
+  flagged 0x80 switches to the strike animation and sets the hit element.'
+interface: (r0 unused; r7 = working object base, oAIAttackVars fields) -> void; flags clobbered by calls
+details: Uses the caller's r7 as the battle-object base. If oAIAttackVars_AttackElement is 0, it starts
+  animation 0x12 (windup), resets the counter to the default 0x10 frames via object_setDefaultCounterTime,
+  ORs bit 22 and OBJECT_FLAGS_CANNOT_SLIDE into the object's flags (preventing slide/interaction during
+  windup), and stores element 4 (wood) into oAIAttackVars_AttackElement. Otherwise it reads the current
+  frame's parameters via sprite_getFrameParameters and, when attribute bit 0x80 is set (the hit/strike
+  frame), starts animation 0x13 (attack) and writes element 4 to oAIAttackVars_HitElement, arming damage
+  for that attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between windup setup and strike
+    handling; bl object_setAnimation with r0=0x12, then object_setDefaultCounterTime, then two object_setFlag1
+    calls (bit22, CANNOT_SLIDE) in the first branch; mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement]
+    sets element 4 once; bl sprite_getFrameParameters; tst r0,#0x80 gates the second branch (hit frame);
+    mov r0,#0x13; bl object_setAnimation; strh r0,[r7,#oAIAttackVars_HitElement] sets strike anim and
+    hit element
+  refs:
+  - bn6f/asm/asm31.s:118098
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080EE860
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it sets animation 0x12 and element 4 on first call, then checks frame param bit
+    0x80 to trigger animation 0x13 and writes 4 to HitElement (strh, halfword). However, oAIAttackVars_AttackElement
+    is tested with `tst r0,r0`, so it only enters the windup branch when the byte is 0, not just any zero-ish
+    condition — minor but the summary''s wording is fine. The AI prefix is appropriate.; run wf investigate
+    investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/boss owns animation IDs 0x12/0x13 (caller not known); whether element 4 is wood in this
+  game's element enum; who sets r7 before entry
+- 'The code matches: it sets animation 0x12 and element 4 on first call, then checks frame param bit 0x80
+  to trigger animation 0x13 and writes 4 to HitElement (strh, halfword). However, oAIAttackVars_AttackElement
+  is tested with `tst r0,r0`, so it only enters the windup branch when the byte is 0, not just any zero-ish
+  condition — minor but the summary''s wording is fine. The AI prefix is appropriate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EE860 -> ai_stepWoodAttackAnim
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE860

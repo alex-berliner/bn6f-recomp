@@ -1,0 +1,66 @@
+name: battle_spawnEStructGroup
+address: '0x0812D56C'
+kind: function
+status: probable
+summary: Spawns a group of up to four eStruct records from a 0xFF-terminated (id,slot,param) table, links
+  each spawned record to the first one via a back-pointer at offset 0x14, and gives each one the same
+  sprite position via sprite_setCoordinates.
+interface: (r0 = 0xFF-terminated (id,slot,param) spawn table, r1 = first eStructArr2008450 slot index
+  (loop covers r1..r1+2), r2 = pointer passed on to sprite_setCoordinates) -> void; no return value.
+details: First calls battle_spawnEStructRecordsFromTable_80465A0 on r0 to create 0x58-byte type-9 records
+  in eStructArr2008450. It then iterates three slot indices (r1 through r1+2); for each slot getStructFrom2008450
+  returns a status flag in r0 (loop skips the slot when it's zero) and a pointer to the record in r1.
+  For every existing record it calls sprite_setCoordinates with the caller's r2 pointer and the constant
+  0x58, so all records in the group share one position. On the first iteration only (index == 0) it saves
+  the returned record pointer in r7, and that pointer is stored at record+0x14 of every record in the
+  group, linking each to the first. The r2 argument is stacked across the spawner call. Callers at 0x0812D52E/0x0812D54C
+  invoke this twice/thrice in sequence, suggesting several groups are set up together.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_spawnEStructRecordsFromTable_80465A0 with r0 untouched = table-driven record spawning
+    (loc_812D576); loop r6=r1..r1+2 with getStructFrom2008450 and ''beq'' on its flag return (loc_812D57A-loc_812D594);
+    r7=r1 captured only when tst r6,r6 shows index==0, then str r7,[r5,#0x14] for each record; sprite_setCoordinates([sp](=caller
+    r2), #0x58) called identically for every found record; callees'' known summaries: 0x58-byte eStruct
+    records in eStructArr2008450, sprite_setCoordinates sets x/y in a sprite sub-entry'
+  refs:
+  - bn6f/asm/asm34.s:268
+  - 0x0812D52E sub_812D52E
+  - 0x0812D532 sub_812D52E
+  - 0x0812D54C sub_812D54C
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0812D56C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop condition is `cmp r6, r4; ble loc_812D57A` with r4 = r1+2 and r6 starting at r1, so it
+    actually covers r1, r1+1, r1+2, r1+3 (four records), not three. Also, `tst r6, r6; bne loc_812D588`
+    means the back-pointer assignment is skipped on iteration 0 (r7 is saved there), not ''only the first
+    iteration saves the pointer'' while later iterations write r7. The summary''s three-records claim
+    and first-iteration linkage description are wrong.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of record+0x14 (back-pointer to first record, or something else)
+- precise return convention of getStructFrom2008450 (flag in r0 vs pointer in r1) — the project summary
+  only documents the flag
+- what the caller's r2 argument points to, and how 0x58 encodes the position passed to sprite_setCoordinates
+- what gameplay entity these three-record groups represent (needs caller context beyond sub_812D52E/sub_812D54C)
+- The loop condition is `cmp r6, r4; ble loc_812D57A` with r4 = r1+2 and r6 starting at r1, so it actually
+  covers r1, r1+1, r1+2, r1+3 (four records), not three. Also, `tst r6, r6; bne loc_812D588` means the
+  back-pointer assignment is skipped on iteration 0 (r7 is saved there), not 'only the first iteration
+  saves the pointer' while later iterations write r7. The summary's three-records claim and first-iteration
+  linkage description are wrong.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D56C -> battle_spawnEStructGroup
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D56C

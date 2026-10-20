@@ -1,0 +1,56 @@
+name: spawnBusterChargeEffect
+address: '0x080BDB04'
+kind: function
+status: probable
+summary: Spawns the buster-charge effect at the mirrored buster attachment position, locks its Timer at
+  0x7FFF, plays SOUND_BUSTER_CHARGE, then clears the owner's Timer2 and sets Param3=4.
+interface: (r0 unused; owner battle object in r5) -> r0 = spawned effect object pointer; no meaningful
+  flags
+details: Reads NameID, Alliance and DirectionFlip from the owner object at r5 to compute the mirrored
+  buster attachment offset via getBattleArmPositionMaybe_8018810, then adds it to the owner's X/Y/Z and
+  spawns a type-0 effect object with layer value 0x4E in r4. The spawned effect's pointer is stored into
+  the owner's oBattleObject_ExtraVars+0x14 so later code can update or free it. The effect's Timer is
+  set to 0x7FFF so it does not expire on its own. PlaySoundEffect(SOUND_BUSTER_CHARGE) starts the charging
+  hum. Finally the owner's Timer2 is cleared to 0 and Param3 is set to 4, consistent with entering a charging
+  substate. Note the owner pointer comes from r5, not r0, so the caller must load it there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl getBattleArmPositionMaybe_8018810 with [r5+NameID/Alliance/DirectionFlip] computes the buster
+    attachment offset; bl spawn_t1_0x0_EffectObject then str r0,[r5,#oBattleObject_ExtraVars+0x14] stores
+    the effect on the owner; mov r1,#0x7fff; strh r1,[r0,#oBattleObject_Timer] keeps the effect alive
+    indefinitely; mov r0,#SOUND_BUSTER_CHARGE; bl PlaySoundEffect identifies the action as charging; Timer2=0
+    and Param3=4 written to the owner look like entering a charging state
+  refs:
+  - bn6f/asm/asm31.s:12236
+  - 0x080005CC PlaySoundEffect
+  - 0x08018810 getBattleArmPositionMaybe_8018810
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080BDB04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: spawns an effect object at the mirrored buster position, sets Timer
+    0x7FFF, plays SOUND_BUSTER_CHARGE, clears Timer2, sets Param3=4. However, the proposal''s name `battle_startBusterCharge`
+    is active-state and implies orchestration of a state machine, while this routine only spawns one charge
+    effect + sound. A narrower name `spawnBusterChargeEffect` better describes the scope.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which callers invoke this (presumably the buster idle/charging state machine) to confirm the state value
+  4 means 'charging' and the exact effect type 0 used
+- 'The code matches the proposal: spawns an effect object at the mirrored buster position, sets Timer
+  0x7FFF, plays SOUND_BUSTER_CHARGE, clears Timer2, sets Param3=4. However, the proposal''s name `battle_startBusterCharge`
+  is active-state and implies orchestration of a state machine, while this routine only spawns one charge
+  effect + sound. A narrower name `spawnBusterChargeEffect` better describes the scope.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BDB04 -> spawnBusterChargeEffect
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDB04

@@ -1,0 +1,65 @@
+name: object_attackPanelCheckStep
+address: '0x080CFA6C'
+kind: function
+status: probable
+summary: 'Battle-object attack step: if Param3==2 delegates to sub_80CFAC0; if Param3==0 waits for sprite
+  frame with attribute bit 0x80; then validates panel against mask 0x10, aborting to CurAction=2 on fail,
+  otherwise loading ExtraVars[0] into CurAnim, setting collision region 1, clearing bit 2 of oObjectHeader_Flags,
+  and advancing to CurAction=8 phase 0.'
+interface: (r5 = battle object ptr, no args) -> r0 = sub_80CFAC0 result if Param3==2, else void; writes
+  CurAction/CurPhase/CurAnim/ObjectHeader_Flags on the object
+details: 'Reads oBattleObject_Param3: if it equals 2 the routine delegates to sub_80CFAC0 and returns.
+  If Param3 is 0 it calls sprite_getFrameParameters and waits (returns) until the current frame''s attribute
+  byte has bit 0x80 set, i.e. the attack''s active frame. It then checks the panel at the object''s PanelX/PanelY
+  against flag mask 0x10 via object_checkPanelParameters; on failure it sets CurAction=2 and clears CurPhase,
+  aborting the attack. On success it copies ExtraVars[0] into CurAnim, stores collision region 1 via object_setCollisionRegion,
+  clears bit 4 of oObjectHeader_Flags (re-enabling whatever that flag gates, likely collision/interaction),
+  and advances to CurAction=8 with phase 0. Param3==1 falls through directly to the panel check without
+  waiting for the animation frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_getFrameParameters; tst r0,#0x80; beq return — waits for the frame marked 0x80 before
+    acting; object_checkPanelParameters with PanelX/PanelY and mask 0x10; failure path sets CurAction=2
+    and phase 0 (abort); success path: ExtraVars[0]->CurAnim, object_setCollisionRegion(1), clears ObjectHeader_Flags
+    bit 4, sets CurAction=8 and phase 0; dword_80CFBF8=0xf880080 is the required/forbidden panel-flag
+    mask pair passed to object_checkPanelParameters'
+  refs:
+  - bn6f/asm/asm31.s:51492
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080CFA6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s description of action 8, phase 0, collision region 1, and clearing bit 4 (not bit
+    2) of oObjectHeader_Flags matches the code (bic r0, #4). However, the bic instruction clears bit 0x04,
+    not 0x02 as the summary implies when it says ''re-enabling whatever that flag gates''—the summary
+    incorrectly says ''clears bit 4'' but 0x04 IS bit 2, so that''s actually consistent. Wait, the summary
+    says ''clears bit 4 of oObjectHeader_Flags''—bit 4 would be 0x10, but the code clears 0x04. Minor
+    inaccuracy. The name fits well; no callers known suggests it''s an action handler.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which enemy/attack state machine uses this and what Param3 values 0/1/2 mean contextually
+  is unclear
+- Meaning of panel flag mask 0x10 (hole? broken? occupied?) and what sub_80CFAC0 does for the Param3==2
+  path are unknown
+- 'The summary''s description of action 8, phase 0, collision region 1, and clearing bit 4 (not bit 2)
+  of oObjectHeader_Flags matches the code (bic r0, #4). However, the bic instruction clears bit 0x04,
+  not 0x02 as the summary implies when it says ''re-enabling whatever that flag gates''—the summary incorrectly
+  says ''clears bit 4'' but 0x04 IS bit 2, so that''s actually consistent. Wait, the summary says ''clears
+  bit 4 of oObjectHeader_Flags''—bit 4 would be 0x10, but the code clears 0x04. Minor inaccuracy. The
+  name fits well; no callers known suggests it''s an action handler.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CFA6C -> object_attackPanelCheckStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFA6C

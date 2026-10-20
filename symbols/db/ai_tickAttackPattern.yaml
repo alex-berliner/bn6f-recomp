@@ -1,0 +1,58 @@
+name: ai_tickAttackPattern
+address: '0x08107CF0'
+kind: function
+status: probable
+summary: 'Per-tick boss AI: 4 ticks of ai_attackRandomFreePanel, then a toggling 0/1 SubState pattern
+  (attack0 vs two attacks then sub_8108046), cycling StepCounter up to 4 where sub_81080A6 fires; while
+  HP > MaxHP/2 it re-arms by setting ScriptId=4 and zeroing TurnCounter/SubState.'
+interface: (r6 = AI state struct, r5 = battle object) -> r0 = clobbered; no meaningful return
+details: 'Counts turns in oAIState_TurnCounter: for the first 4 turns it only queues ai_attackRandomFreePanel.
+  On the 4th turn it resets TurnCounter and, if StepCounter < 4, increments StepCounter and toggles oAIState_SubState
+  between 0 and 1; substate 0 calls battle_aiInitAttack0, substate 1 calls ai_initAttackState while oAIState_AttackCounter
+  < 2 (incrementing it), otherwise resets AttackCounter and calls sub_8108046. When StepCounter reaches
+  4 it resets it and calls sub_81080A6 (likely a movement/reposition routine). Finally it reads oBattleObject_MaxHP/HP
+  from the r5 object: if HP is still above MaxHP/2 it writes ScriptId=4 and zeroes TurnCounter/SubState,
+  effectively re-arming the phase-4 pattern; once HP drops to half or below it leaves the state alone,
+  letting the low-HP phase proceed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oAIState_TurnCounter]; cmp #4; blt -> ai_attackRandomFreePanel: one free-panel
+    attack per turn for 4 turns; SubState toggled with eor #1, then beq picks battle_aiInitAttack0 vs
+    ai_initAttackState/sub_8108046 via AttackCounter < 2; StepCounter >= 4 path resets it and calls sub_81080A6,
+    a distinct pattern step; Tail: ldrh MaxHP; lsr #1; cmp with oBattleObject_HP; only when HP > half
+    does it store ScriptId=4 and clear TurnCounter/SubState; All callees are known AI attack initializers
+    (ai_initAttackState, battle_aiInitAttack0, ai_attackRandomFreePanel)'
+  refs:
+  - bn6f/asm/asm31.s:171092
+  - 0x08107FF4 ai_attackRandomFreePanel
+  - 0x0810806E ai_initAttackState
+  - 0x08108014 battle_aiInitAttack0
+  reproduce: python3 tools/asmcat.py 0x08107CF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct but conflates two cases: sub_8108046 fires inside the pattern when
+    AttackCounter>=2 (not only at StepCounter==4), while sub_81080A6 fires specifically when StepCounter
+    reaches 4. Also ''first 4 turns'' should be ''turns with TurnCounter 0-3''. The HP-armoring logic
+    and final 4-bytes-zero of SubState are correct per loc_8107D60. Suggested name better reflects the
+    pattern-cycle behavior.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which boss/which AI uses this (no caller known), and what sub_8108046/sub_81080A6 specifically do; also
+  who initially sets ScriptId=4 and what script 4 contains
+- 'The proposal is mostly correct but conflates two cases: sub_8108046 fires inside the pattern when AttackCounter>=2
+  (not only at StepCounter==4), while sub_81080A6 fires specifically when StepCounter reaches 4. Also
+  ''first 4 turns'' should be ''turns with TurnCounter 0-3''. The HP-armoring logic and final 4-bytes-zero
+  of SubState are correct per loc_8107D60. Suggested name better reflects the pattern-cycle behavior.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8107CF0 -> ai_tickAttackPattern
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107CF0

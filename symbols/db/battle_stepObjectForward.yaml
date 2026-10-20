@@ -1,0 +1,65 @@
+name: battle_stepObjectForward
+address: '0x080104E0'
+kind: function
+status: probable
+summary: Triggers a battle object's forward panel movement by computing the target pixel coordinate one
+  panel ahead in its facing direction and invoking the per-step mover sub_80E1D7A, then plays sound effect
+  0x90.
+interface: (r5 = battle object pointer) -> void; corrupts r0-r4
+details: Reads the object's PanelX/PanelY from the battle-object struct pointed to by r5 and converts
+  them to pixel coordinates via object_getCoordinatesForPanels. It then gets the object's facing with
+  object_getEnemyDirection and shifts it left by 18, adding the result to the x coordinate, so the target
+  is one panel width ahead of the object in fixed point (±0x40000). It sets r3 = 0x300000 and r4 = 0 and
+  repeatedly calls sub_80E1D7A, which appears to be the per-frame mover/animation step, then plays sound
+  effect 0x90 via PlaySoundEffect. Note the object pointer arrives in r5, a nonstandard register, so callers
+  must load it there; the shown loop body has no visible counter update or branch back, so the control
+  flow may be partially truncated in the listing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX]/ldrb r1,[r5,#oBattleObject_PanelY] then bl object_getCoordinatesForPanels:
+    works from a battle object''s panel position; bl object_getEnemyDirection; lsl r0,#0x12; add r1,r1,r0:
+    target x is offset by ±0x40000, i.e. one panel in the facing direction; loc_8010500: bl sub_80E1D7A
+    with r3=0x300000, r4=0 set up beforehand: an iterative animation/update step over the move; mov r0,#0x90;
+    bl PlaySoundEffect: a sound effect accompanies the motion; Callees are both battle-object helpers
+    (panel-to-pixel coords, alliance-facing), confirming this is battle-engine object movement'
+  refs:
+  - bn6f/asm/asm00_2.s:3601
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080104E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads PanelX/PanelY, converts to pixel coords, shifts the direction by 0x12 (18), adds
+    it to x, then calls sub_80E1D7A once (no loop despite the label) with a fixed delta setup, then plays
+    sound 0x90. The summary''s ''repeatedly calls'' and ''moving to the panel in front'' are wrong; sub_80E1D7A
+    is invoked once and r3=0x300000 looks like a delta/time constant, not a loop counter. The function
+    more likely initiates a step/slide animation and sound for the object''s forward panel.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80E1D7A does (likely the per-frame slide/interpolation step and what structures it writes)
+  — its signature and effect would confirm the animation interpretation
+- 'The exact loop structure: no counter increment or branch back to loc_8010500 is visible in the listing,
+  so the iteration count and role of r4=0/r3=0x300000 are unclear'
+- No known callers, so the convention of passing the object in r5 and the in-game trigger (which enemy/attack/movement
+  uses this) are unverified
+- Which game event sound 0x90 corresponds to
+- The code reads PanelX/PanelY, converts to pixel coords, shifts the direction by 0x12 (18), adds it to
+  x, then calls sub_80E1D7A once (no loop despite the label) with a fixed delta setup, then plays sound
+  0x90. The summary's 'repeatedly calls' and 'moving to the panel in front' are wrong; sub_80E1D7A is
+  invoked once and r3=0x300000 looks like a delta/time constant, not a loop counter. The function more
+  likely initiates a step/slide animation and sound for the object's forward panel.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80104E0 -> battle_stepObjectForward
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80104E0

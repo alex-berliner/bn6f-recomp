@@ -1,0 +1,72 @@
+name: object_hopResolveLanding
+address: '0x080C9AAA'
+kind: function
+status: probable
+summary: 'Resolves a battle-object''s hop target: reflects row/col deltas off the field edges while playing
+  SFX 0xB6, checks the destination panel (via object_getPanelDataOffset), and on same-alliance/off-field
+  panels bounces back one column and re-checks; returns 16.16 pixel coords of the final panel via object_getCoordinatesForPanels,
+  or signals failure by writing 0 to r2.'
+interface: '(r0 = panel col, r1 = panel row, r2 = col delta, r3 = row delta; r5 = battle object) -> ok:
+  r0/r1 = 16.16 pixel coords of landing panel via object_getCoordinatesForPanels; blocked: r2 = 0'
+details: 'Takes the object''s current panel (r0,r1) and a per-hop delta (r2,r3). It checks row r1+r3 stays
+  in 1..3 and col r0+r2 stays in 1..6; when a delta leaves the field it is negated (reflected) and SFX
+  0xB6 plays. If the object''s oBattleObject_Param4 flag is clear it just returns coords for (col+dx,
+  row+dy). Otherwise it reads the panel via object_getPanelDataOffset: an off-field or same-alliance (Alliance
+  eor equal) panel makes it retry with dx negated (bounce back one column); if that fallback panel is
+  also off-field or same-alliance it fails with r2 = 0, and if it is opposite-alliance it plays SFX 0xB6
+  and returns the fallback panel''s coords. Success returns pixel coords from object_getCoordinatesForPanels;
+  quirks include registers being saved/restored around the SFX calls so the negations persist, and failure
+  returning r2 = 0 rather than r0 = 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80C9AC2 checks r0+r2-1 <= 5 and loc_80C9AAA''s start checks r1+r3-1 <= 2, negating r2/r3
+    and playing SFX 0xB6 on out-of-range — field-boundary reflection (cols 1..6, rows 1..3); ldrb r4,[r5,#oBattleObject_Param4];
+    beq loc_80C9B28 gates the panel-blocking logic on an object flag; getPanelDataOffset + eor of oPanelData_Alliance
+    with oBattleObject_Alliance decides landing: opposite alliance allowed, same alliance or null panel
+    triggers a dx-negated retry, then r2 = 0 on failure; SFX 0xB6 plays again when the bounce-back panel
+    is opposite-alliance before returning its coords; Caller object_hopAcrossPanels hops an object to
+    a target panel and destroys it when it lands on a solid/off-grid panel, matching the r2 = 0 failure
+    return'
+  refs:
+  - bn6f/asm/asm31.s:38694
+  - 0x080C9964 object_hopAcrossPanels
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x080C9AAA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the bouncing/SFX/Alliance checks correctly. However, the interface is wrong:
+    r0/r1 are not ''pixel coords of the landing panel'' — r0/r1 at the call site in `object_hopAcrossPanels`
+    (0x080C9964) are passed in unchanged (they''re the current panel col/row), and the routine returns
+    pixel coords in r0/r1 via `object_getCoordinatesForPanels`. The ''ok: r0/r1 = 16.16 pixel coords ...
+    blocked: r2 = 0'' framing is backwards; on the normal success path the input panel coords are consumed
+    and pixel coords are returned, while on the blocked path r2 is set to 0 to signal failure. The proposed_name
+    `object_hopComputeLanding` is acceptable but `object_hopResolveLanding` better conveys the reflection/bounce
+    resolution behavior.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What oBattleObject_Param4 means (it enables the panel-blocking/bounce-back behaviour)
+- Which object uses this hop movement and what SFX 0xB6 is (bounce/hit-wall sound?)
+- Why the bounce-back retry reflects only dx and not dy, and whether oPanelData_Alliance is side ownership
+  or occupancy
+- 'The summary captures the bouncing/SFX/Alliance checks correctly. However, the interface is wrong: r0/r1
+  are not ''pixel coords of the landing panel'' — r0/r1 at the call site in `object_hopAcrossPanels` (0x080C9964)
+  are passed in unchanged (they''re the current panel col/row), and the routine returns pixel coords in
+  r0/r1 via `object_getCoordinatesForPanels`. The ''ok: r0/r1 = 16.16 pixel coords ... blocked: r2 = 0''
+  framing is backwards; on the normal success path the input panel coords are consumed and pixel coords
+  are returned, while on the blocked path r2 is set to 0 to signal failure. The proposed_name `object_hopComputeLanding`
+  is acceptable but `object_hopResolveLanding` better conveys the reflection/bounce resolution behavior.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C9AAA -> object_hopResolveLanding
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9AAA

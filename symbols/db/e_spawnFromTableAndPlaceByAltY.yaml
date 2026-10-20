@@ -1,0 +1,58 @@
+name: e_spawnFromTableAndPlaceByAltY
+address: '0x0812EBD8'
+kind: function
+status: probable
+summary: Spawns eStruct records (type 9) from a 0xFF-terminated (id,slot,param) table, then if the indexed
+  record is in use sets its sprite y to 0x34 when the caller-supplied r2 equals 0x44, else 0x44; x is
+  passed through from the stack.
+interface: (r0 = 0xFF-terminated (id,slot,param) spawn table, r1 = eStruct index into eStructArr2008450,
+  r2 = reference coordinate (0x44 or other)) -> r0 = clobbered; sets the struct's x/y via sprite_setCoordinates
+details: 'First calls the table spawner to create 0x58-byte type-9 eStruct records from the table at r0.
+  It then fetches the record at index r1 from eStructArr2008450 and skips positioning if it is not in
+  use (flag byte zero). Otherwise it compares r2 against 0x44: if r2==0x44 it uses y=0x34, otherwise y=0x44,
+  so the object is placed on the opposite of two fixed vertical positions. r4-r7 are preserved but unused.
+  The 0x34/0x44 constants are raw coordinate values passed straight to sprite_setCoordinates.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_spawnEStructRecordsFromTable_80465A0 consumes r0 as the spawn table; bl getStructFrom2008450
+    with r0=r6 (saved r1) and beq loc_812EBFE skips positioning when the entry is unused; cmp r0,#0x44
+    / beq + mov r1,#0x34 vs mov r1,#0x44 selects between exactly two Y values; bl sprite_setCoordinates
+    applies the chosen coordinate to the spawned struct
+  refs:
+  - bn6f/asm/asm35.s:182
+  - 0x0812EB92 sub_812EB92
+  - 0x0812EB9A sub_812EB92
+  - 0x0812EBB8 sub_812EBB8
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0812EBD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code agrees: callees match, r2 is saved to stack and compared against 0x44, swapping to 0x34 when
+    equal (and 0x44 otherwise). However, only the y coordinate (r1) is set while r0 (x) is loaded from
+    stack without comparison, so the summary''s claim about y=0x34 or 0x44 ''the opposite'' is correct
+    but overstates by referencing x; also ''e_spawnTableAndSetStructY'' is awkward — a clearer name reflects
+    the spawn-table + place pattern.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What object type the spawned records represent (depends on the caller's table contents)
+- Which coordinate axis (x or y) 0x34/0x44 selects inside sprite_setCoordinates
+- 'Code agrees: callees match, r2 is saved to stack and compared against 0x44, swapping to 0x34 when equal
+  (and 0x44 otherwise). However, only the y coordinate (r1) is set while r0 (x) is loaded from stack without
+  comparison, so the summary''s claim about y=0x34 or 0x44 ''the opposite'' is correct but overstates
+  by referencing x; also ''e_spawnTableAndSetStructY'' is awkward — a clearer name reflects the spawn-table
+  + place pattern.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812EBD8 -> e_spawnFromTableAndPlaceByAltY
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EBD8

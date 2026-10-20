@@ -1,0 +1,57 @@
+name: link_stepCommState
+address: '0x0812AC1A'
+kind: function
+status: probable
+summary: 'One step of the link-cable communication state machine: polls the comm mode/dispatcher and,
+  once the exchange finishes, optionally resets the link hardware (mode==0 only) and marks the task state
+  byte [r5+2] as 4 (done).'
+interface: (r5 = *S200BC50 state struct, r4/r7 clobbered) -> r0 = result of last helper; sets state byte
+  [r5+3] (or [r5+2]) to 4 when finished
+details: 'Reads the mode byte of eStruct200BC30; if it equals 8 it calls sub_803C612 first. Each iteration
+  calls the mode dispatcher sub_803EAE4 and re-reads the mode byte. When mode != 0 it expects result 4,
+  else checks the struct''s flag byte [r5+3]: if clear it runs sub_803C754 (or sub_803DDA4 in the mode==0
+  branch) and stores 4 to [r5+3] as a ''once'' latch; if set, it polls test0x200bc50_0x5 / sub_803DE24
+  and exits early while they report busy. On the done/exit paths it calls link_resetHardwareAndClearLinkBuffers_81440D8
+  and stores 4 into [r5+2], ending the comm sequence. Note r5 is callee-saved and never set here, so the
+  caller must pass the 0x200BC50 struct pointer in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl eStruct200BC30_getJumpOffset00 / cmp r0,#8: branches on the comm-mode record before starting;
+    bl sub_803EAE4 (mode 0/1/2 dispatcher) each loop, then re-checks mode == 0 for completion; strb r0,#4
+    [r5,#3] latch plus sub_803C754/sub_803DDA4 one-shot init calls; bl link_resetHardwareAndClearLinkBuffers_81440D8
+    on exit paths shows this wraps the SIO/link session; mov r0,#4; strb [r5,r7] (r7=2) stores final state
+    4 into the struct at 0x200BC50'
+  refs:
+  - bn6f/asm/asm33.s:15910
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  - 0x081440D8 link_resetHardwareAndClearLinkBuffers_81440D8
+  - 0x0813D60C test0x200bc50_0x5_813D60C
+  reproduce: python3 tools/asmcat.py 0x0812AC1A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — r7 is set to 2 in the function (mov r7,#2) so the final store is to [r5+2], and [r5+3] is the ''once''
+    latch byte. The resetHardwareAndClearLinkBuffers call only happens on the mode==0 done path (loc_812AC76);
+    the mode!=0 done path at loc_812AC7A just stores 4 to [r5+2] without calling it. Summary should clarify
+    that.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so what task owns struct 0x200BC50 and where this step is scheduled is unclear
+- exact meaning of mode byte 8 vs 0 in eStruct200BC30 (which sub_803C612/sub_803C754/sub_803DDA4 correspond
+  to) is unconfirmed
+- r7 is set to 2 in the function (mov r7,#2) so the final store is to [r5+2], and [r5+3] is the 'once'
+  latch byte. The resetHardwareAndClearLinkBuffers call only happens on the mode==0 done path (loc_812AC76);
+  the mode!=0 done path at loc_812AC7A just stores 4 to [r5+2] without calling it. Summary should clarify
+  that.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812AC1A -> link_stepCommState
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812AC1A

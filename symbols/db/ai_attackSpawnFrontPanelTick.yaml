@@ -1,0 +1,70 @@
+name: ai_attackSpawnFrontPanelTick
+address: '0x080ED314'
+kind: function
+status: probable
+summary: 'AI attack tick handler: on first call it plays sound 0xD8, sets animation 0xC, sets ObjectFlags1
+  bit 22, writes AttackElement=4 and StepTimer=0xF. Each frame the StepTimer counts down; when it reaches
+  0xD it spawns an attack on the panel in front via sub_80CC73C, then reloads the timer to 0xF and sets
+  HitElement=4 to keep the attack looping.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; r0-r3 clobbered, no return value
+details: 'On the first call (oAIAttackVars_AttackElement == 0) it runs the init pass: plays sound 0xD8,
+  sets animation 0xC, resets the counter timer via object_setDefaultCounterTime, sets ObjectFlags1 bit
+  22, and writes AttackElement = 4 so init never repeats. Each frame it decrements oAIAttackVars_StepTimer;
+  when the timer equals 0xD it computes the facing panel with object_getFrontDirection added to oBattleObject_PanelX
+  and calls sub_80CC73C with x, PanelY, Damage + AttackBoost (r6), InitFlag (r2), r3 = 0 (AttackBoost2
+  held in r4, presumably read by the callee through the shared r5/r7 context), playing sound 0xB4. When
+  the timer decrements below zero it is reloaded to 0xF and oAIAttackVars_HitElement is set to 4, keeping
+  the attack looping indefinitely. It is a per-frame tick handler for an AI-controlled attack, not a one-shot
+  spawner.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init block: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards one-time setup (animation
+    0xC, sound 0xD8, object_setFlag1 bit 22, AttackElement=4); loc_80ED33C: object_getFrontDirection result
+    added to oBattleObject_PanelX, then bl sub_80CC73C with r6 = Damage + AttackBoost and sound 0xB4;
+    tail: StepTimer decrement with bge exit and reload to 0xF plus HitElement = 4 shows a repeating tick
+    loop; callees object_setAnimation/object_setDefaultCounterTime/object_setFlag1 confirm this operates
+    on a battle object''s AI attack state'
+  refs:
+  - bn6f/asm/asm31.s:115141
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800F2B6 object_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080ED314
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details match the code: init on first call (animation 0xC, sound 0xD8, setDefaultCounterTime,
+    ObjectFlags1 bit 22, AttackElement=4), StepTimer set to 0xF then decremented, spawn at timer==0xD
+    via sub_80CC73C, reload to 0xF and HitElement=4 when below zero. However, the init actually stores
+    0xF (not ''resets via object_setDefaultCounterTime'' plus a separate write) and the initial StepTimer
+    is explicitly 0xF, not ''reloaded to 0xF'' on first run. Also ''every ~15 frames'' is slightly off:
+    spawn fires when timer==0xD on a 0xF countdown, giving 2 ticks between spawns, but the loop period
+    is 15 frames — fine. The init path also does not ''reset the counter timer'' via object_setDefaultCounterTime
+    and then write 0xF; it writes 0xF directly. Minor inaccuracies warrant a revise, not full disagreement.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What entity sub_80CC73C spawns and the meaning of the InitFlag / AttackBoost2 arguments (r2, r4) — the
+  callee is undocumented
+- Which enemy/attack uses this handler, to give a game-specific name
+- Why HitElement is written to 4 only at timer wrap and how it is consumed elsewhere
+- 'The summary and details match the code: init on first call (animation 0xC, sound 0xD8, setDefaultCounterTime,
+  ObjectFlags1 bit 22, AttackElement=4), StepTimer set to 0xF then decremented, spawn at timer==0xD via
+  sub_80CC73C, reload to 0xF and HitElement=4 when below zero. However, the init actually stores 0xF (not
+  ''resets via object_setDefaultCounterTime'' plus a separate write) and the initial StepTimer is explicitly
+  0xF, not ''reloaded to 0xF'' on first run. Also ''every ~15 frames'' is slightly off: spawn fires when
+  timer==0xD on a 0xF countdown, giving 2 ticks between spawns, but the loop period is 15 frames — fine.
+  The init path also does not ''reset the counter timer'' via object_setDefaultCounterTime and then write
+  0xF; it writes 0xF directly. Minor inaccuracies warrant a revise, not full disagreement.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ED314 -> ai_attackSpawnFrontPanelTick
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED314

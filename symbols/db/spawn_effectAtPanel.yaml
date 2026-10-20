@@ -1,0 +1,63 @@
+name: spawn_effectAtPanel
+address: '0x081110C8'
+kind: function
+status: probable
+summary: Spawns the type-0 effect object at a battlefield panel, tagging it with the acting object's alliance/direction
+  bits.
+interface: (r0 = panel column, r1 = panel row, r5 = source battle object) -> r0 = spawned effect object
+  pointer
+details: 'The routine saves the two panel arguments, computes ((oBattleObject_Alliance ^ oBattleObject_DirectionFlip)
+  << 8) from r5 and stacks it, then calls object_getCoordinatesForPanels to turn column/row into 16.16
+  pixel x/y. It reassembles the spawn argument list: x in r0, y in r1/r2, r3 = 0, and the popped flag
+  byte OR 0x14 in r4, and calls spawn_t1_0x0_EffectObject, returning its result. The 0x14 base flag likely
+  encodes the effect type-0 spawn''s lifetime/style bits. Used by the dive-attack and lunge-attack AI
+  states to emit an effect where the enemy lands or launches.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: eor of oBattleObject_Alliance/oBattleObject_DirectionFlip shifted <<8 is pushed and later popped
+    into r0, then orr with 0x14 before the spawn call; object_getCoordinatesForPanels converts the saved
+    r0/r1 panel coords to pixel x/y which are shuffled into the spawn wrapper's argument registers; spawn_t1_0x0_EffectObject
+    is the sole call, spawning a type-4 object with effect type 0; callers ai_updateDiveAttack and ai_lungeAttackUpdate
+    are per-frame attack steps that land/launch on a saved panel
+  refs:
+  - bn6f/asm/asm32.s:6748
+  - 0x08110B70 ai_lungeAttackUpdate
+  - 0x081109F6 ai_updateDiveAttack
+  - 0x0811095E sub_811095E
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x081110C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: r0/r1 are panel col/row, saved on stack; r5''s Alliance^DirectionFlip
+    is shifted into the low byte; coordinates are converted via object_getCoordinatesForPanels and passed
+    in r0/r1 (with r2 swapped in); r3 cleared; r4 = 0x14 OR flag; spawn_t1_0x0_EffectObject is called.
+    The prefix ''spawn'' is appropriate, but ''effectAtPanel'' is slightly off — this spawns a generic
+    type-0 effect at a panel using the source''s team/dir flag, so ''spawnEffectAtPanelForObject'' better
+    conveys both the panel location and the source-object tagging, though ''spawn_effectAtPanel'' is acceptable.
+    Minor naming nit only.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of the 0x14 flag bits and the alliance^flip byte within the effect object's spawn parameter
+  struct
+- which visual effect effect-type 0 renders (would need the effect object's update/graphics routine)
+- 'The code matches the proposal: r0/r1 are panel col/row, saved on stack; r5''s Alliance^DirectionFlip
+  is shifted into the low byte; coordinates are converted via object_getCoordinatesForPanels and passed
+  in r0/r1 (with r2 swapped in); r3 cleared; r4 = 0x14 OR flag; spawn_t1_0x0_EffectObject is called. The
+  prefix ''spawn'' is appropriate, but ''effectAtPanel'' is slightly off — this spawns a generic type-0
+  effect at a panel using the source''s team/dir flag, so ''spawnEffectAtPanelForObject'' better conveys
+  both the panel location and the source-object tagging, though ''spawn_effectAtPanel'' is acceptable.
+  Minor naming nit only.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81110C8 -> spawn_effectAtPanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81110C8

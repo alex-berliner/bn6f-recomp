@@ -1,0 +1,67 @@
+name: ai_chargeShotUpdate
+address: '0x080EE2CE'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI charge-style attack: on first entry (AttackElement==0) sets animation
+  0xC, resets counter timer, plays sound 0xC7, sets flag bit 22, StepTimer=0x15, AttackElement=4; fires
+  sub_80D5D34(Damage+AttackBoost) when StepTimer==0x12; decrements StepTimer; when it goes negative, decrements
+  ChargeCycles — if any cycles remain it clears the related-object pointers and AttackElement=0 (re-init
+  next entry), otherwise sets HitElement=8 to end the cycle.'
+interface: (r7 = AI attack vars struct, r5 = battle object, r0..r2 scratch) -> void; only the init path
+  runs when oAIAttackVars_AttackElement == 0
+details: 'When AttackElement is 0 the attack initializes: sets animation 0xC via object_setAnimation,
+  resets the object''s counter timer, plays sound effect 0xC7, ORs flag bit 22 (1<<OBJECT_FLAGS_UNK_BIT_22_BIT)
+  into ObjectFlags1, sets StepTimer to 0x15 and AttackElement to 4. When StepTimer equals 0x12 it adds
+  AttackBoost to Damage and calls sub_80D5D34 (presumably spawning/launching the attack with r6 = damage).
+  StepTimer is then decremented each frame; once it goes negative, ChargeCycles is decremented — if it
+  drops to 0 or below the attack tears down (clears oBattleObject_RelatedObject1Ptr, oAIData_TempAttackObjectPtr,
+  and AttackElement = 0) and returns, otherwise HitElement is set to 8 and the cycle continues. Note that
+  after the first shot StepTimer is not reloaded here, so the repeat loop presumably relies on HitElement
+  8 handling elsewhere to reset the timer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: bl object_setAnimation / PlaySoundEffect(0xC7) / object_setFlag1(bit 22) then
+    strh 0x15 to StepTimer and AttackElement = 4 (asm top); StepTimer == 0x12 loads Damage + AttackBoost
+    into r6 and calls sub_80D5D34 — the firing moment; fall-through decrements StepTimer and on negative
+    decrements ChargeCycles, giving the multi-shot/charge-count loop; teardown stores 0 into oBattleObject_RelatedObject1Ptr
+    and oAIData_TempAttackObjectPtr and zeroes AttackElement; callees object_setAnimation/object_setDefaultCounterTime/object_setFlag1
+    and the oAIAttackVars_* fields mark this as a battle AI attack handler'
+  refs:
+  - bn6f/asm/asm31.s:117326
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  reproduce: python3 tools/asmcat.py 0x080EE2CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the init path (anim 0xC, sound 0xC7, flag bit 22, StepTimer=0x15,
+    AttackElement=4), the fire-at-0x12 step, and the decrement logic. However, the teardown is misread:
+    when ChargeCycles > 0 it clears oBattleObject_RelatedObject1Ptr and oAIData_TempAttackObjectPtr and
+    sets AttackElement=0 (returning), not the other way around. The ''ble loc_80EE330'' branch (ChargeCycles
+    <= 0) is what sets HitElement=8, so the summary should say it continues the cycle when cycles drop
+    to zero. Also the summary says ''repeats/cleans up based on a charge counter'' which is fine but the
+    swap of branches is wrong.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which boss/AI uses this handler and what attack it corresponds to (element 4, animation 0xC, sound 0xC7)
+- What sub_80D5D34 does with the summed damage (assumed projectile spawn)
+- How StepTimer gets reset for subsequent shots — likely the HitElement = 8 path in outside code
+- 'The proposal correctly captures the init path (anim 0xC, sound 0xC7, flag bit 22, StepTimer=0x15, AttackElement=4),
+  the fire-at-0x12 step, and the decrement logic. However, the teardown is misread: when ChargeCycles
+  > 0 it clears oBattleObject_RelatedObject1Ptr and oAIData_TempAttackObjectPtr and sets AttackElement=0
+  (returning), not the other way around. The ''ble loc_80EE330'' branch (ChargeCycles <= 0) is what sets
+  HitElement=8, so the summary should say it continues the cycle when cycles drop to zero. Also the summary
+  says ''repeats/cleans up based on a charge counter'' which is fine but the swap of branches is wrong.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EE2CE -> ai_chargeShotUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE2CE

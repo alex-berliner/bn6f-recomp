@@ -1,0 +1,61 @@
+name: battle_pickRandomFilteredPanelAvoidingEnemyRow
+address: '0x08113FE8'
+kind: function
+status: probable
+summary: Picks a random panel matching a per-team panel-effect parameter, excluding the row of the caller's
+  closest opponent's nearest battleObject, and returns its packed coords (r0 = col, r1 = row).
+interface: (r5 = battle object) -> r0 = col (low 3 bits of packed panel byte), r1 = row (high nibble);
+  no flags guaranteed
+details: 'Reads the caller''s team byte at [r5,#0x16], XORs it with 1 to get the opposing side, and finds
+  that side''s closest battle object via battleObject_findClosestEnemyBattleObject_80103F8. The enemy''s
+  byte at #0x13 (panel coordinate) indexes the alliance-dependent panel-parameter table byte_8114160 via
+  GetAllianceDependentPanelParamArgs, yielding a filter param and args. object_getPanelsIgnoreColumnFiltered
+  then scans rows 1-3 / cols 1-6, skipping the row given by the args, packing matching panels as (col
+  | row<<4) into an sp-relative buffer and returning the count. If any panels match, GetPositiveSignedRNG
+  is divided by the count (svc 6, remainder in r1) to pick a random entry from the buffer, which is unpacked
+  into col in r0 (low 3 bits) and row in r1 (high nibble). If no enemy or no matching panels exist, the
+  function returns without setting meaningful outputs. Likely used by battle scripts/AI to place something
+  on a random special-type panel away from the target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor 1 on [r5,#0x16] before battleObject_findClosestEnemyBattleObject_80103F8 selects the opposing
+    object; GetAllianceDependentPanelParamArgs with byte_8114160 supplies the filter used by object_getPanelsIgnoreColumnFiltered,
+    which packs panels at r7=sp; svc 6 after GetPositiveSignedRNG divides rand by the panel count, leaving
+    rand%count in r1 as buffer index; final unpack of buffer byte: lsr #4 into r1 (row) and lsl 0x1d/lsr
+    0x1d into r0 (col), matching (col | row<<4) packing'
+  refs:
+  - bn6f/asm/asm32.s:12544
+  - 0x08113F60 sub_8113F60
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  reproduce: python3 tools/asmcat.py 0x08113FE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially correct, but object_getPanelsIgnoreColumnFiltered is documented as skipping
+    the *row*, while the proposal says ''skipping the row/column'' and the svc 6 divides by count which
+    is standard. Name is reasonable; I''ll refine it slightly. The output unpacking (lsl #0x1d; lsr #0x1d)
+    masks the low 3 bits for col, confirming the interface.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what panel type the table byte_8114160 entry actually filters (panel state vs. something else)
+- which caller script consumes the returned row/col and for what effect
+- 'exact meaning of the enemy byte at #0x13 feeding the table lookup and row-skip'
+- 'The summary is essentially correct, but object_getPanelsIgnoreColumnFiltered is documented as skipping
+  the *row*, while the proposal says ''skipping the row/column'' and the svc 6 divides by count which
+  is standard. Name is reasonable; I''ll refine it slightly. The output unpacking (lsl #0x1d; lsr #0x1d)
+  masks the low 3 bits for col, confirming the interface.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8113FE8 -> battle_pickRandomFilteredPanelAvoidingEnemyRow
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113FE8

@@ -1,0 +1,65 @@
+name: t4_restoreBgTilemapAfterBattle
+address: '0x0812D8C8'
+kind: function
+status: probable
+summary: Refills the BG tile buffer, reinitializes the battle-overlay eStruct record array, then redraws
+  a full 30x20 screen of tile IDs from the snapshot at dword_201E420 and reapplies the saved layer/scroll
+  parameter to the overlay helpers.
+interface: () -> void; no return value, r5 (caller's scene pointer) preserved via r7
+details: 'Zero-fills the toolkit''s 0x2000-byte BG tile buffer, then re-runs the eStruct record-array
+  init (battle_resetEStructRecords_8046664) so battle-overlay scene ticks resume cleanly. CopyBackgroundTiles
+  is called with j=0, i=0, tile block 1, source dword_201E420, and 30x20 extents — exactly one full 240x160
+  screen of tile IDs, i.e. the entire layer is rewritten from a snapshot. Afterward it calls local helpers:
+  sub_812D52E, sub_812D5D0 with the value at [r5+0x2a] (likely a scroll/layer parameter) and args (0,0),
+  then (0,3,0) after sub_812D54C, plus sub_812D934(0)/sub_812D954(0)/sub_812D91C which appear to clear
+  or re-enable per-layer or effect state. The literal pool also holds byte_812C278, suggesting nearby
+  code shares this tile snapshot.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ZeroFillGFX30025c0 then bl battle_resetEStructRecords_8046664 — clear GFX buffer and reset
+    battle scene records first; CopyBackgroundTiles(0,0,1,dword_201E420,0x1e,0x14) — full 30x20 screen
+    of tiles restored from saved buffer into block 1; battle_resetEStructRecords_8046664's known summary
+    ties it to returning from a battle, matching this restore flow; sub_812D5D0 called twice — once with
+    [r5+0x2a] and (0,0), once with (0,3,0) — reconfiguring layer state after the copy
+  refs:
+  - bn6f/asm/asm34.s:759
+  - 0x0812C50C sub_812C50C
+  - 0x0812D164 sub_812D164
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0812D8C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callees (ZeroFillGFX30025c0, battle_resetEStructRecords_8046664, CopyBackgroundTiles rewriting
+    a full 30x20 screen from dword_201E420) all match the proposal. However, the proposal''s mention of
+    sub_812D934/sub_812D954/sub_812D91C is wrong: the asm shows only one call to sub_812D934 (with r1=0),
+    one to sub_812D954 (with r0=0), and no sub_812D91C call at all. Also r5 is restored from r7 before
+    ldrh r0,[r5,#0x2a], confirming r5 is a scene pointer carrying a layer/scroll index. The summary''s
+    ''restoring the map view after a battle'' fits, but the helper list is inaccurate.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_812D52E/D54C/D5D0/D934/D954/D91C do (layer scroll? palette? effect reset?), which would confirm
+  the tail behavior
+- What fills dword_201E420 with the tile snapshot, and whether byte_812C278 is a second snapshot or metadata
+- What structure r5 points to and the meaning of field 0x2a passed to sub_812D5D0
+- 'The callees (ZeroFillGFX30025c0, battle_resetEStructRecords_8046664, CopyBackgroundTiles rewriting
+  a full 30x20 screen from dword_201E420) all match the proposal. However, the proposal''s mention of
+  sub_812D934/sub_812D954/sub_812D91C is wrong: the asm shows only one call to sub_812D934 (with r1=0),
+  one to sub_812D954 (with r0=0), and no sub_812D91C call at all. Also r5 is restored from r7 before ldrh
+  r0,[r5,#0x2a], confirming r5 is a scene pointer carrying a layer/scroll index. The summary''s ''restoring
+  the map view after a battle'' fits, but the helper list is inaccurate.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D8C8 -> t4_restoreBgTilemapAfterBattle
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D8C8

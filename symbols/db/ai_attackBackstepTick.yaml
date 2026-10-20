@@ -1,0 +1,65 @@
+name: ai_attackBackstepTick
+address: '0x080EE6A4'
+kind: function
+status: probable
+summary: Per-frame tick that pushes the acting AI object backward by dir*XVelocity (accelerating as velocity
+  grows by 0x8000/tick) and, on StepTimer expiry, re-snaps to the panel grid, then either accumulates
+  AttackBoost2 toward 4 (and sets HitElement=4 and SubStepIndex=1 when full) on higher AI tiers, or clears
+  TempAttackObjectPtr and exits the attack state.
+interface: (r5 = battle object, r7 = oAIAttackVars struct, implicit) -> void; no return value
+details: 'Each call reads the object''s facing multiplier via object_getFrontDirection and applies oBattleObject_XVelocity
+  to oBattleObject_X (X -= dir*vel), then lowers the velocity by 0x8000 each tick — so the backward drift
+  accelerates and a zero velocity is skipped. While oAIAttackVars_StepTimer is still positive nothing
+  else happens. When the timer goes negative it calls object_setCoordinatesFromPanels to re-snap pixel
+  X/Y to the panel grid, then checks oAIAttackVars_AiDifficultyTier: on tier >0 with AttackBoost2 < 4
+  it increments AttackBoost2, on reaching 4 sets SubStepIndex=1 and writes HitElement=4. On tier 0 (or
+  boost maxed out... only tier 0 takes the exit path) it stores NULL into oAIData_TempAttackObjectPtr
+  and calls object_exitAttackState. The trailing dword 0xFFF40000 appears unrelated to this body.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection then X -= dir*XVelocity and XVelocity -= 0x8000: accelerating backward
+    movement (0x80EE6A8-0x80EE6BC); StepTimer decrement with bge skip, then object_setCoordinatesFromPanels
+    on expiry: per-frame tick with panel snap (0x80EE6BE-0x80EE6C2); AiDifficultyTier/AttackBoost2<4 increment
+    chain ending in SubStepIndex=1 and HitElement=4 (0x80EE6C6-0x80EE6EC); else path clears oAIData_TempAttackObjectPtr
+    and bl object_exitAttackState (0x80EE6E8-0x80EE6F0); uses only oAIAttackVars_* and oBattleObject_*
+    fields, matching AI attack-state handlers'
+  refs:
+  - bn6f/asm/asm31.s:118111
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EE6A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: the drift, velocity decrement, panel re-snap, tier-based boost increment,
+    and exit path all match the asm (e.g. lines at loc_80EE6BE/loc_80EE6E8). However, the proposal misreads
+    the velocity math: `dword_80EE6F8 = 0x8000` is *subtracted from r1*, so velocity *increases* by 0x8000
+    each tick (accelerating backward), not ''lowers''. Also, HitElement=4 is written unconditionally after
+    the tier-0/beq branch sets it for both the boost case and the fall-through, not only on reaching 4
+    — and the exit path is taken on tier==0 OR AttackBoost2==4, not only tier 0.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so it is unclear which AI attack routine schedules this tick or what initial XVelocity/StepTimer
+  values it passes
+- The meaning of HitElement=4 and SubStepIndex=1 at full boost count is not shown here
+- Whether dword_80EE6F4 (0xFFF40000) belongs to this function or a neighbor is unresolved
+- 'The proposal is mostly correct: the drift, velocity decrement, panel re-snap, tier-based boost increment,
+  and exit path all match the asm (e.g. lines at loc_80EE6BE/loc_80EE6E8). However, the proposal misreads
+  the velocity math: `dword_80EE6F8 = 0x8000` is *subtracted from r1*, so velocity *increases* by 0x8000
+  each tick (accelerating backward), not ''lowers''. Also, HitElement=4 is written unconditionally after
+  the tier-0/beq branch sets it for both the boost case and the fall-through, not only on reaching 4 —
+  and the exit path is taken on tier==0 OR AttackBoost2==4, not only tier 0.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EE6A4 -> ai_attackBackstepTick
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE6A4

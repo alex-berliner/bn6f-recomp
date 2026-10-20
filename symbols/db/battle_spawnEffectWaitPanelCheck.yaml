@@ -1,0 +1,66 @@
+name: battle_spawnEffectWaitPanelCheck
+address: '0x080C2B8C'
+kind: function
+status: probable
+summary: 'Battle-object state handler: on first entry spawns a type-0 effect above the object (Z+0x14<<16,
+  r4=3), plays SFX 0x77, arms a 60-frame timer, and marks itself initialized; then waits the timer out,
+  validates the object''s panel has flag 0x10, and either destroys the object or writes Alliance^DirectionFlip
+  to [r7,#0xC] and advances CurAction to 4 with phase 0.'
+interface: (r5 = battle object, r7 = work/out struct) -> r0 = 0/1 from panel check path; on success [r7,#0xC]
+  = Alliance^DirectionFlip and object moves to CurAction 4, phase 0
+details: On first entry (PhaseInitialized == 0) it sets oBattleObject_Timer = 0x3C (60 frames), calls
+  spawn_t1_0x0_EffectObject with the object's X/Y and Z + 0x14<<16 (r4 = 3 selects the type-1/effect-0
+  spawn variant), plays sound 0x77 (SOUND_LOG_IN_77), and stores 4 into oBattleObject_PhaseInitialized
+  so the init branch never runs again. On later calls it decrements the timer and returns until it hits
+  zero. It then validates the tile under the object (PanelX/PanelY) with object_checkPanelParameters(mask
+  0x10, mask 0), i.e. the panel must currently have flag 0x10; if not, the object is torn down via CUR_STATE_DESTROY
+  written to the packed state field. If the panel still qualifies, it computes Alliance EOR DirectionFlip,
+  stores it at [r7,#0xC] (a parameter for the next state/action), and sets CurAction = 4 with phase 0
+  to advance the object's state machine. Being a state handler, it is reached through the object's state
+  dispatch rather than a direct BL, which is why no direct caller is listed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Init branch: timer=0x3C, spawn_t1_0x0_EffectObject at X,Y,Z+0x14<<16, PlaySoundEffect(SOUND_LOG_IN_77),
+    PhaseInitialized=4; Countdown loop: ldrh Timer, sub #1, strh, bgt — classic per-frame delay; object_checkPanelParameters(PanelX,
+    PanelY, 0x10, 0); result 0 -> CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    Success path stores Alliance^DirectionFlip to [r7,#0xC] then CurAction=4, CurPhase=0, i.e. a state
+    transition with an argument'
+  refs:
+  - bn6f/asm/asm31.s:23491
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C2B8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the init/timer/panel-check/hand-off flow accurately (lines setting PhaseInitialized=0,
+    Timer=0x3C, calling spawn/PlaySoundEffect, decrementing timer, calling object_checkPanelParameters
+    with mask 0x10/0, CUR_STATE_DESTROY path, and the CurAction=4 store). However, the name ''battle_stateSpawnEffectWaitPanelCheck''
+    is awkward; a cleaner lowerCamel name following the same hints is ''battle_spawnEffectWaitPanelCheck''
+    (no digit runs from placeholder). The ''battle_'' prefix is reasonable since it operates on a battle
+    object via state dispatch.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which battle object uses this state (no caller found) — needed to say what flag-0x10 panel and sound
+  0x77 mean in game terms
+- Meaning of panel flag 0x10 and of the value written to [r7,#0xC] for action 4
+- What effect type 0 renders and why Z is raised by 0x14
+- The summary captures the init/timer/panel-check/hand-off flow accurately (lines setting PhaseInitialized=0,
+  Timer=0x3C, calling spawn/PlaySoundEffect, decrementing timer, calling object_checkPanelParameters with
+  mask 0x10/0, CUR_STATE_DESTROY path, and the CurAction=4 store). However, the name 'battle_stateSpawnEffectWaitPanelCheck'
+  is awkward; a cleaner lowerCamel name following the same hints is 'battle_spawnEffectWaitPanelCheck'
+  (no digit runs from placeholder). The 'battle_' prefix is reasonable since it operates on a battle object
+  via state dispatch.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2B8C -> battle_spawnEffectWaitPanelCheck
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2B8C

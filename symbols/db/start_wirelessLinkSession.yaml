@@ -1,0 +1,64 @@
+name: start_wirelessLinkSession
+address: '0x08039E2C'
+kind: function
+status: probable
+summary: 'Wireless-connect state handler: gates on an event flag, initializes the wireless adapter for
+  a new link session, and displays the success or failure message while setting the next state.'
+interface: (r5 = network state/work struct, set by caller) -> r0 = 0 after sub_803A104; writes next state
+  byte to [r5+1] (0x10 success / 0x18 failure); flags used internally from rfu_initLinkSession's return
+details: The function first calls sub_803A58C and bails out (to the common sub_803A104 tail) if it signals
+  failure, and also bails unless event-flag bit 8 of eFlags2009F38 is set (chatbox_mask_eFlags2009F38
+  with r0=8). It then runs rfu-region helpers (sub_8146588, sub_814695C on r5+0xF0, sub_81469BC on r5+0x100
+  with r1 = result of sub_803C418) before calling rfu_initLinkSession to tear down any current link and
+  start a new session. If init returns 0 (success) it shows network text 0x13 via sub_803BB2C and stores
+  state 0x10 into the struct's state byte at r5+1; on failure it shows text 0xA and stores 0x18. r5 is
+  never set inside the function, so this is one handler of a dispatcher that keeps the state struct in
+  r5. The whole flow matches the 'connecting to a wireless opponent' step of a network/comm menu.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl rfu_initLinkSession; tst r0,r0 / bne picks between text 0x13 (state 0x10) and text 0xA (state
+    0x18) via sub_803BB2C; mov r0,#8; bl chatbox_mask_eFlags2009F38; beq skip gates the sequence on event-flag
+    bit 8; strb r0,[r5,#1] writes 0x10/0x18 into the shared state struct's progress byte; callees rfu_initLinkSession
+    (new link session) and sub_803BB2C (network text script) match a wireless-connect flow; early exits
+    branch to the common tail bl sub_803A104, so it is one state in a jump-table handler chain (cf. sub_803BB2C's
+    known role)
+  refs:
+  - bn6f/asm/asm03_1_1.s:2412
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x081465BC rfu_initLinkSession
+  - 0x0803BB2C sub_803BB2C
+  reproduce: python3 tools/asmcat.py 0x08039E2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary are mostly accurate, but r5 is used as a base register (add r0, r0,
+    r5 to form r5+0x100), so r5 is not preserved by the caller as a parameter — it''s the frame/base register
+    for the local struct. The flow: check sub_803A58C, check flag bit 8, run rfu helpers on r5+0xF0 and
+    r5+0x100, call rfu_initLinkSession, show text 0x13 (success) or 0xA (failure) and store 0x10/0x18
+    at r5+1, then tail-call sub_803A104. The name fits.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers known, so which menu/state machine dispatches to this and what r5 points to is unconfirmed
+- meaning of the r5+0xF0 and r5+0x100 sub-blocks and of sub_8146588/sub_814695C/sub_81469BC (likely rfu
+  setup helpers) is unverified
+- exact meaning of sub_803C418's return value passed to sub_81469BC is unknown
+- which in-game screen text 0x13 and 0xA correspond to (e.g. 'searching' vs 'connection failed') could
+  not be confirmed from this function
+- 'The proposed name and summary are mostly accurate, but r5 is used as a base register (add r0, r0, r5
+  to form r5+0x100), so r5 is not preserved by the caller as a parameter — it''s the frame/base register
+  for the local struct. The flow: check sub_803A58C, check flag bit 8, run rfu helpers on r5+0xF0 and
+  r5+0x100, call rfu_initLinkSession, show text 0x13 (success) or 0xA (failure) and store 0x10/0x18 at
+  r5+1, then tail-call sub_803A104. The name fits.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8039E2C -> start_wirelessLinkSession
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039E2C

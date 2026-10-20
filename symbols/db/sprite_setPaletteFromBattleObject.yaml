@@ -1,0 +1,60 @@
+name: sprite_setPaletteFromBattleObject
+address: '0x0811BB50'
+kind: function
+status: probable
+summary: Reads the battle-object index from r5+0xe, subtracts 0x90, looks up the corresponding battle-object
+  descriptor, and applies its 1-based palette id (descriptor byte 3 minus 1) to r5's sprite via sprite_setPalette.
+interface: (r5 = source object whose halfword at +0xe holds a battle-object index) -> r0 = undefined;
+  calls sprite_setPalette
+details: Reads the halfword at [r5,#0xe], subtracts a base of 0x90 to get a global battle-object index,
+  and fetches that object's 0x10-byte descriptor from StructArr_813944C via battleObject_getByIndex_813B780.
+  It then loads byte 3 of the descriptor, decrements it by 1, and passes it to sprite_setPalette, which
+  stores it as the palette index (byte 4 of the sprite struct). The -1 suggests byte 3 is a 1-based palette/color
+  id (e.g. 0 = default, 1..N = palette variants like custom/PvP colors). The 0x90 base implies indices
+  in this halfword are encoded with a 0x90 offset relative to the battle-object array. Purpose of the
+  caller sub_811BAC4 is unknown, so the exact trigger context (spawn vs. recolor) is not established.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0xe]; sub r0,#0x90; bl battleObject_getByIndex_813B780 — resolves a battle-object
+    descriptor from an index field of r5; ldrb r0,[r0,#3]; sub r0,#1; bl sprite_setPalette — uses descriptor
+    byte 3 (1-based) as the palette index to store; callee summary: sprite_setPalette stores r0 in byte
+    4 of the object''s sprite struct, confirming this is palette assignment; no other stores/reads: the
+    function''s sole effect is the sprite_setPalette call'
+  refs:
+  - bn6f/asm/asm32.s:28556
+  - 0x0811BAC4 sub_811BAC4
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x0811BB50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the code exactly (ldrh r0,[r5,#0xe]; sub r0,#0x90; bl battleObject_getByIndex_813B780;
+    ldrb r0,[r0,#3]; sub r0,#1; bl sprite_setPalette). However, ''sprite_applyBattleObjectPalette'' is
+    misleading: r5 is the sprite object, and only its byte at +0xe (battle object reference) is read to
+    pick the palette index. The function reads the palette id from the battle-object descriptor, not vice
+    versa, so a clearer name would emphasize reading the palette id from the battle-object descriptor.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_811BAC4 does and when it invokes this (object spawn, color change, etc.)
+- Exact meaning of descriptor byte 3 (team color, palette variant id?) and whether the -1 maps to a documented
+  palette table
+- Why the halfword at r5+0xe is offset by 0x90 relative to the battle-object array index
+- 'The proposal''s mechanics match the code exactly (ldrh r0,[r5,#0xe]; sub r0,#0x90; bl battleObject_getByIndex_813B780;
+  ldrb r0,[r0,#3]; sub r0,#1; bl sprite_setPalette). However, ''sprite_applyBattleObjectPalette'' is misleading:
+  r5 is the sprite object, and only its byte at +0xe (battle object reference) is read to pick the palette
+  index. The function reads the palette id from the battle-object descriptor, not vice versa, so a clearer
+  name would emphasize reading the palette id from the battle-object descriptor.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811BB50 -> sprite_setPaletteFromBattleObject
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811BB50

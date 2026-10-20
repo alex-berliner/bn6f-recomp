@@ -1,0 +1,67 @@
+name: ai_pickRandomPanelInNearestColumn
+address: '0x08015EC6'
+kind: function
+status: probable
+summary: 'Battle AI helper: collects all matching panels except the object''s own, finds the column nearest
+  to the object, then returns a randomly chosen row in that column.'
+interface: (r5 = battle object; reads [r5+0x13] own column, [r5+0x16] variant id) -> r0 = packed panel
+  coord (column in high nibble, row&7 in low bits); r4/r6/r7 clobbered
+details: 'Uses [r5+0x16] as an index into two tables: byte_8015F38 (4-byte entries, required-mask words
+  0x04000000/0x08000000) for object_getPanelsExceptCurrentFiltered with forbidden mask 0, collecting all
+  panels of that type other than the object''s own into a stack buffer. It then walks the packed coord
+  bytes (col = byte>>4, row = byte&7), computing |objCol - col| and keeping the smallest distance (start
+  6), saving that column. The same variant index*8 selects an 8-byte entry in byte_8015F40 (required 0x10
+  / forbidden 0x0F8800A0, or required 0x30 / forbidden 0x0F880080) for object_getPanelsInRowFiltered on
+  the saved column. If any panels match, it does GetPositiveSignedRNG and svc 6 (Div) to get rand % count
+  and returns that random entry''s packed coordinate; otherwise it returns without picking. The r5-based
+  calling convention suggests it''s a leaf helper invoked from object/AI code that already holds the entity
+  in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x16]; lsl #2; ldr off_8015F30 -> variant-selected mask word passed as r2 to object_getPanelsExceptCurrentFiltered
+    with r3=0; loop computes |[r5,#0x13] - col| (neg on negative) vs r6=6, storing best col to [sp,#4];
+    second table byte_8015F40 indexed [r5+0x16]*8 supplies r2/r3 filter words to object_getPanelsInRowFiltered
+    with r0 = saved column; bl GetPositiveSignedRNG; svc 6 (Div); ldrb r0,[sp,r1] picks buffer[rand %
+    count] and extracts col>>4 / row&7; no r0 input is read before first use of r5, implying a caller
+    that passes the object in r5'
+  refs:
+  - bn6f/asm/asm00_2.s:16460
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x0800D012 object_getPanelsInRowFiltered
+  reproduce: python3 tools/asmcat.py 0x08015EC6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does find panels matching a variant mask and picks the closest column, but it does not
+    always pick a random panel: `object_getPanelsInRowFiltered` returns one coordinate per column (up
+    to 3 rows), so `GetPositiveSignedRNG` followed by `svc 6` (Div) picks a random *row* within the saved
+    column, not a random panel. The function returns the panel coordinate only when rows were found; otherwise
+    it returns whatever r0/r1 holds. A more accurate name is `ai_pickRandomPanelInNearestColumn` but the
+    summary should note the randomness is across rows in the nearest column.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no known caller, so which boss/object AI uses this and what the two variant ids mean is unknown
+- why byte_8015F40+idx*8 is also passed in r1 to object_getPanelsInRowFiltered (second output? struct
+  pointer?) is unclear from the callee's known signature
+- exact meaning of the panel attribute bits (0x04000000/0x08000000 required, 0x10/0x30 required vs 0x0F8800A0/0x0F880080
+  forbidden) is not established
+- 'The code does find panels matching a variant mask and picks the closest column, but it does not always
+  pick a random panel: `object_getPanelsInRowFiltered` returns one coordinate per column (up to 3 rows),
+  so `GetPositiveSignedRNG` followed by `svc 6` (Div) picks a random *row* within the saved column, not
+  a random panel. The function returns the panel coordinate only when rows were found; otherwise it returns
+  whatever r0/r1 holds. A more accurate name is `ai_pickRandomPanelInNearestColumn` but the summary should
+  note the randomness is across rows in the nearest column.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8015EC6 -> ai_pickRandomPanelInNearestColumn
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015EC6

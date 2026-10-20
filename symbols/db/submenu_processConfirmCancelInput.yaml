@@ -1,0 +1,59 @@
+name: submenu_processConfirmCancelInput
+address: '0x0812D690'
+kind: function
+status: probable
+summary: 'Per-frame input handler for a menu screen: calls sub_812D6F8 to get the menu state, and when
+  its [r7+0x28] flag is set, adjusts a cursor via menu_adjustCursorOrValue_811F7F8, then sets state [r7+0x26]=8
+  (or |=1 of [r7+0x1b]) on B or A-with-condition, or state 4 on A otherwise, playing SFX 0x81/0x83.'
+interface: (r0/r5 = menu state struct) -> void; writes state word [r5+0x26] = 4 or 8 and flag byte [r5+0x1b]
+  |= 1
+details: 'First calls sub_812D6F8 and checks a flag word [r7+0x28]; when set, it exits early if state
+  [r5+0x26] is already 4 or 8, calls sub_812D700 (a gate whose nonzero return aborts), then calls menu_adjustCursorOrValue_811F7F8
+  with the low-sensitivity held joypad word, mask 7 (left/right), min 0 and max 10, to change a cursor
+  index. Then it reads A/B via IsButtonPressed: B, or A when byte [r5+0x11] is nonzero, sets [r5+0x1b]
+  |= 1 and state 8; A with [r5+0x11]==0 sets state 4. State 4 plays SFX 0x81 (confirm) and state 8 plays
+  0x83 (cancel). r5 is the menu/slot state struct with 0x26 = current menu mode, 0x1b = result flag bits,
+  0x11 = a condition flag that makes A act as cancel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl menu_adjustCursorOrValue_811F7F8 with mask 7, min 0, max 10 after loading oJoypad_LowSensitivityHeld
+    — cursor stepping on input; IsButtonPressed(JOYPAD_B)/IsButtonPressed(JOYPAD_A) branches that strh
+    8 or 4 into [r5,#0x26] — confirm/cancel state transition; PlaySoundEffect(0x81) when r1==4 and PlaySoundEffect(0x83)
+    otherwise — standard confirm/cancel menu SFX pair; ldrh r0,[r7,#0x28] / cmp [r5,#0x26],4/8 early-outs
+    skip input once a decision state is already entered; caller context and known callee menu_adjustCursorOrValue_811F7F8
+    (menu cursor/value adjuster) place this in the menu input subsystem
+  refs:
+  - bn6f/asm/asm34.s:432
+  - 0x0812C3BC sub_812C3BC
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0811F7F8 menu_adjustCursorOrValue_811F7F8
+  reproduce: python3 tools/asmcat.py 0x0812D690
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: sub_812D6F8 returns r7, [r7+0x28] gates input handling, A/B are checked via IsButtonPressed,
+    [r5+0x1b]|=1 and [r5+0x26]=4/8 set, SFX 0x81/0x83 played, and sub_812D700''s nonzero return aborts.
+    However, the proposal misnames r5 as the state struct: r5 is overwritten from r7 inside the input
+    branch, so r7 (the sub_812D6F8 return) is the menu state, not r5. The name is fine in spirit but the
+    interface description is inaccurate.; run wf investigate investigate-20261018-235109; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which menu screen uses this struct (identity of sub_812D6F8/sub_812D700 and field 0x11's meaning)
+- 'The flow matches: sub_812D6F8 returns r7, [r7+0x28] gates input handling, A/B are checked via IsButtonPressed,
+  [r5+0x1b]|=1 and [r5+0x26]=4/8 set, SFX 0x81/0x83 played, and sub_812D700''s nonzero return aborts.
+  However, the proposal misnames r5 as the state struct: r5 is overwritten from r7 inside the input branch,
+  so r7 (the sub_812D6F8 return) is the menu state, not r5. The name is fine in spirit but the interface
+  description is inaccurate.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D690 -> submenu_processConfirmCancelInput
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D690

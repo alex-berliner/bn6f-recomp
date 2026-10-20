@@ -1,0 +1,59 @@
+name: object_tickAnimSound
+address: '0x0811CEC4'
+kind: function
+status: probable
+summary: Object tick that, when its countdown (object+0xC) reaches zero, optionally re-applies a subtype-keyed
+  animation and clears the sprite shadow, then — for object type 5 — sets object+0xB = 0x10, plays one
+  (or two) subtype-keyed sound effects from byte_811CF28/byte_811CF32, and finally re-arms the countdown
+  to 0x28 frames and writes 0x18 to object+0x9.
+interface: (r5 = object) -> void; sets object fields +0xC, +0xB, +9
+details: Decrements object+0xC; on zero, if object+7 == 0 it sets animation index byte_811CF3C[object+5
+  - 5] via sprite_setAnimation and reloads animation data and clears the shadow flag. If object+4 == 5,
+  it plays sound byte_811CF28[index] and, if byte_811CF32[index] != 0xFFFF, a second sound; index = object+5
+  - 5 (subtypes 5..9). Finally it re-arms the countdown to 0x28 frames and writes 0x18 to object+9, so
+  the sequence repeats periodically.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#0xc]; sub r0,#1; strb; bne locret — frame countdown on object+0xC; ldr r1,=byte_811CF3C;
+    ldrb r0,[r5,#5]; sub r0,#5; bl sprite_setAnimation — animation table indexed by subtype; ldr r1,=byte_811CF28;
+    ldrh r0,[r1,r4]; bl PlaySoundEffect — primary sound per subtype, index*2; ldrh r0,[r1,r4]; cmp r0,0xFFFF;
+    beq skip; bl PlaySoundEffect — optional second sound, 0xFFFF sentinel; mov r0,#0x28; strb [r5,#0xc];
+    mov r0,#0x18; strb [r5,#9] — re-arm timer to 40 frames
+  refs:
+  - bn6f/asm/asm32.s:30711
+  - 0x080005CC PlaySoundEffect
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811CEC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function decrements object+0xC each tick and re-arms it to 0x28 (40 frames), but the description
+    of the write to object+0x9 as triggering a periodic repetition is misleading — it''s a separate field
+    written once at the end. Also, it sets object+0xB = 0x10 only when object+4 == 5 (so r5+5 is only
+    used when r5+4 == 5, consistent with subtypes 5..9 indexing). The summary''s ''every 40 frames'' is
+    accurate, and the second sound check (0xFFFF sentinel) matches, so the only real issues are minor
+    naming/summary wording.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object family uses this handler (subtypes 5-9) — needs the caller or the AI-handler table entry
+- Meaning of fields +4 and +7 (state/flag gating animation and sound)
+- What the 0x18 written to +9 is used for elsewhere
+- The function decrements object+0xC each tick and re-arms it to 0x28 (40 frames), but the description
+  of the write to object+0x9 as triggering a periodic repetition is misleading — it's a separate field
+  written once at the end. Also, it sets object+0xB = 0x10 only when object+4 == 5 (so r5+5 is only used
+  when r5+4 == 5, consistent with subtypes 5..9 indexing). The summary's 'every 40 frames' is accurate,
+  and the second sound check (0xFFFF sentinel) matches, so the only real issues are minor naming/summary
+  wording.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811CEC4 -> object_tickAnimSound
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CEC4

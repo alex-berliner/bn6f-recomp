@@ -1,0 +1,52 @@
+name: battle_clearActiveChipState2
+address: '0x0802A61A'
+kind: function
+status: probable
+summary: Clears byte 7 of each active-chip entry (when it equals 2), iterating over slots up to the slot
+  limit from the chip context.
+interface: (r0 = folder data ptr; r5 = chip context struct) -> r0 = 0; r4, r6 clobbered
+details: First counts the chips in the equipped folder with battle_countFolderChips_8027D58 (r0). It takes
+  r6 = min(count, byte [r5,#6]), so the slot limit field caps the loop. For i = 0..r6-1 it calls getLocOfActiveChips_8027E1C(i)
+  to get the 12-byte active-chip entry, and if byte 7 == 2 it stores 0 there, otherwise leaves it untouched.
+  This reads like resetting a two-state marker (2 -> 0) on active chips, e.g. selected/used state. Note
+  r5 is used without being saved or set, so the caller is responsible for it (callee-saved-register quirk).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_countFolderChips_8027D58 with cmp r0,[r5,#6] computes min(folder count, slot-limit
+    byte); loop body: getLocOfActiveChips_8027E1C(r4) then ''ldrb r1,[r0,#7]; cmp r1,#2; strb 0'' only
+    when equal; loop bound cmp r4,r6 / blt iterates over active chip slots only, not the whole folder'
+  refs:
+  - bn6f/asm/asm03_0.s:9468
+  - 0x08027458 sub_8027458
+  - 0x08027D58 battle_countFolderChips_8027D58
+  - 0x08027E1C getLocOfActiveChips_8027E1C
+  reproduce: python3 tools/asmcat.py 0x0802A61A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s described behavior: it loops over active-chip slots up to min(folder
+    count, [r5+6]), and clears byte 7 when it equals 2. However, the proposed name ''battle_clearActiveChipFlags''
+    is slightly misleading since only a specific value (2) is cleared, not all flags. A name reflecting
+    the ''state == 2 -> 0'' reset would be more accurate, e.g., ''battle_clearActiveChipState2''.; run
+    wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Meaning of the 12-byte active-chip entry's byte 7 (which state 2 represents, e.g. selected vs. used)
+- What struct r5 points to and what its byte-6 slot limit is; the caller sub_8027458 is unnamed and would
+  confirm the context
+- 'The code matches the proposal''s described behavior: it loops over active-chip slots up to min(folder
+  count, [r5+6]), and clears byte 7 when it equals 2. However, the proposed name ''battle_clearActiveChipFlags''
+  is slightly misleading since only a specific value (2) is cleared, not all flags. A name reflecting
+  the ''state == 2 -> 0'' reset would be more accurate, e.g., ''battle_clearActiveChipState2''.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802A61A -> battle_clearActiveChipState2
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A61A

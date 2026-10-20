@@ -1,0 +1,66 @@
+name: object_updateVanishAndDestroy
+address: '0x080DB41C'
+kind: function
+status: probable
+summary: 'Per-frame handler that removes a battle object: if the panel under it is non-solid, spawns a
+  type-0 effect from params at object+0x34 and destroys the object; otherwise blinks it (toggling visibility
+  bit 2 each quarter-tick) for 0x1E frames before clearing collision and entering CUR_STATE_DESTROY.'
+interface: (r5 = battle object) -> r0 = 0/destroy state side effects; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when done
+details: 'If oCollisionData_FlagsFromCollision is nonzero, the object''s collision region is cleared (no
+  longer collidable). If the panel under the object is not solid, three words are loaded from object+0x34
+  and passed to spawn_t1_0x0_EffectObject (effect type 0), after which the object clears its collision
+  region and enters CUR_STATE_DESTROY. If the panel is solid, on first entry the timer is set to 0x1E
+  and PhaseInitialized is set to 4; each frame, object flag bit 2 (apparently invisibility) is toggled
+  whenever (timer>>2) has bit0 set, giving a blink; the timer counts down and on expiry the object is
+  destroyed. Effectively this is the ''object disappears'' update: instant poof-with-effect on open panels,
+  delayed blink-out on holes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_isCurrentPanelSolid; bne branch chooses blink-timer path vs effect spawn path (loc_80DB42A..loc_80DB43E);
+    ldmia r0! {r1-r3} from r5+0x34 feeds spawn_t1_0x0_EffectObject with effect type 0 (loc_80DB42A block);
+    timer 0x1E + PhaseInitialized=4 then flag bit2 toggle on timer>>2 bit0 = 4-frame blink (loc_80DB43E..loc_80DB462);
+    both exits: bl object_clearCollisionRegion then CUR_STATE_DESTROY stored to CurStateActionPhaseAndPhaseInitialized
+    (loc_80DB46A)'
+  refs:
+  - bn6f/asm/asm31.s:76590
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DB41C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate. However, the proposal says blink ''0x1E frames on a hole'' — actually
+    blink happens when panel IS solid, but `object_isCurrentPanelSolid` returns nonzero=solid; solid panel
+    = ''not a hole'', so wording should be ''on solid panels (e.g. over a hole, object is on the hole
+    panlel below)'' — more precisely, the instant-effect path is when panel is NOT solid (hole/broken),
+    and blink path is when solid. The proposed name ''object_updateVanishAndDestroy'' is reasonable. The
+    bit-toggle description is slightly off: bit 2 is OR''d in unconditionally, then conditionally BIC''d
+    when timer>>2 has bit0 set via BCC — so it''s set every frame then cleared on alternating quarter-second
+    ticks, not toggled.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the object type and game situation using this handler are unknown
+- Meaning of the three words at object+0x34 passed to the effect spawner, and what effect type 0 renders
+- Whether object flag bit 2 is 'invisible' or another render flag
+- 'The summary is mostly accurate. However, the proposal says blink ''0x1E frames on a hole'' — actually
+  blink happens when panel IS solid, but `object_isCurrentPanelSolid` returns nonzero=solid; solid panel
+  = ''not a hole'', so wording should be ''on solid panels (e.g. over a hole, object is on the hole panlel
+  below)'' — more precisely, the instant-effect path is when panel is NOT solid (hole/broken), and blink
+  path is when solid. The proposed name ''object_updateVanishAndDestroy'' is reasonable. The bit-toggle
+  description is slightly off: bit 2 is OR''d in unconditionally, then conditionally BIC''d when timer>>2
+  has bit0 set via BCC — so it''s set every frame then cleared on alternating quarter-second ticks, not
+  toggled.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB41C -> object_updateVanishAndDestroy
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB41C

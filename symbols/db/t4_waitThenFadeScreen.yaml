@@ -1,0 +1,59 @@
+name: t4_waitThenFadeScreen
+address: '0x08027624'
+kind: function
+status: probable
+summary: 'Step handler: increments a 32-bit frame counter at [r5+0x40]; when it reaches 0x10, resets it,
+  fades the screen out (SetScreenFade(0x64,8)), invokes sub_80302B6(1,0x28), plays sound effects 0x93
+  then 0xBC, and writes 8 to the u16 state at [r5+0x02].'
+interface: (r0 = unused/ignored, r5 = owner object with u16 state at +0x02 and frame counter at +0x40)
+  -> r0 = clobbered; no meaningful return
+details: On each call it increments the 32-bit counter at [r5,#0x40]; while it is below 0x10 the function
+  does nothing else. When the count reaches 0x10 the counter is reset to 0, SetScreenFade(0x64, 8) is
+  called (value 0x64 = 100, likely a full fade with speed 8), sub_80302B6(1, 0x28) is invoked for an unknown
+  side effect, sound effects 0x93 and 0xBC are played in sequence, and the halfword at [r5,#0x02] is set
+  to 8, evidently advancing the owner's state machine. The +0x02 field being a state and +0x40 a frame
+  counter suggests r5 is a scripted task/step context rather than a battle object. The two sounds played
+  back-to-back (0x93 then 0xBC) hint at a transition jingle or effect pair.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: counter at [r5,#0x40] incremented and compared to 0x10 each call, reset to 0 on completion (first
+    7 instructions); SetScreenFade(0x64, 8) called only after the count reaches 0x10; two PlaySoundEffect
+    calls with ids 0x93 and 0xBC fire together with the fade; strh r0=8, [r5,#2] writes a small value
+    into a halfword state field of the same object; early-out via cmp/blt to locret means the fade path
+    runs exactly once per 16 calls
+  refs:
+  - bn6f/asm/asm03_0.s:2542
+  - 0x080005CC PlaySoundEffect
+  - 0x08006270 SetScreenFade
+  - 0x080302B6 sub_80302B6
+  reproduce: python3 tools/asmcat.py 0x08027624
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and flow match: [r5,#0x40] increments each call, at 0x10 it resets to 0, calls SetScreenFade(0x64,8),
+    sub_80302B6(1,0x28), PlaySoundEffect(0x93) then PlaySoundEffect(0xBC), and sets [r5,#2] = 8. Only
+    nit: r0 is used as a meaningful argument (sound IDs) on later calls, so ''unused/ignored'' is slightly
+    misleading, and the name doesn''t match the prefix rules.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers are known, so the owner object (r5) and the meaning of state 8 are unidentified
+- sub_80302B6(1, 0x28) is unknown — it may restrict or configure the fade
+- which in-game moment this belongs to (overworld transition, cutscene, menu) depends on identifying sound
+  IDs 0x93/0xBC and a caller
+- 'The summary and flow match: [r5,#0x40] increments each call, at 0x10 it resets to 0, calls SetScreenFade(0x64,8),
+  sub_80302B6(1,0x28), PlaySoundEffect(0x93) then PlaySoundEffect(0xBC), and sets [r5,#2] = 8. Only nit:
+  r0 is used as a meaningful argument (sound IDs) on later calls, so ''unused/ignored'' is slightly misleading,
+  and the name doesn''t match the prefix rules.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8027624 -> t4_waitThenFadeScreen
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027624

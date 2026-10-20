@@ -1,0 +1,65 @@
+name: battle_objectMoveIntoFieldPhase
+address: '0x080BEACE'
+kind: function
+status: probable
+summary: Battle-object phase handler that plays sound 0x10 once, then over ~20 frames increments Timer
+  and calls sub_80E58D2 with Timer and a Param4-indexed table value from byte_80BEB20 to interpolate the
+  object's X/Y toward its panel coordinates, finally setting CurPhase to 8.
+interface: (r5 = battle object) -> void; updates oBattleObject_X/Y, Timer, PhaseInitialized, CurPhaseAndPhaseInitialized
+details: On first entry (PhaseInitialized==0) it zeroes Timer, plays sound effect 0x10, and stores 4 into
+  PhaseInitialized. Each tick it increments oBattleObject_Timer and once the timer exceeds 20 sets CurPhase
+  to 8, ending this phase. For the position it reads a per-instance selector Param4 to index byte_80BEB20
+  (0, 0x55, 0xAA, 0x78, 0xC8), adds the timer to that value, gets the facing multiplier via object_getFrontDirection
+  and the panel pixel coordinates via object_getCoordinatesForPanels, then calls sub_80E58D2(timer, tableVal+timer,
+  facing, x, y) whose results are stored into oBattleObject_X/oBattleObject_Y — evidently an interpolation
+  that offsets y (and maybe x) by an arc whose shape/height comes from the table. The five-entry table
+  suggests several preset arc heights/kinds selected by Param4. No callers are known, so which object
+  uses it is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / PlaySoundEffect(0x10) / strb #4 = one-time init
+    with sound (80BEAD0-80BEAE4); cmp r0,#0x14 / strh #8 into CurPhaseAndPhaseInitialized = phase ends
+    after 20 ticks (80BEAEC-80BEAF2); ldrb r1,[r2,r1] with r2=byte_80BEB20 (0,0x55,0xAA,0x78,0xC8) selects
+    an arc parameter from Param4 (80BEAF6-80BEAFC); push {r0,r1}; bl object_getFrontDirection; bl object_getCoordinatesForPanels;
+    bl sub_80E58D2; str to oBattleObject_X/Y = positional interpolation each frame (80BEAFF-80BEB16)'
+  refs:
+  - bn6f/asm/asm31.s:14352
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BEACE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s behavioral claims match the code: it zeroes Timer and plays sound 0x10 (mov r0,#0x11;
+    add r0,#0xff -> 0x10) on first entry, increments Timer, transitions to phase 8 once Timer > 0x14 (20),
+    indexes byte_80BEB20 by Param4, calls object_getFrontDirection and object_getCoordinatesForPanels,
+    then sub_80E58D2(timer, tableVal+timer, facing, x, y) writing X/Y. Minor issues: ''arc'' is speculative
+    (sub_80E58D2''s interpolation is not visible here), and the name ''battle_objectArcMovePhase'' encodes
+    that guess. A safer name is ''battle_objectThrowIntroPhase'' or simply ''battle_objectMoveIntoFieldPhase'',
+    since it just animates a battle object into the field over ~20 frames with sound 0x10.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_80E58D2 is unanalyzed — confirming it computes a parabolic arc offset would raise confidence
+- no callers known, so which enemy/attack or object invokes this phase and what sound 0x10 is remain unknown
+- exact meaning of the byte_80BEB20 entries (arc height vs. path id)
+- 'The proposal''s behavioral claims match the code: it zeroes Timer and plays sound 0x10 (mov r0,#0x11;
+  add r0,#0xff -> 0x10) on first entry, increments Timer, transitions to phase 8 once Timer > 0x14 (20),
+  indexes byte_80BEB20 by Param4, calls object_getFrontDirection and object_getCoordinatesForPanels, then
+  sub_80E58D2(timer, tableVal+timer, facing, x, y) writing X/Y. Minor issues: ''arc'' is speculative (sub_80E58D2''s
+  interpolation is not visible here), and the name ''battle_objectArcMovePhase'' encodes that guess. A
+  safer name is ''battle_objectThrowIntroPhase'' or simply ''battle_objectMoveIntoFieldPhase'', since
+  it just animates a battle object into the field over ~20 frames with sound 0x10.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEACE -> battle_objectMoveIntoFieldPhase
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEACE

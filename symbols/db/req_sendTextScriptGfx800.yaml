@@ -1,0 +1,65 @@
+name: req_sendTextScriptGfx800
+address: '0x0801E398'
+kind: function
+status: probable
+summary: Publishes the fixed TextScript86F0374 graphic to VRAM at 0x6009560 via renderTextGfx_8045F8C
+  using the caller's +3 byte, then sets request bit 0x800 on eStruct2035280 and dispatches it.
+interface: (r0 = state struct; +3 passed to renderer) -> r0 = clobbered; sets request bit 0x800 and dispatches
+  it
+details: Stores the caller's pointer, then calls renderTextGfx_8045F8C with r0 = TextScript86F0374, r1
+  = arg+3, r2 = byte_203C4E0, r3 = VRAM tile base 0x6009560, r4 = 8, r5 = 1, r6 = gfx data dword_86B7AE0,
+  r7 = 0 — so it draws a fixed 8-tile text graphic rather than arbitrary text. It then ORs 1<<11 (0x800)
+  into the request/flag dword at eStruct2035280+0x40 via eStruct2035280_SetRequestBits_801BECC and immediately
+  dispatches event 0x800 via dispatch_801DA48. The caller at 0x0800AB7C invokes it once. The +3 field
+  of the caller's struct is likely a glyph/chunk selector for the renderer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_801E438 =TextScript86F0374; r3 = dword_801E440 = 0x6009560 passed to renderTextGfx_8045F8C
+    — fixed text graphic drawn to VRAM; mov r1, r7; add r1, #3 — caller''s struct +3 is forwarded to the
+    renderer as a parameter; bl eStruct2035280_SetRequestBits_801BECC with 1<<11 followed by bl dispatch_801DA48
+    with the same 0x800 — request then dispatch pattern; r4 = 8, r5 = 1, r6 = dword_86B7AE0 — fixed size/single
+    chunk draw with static gfx data'
+  refs:
+  - bn6f/asm/asm00_2.s:32174
+  - 0x0800AB7C sub_800AB7C
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801E398
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it pushes r0 (= caller ptr), sets r1=r7+3, r2=byte_203C4E0,
+    r3=0x6009560, calls renderTextGfx_8045F8C, then ORs 1<<11 (0x800) and dispatches via dispatch_801DA48,
+    exactly as described. However, the +3 offset is not a ''glyph/chunk selector for the renderer'' —
+    it is a low-level index passed to the renderer caller''s state, and the 0x800 flag here is a request
+    bit (event/request dispatch), not specifically a ''text'' event. The name t3_drawTextScriptGfx implies
+    a t3 (chatbox) helper drawing text; while plausible given the renderer call and VRAM address, the
+    function is more accurately a thin wrapper that publishes a text-script graphic and raises dispatch
+    bit 0x800, which fits a ''req'' (request) helper better than a chatbox draw helper.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What the struct field at arg+3 selects in the renderer (glyph index vs. color/flag)
+- What event 0x800 triggers downstream in dispatch_801DA48
+- The exact meaning of byte_203C4E0 and dword_86B7AE0 (palette vs. font chunk data)
+- 'The code matches the proposal''s mechanics: it pushes r0 (= caller ptr), sets r1=r7+3, r2=byte_203C4E0,
+  r3=0x6009560, calls renderTextGfx_8045F8C, then ORs 1<<11 (0x800) and dispatches via dispatch_801DA48,
+  exactly as described. However, the +3 offset is not a ''glyph/chunk selector for the renderer'' — it
+  is a low-level index passed to the renderer caller''s state, and the 0x800 flag here is a request bit
+  (event/request dispatch), not specifically a ''text'' event. The name t3_drawTextScriptGfx implies a
+  t3 (chatbox) helper drawing text; while plausible given the renderer call and VRAM address, the function
+  is more accurately a thin wrapper that publishes a text-script graphic and raises dispatch bit 0x800,
+  which fits a ''req'' (request) helper better than a chatbox draw helper.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801E398 -> req_sendTextScriptGfx800
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E398

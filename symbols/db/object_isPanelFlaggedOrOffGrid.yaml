@@ -1,0 +1,62 @@
+name: object_isPanelFlaggedOrOffGrid
+address: '0x080D650C'
+kind: function
+status: probable
+summary: Returns 1 if the battle object's panel has flag 0x10010 set or is outside the 6x3 grid; otherwise
+  returns 0.
+interface: (r0 unused, r5 = battle object) -> r0 = 1 if the object's panel matches mask 0x10010 or is
+  off-grid, else 0
+details: Reads the object's pixel X/Y from r5 (oBattleObject_X/Y), converts them to 1-based panel column/row
+  via convertXYToPanelXY_800E258, then calls object_checkPanelParameters with the fixed masks in the literal
+  pool (set-mask 0x10010, clear-mask 0). If the panel matches, that nonzero result is returned directly.
+  If not, object_isValidPanel is called; an in-grid panel yields 0 and an out-of-grid panel yields 1,
+  so the function reports 'panel unusable or nonexistent'. The masks are hardcoded in the pool at dword_80D653C/80D6540,
+  not passed by the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: convertXYToPanelXY_800E258 call on oBattleObject_X/Y gives panel col/row; object_checkPanelParameters
+    called with pool masks dword_80D653C=0x10010, dword_80D6540=0; bne locret returns the match result
+    directly when the panel flags match; fallthrough calls object_isValidPanel; invalid -> r0=1, valid
+    -> r0=0
+  refs:
+  - bn6f/asm/asm31.s:65975
+  - 0x080D6364 sub_80D6364
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080D650C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the logic: it loads object''s pixel X/Y, converts to panel coordinates via convertXYToPanelXY_800E258,
+    pushes panel (r0,r1) and calls object_checkPanelParameters with the literal pool masks 0x10010 and
+    0x0. If that returns nonzero (flag match), it falls through to locret with r0=1. If not, object_isValidPanel
+    is called; in-grid returns 0 (bne to loc_80D6534 returning 0), off-grid returns 1. So the function
+    returns 1 when panel is flagged 0x10010 OR off-grid, else 0. The summary''s polarity (''returns 1
+    in either case'') and the interface are correct, but the name is fine — only minor: the masks are
+    set=0x10010, clear=0, and r0 return polarity matches. No functional disagreement.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of panel flag bits 0x10010 (hole? broken? sword-struck?) — needs the panel-attribute flag
+  table
+- Caller sub_80D6364 is undocumented, so how the 0/1 result is consumed (movement gating vs. AI) is unconfirmed
+- 'The code matches the logic: it loads object''s pixel X/Y, converts to panel coordinates via convertXYToPanelXY_800E258,
+  pushes panel (r0,r1) and calls object_checkPanelParameters with the literal pool masks 0x10010 and 0x0.
+  If that returns nonzero (flag match), it falls through to locret with r0=1. If not, object_isValidPanel
+  is called; in-grid returns 0 (bne to loc_80D6534 returning 0), off-grid returns 1. So the function returns
+  1 when panel is flagged 0x10010 OR off-grid, else 0. The summary''s polarity (''returns 1 in either
+  case'') and the interface are correct, but the name is fine — only minor: the masks are set=0x10010,
+  clear=0, and r0 return polarity matches. No functional disagreement.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D650C -> object_isPanelFlaggedOrOffGrid
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D650C

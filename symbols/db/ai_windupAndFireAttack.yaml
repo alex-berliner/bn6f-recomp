@@ -1,0 +1,73 @@
+name: ai_windupAndFireAttack
+address: '0x080EF0E2'
+kind: function
+status: probable
+summary: 'Per-frame AI handler: on first entry (AttackElement==0) sets ObjectFlags1 bit22, plays animation
+  0xA, spawns a t1 subtype-5 temp attack object from AIDataPtr+0x68, adds AttackBoost into Damage, calls
+  sub_80D2B8E with r7=object+0x4C and r3=0x100000, resets the counter timer, loads StepTimer=TimerOrCycles+0xA,
+  plays SFX 0x1BF, and marks AttackElement=4. Then every frame decrements StepTimer and when it expires
+  writes HitElement=0xC to advance to the next phase.'
+interface: (working battle object in r5, AI attack vars in r7) -> void; sets ObjectFlags1 bit22, animation
+  0xA, AttackElement=4, HitElement=0xC when timer expires
+details: If AttackElement is already non-zero the spawn block is skipped and it just decrements oAIAttackVars_StepTimer,
+  writing HitElement=0xC when it hits zero (the next attack phase). Otherwise it sets flag bit 22 on the
+  object, plays animation 0xA, builds r4 = 0x120 from the AiDifficultyTier and reads the attack definition
+  at AIDataPtr+0x68, then spawns a type-1 subtype-5 temp attack object via spawn_t1_0x5_tempAttackObject_80B8E30.
+  It then adds AttackBoost into Damage, calls sub_80D2B8E with r7 = object+0x4C and r3 = 0x100000, resets
+  the object counter to default, loads StepTimer = TimerOrCycles+0xA, plays sound effect 0xBF, and marks
+  AttackElement=4 so the wind-up only happens once.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl spawn_t1_0x5_tempAttackObject_80B8E30 with r7=AIDataPtr+0x68, r4=0x120 from AiDifficultyTier:
+    fires the enemy''s attack object; bl object_setAnimation with r0=0xA and flag bit22 via object_setFlag1:
+    wind-up pose; bl PlaySoundEffect with 0xBF and strb 4,[r7,AttackElement]: attack sound plus one-shot
+    latch; ldrh/strh on StepTimer with sub #1 and bgt, then HitElement=0xC: countdown into next attack
+    state; add r6,r6,r3 over Damage/AttackBoost before bl sub_80D2B8E: applies damage scaling'
+  refs:
+  - bn6f/asm/asm31.s:119230
+  - 0x080EF0B4 sub_80EF0B4
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  reproduce: python3 tools/asmcat.py 0x080EF0E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s core behavior matches the asm: checks AttackElement (ldrb r0,[r7,#oAIAttackVars_AttackElement];
+    tst r0,r0) and branches over the spawn block when nonzero; sets flag bit22 via object_setFlag1, anim
+    0xA, reads AiDifficultyTier then 0x68 offset attack def and calls spawn_t1_0x5_tempAttackObject_80B8E30,
+    sets HitElement=0xC at locret when StepTimer<=0. However the proposal gets details wrong: r4 is built
+    as 1<<8 + 0x20 = 0x120, not ''0x120 from AiDifficultyTier'' (the tier is just ldrb''d into r0 not
+    used for r4); the Boost/InitFlag registers are swapped (InitFlag -> r2 used as flag arg to spawn;
+    AttackBoost2 -> r4 used as flag arg to sub_80D2B8E; AttackBoost -> r3 added to Damage); sub_80D2B8E
+    is called with r7=object+0x4C and r3=0x100000, not r3; the sound is 0xBF+0xFF? actually mov r0,#0xc0;
+    add r0,#0xff = 0x1BF, not 0xBF; AttackElement is set to 4 (strb r0,[r7,#oAIAttackVars_AttackElement])
+    marking wind-up done, not HitElement. The flow is essentially correct so revise the summary to fix
+    these.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D2B8E does with object+0x4C and r3=0x100000 (damage/attribute setup?)
+- Which enemy/AI uses this and what element/attack the spawned subtype-5 object is
+- Meaning of HitElement=0xC in the following phase
+- 'The proposal''s core behavior matches the asm: checks AttackElement (ldrb r0,[r7,#oAIAttackVars_AttackElement];
+  tst r0,r0) and branches over the spawn block when nonzero; sets flag bit22 via object_setFlag1, anim
+  0xA, reads AiDifficultyTier then 0x68 offset attack def and calls spawn_t1_0x5_tempAttackObject_80B8E30,
+  sets HitElement=0xC at locret when StepTimer<=0. However the proposal gets details wrong: r4 is built
+  as 1<<8 + 0x20 = 0x120, not ''0x120 from AiDifficultyTier'' (the tier is just ldrb''d into r0 not used
+  for r4); the Boost/InitFlag registers are swapped (InitFlag -> r2 used as flag arg to spawn; AttackBoost2
+  -> r4 used as flag arg to sub_80D2B8E; AttackBoost -> r3 added to Damage); sub_80D2B8E is called with
+  r7=object+0x4C and r3=0x100000, not r3; the sound is 0xBF+0xFF? actually mov r0,#0xc0; add r0,#0xff
+  = 0x1BF, not 0xBF; AttackElement is set to 4 (strb r0,[r7,#oAIAttackVars_AttackElement]) marking wind-up
+  done, not HitElement. The flow is essentially correct so revise the summary to fix these.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EF0E2 -> ai_windupAndFireAttack
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF0E2

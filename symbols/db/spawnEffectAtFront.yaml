@@ -1,0 +1,61 @@
+name: spawnEffectAtFront
+address: '0x080C185C'
+kind: function
+status: probable
+summary: Spawns a type-0 effect object at the panel directly in front of the given battle object, passing
+  (Alliance^DirectionFlip)<<8 ORed into the spawn parameter word and the panel's 16.16 coordinates.
+interface: (r5 = battle object ptr) -> r0 = spawned effect object ptr; clobbers r0-r3, r4, lr
+details: Reads the object's Alliance and DirectionFlip flags, XORs them and calls object_getFrontDirection
+  to get the +1/-1 facing multiplier, which is added to the object's PanelX to get the panel in front.
+  That panel (frontX, PanelY) is converted to 16.16 screen coordinates with object_getCoordinatesForPanels.
+  The saved (Alliance^DirectionFlip)<<8 value is ORed into the constant 0x60216 to form the spawn parameter
+  word, so bit 8 carries the object's side/facing. It then calls spawn_t1_0x0_EffectObject with r0=parameter
+  word, r1=x, r2=y, r3=0 and returns the created effect object pointer. Only the object in r5 is touched;
+  no other state is modified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb Alliance/DirectionFlip + eor + bl object_getFrontDirection gives the facing multiplier
+    (sub_80C185C prologue); add r0, r0, r1 with PanelX then bl object_getCoordinatesForPanels(PanelX+dir,
+    PanelY) targets the front panel; pop {r0}; orr r4, r0 with dword_80C1888=0x60216 packs the side/facing
+    bit into the spawn parameter; bl spawn_t1_0x0_EffectObject with r0=param, r1=x, r2=y, r3=0 spawns
+    the effect and its pointer is returned
+  refs:
+  - bn6f/asm/asm31.s:20954
+  - 0x080C174A sub_80C174A
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C185C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: Alliance and DirectionFlip are XORed and shifted left by 8, saved on the stack,
+    front-direction multiplier is added to PanelX, then frontX/PanelY is converted to 16.16 coords. The
+    saved value is popped into r0 and ORed with 0x60216 (loaded into r4 then ORed), forming the spawn
+    parameter, and spawn_t1_0x0_EffectObject is called with (param, x, y, 0). So the summary is accurate.
+    The proposed name ''spawn_effectAtFrontPanel'' is decent but the prefix ''spawn'' is overly verbose
+    for a spawner; ''effect'' alone or ''spawnEffectFront'' would suffice.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What effect type 0 actually renders in-game (visual purpose of the spawned effect)
+- Which gameplay situations trigger the caller sub_80C174A, and the exact field layout of the 0x60216
+  spawn parameter word
+- 'The flow matches: Alliance and DirectionFlip are XORed and shifted left by 8, saved on the stack, front-direction
+  multiplier is added to PanelX, then frontX/PanelY is converted to 16.16 coords. The saved value is popped
+  into r0 and ORed with 0x60216 (loaded into r4 then ORed), forming the spawn parameter, and spawn_t1_0x0_EffectObject
+  is called with (param, x, y, 0). So the summary is accurate. The proposed name ''spawn_effectAtFrontPanel''
+  is decent but the prefix ''spawn'' is overly verbose for a spawner; ''effect'' alone or ''spawnEffectFront''
+  would suffice.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C185C -> spawnEffectAtFront
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C185C

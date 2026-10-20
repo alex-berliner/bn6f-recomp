@@ -1,0 +1,66 @@
+name: battle_registerFieldObject
+address: '0x080DB2C6'
+kind: function
+status: probable
+summary: 'Spawns a type-3 battle object of kind 0xAD, then on the caller''s reference object (r5): runs
+  BasicBattleObjectInitialize with the original r0/r1 args and r3=0, sets bit 0x10 in oObjectHeader_Flags,
+  and calls setFieldBattleObject_800F614 with its alliance and r2=0.'
+interface: (r0, r1, r2 = spawn/init parameters, r5 = reference battle object whose alliance is copied)
+  -> r0 = new object pointer or 0; flags set by object_spawnType3 (Z used for failure branch)
+details: The function saves r0-r2/r5 on the stack — the four pushed words act as the stack arguments object_spawnType3
+  expects alongside r0=0xAD as the object kind. If the spawn fails (r0 == 0), it returns immediately after
+  restoring registers. On success it calls BasicBattleObjectInitialize(newObj, origR0, origR1, 0) to fill
+  in base fields from the caller's parameters, then sets bit 0x10 in the new object's header flags byte
+  (oObjectHeader_Flags), and finally reads oBattleObject_Alliance from the caller's r5 object and passes
+  it to setFieldBattleObject_800F614 together with r2=0. This ties the spawned entity into the field-object
+  bookkeeping with the same team/alliance as the requesting object. The five dwords at 0x80DB2F0-0x80DB300
+  (e.g. 0x1000C00, 0x13140300) are trailing data, likely parameters of a neighbouring wrapper rather than
+  this one. The exact identity of object kind 0xAD is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0xad; bl object_spawnType3 — spawns type-3 object kind 0xAD with stack-passed args;
+    beq locret_80DB2EC after the call — skips all setup when spawn returned NULL; bl BasicBattleObjectInitialize
+    with r3=0 — standard base-field init for the freshly spawned object; ldrb r2,[r0,#oObjectHeader_Flags];
+    orr r2,#0x10; strb — sets header flag 0x10 on the new object; ldrb r1,[r5,#oBattleObject_Alliance];
+    bl setFieldBattleObject_800F614 — registers field object using caller object''s alliance'
+  refs:
+  - bn6f/asm/asm31.s:76420
+  - 0x080E7668 sub_80E7668
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080DB2C6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal incorrectly says BasicBattleObjectInitialize receives the new object and that bit 0x10
+    is set on the new object. After object_spawnType3, `mov r0, r5` puts the caller''s reference object
+    (not the spawn) into r0; `beq` checks if r5==0, not spawn success. The pop restores r1-r3,r5, so r0
+    stays as r5. BasicBattleObjectInitialize(r5, origR0, origR1, 0) and the orr 0x10 act on the caller''s
+    reference object, and the alliance is read from the same r5 object. Also r3 to object_spawnType3 is
+    not explicitly set to 0 here — it is whatever the caller had.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What gameplay object kind 0xAD actually is (needs the spawn table or a known caller such as sub_80E7668)
+- Exact meaning of header flag 0x10 and what setFieldBattleObject_800F614 writes
+- Whether r0/r1 passed to BasicBattleObjectInitialize are coordinates, a parent handle, or other init
+  parameters
+- The proposal incorrectly says BasicBattleObjectInitialize receives the new object and that bit 0x10
+  is set on the new object. After object_spawnType3, `mov r0, r5` puts the caller's reference object (not
+  the spawn) into r0; `beq` checks if r5==0, not spawn success. The pop restores r1-r3,r5, so r0 stays
+  as r5. BasicBattleObjectInitialize(r5, origR0, origR1, 0) and the orr 0x10 act on the caller's reference
+  object, and the alliance is read from the same r5 object. Also r3 to object_spawnType3 is not explicitly
+  set to 0 here — it is whatever the caller had.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB2C6 -> battle_registerFieldObject
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB2C6

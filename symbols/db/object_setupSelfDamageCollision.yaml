@@ -1,0 +1,65 @@
+name: object_setupSelfDamageCollision
+address: '0x080F73FA'
+kind: function
+status: probable
+summary: Configures the battle object's collision record to deliver a self-damage hit using its stored
+  damage/element value, clearing invulnerability and 'in-use' flags first.
+interface: (r0 = unused/scratch, r5 = battle object ptr) -> r0 = destroyed; sets the object's collision
+  data for a self-damage hit, no return value
+details: Clears ObjectFlags1 bit 0x40 (likely an invulnerability/no-hit style flag), sets the 'currently
+  moving' flag (1<<1), and clears bit 1<<0x16 before calling object_updateCollisionData with r1=0x35,
+  r2=2, r3=3 — 0x35 being the hit/collision type whose damage lands in oCollisionData_SelfDamage. It then
+  reads the object's oBattleObject_DamageAndStaminaDamageCounterDisabler word, stores its low halfword
+  into oCollisionData_SelfDamage, and stores the low byte of that same value into oCollisionData_StaminaDamageCounterDisabler.
+  r5 must already hold the owning battle object, so this is a battle-object method, not a standalone service.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: clearFlag 0x40 then setFlag1 1<<CURRENTLY_MOVING before updateCollisionData shows it re-arming
+    an active object's collision; object_updateCollisionData called with r1=0x35, r2=2, r3=3 (hit type
+    + two parameters); halfword from oBattleObject_DamageAndStaminaDamageCounterDisabler stored to oCollisionData_SelfDamage
+    — damage source and destination are explicit; byte store of the same low value into oCollisionData_StaminaDamageCounterDisabler
+    ties the two fields together; both callers 0x080F6B94/0x080F6BB8 sit in the same battle code region
+    as this routine
+  refs:
+  - bn6f/asm/asm31.s:136343
+  - 0x080F6B94 sub_80F6B94
+  - 0x080F6BB8 sub_80F6BB8
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080F73FA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms clearing bit 0x40, setting the moving flag, clearing bit 0x16, calling object_updateCollisionData
+    with r1=0x35 r2=2 r3=3, and copying the low halfword to oCollisionData_SelfDamage and low byte to
+    oCollisionData_StaminaDamageCounterDisabler. The first parameter r0 is not unused/scratch: object_clearFlag/object_setFlag1
+    take a battle-object pointer in r0, but here r0 holds a flag bit, so r5 must be the battle object
+    (per the proposed interface). The function is more accurately a setup/arming routine for a self-damage
+    collision. The proposed name ''battle_setupSelfDamageCollision'' is reasonable but ''object'' is a
+    more accurate prefix since the callees are object_* routines and r5 holds an object pointer.; run
+    wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What hit type 0x35 means exactly (self-damage vs recoil naming) and what r2=2/r3=3 select
+- Whether storing the damage low byte into StaminaDamageCounterDisabler is intentional packing or a quirk/bug
+- What the two callers do (which boss/attack state enters this) to confirm the game-context name
+- 'The code confirms clearing bit 0x40, setting the moving flag, clearing bit 0x16, calling object_updateCollisionData
+  with r1=0x35 r2=2 r3=3, and copying the low halfword to oCollisionData_SelfDamage and low byte to oCollisionData_StaminaDamageCounterDisabler.
+  The first parameter r0 is not unused/scratch: object_clearFlag/object_setFlag1 take a battle-object
+  pointer in r0, but here r0 holds a flag bit, so r5 must be the battle object (per the proposed interface).
+  The function is more accurately a setup/arming routine for a self-damage collision. The proposed name
+  ''battle_setupSelfDamageCollision'' is reasonable but ''object'' is a more accurate prefix since the
+  callees are object_* routines and r5 holds an object pointer.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F73FA -> object_setupSelfDamageCollision
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F73FA

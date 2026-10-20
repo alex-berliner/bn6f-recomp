@@ -1,0 +1,65 @@
+name: object_refreshAnimStateFromFlags
+address: '0x0811891C'
+kind: function
+status: probable
+summary: Reads an event-flag bit, an inline data flag and the item-flag table to compute a state byte
+  and an animation index; updates the sprite only when the new index differs from the cached one.
+interface: (r5 = state struct ptr, r6 = object data ptr) -> r0 = sprite_loadAnimationData result path;
+  writes state byte to [r5], new anim index to [r5+0xc], old-index flag to [r6+0xd]; no return value used
+details: 'First it tests event flag 0x80 via chatbox_mask_eFlags2009F38 and stores 1 (flag set) or 0x23
+  (flag clear) to [r5], a state byte that likely drives a later dialogue/state machine. It then computes
+  an animation selector r7: 2 if [r6+0x10] is nonzero, else 1 if battle_checkItemFlagFor_813B9B4([r6+0x28],
+  [r6+0x2c]) finds a set entry in the 0x200414c item-flag array, else 0; the result is saved to [r5+0xc].
+  It calls sub_8118AB0, normalizing its truthiness into 0/1 stored at [r6+0xd], which acts as the object''s
+  current animation index. If the freshly chosen index differs from the current one, it calls sprite_setAnimation
+  with the new index and sprite_loadAnimationData to apply the change; otherwise it returns without touching
+  the sprite. The pattern is a per-frame/tick ''refresh my sprite from world state'' routine for one interactive
+  map object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'chatbox_mask_eFlags2009F38(0x80) selects between storing 1 and 0x23 into [r5] (loc_811892A);
+    anim selector: [r6+0x10] -> 2, else battle_checkItemFlagFor([r6+0x28],[r6+0x2c]) -> 1, else 0, stored
+    at [r5+0xc]; result of sub_8118AB0 normalized to 0/1 and written to [r6+0xd] as the current index;
+    cmp [r5+0xc], [r5+0xd]; on mismatch calls sprite_setAnimation then sprite_loadAnimationData, i.e.
+    anim change on state transition only'
+  refs:
+  - bn6f/asm/asm32.s:21820
+  - 0x0813B9B4 battle_checkItemFlagFor_813B9B4
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x0811891C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary direction is mostly correct, but several details are wrong. The new anim index is written
+    to [r5+0xc] (matches), but the ''old index'' is read from [r5+0xd] not [r6+0xd] — [r6+0xd] is where
+    the normalized sub_8118AB0 result is stored as the comparison value, while the code does `cmp r0,
+    r1` with r0=[r5+0xc] and r1=[r5+0xd], so the ''old index'' is at r5+0xd. Also r7 starts as 0 and is
+    set to 2 when [r6+0x10]!=0, else 1 if battle_checkItemFlagFor_813B9B4 returns nonzero — that is correct.
+    The initial event-flag block writes 1 to [r5] when bit 0x80 is set and 0x23 when clear (mov r4,#1
+    / mov r4,#0x23). State struct is r5, object ptr is r6.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which map object/NPC uses this and the meaning of the 0x23 state byte are unconfirmed
+- sub_8118AB0 is unknown; its return decides the base animation index and may reveal the object type
+- Whether [r5] (the 1/0x23 byte) is a dialogue-state or a separate sprite state needs caller context
+- The summary direction is mostly correct, but several details are wrong. The new anim index is written
+  to [r5+0xc] (matches), but the 'old index' is read from [r5+0xd] not [r6+0xd] — [r6+0xd] is where the
+  normalized sub_8118AB0 result is stored as the comparison value, while the code does `cmp r0, r1` with
+  r0=[r5+0xc] and r1=[r5+0xd], so the 'old index' is at r5+0xd. Also r7 starts as 0 and is set to 2 when
+  [r6+0x10]!=0, else 1 if battle_checkItemFlagFor_813B9B4 returns nonzero — that is correct. The initial
+  event-flag block writes 1 to [r5] when bit 0x80 is set and 0x23 when clear (mov r4,#1 / mov r4,#0x23).
+  State struct is r5, object ptr is r6.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811891C -> object_refreshAnimStateFromFlags
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811891C

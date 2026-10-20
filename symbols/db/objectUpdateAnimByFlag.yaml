@@ -1,0 +1,61 @@
+name: objectUpdateAnimByFlag
+address: '0x08118A00'
+kind: function
+status: probable
+summary: Object helper that picks an animation id (1 if chatbox/event flag 0x80 is set, else 0x23) into
+  the object's work, has sub_8118AB0 recompute the desired anim into [r5+0xc], and only calls sprite_setAnimation/sprite_loadAnimationData
+  when the new anim differs from the previously-applied one in [r5+0xd].
+interface: (r5 = object/sprite struct pointer, r0/r1 clobbered) -> void; flags from the flag test are
+  used internally only
+details: 'r5 points at an object/sprite work struct (r5 is not set here, so it is an incoming/global pointer).
+  It tests bit 0x80 of the chatbox/event flag word via chatbox_mask_eFlags2009F38: if set, animation id
+  1 is stored at [r5], otherwise 0x23. It writes 2 to [r5+0xc] and calls sub_8118AB0, which appears to
+  recompute the desired animation into [r5+0xc]. It then compares [r5+0xc] against [r5+0xd] (previous/last-applied
+  animation) and, when they differ, calls sprite_setAnimation with the new id and sprite_loadAnimationData
+  to load its frames; if unchanged it returns without touching the sprite.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: chatbox_mask_eFlags2009F38(0x80) branch selects anim id 1 vs 0x23 stored to [r5] (sub_8118A00+4..+E);
+    [r5+0xc]=2 then call sub_8118AB0 recomputes that byte before the comparison; cmp [r5+0xc],[r5+0xd];
+    beq return — animation only applied when the id changed; sprite_setAnimation then sprite_loadAnimationData
+    called back-to-back in the changed branch; use of chatbox_mask_eFlags2009F38 places this in the event/cutscene
+    subsystem
+  refs:
+  - bn6f/asm/asm32.s:21954
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x08118A00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is correct, but r5 is not passed in here — it is read from elsewhere in the caller chain;
+    the callees show this is an object/sprite animation update, not an ''e'' (event) helper, since it
+    never mutates event flags itself. The proposed prefix ''e'' is wrong; ''object'' fits better. Otherwise
+    the byte offsets ([r5], [r5+0xc], [r5+0xd]), the flag-0x80 branch storing 1 vs 0x23, the call to sub_8118AB0
+    that fills [r5+0xc], and the compare-against-previous-animation gate on sprite_setAnimation/sprite_loadAnimationData
+    all match the code.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, and r5 is never assigned in this function — a caller is needed to confirm what struct
+  r5 points to and when this runs
+- What sub_8118AB0 computes into [r5+0xc] (it may override the 1/0x23 choice written to [r5])
+- Exact meaning of the 0x80 event-flag bit and why animation 0x23 vs 1
+- The summary is correct, but r5 is not passed in here — it is read from elsewhere in the caller chain;
+  the callees show this is an object/sprite animation update, not an 'e' (event) helper, since it never
+  mutates event flags itself. The proposed prefix 'e' is wrong; 'object' fits better. Otherwise the byte
+  offsets ([r5], [r5+0xc], [r5+0xd]), the flag-0x80 branch storing 1 vs 0x23, the call to sub_8118AB0
+  that fills [r5+0xc], and the compare-against-previous-animation gate on sprite_setAnimation/sprite_loadAnimationData
+  all match the code.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8118A00 -> objectUpdateAnimByFlag
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118A00

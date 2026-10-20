@@ -1,0 +1,61 @@
+name: battle_stateFadeOutDestroy
+address: '0x080E1C66'
+kind: function
+status: probable
+summary: Per-frame state handler that, on first run, sets OAM priority 2 and timer to 8; each frame decrements
+  the timer and calls sprite_setAlpha with timer*2 (16→2 over 8 frames); when it underflows, disables
+  alpha, clears bit 1 of oObjectHeader_Flags, calls sub_8011044(1, Param1), and transitions the object
+  to CUR_STATE_DESTROY.
+interface: (r0-r3 unused; r5 = battle object) -> void; writes oBattleObject_Timer, PhaseInitialized, ObjectHeader_Flags,
+  CurStateActionPhaseAndPhaseInitialized
+details: This is a per-frame state handler for a battle object. On the first invocation (PhaseInitialized==0)
+  it calls sub_80E1CB0 with r0=r1=0 (likely resetting blend setup), sets OAM priority 2, loads the timer
+  with 8, and marks the phase initialized (4). Each subsequent frame it decrements the timer and, while
+  still >= 0, programs the sprite's alpha to timer*2, ramping 16 down to 0 so the sprite fades to fully
+  transparent. When the timer underflows it calls sprite_disableAlpha, clears bit 1 of oObjectHeader_Flags
+  (active/alive bit), calls sub_8011044(1, oBattleObject_Param1) — plausibly a sound or cleanup keyed
+  by Param1 — and sets the object's state word to CUR_STATE_DESTROY to despawn it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,oBattleObject_PhaseInitialized] / first-run block sets Timer=8 and priority 2 — one-shot
+    state init; bl sprite_setAlpha_8002c7a with Timer*2 in a countdown loop — 16..0 alpha ramp = fade-out;
+    timer underflow path: bl sprite_disableAlpha then bic bit 1 of oObjectHeader_Flags; mov r0,#CUR_STATE_DESTROY;
+    str [r5,oBattleObject_CurStateActionPhaseAndPhaseInitialized] — terminates the object; callees are
+    all sprite/blend helpers (sprite_setPriority, sprite_disableAlpha), fitting a visual fade state'
+  refs:
+  - bn6f/asm/asm31.s:90680
+  - 0x08002C7A sprite_setAlpha_8002c7a
+  - 0x08002E14 sprite_setPriority_8002E14
+  - 0x08002CCE sprite_disableAlpha
+  reproduce: python3 tools/asmcat.py 0x080E1C66
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: sets priority 2, timer=8, decrements each frame, calls sprite_setAlpha_8002c7a
+    with timer*2 (lvl 0..16), then sprite_disableAlpha, clears bit 1 of oObjectHeader_Flags, calls sub_8011044(1,
+    Param1), and sets CUR_STATE_DESTROY. The ''fade out over 8 frames ramping 16→0'' is slightly off —
+    alpha goes 16,14,...,2 (timer 8..1, doubled), so 8 frames, not ramping to fully 0 (only disabled at
+    the end). Name is fine but the alpha ramp description overstates the range.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- purpose of sub_80E1CB0(0,0) and sub_8011044(1, Param1) — need their callees/callers to confirm (blend
+  reset vs. sound cue)
+- which battle objects use this state and what Param1 selects (effect variant, SFX id)
+- 'The code matches the proposal well: sets priority 2, timer=8, decrements each frame, calls sprite_setAlpha_8002c7a
+  with timer*2 (lvl 0..16), then sprite_disableAlpha, clears bit 1 of oObjectHeader_Flags, calls sub_8011044(1,
+  Param1), and sets CUR_STATE_DESTROY. The ''fade out over 8 frames ramping 16→0'' is slightly off — alpha
+  goes 16,14,...,2 (timer 8..1, doubled), so 8 frames, not ramping to fully 0 (only disabled at the end).
+  Name is fine but the alpha ramp description overstates the range.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1C66 -> battle_stateFadeOutDestroy
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1C66

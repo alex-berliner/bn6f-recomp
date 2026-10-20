@@ -1,0 +1,65 @@
+name: chatbox_threeChoiceMenuUpdate
+address: '0x08131210'
+kind: function
+status: probable
+summary: 'Update tick for a three-option chatbox menu: replay the current option''s script after the chatbox
+  finishes, move the cursor (0–2) with the d-pad playing each option''s script, and confirm/cancel with
+  A/B (B always exits, A re-runs script 0x69 first), setting status bit 0x2 and playing sound 0x83/0x81.'
+interface: (r5 = dialog state struct, r4 = context struct with u16 at +0xA, r10 = toolkit) -> void; no
+  meaningful return value
+details: 'r5 points at a small dialog state: +0xC is the cursor index, +0x11 a flag, +0x1B a status byte,
+  +0x26 a state halfword. When status bit 0x20 is set (chatbox finished, signalled by eFlags2009F38 bit
+  8), it clears the bit and runs the text script selected by the saved cursor from table dword_81312D4,
+  whose bytes are script indices 0x6B/0x6C/0x6D in archive eTextScript201BA20. Otherwise it checks a guard
+  (halfword at [r4 or r4+0x10,+0xA] must be <= 0x8003) and, when state != 4, lets the cursor move over
+  3 entries via menu_moveCursorUpDown, playing the option''s script and sub_81314E4 on change. At state
+  4, A (re)runs script 0x69 while B is also accepted; on confirm/cancel it sets status bit 0x2, stores
+  state 4 or 8, and plays sound 0x81 or 0x83. Inputs arrive in callee-saved r4/r5/r10, so this runs inside
+  a caller-owned update loop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: dword_81312D4 = 0x6D6C6B gives three consecutive script indices 0x6B-0x6D selected by [r5,#0xC];
+    menu_moveCursorUpDown_811FA22 called with max 3 entries and result stored back to [r5,#0xC], then
+    script [idx] played; A/B checked via IsButtonPressed; A runs script 0x69, sets state 4 or 8 at [r7,#0x26]
+    with sounds 0x81/0x83; bit 0x20 path waits on chatbox_mask_eFlags2009F38(8) before replaying the chosen
+    option's script; all text goes through chatbox_runScript_803FD9C_on_eTextScript201BA20, confirming
+    this is a text-dialog flow
+  refs:
+  - bn6f/asm/asm36.s:2318
+  - 0x08130A04 sub_8130A04
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08131210
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function is consistent with the code: status 0x20 gates text replay of dword_81312D4 (0x6B/0x6C/0x6D),
+    cursor moves over 3 options, and A/B both exit with status bit 2 set (B is unconditional via the ORR
+    at loc_81312B0; A re-runs script 0x69 first). However the summary says ''input handler'' but the function
+    also pre-handles the chatbox-finished flag replay before any input, and the chosen name ''menu_handleThreeChoiceDialog''
+    is not aligned with the prefix set; ''chatbox_threeChoiceMenuUpdate'' or similar would be better.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What scene this dialog belongs to (script archive content and scripts 0x69/0x6B-0x6D would identify
+  it)
+- Meaning of the 0x8003 guard halfword at [r4,#0xA] and of sub_803DD60
+- Exact semantics of state values 4/8 at [r7,#0x26] and what sub_81314E4 refreshes
+- 'The function is consistent with the code: status 0x20 gates text replay of dword_81312D4 (0x6B/0x6C/0x6D),
+  cursor moves over 3 options, and A/B both exit with status bit 2 set (B is unconditional via the ORR
+  at loc_81312B0; A re-runs script 0x69 first). However the summary says ''input handler'' but the function
+  also pre-handles the chatbox-finished flag replay before any input, and the chosen name ''menu_handleThreeChoiceDialog''
+  is not aligned with the prefix set; ''chatbox_threeChoiceMenuUpdate'' or similar would be better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8131210 -> chatbox_threeChoiceMenuUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131210

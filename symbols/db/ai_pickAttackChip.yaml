@@ -1,0 +1,73 @@
+name: ai_pickAttackChip
+address: '0x080EF6FC'
+kind: function
+status: probable
+summary: 'Battle-AI routine that selects the AI Navi''s next chip and queues the chip-use action: RNG-picks
+  for invincible/0x17/0x18 Navis, decrements ChargeCycles otherwise, optionally calls sub_8012792 to let
+  the AI player pick a panel index, maps that index through byte_80EF7D8 to a chip ID, fetches the 44-byte
+  chip record, copies element/dword/class into AI vars, and sets oBattleObject_CurAction=0x41 unless the
+  AI is a boss (NaviStats 0xB..0x18) or invincible, in which case it stores the chip''s byte 0xF into
+  oAIAttackVars_PwrAtkState.'
+interface: (r0 = battle object, r7 = AI attack-vars struct, r5 = battle object, r4 = scratch) -> stores
+  oAIAttackVars_ChipID/AiDifficultyTier/AttackBoost2/PwrAtkState or sets oBattleObject_CurAction = 0x41;
+  no return value used
+details: 'Reads NaviStats byte 0x2C (AI style/difficulty): values 0x17/0x18, or an invincible AI, pick
+  a chip purely by RNG (svc 6 modulo 6) instead of the normal path. Normally it decrements oAIAttackVars_ChargeCycles
+  and only acts when it hits zero; if bit0 of oAIData_JoypadHeld (simulated A button) is set it calls
+  sub_8012792 with the PanelChooseCallback to select an index (0xFF = abort), otherwise falls through
+  to the ready state. The chosen index is mapped through byte_80EF7D8 (0x49,0x172,0x148,0x153,0x173) to
+  a chip ID, SOUND_OK_8B is played, the chip ID is stored, and getChip8021DA8 fetches the 44-byte chip
+  record whose element (0xC), word at 0x10 (AttackBoost2) and class byte 0xB (to object_setAttack0) are
+  copied into the AI vars. Finally, unless the AI is invincible or special cases (NaviStats 0x29 == 0xB,
+  chip == 0x173), a charged/ready AI sets oBattleObject_CurAction = 0x41 (use-chip action); for boss AI
+  (NaviStats 0xB..0x18) it instead stores chip byte 0xF into oAIAttackVars_PwrAtkState.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_ChargeCycles]; sub/strh with beq on zero — a charge-time gate before
+    chip selection; ldrh r0,[r0,#oAIData_JoypadHeld] tst bit0 -> bl sub_8012792 with r2=[r7,#oAIAttackVars_PanelChooseCallback],
+    0xFF abort — interactive/index-based chip pick; off_80EF7D4 table of 5 chip IDs (0x49,0x172,0x148,0x153,0x173)
+    indexed by the pick result, then strh [r7,#oAIAttackVars_ChipID]; bl getChip8021DA8 followed by copies
+    of chip fields 0xC/0x10/0xB/0xF into AI vars and object_setAttack0; mov r1,#0x41; strb [r5,#oBattleObject_CurAction]
+    gated on ChargeReadyFlag and chip != 0x173 — queues the use-chip action
+  refs:
+  - bn6f/asm/asm31.s:120015
+  - 0x080EF648 sub_80EF648
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080EF6FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: RNG-pick path at loc_80EF712, charge-cycle decrement at
+    loc_80EF722, panel-choose call at loc_80EF75E, mapping via byte_80EF7D8, getChip8021DA8 fetch, writes
+    to ChipID/byte 0xC/word 0x10/byte 0xB, and the boss vs. normal CurAction=0x41 split. However, the
+    proposal misnames several offsets (oAIAttackVars_AiDifficultyTier for byte 0xC, oAIAttackVars_AttackBoost2
+    for word 0x10) and oAIAttackVars_PanelChooseCallback is wrong (the actual compute is `r3 = (0x14>>2)+0x30+r7`,
+    not loading a stored callback). Also the summary overstates ''AiDifficultyTier'' semantics and the
+    read at the end (byte 0xF -> PwrAtkState) applies to boss range 0xB..0x18 *or* invincibles, which
+    the proposal misses.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of NaviStats bytes 0x2C and 0x29 (difficulty/personality indices) and what sub_8012792
+  selects (panel/chip index) would confirm naming of the pick path
+- 'The code matches the described behavior: RNG-pick path at loc_80EF712, charge-cycle decrement at loc_80EF722,
+  panel-choose call at loc_80EF75E, mapping via byte_80EF7D8, getChip8021DA8 fetch, writes to ChipID/byte
+  0xC/word 0x10/byte 0xB, and the boss vs. normal CurAction=0x41 split. However, the proposal misnames
+  several offsets (oAIAttackVars_AiDifficultyTier for byte 0xC, oAIAttackVars_AttackBoost2 for word 0x10)
+  and oAIAttackVars_PanelChooseCallback is wrong (the actual compute is `r3 = (0x14>>2)+0x30+r7`, not
+  loading a stored callback). Also the summary overstates ''AiDifficultyTier'' semantics and the read
+  at the end (byte 0xF -> PwrAtkState) applies to boss range 0xB..0x18 *or* invincibles, which the proposal
+  misses.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EF6FC -> ai_pickAttackChip
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF6FC

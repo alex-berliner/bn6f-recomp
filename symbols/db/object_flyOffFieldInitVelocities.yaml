@@ -1,0 +1,61 @@
+name: object_flyOffFieldInitVelocities
+address: '0x080D09BE'
+kind: function
+status: probable
+summary: 'Initial velocity setup for the fly-off-field object state: sets X velocity toward the front
+  and an arcing Y velocity aimed at a target panel.'
+interface: (r0-r4 = battle object in r5, uses oBattleObject_Param1/Param2/PanelX/PanelY/Alliance) -> writes
+  oBattleObject_XVelocity and oBattleObject_YVelocity; no return value
+details: 'If Param2 is zero it only sets YVelocity = 0. Otherwise it scans up to five panels one column
+  ahead (X + frontDirection, Y offset from byte_80D0A48: 0, -1, +1, -2, +2) using object_getFirstPanelInDirectionFiltered
+  on the object''s alliance side; if no panel is found YVelocity is zeroed. When a target panel is found,
+  X distance |targetX - PanelX| and the signed Y offset are combined with the speed word from byte_80D0A54
+  indexed by Param1 (values 0x60000 or 0xC0000) via svc 6 division to produce a Y velocity that arcs the
+  object to that panel. Finally XVelocity = frontDirection * speedTable[Param1]. Runs only as part of
+  object_flyOffFieldStep''s initialization.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Caller 0x080D0952 object_flyOffFieldStep is described as initializing on entry then moving by
+    velocity each frame; this routine only writes the two velocity fields; byte_80D0A48 holds Y-scan offsets
+    0,-1,+1,-2,+2 used with object_getFirstPanelInDirectionFiltered to locate the landing panel; svc 6
+    (SWI Div) combines distance*0x280000/speed and 0x180000*offset to form YVelocity at loc_80D09FE-80D0A24;
+    XVelocity = object_getFrontDirection() * word from byte_80D0A54[Param1] at the tail (0x080D0A24);
+    byte_80D0A54 contains two nonzero speed words (6 and 12 in high half), indexed as [Param1*4] via ldr
+  refs:
+  - bn6f/asm/asm31.s:53635
+  - 0x080D0952 object_flyOffFieldStep
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x080D09BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: Param2==0 zeros YVelocity; otherwise it scans five offsets (0,-1,+1,-2,+2)
+    using object_getFirstPanelInDirectionFiltered with alliance filter; on failure zeros YVelocity; on
+    success computes X distance * 0x280000 / speedTable[Param1] via svc 6, then 0x180000 * Y offset /
+    same speed; finally XVelocity = frontDirection * speedTable[Param1]. The summary''s description of
+    ''arcing'' and target panel is accurate. The only nit: the speed table is indexed by Param1 but values
+    shown (0x60000/0xC0000) match speedTable — fine.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact fixed-point units of the resulting velocities and whether byte_80D0A54 has more than two valid
+  Param1 entries
+- 'The code matches the proposal: Param2==0 zeros YVelocity; otherwise it scans five offsets (0,-1,+1,-2,+2)
+  using object_getFirstPanelInDirectionFiltered with alliance filter; on failure zeros YVelocity; on success
+  computes X distance * 0x280000 / speedTable[Param1] via svc 6, then 0x180000 * Y offset / same speed;
+  finally XVelocity = frontDirection * speedTable[Param1]. The summary''s description of ''arcing'' and
+  target panel is accurate. The only nit: the speed table is indexed by Param1 but values shown (0x60000/0xC0000)
+  match speedTable — fine.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D09BE -> object_flyOffFieldInitVelocities
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D09BE

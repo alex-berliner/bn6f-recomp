@@ -1,0 +1,55 @@
+name: ow_endEventResetPlayer
+address: '0x0808FB18'
+kind: function
+status: probable
+summary: 'Tears down an overworld event: clears EVENT_BE4 and EVENT_BE5 flags, resets the player/Navi
+  palette index, clears the player''s interaction-locked flag, and zeroes the event-state byte at struct
+  +0x1C; returns 0.'
+interface: () -> r0 = 0; clobbers r0-r1, lr
+details: Clears story flags EVENT_BE4 and EVENT_BE5 via ClearEventFlagFromImmediate, then calls sub_808FBA0,
+  ZeroOWPlayerNaviPaletteIndex (resets 0x2000AA5 to default colors), sub_808F990, and owPlayer_clearInteractionLocked_809e23c.
+  Finally it loads a pointer from off_808F5D4 (a struct at 0x2000310-ish region) and stores 0 into its
+  +0x1C byte (0x200032C), likely an event/cutscene state or counter field. It always returns 0 in r0,
+  suggesting it's a step/callback in an event state machine that reports completion. The mix of flag clears
+  plus full player-state reset is characteristic of tear-down when an overworld scenario event finishes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'movflag EVENT_BE4/EVENT_BE5 + bl ClearEventFlagFromImmediate clears the event''s own story
+    flags; bl ZeroOWPlayerNaviPaletteIndex and bl owPlayer_clearInteractionLocked_809e23c reset the overworld
+    player after the event; ldr r1, off_808F5D4; strb r0, [r1,#0x1c] zeroes an event-struct state byte
+    at 0x200032C; mov r0, #0; pop {pc} always returns 0, fitting a completion-status callback; callees
+    are all one-shot resets (no gameplay logic), consistent with tear-down'
+  refs:
+  - bn6f/asm/asm25.s:397
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0809E2FC ZeroOWPlayerNaviPaletteIndex
+  - 0x0809E23C owPlayer_clearInteractionLocked_809e23c
+  reproduce: python3 tools/asmcat.py 0x0808FB18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Summary and callee descriptions match the asm: flag clears via ClearEventFlagFromImmediate, palette
+    reset, interaction-lock clear, and byte store at +0x1C of the struct pointer from off_808F5D4. The
+    name is reasonable, but ''lock state'' is imprecise — the code specifically clears the player''s interaction-locked
+    flag, not a generic lock.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- purpose of callees sub_808F990 and sub_808FBA0
+- which structure off_808F5D4 points to and what field 0x1C means
+- which scenario(s) use flags BE4/BE5 and where this function is registered as a callback
+- 'Summary and callee descriptions match the asm: flag clears via ClearEventFlagFromImmediate, palette
+  reset, interaction-lock clear, and byte store at +0x1C of the struct pointer from off_808F5D4. The name
+  is reasonable, but ''lock state'' is imprecise — the code specifically clears the player''s interaction-locked
+  flag, not a generic lock.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808FB18 -> ow_endEventResetPlayer
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FB18

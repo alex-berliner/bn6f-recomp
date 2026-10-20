@@ -751,10 +751,10 @@ static u32 call_get_panel_entry(u32 panel_id) {
     return R0;
 }
 
-/* register form: calls sub_800C81E outside this file, which has no typed C interface yet */
+/* register form: calls battle_setPanelState outside this file, which has no typed C interface yet */
 static void call_clear_panel_pair(u32 panel_id, u32 flag, u32 aux) {
     R0 = panel_id; R1 = flag; R2 = aux;
-    GUEST_CALL(sub_800C81E);
+    GUEST_CALL(battle_setPanelState);
 }
 
 /* register form: calls object_getPanelDataOffset outside this file, which has no typed C interface yet */

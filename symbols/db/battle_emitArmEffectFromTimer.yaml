@@ -1,0 +1,65 @@
+name: battle_emitArmEffectFromTimer
+address: '0x080BDB3C'
+kind: function
+status: probable
+summary: When a status byte equals 8 and Timer2 hits 0x28, sets a halfword flag, computes the arm position,
+  spawns effect object 0x4F at that spot with Timer=0x1E, plays sound 0x72, resets Timer2, and sets Param3
+  to 8.
+interface: (r5 = battle object) -> r0 = 0 on the firing path; increments oBattleObject_Timer2, spawns
+  effect object, plays sound, clears Timer2 and sets oBattleObject_Param3 = 8
+details: The function increments the object's Timer2 and early-returns unless the byte at [ExtraVars+4]+9
+  equals 8 and Timer2 has reached 0x28. When it fires, it stores 1 as a halfword at offset 0x20 of the
+  structure pointed to by ExtraVars+0x14, then calls getBattleArmPositionMaybe_8018810 with NameID/Alliance/DirectionFlip
+  to get the arm attachment (x, y) offsets. It adds these to the object's X/Y and Z (y into Z) and spawns
+  effect object 0x4F via spawn_t1_0x0_EffectObject, setting the new object's oBattleObject_Timer to 0x1E.
+  It plays sound effect 0x72, resets the object's Timer2 to 0, and sets oBattleObject_Param3 to 8, so
+  the effect re-emits every 40 frames while the status byte remains 8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r1, #8 / bne locret: fires only when byte at [ExtraVars+4]+9 is 8; cmp r0, #0x28 / blt
+    locret plus ''strh r0(0), [r5,#Timer2]'' at end: 40-frame repeating tick; bl getBattleArmPositionMaybe_8018810
+    using NameID/Alliance/DirectionFlip: effect placed at arm attachment; bl spawn_t1_0x0_EffectObject
+    with r4=0x4f, new object Timer set to 0x1e; mov r0, #SOUND_UNK_72 / bl PlaySoundEffect accompanies
+    each spawn'
+  refs:
+  - bn6f/asm/asm31.s:12265
+  - 0x080005CC PlaySoundEffect
+  - 0x08018810 getBattleArmPositionMaybe_8018810
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080BDB3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: Timer2 increments every call, fires when [ExtraVars+4]+9 == 8 and Timer2 == 0x28,
+    stores 1 at ExtraVars+0x14+0x20, calls getBattleArmPositionMaybe_8018810, spawns effect 0x4F via spawn_t1_0x0_EffectObject
+    with the object''s Timer set to 0x1E, plays sound 0x72, zeros Timer2, and sets Param3 to 8. However,
+    the proposal mislabels the interface: r0 returns the spawned effect object pointer (spawn_t1_0x0_EffectObject
+    returns it), not 0. Also calling this ''periodic'' is speculative; it''s really an arm-position effect
+    emitter triggered once per timer reset.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What state byte 9 == 8 means in the structure at ExtraVars+4 (chip, cross form, or status?)
+- What flag at offset 0x20 of the ExtraVars+0x14 structure enables
+- What effect type 0x4F renders as, and what sound 0x72 is, to identify the chip/crossform/status this
+  belongs to
+- No caller known; the object's update table entry that installs this tick would clarify which entity
+  uses it
+- 'The code matches: Timer2 increments every call, fires when [ExtraVars+4]+9 == 8 and Timer2 == 0x28,
+  stores 1 at ExtraVars+0x14+0x20, calls getBattleArmPositionMaybe_8018810, spawns effect 0x4F via spawn_t1_0x0_EffectObject
+  with the object''s Timer set to 0x1E, plays sound 0x72, zeros Timer2, and sets Param3 to 8. However,
+  the proposal mislabels the interface: r0 returns the spawned effect object pointer (spawn_t1_0x0_EffectObject
+  returns it), not 0. Also calling this ''periodic'' is speculative; it''s really an arm-position effect
+  emitter triggered once per timer reset.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BDB3C -> battle_emitArmEffectFromTimer
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDB3C

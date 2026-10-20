@@ -1,0 +1,61 @@
+name: ai_dashAttackSpawnPanelEffect
+address: '0x08105354'
+kind: function
+status: probable
+summary: 'Called during the dash-attack AI state: if the object''s current panel carries its side''s status
+  bit (0x04000000 for alliance 0, 0x08000000 for alliance 1), spawns a type-4 effect via spawn_t1_0x0_EffectObject
+  with the object''s X/Y/Z, but with the effect''s Y-offset set to 0x53 plus (flip<<8), so it appears
+  behind the object relative to its facing.'
+interface: (r0 = battle object in r5 convention) -> r0 = spawned effect object pointer or stale; spawns
+  type-4 effect, no flags meaning
+details: Reads the object's PanelX/PanelY and calls object_getPanelParameters for that panel's status
+  word. It then loads a per-alliance mask from off_8105384 (0x4000000 for alliance 0, 0x8000000 for alliance
+  1, indexed via Alliance<<2) and returns without doing anything if the panel's flags don't include that
+  bit. Otherwise it calls object_getFlip, computes 0x53 + flip<<8 (so x-offset 0x53 or -0x53 relative
+  to facing), and calls spawn_t1_0x0_EffectObject with the object's X/Y/Z, effect id 0x53, to spawn a
+  short-lived visual effect on/behind the object during its dash attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getPanelParameters with PanelX/PanelY then tst r0,r2 against per-alliance masks at
+    off_8105384 gates the spawn; add r4,r4,0x53 after object_getFlip<<8 builds the flipped x offset for
+    the effect; bl spawn_t1_0x0_EffectObject with X/Y/Z from the battle object spawns the type-4 effect;
+    only caller 0x081048AA ai_chargeDashAttackStep ties it to the dash-attack state's per-frame effect
+    work
+  refs:
+  - bn6f/asm/asm31.s:165352
+  - 0x081048AA ai_chargeDashAttackStep
+  - 0x0800E456 object_getFlip
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08105354
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly identifies the per-alliance panel flag check and the spawn, but misidentifies
+    the coordinate being offset. `lsl r4, r0, #8` then `add r4, r4, #0x53` produces a value stored in
+    r4 that is passed as the Y offset argument (effect Y offset, not X), while r1/r2/r3 receive the object''s
+    X/Y/Z unmodified. The 0x53 is the Y-offset (negative when facing the other direction), not an X-mirror.
+    Also `spawn_t1_0x0_EffectObject` spawns type-4 with effect-type 0, not ''effect id 0x53''.; run wf
+    investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what visual effect id 0x53 renders (dust/wind trail?)
+- exact meaning of panel flag bits 0x4000000/0x8000000 in the panel-parameters word (likely panel-side
+  ownership or an elevated/boosted marker)
+- 'The summary correctly identifies the per-alliance panel flag check and the spawn, but misidentifies
+  the coordinate being offset. `lsl r4, r0, #8` then `add r4, r4, #0x53` produces a value stored in r4
+  that is passed as the Y offset argument (effect Y offset, not X), while r1/r2/r3 receive the object''s
+  X/Y/Z unmodified. The 0x53 is the Y-offset (negative when facing the other direction), not an X-mirror.
+  Also `spawn_t1_0x0_EffectObject` spawns type-4 with effect-type 0, not ''effect id 0x53''.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8105354 -> ai_dashAttackSpawnPanelEffect
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105354

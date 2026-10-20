@@ -1,0 +1,60 @@
+name: initAreaScene
+address: '0x081326D4'
+kind: function
+status: probable
+summary: 'Scene-entry init: zero-fills BG tile buffer, resets and respawns eStructArr2008450 records,
+  decompresses BG/sprite asset chain, runs three local setup helpers, clears a state byte at r5+0x48,
+  then triggers a screen fade.'
+interface: () -> void; r5 = scene/GUI state base whose +0x48 flag byte is cleared
+details: Zero-fills the toolkit's BG tile buffer, then resets the eStructArr2008450 record array and re-spawns
+  objects from a 0xFF-terminated (id,slot,param) table at byte_81326C8 via battle_spawnEStructRecordsFromTable_80465A0.
+  It decompresses a chain of assets (comp_86DBD94/DBB0C/DBD64/DBD7C/DB0F8/87E6924) through the shared
+  eDecompBuffer2013A00 into BG tilemap/tile VRAM (0x6010600), the two eGuiSprite buffers 2022AA0/2022FA0,
+  and small IWRAM blocks 0x3001550/0x3001570 — i.e. BG palette/map and sprite graphics for the scene.
+  sub_811AE7C(1,0) and the three local helpers 813281C/81328C0/8132980 finish scene state setup, then
+  a byte at r5+0x48 is cleared and SetScreenFade(8,0) starts a fade, so the function runs once when the
+  area (re)loads.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'dword_8132718 table: all entries route comp_* assets through eDecompBuffer2013A00 into VRAM
+    (0x6010600), eGuiSprite2022AA0/2022FA0, 0x3001550/0x3001570; calls battle_resetEStructRecords_8046664
+    then battle_spawnEStructRecordsFromTable_80465A0(byte_81326C8) — resets and rebuilds the scene''s
+    object records; strb r1,[r5,#0x48] with r1=0 clears a state flag before SetScreenFade(8,0) ends the
+    routine; ZeroFillGFX30025c0 at entry wipes the BG tile block buffer before new graphics are decompressed
+    in; sole caller sub_812A168 invokes it as a one-shot setup step, consistent with an area-load init'
+  refs:
+  - bn6f/asm/asm36.s:4928
+  - 0x0812A168 sub_812A168
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x081326D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly shows a single caller (sub_812A168), it zeros the BG tile buffer, resets and respawns
+    eStruct records, decompresses a six-asset chain via decompAndCopyData, runs three local helpers, clears
+    r5+0x48, and calls SetScreenFade(8,0x10). All of this matches the proposal''s summary well. The prefix
+    ''e_'' is not in the allowed list; a permitted prefix like ''init'' would be more consistent with
+    project conventions.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which in-game area/screen this table (byte_81326C8, comp_86DBD94...) belongs to
+- what sub_811AE7C(1,0) and the local helpers 813281C/81328C0/8132980 configure
+- the exact meaning of the r5+0x48 flag byte
+- The assembly shows a single caller (sub_812A168), it zeros the BG tile buffer, resets and respawns eStruct
+  records, decompresses a six-asset chain via decompAndCopyData, runs three local helpers, clears r5+0x48,
+  and calls SetScreenFade(8,0x10). All of this matches the proposal's summary well. The prefix 'e_' is
+  not in the allowed list; a permitted prefix like 'init' would be more consistent with project conventions.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81326D4 -> initAreaScene
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81326D4

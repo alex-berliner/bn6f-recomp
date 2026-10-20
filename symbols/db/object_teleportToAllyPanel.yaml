@@ -1,0 +1,61 @@
+name: object_teleportToAllyPanel
+address: '0x080C390E'
+kind: function
+status: probable
+summary: Snaps a battle object onto the panel adjacent to its alliance's player-side object, then computes
+  pixel X/Y, offsets X by one panel toward its own side, sets Z to a fixed height, and increments Y16.
+interface: (r5 = BattleObject, r0 unused input; reads r5->Alliance) -> r0 = ?; mutates r5->PanelXY, X,
+  Z, Y16
+details: Loads the object's Alliance byte and calls battle_findPlayer(alliance) to locate the player-side
+  BattleObject, then copies that object's PanelXY into r5->PanelXY and calls object_setCoordinatesFromPanels
+  to recompute pixel X/Y. It then gets the ±1 facing step via object_getEnemyDirection, scales it by 0x210000
+  (one panel width in fixed point) and adds it to X, so the object ends up one panel toward its own side
+  from the player's panel. Z is hard-set to 0x3C0000 (fixed-point height above ground) and Y16 is incremented
+  by 1, likely an animation/state counter. Overall this looks like a 'warp in next to the player' move
+  used by an enemy or trap.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; bl battle_findPlayer — uses alliance to find the target
+    player object; ldrh r0,[r0,#oBattleObject_PanelXY]; strh r0,[r5,#oBattleObject_PanelXY] — copies the
+    found object's panel coords; bl object_setCoordinatesFromPanels — recomputes pixel position from the
+    new panel coords; mul r0,r1 by dword_80C3940=0x210000 added to X — offsets one panel along facing
+    direction; dword_80C393C=0x3C0000 stored to Z; Y16 incremented — sets fixed height and bumps a counter
+  refs:
+  - bn6f/asm/asm31.s:25364
+  - 0x080C3758 sub_80C3758
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080C390E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code well (alliance lookup, PanelXY copy, setCoordinatesFromPanels, ±1
+    facing step * 0x210000 added to X, Z hard-set to 0x3C0000, Y16 += 1). However, the proposed name ''object_teleportToPlayerPanel''
+    is too specific about ''player''; since it uses the object''s own Alliance via battle_findPlayer,
+    it effectively places the object one panel toward its own side from the allied object — a more neutral
+    ''object_teleportToAllyPanel'' fits better. Additionally, Y16 is not clearly an animation/state counter
+    based on this code alone, so the summary claim is speculative.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Who calls sub_80C3758 and in what attack/effect context (which enemy or boss uses this relocation)
+- exact meaning of the Y16 +1 and whether 0x3C0000 Z is standard hover height
+- The proposal matches the code well (alliance lookup, PanelXY copy, setCoordinatesFromPanels, ±1 facing
+  step * 0x210000 added to X, Z hard-set to 0x3C0000, Y16 += 1). However, the proposed name 'object_teleportToPlayerPanel'
+  is too specific about 'player'; since it uses the object's own Alliance via battle_findPlayer, it effectively
+  places the object one panel toward its own side from the allied object — a more neutral 'object_teleportToAllyPanel'
+  fits better. Additionally, Y16 is not clearly an animation/state counter based on this code alone, so
+  the summary claim is speculative.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C390E -> object_teleportToAllyPanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C390E

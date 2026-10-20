@@ -1,0 +1,57 @@
+name: ai_chargeTickStep
+address: '0x080EDFC0'
+kind: function
+status: probable
+summary: 'Per-frame AI charge attack tick: every 16 frames plays charge sound 0x9A; when step timer expires,
+  clears object flag 0x40 and exits the attack state.'
+interface: (r7 = battle object AI vars) -> void; no return value
+details: 'Decrements oAIAttackVars_ChargeCycles; when it goes below zero, reloads it with 0x10 (16 frames)
+  and plays sound 0x9A (via add #0xFF on 0x9B), a periodic charge/spin-up sound. Independently decrements
+  oAIAttackVars_StepTimer; once it expires (negative), clears ObjectFlags1 bit 0x40 on the owning object
+  via object_clearFlag and calls object_exitAttackState to end the attack. Runs per-frame for some AI-controlled
+  enemy''s charging attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_ChargeCycles] / sub #1 with 0x10 reload = periodic 16-frame charge
+    cycle; PlaySoundEffect called with r0=0x9B+0xFF (0x9A) each completed cycle; StepTimer decrement then
+    object_clearFlag(0x40) and object_exitAttackState on expiry ends the attack; callees object_clearFlag
+    and object_exitAttackState are battle-object attack-state helpers'
+  refs:
+  - bn6f/asm/asm31.s:117154
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EDFC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior is correct: decrement ChargeCycles, reload 0x10 and call PlaySoundEffect(0x9A) when
+    expired; decrement StepTimer and on expiry call object_clearFlag(0x40) then object_exitAttackState.
+    However the proposal claims it clears an ''object flag'' on the ''owning object'' via object_clearFlag
+    — the code calls object_clearFlag(0x40) with no object handle passed (r7 isn''t set up here), so the
+    call sites/caller context matters; the summary slightly oversells ownership. Name is fine but ''ai_chargeTickStep''
+    better matches the dual-timer charge/step semantics.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which enemy/AI attack uses this (no caller found in known data)
+- what flag bit 0x40 on ObjectFlags1 means
+- which sound 0x9A actually is
+- 'The behavior is correct: decrement ChargeCycles, reload 0x10 and call PlaySoundEffect(0x9A) when expired;
+  decrement StepTimer and on expiry call object_clearFlag(0x40) then object_exitAttackState. However the
+  proposal claims it clears an ''object flag'' on the ''owning object'' via object_clearFlag — the code
+  calls object_clearFlag(0x40) with no object handle passed (r7 isn''t set up here), so the call sites/caller
+  context matters; the summary slightly oversells ownership. Name is fine but ''ai_chargeTickStep'' better
+  matches the dual-timer charge/step semantics.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EDFC0 -> ai_chargeTickStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDFC0

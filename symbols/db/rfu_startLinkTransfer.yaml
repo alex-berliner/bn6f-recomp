@@ -1,0 +1,65 @@
+name: rfu_startLinkTransfer
+address: '0x08148540'
+kind: function
+status: probable
+summary: 'Initializes RFU link state for a multiplayer data transfer: clears per-player/transfer work
+  buffers (CpuSet fill), resets RFU structs, zeroes link-state globals and per-player entries, sets ready/active
+  flags, registers send/receive handlers, configures per-player recv buffers/slots from the connected-player
+  bitmap, then invokes rfu_UNI_setSendData and rfu_UNI_readySendData, writing 0x30 to a timeout word.'
+interface: () -> r0 = 0 on success, 1 if rfu_UNI_setSendData failed; no flags of interest
+details: Zero-fills the 32-byte work structs byte_20101E0 and unk_2010230 via CpuSet (fill mode 0x1000020),
+  resets two structures via sub_8146A70, and clears a large set of link-state globals (byte_2010270, byte_2010408,
+  dword_2010418, byte_20103F4/34/1D4/3F8/480) plus four per-player entries of byte_2010220 and word_2010400/0420/0428/unk_2010410.
+  Sets several ready/active flags to 1, copies byte_2010292-related connection info into byte_2010274
+  and byte_20101E0+0x3c/0x3d, calls sub_803ECFC and sub_803F030(struct,0xC), and registers sub_8148738/sub_8148878
+  as handlers via sub_81463E8/sub_81463D0. For each of 4 players whose bit is set in the connection bitmap
+  byte_2010292, it calls rfu_setRecvBuffer(0x10, i, 0xE) and rfu_clearSlot(3, i). It then calls rfu_UNI_setSendData(byte_2010292
+  >> 1, 0x40); on success it stores a connection count in byte_200AF84, calls rfu_UNI_readySendData, and
+  writes 0x30 to a timeout/state word at eS200BC50+8. On failure it returns 1; otherwise it retries up
+  to 3 times in byte_2010328 while waiting for the byte_2010292 bit-1 slot to connect. byte_2010292 is
+  evidently the connected-player slot bitmap (bit0 = self, shifted right before rfu_UNI_setSendData).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: CpuSet fill of byte_20101E0 and unk_2010230 plus ~15 zeroed globals initializes the link state
+    area; rfu_setRecvBuffer(0x10,i,0xE) and rfu_clearSlot(3,i) run per slot whose bit is set in byte_2010292;
+    rfu_UNI_setSendData(byte_2010292>>1,0x40) followed by rfu_UNI_readySendData starts the actual send;
+    Handlers sub_8148738 and sub_8148878 are registered, suggesting a polled state machine for the ongoing
+    link; Retry loop increments byte_2010328 up to 3 while the byte_2010292 bit-1 connection is missing
+  refs:
+  - bn6f/asm/libs.s:9286
+  - 0x0812A4AC sub_812A4AC
+  - 0x0814D8B8 SWI_CpuSet
+  - 0x0814B068 rfu_UNI_readySendData
+  - 0x0814AB7C rfu_UNI_setSendData
+  reproduce: python3 tools/asmcat.py 0x08148540
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name fit the code well overall. However, the detail about ''retries up to 3 times
+    while waiting for the byte_2010292 bit-1 slot to connect'' is wrong: the loop at loc_814867C just
+    increments byte_2010328 and tests if that growing bit (1<<byte_2010328) is set in byte_2010292; it''s
+    a probe loop, not a retry. Also, the function takes no parameters and returns 0/1 as stated, which
+    matches. Naming ''rfu_startLinkTransfer'' is appropriate.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_803ECFC / sub_803F030 and the structs at byte_20101E0 and byte_2010290
+- What data the 0x40-byte send payload carries (depends on sub_8148738 / rfu_UNI internals)
+- What caller sub_812A4AC is (menu, versus, trade?) to pin the exact game context
+- 'The summary and name fit the code well overall. However, the detail about ''retries up to 3 times while
+  waiting for the byte_2010292 bit-1 slot to connect'' is wrong: the loop at loc_814867C just increments
+  byte_2010328 and tests if that growing bit (1<<byte_2010328) is set in byte_2010292; it''s a probe loop,
+  not a retry. Also, the function takes no parameters and returns 0/1 as stated, which matches. Naming
+  ''rfu_startLinkTransfer'' is appropriate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8148540 -> rfu_startLinkTransfer
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8148540

@@ -1,0 +1,65 @@
+name: battle_spawnFieldPanelObject
+address: '0x080CFBC4'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x59, writes the caller's PanelX/PanelY/Alliance into it, ORs
+  0x10 (or 0x14 if Param3==3) into oObjectHeader_Flags, and forwards the alliance and Param2 to setFieldBattleObject_800F614
+  to update the tile's field/panel state.
+interface: (r0 = PanelX, r1 = PanelY, r2 = Alliance, r6 = DamageAndStaminaDamageCounterDisabler, r5 =
+  object Param3 selector) -> r0 = spawned object or 0 on failure
+details: 'The function saves its three stack arguments, calls object_spawnType3 with type 0x59, and returns
+  immediately if the spawn failed (r0 == 0). It then writes the saved arguments into the new object''s
+  oBattleObject_PanelX, PanelY, and Alliance fields, and stores r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler.
+  It reads oBattleObject_Param3: if it equals 3 it ORs flag 0x14 into oObjectHeader_Flags, otherwise flag
+  0x10. Finally it calls setFieldBattleObject_800F614 with r1 = the alliance and r2 = the object''s oBattleObject_Param2,
+  presumably to change the tile''s field/broken state. The dual flag choice (0x10 vs 0x14) likely distinguishes
+  two panel-effect variants (e.g. plain vs enhanced panel state).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnType3 with r0 = 0x59 selects a specific battle object type (sub_80CFBC4); strb
+    r1/r2/r3 into oBattleObject_PanelX/PanelY/Alliance right after spawn stores the caller''s tile coordinates
+    and team; cmp r2, #3 / mov r1, #0x14 picks flag 0x14 vs 0x10 written to oObjectHeader_Flags; bl setFieldBattleObject_800F614
+    with alliance in r1 and Param2 in r2 applies the field change; caller 0x080074FA spawnRockCube_80074FA
+    shows this is the panel-effect spawner used when a RockCube breaks'
+  refs:
+  - bn6f/asm/asm31.s:51668
+  - 0x080074FA spawnRockCube_80074FA
+  - 0x08018186 sub_8018186
+  - 0x080E4678 sub_80E4678
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080CFBC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does spawn a type 0x59 battle object, store PanelX/PanelY/Alliance and r6 into the expected
+    fields, and apply flag 0x10 (or 0x14 if Param3==3) before calling setFieldBattleObject_800F614. However,
+    r6 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler; this is plausible by name but
+    the interface claim that r6 is a ''DamageAndStaminaDamageCounterDisabler'' parameter is just reading
+    the field name, not evidence of the semantic. The proposed name is fine, but it need not carry the
+    misleading ''Disabler'' wording — a tighter summary fits the evidence better.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What exact panel state setFieldBattleObject_800F614 writes (cracked/holy/etc.) and the meaning of Param2
+  values
+- Semantics of flags 0x10 vs 0x14 on oObjectHeader_Flags
+- Why the fifth argument is read from r5 via push/pop rather than a direct register argument
+- The code does spawn a type 0x59 battle object, store PanelX/PanelY/Alliance and r6 into the expected
+  fields, and apply flag 0x10 (or 0x14 if Param3==3) before calling setFieldBattleObject_800F614. However,
+  r6 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler; this is plausible by name but
+  the interface claim that r6 is a 'DamageAndStaminaDamageCounterDisabler' parameter is just reading the
+  field name, not evidence of the semantic. The proposed name is fine, but it need not carry the misleading
+  'Disabler' wording — a tighter summary fits the evidence better.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CFBC4 -> battle_spawnFieldPanelObject
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFBC4

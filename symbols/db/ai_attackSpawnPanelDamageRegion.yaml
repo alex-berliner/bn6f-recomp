@@ -1,0 +1,61 @@
+name: ai_attackSpawnPanelDamageRegion
+address: '0x080EEC08'
+kind: function
+status: probable
+summary: 'AI attack step: places a damage-dealing collision region on the target panel and spawns the
+  matching attack effect there, unless the panel has any bit of mask 0x1c00 set or AI difficulty is 0.'
+interface: (r0 = battle object whose [0x54] points to target/attack data, r5 = battle object for alliance,
+  r7 = AI attack-vars struct) -> r0 = spawned effect object or previous value; no meaningful flags
+details: r0 is a battle object; it loads a pointer at [r0,#0x54] (r6) holding target panel coordinates
+  at +0x12/+0x13. The routine bails unless AI difficulty tier is >= 1 or the word at [r6,#0x1c] is nonzero,
+  and at difficulty 0 it does nothing at all; it also aborts if object_getPanelParameters for the target
+  panel has any bit of mask 0x1c00 set (a group of terrain/status flags to avoid). It then computes damage
+  as oAIAttackVars_Damage + oAIAttackVars_AttackBoost and calls object_spawnCollisionRegion with those
+  coordinates, oAIAttackVars_InitFlag, element/hit data pointer 0x705FF04, and region kind 3. Finally
+  it converts the panel coordinates to fixed-point screen coords and spawns a type-1 effect object there,
+  packing difficultyTier+7<<16 plus the attacker's Alliance<<8 into the effect's parameter word.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r4,#0x12]/[#0x13] + object_getPanelParameters + tst 0x1c00 gates the attack on target
+    panel terrain flags; ldr r6,[r7,#oAIAttackVars_Damage] / AttackBoost add then object_spawnCollisionRegion
+    with data ptr 0x705FF04 and kind 3; object_getCoordinatesForPanels on the same 0x12/0x13 coords feeds
+    spawn_t1_0x0_EffectObject with alliance/difficulty packed params; difficulty-tier checks (==0 bail,
+    ==1 shortcut via [r6,#0x1c]) mark this as enemy-AI attack logic in oAIAttackVars
+  refs:
+  - bn6f/asm/asm31.s:118586
+  - 0x080EEB68 sub_80EEB68
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080EEC08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: difficulty 0 returns early, terrain flag 0x1c00 causes bail-out (beq
+    loc_80EEC6C), damage+attackBoost is loaded, object_spawnCollisionRegion is called with kind 3 and
+    data ptr 0x705ff04, then coordinates are converted to screen coords and an effect is spawned. Minor
+    correction: the parameter word packs (difficulty+7)<<16 plus 0x16 (NOT 0x07), and alliance<<8 is OR''d
+    in per the description — summary is essentially accurate but the 0x07 detail is wrong. Name is acceptable.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of panel flag mask 0x1c00 (which terrain types are avoided)
+- Which AI attack/owner uses this (caller sub_80EEB68 is unknown), and what effect 0x705FF04/parameter
+  word produce visually
+- 'The code matches the proposal: difficulty 0 returns early, terrain flag 0x1c00 causes bail-out (beq
+  loc_80EEC6C), damage+attackBoost is loaded, object_spawnCollisionRegion is called with kind 3 and data
+  ptr 0x705ff04, then coordinates are converted to screen coords and an effect is spawned. Minor correction:
+  the parameter word packs (difficulty+7)<<16 plus 0x16 (NOT 0x07), and alliance<<8 is OR''d in per the
+  description — summary is essentially accurate but the 0x07 detail is wrong. Name is acceptable.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EEC08 -> ai_attackSpawnPanelDamageRegion
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EEC08

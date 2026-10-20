@@ -1,0 +1,62 @@
+name: battle_dealChipsOnFadeIn
+address: '0x08129A28'
+kind: function
+status: probable
+summary: Per-tick handler that advances chip-deal animations, allocates the next chip entry while a slot
+  is free, and once three chips are dealt writes state 0x14 to the record, triggers entity animation 3,
+  and starts the screen fade.
+interface: (r0 = [r5,#0x1d] record/object id; r5 = battle record) -> void; r1 out of the advance call
+  = slot-free flag, r2 = count of dealt chips; writes state 0x14 to [r5,#3] and starts a screen fade when
+  count reaches 3.
+details: Each tick it calls battleObject_advanceChipAnimFrames_812B318 on the record id in [r5,#0x1d];
+  that callee increments the +0x1C frame counter over the chip-select entries in unk_20251A0 and returns
+  both a 'slot empty, can deal next' flag (r1) and the number of ready/dealt entries (r2, saved to r4).
+  While r1 is set it calls sub_812B218 to allocate the next chip entry into the record's slot, i.e. keep
+  dealing cards. Once the dealt count equals 3, it stores state byte 0x14 into the record's +3 state-machine
+  field, sets the entity's sprite animation to 3, and calls SetScreenFade(8, 0x10) to begin the transition
+  to the next phase. It is a leaf-style state handler invoked with r5 pointing at a battle record; no
+  callers are known in the shown context.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_advanceChipAnimFrames_812B318 with r0=[r5,#0x1d]; r1 = deal-next flag, r2 =
+    dealt count (mov r4,r2); tst r1,r1 / beq then bl sub_812B218: allocates the next chip entry only when
+    the advance call reports a free slot; cmp r4,#3 / bne locret: the whole epilogue block runs only when
+    all 3 chip entries are done; mov r0,#0x14 / strb r0,[r5,#3]: advances the battle record''s state byte
+    to 0x14; bl sprite_setEntityAnimation(3,0) then bl SetScreenFade(8,0x10): plays the animation and
+    kicks off the screen fade on completion'
+  refs:
+  - bn6f/asm/asm33.s:13479
+  - 0x0812B318 battleObject_advanceChipAnimFrames_812B318
+  - 0x0811A610 sprite_setEntityAnimation
+  - 0x0812B218 sub_812B218
+  reproduce: python3 tools/asmcat.py 0x08129A28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely accurate: r4 holds the dealt count returned in r2, and when it equals 3
+    the code stores 0x14 to [r5,#3], sets sprite animation 3, and calls SetScreenFade(8,0x10). However,
+    the proposed name embeds an address fragment (''DealTick_fadeInWhenDealt'') and mixes concerns; a
+    cleaner lowerCamel name with the required prefix fits better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What game phase exactly this serves (battle intro vs. mid-battle card dealing) — the caller and the
+  meaning of state byte 0x14 in the record's +3 field would confirm it
+- 'Exact semantics of SetScreenFade''s arguments (8, 0x10): fade direction/color vs. duration'
+- Whether r0 passed to sprite_setEntityAnimation is an entity id or an animation index
+- 'The proposal is largely accurate: r4 holds the dealt count returned in r2, and when it equals 3 the
+  code stores 0x14 to [r5,#3], sets sprite animation 3, and calls SetScreenFade(8,0x10). However, the
+  proposed name embeds an address fragment (''DealTick_fadeInWhenDealt'') and mixes concerns; a cleaner
+  lowerCamel name with the required prefix fits better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8129A28 -> battle_dealChipsOnFadeIn
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129A28

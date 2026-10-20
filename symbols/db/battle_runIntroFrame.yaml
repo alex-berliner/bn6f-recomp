@@ -1,0 +1,70 @@
+name: battle_runIntroFrame
+address: '0x081251F4'
+kind: function
+status: probable
+summary: 'Per-frame battle-intro step: initialises chip-sprite slot buffer (r0=1), increments the intro
+  frame counter at r5+0x74 (saturating at 0x7C and switching r5+2 to 0x18), forces r5+0x70=0xFF, pumps
+  battle transition/arena tiles/sub_8126184, then sets halfword pair +0xC/+0xE on three pooled sprite
+  structs with values (4,y) and (7,y), ending with sub_81267F0.'
+interface: (r5 = battle-scene state struct) -> r0 clobbered; sets r5+0x70 = 0xFF, increments r5+0x74 (saturating
+  at 0x7C), sets state byte r5+2 = 0x18 when counter reaches 0x7C
+details: 'Called once per frame during battle scene setup: it first re-initialises the chip-sprite slot
+  staging buffer at oToolkit_Unk200f3a0, then increments the counter at r5+0x74, clamping it to 0x7C and
+  switching the scene state byte at r5+2 to 0x18 (advancing to the next phase) once that cap is reached
+  (~2 seconds at 60fps). It forces r5+0x70 to 0xFF, runs battle_runTransition_8125444 (the one-shot transition
+  pump) and bg_drawArenaTiles_8125E78 each frame. It then calls sprite_setStructHalfwordPairOnThree_8117084
+  twice with value pairs (4, x) and (7, y), where the y value is normally 0 but becomes a halfword from
+  the state struct (r5+0x26 when r5+0x60==5, the Dark-Chip alliance field; r5+0x1c when r5+0x5C==0x27;
+  r5+0x3a when counter<=0x72 and r5+0x68==0x1D), suggesting sprite positions/params driven by special
+  battle setups. The three-struct pool at 0x2008450 plus rows 4 and 7 hint at arena-edge or row-decoration
+  sprites. Ends with sub_81267F0 whose role is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: counter r5+0x74 incremented and clamped to 0x7C, at cap writes 0x18 to state byte r5+2 (loc_812520E
+    area); calls battle_runTransition_8125444 and bg_drawArenaTiles_8125E78 unconditionally every call;
+    r5+0x60 compared to 5, matching the Dark-Chip alliance team check documented in bg_drawArenaTiles_8125E78;
+    two calls to sprite_setStructHalfwordPairOnThree_8117084 with rows 4 and 7 and conditional values
+    from r5+0x26/0x1c/0x3a; battleObject_initChipSpriteSlotBuffer_8126818 called with r0=1 each invocation
+  refs:
+  - bn6f/asm/asm33.s:4156
+  - 0x08126818 battleObject_initChipSpriteSlotBuffer_8126818
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  reproduce: python3 tools/asmcat.py 0x081251F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary misorders operations and mislabels sub_8126184. Asm shows initChipSpriteSlotBuffer is
+    called first (with r0=1), then counter increment/saturate, then setting r5+0x70=0xFF and calling battle_runTransition,
+    bg_drawArenaTiles, sub_8126184 in that order, before the sprite writes. The callee ''bg_drawArenaTiles_8125E78''
+    actually distinguishes alliance==5 (Dark-Chip), and the sprite-setStructHalfwordPairOnThree calls
+    use +0xC/+0xE on three structs at 0x2008450, not rows 4/7 of any struct. Also the halfword-pair values
+    are (4, y) for first call and (7, y) for second, not (4,x)/(7,y). Functionally it is a per-frame battle-intro
+    step, but the proposed name ''battle_stepIntroFrame'' and summary mix up the sequence and callee roles.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no caller is known, so the exact phase of the battle-intro state machine (state that transitions to
+  0x18) is inferred only from the callee summaries
+- the meaning of the halfwords at r5+0x26/0x1c/0x3a and of the pair values 4/7 written to the 0x2008450
+  sprite structs is unclear
+- the role of trailing callee sub_81267F0 is unknown
+- The summary misorders operations and mislabels sub_8126184. Asm shows initChipSpriteSlotBuffer is called
+  first (with r0=1), then counter increment/saturate, then setting r5+0x70=0xFF and calling battle_runTransition,
+  bg_drawArenaTiles, sub_8126184 in that order, before the sprite writes. The callee 'bg_drawArenaTiles_8125E78'
+  actually distinguishes alliance==5 (Dark-Chip), and the sprite-setStructHalfwordPairOnThree calls use
+  +0xC/+0xE on three structs at 0x2008450, not rows 4/7 of any struct. Also the halfword-pair values are
+  (4, y) for first call and (7, y) for second, not (4,x)/(7,y). Functionally it is a per-frame battle-intro
+  step, but the proposed name 'battle_stepIntroFrame' and summary mix up the sequence and callee roles.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81251F4 -> battle_runIntroFrame
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81251F4

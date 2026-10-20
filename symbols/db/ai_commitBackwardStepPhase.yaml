@@ -1,0 +1,69 @@
+name: ai_commitBackwardStepPhase
+address: '0x080BDF3C'
+kind: function
+status: probable
+summary: Phase handler that commits a one-panel backward step (FuturePanelX minus facing direction) into
+  PanelX/PanelY if the target panel is valid, waits 3 frames, then transitions to phase 0xc (success)
+  or 0x18 (failure).
+interface: (r0 = PhaseInitialized flag byte of object at r5; r5 = battle object) -> r0 = 0; sets PanelX/PanelY,
+  pixel coords via object_setCoordinatesFromPanels, Param4=success flag, Timer=3, phase transition to
+  0x18 (success) or 0xc (failure).
+details: On first entry (PhaseInitialized==0) it sets CurAnim=3, computes target X = FuturePanelX - object_getFrontDirection(r5),
+  using FuturePanelY, and calls object_checkPanelParameters with mask 0x10 and a side-dependent base constant
+  (0x7800000 for Alliance 0, 0xb800000 otherwise, per dword_80BE12C/130). If the panel passes the check
+  it commits FuturePanelX/Y into PanelX/PanelY, recomputes pixel coordinates, and stores success=1 in
+  Param4; on failure it clears bit 1 of oObjectHeader_Flags and stores 0. It then sets Timer=3 and PhaseInitialized=4
+  (a wait phase). On subsequent entries it decrements Timer; when it hits 0 it advances CurPhaseAndPhaseInitialized
+  to 0x18 on success or 0xc on failure. The 'future panel minus facing direction' arithmetic suggests
+  a backward hop/retreat move, likely from an enemy AI move script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne loc_80BDF8C: standard one-time-init phase
+    pattern; bl object_getFrontDirection; neg r0; add r0, FuturePanelX: target panel is one panel opposite
+    the facing direction; ldr r3,dword_80BE12C(=0x7800000)/dword_80BE130(=0xb800000) selected by Alliance,
+    then bl object_checkPanelParameters with r2=0x10: panel validity test with side-specific argument;
+    strb r0,[r5,#oBattleObject_PanelX]/PanelY + bl object_setCoordinatesFromPanels: commit the move when
+    the check passes; strh #0x18 or #0xc into CurPhaseAndPhaseInitialized after Timer expires: success/failure
+    branch to next phase'
+  refs:
+  - bn6f/asm/asm31.s:12813
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080BDF3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal structurally: future panel coords are decremented by facing direction,
+    panel validity is checked via object_checkPanelParameters, success/failure branches store Param4 and
+    a 3-frame timer with PhaseInitialized=4, then transition to 0x18 on success and 0xc on failure (lines
+    at 0x80BDF5A-0x80BDF82 and 0x80BDF8C-0x80BDFA0). However, the summary wrongly says it ''moves the
+    object one panel behind its facing to its FuturePanel slot''; the code actually copies FuturePanel
+    minus facing into PanelX/PanelY (committing the move), while FuturePanelX/Y is left untouched. Name
+    ''backstepToFuturePanelPhase'' is therefore misleading.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the owning object/AI script and the meaning of phase 0x18 vs 0xc are unknown
+- The exact meaning of checkPanelParameters mask 0x10 and the 0x7800000/0xb800000 constants (panel-side
+  ownership encoding?) is not shown here
+- What bit 1 of oObjectHeader_Flags means (visibility vs collision) and what CurAnim 3 depicts
+- 'The code matches the proposal structurally: future panel coords are decremented by facing direction,
+  panel validity is checked via object_checkPanelParameters, success/failure branches store Param4 and
+  a 3-frame timer with PhaseInitialized=4, then transition to 0x18 on success and 0xc on failure (lines
+  at 0x80BDF5A-0x80BDF82 and 0x80BDF8C-0x80BDFA0). However, the summary wrongly says it ''moves the object
+  one panel behind its facing to its FuturePanel slot''; the code actually copies FuturePanel minus facing
+  into PanelX/PanelY (committing the move), while FuturePanelX/Y is left untouched. Name ''backstepToFuturePanelPhase''
+  is therefore misleading.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BDF3C -> ai_commitBackwardStepPhase
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDF3C

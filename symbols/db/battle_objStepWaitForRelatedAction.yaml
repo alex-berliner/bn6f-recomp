@@ -1,0 +1,58 @@
+name: battle_objStepWaitForRelatedAction
+address: '0x080DAF2A'
+kind: function
+status: probable
+summary: 'Per-frame step for a battle object: if the battle is over or the related object''s CurAction
+  doesn''t match Param4 (0xff = any), call sub_80DB0D0 and set CurState=DESTROY; otherwise render the
+  blind effect and dispatch through a table indexed by this object''s own CurAction, unless a time-stop
+  is active and Param1 is zero.'
+interface: (r5 = battle object) -> r0 = clobbered; sets oBattleObject_CurState = CUR_STATE_DESTROY when
+  battle is over or action mismatch
+details: Acts as a per-frame update for a battle object (r5 = this). If the battle is over it calls sub_80DB0D0
+  (cleanup) and sets CurState to CUR_STATE_DESTROY. Otherwise it renders the blind effect via handleRenderBlindForSpecificObjectsMaybe_80169BE,
+  loads the related object (oBattleObject_RelatedObject1Ptr) and reads its oBattleObject_CurAction; if
+  Param4 is 0xff the check passes for any action, otherwise it requires equality. When Param1 is nonzero
+  it skips the time-stop check; if Param1 is zero it returns early while battle_isTimeStop is active.
+  Finally it jumps through a two-entry table (off_80DAF6C) indexed by the related object's CurAction (entries
+  sub_80DAF74 and sub_80DAF98), using the mov lr,pc/bx long-blip pattern.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isBattleOver then destroy path with CUR_STATE_STORE shows this is an object step run
+    during battle; cmp of RelatedObject1Ptr->CurAction against Param4 (0xff = wildcard) is the wait/trigger
+    condition; ldr r1,[r1,r0]; mov lr,pc; bx r1 with table off_80DAF6C is a CurAction-indexed handler
+    dispatch; Param1!=0 skipping battle_isTimeStop shows Param1 gates pause sensitivity; blind-effect
+    render call ties this object to the Blind status visual
+  refs:
+  - bn6f/asm/asm31.s:75923
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x080169BE handleRenderBlindForSpecificObjectsMaybe_80169BE
+  reproduce: python3 tools/asmcat.py 0x080DAF2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch table is indexed by this object''s oBattleObject_CurAction (ldr r0 from [r5,#oBattleObject_CurAction]
+    at loc_80DAF52), not by the related object''s CurAction as stated. The related object''s action is
+    only used for the 0xff equality check. Everything else in the summary matches: battle-over -> destroy
+    via sub_80DB0D0, blind render, Param4 0xff wildcard, Param1 skips time-stop.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80DAF74 and sub_80DAF98 do (the actual handlers) to confirm the trigger semantics
+- Which object uses this handler and what Param1/Param4 mean per-instance
+- 'The dispatch table is indexed by this object''s oBattleObject_CurAction (ldr r0 from [r5,#oBattleObject_CurAction]
+  at loc_80DAF52), not by the related object''s CurAction as stated. The related object''s action is only
+  used for the 0xff equality check. Everything else in the summary matches: battle-over -> destroy via
+  sub_80DB0D0, blind render, Param4 0xff wildcard, Param1 skips time-stop.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DAF2A -> battle_objStepWaitForRelatedAction
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DAF2A

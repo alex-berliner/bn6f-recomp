@@ -1,0 +1,69 @@
+name: rfu_finishCommScreenStep
+address: '0x0812DA60'
+kind: function
+status: probable
+summary: 'Completes a comm-screen state step: optionally restarts a screen fade when fade mode is 0xC,
+  dispatches on the 200BC30 record (0 -> reset link hardware/buffers, else -> sub_803C754 on S200BC50),
+  then advances the state machine to id 0x1C and clears two state fields before calling sub_8120AB8.'
+interface: (r0 = unused/clobbered, r5 = *state struct (callee-saved)) -> r0 = return of sub_8120AB8; flags
+  from bl/cmp
+details: 'First checks the screen-fade controller: if the fade mode is 0xC it re-issues SetScreenFade(8,
+  0x10), likely to restart/force a fade-in transition. It then reads the first byte of the record at EWRAM
+  0x200BC30 (the link-session/comm state record used as a jump-table offset); when it is 0 the link hardware
+  and buffers are fully reset via link_resetHardwareAndClearLinkBuffers_81440D8, otherwise sub_803C754
+  runs on the S200BC50 struct, implying the session is still active and gets a different teardown path.
+  Finally it writes the owning state struct: byte at +2 = 0x1C (next state id), byte at +0xC = 0, byte
+  at +3 = 0, and calls sub_8120AB8 to finish/enter the new state. All three callers (0x812C3BC/0x812C5D0/0x812C884)
+  are siblings in the same state-machine cluster, consistent with multiple exit paths converging here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#0xC after screenFade_80062C8 + SetScreenFade(8,0x10): conditional fade handling on
+    entry; getJumpOffset00 result tested against 0 to choose link_resetHardwareAndClearLinkBuffers vs
+    sub_803C754: teardown depends on session record state; strb #0x1C,[r5,#2] plus zeroed +0xC/+3 then
+    sub_8120AB8: state machine advance and next-state init; three nearby callers in the 0x812Cxxx cluster
+    all funnel into this exit path'
+  refs:
+  - bn6f/asm/asm34.s:980
+  - 0x0812C3BC sub_812C3BC
+  - 0x0812C5D0 sub_812C5D0
+  - 0x0812C884 sub_812C884
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  - 0x081440D8 link_resetHardwareAndClearLinkBuffers_81440D8
+  - 0x080062C8 screenFade_80062C8
+  reproduce: python3 tools/asmcat.py 0x0812DA60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structure: it checks fade mode 0xC, conditionally re-issues SetScreenFade(8,0x10),
+    branches on the eStruct200BC30 byte (0 -> link_resetHardwareAndClearLinkBuffers, else -> sub_803C754
+    on S200BC50), then sets state fields and calls sub_8120AB8. However, the proposed interface is wrong:
+    the function pushes r0+lr, so r0 is preserved/clobbered on stack, not ''unused'' — and r5 is callee-saved
+    here only because the caller set it; this routine itself doesn''t clobber r5. The summary overreaches
+    by claiming ''tears down the link connection when the session record is finished'' — the link teardown
+    only occurs on the zero branch, not always.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact game screen this belongs to (trade? net battle? wireless minigame?) — needs caller context from
+  sub_812C3BC/812C5D0/812C884
+- Meaning of struct fields r5+2/+3/+0xC and what sub_8120AB8 initializes
+- What the 0x200BC30 record's first byte encodes beyond 'session done vs active'
+- 'The code matches the proposal''s structure: it checks fade mode 0xC, conditionally re-issues SetScreenFade(8,0x10),
+  branches on the eStruct200BC30 byte (0 -> link_resetHardwareAndClearLinkBuffers, else -> sub_803C754
+  on S200BC50), then sets state fields and calls sub_8120AB8. However, the proposed interface is wrong:
+  the function pushes r0+lr, so r0 is preserved/clobbered on stack, not ''unused'' — and r5 is callee-saved
+  here only because the caller set it; this routine itself doesn''t clobber r5. The summary overreaches
+  by claiming ''tears down the link connection when the session record is finished'' — the link teardown
+  only occurs on the zero branch, not always.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812DA60 -> rfu_finishCommScreenStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812DA60

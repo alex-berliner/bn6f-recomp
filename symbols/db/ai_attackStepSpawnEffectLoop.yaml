@@ -1,0 +1,64 @@
+name: ai_attackStepSpawnEffectLoop
+address: '0x08104B68'
+kind: function
+status: probable
+summary: 'One step of an AI attack: plays the attack sound, spawns a flip-dependent effect (id 0x4B) at
+  the object''s position, optionally calls sub_80E7DA4, and advances SubStepIndex; sets HitElement to
+  0xC when cycles are reached, else 4 to keep ticking.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = HitElement state (4 = still looping, 0xC
+  = step done); no return value used
+details: Acts on the implicit battle-object register (r5) and the AI attack-vars structure (r7) shared
+  by this attack's step handlers. It sets the object's animation to 0x48 (with CurAnimCopy = 0xFF to force
+  it), plays sound 0xAE, and sets a counter time of 12 unless SubStepIndex is already nonzero. It reads
+  the target panel X/Y through sub_810515A, gets the object's facing via object_getFlip, computes flip*0x100+0x4B,
+  and spawns a type-4 effect object (id 0x4B) at the object's X/Y/Z; if ScratchVar is set it also calls
+  sub_80E7DA4. It then increments SubStepIndex and, once it reaches TimerOrCycles, sets HitElement to
+  0xC (step finished), otherwise 4 (keep ticking).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x48 to oBattleObject_CurAnim and #0xFF to CurAnimCopy forces a new animation; PlaySoundEffect(0xAE)
+    fires the attack''s sound each step; ldrb TargetPanelX/Y + bl sub_810515A + object_getFlip feed the
+    spawn_t1_0x0_EffectObject call at 0x080E05F6; SubStepIndex increment compared against TimerOrCycles
+    sets HitElement 4 vs 0xC, the standard AI attack loop/finish states; uses oAIAttackVars fields like
+    other AI attack step handlers, with r5/r7 set by the caller'
+  refs:
+  - bn6f/asm/asm31.s:164282
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08104B68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal in all major details: animation 0x48 with CurAnimCopy=0xFF, sound
+    0xAE, conditional counter time 0xC, spawn of type-4 effect id 0x4B at object''s X/Y/Z, conditional
+    sub_80E7DA4, SubStepIndex increment vs TimerOrCycles, and HitElement=4 or 0xC. However, sub_810515A
+    is called with TargetPanelX/Y but the effect is spawned at the object''s own X/Y/Z, not the target
+    panel — the panel values are likely just used to position/spawn something via sub_810515A itself,
+    while spawn_t1_0x0_EffectObject uses the object''s coordinates. The name is acceptable but could be
+    more specific; ''ai_attackStepSpawnEffectLoop'' is fine.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which specific attack this belongs to (no callers known, sound 0xAE and effect 0x4B identify it)
+- whether r4 (flip*0x100+0x4B) is consumed as an extra argument by the spawn wrapper or is dead code
+- what sub_80E7DA4 does when ScratchVar is set
+- 'The code matches the proposal in all major details: animation 0x48 with CurAnimCopy=0xFF, sound 0xAE,
+  conditional counter time 0xC, spawn of type-4 effect id 0x4B at object''s X/Y/Z, conditional sub_80E7DA4,
+  SubStepIndex increment vs TimerOrCycles, and HitElement=4 or 0xC. However, sub_810515A is called with
+  TargetPanelX/Y but the effect is spawned at the object''s own X/Y/Z, not the target panel — the panel
+  values are likely just used to position/spawn something via sub_810515A itself, while spawn_t1_0x0_EffectObject
+  uses the object''s coordinates. The name is acceptable but could be more specific; ''ai_attackStepSpawnEffectLoop''
+  is fine.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8104B68 -> ai_attackStepSpawnEffectLoop
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104B68

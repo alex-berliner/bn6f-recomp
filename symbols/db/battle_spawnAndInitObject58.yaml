@@ -1,0 +1,69 @@
+name: battle_spawnAndInitObject58
+address: '0x080CF91E'
+kind: function
+status: probable
+summary: Spawns a kind 0x58 battle object via object_spawnType3, then conditionally calls BasicBattleObjectInitialize
+  with the caller's saved args (r0=saved_r5, r1=saved_r0, r2=saved_r1, r3=saved_r2) when the caller's
+  r5 is nonzero.
+interface: (r0-r2 = init params, r5 = object/parent ptr) -> r0 = object_spawnType3 result (0 = failed);
+  flags from spawn drive the beq
+details: 'The routine is a spawn+init thunk: it pushes {r0-r2,r5} (saving the caller''s arguments and
+  putting them on the stack where object_spawnType3 can read them as extra stack args), sets r0=0x58 (the
+  object kind/ID) and calls object_spawnType3. If the spawn returned nonzero (beq not taken), it reloads
+  the saved arguments — r1=orig r0, r2=orig r1, r3=orig r2, r0=orig r5 — and tail-calls BasicBattleObjectInitialize
+  to fill in the new entity''s base fields; on failure it just pops and returns. The byte table at byte_80CF934
+  immediately after the return is not referenced by this function and is likely unrelated data belonging
+  to the next section. Its only known caller is battle_chargeAttackStep, which spawns charged projectiles/effects
+  at charge thresholds, so kind 0x58 is plausibly the charged-shot entity.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x58; bl object_spawnType3 — spawns battle object kind 0x58 with caller args preserved
+    via push {r0-r2,r5}; pop {r1-r3,r5} then bl BasicBattleObjectInitialize — on spawn success the saved
+    args are reloaded (r0=orig r5, r1-r3=orig r0-r2) and passed to the object initializer; beq locret_80CF932
+    — skips the initializer when object_spawnType3 returned 0, so init only runs for a successfully spawned
+    object; Caller 0x080EFF28 battle_chargeAttackStep — charged-attack step spawns strike/effect objects
+    or a charged projectile, matching this spawn+init helper; byte_80CF934 lies after the function's locret
+    and is never referenced by it, so it is not part of this routine's logic
+  refs:
+  - bn6f/asm/asm31.s:51346
+  - 0x080EFF28 battle_chargeAttackStep
+  - 0x080EEA78 sub_80EEA78
+  - 0x080EF9A2 sub_80EF9A2
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CF91E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal incorrectly states the beq tests the spawn result. After `bl object_spawnType3`, `mov
+    r0, r5` (line 6) overwrites the spawn return value before `beq locret_80CF932` (line 8), so the branch
+    actually tests r5 (the caller''s saved r5), not spawn success. The spawn happens unconditionally;
+    initialization is skipped when r5==0 and runs when r5!=0, with args r0=saved_r5, r1=saved_r0, r2=saved_r1,
+    r3=saved_r2. The core spawn+init behavior is correct, but the failure logic described is wrong.; run
+    wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of object kind 0x58 (charged projectile vs. charge effect) is inferred only from battle_chargeAttackStep;
+  the other two callers (0x080EEA78, 0x080EF9A2) are unnamed
+- Why the initializer receives r5 as its first argument while the spawn result in r0 is discarded — whether
+  r5 holds a parent object, a slot pointer, or the initializer's real subject needs a look at BasicBattleObjectInitialize
+  and the callers' r5 setup
+- Whether the pushed {r0-r2,r5} block is actually consumed by object_spawnType3 as stack arguments or
+  merely saved registers
+- The proposal incorrectly states the beq tests the spawn result. After `bl object_spawnType3`, `mov r0,
+  r5` (line 6) overwrites the spawn return value before `beq locret_80CF932` (line 8), so the branch actually
+  tests r5 (the caller's saved r5), not spawn success. The spawn happens unconditionally; initialization
+  is skipped when r5==0 and runs when r5!=0, with args r0=saved_r5, r1=saved_r0, r2=saved_r1, r3=saved_r2.
+  The core spawn+init behavior is correct, but the failure logic described is wrong.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CF91E -> battle_spawnAndInitObject58
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF91E

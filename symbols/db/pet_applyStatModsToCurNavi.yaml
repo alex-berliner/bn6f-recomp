@@ -1,0 +1,71 @@
+name: pet_applyStatModsToCurNavi
+address: '0x08131588'
+kind: function
+status: probable
+summary: Re-initializes the current PET navi's stat block at 203CCE0, then applies sentinel-checked stat
+  overrides from unk_2037700 (+0x1C, +0x5C, +0x60 written to bytes 0x2E, 0x56, 0x57), and finally dispatches
+  7 effect functions from one of three tables selected by sub_81312EC's returned byte <<2.
+interface: (no args) -> r0 clobbered by last dispatched function; calls GetCurPETNavi, initNaviStats203CCE0_8013846,
+  SetNaviStats203CCE0Byte
+details: First re-initializes the navi-stats struct at 203CCE0 for the currently selected PET navi. It
+  then reads halfword unk_2037700+0x1C and, if not the 0xFFFF 'unset' sentinel, writes it to the navi-stats
+  byte at offset 0x2E via SetNaviStats203CCE0Byte; likewise word +0x5C goes to byte 0x56 and word +0x60
+  to byte 0x57, skipping both if +0x5C is 0xFFFF. Finally sub_81312EC returns a state struct whose byte
+  at +0xC (shifted <<2) selects one of three function-pointer tables at off_8131600, and the 7 (or 8)
+  entries are called in order via a counted loop (r4 = 0..0x1C step 4). The three tables share most entries
+  but differ in the first/last few, suggesting per-variant stat-application routines; the last table has
+  a trailing 0xFFFF that would be called as a function address if selected, a potential quirk. unk_2037700
+  appears to be a stash of stat overrides (sentinel-marked) applied when (re)loading a navi.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r1,[r0,#0x1c]; cmp r1,#0xFFFF; beq skip -> sentinel-guarded copy; bl SetNaviStats203CCE0Byte
+    with r1=#0x2E, #0x56, #0x57 writes into the navi stats struct; bl GetCurPETNavi before each write
+    targets the currently selected navi; ldr r6,[r1,r0] with r0=(byte[struct+0xC]<<2) picks one of 3 tables
+    at off_8131600; loop calls 7 function pointers (cmp r4,#0x1C; blt) from the selected table'
+  refs:
+  - bn6f/asm/asm36.s:2786
+  - 0x08133A68 sub_8133A68
+  - 0x080010B6 GetCurPETNavi
+  - 0x08013864 SetNaviStats203CCE0Byte
+  - 0x08013846 initNaviStats203CCE0_8013846
+  reproduce: python3 tools/asmcat.py 0x08131588
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary well: initNaviStats203CCE0 is called, sentinel-checked stat values
+    from unk_2037700 (+0x1C, +0x5C, +0x60) are written to the navi stats struct, and then 7 function pointers
+    from one of three tables (selected by byte <<2) are dispatched via `bx r0`. The 7-entry loop bound
+    (cmp r4,#0x1c / blt) confirms exactly 7 calls. The proposal is largely accurate but calls the callee
+    `sub_81312EC` a ''state struct'' and mentions a ''trailing 0xFFFF would be called as a function''
+    — that 0xFFFF is in the data table and is out of loop range so is never invoked, making the speculation
+    noise rather than fact. The name `navicust_applyStatModsToCurrentNavi` is reasonable but the prefix
+    `navicust` is misleading — this manipulates the PET navi''s stat block (203CCE0), not navicust parts.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What SetNaviStats203CCE0Byte offsets 0x2E/0x56/0x57 mean (HP? attack? level?) needs the stats-struct
+  layout
+- What sub_81312EC's struct byte 0xC selects (navi variant / form / version?) to name the three tables
+- What the 7 dispatched functions (sub_8131664..sub_8131728) each apply, and whether the trailing 0xFFFF
+  in off_8131644 is reachable
+- Where unk_2037700+0x1C/+0x5C/+0x60 are written (i.e. what game mode produces these pending values)
+- 'The code matches the summary well: initNaviStats203CCE0 is called, sentinel-checked stat values from
+  unk_2037700 (+0x1C, +0x5C, +0x60) are written to the navi stats struct, and then 7 function pointers
+  from one of three tables (selected by byte <<2) are dispatched via `bx r0`. The 7-entry loop bound (cmp
+  r4,#0x1c / blt) confirms exactly 7 calls. The proposal is largely accurate but calls the callee `sub_81312EC`
+  a ''state struct'' and mentions a ''trailing 0xFFFF would be called as a function'' — that 0xFFFF is
+  in the data table and is out of loop range so is never invoked, making the speculation noise rather
+  than fact. The name `navicust_applyStatModsToCurrentNavi` is reasonable but the prefix `navicust` is
+  misleading — this manipulates the PET navi''s stat block (203CCE0), not navicust parts.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8131588 -> pet_applyStatModsToCurNavi
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131588

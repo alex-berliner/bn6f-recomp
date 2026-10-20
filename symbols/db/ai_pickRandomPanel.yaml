@@ -1,0 +1,64 @@
+name: ai_pickRandomPanel
+address: '0x08114088'
+kind: function
+status: probable
+summary: Picks a random valid panel from a caller-supplied list of {dx,dy} offsets around (r0,r1), requiring/forbidding
+  panel flags via object_checkPanelParameters, skipping the object's own row, and mirroring dx by the
+  caller's alliance direction.
+interface: (r0 = base x, r1 = base y, r2 = required panel-flag mask, r3 = forbidden panel-flag mask; r4
+  = list of signed-byte {dx,dy} pairs terminated by dx==0x7F, r5 = object ptr, r6 = alliance id) -> r0
+  = x (low 3 bits), r1 = y of a random valid panel; r0 = 0 if none matched
+details: Iterates the caller-supplied offset table (2-byte signed dx,dy entries, 0x7F terminator), computing
+  each candidate panel as base + offset*getAllianceDirection(r6), so the search is mirrored for the enemy
+  side. Each candidate is tested with object_checkPanelParameters(x, y, requiredMask, forbiddenMask) and
+  skipped if the test fails or if y equals object byte [r5,0x13] (excludes the object's current row or
+  a fixed row). Matching coords are packed (y<<4)|x into a stack buffer with count in r6. If any matched,
+  GetPositiveSignedRNG and SVC 6 (Div) pick buffer[rand % count]; the byte is unpacked to x (low 3 bits)
+  in r0 and y (>>4) in r1. If nothing matched, returns r0 = 0 with r1 unmodified/garbage, so callers must
+  handle the empty case. The trailing tables (byte_8114140..) are such offset lists, all adjacent-step
+  pairs like (1,0),(-1,0),(0,1),(0,-1).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop at loc_811409E reads ldrsb [r4]/[r4,1] pairs and breaks on 0x7F terminator; bl object_getAllianceDirection
+    with mul r0,r2 applies side mirroring to dx before adding base coords; bl object_checkPanelParameters
+    with r2/r3 from stack slots 0x24/0x28 gates each candidate; tst/beq skips failures; cmp r0,[r5,#0x13]
+    with ldrb from r5 skips candidates whose y equals an object field byte; GetPositiveSignedRNG + svc
+    6 (Divide) then ldrb [buffer+r1] selects a random packed entry; unpack yields x=&7 in r0, y=>>4 in
+    r1
+  refs:
+  - bn6f/asm/asm32.s:12637
+  - 0x08114074 sub_8114074
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x08114088
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary, interface, and selection logic match the code well: iterates a 2-byte signed {dx,dy}
+    list at r4 terminated by 0x7F, scales dx by alliance direction, tests panels with object_checkPanelParameters,
+    skips when y equals [r5,#0x13], packs (y<<4|x) into a stack buffer, and chooses one via GetPositiveSignedRNG
+    % count. The proposed name is fine but a bit verbose; a tighter, still accurate name is ai_pickRandomPanel.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact identity of the object byte [r5,0x13] compared against candidate y (current row vs. a stored target
+  row)
+- Which AI callers invoke sub_8114074 and with which offset tables, to confirm the 'adjacent-panel' usage
+  pattern
+- 'The summary, interface, and selection logic match the code well: iterates a 2-byte signed {dx,dy} list
+  at r4 terminated by 0x7F, scales dx by alliance direction, tests panels with object_checkPanelParameters,
+  skips when y equals [r5,#0x13], packs (y<<4|x) into a stack buffer, and chooses one via GetPositiveSignedRNG
+  % count. The proposed name is fine but a bit verbose; a tighter, still accurate name is ai_pickRandomPanel.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8114088 -> ai_pickRandomPanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114088

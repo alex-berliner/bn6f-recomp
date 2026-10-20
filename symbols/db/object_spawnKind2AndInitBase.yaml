@@ -1,0 +1,66 @@
+name: object_spawnKind2AndInitBase
+address: '0x080C529A'
+kind: function
+status: probable
+summary: Pushes caller's args, calls object_spawnType3 with kind=2 in r0, then on success calls BasicBattleObjectInitialize
+  with r0 set to the caller's original r5 (a parent/entity argument) and r1-r3 restored from the saved
+  caller registers; on spawn failure (Z set) the initializer is skipped.
+interface: (r0-r2, r5 = spawn/init arguments) -> r0 = result of BasicBattleObjectInitialize, or 0 if the
+  spawn failed; r1-r3, r5 restored
+details: 'Pushes {r0-r2,r5} to both preserve the caller''s arguments and shift them on the stack, then
+  sets r0=2 and calls object_spawnType3, so the spawn helper sees type 2 in r0, the original r1-r3 in
+  registers, and the original r0 as its stack argument. The Z flag left by object_spawnType3 is tested
+  after the pop: a failed spawn (r0==0) skips the initializer. On success the saved arguments are popped
+  (orig r0->r1, orig r1->r2, orig r2->r3, orig r5->r5) and BasicBattleObjectInitialize is called with
+  r0 = the caller''s original r5, filling the new entity''s base fields (position, element, related object,
+  flags). The new object pointer returned by object_spawnType3 is not itself forwarded in r0, so r5 likely
+  carries the object/parent the initializer expects first. No callers are known, so the argument roles
+  are inferred only from the two callees'' known summaries.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#2 + bl object_spawnType3: spawn call with object type forced to 2; push {r0-r2,r5}
+    before the call places orig r0 at [sp], i.e. spawnType3''s stack argument; beq locret_80C52AE after
+    the pop skips the init when the spawn helper returned failure; mov r0,r5 + bl BasicBattleObjectInitialize:
+    base-field init runs only after a successful spawn, with r0 from saved r5'
+  refs:
+  - bn6f/asm/asm31.s:28682
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C529A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does match the proposal''s high-level flow: it pushes r0-r2/r5, sets r0=2, calls object_spawnType3,
+    branches on Z, then on success calls BasicBattleObjectInitialize. However, the claim that r5 carries
+    ''the object/parent'' into BasicBattleObjectInitialize is not supported: at `mov r0, r5` r5 still
+    holds the caller''s original r5 (which was just preserved, not a returned pointer), and `object_spawnType3`''s
+    spawned pointer is discarded. Also, the name ''object_spawnType2AndInitBase'' is misleading because
+    the actual spawn call uses type 3, with type 2 only being passed via r0 to a helper named object_spawnType3
+    — this likely means object_spawnType3 internally interprets an argument as the spawn kind rather than
+    being a generic ''type'' parameter.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No callers known: the meaning of the argument passed in r5 (and thus BasicBattleObjectInitialize''s
+  first parameter here) is unconfirmed'
+- What battle-object kind 'type 2' selects in object_spawnType3, and what the five spawn arguments mean
+  positionally
+- 'The code does match the proposal''s high-level flow: it pushes r0-r2/r5, sets r0=2, calls object_spawnType3,
+  branches on Z, then on success calls BasicBattleObjectInitialize. However, the claim that r5 carries
+  ''the object/parent'' into BasicBattleObjectInitialize is not supported: at `mov r0, r5` r5 still holds
+  the caller''s original r5 (which was just preserved, not a returned pointer), and `object_spawnType3`''s
+  spawned pointer is discarded. Also, the name ''object_spawnType2AndInitBase'' is misleading because
+  the actual spawn call uses type 3, with type 2 only being passed via r0 to a helper named object_spawnType3
+  — this likely means object_spawnType3 internally interprets an argument as the spawn kind rather than
+  being a generic ''type'' parameter.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C529A -> object_spawnKind2AndInitBase
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C529A

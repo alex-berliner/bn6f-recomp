@@ -1,0 +1,57 @@
+name: customScreen_confirmChipSelection
+address: '0x0802750C'
+kind: function
+status: probable
+summary: 'Chip-select screen handler that commits the current selection: increments the chip counter,
+  decrements the chips-still-selectable byte for active-chip slot 8, marks entry+7 with 0 (more picks
+  remain) or 2 (selection complete), advances state to 4/0, plays the confirm sound, and starts the exit
+  sequence.'
+interface: (r0-r3 = unused; r5 = custom screen state struct) -> r0 = clobbered; sets screen state fields
+  and plays a sound
+details: 'Increments the counter at [r5,#0x30] (likely chips selected so far), then fetches the special
+  active-chip entry 8 via getLocOfActiveChips(8). It decrements the byte at entry+4 (chips still selectable
+  this turn) and stores 0 into entry+7 if chips remain, or 2 if the count hit zero (selection finished).
+  It then advances the screen state machine: [r5,#1] = 4 and [r5,#2] = 0 (state 4, substate 0), plays
+  sound 0x182 (0x83 + 0xFF) as the confirm cue, and unconditionally calls customScreen_ExitSequence_8028E32
+  to close out the Custom screen.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: getLocOfActiveChips_8027E1C called with arg 8 and its entry byte+4 decremented — a per-turn
+    remaining-chip counter; entry byte+7 set to 0 vs 2 depending on whether the count reached zero — selection-complete
+    flag; [r5,#1]=4 and [r5,#2]=0 write a state/substate pair into the screen struct, matching menu state-machine
+    style; PlaySoundEffect(0x182) then customScreen_ExitSequence_8028E32 — confirm beep followed by leaving
+    the Custom screen
+  refs:
+  - bn6f/asm/asm03_0.s:2380
+  - 0x080005CC PlaySoundEffect
+  - 0x08028E32 customScreen_ExitSequence_8028E32
+  - 0x08027E1C getLocOfActiveChips_8027E1C
+  reproduce: python3 tools/asmcat.py 0x0802750C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''decrements the remaining-chip count'' is backwards: the code increments [r5,#0x30]
+    (lines 3-5) and decrements the per-turn count at entry+4 (lines 11-13). Everything else matches: stores
+    0 or 2 at entry+7 (lines 15-20), sets state 4/substate 0 at [r5,#1]/[r5,#2] (lines 21-24), plays sound
+    0x182 (lines 25-27), and calls customScreen_ExitSequence_8028E32 (line 28).; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the trigger input (e.g. START confirm) is unconfirmed; entry 8's exact role and
+  the meaning of byte+7 values 0/2 would need the chip-select handlers to verify
+- 'The summary''s ''decrements the remaining-chip count'' is backwards: the code increments [r5,#0x30]
+  (lines 3-5) and decrements the per-turn count at entry+4 (lines 11-13). Everything else matches: stores
+  0 or 2 at entry+7 (lines 15-20), sets state 4/substate 0 at [r5,#1]/[r5,#2] (lines 21-24), plays sound
+  0x182 (lines 25-27), and calls customScreen_ExitSequence_8028E32 (line 28).'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802750C -> customScreen_confirmChipSelection
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802750C

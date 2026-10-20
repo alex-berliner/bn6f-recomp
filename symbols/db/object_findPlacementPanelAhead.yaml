@@ -1,0 +1,68 @@
+name: object_findPlacementPanelAhead
+address: '0x080BE434'
+kind: function
+status: probable
+summary: Scans forward from a battle object's panel to find an alliance-flagged anchor panel, then validates
+  the panel one step past it as a landing/placement spot, falling back to a fixed column (6 or 1) at the
+  object's row.
+interface: (implicit r5 = battle object; no args) -> r0,r1 = target panel x,y; r2,r3 = matched anchor
+  panel x,y; 0,0/0,0 on total failure
+details: Reads oBattleObject_PanelY, oBattleObject_PanelX and oBattleObject_Alliance from the global object
+  in r5, and gets a +1/-1 step via object_getFrontDirection. It walks x by that step, calling object_getPanelParameters,
+  stopping at the first panel whose status word matches a per-alliance mask from off_80BE4C8 (0x4000000
+  for alliance 0, 0x8000000 for alliance 1), or resetting to (0,0) if it runs off the field. It then proposes
+  the panel one step past the anchor and validates it (and conceptually the anchor row) with object_checkPanelParameters
+  using r2=0x10 and mask 0xF800000 (panel status bits 19-23). If that validation fails, it retries the
+  same validation at a fixed column (6 when facing +, 1 when facing -) at the object's original y, and
+  finally falls back to (0,0). The four return registers hand both the anchor panel and the chosen target
+  to the caller, which likely spawns/moves something there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'scan loop loc_80BE45C-80BE4B2 steps [sp,#4] by object_getFrontDirection result until object_getPanelParameters
+    flags & alliance mask (off_80BE4C8[Alliance]) are set; candidate = anchor + dir at loc_80BE470, validated
+    with object_checkPanelParameters(x,y,0x10,0xF800000); loc_80BE490 fallback picks column 6 for dir>=0,
+    column 1 for dir<0, re-checking with the same 0xF800000 mask; epilogue loc_80BE4BC returns two (x,y)
+    pairs: target from [sp,#0xC]/[sp,#0x10], anchor from [sp,#4]/[sp,#8]; only caller sub_80BDBC8 is itself
+    undocumented, so the gameplay feature that consumes the target panel is unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:13513
+  - 0x080BDBC8 sub_80BDBC8
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080BE434
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: scans forward using object_getFrontDirection (line ~str r0,[sp]) stepping x until
+    object_getPanelParameters returns a panel whose flags AND the per-alliance mask (0x4000000/0x8000000
+    from off_80BE4C8) is nonzero, then proposes target = anchor_x + 2*step, y = anchor_y, validating with
+    checkPanelParameters(r2=0x10, mask=0xF800000). If that fails, it falls back to column 6/1 at original
+    y (mov r0,#6 / mov r0,#1), then (0,0). The proposal correctly describes this. However, naming ''battle_findLandingPanelAhead''
+    is acceptable but ''object'' prefix fits since it operates on a battle object via r5.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of panel flag bits 0x4000000/0x8000000 (per-side occupancy vs. terrain) and of the 0xF800000
+  / 0x10 check semantics in object_checkPanelParameters
+- Which gameplay feature calls this (via sub_80BDBC8) — e.g. a teleporting/digging object or an attack
+  that spawns behind an obstacle — needs caller-side analysis to confirm the name and the 6/1 fallback
+  column semantics
+- 'The flow matches: scans forward using object_getFrontDirection (line ~str r0,[sp]) stepping x until
+  object_getPanelParameters returns a panel whose flags AND the per-alliance mask (0x4000000/0x8000000
+  from off_80BE4C8) is nonzero, then proposes target = anchor_x + 2*step, y = anchor_y, validating with
+  checkPanelParameters(r2=0x10, mask=0xF800000). If that fails, it falls back to column 6/1 at original
+  y (mov r0,#6 / mov r0,#1), then (0,0). The proposal correctly describes this. However, naming ''battle_findLandingPanelAhead''
+  is acceptable but ''object'' prefix fits since it operates on a battle object via r5.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BE434 -> object_findPlacementPanelAhead
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE434

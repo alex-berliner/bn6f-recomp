@@ -1,0 +1,70 @@
+name: object_findMatchingPanelsAhead
+address: '0x0800D270'
+kind: function
+status: probable
+summary: For three depth levels (1-3), walks each panel-row coordinate from the object's start column
+  by -flip until the panel type matches, then by +flip past remaining panels, calling object_checkPanelParameters
+  to verify flag masks and storing up to three packed (coord|depth<<4) bytes.
+interface: (r0 = panel-type value to match (also arg to object_getFlipDirection), r1 = facing flag for
+  flip, r2/r3 = panel flag masks; r5 = object (byte 0x12 = start coord), r7 = output byte array) -> r0
+  = number of coordinates written
+details: Per depth value 1..3 it fetches panel data via object_getPanelDataOffset(start, depth); if the
+  panel's byte at +3 equals r0 it steps the coordinate by +flip, otherwise it steps by -flip (the negated
+  getFlipDirection result) until a matching panel or the edge of the field. On a match it calls object_checkPanelParameters(coord,
+  depth, r2, r3); if that passes, it stores (depth<<4)|coord as a byte into [r7+count] and increments
+  the count, then moves to the next depth. The net effect is locating the nearest matching panel in the
+  forward direction of each lane. Note r5 and r7 are used without being saved or set, so this looks like
+  a fragment/tail of a larger routine whose prologue sets them; r1 (sp+4) is stored but never read.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop at 800D2EC increments sp+0x1c and repeats while <= 3: exactly three lane iterations; ldrb
+    r1,[r0,#3] / cmp r1,r2 compares each panel''s byte 3 against arg r0 to decide stepping direction (loc_800D292
+    vs loc_800D2E2); bl object_checkPanelParameters with the caller''s r2/r3 masks gates whether the panel
+    is accepted; lsl r1,#4 / orr / strb r0,[r7,r6] packs depth<<4|coord into an output array and counts
+    hits in r6; mov r0,r6 returns the hit count; callees are all object_* panel/direction helpers'
+  refs:
+  - bn6f/asm/object.s:3783
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x0800D270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal gets the overall structure right but inverts the step directions. At loc_800D2B4-800D2BC:
+    when the panel type matches, the code subtracts flip (coord -= flip) before looping. At loc_800D2DC-800D2E4:
+    when the type does NOT match (the fallthrough), the code does NOT call object_checkPanelParameters;
+    instead it adds flip (coord += flip) and loops back. object_checkPanelParameters is only called in
+    the bne-after-second-fetch path (loc_800D2B0), which expects type==r0 after re-fetching—actually the
+    second fetch re-reads at the already-decremented coord, then if that still mismatches it increments.
+    So the logic is: step by -flip until matching type, step by +flip past non-matching, then verify flags.
+    Also r1/[sp+4] is used (passed to object_getFlipDirection), not unread.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers known, so the gameplay use (which attack/object invokes this and what panel type byte 3 encodes)
+  is unconfirmed
+- which axis is 'lane' depends on object_getPanelDataOffset's argument order (x,y vs y,x); r5+0x12's exact
+  field meaning needs the enclosing routine
+- why r5/r7 are unsaved - whether this is truly a standalone function or a split fragment of a larger
+  one
+- 'The proposal gets the overall structure right but inverts the step directions. At loc_800D2B4-800D2BC:
+  when the panel type matches, the code subtracts flip (coord -= flip) before looping. At loc_800D2DC-800D2E4:
+  when the type does NOT match (the fallthrough), the code does NOT call object_checkPanelParameters;
+  instead it adds flip (coord += flip) and loops back. object_checkPanelParameters is only called in the
+  bne-after-second-fetch path (loc_800D2B0), which expects type==r0 after re-fetching—actually the second
+  fetch re-reads at the already-decremented coord, then if that still mismatches it increments. So the
+  logic is: step by -flip until matching type, step by +flip past non-matching, then verify flags. Also
+  r1/[sp+4] is used (passed to object_getFlipDirection), not unread.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800D270 -> object_findMatchingPanelsAhead
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D270

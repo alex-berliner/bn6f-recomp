@@ -1,0 +1,74 @@
+name: object_scanRowForPanelMask
+address: '0x0802E8FE'
+kind: function
+status: probable
+summary: Starting at (r0,r1), walks one row of the 6x3 battle grid in the direction returned by object_getAllianceDirection
+  for the caller, returning 1 if a panel whose status word ANDed with a table mask (selected by r2) is
+  non-zero is encountered, else 0.
+interface: (r0 = start column (1-based), r1 = row, r2 = alliance id / flag selector) -> r0 = 1 if a matching
+  panel is found along the row, else 0; flags clobbered
+details: r2 is first converted to a direction (+1 player side / -1 enemy side) via object_getAllianceDirection,
+  so the scan proceeds toward the opponent (or back, for the enemy side). The loop advances only the column
+  (r6 += dir) while the row stays fixed, skipping the starting panel itself. For each in-bounds panel
+  it fetches the panel status word with object_getPanelParameters and tests it against a mask indexed
+  by r2<<2 from a table (0x4000000, 0x8000000 at 0x0802E93C), returning 1 on the first hit; falling off
+  the 6x3 grid returns 0. The extra words after the table (0x10000, 0xFFFF, 0x80000, unk_2000370...) appear
+  to be a later function's literal pool, suggesting r2/r5 only takes small values selecting which panel
+  property (e.g. hole/broken-type bits 26-27) to look for. No callers are known, so the exact gameplay
+  use (e.g. checking for a broken panel ahead) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getAllianceDirection turns r2 into +/-1 step stored in r4 (loc_802E90E area); loop
+    adds r4 to r6 only, keeps r7 fixed, and calls object_isValidPanel each step; ldr r1,[r2,r1] with r1=r5<<2
+    selects a flag mask from off_802E93C to tst against object_getPanelParameters' result; return 1 after
+    tst/bne, return 0 when object_isValidPanel fails; callees are all grid/object helpers, no writes to
+    game state
+  refs:
+  - bn6f/asm/asm03_0.s:18258
+  - 0x0800E2C2 object_getAllianceDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0802E8FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does iterate a row (r7 stays fixed, r6 advances by the direction from object_getAllianceDirection)
+    and checks panel status against a mask from the table at off_802E93C, returning 1/0 — that part matches.
+    However, r2 is the mask index (0 or 1), not an ''alliance id / flag selector'': it is passed straight
+    into `lsl r1, r5, #2` to index the table and never re-fed into object_getAllianceDirection; r0 is
+    the alliance id passed to that callee (line `mov r0, r2` actually sets r0 from r2, but r2 itself is
+    the mask index). Wait — r2 is moved into r0 for the call, meaning r2 doubles as the alliance id and
+    mask index, which is unusual but possible. The summary''s claim about object_getAllianceDirection
+    taking r2 as alliance id is fine, but saying r2 indexes the mask via `r2<<2` is wrong: it is r5 (r2''s
+    original copy in r5) used for indexing. Also the ''toward the opponent'' wording is a guess; the doc
+    says +1 player / -1 enemy, so the scan actually moves toward the caller''s own back, not the opponent.
+    A name like object_scanRowForPanelFlag is acceptable but ''scanRow'' is a bit generic.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- 'no callers known: which flag values (bit 26/27) mean in panel status and what gameplay feature queries
+  this'
+- whether r2 selects more than the two masks in the visible table
+- 'The code does iterate a row (r7 stays fixed, r6 advances by the direction from object_getAllianceDirection)
+  and checks panel status against a mask from the table at off_802E93C, returning 1/0 — that part matches.
+  However, r2 is the mask index (0 or 1), not an ''alliance id / flag selector'': it is passed straight
+  into `lsl r1, r5, #2` to index the table and never re-fed into object_getAllianceDirection; r0 is the
+  alliance id passed to that callee (line `mov r0, r2` actually sets r0 from r2, but r2 itself is the
+  mask index). Wait — r2 is moved into r0 for the call, meaning r2 doubles as the alliance id and mask
+  index, which is unusual but possible. The summary''s claim about object_getAllianceDirection taking
+  r2 as alliance id is fine, but saying r2 indexes the mask via `r2<<2` is wrong: it is r5 (r2''s original
+  copy in r5) used for indexing. Also the ''toward the opponent'' wording is a guess; the doc says +1
+  player / -1 enemy, so the scan actually moves toward the caller''s own back, not the opponent. A name
+  like object_scanRowForPanelFlag is acceptable but ''scanRow'' is a bit generic.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802E8FE -> object_scanRowForPanelMask
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E8FE

@@ -1,0 +1,66 @@
+name: object_runActionOrDespawn
+address: '0x080E98DE'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object: if the battle is over or its current panel invalid, raises
+  the object''s y by 0x100000, spawns an effect object (id 0x12), and sets CUR_STATE_DESTROY; otherwise
+  tail-calls the handler for oBattleObject_CurAction from a table at off_80E9918.'
+interface: (r5 = battle object) -> r0 = 0 when destroyed; otherwise dispatches to action handler (return
+  value = handler's); on destroy sets object state to CUR_STATE_DESTROY
+details: First checks battle_isBattleOver and object_isCurrentPanelValid; if either fails, it reads the
+  object's x/y/z at offset 0x34 (ldmia {r1-r3}), raises the y coordinate by 0x100000 (r3 += 0x10<<16),
+  spawns a type-4 effect object with effect id 0x12 (spawn_t1_0x0_EffectObject), and stores CUR_STATE_DESTROY
+  into the object's state/phase field so it is removed. Otherwise it indexes a table at off_80E9918 with
+  oBattleObject_CurAction and tail-calls the selected handler via mov lr,pc / bx r1. Notably the table
+  currently has only one entry (sub_80E991C), so this object supports a single action; the y-raised despawn
+  effect suggests a flying or elevated object puffing out when removed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver + tst/bne: bail-out path when battle has ended; bl object_isCurrentPanelValid
+    + tst/beq: also bail when the object''s panel is invalid; ldmia r0!,{r1-r3} from r5+0x34 then r3 +=
+    0x100000: despawn effect positioned at object coords, raised; bl spawn_t1_0x0_EffectObject with r4
+    = 0x12, then CUR_STATE_DESTROY stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized: self-destruct
+    with effect 0x12; ldr r1,[r1,r0] on table indexed by oBattleObject_CurAction, mov lr,pc/bx r1: action
+    dispatch table with single entry sub_80E991C'
+  refs:
+  - bn6f/asm/asm31.s:108116
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080E98DE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s interface, jump-table dispatch via off_80E9918, and despawn branch at loc_80E98FC
+    all fit the asm (bne loc_80E98FC / beq loc_80E98FC, ldrb [r5,#oBattleObject_CurAction], str CUR_STATE_DESTROY).
+    However, the summary says it ''spawns a type-4 effect object with effect id 0x12'', but spawn_t1_0x0_EffectObject
+    takes the effect id in r4 (mov r4,#0x12; bl spawn_t1_0x0_EffectObject); the callee is described as
+    a type-4 wrapper, but the proposal misreads the register role. Also ''actionOrDespawn'' misnames this
+    — it''s not a generic dispatch; it''s specifically the object''s per-frame action tick (CurStateActionPhase...),
+    so ''battleObject_tickAction'' or ''object_runActionOrDespawn'' is more accurate. Better to keep one
+    word: object_runAction.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object type uses this handler (no known callers); sub_80E991C's behavior would identify it
+- Exact semantics of the spawn wrapper's arguments (which of r1/r2/r4 is x/y vs effect id) — inferred
+  from the callee's own summary
+- 'The proposal''s interface, jump-table dispatch via off_80E9918, and despawn branch at loc_80E98FC all
+  fit the asm (bne loc_80E98FC / beq loc_80E98FC, ldrb [r5,#oBattleObject_CurAction], str CUR_STATE_DESTROY).
+  However, the summary says it ''spawns a type-4 effect object with effect id 0x12'', but spawn_t1_0x0_EffectObject
+  takes the effect id in r4 (mov r4,#0x12; bl spawn_t1_0x0_EffectObject); the callee is described as a
+  type-4 wrapper, but the proposal misreads the register role. Also ''actionOrDespawn'' misnames this
+  — it''s not a generic dispatch; it''s specifically the object''s per-frame action tick (CurStateActionPhase...),
+  so ''battleObject_tickAction'' or ''object_runActionOrDespawn'' is more accurate. Better to keep one
+  word: object_runAction.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E98DE -> object_runActionOrDespawn
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E98DE

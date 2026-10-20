@@ -1,0 +1,60 @@
+name: object_setupActorVariant
+address: '0x08118964'
+kind: function
+status: probable
+summary: Picks an actor sprite variant (0x23 if chatbox event flag bit 0x80 is clear, else 0x01), stores
+  it at [r5,#0x00], sets an animation byte to 3 at [r5,#0xc], stores a sub_8118B48 boolean at [r6,#0xd],
+  and (re)loads sprite animation 3.
+interface: (r5 = actor struct ptr, r6 = related struct ptr, both prepared by caller) -> void; flags from
+  sub_8118B48's result are consumed internally
+details: Reads bit 0x80 of the chatbox/cutscene event flag word; if clear it stores 0x23 at [r5+0x00],
+  otherwise 1, so the flag selects between two actor variants. It then writes 3 into [r5+0x0c], which
+  is later used as the animation index. It calls sub_8118B48 and stores 0 or 1 into [r6+0x0d] depending
+  on its Z flag, i.e. a boolean property of a second, related structure. Finally it compares [r5+0x0c]
+  against [r5+0x0d] (previous animation) and, if they differ, calls sprite_setAnimation with r0 = the
+  value 3 followed by sprite_loadAnimationData, so the sprite is only reinitialized on an animation change.
+  r5 and r6 are never initialized inside the function, so the caller must pass both pointers in registers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x80; bl chatbox_mask_eFlags2009F38; bne loc_8118972 with mov r4,#0x23 / #1 selects
+    variant byte at [r5]; strb r1(=3),[r5,#0xc] sets the field later used as the animation index; bl sub_8118B48;
+    beq writes 0/1 boolean into [r6,#0xd]; ldrb [r5,#0xc] vs [r5,#0xd] cmp guards sprite_setAnimation(3)
+    + sprite_loadAnimationData, so reload happens only on animation change'
+  refs:
+  - bn6f/asm/asm32.s:21860
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x08118964
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claim that [r5,#0xc] is compared against [r5,#0xd] ''previous animation'' on the
+    same struct is wrong: both bytes are in r5 and [r5,#0xd] is freshly written by the sub_8118B48 boolean
+    (strb r4,[r6,#0xd] — actually r6, not r5). The comparison is between the just-set 3 and an unrelated
+    boolean, so the ''only reload on change'' rationale is suspect. Also, the 0x23 vs 0x01 byte at [r5,#0x00]
+    looks like an actor/object sprite index variant, not a ''state/animation'' field.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8118B48 checks (its result becomes the boolean at [r6+0x0d])
+- Which structures r5 and r6 point to and which caller sets them (no caller is known)
+- What the values 0x23 vs 1 at [r5+0x00] select (actor id, text id, or palette)
+- Which specific event flag bit 0x80 of eFlags2009F38 represents
+- 'The summary''s claim that [r5,#0xc] is compared against [r5,#0xd] ''previous animation'' on the same
+  struct is wrong: both bytes are in r5 and [r5,#0xd] is freshly written by the sub_8118B48 boolean (strb
+  r4,[r6,#0xd] — actually r6, not r5). The comparison is between the just-set 3 and an unrelated boolean,
+  so the ''only reload on change'' rationale is suspect. Also, the 0x23 vs 0x01 byte at [r5,#0x00] looks
+  like an actor/object sprite index variant, not a ''state/animation'' field.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8118964 -> object_setupActorVariant
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118964

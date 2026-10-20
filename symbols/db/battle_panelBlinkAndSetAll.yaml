@@ -1,0 +1,61 @@
+name: battle_panelBlinkAndSetAll
+address: '0x080E1E70'
+kind: function
+status: probable
+summary: Blinks every non-empty panel each 8th frame for Param3 frames, then converts the full 7x4 grid
+  to Param1's panel type and frees the object.
+interface: '(object in r5: Param1 = new panel type, Param3 = blink duration in frames, Timer = counter)
+  -> r0 = undefined; frees the object when done'
+details: 'A per-frame battle object routine. Each call increments oBattleObject_Timer; while Timer < Param3
+  it blinks the whole 7x4 panel grid every 8th frame (Timer bit 3), using object_getPanelDataOffset to
+  find each panel, skipping panels whose oPanelData_Type is 0, and calling object_setPanelTypeBlink with
+  Param1 as the type. Once Timer >= Param3, it calls object_setPanelType on every panel (all columns 0..6,
+  rows 0..3, including empty ones) with Param1, then calls object_freeMemory to release its object slot.
+  Quirk: the blink pass only touches non-empty panels, but the final conversion applies to the entire
+  grid regardless of panel type.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80E1E70: ldrh r0,[r5,#oBattleObject_Timer]; add/strh then cmp with Param3 selects blink
+    phase vs conversion phase; blink loop: bl object_getPanelDataOffset; ldrb r1,[r0,#oPanelData_Type];
+    beq skips empty panels, then bl object_setPanelTypeBlink with Param1; lsr r0,#3 / bcs makes the blink
+    pass run only every 8th frame during the countdown; end phase loops r6=6..0, r7=3..0 calling object_setPanelType
+    unconditionally, then bl object_freeMemory releases the object slot'
+  refs:
+  - bn6f/asm/asm31.s:90765
+  - 0x08003458 object_freeMemory
+  - 0x0800C90A object_getPanelDataOffset
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080E1E70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: the code increments oBattleObject_Timer, compares against Param3, and while
+    Timer < Param3 it blinks panels on every 8th frame (Timer bit 3 set), skipping empty panels (type
+    == 0). Once Timer >= Param3 it sets every panel (rows 0..3, cols 0..6, no empty-skip) via object_setPanelType
+    and calls object_freeMemory. However, the proposed name''s ''ChangeAllField'' is misleading: the blink
+    only affects non-empty ones, and the final pass is a plain setPanelType, not a ''field change''. A
+    name like battle_panelBlinkAndSetAll captures both phases more honestly.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which battle script or attack spawns this object (no callers known), so the exact in-game effect (e.g.
+  SandStage, Ice, grass restore) is unconfirmed
+- Whether Param2 or other object fields are set up by the spawner and used elsewhere
+- 'The summary is accurate: the code increments oBattleObject_Timer, compares against Param3, and while
+  Timer < Param3 it blinks panels on every 8th frame (Timer bit 3 set), skipping empty panels (type ==
+  0). Once Timer >= Param3 it sets every panel (rows 0..3, cols 0..6, no empty-skip) via object_setPanelType
+  and calls object_freeMemory. However, the proposed name''s ''ChangeAllField'' is misleading: the blink
+  only affects non-empty ones, and the final pass is a plain setPanelType, not a ''field change''. A name
+  like battle_panelBlinkAndSetAll captures both phases more honestly.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1E70 -> battle_panelBlinkAndSetAll
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1E70

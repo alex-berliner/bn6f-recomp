@@ -1,0 +1,65 @@
+name: object_pickFilteredPanelFacingOrRandom
+address: '0x080FAAD4'
+kind: function
+status: probable
+summary: Returns a battle panel coordinate (x/y packed byte) matching attribute filters, preferring the
+  panel directly in front of the object, else a random matching panel anywhere else.
+interface: (r0 = object, r5 = object, r2 = required attr mask, r3 = forbidden attr mask) -> r0 = panel
+  byte (low 3 bits x, high nibble y) or 0 if none; flags clobbered
+details: 'Reads object byte 0x13 and r2/r3 into stack slots, then reads object byte 0x16: if zero the
+  forward step is 1 panel, otherwise 6 (i.e. vertical-facing objects step a full row on the 6-wide grid).
+  Calls object_getFrontDirection (+1/-1 by alliance/DirectionFlip) and object_getFirstPanelInDirectionFiltered
+  with that step to find the next panel ahead matching the masks; if that succeeds its result is returned
+  directly. Otherwise it collects all panels except the object''s own via object_getPanelsExceptCurrentFiltered
+  into a stack list, and if any exist picks one with GetPositiveSignedRNG + svc 6 (modulo count) and repacks
+  it as x = val & 7, y = val >> 4. Returns 0 when no candidate panel exists at all.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#0x16]; beq/mov r6,#6 sets a 1-or-6 panel step, matching the 6-column grid row stride;
+    bl object_getFrontDirection feeds the signed direction into object_getFirstPanelInDirectionFiltered
+    for the 'ahead' attempt; fallback path calls object_getPanelsExceptCurrentFiltered with the same r2/r3
+    masks, bne loc_80FAB24 returns 0 when empty; GetPositiveSignedRNG + svc 6 + ldrb [list,count] picks
+    a random entry from the collected panel list; lsr/lsl 0x1d unpack of the picked byte yields x in low
+    3 bits and y in the high nibble, the packed panel-coordinate format
+  refs:
+  - bn6f/asm/asm31.s:143041
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  reproduce: python3 tools/asmcat.py 0x080FAAD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface match the code: it checks 0x16 for direction (1 or 6 step), uses object_getFrontDirection
+    to choose sign, calls object_getFirstPanelInDirectionFiltered, and on miss collects panels via object_getPanelsExceptCurrentFiltered
+    then picks one with GetPositiveSignedRNG + svc 6. However the repacking at the end is x = (val<<1)>>4?
+    No: lsl #29 then lsr #29 extracts low 3 bits, and lsr #4 gives high nibble, so y is val>>4 and x is
+    val&7, matching the summary. The name battle_ is fine but the function''s exact role (priority ''ahead
+    else random'') is generic enough that ''object'' fits the prefix list better since it works on any
+    object. Revised: object_pickFilteredPanelFacingOrRandom.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of the byte at object+0x13 passed as r1 to object_getFirstPanelInDirectionFiltered (range/limit
+  vs another attribute field)
+- exact attribute-mask semantics of r2/r3 vs the project's known summaries of the two filter helpers
+- which caller/AI uses this (no caller known) to confirm it targets movement or an attack placement
+- 'The summary and interface match the code: it checks 0x16 for direction (1 or 6 step), uses object_getFrontDirection
+  to choose sign, calls object_getFirstPanelInDirectionFiltered, and on miss collects panels via object_getPanelsExceptCurrentFiltered
+  then picks one with GetPositiveSignedRNG + svc 6. However the repacking at the end is x = (val<<1)>>4?
+  No: lsl #29 then lsr #29 extracts low 3 bits, and lsr #4 gives high nibble, so y is val>>4 and x is
+  val&7, matching the summary. The name battle_ is fine but the function''s exact role (priority ''ahead
+  else random'') is generic enough that ''object'' fits the prefix list better since it works on any object.
+  Revised: object_pickFilteredPanelFacingOrRandom.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FAAD4 -> object_pickFilteredPanelFacingOrRandom
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FAAD4

@@ -1,0 +1,65 @@
+name: ow_removeObject
+address: '0x080A8988'
+kind: function
+status: probable
+summary: 'Handles a disappearing overworld object: if bit 0x10000 in the sprite-status word at +0x28 is
+  set, clears its shadow, sets state byte [+8]=8, plays a variant sound (0x73 or 0xA4 chosen by [+5]),
+  and persistently sets the event flag from [+4] (with sub_81433E4(1) called in the second variant).'
+interface: '(r0 = object struct in r5 convention, fields used) -> r0 = SetEventFlag result; side effects:
+  state byte [+8]=8, shadow cleared, sound played, event flag [+4] set'
+details: 'r5 points to an overworld object: +0x28 holds a sprite status word whose 0x10000 bit gates the
+  whole routine (nothing happens if clear), +4 is an event-flag/ID, +5 selects one of two variants, +8
+  is an object state byte. On the triggered path it calls sprite_removeShadow, writes 8 to [+8] (likely
+  a ''collected/despawn'' state or animation), and plays sound 0x73 when [+5]==0, else sound 0xA4 plus
+  a bitfield flag and sub_81433E4(1). In both branches the flag ID from [+4] is passed through sub_81430B6
+  and then to SetEventFlag, making the object''s disappearance persistent. The two branches suggest two
+  flavors of collectible sharing this handler (e.g., ordinary vs special item).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, 0x10000 on [r5,#0x28] with early return: routine only runs when the object''s trigger
+    bit is set (sub_80A8988 start); bl sprite_removeShadow then strb r0(=8),[r5,#8]: hides the object
+    and moves it into a terminal state; mov r0,#SOUND_UNK_73 / mov r0,#0xA5;add r0,#0xFF then PlaySoundEffect:
+    distinct sound chosen by byte [+5]; ldrb r0,[r5,#4]; bl sub_81430B6; bl SetEventFlag: persists the
+    interaction via the object''s own flag ID; second branch also calls sub_81433E4(1), marking it as
+    a special variant of the same collection flow'
+  refs:
+  - bn6f/asm/asm29.s:7161
+  - 0x080A88E2 sub_80A88E2
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F114 SetEventFlag
+  - 0x08002E52 sprite_removeShadow
+  reproduce: python3 tools/asmcat.py 0x080A8988
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structure: bit 0x10000 at +0x28 gates the routine, sprite_removeShadow
+    is called, 8 is written to +8, and SetEventFlag is called with the flag from +4 (after sub_81430B6).
+    However, the proposal says the second branch plays sound ''0xA4'', but the asm loads #0xa5 then adds
+    #0xff (=0xa4) — this is 0xA4, not 0xA5, so the proposal is actually correct there. The main issue
+    is the naming: this isn''t really a ''collect'' action (no ''pickup'' connotation tied to a player
+    inventory); it''s the generic disappearance/persistence handler for a triggered overworld object.
+    A name like ow_removePersistent or ow_clearObject better captures both branches (item pickup AND generic
+    despawn with flag persistence).; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_81430B6 and sub_81433E4 do exactly (they decide whether the flag is plain or bitfield-encoded),
+  and which game object type uses the [+5]!=0 branch
+- 'The code matches the proposal''s structure: bit 0x10000 at +0x28 gates the routine, sprite_removeShadow
+  is called, 8 is written to +8, and SetEventFlag is called with the flag from +4 (after sub_81430B6).
+  However, the proposal says the second branch plays sound ''0xA4'', but the asm loads #0xa5 then adds
+  #0xff (=0xa4) — this is 0xA4, not 0xA5, so the proposal is actually correct there. The main issue is
+  the naming: this isn''t really a ''collect'' action (no ''pickup'' connotation tied to a player inventory);
+  it''s the generic disappearance/persistence handler for a triggered overworld object. A name like ow_removePersistent
+  or ow_clearObject better captures both branches (item pickup AND generic despawn with flag persistence).'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8988 -> ow_removeObject
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8988

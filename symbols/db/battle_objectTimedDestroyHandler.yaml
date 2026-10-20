@@ -1,0 +1,60 @@
+name: battle_objectTimedDestroyHandler
+address: '0x080CFC5E'
+kind: function
+status: probable
+summary: Per-frame handler that removes an object's collision data, runs sub_80CFCA8 every 8 frames via
+  oBattleObject_Timer2, and when oBattleObject_Timer expires sets collision region 0x80, clears ExtraVars[0]
+  if present, transitions to CUR_STATE_DESTROY, then refreshes present-frame collision state.
+interface: (r5 = battle object pointer, no args) -> r0 = state on exit; updates oBattleObject_Timer/Timer2,
+  collision region, and CurState.
+details: First removes the object's collision data (object_removeCollisionData), then decrements oBattleObject_Timer2;
+  when it reaches 0 it calls sub_80CFCA8 and reloads Timer2 with 8 frames. It then decrements oBattleObject_Timer;
+  at expiry it sets collision region index 0x80 via object_setCollisionRegion, and if oBattleObject_ExtraVars
+  points to anything, stores 0 to its first byte. Finally it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+  Each frame it ends by refreshing present-frame collision state (object_presentCollisionData). The removal-then-present
+  pattern suggests collision data is disabled except for the final frame region 0x80.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0,#1 on oBattleObject_Timer2 with 8-frame reload and call to sub_80CFCA8 = periodic tick
+    handler; Timer expiry writes mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl object_setCollisionRegion with r0=0x80 and zeroing *ExtraVars on expiry; Caller battle_objectInitSpawnState
+    sets the 100/8-frame timers this function consumes and advances into this phase; bl object_removeCollisionData
+    up front and bl object_presentCollisionData at the end bookend the frame's collision work
+  refs:
+  - bn6f/asm/asm31.s:51754
+  - 0x080CFC28 battle_objectInitSpawnState
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CFC5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the code (Timer2 decrement, sub_80CFCA8 reload, Timer expiry → region
+    0x80 → optional ExtraVars clear → CUR_STATE_DESTROY), but it inverts the collision calls: the code
+    calls object_removeCollisionData at entry and object_presentCollisionData at the tail, not the reverse.
+    Otherwise the summary fits, but the framing as a timed-destroy handler is right; only the call-order
+    claim needs correcting, so the name is acceptable.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80CFCA8 does (likely a flash/animation tick during the countdown) is unverified
+- Which visual/behavioural object types use this handler (e.g. tile or enemy vanish states) is only implied
+  by the caller
+- 'The proposal''s mechanics match the code (Timer2 decrement, sub_80CFCA8 reload, Timer expiry → region
+  0x80 → optional ExtraVars clear → CUR_STATE_DESTROY), but it inverts the collision calls: the code calls
+  object_removeCollisionData at entry and object_presentCollisionData at the tail, not the reverse. Otherwise
+  the summary fits, but the framing as a timed-destroy handler is right; only the call-order claim needs
+  correcting, so the name is acceptable.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CFC5E -> battle_objectTimedDestroyHandler
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFC5E

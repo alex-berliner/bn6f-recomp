@@ -1,0 +1,63 @@
+name: chipTraderPickCode
+address: '0x0804BF18'
+kind: function
+status: probable
+summary: Given a chip ID, locates it in the chip-code table, partitions its codes into owned vs unowned
+  via GetChipCountOfCode, and weighted-randomly picks one code index/byte favoring unowned codes.
+interface: (r0 = chip ID to look up, r1 = unused, r2 = chip-code table pointer, r5 = work buffer) -> r0
+  = original chip ID (restored from stack), r1 = chosen code index; trashes r2-r7
+details: 'Linear-scans a 6-byte-stride table until the entry''s leading halfword matches r0 (the chip
+  ID), keeping a pointer to that entry. Then reads up to 4 code bytes at offsets +2..+5 until a 0xFF terminator;
+  for each code it calls GetChipCountOfCode and stores the code into r5+0x38 (owned, counted by r3) or
+  r5+0x40 (unowned, counted by r4). It calls chipTraderWeightedRandomMaybe_804BD7C with byte_804B068 (2
+  weights, ~75/25) to choose between the unowned (''new'') and owned lists, then again with byte_804B06A
+  (per-code-position weights) to pick an index within that list, and loads the stored code byte into r1.
+  Quirk: because r0 was pushed only as padding, the final pop restores the input chip ID in r0 while the
+  actual result (chosen code) is left in r1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r7,[r2]; cmp r7,r0; add r2,#6 — 6-byte-stride table searched for halfword matching r0 (chip
+    ID); GetChipCountOfCode + tst r0,r0 routes each code byte to r5+0x38 (owned, r3) or r5+0x40 (not owned,
+    r4); chipTraderWeightedRandomMaybe_804BD7C(byte_804B068, r1=2) first, then (byte_804B06A, r3 or r4)
+    — two-stage weighted pick over unowned vs owned lists; final ldrb r1,[r5,r0 +0x38/0x40] then pop {r0,r5,pc}
+    — chosen code ends up in r1 while r0 is restored from the pushed original; caller chipTraderRollReward
+    'resolves or redraws the final chip' — fits picking the code letter after a chip has been chosen
+  refs:
+  - bn6f/asm/asm03_2.s:9708
+  - 0x0804BD00 chipTraderRollReward
+  - 0x08021BC0 GetChipCountOfCode
+  - 0x0804BD7C chipTraderWeightedRandomMaybe_804BD7C
+  reproduce: python3 tools/asmcat.py 0x0804BF18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: scans the 6-byte stride table for the chip ID (loc_804BF1A), reads
+    up to 4 codes (r2=2..5) until terminator, splits into owned (r5+0x38, r3) vs unowned (r5+0x40, r4)
+    via GetChipCountOfCode (loc_804BF2C), then uses chipTraderWeightedRandomMaybe_804BD7C twice (first
+    75/25 split, then within-list). The push {r0,r5,lr}/pop {r0,r5,pc} quirk is real - r0 is restored
+    unchanged. However, the function picks a code for a chip, so the chosen name is fine but a clearer
+    one reflects that it picks the code index/byte.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact contents/meaning of weight tables byte_804B068 and byte_804B06A (assumed per-position code weights)
+- layout of the caller's work buffer at r5 (what fields +0x38/+0x40 belong to)
+- whether the caller actually consumes r1 rather than r0 as the chosen code
+- 'The code matches the proposal: scans the 6-byte stride table for the chip ID (loc_804BF1A), reads up
+  to 4 codes (r2=2..5) until terminator, splits into owned (r5+0x38, r3) vs unowned (r5+0x40, r4) via
+  GetChipCountOfCode (loc_804BF2C), then uses chipTraderWeightedRandomMaybe_804BD7C twice (first 75/25
+  split, then within-list). The push {r0,r5,lr}/pop {r0,r5,pc} quirk is real - r0 is restored unchanged.
+  However, the function picks a code for a chip, so the chosen name is fine but a clearer one reflects
+  that it picks the code index/byte.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804BF18 -> chipTraderPickCode
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804BF18

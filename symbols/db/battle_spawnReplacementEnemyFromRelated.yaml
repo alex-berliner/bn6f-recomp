@@ -1,0 +1,66 @@
+name: battle_spawnReplacementEnemyFromRelated
+address: '0x080BCFF6'
+kind: function
+status: probable
+summary: Battle-object state handler that waits for a gating byte, copies the related enemy's position,
+  delays ~30 frames, then spawns a new enemy actor from the related object's NameID, kills the related
+  object, and sets CurState to destroy.
+interface: (r5 = battle object, no register args) -> r0 = callee return; clobbers r0-r4, lr; sets object
+  CurState to destroy on completion
+details: 'This is a per-object state handler using the r5 = battle-object convention. On the first pass
+  (PhaseInitialized==0) it polls a byte at [ExtraVars+0x10]+8 and does nothing until it equals 8; then
+  it sets CurAnim=0, calls sub_80B8E58 on ExtraVars+4 and ExtraVars+0xC (likely freeing/refreshing attached
+  sprite resources), copies the 3 words at RelatedObject1+0x34 (the position triple) into its own +0x34,
+  recomputes its PanelX/PanelY via object_setPanelsFromCoordinates, sets Timer=0x1E and marks itself initialized.
+  Once the 30-frame timer expires it reads the related object''s NameID, unpacks its {version, actorType,
+  AI index} with unpackVerActorTyAndAIIdx_800F29C, and calls sub_8011044 (presumably spawning that enemy
+  actor, r2=1 as a mode/flag). It then clears bit 1 of its object flags, writes CUR_STATE_DESTROY into
+  the CurState/phase field, tears down the related object via battle_killObjectWithDependents, and finally
+  stores 0 to [ExtraVars] byte 0 if ExtraVars is set, signaling the owner. Net effect: a delayed swap
+  of the related enemy for a new actor spawned from its record at the same location.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'poll loop: ldrb r0,[ExtraVars+0x10]+8; cmp #8; bne return before any init (sub_80BCFF6); copies
+    RelatedObject1+0x34 words into own +0x34 then bl object_setPanelsFromCoordinates (spawn-at-same-spot);
+    bl unpackVerActorTyAndAIIdx_800F29C on RelatedObject1 NameID, then bl sub_8011044 with r2=1 (enemy
+    spawn); mov r0,#CUR_STATE_DESTROY; str to CurStateActionPhaseAndPhaseInitialized, then bl battle_killObjectWithDependents
+    on RelatedObject1; Timer=0x1E counted down before the swap, and [ExtraVars] byte cleared at the end'
+  refs:
+  - bn6f/asm/asm31.s:10702
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  reproduce: python3 tools/asmcat.py 0x080BCFF6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavioral description is accurate: it polls [ExtraVars+0x10]+8, copies position from RelatedObject1+0x34,
+    sets Timer=0x1E, waits, then spawns via sub_8011044 using the related object''s NameID, kills the
+    related object, and signals completion via [ExtraVars]. However, calling this ''replaceSelfWithRelatedEnemy''
+    is inaccurate because the function destroys the related enemy and spawns a new actor (the original
+    related object is killed, not the self), so the name should reflect that it spawns a replacement enemy
+    from the related object rather than replacing self.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_8011044 (spawn call?) and meaning of its r2=1 argument
+- What structure [ExtraVars+0x10] points to and why byte +8 must equal 8
+- Which game entity uses this (no callers known); caller would confirm e.g. a trap or transformation enemy
+- 'The behavioral description is accurate: it polls [ExtraVars+0x10]+8, copies position from RelatedObject1+0x34,
+  sets Timer=0x1E, waits, then spawns via sub_8011044 using the related object''s NameID, kills the related
+  object, and signals completion via [ExtraVars]. However, calling this ''replaceSelfWithRelatedEnemy''
+  is inaccurate because the function destroys the related enemy and spawns a new actor (the original related
+  object is killed, not the self), so the name should reflect that it spawns a replacement enemy from
+  the related object rather than replacing self.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BCFF6 -> battle_spawnReplacementEnemyFromRelated
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCFF6

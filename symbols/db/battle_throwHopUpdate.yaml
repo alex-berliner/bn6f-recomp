@@ -1,0 +1,66 @@
+name: battle_throwHopUpdate
+address: '0x080DF5C0'
+kind: function
+status: probable
+summary: Battle-object phase handler that launches the object in a short arc toward an adjacent panel
+  in its facing direction, updating position each frame and advancing to phase 4 after 10 frames.
+interface: (r5 = battle object) -> void; sets phase 4 when timer expires
+details: 'Standard battle phase handler using the PhaseInitialized latch: on the first call it sets PhaseInitialized=4,
+  gets the object''s horizontal facing step, computes a target panel (facing step + PanelX, PanelY) and
+  converts it to screen pixel coordinates via object_getCoordinatesForPanels, then calls math_getThrowSpeeds
+  with r5+0x34 (a per-object throw-parameters struct), Z target 0, duration 10 and gravity 0xFFFFA000
+  (about -24.6/frame in 8.8 fixed point) to get launch velocities, stored into X/Y/ZVelocity, and sets
+  TimerAndTimer2=0xa. On every later call it integrates X/Y/Z by the velocities, decays ZVelocity by the
+  same gravity constant, resyncs PanelX/PanelY from world coordinates via object_setPanelsFromCoordinates,
+  and decrements Timer; when it hits zero the object''s CurPhaseAndPhaseInitialized is set to 4. The r5+0x34
+  struct passed to math_getThrowSpeeds presumably holds target height or arc parameters and is the main
+  remaining unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: PhaseInitialized latch sets 4 and computes throw params only once, then integrates every frame
+    (loc_80DF5F6 onward); object_getEnemyDirection + object_getCoordinatesForPanels build a target pixel
+    position from PanelX/PanelY and facing; math_getThrowSpeeds called with r5+0x34, target Z=0, duration
+    0xa, gravity dword 0xFFFFA000, results stored to X/Y/ZVelocity; ZVelocity += 0xFFFFA000 each frame
+    (gravity applied during flight) and object_setPanelsFromCoordinates keeps panel coords synced; Timer
+    counted down from 0xa; on expiry CurPhaseAndPhaseInitialized = 4, ending the flight phase
+  refs:
+  - bn6f/asm/asm31.s:85085
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080DF5C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The setup matches: PhaseInitialized latched to 4, facing step + PanelX/PanelY converted to pixel
+    coords, r5+0x34 passed to math_getThrowSpeeds, Timer set to 0xa, and after countdown CurPhaseAndPhaseInitialized
+    set to 4. However the summary says ''lobs toward a target point'' but the code only converts the object''s
+    own panel+facing panel to coords (no separate target object), and ZVelocity is decayed but the initial
+    Z target passed to math_getThrowSpeeds is 0, not a height — so it''s more of a short ground hop/dash
+    than a parabolic lob. The timer check at the end uses bgt (strictly greater), so when Timer==0 after
+    decrement, it sets phase 4 — this part is correct.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Contents of the per-object struct at r5+0x34 passed to math_getThrowSpeeds (target height or arc offset)
+  and which caller/enemy chip sets it up
+- Whether phase value 4 here is a generic 'done' state shared by other phase handlers
+- 'The setup matches: PhaseInitialized latched to 4, facing step + PanelX/PanelY converted to pixel coords,
+  r5+0x34 passed to math_getThrowSpeeds, Timer set to 0xa, and after countdown CurPhaseAndPhaseInitialized
+  set to 4. However the summary says ''lobs toward a target point'' but the code only converts the object''s
+  own panel+facing panel to coords (no separate target object), and ZVelocity is decayed but the initial
+  Z target passed to math_getThrowSpeeds is 0, not a height — so it''s more of a short ground hop/dash
+  than a parabolic lob. The timer check at the end uses bgt (strictly greater), so when Timer==0 after
+  decrement, it sets phase 4 — this part is correct.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DF5C0 -> battle_throwHopUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF5C0

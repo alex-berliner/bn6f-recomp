@@ -1,0 +1,67 @@
+name: object_fallLandAndDestroy
+address: '0x080DE618'
+kind: function
+status: probable
+summary: Battle object update that falls under gravity for `countdown` frames (decrementing 0x62, adding
+  YVelocity to Y, updating panels) and on landing calls sub_80DE70C once with the byte at 0x64, clears
+  its collision region, clears bit 1 of flags, then sets CurState to CUR_STATE_DESTROY.
+interface: (r5 = battle object) -> r0 = destroyed; sets oBattleObject_CurState to CUR_STATE_DESTROY on
+  landing
+details: 'Per-frame handler using r5 as a battle object. A countdown byte at offset 0x62 gates falling:
+  while nonzero it is decremented, YVelocity is added to Y, panels are recomputed from the new position
+  via object_setPanelsFromCoordinates and object_updateCollisionPanels, and sub_80DE730 runs. When the
+  countdown hits 0, if CurPhase is still 0 it sets CurPhase to 1 and calls sub_80DE70C once with the byte
+  at offset 0x64 as argument (likely a landing/spawn parameter). It then always clears the object''s collision
+  region (object_clearCollisionRegion), clears bit 1 of oObjectHeader_Flags, and stores CUR_STATE_DESTROY
+  into oBattleObject_CurState, so the object is removed on the landing frame.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#0x62] / sub/strb: per-frame countdown before landing; while active Y += YVelocity
+    and panels are refreshed (0x80DE618-0x80DE632); CurPhase==0 check then phase=1 and bl sub_80DE70C
+    with ldrb r0,[r5,#0x64]: one-shot landing action using byte 0x64 (0x80DE63C-0x80DE64C); bl object_clearCollisionRegion
+    and bic flag bit 2 of oObjectHeader_Flags: removes the object from collision on landing (0x80DE64E-0x80DE654);
+    mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurState...]: transitions the object to the destroyed
+    state (0x80DE656); callees object_setPanelsFromCoordinates/object_updateCollisionPanels/object_clearCollisionRegion
+    confirm this operates on a battle object''s world position and collision state'
+  refs:
+  - bn6f/asm/asm31.s:83260
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DE618
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s per-frame fall handling, panel recomputation, landing-time sub_80DE70C
+    call, collision clear, flag clear, and CUR_STATE_DESTROY set. However, two details are wrong: the
+    countdown byte is at offset 0x62 (correct), but YVelocity is added to Y before decrementing (the proposal''s
+    ''decrement then apply'' wording is off — the code decrements first, then applies velocity, which
+    is fine). Also, oBattleObject_CurStateActionPhaseAndPhaseInitialized stores CUR_STATE_DESTROY, not
+    a plain CurState. The name is acceptable but ''object_fallLandingUpdate'' is a bit misleading since
+    it always destroys; better to capture the spawn/fall+land semantics.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80DE730 does each falling frame (animation? effect?)
+- What sub_80DE70C spawns or triggers on landing, and the meaning of the byte at offset 0x64
+- Which objects use this handler (no callers known) — would confirm the game-term meaning (falling obstacle,
+  thrown object, etc.)
+- 'The code matches the proposal''s per-frame fall handling, panel recomputation, landing-time sub_80DE70C
+  call, collision clear, flag clear, and CUR_STATE_DESTROY set. However, two details are wrong: the countdown
+  byte is at offset 0x62 (correct), but YVelocity is added to Y before decrementing (the proposal''s ''decrement
+  then apply'' wording is off — the code decrements first, then applies velocity, which is fine). Also,
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized stores CUR_STATE_DESTROY, not a plain CurState.
+  The name is acceptable but ''object_fallLandingUpdate'' is a bit misleading since it always destroys;
+  better to capture the spawn/fall+land semantics.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DE618 -> object_fallLandAndDestroy
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE618

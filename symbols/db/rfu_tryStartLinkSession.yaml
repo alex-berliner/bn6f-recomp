@@ -1,0 +1,67 @@
+name: rfu_tryStartLinkSession
+address: '0x08039B0A'
+kind: function
+status: probable
+summary: Initializes the RFU link work area, then calls rfu_initLinkSession; on failure cleans up, fades
+  the screen to script 0x13, and sets phase [r5,#1]=0x10; on success fades to script 0x0A and sets phase
+  [r5,#1]=0x18.
+interface: (r0-r3 unused, state object in a register preserved across the call, likely r5) -> void; sets
+  phase byte [r5,#1] = 0x18 on success, 0x10 on failure
+details: This is one step of a network/menu state machine keyed by the byte at [r5,#1] (r5 holds the controller/state
+  struct). It first calls sub_8146588 and sub_814695C(r5+0xF0) to prepare the rfu work area, then fetches
+  something via sub_803C418 and passes it to sub_81469BC along with a pointer to r5+0x100, before invoking
+  rfu_initLinkSession. If the session init returns nonzero, it fades the screen (SetScreenFade(8,0x10)),
+  shows script 0xA via sub_803BB2C, and sets the phase to 0x18; otherwise it calls sub_803C320 (likely
+  cleanup), fades the same way, shows script 0x13 (an error/communication message), and sets phase 0x10.
+  Finally sub_803A1B0 runs before returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls rfu_initLinkSession directly and branches on its return value (tst r0,r0 / bne loc_8039B48);
+    success and failure paths differ only in script index (0xA vs 0x13 via sub_803BB2C) and phase byte
+    [r5,#1] (0x18 vs 0x10); both paths call SetScreenFade(8,0x10), consistent with a screen transition
+    after connection attempt; sub_814695C is called on r5+0xF0 and sub_81469BC on r5+0x100, matching the
+    rfu work-buffer layout used by rfu_initLinkSession
+  refs:
+  - bn6f/asm/asm03_1_1.s:2031
+  - 0x081465BC rfu_initLinkSession
+  - 0x0803BB2C sub_803BB2C
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08039B0A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the description: rfu_initLinkSession is called and the branches correctly swap
+    success/failure logic compared to the proposal (zero=fail->0x10, nonzero=success->0x18). However the
+    interface claim ''r0-r3 unused, state object preserved across call'' is inaccurate: r5 is read but
+    never pushed/popped here, and there''s no evidence the caller passed the state object through r5 —
+    it''s just an existing register. More importantly, the summary mislabels the branches: the proposal
+    says success sets phase 0x18 and failure sets 0x10, which matches the code, so the logic is right
+    but the description''s wording ''fades...and jumps...to connected vs. error text'' slightly conflates
+    roles (0x10 is the failure phase shown here).; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_803C418/sub_81469BC pass to rfu_initLinkSession (callback/table pointers?)
+- which menu owns r5 and what phases 0x10/0x18 mean in its dispatcher (sub_803C418's caller would show
+  this)
+- what scripts 0xA and 0x13 display
+- 'The code matches the description: rfu_initLinkSession is called and the branches correctly swap success/failure
+  logic compared to the proposal (zero=fail->0x10, nonzero=success->0x18). However the interface claim
+  ''r0-r3 unused, state object preserved across call'' is inaccurate: r5 is read but never pushed/popped
+  here, and there''s no evidence the caller passed the state object through r5 — it''s just an existing
+  register. More importantly, the summary mislabels the branches: the proposal says success sets phase
+  0x18 and failure sets 0x10, which matches the code, so the logic is right but the description''s wording
+  ''fades...and jumps...to connected vs. error text'' slightly conflates roles (0x10 is the failure phase
+  shown here).'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8039B0A -> rfu_tryStartLinkSession
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039B0A

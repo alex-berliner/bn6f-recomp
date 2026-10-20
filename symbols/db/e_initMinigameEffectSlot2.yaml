@@ -1,0 +1,58 @@
+name: e_initMinigameEffectSlot2
+address: '0x0814339C'
+kind: function
+status: probable
+summary: Initializes the effect-slot-2 work area at eStruct2001010+8 (zero-fills 0x40 bytes), runs sub_81433D2(5)
+  and the RNG/sub-write helpers sub_8143406/sub_814343A, and returns 0.
+interface: () -> r0 = 0 (success); no flags relied on by caller
+details: The function selects effect slot 2 via initMinigameEffect_8003a64(r0=2), then zero-fills 0x40
+  words (256 bytes) at eStruct2001010+8, the effect's work area. sub_81433D2(5) is called with a parameter
+  of 5 (likely a count or mode for the effect), sub_8143406 writes GetRNG & 3 into byte_200101A as a random
+  sub-parameter, and sub_814343A performs its (degenerate) 3-way pick and stores 5 into dword_200101C,
+  described as the Cybercrow spawn value. It always returns 0. The whole routine reads like a per-minigame
+  'start effect' initializer that sets up state consumed later by the vidsync/effect update code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with mov r0,#2; bl initMinigameEffect_8003a64 — registering/activating effect id 2; ldr
+    r5,=eStruct2001010; add r0,#8; mov r1,#0x40; bl ZeroFillByWord — clears the effect struct's 256-byte
+    work block; bl sub_8143406 then bl sub_814343A — writes RNG&3 to 200101A and stores the constant 5
+    (Cybercrow spawn) into 200101C; ends with mov r0,#0 / pop {r4-r7,pc} — fixed success return, typical
+    of an init entry; sole caller sub_81431C6 and the shared eStruct2001010 with the vidsync-flagged helper
+    tie it to the minigame effect subsystem
+  refs:
+  - bn6f/asm/asm37_1.s:3116
+  - 0x081431C6 sub_81431C6
+  - 0x080008E0 ZeroFillByWord
+  - 0x08143406 sub_8143406
+  - 0x0814343A sub_814343A
+  reproduce: python3 tools/asmcat.py 0x0814339C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described body (initMinigameEffect(2), zero-fill +8 for 0x40 bytes, sub_81433D2(5),
+    sub_8143406, sub_814343A, return 0). However, sub_814343A is not the ''Cybercrow spawn'' selector
+    — it unconditionally stores 5 into dword_200101C and only burns RNG, so framing this whole routine
+    as ''e_initCybercrowMinigame'' overstates the Cybercrow intent given the code; a more neutral effect-slot
+    2 initializer name fits better.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what minigame effect id 2 actually is in-game (Cybercrow spawn context suggests one, but no caller summary
+  confirms it)
+- meaning of the argument 5 passed to sub_81433D2 and what that callee does
+- why sub_814343A's weighted pick always yields 0 — is the 3-way choice dead code or patched out
+- The code matches the described body (initMinigameEffect(2), zero-fill +8 for 0x40 bytes, sub_81433D2(5),
+  sub_8143406, sub_814343A, return 0). However, sub_814343A is not the 'Cybercrow spawn' selector — it
+  unconditionally stores 5 into dword_200101C and only burns RNG, so framing this whole routine as 'e_initCybercrowMinigame'
+  overstates the Cybercrow intent given the code; a more neutral effect-slot 2 initializer name fits better.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_814339C -> e_initMinigameEffectSlot2
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814339C

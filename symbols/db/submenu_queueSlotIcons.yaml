@@ -1,0 +1,68 @@
+name: submenu_queueSlotIcons
+address: '0x08049BC0'
+kind: function
+status: probable
+summary: Loops four slots; per active slot, copies a 0x20-word palette block into an IWRAM buffer, DMA-copies
+  a 0x200-byte icon tile set from eTextScript202BA04 into VRAM 0x6016E00+slot*0x200, queues an OAM sprite
+  with the per-slot base 0x40110020+slot*0x20, and records layout data via sub_8132A50.
+interface: () -> void; no return value, loops slots 0-3
+details: For each of four slots, sub_803C316(1<<slot) gates whether the slot is active and sub_813D638
+  caps the slot index; sub_803C440/sub_8146738 yield a value whose low nibble selects one of 12 icon tile
+  blocks (byte_86C0B20.., 0x40 bytes each) copied with CopyWords (0x20 words) into one of four IWRAM palette
+  buffers (byte_3001730/1650/16B0/16D0), while the high nibble selects a 0x200-byte tile set from eTextScript202BA04
+  DMA'd to VRAM 0x6016E00 + slot*0x200. A per-slot byte from dword_8049C68 (0x0F,0x08,0x0B,0x0C) shifted
+  left 12 is ORed with 0xB30 + byte_8049C58[palIndex] (palette/tile assignment) and passed with base pointer
+  0x40110020 + slot*0x20 to sprite_queueOamEntry, queueing the sprite entry. Finally sub_8132A50(0xA6,
+  0x13 + slot*0x20, 1, 0x370 + slot*0x10) records per-slot screen layout data (x=166, y rows spaced 32px).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop `cmp r4, #4 / blt loc_8049BC4` with per-slot enable test sub_803C316(1<<slot) shows a
+    fixed 4-slot iteration; CopyWords(src=iconTable[low nibble], dst=byte_3001730/1650/16B0/16D0[slot],
+    0x20 words) copies palette-size data per slot; QueueEightWordAlignedGFXTransfer(eTextScript202BA04
+    + highNibble*0x200, 0x6016E00 + slot*0x200, 512) uploads the slot''s tile graphics; sprite_queueOamEntryThunk(0x40110020+slot*0x20,
+    0xB30+byte_8049C58[idx] | perSlot<<12, ...) queues an OAM entry with palette/tile bits; call to sub_8132A50
+    with x=0xA6, y=0x13+slot*0x20, w=1, h=0x370+slot*0x10 sets per-slot layout, confirming on-screen icon
+    placement'
+  refs:
+  - bn6f/asm/asm03_2.s:6311
+  - 0x0803C604 sub_803C604
+  - 0x08049290 sub_8049290
+  - 0x08049360 sub_8049360
+  - 0x0800093C CopyWords
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x08049BC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the asm well: four-slot loop gated by sub_803C316, CopyWords of
+    0x20 words from one of 12 source tables into per-slot IWRAM palette buffers, QueueEightWordAlignedGFXTransfer
+    of 0x200 bytes into 0x6016E00+slot*0x200, sprite_queueOamEntry with the computed attr, and sub_8132A50(layout
+    record). The naming, however, is misleading: it queues OAM sprite entries for slot icons, not ''draws''
+    them, and the slot/index plumbing suggests a battle submenu context (called from sub_803C604 and similar).
+    ''sprite_queueSlotIcons'' or a ''submenu''/''battle'' prefixed name fits the calling pattern better.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which game screen this belongs to (callers sub_8049290/sub_8049360/sub_80493BC/sub_80493FE/sub_8049416
+  are also unnamed)
+- what sub_803C316/sub_803C440 test (likely slot-enabled / entry-data getters)
+- the structure at 0x40110020 passed to sprite_queueOamEntry
+- 'The proposal''s mechanics match the asm well: four-slot loop gated by sub_803C316, CopyWords of 0x20
+  words from one of 12 source tables into per-slot IWRAM palette buffers, QueueEightWordAlignedGFXTransfer
+  of 0x200 bytes into 0x6016E00+slot*0x200, sprite_queueOamEntry with the computed attr, and sub_8132A50(layout
+  record). The naming, however, is misleading: it queues OAM sprite entries for slot icons, not ''draws''
+  them, and the slot/index plumbing suggests a battle submenu context (called from sub_803C604 and similar).
+  ''sprite_queueSlotIcons'' or a ''submenu''/''battle'' prefixed name fits the calling pattern better.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8049BC0 -> submenu_queueSlotIcons
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049BC0

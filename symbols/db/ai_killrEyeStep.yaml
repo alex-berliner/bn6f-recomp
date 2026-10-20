@@ -1,0 +1,60 @@
+name: ai_killrEyeStep
+address: '0x0810BCFC'
+kind: function
+status: probable
+summary: 'KillrEye AI step: while the eye''s exposed flag (0xa000) is set it cycles oBattleObject_CurAnim
+  through {3,4,6,1} gated by the current frame''s 0x80 attribute bit; otherwise it zeroes the cycle counter
+  and delegates to sub_810BDF4 before clearing oAIState_ScriptId.'
+interface: () -> void; r5 = battle object, r6 = AI state; r0 clobbered, no return value
+details: Reads the object's collision flag word and tests bits 0xa000 (exposed/vulnerable state). If set,
+  it reads the current frame's parameters and only advances when the frame's 0x80 attribute bit is set,
+  so each animation plays until its triggering frame. Advancing reads the halfword counter at object+0x88,
+  indexes byte_810BD3C = {3,4,6,1}, writes that value to oBattleObject_CurAnim, then stores (index+1)
+  mod 4 back to +0x88. If the flag bits are clear, it zeroes the +0x88 counter, calls the KillrEye attack
+  picker sub_810BDF4, and writes 0 to oAIState_ScriptId (r6). This matches KillrEye's cycle of open/blink
+  animations while exposed versus hiding and picking attacks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0, r1 with 0xa000 from object_getFlag gates the two behaviors; byte_810BD3C = 3,4,6,1 indexed
+    by [r5,#0x88] and stored to oBattleObject_CurAnim as an animation cycle; sprite_getFrameParameters
+    bit 0x80 acts as the per-frame trigger to advance the cycle; else-branch calls sub_810BDF4, documented
+    as KillrEye AI attack branch picker, and zeroes oAIState_ScriptId
+  refs:
+  - bn6f/asm/asm31.s:179333
+  - 0x0801A166 object_getFlag
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x0810BDF4 sub_810BDF4
+  reproduce: python3 tools/asmcat.py 0x0810BCFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summarize-and-animate-while-exposed logic is correct, but the function is specifically KillrEye''s
+    AI handler (no callers listed, but callee sub_810BDF4 is documented as KillrEye''s attack picker),
+    so a name starting with `ai_` fits; `ai_killrEyeAnimCycle` is fine but a name like `ai_killrEyeStep`
+    more accurately reflects both branches (cycling and delegating). The interface and details match the
+    asm exactly: bits 0xa000 gate the cycle path, 0x80 frame flag triggers advancement, +0x88 counter
+    indexes bytes {3,4,6,1} written to oBattleObject_CurAnim mod 4, the else path zeros +0x88, calls sub_810BDF4,
+    then clears oAIState_ScriptId.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of flag bits 0xa000 and of the 0x80 frame-parameter bit
+- which animation ids 3/4/6/1 correspond to visually
+- 'The summarize-and-animate-while-exposed logic is correct, but the function is specifically KillrEye''s
+  AI handler (no callers listed, but callee sub_810BDF4 is documented as KillrEye''s attack picker), so
+  a name starting with `ai_` fits; `ai_killrEyeAnimCycle` is fine but a name like `ai_killrEyeStep` more
+  accurately reflects both branches (cycling and delegating). The interface and details match the asm
+  exactly: bits 0xa000 gate the cycle path, 0x80 frame flag triggers advancement, +0x88 counter indexes
+  bytes {3,4,6,1} written to oBattleObject_CurAnim mod 4, the else path zeros +0x88, calls sub_810BDF4,
+  then clears oAIState_ScriptId.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810BCFC -> ai_killrEyeStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BCFC

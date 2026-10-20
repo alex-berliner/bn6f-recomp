@@ -1,0 +1,69 @@
+name: e_confirmSelection
+address: '0x081359A0'
+kind: function
+status: probable
+summary: State-machine step that copies the selection index from [r5+0x30] to [r5+0x32], then based on
+  entry 10 of eStructArr2008450 and the current selection (0, 0xFFFF, or other) either sets next state
+  to 8, or — after sub_81365F0 succeeds — plays SOUND_EXIT_SUBMENU, clears entry 10, resets selection
+  to 0xFFFF, runs chatbox script 5, and sets state 0x38 (in cyberspace maps, MapGroup >= 0x80), else calls
+  sub_81366FC/sub_813658C and sets timers [r5+0x11]=0x28, [r5+0xC]=0x10; clears [r5+0x13] and returns
+  0.
+interface: (r5 = handler state struct) -> r0 = 0; writes next-state byte [r5+2], selection copy [r5+0x32],
+  timers [r5+0xC]/[r5+0x11], clears [r5+0x13]
+details: 'Copies the halfword selection value [r5+0x30] to [r5+0x32], calls sub_813652C, then checks the
+  in-use byte of entry 10 of eStructArr2008450. If not in use: a selection of 0 leads to a branch setting
+  timer [r5+0x11]=0x24 and calling sub_813658C; 0xFFFF stores 8 into the next-state byte [r5+2]. For any
+  other value it calls sub_81365F0; if that succeeds and GameState MapGroup >= 0x80 (cyberspace maps)
+  it plays SOUND_EXIT_SUBMENU, clears entry 10 via sub_8046696, resets the selection to 0xFFFF, queues
+  chatbox text script 5 on eTextScript201D280, and sets next state 0x38; if MapGroup < 0x80 it calls sub_81366FC
+  and sub_813658C and sets [r5+0x11]=0x28, [r5+0xC]=0x10. Finally clears byte [r5+0x13] and returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x30]/strh to [r5,#0x32] and tst/cmp against 0 and 0xFF: [r5+0x30] is a selection
+    index with a 0xFF sentinel; bl getStructFrom2008450 with r0=10 followed by bne: behavior keys off
+    entry 10 of the 0x58-byte struct array being in use; cmp MapGroup,#0x80 blt + PlaySoundEffect(SOUND_EXIT_SUBMENU):
+    refusal path only on map group 0x80+; chatbox_runScript_803FD9C_on_eTextScript201D280(5) and strb
+    0x38,[r5,#2]: queues a text script and jumps the state machine to 0x38; stores of 0x24/0x28 to [r5+0x11]
+    and 0x10 to [r5+0xC], then strb 0,[r5+0x13]: per-state timer/counter setup at step end'
+  refs:
+  - bn6f/asm/asm36.s:11682
+  - 0x080005CC PlaySoundEffect
+  - 0x080466C4 getStructFrom2008450
+  - 0x08046696 sub_8046696
+  reproduce: python3 tools/asmcat.py 0x081359A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details are accurate against the assembly (e.g., ''cmp r0, #0x80; blt loc_81359EE''
+    confirms the MapGroup >= 0x80 cyberspace branch, ''mov r0, #SOUND_EXIT_SUBMENU; bl PlaySoundEffect''
+    matches the exit sound detail, and ''mov r0, #5; bl chatbox_runScript_803FD9C_on_eTextScript201D280''
+    confirms script index 5). However, the name prefix ''e_stepConfirmSelection'' starts with lowercase
+    ''e'' but concatenates ''step'' with capital, breaking lowerCamel; a correct prefix-based name would
+    be ''e_confirmSelection''. The summary also claims ''exit sound on refusal'' — sound plays on the
+    commit/MapGroup>=0x80 success path, not refusal; the refusal/branched-out path calls sub_81366FC/sub_813658C
+    instead.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the identity of the r5 state struct and which menu/NPC owns this step is unconfirmed
+- What text script 5 says (the refusal/notice text) and what sub_81365F0 validates
+- What struct-array entry 10 represents and why it is only freed on MapGroup >= 0x80
+- What sub_813652C, sub_813658C and sub_81366FC do
+- 'The summary and details are accurate against the assembly (e.g., ''cmp r0, #0x80; blt loc_81359EE''
+  confirms the MapGroup >= 0x80 cyberspace branch, ''mov r0, #SOUND_EXIT_SUBMENU; bl PlaySoundEffect''
+  matches the exit sound detail, and ''mov r0, #5; bl chatbox_runScript_803FD9C_on_eTextScript201D280''
+  confirms script index 5). However, the name prefix ''e_stepConfirmSelection'' starts with lowercase
+  ''e'' but concatenates ''step'' with capital, breaking lowerCamel; a correct prefix-based name would
+  be ''e_confirmSelection''. The summary also claims ''exit sound on refusal'' — sound plays on the commit/MapGroup>=0x80
+  success path, not refusal; the refusal/branched-out path calls sub_81366FC/sub_813658C instead.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81359A0 -> e_confirmSelection
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81359A0

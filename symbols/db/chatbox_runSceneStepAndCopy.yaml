@@ -1,0 +1,63 @@
+name: chatbox_runSceneStepAndCopy
+address: '0x08137A1C'
+kind: function
+status: probable
+summary: Gated by chatbox event flags (requires bit 0x80 set, skips on bit 8, requires bit 0x20 and nonzero
+  chatbox state); copies one halfword table entry indexed by a script-derived byte from unk_201CF00, runs
+  four step helpers, advances the task state byte at [r5+2] to 4.
+interface: (r5 = task/state struct) -> void; sets [r5+2] = 4 (next step state) unless chatbox flags say
+  to bail or the step already ran
+details: 'It gates on the chatbox event-flag word eFlags2009F38: returns immediately if bit 0x80 is clear,
+  skips the action if bit 8 is set, and requires bit 0x20 plus a nonzero chatbox state (chatbox_GetState_8045F4C)
+  before doing anything. It then computes an offset [r5+0x20]+[r5+0x24], doubles it, and reads the odd
+  (high) byte of that 2-byte entry in the buffer unk_201CF00 — evidently a scene/script scratch buffer
+  holding a table index. That byte indexes halfword tables unk_2000260 and unk_20018C0, and one halfword
+  is copied from source to destination at the same index. It then calls four helpers (sub_8137D20/D B4/E4C/F5C),
+  calls chatbox_8040818 (likely advancing/closing the chatbox), and writes state 4 into the task byte
+  at [r5+2].'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Three chatbox_mask_eFlags2009F38 calls with masks 0x80/8/0x20 plus chatbox_GetState gate when
+    the step body runs; ldrb from unk_201CF00 at (r5[0x20]+r5[0x24])*2+1 then ldrh/strh pair copies 2000260[idx]
+    -> 20018C0[idx]; Four sequential bl sub_8137D20/DB4/E4C/F5C after the copy, then chatbox_8040818 before
+    the state change; mov r0,#4; strb r0,[r5,#2] stores the next step/state value, typical of a state-machine
+    task handler
+  refs:
+  - bn6f/asm/asm36.s:16102
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040818 chatbox_8040818
+  reproduce: python3 tools/asmcat.py 0x08137A1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely accurate: bit 0x80 gate, bit 8 skip, bit 0x20 + nonzero chatbox state required;
+    copies a halfword via index derived from unk_201CF00 and writes next state [r5+2]=4. However, it actually
+    only calls three named helpers (sub_8137D20, 8137DB4, 8137E4C) plus a fourth (sub_8137F5C) before
+    chatbox_8040818, not ''four step helpers'' missing one. The chatbox_8040818 call happens inside loc_8137A64
+    before setting state 4, so it always runs unless the bit-0x80 gate bails. A better name reflects copy+step
+    semantics.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of the r5 struct (offsets 0x20/0x24, state byte at +2) is inferred,
+  not confirmed
+- What unk_2000260 and unk_20018C0 tables contain (the copied halfword's meaning) is unknown
+- What sub_8137D20/DB4/E4C/F5C and chatbox_8040818 do would confirm this as a cutscene step rather than
+  something else
+- 'The summary is largely accurate: bit 0x80 gate, bit 8 skip, bit 0x20 + nonzero chatbox state required;
+  copies a halfword via index derived from unk_201CF00 and writes next state [r5+2]=4. However, it actually
+  only calls three named helpers (sub_8137D20, 8137DB4, 8137E4C) plus a fourth (sub_8137F5C) before chatbox_8040818,
+  not ''four step helpers'' missing one. The chatbox_8040818 call happens inside loc_8137A64 before setting
+  state 4, so it always runs unless the bit-0x80 gate bails. A better name reflects copy+step semantics.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8137A1C -> chatbox_runSceneStepAndCopy
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137A1C

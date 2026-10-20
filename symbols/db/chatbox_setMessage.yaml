@@ -1,0 +1,60 @@
+name: chatbox_setMessage
+address: '0x08128ED4'
+kind: function
+status: probable
+summary: Copies 128 bytes from unk_2037780 into the chatbox buffer pointed to by r5, sets its header bytes
+  to 0x14 0x00 0x00, and opens the message via chatbox_8040818, skipping while a screen fade is active.
+interface: (r5 = pointer to chatbox/text entry struct, set by caller) -> r0 = ?; only side effects on
+  r5 struct and chatbox state
+details: After two unknown sub-calls (sub_8128FF0, sub_812907C) it bails out if a screen fade is active
+  (IsScreenFadeActive, beq to return). Otherwise it copies 0x80 bytes from unk_2037780 to [r5] via CopyWords
+  (BIOS CpuSet), then writes byte 0x14 to [r5], and zeroes [r5+1] and [r5+2], overwriting the start of
+  the copied data with a small header. Finally it calls chatbox_8040818, presumably to begin displaying
+  the prepared text. r5 is callee-saved, so the destination struct is chosen by the caller; no callers
+  are known so its exact role is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret_8128EFE: message setup is skipped during screen fades; ldr
+    r0, off_8128F00 (unk_2037780) + mov r1,r5 / mov r2,#0x80 / bl CopyWords: 128-byte message copy into
+    r5; strb #0x14,[r5] and two zero stores: writes a 3-byte header (0x14,0,0) over the copied buffer;
+    bl chatbox_8040818: hands the prepared entry to the chatbox subsystem'
+  refs:
+  - bn6f/asm/asm33.s:11951
+  - 0x0800093C CopyWords
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08040818 chatbox_8040818
+  reproduce: python3 tools/asmcat.py 0x08128ED4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the 0x80-byte copy from unk_2037780, the header bytes (0x14, 0x00,
+    0x00), the fade-active guard, and the final chatbox_8040818 call. However, the function takes no explicit
+    parameter on r5 (r5 is used as a working register but is not pushed/popped as a struct pointer — the
+    copy destination r1 is r5 only at the point of the call, but nothing in the prologue sets it up).
+    The ''pre-prepared message'' claim is unverified since unk_2037780 is just a global buffer. The name
+    ''chatbox_loadMessage'' is reasonable but ''chatbox_setMessage'' better reflects setting/initializing
+    the chatbox''s header and content.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No known callers: what sets r5 and where unk_2037780 content is built (which message this displays)
+  is unknown'
+- Meaning of the 0x14 byte and the exact role of chatbox_8040818 (open vs. update) need confirming
+- The proposal correctly identifies the 0x80-byte copy from unk_2037780, the header bytes (0x14, 0x00,
+  0x00), the fade-active guard, and the final chatbox_8040818 call. However, the function takes no explicit
+  parameter on r5 (r5 is used as a working register but is not pushed/popped as a struct pointer — the
+  copy destination r1 is r5 only at the point of the call, but nothing in the prologue sets it up). The
+  'pre-prepared message' claim is unverified since unk_2037780 is just a global buffer. The name 'chatbox_loadMessage'
+  is reasonable but 'chatbox_setMessage' better reflects setting/initializing the chatbox's header and
+  content.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8128ED4 -> chatbox_setMessage
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128ED4

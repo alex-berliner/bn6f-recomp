@@ -1,0 +1,63 @@
+name: ai_applyAttackHitToTarget
+address: '0x080F6E76'
+kind: function
+status: probable
+summary: Snaps an AI attack object onto its target panel, resets its collider to a grounded state, then
+  splits oAIAttackVars_Damage into SelfDamage (low16) and StaminaDamageCounterDisabler (high8) of the
+  object's collision data, and sets oAIAttackVars_HitElement to 0xC.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = 0xC (element written to HitElement); flags
+  from last strh
+details: 'Initializes an AI attack object for its hit: clears the current animation to 0, copies the target
+  panel X/Y from the oAIAttackVars block into the object''s PanelX/PanelY, then recomputes pixel coordinates,
+  syncs collision panels, and resets the collider to a grounded default via battle_initGroundedCollider.
+  It then reads oAIAttackVars_Damage and stores the low 16 bits into CollisionData.oCollisionData_SelfDamage
+  and the high 16 bits into oCollisionData_StaminaDamageCounterDisabler (a split 32-bit damage field).
+  Finally it writes element 0xC into oAIAttackVars_HitElement, presumably meaning elementless/none. It
+  is a one-shot setup step shared by AI attack handlers, likely the ''attack reaches target'' phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#oBattleObject_CurAnim] and panel stores come straight from oAIAttackVars_TargetPanelX/Y;
+    bl object_setCoordinatesFromPanels / object_updateCollisionPanels / battle_initGroundedCollider reposition
+    and reset the object for a hit; ldr r0,[r7,#oAIAttackVars_Damage] split into strh oCollisionData_SelfDamage
+    and strb oCollisionData_StaminaDamageCounterDisabler; mov r0,#0xc strh [r7,#oAIAttackVars_HitElement]
+    sets a fixed hit element as the tail action; Callees' known summaries (grounded collider reset, panel-to-pixel
+    recompute) match an attack-object setup routine
+  refs:
+  - bn6f/asm/asm31.s:135603
+  - 0x080F7154 battle_initGroundedCollider
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F6E76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: it clears CurAnim, copies TargetPanelX/Y into PanelX/Y,
+    recomputes coords, updates collision panels, calls battle_initGroundedCollider, splits oAIAttackVars_Damage
+    into SelfDamage (low16) and StaminaDamageCounterDisabler (high8 via strb), and writes 0xC to oAIAttackVars_HitElement.
+    However, the callee list and code show it writes HitElement on the AIAttackVars struct, not r0=0xC
+    returned, and the final strh stores 0xC to oAIAttackVars_HitElement which represents a hit-element
+    flag, not ''elementless''. Also there are no known callers listed, so the broader role as a shared
+    AI attack setup step is not evidenced.; run wf investigate investigate-20261018-235109; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the exact trigger point in the AI attack sequence and the meaning of element value
+  0xC (none vs. a specific element) are unconfirmed
+- 'The code matches the proposal''s mechanics: it clears CurAnim, copies TargetPanelX/Y into PanelX/Y,
+  recomputes coords, updates collision panels, calls battle_initGroundedCollider, splits oAIAttackVars_Damage
+  into SelfDamage (low16) and StaminaDamageCounterDisabler (high8 via strb), and writes 0xC to oAIAttackVars_HitElement.
+  However, the callee list and code show it writes HitElement on the AIAttackVars struct, not r0=0xC returned,
+  and the final strh stores 0xC to oAIAttackVars_HitElement which represents a hit-element flag, not ''elementless''.
+  Also there are no known callers listed, so the broader role as a shared AI attack setup step is not
+  evidenced.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F6E76 -> ai_applyAttackHitToTarget
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6E76

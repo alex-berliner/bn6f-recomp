@@ -1,0 +1,59 @@
+name: ai_attackMeleeInitOrTick
+address: '0x080FA4BC'
+kind: function
+status: probable
+summary: 'AI attack handler: on first call commits FuturePanelX/Y as the object''s new panel, sets AttackElement=4
+  and CurAnim=3, clears 0x40 flag, sets CURRENTLY_MOVING_1, arms StepTimer=9; each subsequent call decrements
+  StepTimer and writes HitElement=8 when it hits 0.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; sets AttackElement=4, CurAnim=3, moves object
+  to FuturePanelX/Y, sets flags 0x40-clear and CURRENTLY_MOVING_1, StepTimer=9; later writes HitElement=8
+details: 'On entry with AttackElement==0 the attack initializes: element set to 4, object animation set
+  to 3, and the object''s panel coords are committed from FuturePanelX/Y with pixel coords, collision
+  panels, and facing updated via object_setCoordinatesFromPanels and object_updateCollisionPanels. It
+  then clears ObjectFlags1 bit 0x40 and sets the CURRENTLY_MOVING_1 bit, arming oAIAttackVars_StepTimer
+  to 9. Once initialized (AttackElement nonzero), each call decrements StepTimer; when it reaches 0, HitElement
+  is set to 8, marking the transition to the attack''s hit phase. State persists in the r7 AI attack vars
+  struct; the object pointer stays in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne loc_80FA4F0 — splits init-once vs countdown behavior;
+    ldrb FuturePanelX/Y then strb to PanelX/Y + bl object_setCoordinatesFromPanels/object_updateCollisionPanels
+    — commits a prepared move onto the target panel; bl object_setFlag1 with 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+    — marks object as moving; mov r0,#9; strh [r7,#oAIAttackVars_StepTimer] then sub/bgt — a 9-frame step
+    countdown; mov r0,#8; strh [r7,#oAIAttackVars_HitElement] — timer expiry transitions to the hit phase
+  refs:
+  - bn6f/asm/asm31.s:142231
+  - 0x0801A15C object_clearFlag
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FA4BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely accurate, but HitElement is stored via strh (halfword) at oAIAttackVars_HitElement
+    with value 8, which is consistent with what the code shows. The summary''s "lunge toward the target
+    panel" is reasonable given FuturePanelX/Y commit and movement flag set. However, calling it "attackStepAdvance"
+    suggests a general advance function; the code specifically initializes a melee/element-4 attack animation.
+    A more descriptive name like ai_attackMeleeInitOrTick fits better.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which enemy/attack uses this state (no callers known), what element values 4 and 8 mean concretely,
+  and what ObjectFlags1 bit 0x40 is
+- The proposal is largely accurate, but HitElement is stored via strh (halfword) at oAIAttackVars_HitElement
+  with value 8, which is consistent with what the code shows. The summary's "lunge toward the target panel"
+  is reasonable given FuturePanelX/Y commit and movement flag set. However, calling it "attackStepAdvance"
+  suggests a general advance function; the code specifically initializes a melee/element-4 attack animation.
+  A more descriptive name like ai_attackMeleeInitOrTick fits better.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FA4BC -> ai_attackMeleeInitOrTick
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA4BC

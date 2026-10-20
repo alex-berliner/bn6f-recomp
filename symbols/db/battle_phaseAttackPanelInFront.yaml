@@ -1,0 +1,64 @@
+name: battle_phaseAttackPanelInFront
+address: '0x080BCC2C'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: spawns a type-1/5 temp attack object on first entry, waits 10 frames,
+  then strikes the panel directly in front of the object with its element/damage via sub_80DAB9C, increments
+  a hit counter at ExtraVars+4+0x10, plays sound 0x80, and advances to phase 4.'
+interface: (r5 = battle object) -> none; sets oBattleObject_CurPhaseAndPhaseInitialized = 4 when the attack
+  fires
+details: On the first invocation (PhaseInitialized clear) it sets CurAnim to 0xA, spawns a type-1 subtype-5
+  temp attack object linked to this object (stored via the pointer at r5+0x64), zeroes Timer, and marks
+  the phase initialized. Each frame Timer is incremented; once it reaches 10, the handler computes the
+  target panel X as object_getFrontDirection(this) + PanelX at the object's PanelY, and calls sub_80DAB9C
+  with Element, damage/stamina fields from the object and Param4 pointer — evidently applying an attack
+  to that panel. It then increments a hit counter at [ExtraVars+4]+0x10 and plays sound effect 0x80 (0x81-0xFF
+  encoding), finally setting the phase word to 4 (phase 4, initialized) so control passes to the next
+  phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-run block sets CurAnim=0xA, calls spawn_t1_0x5_tempAttackObject and strb #4 to PhaseInitialized
+    (init step); Timer counts to 10 before any attack work happens, i.e. a windup delay; object_getFrontDirection
+    result is added to PanelX and passed with PanelY/Element/Damage fields to sub_80DAB9C, so the target
+    is the facing panel; PlaySoundEffect(0x80) fires at the same point and phase is then set to 4, ending
+    this attack step; counter at [ExtraVars+4]+0x10 increments per attack, tracking how many strikes have
+    been made'
+  refs:
+  - bn6f/asm/asm31.s:10197
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x080BCC2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary are very close to the code. The windup to 10, the temp-attack spawn
+    at offset 0x64, the front-panel X computation, sub_80DAB9C call, hit-counter increment at [ExtraVars+4]+0x10,
+    and PlaySoundEffect(0x80) all match. Two small fixes: the sound ID is 0x80, not ''0x81-0xFF encoding''
+    (mov r0,#0x81; add r0,#0xff → 0x80), and the phase word is written via strh of 4, not strb — both
+    match what the proposal captured in the interface. The ''ExtraVars+4'' wording is fine; renaming for
+    clarity is optional.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact effect of sub_80DAB9C (panel damage vs. spawning a hit object) is unverified
+- which enemy/attack uses this handler, and what the subtype-5 temp object renders, are unknown without
+  callers or the phase table
+- meaning of the 0x10018 constant passed to the spawn call
+- 'The proposed name and summary are very close to the code. The windup to 10, the temp-attack spawn at
+  offset 0x64, the front-panel X computation, sub_80DAB9C call, hit-counter increment at [ExtraVars+4]+0x10,
+  and PlaySoundEffect(0x80) all match. Two small fixes: the sound ID is 0x80, not ''0x81-0xFF encoding''
+  (mov r0,#0x81; add r0,#0xff → 0x80), and the phase word is written via strh of 4, not strb — both match
+  what the proposal captured in the interface. The ''ExtraVars+4'' wording is fine; renaming for clarity
+  is optional.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BCC2C -> battle_phaseAttackPanelInFront
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCC2C

@@ -1,0 +1,65 @@
+name: pet_updateDefaultNaviSceneStep
+address: '0x0812B608'
+kind: function
+status: probable
+summary: 'Scene-step helper: snapshots the current PET navi into [r5+0x1a], resets it to the default (0)
+  if story flag 0x163 is unset, copies [r5+0x2a] to [r5+0x44], and if the two bytes are below 0xC0/0x16
+  respectively, calls sub_812B768 and advances the phase byte [r5+0x02] to 4.'
+interface: (r5 = scene/game-state context struct) -> r0 = 0 or sub_812B768 result; sets [r5+0x1a], [r5+0x44],
+  [r5+0x02]; flags clobbered
+details: 'Reads the currently selected PET navi via GetCurPETNavi and stores it at [r5+0x1a]. If story/event
+  flag 0x163 is clear, it writes navi index 0 back through SetCurPETNavi, i.e. it forces the default navi
+  when the choice flag has not been set yet. It then copies the halfword at [r5+0x2a] into [r5+0x44] and
+  range-checks its two bytes: if the low byte is >= 0xC0 or the high byte is >= 0x16, the function returns
+  without doing anything further. Otherwise it calls sub_812B768 (unknown, presumably starting the next
+  intro event/cutscene) and stores 4 into the state byte [r5+0x02], which looks like a scene/state-machine
+  phase field. r5 is never initialized inside the function, so it is a context pointer supplied by the
+  caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetCurPETNavi / strb r0,[r5,#0x1a] — caches the selected navi into context field 0x1a; movflag
+    EVENT_163 + TestEventFlagFromImmediate + SetCurPETNavi(0) — forces default navi 0 when flag 0x163
+    is unset; ldrh r4,[r5,#0x2a]; str r4,[r5,#0x44] with cmp low<0xC0, high<0x16 — gated copy of a two-byte
+    value into field 0x44; bl sub_812B768; mov r0,#4; strb r0,[r5,#2] — on success runs the next step
+    and sets scene state 4
+  refs:
+  - bn6f/asm/asm33.s:17300
+  - 0x080010B6 GetCurPETNavi
+  - 0x080010BE SetCurPETNavi
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0812B608
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: it reads the current PET navi via GetCurPETNavi into [r5+0x1a],
+    conditionally resets it through SetCurPETNavi based on event flag 163, copies [r5+0x2a] into [r5+0x44],
+    and after range-checking the two bytes (low >= 0xC0 or high >= 0x16) calls sub_812B768 and sets [r5+0x02]=4.
+    However, the proposed name and summary call it an ''intro/new-game scene'' with no callers known;
+    this is a generic state-step helper, not specifically an intro/init function. The prefix should be
+    ''pet'' since it''s purely PET-navi related.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the identity of the r5 context struct and which scene/state machine [r5,#2] belongs
+  to is unconfirmed
+- sub_812B768 is unknown — its body would show whether this launches an intro cutscene or something else
+- The meaning of the halfword at [r5,#0x2a] and the 0xC0/0x16 thresholds is unclear (timer, saved value,
+  or config)
+- 'The proposal is largely correct: it reads the current PET navi via GetCurPETNavi into [r5+0x1a], conditionally
+  resets it through SetCurPETNavi based on event flag 163, copies [r5+0x2a] into [r5+0x44], and after
+  range-checking the two bytes (low >= 0xC0 or high >= 0x16) calls sub_812B768 and sets [r5+0x02]=4. However,
+  the proposed name and summary call it an ''intro/new-game scene'' with no callers known; this is a generic
+  state-step helper, not specifically an intro/init function. The prefix should be ''pet'' since it''s
+  purely PET-navi related.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812B608 -> pet_updateDefaultNaviSceneStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B608

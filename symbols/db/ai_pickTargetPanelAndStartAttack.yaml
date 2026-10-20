@@ -1,0 +1,60 @@
+name: ai_pickTargetPanelAndStartAttack
+address: '0x0802D3CA'
+kind: function
+status: probable
+summary: AI step that picks a panel from an alliance-dependent param table (selected by object flag bit
+  0x10), stores sub_802D430's low-byte return into TargetPanelX/Y, clears TargetObjectPtr/ScratchVar,
+  starts AI attack type 5 via aiAttack_initVarsAndStart_80116AE(5,8,2), increments the AI step counter,
+  and returns 3.
+interface: (r0 = battle object ptr) -> r0 = 3 (next AI state); uses r6 = AI state struct, r7 = AI attack
+  vars
+details: 'Entry: r0 is a battle object, whose object flag word is tested for bit 0x10 to select one of
+  two 8-byte parameter tables (byte_802D410 vs byte_802D420, differing in first byte 0x10 vs 0 and panel-arg
+  byte 0x30 vs 0x20). The chosen table is passed to GetAllianceDependentPanelParamArgs, which indexes
+  it by the object''s alliance field. The resulting args feed sub_802D430, whose r0/r1 return values are
+  stored as TargetPanelX/TargetPanelY in the AI attack vars at r7; TargetObjectPtr and ScratchVar are
+  zeroed, so this attack targets a panel, not an object. Then aiAttack_initVarsAndStart(5, 8, 2) initializes
+  and immediately steps the attack state machine. The AI state struct at r6 has its step counter ([r6+4])
+  incremented and [r6] cleared, and the function returns 3, presumably the next AI state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,#0x10 selects byte_802D410 vs byte_802D420 before GetAllianceDependentPanelParamArgs;
+    strb r0/r1 to oAIAttackVars_TargetPanelX/Y right after bl sub_802D430; str r0(=0) to oAIAttackVars_TargetObjectPtr
+    and oAIAttackVars_ScratchVar — no object target; bl aiAttack_initVarsAndStart_80116AE with r0=5, r1=8,
+    r2=2 starts the attack; mov r0,#3; pop {pc} plus ldrh/strh on [r6+4] shows it's an AI state/step handler
+    returning 3
+  refs:
+  - bn6f/asm/asm03_0.s:15462
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080116AE aiAttack_initVarsAndStart_80116AE
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0802D3CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — sub_802D430''s r0/r1 return is stored via strb to TargetPanelX and strb to TargetPanelY, but only
+    low bytes; the table choice via bit 0x10 of object flag and the call to aiAttack_initVarsAndStart_80116AE
+    with (5,8,2) are correct. The name is fine, but the summary should reflect that only the low bytes
+    are captured and the callee is specifically aiAttack_initVarsAndStart_80116AE.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- sub_802D430 is unknown — presumably picks the target panel (random?) from the param args
+- which boss/enemy AI script calls this and what flag bit 0x10 means (variant/enraged state?)
+- semantics of AI attack type 5 and the returned state 3 in the AI state table
+- sub_802D430's r0/r1 return is stored via strb to TargetPanelX and strb to TargetPanelY, but only low
+  bytes; the table choice via bit 0x10 of object flag and the call to aiAttack_initVarsAndStart_80116AE
+  with (5,8,2) are correct. The name is fine, but the summary should reflect that only the low bytes are
+  captured and the callee is specifically aiAttack_initVarsAndStart_80116AE.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802D3CA -> ai_pickTargetPanelAndStartAttack
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D3CA

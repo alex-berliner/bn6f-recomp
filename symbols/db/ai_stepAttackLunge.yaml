@@ -1,0 +1,66 @@
+name: ai_stepAttackLunge
+address: '0x080FA540'
+kind: function
+status: probable
+summary: 'Enemy-AI lunge attack step: teleports the enemy onto the target panel on first call (copies
+  TargetPanelX/Y, sets anim 0x15, Z 0x14, collision type 0x35, and self-damage from oAIAttackVars_Damage),
+  then launches a forward lunge via XVelocity = facing*0x49000 and counts down StepTimer loaded from AttackBoost2,
+  signalling the contact hit by writing HitElement=0x10 when the timer expires.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; on completion sets oAIAttackVars_HitElement
+  = 0x10 to advance the attack state
+details: 'If oAIAttackVars_AttackElement is 0 it initializes: element = 4, copies TargetPanelX/Y into
+  the object''s PanelX/PanelY and recomputes pixel coords, sets anim 0x15 and Z=0x14, refreshes the collision
+  record (type 0x35, side 2, 3) and writes oAIAttackVars_Damage into the collision record as SelfDamage
+  (low half) plus a byte in StaminaDamageCounterDisabler (high half). It then sets XVelocity = facing
+  direction * 0x49000 (a fast forward lunge) and flags the object CANNOT_SLIDE plus bit 22, then loads
+  StepTimer from AttackBoost2. On subsequent calls it decrements StepTimer; when it expires it writes
+  HitElement = 0x10, which the surrounding AI state machine uses to trigger the actual contact hit. The
+  tail ''bl sub_80FABEC'' after the final branch is unreachable dead code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init path: element=4, TargetPanelX/Y -> PanelX/PanelY, object_setCoordinatesFromPanels + object_updateCollisionPanels;
+    XVelocity = object_getFrontDirection() * 0x49000 with OBJECT_FLAGS_CANNOT_SLIDE and bit 22 set = forward
+    dash; Damage word split into oCollisionData_SelfDamage (low) and StaminaDamageCounterDisabler (high
+    byte); loop path decrements oAIAttackVars_StepTimer and on 0 sets oAIAttackVars_HitElement = 0x10
+    (state advance); callees object_updateCollisionData/object_setFlag1 operate on the battle object collision
+    record, confirming r5 is the acting enemy'
+  refs:
+  - bn6f/asm/asm31.s:142301
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FA540
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches in detail: init sets AttackElement=4, copies TargetPanelX/Y into PanelX/Y, recomputes
+    coords, anim=0x15, Z=0x14, collision type 0x35, writes Damage into SelfDamage/Stdmg byte, velocities
+    by FrontDirection*0x49000, and decrements StepTimer from AttackBoost2, clearing with HitElement=0x10.
+    However there is no ''teleport/dash to target panel'' - TargetPanelX/Y is just copied directly into
+    PanelX/Y, i.e. a hard teleport (set), not a dash; the XVelocity set is the lunge, not the movement
+    to the target. Name should be ''ai_stepAttackLunge'' or similar; ''dashAttackAtTarget'' mischaracterizes
+    the panel-copy as a dash.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/attack uses this script (no known callers), so the in-game move name is unknown
+- exact meaning of element value 4 and HitElement value 0x10 in the AI attack state machine
+- what the upper byte of oAIAttackVars_Damage (stored to StaminaDamageCounterDisabler) represents
+- 'Code matches in detail: init sets AttackElement=4, copies TargetPanelX/Y into PanelX/Y, recomputes
+  coords, anim=0x15, Z=0x14, collision type 0x35, writes Damage into SelfDamage/Stdmg byte, velocities
+  by FrontDirection*0x49000, and decrements StepTimer from AttackBoost2, clearing with HitElement=0x10.
+  However there is no ''teleport/dash to target panel'' - TargetPanelX/Y is just copied directly into
+  PanelX/Y, i.e. a hard teleport (set), not a dash; the XVelocity set is the lunge, not the movement to
+  the target. Name should be ''ai_stepAttackLunge'' or similar; ''dashAttackAtTarget'' mischaracterizes
+  the panel-copy as a dash.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FA540 -> ai_stepAttackLunge
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA540

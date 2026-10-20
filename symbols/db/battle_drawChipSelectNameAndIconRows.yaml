@@ -1,0 +1,61 @@
+name: battle_drawChipSelectNameAndIconRows
+address: '0x0804A8F4'
+kind: function
+status: probable
+summary: Renders the chip-select screen's fighter-name row and chip-icon row into background tile block
+  2, the icon column extent being capped at 7 by a clamped global.
+interface: (object ptr left in r5 by caller; r0 = [r5+0x24] halfword param read internally) -> r0 clobbered;
+  draws into tile block 2 via CopyBackgroundTiles
+details: Reads a halfword at [r5+0x24] (r5 = caller-supplied object, since r7=r5 with r5 never set) and
+  passes it as the entry-count argument to battle_drawChipSelectFighterNames_81200EC (with buffers word_202A020/unk_2034458
+  and count 0xb). It then copies that tile block to background at (0x14,4) block 2, 8 x min(dword_200ACB0_field30,
+  7) tiles. It calls battle_loadChipIconSlots_8120458 (r0=[r5+0x24], buffers word_202A020/unk_20345A8,
+  count 0xb, flag 0x30216) and copies those tiles to (0x1c,4), 1 x 14. The clamp of dword_200ACB0+0x30
+  to 7 caps how many icon/name columns are blitted. Both rows are drawn into tile block 2, so this is
+  a screen-refresh of the chip select UI's two rows.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_804A8F4 calls battle_drawChipSelectFighterNames_81200EC then CopyBackgroundTiles to (0x14,4)
+    block 2 (loc_804A90A..loc_804A928); second half calls battle_loadChipIconSlots_8120458 (icon slot
+    descriptors: chip ID + alt code) then CopyBackgroundTiles to (0x1c,4) block 2; clamp ''ldr r5,[eS200AC80+0x30];
+    cmp r5,#7; ble; mov r5,#7'' gates the first CopyBackgroundTiles'' tile count; both callees are given
+    the same r0 = ldrh [r7,#0x24], so the row content depends on one object field; all three callers (0x0804A3FC/804A460/804A514)
+    are chip-select-screen functions per their grouping'
+  refs:
+  - bn6f/asm/asm03_2.s:8050
+  - 0x0804A3FC sub_804A3FC
+  - 0x0804A460 sub_804A460
+  - 0x0804A514 sub_804A514
+  - 0x081200EC battle_drawChipSelectFighterNames_81200EC
+  - 0x08120458 battle_loadChipIconSlots_8120458
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0804A8F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Scope matches (two CopyBackgroundTiles calls into tile block 2, clamped via eS200AC80+0x30). Errors:
+    the icon flag passed to battle_loadChipIconSlots is 0xB216 ((r3=#0xb)<<12 | 0x216), not 0x30216. The
+    final CopyBackgroundTiles args are (j=0x1c=28, i=4, block=2, j_size=14, i_size=1) — proposal swaps
+    sizes as ''1 x 14''. Also r7 (not r5) holds the caller''s object ptr; r5 is overwritten by ldr off_804A96C+[+0x30].;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- meaning of the [r5+0x24] halfword param (selected index vs. slot count) and of dword_200ACB0+0x30 (why
+  clamped to 7)
+- 'exact caller context: whether this runs on chip-select open, after a chip is picked, or both'
+- 'Scope matches (two CopyBackgroundTiles calls into tile block 2, clamped via eS200AC80+0x30). Errors:
+  the icon flag passed to battle_loadChipIconSlots is 0xB216 ((r3=#0xb)<<12 | 0x216), not 0x30216. The
+  final CopyBackgroundTiles args are (j=0x1c=28, i=4, block=2, j_size=14, i_size=1) — proposal swaps sizes
+  as ''1 x 14''. Also r7 (not r5) holds the caller''s object ptr; r5 is overwritten by ldr off_804A96C+[+0x30].'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804A8F4 -> battle_drawChipSelectNameAndIconRows
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A8F4

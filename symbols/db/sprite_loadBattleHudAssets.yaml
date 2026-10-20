@@ -1,0 +1,60 @@
+name: sprite_loadBattleHudAssets
+address: '0x08130108'
+kind: function
+status: probable
+summary: Loads battle HUD sprite tiles, palettes, and compressed graphics by building the init-ref table,
+  fetching two fixed assets, then decompressing an inline 12-byte-entry table into VRAM, OAM sprite slots,
+  and a 0x20-byte palette.
+interface: () -> void; no meaningful flags
+details: Calls decomp_buildInitRefTable_812AF3C to build the 0x64-byte reference table at unk_201D020,
+  then loadDecompressedAsset_812AF78 (off_812B0E8 reference) and sub_812AFA4 (byte_812B1C0 blob) to load
+  two fixed assets, and finally decompAndCopyData with an inline 12-byte-entry table. The table decompresses
+  COMPRESSED_PTR_FLAG-tagged blobs into 0x6014980 (VRAM), eGuiSprite2022FA0, eGuiSprite2022AA0, unk_202458C/202488C/2024E8C
+  (each preceded by staging in eDecompBuffer2013A00), and copies a 0x20-byte palette (byte_86C9D6C) to
+  byte_30016D0. All loaded blobs are comp_86xxxxx ROM graphics, so this is the one-shot resource load
+  for a specific GUI screen, run before that screen draws.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl decomp_buildInitRefTable_812AF3C / loadDecompressedAsset_812AF78 / sub_812AFA4 — standard
+    GUI asset-load chain; inline table entries all source comp_86xxxxx blobs with COMPRESSED_PTR_FLAG
+    into eGuiSprite2022FA0/eGuiSprite2022AA0 and VRAM 0x6014980; byte_86C9D6C, byte_30016D0, 0x20 entry
+    — a 0x20-byte palette copy, typical GUI palette load; every decompressed tile set is staged through
+    eDecompBuffer2013A00 before reaching its eGuiSprite buffer
+  refs:
+  - bn6f/asm/asm36.s:106
+  - 0x08130084 sub_8130084
+  - 0x08000B30 decompAndCopyData
+  - 0x0812AF3C decomp_buildInitRefTable_812AF3C
+  - 0x0812AF78 loadDecompressedAsset_812AF78
+  reproduce: python3 tools/asmcat.py 0x08130108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callee list and assembly confirm the proposal''s mechanics: init ref table build, two fixed
+    asset loads, then a 12-byte-entry table driving decompAndCopyData. However, the function is invoked
+    from a clearly battle-context caller (sub_8130084 in the battle/setup call chain) and its sprite destinations
+    (eGuiSprite2022FA0/2022AA0, VRAM 0x6014980, palette at 0x30016D0) match a battle HUD overlay, not
+    a generic GUI screen. The ''sprite_loadGuiScreenAssets'' name and ''GUI screen'' summary don''t capture
+    the battle-call-graph context.; run wf investigate investigate-20261018-230610; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which GUI screen this belongs to — caller sub_8130084 and neighbors would confirm
+- What the two pre-loaded assets (off_812B0E8 ref, byte_812B1C0 blob) represent within the same screen
+- 'The callee list and assembly confirm the proposal''s mechanics: init ref table build, two fixed asset
+  loads, then a 12-byte-entry table driving decompAndCopyData. However, the function is invoked from a
+  clearly battle-context caller (sub_8130084 in the battle/setup call chain) and its sprite destinations
+  (eGuiSprite2022FA0/2022AA0, VRAM 0x6014980, palette at 0x30016D0) match a battle HUD overlay, not a
+  generic GUI screen. The ''sprite_loadGuiScreenAssets'' name and ''GUI screen'' summary don''t capture
+  the battle-call-graph context.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8130108 -> sprite_loadBattleHudAssets
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130108

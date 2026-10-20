@@ -1,0 +1,64 @@
+name: battle_confirmSelectionEntry
+address: '0x0812D7A4'
+kind: function
+status: probable
+summary: 'A-button confirm handler for a battle-menu entry: on new A press, plays SOUND_MENU_SELECT, stores
+  the entry''s +0x34 halfword into s2001c04 work byte +2, XORs a flag from byte_30069A0[stored] into work
+  byte +4 (always, even if unchanged), and when the entry''s +0x28 field is not 1, dispatches battle_fieldLockDispatch_8120018
+  with unk_2023FC0 and (field-1) as index before calling sub_812D5A0.'
+interface: (no args; uses r10 toolkit's s2001c04 battle-work pointer and the entry returned by sub_812D6F8)
+  -> r0 = 1 if A was newly pressed this frame, else 0
+details: Calls sub_812D6F8 to get the currently highlighted entry (r5). If A is newly pressed it plays
+  SOUND_MENU_SELECT, reads the entry's halfword at +0x34 and stores it into byte +2 of the s2001c04 battle
+  work. If the value changed, byte_30069A0[value] is fetched and 0x2 is XORed into byte +4 of the battle
+  work; even when unchanged the 0x2 bit is still toggled, suggesting a re-trigger/'selected' style flag.
+  It then reads the entry's halfword at +0x28; if it is not 1, it calls battle_fieldLockDispatch_8120018
+  with the unk_2023FC0 array and (entry+0x28)-1 as index (0x64 appears as the handler/limit literal in
+  the pool), then calls sub_812D5A0 before returning true.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsButtonPressed with #JOYPAD_A, bne plays SOUND_MENU_SELECT — a UI confirm action; ldrh
+    r2,[r5,#0x34]; strb r2,[s2001c04+2] — the entry''s id is written into the battle-work selection field;
+    byte_30069A0 indexed by the new value, with eor 0x2 into battle-work byte +4 on every press; ldrh
+    r1,[r5,#0x28]; sub r1,#1; bl battle_fieldLockDispatch_8120018 over unk_2023FC0 — per-object state
+    update keyed by the entry; returns r0=1/0 (tst r0,r0 sets flags for the caller at 0x0812D748)'
+  refs:
+  - bn6f/asm/asm34.s:590
+  - 0x0812D748 sub_812D748
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x08120018 battle_fieldLockDispatch_8120018
+  reproduce: python3 tools/asmcat.py 0x0812D7A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct. However, looking at loc_812D804 path: when A is not pressed, r0
+    is set to 0 (not ''not pressed''); but at loc_812D7F6 when A was pressed, r0 is set to 1. So the interface
+    signature is right. The ''(entry+0x28)-1'' description is slightly off — r1 holds the halfword at
+    +0x28, then sub r1,#1, then beq (skip dispatch when result==0, meaning original was 1). So the dispatch
+    is called when value != 1, not the other way. Also the summary''s ''lock-toggled update'' overstates;
+    it''s a field-lock dispatch wrapping a handler.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_812D6F8 and sub_812D5A0 do (menu build/refresh?), which fixes the menu's identity
+- meaning of battle-work bytes +2 and +4 and the byte_30069A0 table
+- exact arguments/handler id passed to battle_fieldLockDispatch (0x64 literal role)
+- 'The proposal is largely correct. However, looking at loc_812D804 path: when A is not pressed, r0 is
+  set to 0 (not ''not pressed''); but at loc_812D7F6 when A was pressed, r0 is set to 1. So the interface
+  signature is right. The ''(entry+0x28)-1'' description is slightly off — r1 holds the halfword at +0x28,
+  then sub r1,#1, then beq (skip dispatch when result==0, meaning original was 1). So the dispatch is
+  called when value != 1, not the other way. Also the summary''s ''lock-toggled update'' overstates; it''s
+  a field-lock dispatch wrapping a handler.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812D7A4 -> battle_confirmSelectionEntry
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D7A4

@@ -1,0 +1,69 @@
+name: object_countdownFinishVariantAnim
+address: '0x0811D248'
+kind: function
+status: probable
+summary: On countdown expiry at +0xC, sets object state to 0x23, plays the variant's animation (index
+  from byte_811D2B8[+5]) without shadow, resets subtimer +9 to 0xC, and when +4==9 and variant!=5 plays
+  one or two variant-keyed sound effects from byte_811D2A4/byte_811D2AE (skipping a 0xFFFF sentinel).
+interface: '(r0-r2 unused; works on object pointer in r5: +0xC = countdown, +0 = state, +4 = flag, +5
+  = variant, +9 = subtimer) -> r0 = last sound id or leftover; clobbers r4, flags per arithmetic.'
+details: 'Acts as one step handler in a larger object state machine: decrementing the halfword at +0xC
+  and doing work only on reaching zero. It stores state 0x23 into the object''s first byte, indexes byte_811D2B8
+  with the variant byte at +5 to get an animation id, calls sprite_setAnimation and sprite_loadAnimationData,
+  then sprite_noShadow, and sets byte +9 to 0xC. The extra sound block runs only when byte +4 == 9 and
+  variant != 5: it reads a halfword sound id from byte_811D2A4[variant*2] and plays it, then reads byte_811D2AE[variant*2]
+  and plays it unless it is 0xFFFF. The 0xFFFF sentinel and the dual table suggest a primary and an optional
+  follow-up sound per variant.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#0xc]; sub r0,#1; strh; bne return — countdown gate for the whole body; mov r1,#0x23;
+    strb r1,[r5] — advances object state to 0x23 on timer expiry; ldrb r0,[r1,r0] with byte_811D2B8 then
+    sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow — variant-indexed animation, shadow removed;
+    cmp r0,#9 / cmp r0,#5 plus PlaySoundEffect on tables byte_811D2A4 and byte_811D2AE — conditional per-variant
+    sounds with 0xFFFF sentinel; strb r0(=0xc),[r5,#9] — sets an object subfield, likely a follow-up timer
+    or phase counter
+  refs:
+  - bn6f/asm/asm32.s:31208
+  - 0x080005CC PlaySoundEffect
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811D248
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s main body is correct: it decrements [r5,#0xc], sets state to 0x23 on expiry, loads
+    anim id from byte_811D2B8[+5], calls sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow,
+    sets +9 to 0xc. The sound block gating on +4==9 and variant!=5, reading byte_811D2A4[variant*2] then
+    byte_811D2AE[variant*2] (skipping 0xFFFF), also matches the asm exactly. Minor issues: r0..r2 are
+    unused is wrong — r0/r1 are used as temporaries throughout (r0 holds loaded values, r1 holds 0xff
+    and the orr result for the 0xFFFF compare). The ''last sound id or leftover'' return is unsupported;
+    pop {r4,pc} restores from stack. Also the data at byte_811D2A4 is little-endian halfwords: 0x00F4,
+    0x00B7, 0x00B8, 0x01BF, 0x00FF, not a single ''0xF4,0x0,0xB7...''; same for byte_811D2AE.; run wf
+    investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'No known caller: which object/state machine owns this handler and what states 0x23 and subfield 0xC
+  mean is unknown'
+- Meaning of byte +4 == 9 (a category/trigger flag?) and the identity of variants 0-5 (object types or
+  scene variants) is not derivable from this function alone
+- What sound ids 0xF4/0xB7/0xB8/0x1BF correspond to in the M4A table would confirm the object's identity
+- 'The proposal''s main body is correct: it decrements [r5,#0xc], sets state to 0x23 on expiry, loads
+  anim id from byte_811D2B8[+5], calls sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow, sets
+  +9 to 0xc. The sound block gating on +4==9 and variant!=5, reading byte_811D2A4[variant*2] then byte_811D2AE[variant*2]
+  (skipping 0xFFFF), also matches the asm exactly. Minor issues: r0..r2 are unused is wrong — r0/r1 are
+  used as temporaries throughout (r0 holds loaded values, r1 holds 0xff and the orr result for the 0xFFFF
+  compare). The ''last sound id or leftover'' return is unsupported; pop {r4,pc} restores from stack.
+  Also the data at byte_811D2A4 is little-endian halfwords: 0x00F4, 0x00B7, 0x00B8, 0x01BF, 0x00FF, not
+  a single ''0xF4,0x0,0xB7...''; same for byte_811D2AE.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811D248 -> object_countdownFinishVariantAnim
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D248

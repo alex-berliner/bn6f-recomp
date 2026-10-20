@@ -1,0 +1,57 @@
+name: bg_decompressAndQueueTiles
+address: '0x08030540'
+kind: function
+status: probable
+summary: Given a BG tileset descriptor, optionally queues a raw GFX block (from descriptor+0x14→descriptor+0x18,
+  size descriptor+0x18), then LZ77-decompresses the sub-struct at +0x8 (+0xC src) into eDecompressionBuf2034A00,
+  and queues width*height*2 bytes from there into iBGTileIdBlocks+descriptor+0xC.
+interface: (r0 = *tileset descriptor struct) -> r0 = undefined; queues GFX transfers via QueueEightWordAlignedGFXTransfer
+details: 'r5 is a descriptor: +0x8 a pointer to a sub-structure whose bytes 0/1 are tile grid width/height
+  and whose +0xC holds LZ77-compressed tile data, +0xC a tile index/offset, and +0x10/+0x14/+0x18 a raw
+  (src,dest,size) GFX transfer. If [r5+0x10] is nonzero it queues that raw transfer first. It then LZ77-decompresses
+  from descriptor+0x8''s +0xC into eDecompressionBuf2034A00, computes the destination as [r5+0xC] plus
+  the toolkit''s iBGTileIdBlocks base pointer, and queues a transfer of size byte[0]*byte[1]*2 from the
+  decompression buffer into the BG tile blocks. off_803057C (eDecompBuffer2013A00) is referenced by the
+  pool but unused in this body.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: conditional QueueEightWordAlignedGFXTransfer([r5+0x10],[r5+0x14],[r5+0x18]) is a passthrough
+    raw GFX block; SWI_LZ77UnCompReadNormalWrite8bit([r5+0x8]+0xC, eDecompressionBuf2034A00) decompresses
+    tile graphics; dest = [r5+0xC] + [r10+oToolkit_iBGTileIdBlocks_Ptr] targets the BG tile-id block pool;
+    queued size = byte[sub+0]*byte[sub+1] << 1, i.e. tile-grid dimensions times 2 (4bpp tiles); only caller
+    sub_807A9FE passes a single descriptor pointer; no other context known
+  refs:
+  - bn6f/asm/asm03_0.s:22395
+  - 0x0807A9FE sub_807A9FE
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  - 0x0814D8C4 SWI_LZ77UnCompReadNormalWrite8bit
+  reproduce: python3 tools/asmcat.py 0x08030540
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The LZ77 source is the descriptor sub-struct (r0+8) at offset +0xC, the grid width/height live at
+    r0+8 bytes 0/1, the tile offset is at r5+0xC, and the size is width*height*2. However, when [r5+0x10]
+    is nonzero the code adds +4 to r0 before queuing, so it queues from r0+0x14 into r0+0x18 of size r0+0x18,
+    not the (r5+0x10/0x14/0x18) fields as the summary states. Otherwise the description fits.; run wf
+    investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what structure sub_807A9FE builds at r0 (which BG/map system owns these descriptors)
+- exact units of QueueEightWordAlignedGFXTransfer size vs the *2 tile size math
+- purpose of the unused eDecompBuffer2013A00 reference
+- The LZ77 source is the descriptor sub-struct (r0+8) at offset +0xC, the grid width/height live at r0+8
+  bytes 0/1, the tile offset is at r5+0xC, and the size is width*height*2. However, when [r5+0x10] is
+  nonzero the code adds +4 to r0 before queuing, so it queues from r0+0x14 into r0+0x18 of size r0+0x18,
+  not the (r5+0x10/0x14/0x18) fields as the summary states. Otherwise the description fits.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8030540 -> bg_decompressAndQueueTiles
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8030540

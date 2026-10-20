@@ -1,0 +1,62 @@
+name: object_dashUpdate
+address: '0x081174C0'
+kind: function
+status: probable
+summary: Per-frame update that moves an object in a configured direction at a set speed for a fixed number
+  of frames, shrinking its sprite scale, returning 1 on the frame the dash ends and 0 otherwise.
+interface: (r0 = unused on entry; r5 = object/sprite work struct) -> r0 = 1 while the dash is still running
+  each frame, 0 on the frame it ends; clobbers lr and r0-r3.
+details: 'On the first invocation (byte [r5,#9] == 0) it sets that flag and reads a parameter struct from
+  sub_81175C4: halfword +2 is a frame counter stored to [r5,#0x10], halfword +4 is an angle used to index
+  math_sinTable/math_cosTable, and halfword +6 is a speed. The sin/cos values are shifted left 4 and multiplied
+  by the speed to build x/y velocity words at [r5,#0x14] and [r5,#0x18]; the same angle value is also
+  passed to sprite_setScaleParameters as (0x100 - angle, 0x100, 0x40), so the sprite is scaled down during
+  the move. Every call it reads the sprite coordinates, adds the 16.16-fixed-point velocity (<<16 add,
+  >>16 back), and writes them via sprite_setCoordinates. It decrements [r5,#0x10]; when it goes negative
+  it clears the flag, zeroes the counter, calls sub_81175BC(8) (likely an animation or sound trigger),
+  and returns 1; otherwise it returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r1,[r0,#2] / str r1,[r5,#0x10] plus later 'sub r0,#1 ... bge' shows a frame-count timer
+    driving the motion; sinTable/cosTable lookups at off_81175C8/CC scaled by halfword +6 build x/y velocities
+    in [r5,#0x14]/[#0x18]; sprite_getCoordinates + sprite_setCoordinates with added velocities shows it
+    displaces the object each frame; sprite_setScaleParameters(0x100 - angle, 0x100, 0x40) shows the sprite
+    is resized during the dash; flag [r5,#9] gates one-time initialization and sub_81175BC(8) fires once
+    when the timer expires
+  refs:
+  - bn6f/asm/asm32.s:18914
+  - 0x0800307C sprite_setCoordinates
+  - 0x080030A8 sprite_getCoordinates
+  - 0x08002C24 sprite_setScaleParameters
+  reproduce: python3 tools/asmcat.py 0x081174C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (init on first call, sin/cos*speed*16 velocity, sprite_setScaleParameters
+    with (0x100-angle, 0x40, 0x40), decrement counter, clear flag and call sub_81175BC(8) on expiry).
+    However the return semantics are inverted: loc_8117508 (running) returns 0, and the end branch returns
+    1 — opposite of the proposal''s claim. Also r0 is used on entry (the flag at [r5,#9]), not ignored.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_81175C4's parameter struct belongs to (which enemy/object) and the exact meaning of its +2/+4/+6
+  fields
+- What sub_81175BC(8) triggers (animation vs sound)
+- The exact argument semantics of sprite_setScaleParameters, so the scale change can be described precisely
+- No caller is known, so the gameplay context (dash attack, knockback, retreat?) is unconfirmed
+- 'The code matches the proposal''s mechanics (init on first call, sin/cos*speed*16 velocity, sprite_setScaleParameters
+  with (0x100-angle, 0x40, 0x40), decrement counter, clear flag and call sub_81175BC(8) on expiry). However
+  the return semantics are inverted: loc_8117508 (running) returns 0, and the end branch returns 1 — opposite
+  of the proposal''s claim. Also r0 is used on entry (the flag at [r5,#9]), not ignored.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81174C0 -> object_dashUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81174C0

@@ -1,0 +1,58 @@
+name: battle_setEntryFieldBAndTimer
+address: '0x0802E1BE'
+kind: function
+status: probable
+summary: 'On entry indexed by [r5+Alliance] in the unk_2036120 record table, writes r4 into byte+0xB and
+  a flag-dependent halfword timer (+0x2E): 0x1E0 if battle flag 0x40 is clear, 0x168 if set.'
+interface: (r0 = [r5+oBattleObject_Alliance] entry index, r4 = byte value to store) -> entry[0xB] = r4,
+  entry[0x2E] = 0x1E0 or 0x168; r0 = entry pointer (clobbered), no meaningful return
+details: 'Calls battle_testFlag0x40_800A8F8 and selects a halfword constant: 0x1E0 (480) if battle flag
+  0x40 is clear, 0x168 (360) if set — likely a frame timer, shorter when the flag is active. It then computes
+  the 0x1D0-stride entry of the table at unk_2036120 for index [r5+oBattleObject_Alliance], writes the
+  caller''s byte r4 into entry+0xB, and the chosen timer into entry+0x2E. r5 is an unmodified object pointer
+  from the caller, so this reads another object''s alliance field to pick the record. The meaning of entry+0xB,
+  entry+0x2E, and flag 0x40 is not established here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_testFlag0x40_800A8F8 + tst/beq select 0x1E0 vs 0x168 (off_802E234/238); ldrb r0,[r5,#oBattleObject_Alliance]
+    then bl getEntryPtr_2036120_1D0_802E070 picks the record; strb r4,[r0,#0xb] and strh r7,[r0,#0x2e]
+    are the only side effects; no callers known, so the semantics of r4 and flag 0x40 rest only on this
+    body
+  refs:
+  - bn6f/asm/asm03_0.s:17254
+  - 0x0800A8F8 battle_testFlag0x40_800A8F8
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x0802E1BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: it calls battle_testFlag0x40_800A8F8, picks 0x1E0 vs 0x168 via
+    the tst/beq, indexes unk_2036120 by [r5+Alliance] using getEntryPtr_2036120_1D0_802E070, stores r4
+    at entry+0xB and r7 at entry+0x2E. However, the proposal misstates the flag polarity: flag set → 0x168
+    (shorter), clear → 0x1E0 (the proposal says the opposite). Also, the function has no known callers,
+    so the claim that ''r5 is an unmodified object pointer from the caller'' is unverified speculation.
+    The proposed name is acceptable but not optimal given the meaning score.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so the meaning of r4 (byte at +0xB) and of the 0x1E0/0x168 timer at +0x2E is unknown
+- What battle flag 0x40 represents (it only shortens the timer from 480 to 360 frames here)
+- What the 0x1D0-stride table at 0x2036120 is (per-entity record? per-ally slot?)
+- 'The proposal is largely correct: it calls battle_testFlag0x40_800A8F8, picks 0x1E0 vs 0x168 via the
+  tst/beq, indexes unk_2036120 by [r5+Alliance] using getEntryPtr_2036120_1D0_802E070, stores r4 at entry+0xB
+  and r7 at entry+0x2E. However, the proposal misstates the flag polarity: flag set → 0x168 (shorter),
+  clear → 0x1E0 (the proposal says the opposite). Also, the function has no known callers, so the claim
+  that ''r5 is an unmodified object pointer from the caller'' is unverified speculation. The proposed
+  name is acceptable but not optimal given the meaning score.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802E1BE -> battle_setEntryFieldBAndTimer
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E1BE

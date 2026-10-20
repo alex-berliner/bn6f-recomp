@@ -486,9 +486,9 @@ static bool event_flag_set_reloadCurNaviStatBoosts_813c3ac(u8 page, u8 offset) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_8121154 outside this file, which has no typed C interface yet */
+/* register form: calls pet_reloadCurNaviEffects outside this file, which has no typed C interface yet */
 static void call_sub_8121154(void) {
-    GUEST_CALL(sub_8121154);
+    GUEST_CALL(pet_reloadCurNaviEffects);
 }
 
 /* register form: calls GetCurPETNaviStatsHword outside this file, which has no typed C interface yet */

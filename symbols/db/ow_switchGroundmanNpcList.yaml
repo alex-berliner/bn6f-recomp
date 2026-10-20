@@ -1,0 +1,58 @@
+name: ow_switchGroundmanNpcList
+address: '0x08143C62'
+kind: function
+status: probable
+summary: Looks up the Groundman minigame result map index, swaps the overworld NPC spawn list to one of
+  two hardcoded lists via npc_freeAllObjectsThenSpawnObjectsFromList, then sets event flag 1721.
+interface: () -> r0 = undefined; sets EVENT_1721, replaces overworld NPC list via npc_freeAllObjectsThenSpawnObjectsFromList
+details: Calls GetGroundmanMinigameMapIndex and uses the returned index to select from a two-entry table
+  of NPC spawn lists (off_8143C80 -> off_8072C10 / off_8073650). It frees all current overworld NPC objects
+  and spawns the chosen list via npc_freeAllObjectsThenSpawnObjectsFromList, then sets event flag EVENT_1721
+  with SetEventFlagFromImmediate. r4-r7 are pushed but never used. The flag and NPC swap suggest a persistent
+  state change marking the minigame outcome in the overworld.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetGroundmanMinigameMapIndex then lsl r0,r0,#2 / ldr r0,[r1,r0] indexes the table at off_8143C80;
+    bl npc_freeAllObjectsThenSpawnObjectsFromList swaps the overworld NPC spawn list to the selected entry;
+    bl SetEventFlagFromImmediate with EVENT_1721 records the resulting story/event state; table has exactly
+    two entries (off_8072C10, off_8073650), matching a binary minigame outcome
+  refs:
+  - bn6f/asm/asm37_1.s:3836
+  - 0x08143978 sub_8143978
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08030A60 npc_freeAllObjectsThenSpawnObjectsFromList
+  - 0x08143B30 GetGroundmanMinigameMapIndex
+  reproduce: python3 tools/asmcat.py 0x08143C62
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the GetGroundmanMinigameMapIndex lookup, the npc_freeAllObjectsThenSpawnObjectsFromList
+    switch, and the EVENT_1721 set, confirmed by the asm (bl GetGroundmanMinigameMapIndex, ldr r1 off_8143C7C,
+    lsl r0 #2 table load, npc_free call, movflag EVENT_1721 / bl SetEventFlagFromImmediate). However,
+    the function is triggered by sub_8143978 after the Groundman minigame, so ''groundman_minigame'' in
+    the name is fine but the prefix should reflect it being an NPC/spawn switch; ''ow'' or ''npc'' fits
+    better. A cleaner name is ow_switchGroundmanNpcList.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the two spawn lists (off_8072C10, off_8073650) contain, i.e. which NPCs appear for each outcome
+- why r4-r7 are saved despite being unused
+- exact meaning of the minigame map index values beyond a two-way choice
+- 'The proposal correctly identifies the GetGroundmanMinigameMapIndex lookup, the npc_freeAllObjectsThenSpawnObjectsFromList
+  switch, and the EVENT_1721 set, confirmed by the asm (bl GetGroundmanMinigameMapIndex, ldr r1 off_8143C7C,
+  lsl r0 #2 table load, npc_free call, movflag EVENT_1721 / bl SetEventFlagFromImmediate). However, the
+  function is triggered by sub_8143978 after the Groundman minigame, so ''groundman_minigame'' in the
+  name is fine but the prefix should reflect it being an NPC/spawn switch; ''ow'' or ''npc'' fits better.
+  A cleaner name is ow_switchGroundmanNpcList.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143C62 -> ow_switchGroundmanNpcList
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143C62

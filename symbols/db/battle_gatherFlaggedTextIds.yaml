@@ -1,0 +1,63 @@
+name: battle_gatherFlaggedTextIds
+address: '0x08137BF0'
+kind: function
+status: probable
+summary: Collects pairs of (text-bank-1 message index, sub-index) gated by TestEventFlag checks on byte_8137C4C/byte_8137C9C
+  into unk_201CF00, returning the number of entries written.
+interface: () -> writes up to 18 halfwords to unk_201CF00 and returns r0 = count written; flags clobbered
+  by TestEventFlag/ZeroFillByWord calls
+details: 'First zero-fills a 0x24-byte work buffer at unk_201CF00 (18 x u16). It then loops 18 times (r6
+  = 0..0x44 step 4, index i = r6/4): each slot has a primary event flag from byte_8137C4C (values 0x321-0x369)
+  and a fallback flag from byte_8137C9C (values 0xB1-0xBD); the entry is included only if the primary
+  flag is set OR the fallback flag is set. Included entries append two bytes: byte_8137CE8[r6/2] (a halfword
+  0x1xx) minus 0x100 — i.e. the message id within text bank 1 — followed by byte_8137D0C[i], a small even
+  index (0x00-0x22). Entries are packed at offset r7 (2 per hit) and the count of collected entries is
+  returned in r0. Called from battle_initRoundState, so this is per-round state gathering, presumably
+  dialogue/hints the battle scene can later show.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'prologue: ldr r0,=unk_201CF00; mov r1,#0x24; bl ZeroFillByWord — clears the 18-entry output
+    list; loop body: bl TestEventFlag on byte_8137C4C[r6]; bne include; then TestEventFlag on byte_8137C9C[r6];
+    beq skip — OR-gated filter; loc_8137C18: ldrh r0,[byte_8137CE8,r6/2]; sub r0,#0x100; strb r0,[buf,r7]
+    — stores text id low byte; loc_8137C18: ldrb r0,[byte_8137D0C,r6/4]; strb r0,[buf,r7+1] — stores paired
+    entry index; tail: cmp r6,#0x48; blt loop; mov r0,r5 — 18 fixed slots, r5 counts written entries returned
+    to caller'
+  refs:
+  - bn6f/asm/asm36.s:16296
+  - 0x081378D4 battle_initRoundState
+  - 0x0802F168 TestEventFlag
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x08137BF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms a per-round gather: 0x24-byte zero-fill of unk_201CF00, loop r6=0..0x48 step 4,
+    TestEventFlag on byte_8137C4C/byte_8137C9C, and packs (message_id-0x100, index) pairs. However the
+    proposal''s summary says ''bank-1 text id + entry index''; the stripped low byte (0x1F, 0x25… minus
+    0x100) is just an index into text bank 1, and byte_8137D0C is a sub-index. A clearer name reflecting
+    ''gather per-round flagged dialogue indices'' is better. The proposal name ''battle_collectFlaggedTextIds''
+    is reasonable but ''battle_gatherFlaggedTextIds'' is slightly more idiomatic; either is acceptable.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No consumer of unk_201CF00 was shown; a caller/reader would confirm the pairs are text-archive message
+  ids and what the second byte indexes (message within archive vs. speaker/portrait).
+- What event flags 0x321-0x369 vs 0xB1-0xBD represent (primary vs. fallback condition semantics).
+- 'The code confirms a per-round gather: 0x24-byte zero-fill of unk_201CF00, loop r6=0..0x48 step 4, TestEventFlag
+  on byte_8137C4C/byte_8137C9C, and packs (message_id-0x100, index) pairs. However the proposal''s summary
+  says ''bank-1 text id + entry index''; the stripped low byte (0x1F, 0x25… minus 0x100) is just an index
+  into text bank 1, and byte_8137D0C is a sub-index. A clearer name reflecting ''gather per-round flagged
+  dialogue indices'' is better. The proposal name ''battle_collectFlaggedTextIds'' is reasonable but ''battle_gatherFlaggedTextIds''
+  is slightly more idiomatic; either is acceptable.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8137BF0 -> battle_gatherFlaggedTextIds
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137BF0

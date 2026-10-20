@@ -1,0 +1,60 @@
+name: battle_initBgAndLayers
+address: '0x08130464'
+kind: function
+status: probable
+summary: Initializes BG tile block 1 with a 30x20 tilemap from unk_201F320, resets the battle-overlay
+  eStruct record array, and sets per-layer/eStruct scroll/fade values (caller struct's halfword at offset
+  0x2a and 0x80) via sub_8130290/sub_81302B0/sub_81302F4 and a final sub_81304A4.
+interface: () -> void
+details: Takes no arguments. It first zero-fills the toolkit's 0x2000-byte BG tile buffer and re-runs
+  the battle-overlay eStruct record-array init, then copies a 0x1E x 0x14 tilemap (exactly one full 240x160
+  screen) from unk_201F320 into BG tile-block 1 via CopyBackgroundTiles. It then calls local helpers sub_8130290
+  and sub_81302F4 twice — first with the halfword at [r5,#0x2a] of a caller-provided struct and 0, then
+  with 0x80 and 1 — which look like per-layer scroll or fade/opacity settings, before a final sub_81304A4.
+  The combination of a full-screen tilemap copy plus the scene-record reset suggests re-establishing the
+  battle backdrop and overlay scene state, e.g. on battle start or return-from-battle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ZeroFillGFX30025c0 + bl battle_resetEStructRecords_8046664 at top: clears BG tile data and
+    re-inits the overlay scene record array; CopyBackgroundTiles(0,0,1,unk_201F320,0x1E,0x14): full 30x20-screen
+    tilemap copied from unk_201F320 to tile block 1; mov r4,#0x1e / mov r5,#0x14 match CopyBackgroundTiles''
+    j_size/i_size args for one full screen; sub_81302F4 called with ([r5,#0x2a],0) then (0x80,1) — looks
+    like setting scroll/fade values per layer; callee battle_resetEStructRecords_8046664''s known summary
+    ties this function to battle-overlay scene state'
+  refs:
+  - bn6f/asm/asm36.s:562
+  - 0x0812F2D0 sub_812F2D0
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x08130464
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly shows five nearby calls (sub_8130290, sub_81302F4, sub_81302B0, sub_81302F4, sub_81304A4),
+    not just two. The function initializes BG tile block 1 with a 30x20 tilemap and sets up per-struct/eStruct
+    layer values from [r5,#0x2a] rather than merely reloading. Calling it ''reload'' understates the init
+    role; sub_81302B0 is omitted from the description. The callee battle_initEStructArr is already in
+    the path, confirming init semantics.; run wf investigate investigate-20261018-235109; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8130290/sub_81302B0/sub_81302F4/sub_81304A4 do (scroll? fade? DMA?) is unknown
+- Caller sub_812F2D0's context (battle start vs return-from-battle) would pin down the exact trigger
+- Meaning of the struct field at +0x2a passed to sub_81302F4
+- The assembly shows five nearby calls (sub_8130290, sub_81302F4, sub_81302B0, sub_81302F4, sub_81304A4),
+  not just two. The function initializes BG tile block 1 with a 30x20 tilemap and sets up per-struct/eStruct
+  layer values from [r5,#0x2a] rather than merely reloading. Calling it 'reload' understates the init
+  role; sub_81302B0 is omitted from the description. The callee battle_initEStructArr is already in the
+  path, confirming init semantics.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8130464 -> battle_initBgAndLayers
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130464

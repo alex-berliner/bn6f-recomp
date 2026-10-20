@@ -1,0 +1,68 @@
+name: battle_busterShotAttackPhase
+address: '0x080BCF7A'
+kind: function
+status: probable
+summary: 'Battle-object attack phase: on first entry sets CurAnim=0xE, Timer=15, plays SOUND_BUSTER_6A,
+  calls sub_80B8E58 on ExtraVars+4 and +0xC plus sub_80EB572(r5+0x64,1), spawns a t1/0x5 temp attack object
+  (param 0x10005, r7=r5+0x6C), ends the related object''s animation, calls sub_80BD24C, and spawns an
+  enemy-panel effect immediately and again when Timer reaches 10 and 5; on Timer expiry decrements Timer2,
+  looping back until it also expires, then advances CurPhaseAndPhaseInitialized to 8.'
+interface: (r5 = battle object) -> updates object fields (CurAnim, Timer, Timer2, PhaseInitialized, CurPhaseAndPhaseInitialized);
+  no return value
+details: 'Standard phase-handler pattern: on first run (PhaseInitialized==0) it sets CurAnim=0xE and CurAnimCopy=0xFF,
+  loads Timer=15, plays SOUND_BUSTER_6A, and calls sub_80B8E58 on the pointers at oBattleObject_ExtraVars+4
+  and +0xC. It calls sub_80EB572 with r5+0x64 and r1=1 (some per-object flag/state at offset 0x64), then
+  spawns a temp attack object via spawn_t1_0x5_tempAttackObject with r4=0x10005 and r7=r5+0x6C as parameters,
+  ending the related object''s current animation. It then spawns an effect on a random enemy-occupied
+  panel immediately and again when Timer hits 10 and 5, i.e. up to three hit visuals across the attack.
+  Timer decrements each frame; when it expires Timer2 decrements, and when Timer2 runs out the object''s
+  CurPhaseAndPhaseInitialized is set to 8 (attack finished); otherwise PhaseInitialized is cleared so
+  setup re-runs on the next cycle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb PhaseInitialized / bne loc_80BCFC6 with mov #4 strb PhaseInitialized is the standard one-shot
+    phase-setup pattern; bl PlaySoundEffect with r0=SOUND_BUSTER_6A and CurAnim=0xE indicate a buster-style
+    attack animation; bl spawn_t1_0x5_tempAttackObject_80B8E30 with r4=0x10005 spawns the damaging attack
+    object linked to this object; bl battle_spawnEffectOnRandomEnemyPanel at init and at Timer==10 and
+    Timer==5 gives repeated hit effects on enemy panels; Timer/Timer2 countdown ending with strh #8, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    is the phase-exit-to-8 transition'
+  refs:
+  - bn6f/asm/asm31.s:10641
+  - 0x080005CC PlaySoundEffect
+  - 0x080C44D2 battle_EndObjectCurrentAnim_80C44D2
+  - 0x080BD2D8 battle_spawnEffectOnRandomEnemyPanel
+  reproduce: python3 tools/asmcat.py 0x080BCF7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely accurate: it sets CurAnim=0xE, Timer=15, plays SOUND_BUSTER_6A, calls sub_80B8E58
+    on ExtraVars+4 and +0xC, calls sub_80EB572(r5+0x64, 1), spawns a t1/0x5 attack (param 0x10005, r7=r5+0x6C),
+    and emits enemy-panel effects at Timer==10 and Timer==5. However, it misses that sub_80BD24C is called
+    separately between the spawn and the first battle_spawnEffectOnRandomEnemyPanel, and the initial CurPhaseAndPhaseInitialized
+    is set to 4 (not 8); 8 is only written when both timers expire. The ''buster shot attack'' intent
+    fits well, but ''battle_Phase'' prefix is redundant with a phase-handler; ''battle_busterShotAttackPhase''
+    is more precise.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/Navi uses this phase (no known caller), so a more specific name is not yet justified
+- What sub_80B8E58 does with the ExtraVars+4/+0xC pointers and what sub_80EB572 writes at offset 0x64
+- Exact meaning of the 0x10005 parameter (element/type flags?) and of sub_80BD24C
+- 'The summary is largely accurate: it sets CurAnim=0xE, Timer=15, plays SOUND_BUSTER_6A, calls sub_80B8E58
+  on ExtraVars+4 and +0xC, calls sub_80EB572(r5+0x64, 1), spawns a t1/0x5 attack (param 0x10005, r7=r5+0x6C),
+  and emits enemy-panel effects at Timer==10 and Timer==5. However, it misses that sub_80BD24C is called
+  separately between the spawn and the first battle_spawnEffectOnRandomEnemyPanel, and the initial CurPhaseAndPhaseInitialized
+  is set to 4 (not 8); 8 is only written when both timers expire. The ''buster shot attack'' intent fits
+  well, but ''battle_Phase'' prefix is redundant with a phase-handler; ''battle_busterShotAttackPhase''
+  is more precise.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BCF7A -> battle_busterShotAttackPhase
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCF7A

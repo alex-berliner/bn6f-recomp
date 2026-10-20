@@ -4565,7 +4565,7 @@ static inline call_sub_812B25C_result call_sub_812B25C(u32 r0, u32 r4, u32 r5, u
  * Byte 3 of the object at r5 selects the next text-command handler out of the
  * jump table at off_8129930. The byte already holds the table's byte offset
  * (0x00, 0x04, 0x08, 0x0C, 0x10, 0x14 -> sub_8129948, sub_812996C, sub_81299B0,
- * sub_8129A20, sub_8129A28, sub_8129A54), so it indexes the table directly.
+ * sub_8129A20, battle_dealChipsOnFadeIn, sub_8129A54), so it indexes the table directly.
  *
  * The original dispatches with `mov lr, pc; bx r0`, so the handler starts with
  * r0 = its own table entry, r1 = the state byte, and every other register
@@ -5510,7 +5510,7 @@ Next sub_8129F48(void) {
  * Table contents (byte offset -> handler):
  *   0  -> menu_subMenu_dispatchByIndex_812A008   (mode 0)
  *   4  -> object_timerDialogueUpdate   (mode 1)
- *   8  -> sub_812A058   (mode 2)
+ *   8  -> rfu_initLinkSessionState   (mode 2)
  *  12  -> sub_812A14C   (mode 3)
  *  16  -> sub_812A0CC   (mode 4)
  *
@@ -5528,7 +5528,7 @@ Next sub_8129FE0(void) {
         GUEST_CALL(object_timerDialogueUpdate);
         break;
     case 8:
-        GUEST_CALL(sub_812A058);
+        GUEST_CALL(rfu_initLinkSessionState);
         break;
     case 12:
         GUEST_CALL(sub_812A14C);

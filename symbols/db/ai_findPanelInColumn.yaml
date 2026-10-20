@@ -1,0 +1,70 @@
+name: ai_findPanelInColumn
+address: '0x080BD5A8'
+kind: function
+status: probable
+summary: Battle AI helper that scans a grid column for an acceptable panel and commits it as the object's
+  next movement target (FuturePanel), else aborts the action.
+interface: (r5 = battle object) -> r0 = ?; on success writes oBattleObject_FuturePanelX/Y, clears ExtraVars+0xc,
+  increments Param3, sets phase 4; on failure sets CurAction 8, phase 0
+details: 'The routine validates oBattleObject_FuturePanelX/Y, then scans one column (x fixed, rows 1..3
+  via the r1 loop): if ExtraVars+0xc is nonzero it scans the column at FuturePanelX itself, otherwise
+  the column one step in front (x + object_getFrontDirection, range-checked to 1..6). For each row it
+  calls object_checkPanelParameters with a per-alliance mask read from table off_80BD63C[Alliance*4] (0x4000000
+  vs 0x8000000, i.e. a side-specific panel-type requirement) and rejects panels having any of the 0xf800000
+  flag bits. Additionally it accepts a row immediately if the panel one step behind the candidate (x -
+  frontDir) is the RelatedObject1 object''s current panel, i.e. it prefers to stand just behind the related
+  object. On the first acceptable row it stores the candidate into FuturePanelX/Y, zeroes the ExtraVars+0xc
+  flag, bumps Param3, and sets phase 4 (continue action); if no row qualifies, or the column was out of
+  range, it sets CurAction 8 with phase 0, evidently cancelling the move.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0/r1 FuturePanelX/Y + bl object_isValidPanel guards entry; invalid -> CurAction 8, phase
+    0 (loc_80BD62C); loop at loc_80BD5C0..614 keeps r0 fixed and increments r1 to 3, scanning all rows
+    of one column; mask ldr r2,[r3,r2] from off_80BD63C indexed by Alliance*4 gives 0x4000000/0x8000000
+    passed to object_checkPanelParameters; neg r2,r0; add r0,r0,r2 after object_getFrontDirection then
+    compare with RelatedObject1 PanelX/Y — prefers the panel behind the candidate matching the related
+    object; success path: strb FuturePanelX/Y, clear ExtraVars+0xc, Param3++, strh phase 4'
+  refs:
+  - bn6f/asm/asm31.s:11486
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080BD5A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: starting at the existing FuturePanelX/Y, it loops rows 1..3; if no row works,
+    the candidate x is shifted by frontDir, range-checked (<=5), and re-scanned at the original rows;
+    on first hit it stores the candidate, clears ExtraVars+0xc, increments Param3 and sets phase 4, else
+    writes CurAction=8 phase 0. However, the proposal says ''scans at FuturePanelX if ExtraVars+0xc is
+    nonzero, else one step in front'' — the asm shows the opposite: when ExtraVars+0xc is zero it falls
+    through to the in-front branch (add r0,r0,r2 then check column), and when nonzero it jumps past to
+    use r0 as-is. Also the range check is `cmp r2,#5; bls` meaning x must be 1..5 (not 1..6), since r2
+    = (currentX + frontDir) - 1 must be <=5, i.e. currentX + frontDir <= 6, so the front column is checked
+    for 1..5.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the meaning of the ExtraVars+0xc flag (scan own column vs front column) and of
+  Param3 is unconfirmed
+- What panel states the 0x4000000/0x8000000 and 0xf800000 mask bits correspond to
+- Whether CurAction 8 is specifically an idle/cancel action
+- 'The flow matches: starting at the existing FuturePanelX/Y, it loops rows 1..3; if no row works, the
+  candidate x is shifted by frontDir, range-checked (<=5), and re-scanned at the original rows; on first
+  hit it stores the candidate, clears ExtraVars+0xc, increments Param3 and sets phase 4, else writes CurAction=8
+  phase 0. However, the proposal says ''scans at FuturePanelX if ExtraVars+0xc is nonzero, else one step
+  in front'' — the asm shows the opposite: when ExtraVars+0xc is zero it falls through to the in-front
+  branch (add r0,r0,r2 then check column), and when nonzero it jumps past to use r0 as-is. Also the range
+  check is `cmp r2,#5; bls` meaning x must be 1..5 (not 1..6), since r2 = (currentX + frontDir) - 1 must
+  be <=5, i.e. currentX + frontDir <= 6, so the front column is checked for 1..5.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BD5A8 -> ai_findPanelInColumn
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD5A8

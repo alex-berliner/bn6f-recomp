@@ -1,0 +1,67 @@
+name: battle_findMatchingPanelForward
+address: '0x080BDA08'
+kind: function
+status: probable
+summary: Scans panels forward from a battle object's panel until one whose status flags match a side-specific
+  mask is found, returning that panel's coordinates in r0,r1; otherwise falls back to a default column
+  from dword_80BDA70 indexed by Alliance.
+interface: (r0 = caller stack slot buffer, r4..r5 = battle object) -> returns panel x at caller sp+0,
+  y at caller sp+4; uses r0-r3, lr
+details: 'Starting at the object''s own panel (PanelX/PanelY), it steps x by the object''s facing direction
+  (object_getFrontDirection) while the coordinates stay on the 6x3 grid (object_isValidPanel), testing
+  each panel''s status word (object_getPanelParameters) against a per-Alliance mask from off_80BDA68:
+  0x4000000 for one side, 0x8000000 for the other. The first matching panel''s (x, y) is written to the
+  caller''s stack slots (the function leaves sp allocated, a by-stack return). If no panel matches before
+  leaving the field, it falls back to a default column taken from dword_80BDA70 bytes {5, 2} indexed by
+  Alliance, nudged one further tile in the facing direction if it equals the object''s own PanelX, and
+  returns that instead. So it yields the first special panel ahead of the object, or the far edge of the
+  relevant field side as a default target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection then ldrb PanelX/add: scan starts from the object''s panel in its
+    facing direction; loop: object_isValidPanel guard + object_getPanelParameters + tst r0, mask from
+    off_80BDA68[Alliance] (0x4000000/0x8000000); advance is add r0, r0, dir on the x slot only, so the
+    scan is a straight line along the row; loc_80BDA48 fallback indexes dword_80BDA70 (bytes 0x05,0x02)
+    by Alliance for a default column, comparing it to PanelX; results stored at [sp] and [sp,#4] and sp
+    is not restored before pop {pc}: by-stack struct return of x,y'
+  refs:
+  - bn6f/asm/asm31.s:12105
+  - 0x080BD8BC sub_80BD8BC
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080BDA08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely: it iterates from PanelX toward object_getFrontDirection,
+    checks object_isValidPanel and object_getPanelParameters against the per-alliance mask at off_80BDA68
+    (0x4000000/0x8000000), and falls back to dword_80BDA70 (a single 32-bit word 0x205, i.e. bytes {5,2,0,0})
+    indexed by Alliance, with the nudge shown at loc_80BDA48-58. However, the summary says it returns
+    results to ''caller stack slots sp+0/sp+4'', but the function only allocates sp and writes its own
+    locals there; the add sp,#0x10 / pop {pc} epilogue returns values in r0/r1 to the caller. The ''uses
+    lr'' note is also off (it actually pops pc).; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what panel-status bits 0x4000000/0x8000000 denote (hole, grass, some spawned object's marker?)
+- what sub_80BD8BC does with the returned coordinates (attack pathing vs. movement targeting)
+- 'The code matches the proposal closely: it iterates from PanelX toward object_getFrontDirection, checks
+  object_isValidPanel and object_getPanelParameters against the per-alliance mask at off_80BDA68 (0x4000000/0x8000000),
+  and falls back to dword_80BDA70 (a single 32-bit word 0x205, i.e. bytes {5,2,0,0}) indexed by Alliance,
+  with the nudge shown at loc_80BDA48-58. However, the summary says it returns results to ''caller stack
+  slots sp+0/sp+4'', but the function only allocates sp and writes its own locals there; the add sp,#0x10
+  / pop {pc} epilogue returns values in r0/r1 to the caller. The ''uses lr'' note is also off (it actually
+  pops pc).'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BDA08 -> battle_findMatchingPanelForward
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDA08

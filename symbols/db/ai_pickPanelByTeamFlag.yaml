@@ -1,0 +1,64 @@
+name: ai_pickPanelByTeamFlag
+address: '0x0810B6B4'
+kind: function
+status: probable
+summary: Reads the object's panel coordinates, looks up a flag-check param via the object's alliance,
+  and returns a panel from a baked relative-offset candidate list (filtered by flag) chosen by panelFlagCheck_8015D80.
+interface: (r5 = battle object) -> r0 = chosen panel (or fail marker from panelFlagCheck_8015D80); flags
+  from callee
+details: Reads oBattleObject_PanelX/PanelY from the object in r5 and calls GetAllianceDependentPanelParamArgs
+  with table byte_810B6E0, which yields the panel-flag param word and args pointer for the object's alliance.
+  It then calls panelFlagCheck_8015D80 with args in r4 = byte_810B6D4, a 0x7F-terminated relative-offset
+  candidate list encoding the four orthogonal neighbours (0,-1),(0,+1),(-1,0),(1,0). The picker rotates
+  each candidate by the object's facing direction and returns a random candidate whose panel passes the
+  fetched flag test (free/standable). Function is otherwise a thin two-call wrapper; the candidate table
+  and param table are baked into its literal pool.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY] feed the object's panel
+    position into the lookup; off_810B788 -> byte_810B6E0 passed to GetAllianceDependentPanelParamArgs
+    (alliance-indexed panel param/flags entry); off_810B6D0 -> byte_810B6D4 candidate list = (0,-1),(0,+1),(-1,0),(1,0)
+    with 0x7F terminator, i.e. the four orthogonal neighbours; bl panelFlagCheck_8015D80, the known 'filtered
+    random relative panel picker', performs the selection and flag filtering; Caller 0x0810B436 ai_swordyTryStartAttack
+    launches attack id 0xC, consistent with needing a target panel next to Swordy
+  refs:
+  - bn6f/asm/asm31.s:178227
+  - 0x0810B436 ai_swordyTryStartAttack
+  - 0x0810B49C sub_810B49C
+  - 0x0810B3E4 sub_810B3E4
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x0810B6B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The function does read PanelX/Y, look up team-dependent flag params via GetAllianceDependentPanelParamArgs
+    on byte_810B6E0, then call panelFlagCheck_8015D80 with the candidate list at byte_810B6D4 (0,FF,0,1,FF,0,1,0,7F
+    = four orthogonal dx/dy pairs), so the general behavior is correct. However the summary over-attributes
+    the function specifically to Swordy sword attack (that''s caller context, not function semantics)
+    and misstates ''rotates each candidate by facing'' as if the function does that, when it''s panelFlagCheck_8015D80
+    that transforms by facing per the callee description. A more neutral name better reflects the generic
+    filtered-panel-picker wrapper nature.; run wf investigate investigate-20261018-230610; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of each flag bit in the alliance-dependent param word (which panel states are rejected)
+- Whether the return value is a packed panel X/Y or an index into the candidate list
+- The function does read PanelX/Y, look up team-dependent flag params via GetAllianceDependentPanelParamArgs
+  on byte_810B6E0, then call panelFlagCheck_8015D80 with the candidate list at byte_810B6D4 (0,FF,0,1,FF,0,1,0,7F
+  = four orthogonal dx/dy pairs), so the general behavior is correct. However the summary over-attributes
+  the function specifically to Swordy sword attack (that's caller context, not function semantics) and
+  misstates 'rotates each candidate by facing' as if the function does that, when it's panelFlagCheck_8015D80
+  that transforms by facing per the callee description. A more neutral name better reflects the generic
+  filtered-panel-picker wrapper nature.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810B6B4 -> ai_pickPanelByTeamFlag
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B6B4

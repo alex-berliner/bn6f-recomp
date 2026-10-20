@@ -1,0 +1,50 @@
+name: tryShowCommErrorAndSetState
+address: '0x0803CD40'
+kind: function
+status: probable
+summary: If no screen fade is active, runs the comm-error text script (index 0xA) and writes 8 as a byte
+  to [r5] (a state field in the caller's context).
+interface: (r0 unused on entry; r5 -> error object/context) -> r0 clobbered; flags clobbered
+details: It calls IsScreenFadeActive and returns immediately if a fade is in progress (beq skips the body).
+  Otherwise it invokes RunTextScriptCommError_803CD64 with r0 = 0xA, presumably a message/script index
+  for the comm-error text, then writes the constant 8 as a byte to [r5], likely a state/phase field of
+  a context the caller keeps in r5. The guard against fading suggests the message must only appear during
+  normal rendering.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive; beq locret_803CD52 — body only runs when no fade is active; mov r0,
+    #0xa; bl RunTextScriptCommError_803CD64 — shows comm-error script index 0xA; mov r0, #8; strb r0,
+    [r5] — sets an 8 in a caller-supplied byte after the script is queued'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8422
+  - 0x080062F8 IsScreenFadeActive
+  - 0x0803CD64 RunTextScriptCommError_803CD64
+  reproduce: python3 tools/asmcat.py 0x0803CD40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary matches the asm well: bl IsScreenFadeActive then beq skips the body; otherwise mov r0,#0xa;
+    bl RunTextScriptCommError_803CD64; mov r0,#8; strb r0,[r5]. However the proposed name showCommErrorScript
+    isn''t ideal - the callee name already implies showing; a more descriptive name would emphasize the
+    conditional show + state write.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the meaning of r5's byte (state 8) and what object/context it belongs to is unknown
+- The exact semantics of script index 0xA in RunTextScriptCommError_803CD64 and the ZF convention of IsScreenFadeActive
+  (active vs inactive) are unconfirmed
+- 'The summary matches the asm well: bl IsScreenFadeActive then beq skips the body; otherwise mov r0,#0xa;
+  bl RunTextScriptCommError_803CD64; mov r0,#8; strb r0,[r5]. However the proposed name showCommErrorScript
+  isn''t ideal - the callee name already implies showing; a more descriptive name would emphasize the
+  conditional show + state write.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803CD40 -> tryShowCommErrorAndSetState
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CD40

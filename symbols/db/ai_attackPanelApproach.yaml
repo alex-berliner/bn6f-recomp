@@ -1,0 +1,64 @@
+name: ai_attackPanelApproach
+address: '0x080FECB4'
+kind: function
+status: probable
+summary: 'AI attack step: pick a target panel via a callback, reserve it, set anim 4 and CANNOT_SLIDE
+  flag, lift off the current panel, then on StepTimer expiry transition to HitElement=4; aborts (AttackDuration=0x3C,
+  HitElement=0xC) if unmovable or panel pick fails.'
+interface: (r5 = battle object, r7 = AIAttackVars) -> void; reads/writes oAIAttackVars_AttackElement,
+  PanelChooseCallback, TargetObjectPtr, StepTimer, HitElement, AttackDuration; mutates the object's panels/flags
+details: 'A two-phase AI attack routine. On entry with AttackElement==0 it sets AttackElement=4, checks
+  object_canMove, and calls the stored PanelChooseCallback (via lr=pc so it can return several values)
+  with the target object pointer and per-alliance parameters from byte_80FED18 (alliance*8 selects a pair:
+  0x10/0x30 and a word ~0x0F8800A0/0x0F880080, likely x-offset + panel-choice area). If the callback returns
+  success, the returned coordinates go into FuturePanelX/Y, object_reservePanel claims the panel, CurAnim
+  is set to 4 (a jump/hop anim), OBJECT_FLAGS_CANNOT_SLIDE is set, and object_clearCollisionRegion removes
+  the object from its current panel — i.e. it leaves the ground — with StepTimer=5. In the second phase
+  the timer counts down and on expiry writes HitElement=4 (landing/attack state). If the object cannot
+  move or the callback fails, the attack is aborted: AttackDuration=0x3C and HitElement=0xC.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls object_canMove and object_reservePanel around writing FuturePanelX/FuturePanelY — choosing
+    and claiming a destination panel; sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1 and calls object_clearCollisionRegion,
+    matching an airborne jump out of the current panel; byte_80FED18 indexed by Alliance*8 gives two words
+    passed to the PanelChooseCallback, which returns the panel coordinates; second phase decrements oAIAttackVars_StepTimer
+    and then sets HitElement=4, i.e. the delayed landing/impact; failure paths (canMove==0 or callback
+    returns 0) set AttackDuration=0x3C and HitElement=0xC, cancelling the attack
+  refs:
+  - bn6f/asm/asm31.s:151676
+  - 0x0800E5E2 object_canMove
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x080FECB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate: AttackElement=0 path sets AttackElement=4, calls panel chooser,
+    reserves panel, sets CurAnim=4, sets CANNOT_SLIDE, clears collision, StepTimer=5. On timer expiry
+    HitElement=4. Abort path sets AttackDuration=0x3C and HitElement=0xC. However, ''JumpToTargetPanel''
+    is not clearly evidenced — CurAnim=4 isn''t necessarily a jump anim and this is just an AI attack
+    step. A more neutral name is appropriate.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the byte_80FED18 per-alliance words (likely column offset and allowed panel area) and
+  what the PanelChooseCallback implementation selects
+- which enemy attacks reuse this routine (no caller found yet) and what element/anim id 4 and 0xC denote
+  exactly
+- 'The summary and interface are accurate: AttackElement=0 path sets AttackElement=4, calls panel chooser,
+  reserves panel, sets CurAnim=4, sets CANNOT_SLIDE, clears collision, StepTimer=5. On timer expiry HitElement=4.
+  Abort path sets AttackDuration=0x3C and HitElement=0xC. However, ''JumpToTargetPanel'' is not clearly
+  evidenced — CurAnim=4 isn''t necessarily a jump anim and this is just an AI attack step. A more neutral
+  name is appropriate.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FECB4 -> ai_attackPanelApproach
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FECB4

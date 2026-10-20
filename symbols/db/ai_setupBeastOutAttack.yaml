@@ -1,0 +1,59 @@
+name: ai_setupBeastOutAttack
+address: '0x0801208A'
+kind: function
+status: probable
+summary: 'AI attack setup for Beast Out: writes chip 0x49 params via loc_80126EA, reads alliance from
+  r5+oBattleObject_Alliance, scales the beast power-Atk base entry via battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  (with r0=0x14), stores the result in oAIAttackVars_Damage and 0x94 in oAIAttackVars_ExtraDamage at r7.'
+interface: (r0 unused on entry; r5 = battle object, r7 = AI attack vars struct) -> r0 preserved from the
+  chip-param call; stores damage to oAIAttackVars_Damage and 0x94 to oAIAttackVars_ExtraDamage
+details: First calls somethingWriteChipParams_80126E4 with r0=0x49, so the attack behaves like chip ID
+  0x49; the returned r0 is pushed and later popped (restored before return, though the caller-visible
+  effect is unclear). It then reads a byte from the battle object at oBattleObject_Alliance in r5 and
+  passes it as the index to battle_beastPwrAtk_addScaledBaseFromIndex_8010D04, which scales the 2-byte
+  beast power-Atk base entry at byte_80212D4. The scaled result is written to oAIAttackVars_Damage at
+  [r7], and a constant 0x94 (148) is written to oAIAttackVars_ExtraDamage. This pattern matches Falzar's
+  Beast Out attack setup for an AI-controlled or scripted attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x49; bl loc_80126EA selects chip params for ID 0x49; ldrb r1,[r5,#oBattleObject_Alliance];
+    bl battle_beastPwrAtk_addScaledBaseFromIndex_8010D04 computes damage from the beast power table; strh
+    r0,[r7,#oAIAttackVars_Damage]; mov r0,#0x94; strh r0,[r7,#oAIAttackVars_ExtraDamage] stores the computed
+    and fixed damage; push {r0}/pop {r0} around the body preserves the chip-param call result, implying
+    it matters to the caller
+  refs:
+  - bn6f/asm/asm00_2.s:7319
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  - 0x080126EA somethingWriteChipParams_80126E4
+  reproduce: python3 tools/asmcat.py 0x0801208A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee is `battle_beastPwrAtk_addScaledBaseFromIndex_8010D04`, not `somethingWriteChipParams_80126E4`;
+    the chip-param call is to `loc_80126EA` and the proposal swaps them. Also `r0` is passed as `#0x14`
+    (a scale/base), not as 0 (it is later discarded by the `pop {r0}`), so r0 is not really preserved
+    meaningfully. The naming/summary idea of an AI Beast-Out attack setup is otherwise correct, but the
+    name prefix should be `ai` and function name should follow lowerCamel. The 0x94 extra damage write
+    is correct.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the context (which AI/attack uses this) is unconfirmed
+- Exact semantics of the 0x49 chip-param call and the meaning of the 0x94 ExtraDamage constant are not
+  shown
+- The callee is `battle_beastPwrAtk_addScaledBaseFromIndex_8010D04`, not `somethingWriteChipParams_80126E4`;
+  the chip-param call is to `loc_80126EA` and the proposal swaps them. Also `r0` is passed as `#0x14`
+  (a scale/base), not as 0 (it is later discarded by the `pop {r0}`), so r0 is not really preserved meaningfully.
+  The naming/summary idea of an AI Beast-Out attack setup is otherwise correct, but the name prefix should
+  be `ai` and function name should follow lowerCamel. The 0x94 extra damage write is correct.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801208A -> ai_setupBeastOutAttack
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801208A

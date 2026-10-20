@@ -1,0 +1,62 @@
+name: ai_attackPeriodicSpawnStep
+address: '0x080ECCCC'
+kind: function
+status: probable
+summary: 'AI attack step: on first entry plays animation 0xC, sets object flag bit 22, inits AttackElement=4
+  and StepTimer=0xF; when the timer reaches 0xD it spawns the attack effect on the front panel via sub_80C9BA4,
+  then decrements the timer and reloads 0xF with HitElement=4 when it expires.'
+interface: (r7 = AIAttackVars, r5 = battle object; r0 ignored) -> void; updates StepTimer, AttackElement,
+  HitElement
+details: On entry (AttackElement == 0) it plays animation 0xC via object_setAnimation, resets the counter
+  timer to default, sets ObjectFlags1 bit 22, and initializes AttackElement to 4 and StepTimer to 0xF.
+  Every frame it decrements StepTimer; when it equals 0xD it calls object_getFrontDirection and computes
+  the panel (PanelX + frontDir, PanelY), then calls sub_80C9BA4 with damage+AttackBoost, element, InitFlag
+  and AttackBoost2 — apparently spawning the attack/hit on that panel. When the timer reaches 0 it reloads
+  0xF and sets HitElement = 4, keeping the periodic attack alive. This reads as one step of an AI-driven
+  boss/enemy attack that repeatedly strikes the front panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'setup branch: tst r0,r0 / bne skips object_setAnimation(0xC) + object_setDefaultCounterTime
+    + object_setFlag1 bit22 + AttackElement=4; ldrh StepTimer cmp #0xd block calls object_getFrontDirection
+    then sub_80C9BA4 with PanelX+dir, PanelY, damage+AttackBoost, InitFlag, AttackBoost2; tail: StepTimer
+    decrement, reload 0xF and strh #4 to HitElement on expiry; callees are object_* battle-object helpers,
+    so r5/r7 are the working battle object and its AI attack vars'
+  refs:
+  - bn6f/asm/asm31.s:114268
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  reproduce: python3 tools/asmcat.py 0x080ECCCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are largely correct (timer 0xF→0xD trigger, animation 0xC, AttackElement
+    init to 4, reload at 0, HitElement=4 on wrap, flag bit 22), but two details are wrong: it says StepTimer
+    is decremented ''every frame'' unconditionally, when the asm only decrements after the trigger branch
+    (so it''s really a one-shot per cycle), and it claims sub_80C9BA4 takes element+InitFlag — the asm
+    passes Damage+AttackBoost as r2, AttackBoost2 as r3, with init flag as r1 and a fixed value 0xA<<0x10
+    in r3 originally. The name ''ai_attackPeriodicSpawnStep'' is fine and fits the prefix rules.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80C9BA4 spawns (projectile vs direct hit) — its parameters and target structure are unknown
+- which attack/element value 4 corresponds to
+- which boss or AI state invokes this, since no callers are known
+- 'The proposal''s mechanics are largely correct (timer 0xF→0xD trigger, animation 0xC, AttackElement
+  init to 4, reload at 0, HitElement=4 on wrap, flag bit 22), but two details are wrong: it says StepTimer
+  is decremented ''every frame'' unconditionally, when the asm only decrements after the trigger branch
+  (so it''s really a one-shot per cycle), and it claims sub_80C9BA4 takes element+InitFlag — the asm passes
+  Damage+AttackBoost as r2, AttackBoost2 as r3, with init flag as r1 and a fixed value 0xA<<0x10 in r3
+  originally. The name ''ai_attackPeriodicSpawnStep'' is fine and fits the prefix rules.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ECCCC -> ai_attackPeriodicSpawnStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECCCC

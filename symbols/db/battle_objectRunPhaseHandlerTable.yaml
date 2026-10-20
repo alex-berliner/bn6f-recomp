@@ -1,0 +1,59 @@
+name: battle_objectRunPhaseHandlerTable
+address: '0x0810E8DA'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: returns early if time-stopped or paused, branches to sub_8016EC4
+  when object flag 0x40000000 is set, otherwise either tail-calls one of five custom phase handlers from
+  a local table or defers to the generic phase dispatcher.'
+interface: (object ptr in r5/fixed reg per project convention) -> void; sets flags from battle_isPaused/battle_isTimeStop
+  bytes
+details: 'First calls object_getFlag on the current battle object and tests bit 0x40000000; if set, it
+  takes an alternate branch calling sub_8016EC4. Otherwise it returns early while battle time-stop or
+  the pause flag is active. It then checks [oBattleObject_ExtraVars+8]: if nonzero it delegates to the
+  standard battle_objectUpdateDispatchPhase_80165C2, otherwise it loads the object''s CurPhase byte and
+  tail-calls a handler from a local 5-entry table at off_810E914 via mov lr,pc/bx. The local table implies
+  this is the update entry for one specific object type with 5 custom phases.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,0x40000000 after object_getFlag routes to sub_8016EC4 (loc_810E904); battle_isTimeStop/battle_isPaused
+    early-outs mirror the standard paused/timestop gating of battle_objectUpdateDispatchPhase_80165C2;
+    ldrb r0,[r5,#oBattleObject_CurPhase] + ldr r1,[r1,r0]; bx r1 dispatches through off_810E914's 5 phase
+    handlers (sub_810E928..sub_810EA3E); [r5,#oBattleObject_ExtraVars+8] nonzero path tail-calls battle_objectUpdateDispatchPhase_80165C2,
+    the generic dispatcher; no callers known; layout parallels the known object-update dispatchers, so
+    it is an object's frame-update entry
+  refs:
+  - bn6f/asm/asm32.s:1916
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  reproduce: python3 tools/asmcat.py 0x0810E8DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The structure matches the proposal: early-return on time-stop/pause, alt branch on flag 0x40000000,
+    dispatch via 5-entry table at off_810E914, and fall back to battle_objectUpdateDispatchPhase_80165C2
+    when [ExtraVars+8]!=0. The name is decent but ''AltPhaseTable'' misleads since the 5-entry table is
+    the *primary* path; only the 0x40000000 branch is ''alt''. ''CustomPhaseTable'' or just ''PhaseHandlerTable''
+    fits better.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle object/enemy uses this update (no callers known), and what flag bit 0x40000000 or ExtraVars+8
+  mean semantically
+- what the five phase handlers sub_810E928..sub_810EA3E do to identify the object type
+- 'The structure matches the proposal: early-return on time-stop/pause, alt branch on flag 0x40000000,
+  dispatch via 5-entry table at off_810E914, and fall back to battle_objectUpdateDispatchPhase_80165C2
+  when [ExtraVars+8]!=0. The name is decent but ''AltPhaseTable'' misleads since the 5-entry table is
+  the *primary* path; only the 0x40000000 branch is ''alt''. ''CustomPhaseTable'' or just ''PhaseHandlerTable''
+  fits better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810E8DA -> battle_objectRunPhaseHandlerTable
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E8DA

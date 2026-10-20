@@ -1,0 +1,66 @@
+name: saveGroundmanMinigameData
+address: '0x08143C88'
+kind: function
+status: probable
+summary: 'Saves current GroundMan minigame progress for the active map index: sets the BBS request flag
+  (0x7 of event byte 0x17) and EVENT_1BB, then walks the map''s 8-byte entry table at off_8143D0C, copying
+  each entry''s +4 32-bit value into unk_2011EA0[id*4] and setting event flag 0x16F0+id for each nonzero
+  entry, returning 0.'
+interface: (no meaningful args) -> r0 = 0; sets EVENT_1BB and event flags 0x16F0+item
+details: First sets a request-related event flag (via reqBBS_setFlag, flag 0x7 of byte 0x17) and EVENT_1BB,
+  then reads the current GroundMan minigame map index and picks a per-map entry table through off_8143D0C.
+  Each 8-byte table entry has a nonzero ID byte at +0 and a 32-bit value at +4; the loop stores the value
+  into unk_2011EA0[id*4-4]... actually unk_2011EA0[(id-1)*4] is NOT used — it stores at unk_2011EA0[id*4]
+  offset from the base with r1 = unk_2011EA0 + id*4, i.e. slot id, and sets event flag 0x16F1 + (id-1)
+  for each entry. The loop ends at the zero terminator and the function returns 0. This looks like persisting
+  which items/chests in the minigame map were already collected so the event flags keep them flagged across
+  visits.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetGroundmanMinigameMapIndex then ldr r4,[r4,r0*4] selects a per-map entry table (off_8143D0C);
+    loop: ldrb id,[r4]; ldr value,[r4,#4]; str value,[unk_2011EA0+id*4] persists state per entry; bl SetEventFlag
+    with 0x16F1+(id-1) flags one event per table entry id; reqBBS_setFlag_e17b0f7_8140A00 and EVENT_1BB
+    at entry tie it to the GroundMan BBS request progress; terminator check (tst r0,r0; beq) and ''mov
+    r0,#0'' return show a null-terminated list walked to completion'
+  refs:
+  - bn6f/asm/asm37_1.s:3855
+  - 0x08143978 sub_8143978
+  - 0x0802F114 SetEventFlag
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08140A00 reqBBS_setFlag_e17b0f7_8140A00
+  reproduce: python3 tools/asmcat.py 0x08143C88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core claim (walking a per-map table of 8-byte entries, copying their +4 value into
+    unk_2011EA0[id*4], and setting event flag 0x16F1+id-1) matches the asm exactly: ldrb r0,[r4]; mul
+    r0,#4; str [r4,#4],[r1]; ldr r0,=0x16f1; sub r1,#1; add r0,r1; beq on zero terminator. But the name
+    ''groundman_saveMinigameFlags'' implies only flag saving, while the function also copies 32-bit payload
+    values into unk_2011EA0 (a save buffer), so ''save'' is fine but the function also unconditionally
+    calls reqBBS_setFlag and SetEventFlagFromImmediate for EVENT_1BB regardless of map, which the summary
+    buries. A clearer name should reflect both writing payload data and flags.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the unk_2011EA0 slots (collected item values vs. counters) and the contents of the
+  off_8143D0C tables
+- what sub_8143978 passes in r0 / when this runs (on minigame completion vs. on map exit)
+- 'The summary''s core claim (walking a per-map table of 8-byte entries, copying their +4 value into unk_2011EA0[id*4],
+  and setting event flag 0x16F1+id-1) matches the asm exactly: ldrb r0,[r4]; mul r0,#4; str [r4,#4],[r1];
+  ldr r0,=0x16f1; sub r1,#1; add r0,r1; beq on zero terminator. But the name ''groundman_saveMinigameFlags''
+  implies only flag saving, while the function also copies 32-bit payload values into unk_2011EA0 (a save
+  buffer), so ''save'' is fine but the function also unconditionally calls reqBBS_setFlag and SetEventFlagFromImmediate
+  for EVENT_1BB regardless of map, which the summary buries. A clearer name should reflect both writing
+  payload data and flags.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143C88 -> saveGroundmanMinigameData
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143C88

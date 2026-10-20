@@ -1,0 +1,67 @@
+name: ai_findForwardMovePanel
+address: '0x080C2878'
+kind: function
+status: probable
+summary: Battle AI helper that searches for a free, empty panel in front of the object using FuturePanelX/Y
+  as a starting candidate; commits the candidate and advances the phase on success, or ends the turn on
+  failure.
+interface: (r0/r5 = battle object, reads FuturePanelX/Y as starting candidate) -> writes oBattleObject_FuturePanelX/Y,
+  clears ExtraVars+8, sets CurPhase=4 on success, or CurPhase=0 and CurAction=8 on failure; r0 clobbered
+details: 'Takes the object''s FuturePanelX/Y candidate, validates it on the 6x3 grid, and loops over rows
+  (r1 incremented up to 3) calling object_checkPanelParameters with a per-alliance mask table (off_80C2904:
+  0x4000000/0x8000000) to test panel state. For each passing candidate it computes the facing multiplier
+  via object_getFrontDirection, rejects candidates standing on RelatedObject1Ptr''s current panel, and
+  otherwise requires panel flags 0x10 set and 0xF800000 clear (free/normal panel). On success it commits
+  the candidate into FuturePanelX/Y, clears ExtraVars+8, and advances the phase to 4 (execute move). If
+  ExtraVars+8 is nonzero the row search restarts at row 1 keeping the stored X; if the grid position is
+  invalid or all rows fail, it sets phase 0 and CurAction 8 (give up turn/idle).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_isValidPanel guards the whole search; failure falls to loc_80C28F6 setting CurAction=8;
+    ldr r3, off_80C2900 indexed by oBattleObject_Alliance<<2 feeds alliance-specific panel masks to object_checkPanelParameters;
+    bl object_getFrontDirection and compare against RelatedObject1Ptr''s PanelX/PanelY exclude the linked
+    object''s panel as a destination; success path: strb to FuturePanelX/Y, str 0 to ExtraVars+8, mov
+    r0,#4 strh to CurPhaseAndPhaseInitialized; row loop add r1,#1 / cmp r1,#3 / ble loc_80C2890 scans
+    rows for an acceptable panel before giving up'
+  refs:
+  - bn6f/asm/asm31.s:23065
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080C2878
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it validates the starting candidate panel, loops rows, calls object_checkPanelParameters
+    with the mask table, skips panels occupied by RelatedObject1Ptr, then checks 0x10 set and 0xF800000
+    clear, committing on success (phase=4) or giving up (phase=0, CurAction=8). One small detail: the
+    failure path writes 0 to oBattleObject_CurPhaseAndPhaseInitialized as a halfword (strh), not as a
+    phase value separate from a flag. Also, ExtraVars+8 is only cleared on success, not re-checked for
+    restart — the row search restarts by jumping to loc_80C288E after recomputing column from object_getFrontDirection.
+    Name is fine; summary could be tighter.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of panel flag 0x10 and mask 0xF800000
+- what RelatedObject1Ptr represents here (target vs ally) and why the candidate's panel minus facing direction
+  is compared to it
+- which AI states/objects call this (no callers known)
+- 'The code matches the proposal: it validates the starting candidate panel, loops rows, calls object_checkPanelParameters
+  with the mask table, skips panels occupied by RelatedObject1Ptr, then checks 0x10 set and 0xF800000
+  clear, committing on success (phase=4) or giving up (phase=0, CurAction=8). One small detail: the failure
+  path writes 0 to oBattleObject_CurPhaseAndPhaseInitialized as a halfword (strh), not as a phase value
+  separate from a flag. Also, ExtraVars+8 is only cleared on success, not re-checked for restart — the
+  row search restarts by jumping to loc_80C288E after recomputing column from object_getFrontDirection.
+  Name is fine; summary could be tighter.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2878 -> ai_findForwardMovePanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2878

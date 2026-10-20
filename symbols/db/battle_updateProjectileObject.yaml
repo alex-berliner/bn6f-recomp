@@ -2,28 +2,27 @@ name: battle_updateProjectileObject
 address: '0x080DE088'
 kind: function
 status: probable
-summary: 'Per-frame update for a thrown battle object: it advances along X/Y/Z velocities with gravity
-  (Z -= 0x8888), recomputes panel coordinates, and on timer expiry clears a related object''s flags, self-destructs,
-  spawns an effect, then finds the player by alliance and adds 300 HP, plays sound 0x8A, calls sub_801A7CC(5),
-  and clears the player AIData SubordinateObjectPtr and +0x60 fields.'
+summary: 'Per-frame update for a thrown battle object: it advances along X/Y/Z velocities with gravity (Z -= 0x8888),
+  recomputes panel coordinates, and on timer expiry clears a related object''s flags, self-destructs, spawns an
+  effect, then finds the player by alliance and adds 300 HP, plays sound 0x8A, calls sub_801A7CC(5), and clears
+  the player AIData SubordinateObjectPtr and +0x60 fields.'
 interface: (r5 = *BattleObject) -> void; sets the object to destroy state on expiry
-details: Each frame it reads the anim frame's attribute byte via sprite_getFrameParameters and, if bit
-  0x80 is set, writes 1 to oBattleObject_CurAnimAndCurAnimCopy. It decrements oBattleObject_Timer; while
-  positive it integrates X/Y/Z velocities into the object position and subtracts 0x8888 from ZVelocity
-  each frame (dword_80DE138 = 0xFFFF7778), then recomputes PanelX/PanelY via object_setPanelsFromCoordinates
-  — an arcing flight path. When the timer runs out it clears the related object's header flags, sets CUR_STATE_DESTROY,
-  spawns a type-0 effect from parameters at r5+0x34, finds the player via battle_findPlayer(Alliance),
-  heals it 300 HP with object_addHP, plays sound 0x8A, calls sub_801A7CC(5) (likely a battle message/popup),
-  and clears the player AIData's SubordinateObjectPtr plus the field at AIData+0x60.
+details: Each frame it reads the anim frame's attribute byte via sprite_getFrameParameters and, if bit 0x80 is set,
+  writes 1 to oBattleObject_CurAnimAndCurAnimCopy. It decrements oBattleObject_Timer; while positive it integrates
+  X/Y/Z velocities into the object position and subtracts 0x8888 from ZVelocity each frame (dword_80DE138 = 0xFFFF7778),
+  then recomputes PanelX/PanelY via object_setPanelsFromCoordinates — an arcing flight path. When the timer runs
+  out it clears the related object's header flags, sets CUR_STATE_DESTROY, spawns a type-0 effect from parameters
+  at r5+0x34, finds the player via battle_findPlayer(Alliance), heals it 300 HP with object_addHP, plays sound 0x8A,
+  calls sub_801A7CC(5) (likely a battle message/popup), and clears the player AIData's SubordinateObjectPtr plus
+  the field at AIData+0x60.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'bl object_addHP with r0=0x96<<1=0x12C on battle_findPlayer(alliance) result — heals the player
-    300; Timer branch: on expiry sets CUR_STATE_DESTROY and spawns an effect from r5+0x34 before healing;
-    Loc_80DE0EE adds X/Y/ZVelocity to X/Y/Z then subtracts 0x8888 from ZVelocity, then object_setPanelsFromCoordinates
-    — ballistic movement; Callee object_addHP is documented as HP-add clamped to MaxHP, confirming a heal
-    not damage; AIData fields cleared (SubordinateObjectPtr and +0x60) after the heal, tying the object
-    to the player''s active effect'
+  detail: 'bl object_addHP with r0=0x96<<1=0x12C on battle_findPlayer(alliance) result — heals the player 300; Timer
+    branch: on expiry sets CUR_STATE_DESTROY and spawns an effect from r5+0x34 before healing; Loc_80DE0EE adds
+    X/Y/ZVelocity to X/Y/Z then subtracts 0x8888 from ZVelocity, then object_setPanelsFromCoordinates — ballistic
+    movement; Callee object_addHP is documented as HP-add clamped to MaxHP, confirming a heal not damage; AIData
+    fields cleared (SubordinateObjectPtr and +0x60) after the heal, tying the object to the player''s active effect'
   refs:
   - bn6f/asm/asm31.s:82187
   - 0x080DE080 sub_80DE080
@@ -31,24 +30,22 @@ evidence:
   - 0x0800E2EC object_addHP
   - 0x0800E2AC object_setPanelsFromCoordinates
   reproduce: python3 tools/asmcat.py 0x080DE088
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code calls object_addHP with #0x96 lsl #1 = 300, but the proposal says heals the player; however
-    object_addHP is called with the player object returned by battle_findPlayer, which makes the player
-    the recipient. The 0x60 AIData field clear and SubordinateObjectPtr clear match. The summary is otherwise
-    accurate, but calling it battle_updateRecoveryProjectile assumes recovery/healing semantics that aren''t
-    fully certain from this single routine. The arcing flight (Z velocity adjustment via 0xFFFF7778 and
-    PanelX/PanelY recompute) is correct.; run wf investigate investigate-20261018-223614; proposed by
-    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The code
+    calls object_addHP with #0x96 lsl #1 = 300, but the proposal says heals the player; however object_addHP is
+    called with the player object returned by battle_findPlayer, which makes the player the recipient. The 0x60
+    AIData field clear and SubordinateObjectPtr clear match. The summary is otherwise accurate, but calling it battle_updateRecoveryProjectile
+    assumes recovery/healing semantics that aren''t fully certain from this single routine. The arcing flight (Z
+    velocity adjustment via 0xFFFF7778 and PanelX/PanelY recompute) is correct.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
 open_questions:
-- Which chip/Navi spawns this projectile (Recov300-style capsule vs. a Navi heal) — need the caller/spawner
-  context
+- Which chip/Navi spawns this projectile (Recov300-style capsule vs. a Navi heal) — need the caller/spawner context
 - Exact meaning of sub_801A7CC(5) and the AIData fields at SubordinateObjectPtr and +0x60 that get cleared
-- 'The code calls object_addHP with #0x96 lsl #1 = 300, but the proposal says heals the player; however
-  object_addHP is called with the player object returned by battle_findPlayer, which makes the player
-  the recipient. The 0x60 AIData field clear and SubordinateObjectPtr clear match. The summary is otherwise
-  accurate, but calling it battle_updateRecoveryProjectile assumes recovery/healing semantics that aren''t
-  fully certain from this single routine. The arcing flight (Z velocity adjustment via 0xFFFF7778 and
-  PanelX/PanelY recompute) is correct.'
+- 'The code calls object_addHP with #0x96 lsl #1 = 300, but the proposal says heals the player; however object_addHP
+  is called with the player object returned by battle_findPlayer, which makes the player the recipient. The 0x60
+  AIData field clear and SubordinateObjectPtr clear match. The summary is otherwise accurate, but calling it battle_updateRecoveryProjectile
+  assumes recovery/healing semantics that aren''t fully certain from this single routine. The arcing flight (Z velocity
+  adjustment via 0xFFFF7778 and PanelX/PanelY recompute) is correct.'
 sources:
 - wf investigate investigate-20261018-223614
 changes:
@@ -60,5 +57,9 @@ changes:
   what: rename sub_80DE088 -> battle_updateProjectileObject
   where: bn6f 73926dff
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
 previous_names:
 - sub_80DE088

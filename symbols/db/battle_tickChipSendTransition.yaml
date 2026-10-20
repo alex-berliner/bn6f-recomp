@@ -1,0 +1,69 @@
+name: battle_tickChipSendTransition
+address: '0x0812503C'
+kind: function
+status: probable
+summary: 'Per-frame chip-send transition tick: reinitialises the chip-sprite slot buffer, increments the
+  frame counter (capped at 0x6A, then sets state byte to 0x24), sets r5+0x70=0xFF, pumps battle_runTransition,
+  writes halfword pairs (kind 4 then kind 7) into three sprite structs with counter/state-gated values,
+  and calls sub_81267F0.'
+interface: (r5 = battle-transition state struct, implicitly set by caller) -> r0 = destroyed; r5+0x70
+  = 0xFF, r5+0x74 counter incremented (capped at 0x6A, then state byte r5+2 = 0x24)
+details: 'Uses the shared context pointer r5 (a battle transition/work struct) without saving it, so the
+  caller keeps it set up. It first re-initialises the chip-sprite slot buffer at oToolkit_Unk200f3a0 via
+  battleObject_initChipSpriteSlotBuffer, then increments the frame counter at r5+0x74; when it reaches
+  0x6A it clamps the counter and writes 0x24 to the phase/state byte at r5+2, ending this transition phase.
+  It stores 0xFF at r5+0x70 (a flag the runTransition pump consumes) and calls battle_runTransition_8125444
+  to tick/draw the transition. It then calls two unknown helpers and twice uses sprite_setStructHalfwordPairOnThree
+  to write a halfword pair (kind 4, then kind 7) into up to three structs from the 0x2008450 pool: the
+  written value is normally 0, but becomes the halfword at r5+0x3A when r5+0x68 == 0x1D, at r5+0x26 when
+  r5+0x74 >= 0x60 and r5+0x60 == 5, and at r5+0x30 when r5+0x64 == 0xF — counter-gated display parameters
+  (likely fade/scroll or animation values). Finally calls sub_81267F0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: counter r5+0x74 incremented and clamped at 0x6A with state byte r5+2 = 0x24 (phase handoff);
+    r5+0x70 = 0xFF immediately before bl battle_runTransition_8125444, matching the pump's flag-driven
+    behaviour; sprite_setStructHalfwordPairOnThree_8117084 called with kinds 4 and 7 and counter-gated
+    values from r5+0x3A/0x26/0x30; opens by re-initialising the chip-sprite slot staging buffer (battleObject_initChipSpriteSlotBuffer_8126818);
+    callees' known summaries (transition pump draws player/enemy rows, ticks chip/eStruct/entities) match
+    a battle-intro per-frame step
+  refs:
+  - bn6f/asm/asm33.s:3924
+  - 0x08126818 battleObject_initChipSpriteSlotBuffer_8126818
+  - 0x08125444 battle_runTransition_8125444
+  - 0x08117084 sprite_setStructHalfwordPairOnThree_8117084
+  reproduce: python3 tools/asmcat.py 0x0812503C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate per the asm (counter increment by 2 capped at 0x6A, state
+    byte set to 0x24, 0xFF flag, two sprite_setStructHalfwordPairOnThree calls with kinds 4 and 7, final
+    sub_81267F0 call). However, the proposed name battle_stepIntroTransition is reasonable but slightly
+    off: this is more accurately a per-frame tick driving the transition''s draw-and-update loop (it pumps
+    the transition itself), and the trigger at r5+0x68==0x1D and r5+0x64==0xF are battle-state checks,
+    not intro-specific. A name like battle_tickChipSendTransition or battle_runChipFrameStep fits the
+    ''battle_...'' prefix better and reflects that it also re-inits the chip-sprite slot buffer.; run
+    wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no caller known — the dispatch that sets r5 and the meaning of state byte 0x24 / field 0x70 are unconfirmed
+- exact meaning of the kind-4/kind-7 halfword pairs written into the 0x2008450 structs (screen position?
+  fade?) and of the two unknown callees sub_8125F5C/sub_8126114
+- 'The summary and interface are accurate per the asm (counter increment by 2 capped at 0x6A, state byte
+  set to 0x24, 0xFF flag, two sprite_setStructHalfwordPairOnThree calls with kinds 4 and 7, final sub_81267F0
+  call). However, the proposed name battle_stepIntroTransition is reasonable but slightly off: this is
+  more accurately a per-frame tick driving the transition''s draw-and-update loop (it pumps the transition
+  itself), and the trigger at r5+0x68==0x1D and r5+0x64==0xF are battle-state checks, not intro-specific.
+  A name like battle_tickChipSendTransition or battle_runChipFrameStep fits the ''battle_...'' prefix
+  better and reflects that it also re-inits the chip-sprite slot buffer.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812503C -> battle_tickChipSendTransition
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812503C

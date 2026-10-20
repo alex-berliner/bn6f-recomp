@@ -1,0 +1,62 @@
+name: battle_removeObjectTagFromList
+address: '0x081366FC'
+kind: function
+status: probable
+summary: Removes a battle object's tag byte (descriptor byte +3) from the 6-slot list at unk_2022B70 by
+  shifting later entries left, unless another object in the first N entries of the 2004190 array shares
+  the same tag.
+interface: (r5 = battle object/holder with halfwords at +0x28 and +0x2c) -> r0 = destroyed; touches unk_2022B70[0..6]
+details: It first calls battle_checkItemFlagFor_813B9B4 with [r5+0x28] and [r5+0x2c]; the returned flag
+  minus 1 is kept on the stack as a loop count. It then fetches an object index from the r5-related toolkit
+  entry (toolkit_getUnk2004190EntryPtr) and reads byte +3 of that battle-object descriptor as a tag value
+  r4. It scans the first N entries of the 2004190 array (8 bytes each, halfword at +0 = object index);
+  if any of those objects' byte +3 equals r4, it returns without changing anything. Otherwise it searches
+  the 6-byte array unk_2022B70 for a byte equal to r4 and, if found, shifts all later bytes left by one
+  and zeroes the last slot (0x2022B76), removing that entry. The exact gameplay meaning of the tag byte
+  and of the 6-entry list is not established here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_checkItemFlagFor_813B9B4 on [r5+0x28]/[r5+0x2c]; sub r0,#1 stored as loop bound at
+    sp; loc_813671A loop: toolkit_getUnk2004190EntryPtr then battleObject_getByIndex, comparing ldrb [r0,#3]
+    to r4 (early exit if equal); loc_8136740: scans 6 bytes at off_8136798 = unk_2022B70 for r4; loc_8136752:
+    memmove-style byte shift left (ldrb [r0,r3] / strb [r1,r3]) then strb #0 at 0x2022B76'
+  refs:
+  - bn6f/asm/asm36.s:13471
+  - 0x081359A0 sub_81359A0
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0813B9B4 battle_checkItemFlagFor_813B9B4
+  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
+  reproduce: python3 tools/asmcat.py 0x081366FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly right but has errors: the slot zeroed is at r7+0x6 (0x2022B76), matching the
+    proposal, but the early loop already fetched r4 via battleObject_getByIndex at loc_8136712 using the
+    initial entry''s index (before any loop iteration), so r4 is set once, not ''fetches an object index...
+    and reads byte +3'' iteratively. The loop at loc_813671A checks whether any OTHER entry (entries 0..N)
+    shares byte +3 == r4 and bails to loc_8136768 (no removal). Otherwise it scans the 6-byte list and
+    removes the first matching tag. So the behavior matches the proposal but with a cleaner name.; run
+    wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what the tag byte (+3 of the 0x10 battle-object descriptor) means gameplay-wise
+- what the 6-byte list at 2022B70 is used for elsewhere (callers/readers of 2022B70 would confirm)
+- what [r5+0x28]/[r5+0x2c] identify for battle_checkItemFlagFor
+- 'The summary is mostly right but has errors: the slot zeroed is at r7+0x6 (0x2022B76), matching the
+  proposal, but the early loop already fetched r4 via battleObject_getByIndex at loc_8136712 using the
+  initial entry''s index (before any loop iteration), so r4 is set once, not ''fetches an object index...
+  and reads byte +3'' iteratively. The loop at loc_813671A checks whether any OTHER entry (entries 0..N)
+  shares byte +3 == r4 and bails to loc_8136768 (no removal). Otherwise it scans the 6-byte list and removes
+  the first matching tag. So the behavior matches the proposal but with a cleaner name.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81366FC -> battle_removeObjectTagFromList
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81366FC

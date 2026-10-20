@@ -1,0 +1,70 @@
+name: ai_advanceToTargetStep
+address: '0x080FCAC0'
+kind: function
+status: probable
+summary: AI attack that every other timer tick (StepTimer==3) advances the attacker one (dx,dy) step from
+  its stored TargetPanelX/Y using a per-alliance direction table; aborts when the destination panel carries
+  flag 0x800000, otherwise commits the new panel via setCoordinatesFromPanels/updateCollisionPanels, finishing
+  (HitElement=0xC) when the timer runs out.
+interface: (r0 = unused/overwritten with AttackElement byte, r5 = battle object, r7 = oAIAttackVars) ->
+  r0 = clobbered; writes AttackElement, StepTimer, AttackStepIndex, HitElement, object panel coords
+details: 'First invocation (AttackElement==0) initializes: element 4, CurAnim 4, clears ScratchVar via
+  clearWordIfNonNull, StepTimer=6. Each subsequent call decrements StepTimer; when it reaches 3 it sets
+  CurAnim 3, computes AttackStepIndex as SubStepIndex XOR Alliance (used by sprite_setFlip to mirror the
+  sprite by side), and fetches a signed (dx,dy) pair from byte_80FCB48 at Alliance*8 + SubStepIndex*2.
+  It adds the pair to TargetPanelX/Y and calls object_getPanelParameters, testing result bit 0x800000;
+  if the destination panel has that flag it writes HitElement=0x14 (step blocked), otherwise it writes
+  the new PanelX/PanelY to the object, calls object_setCoordinatesFromPanels and object_updateCollisionPanels
+  to commit the move. When StepTimer counts below 0 it writes HitElement=0xC (move finished). dword_80FCB5C
+  is a 4-byte table (0,1,0,1) indexed by SubStepIndex feeding the flip computation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80FCAC0: on AttackElement==0 sets element 4, CurAnim 4, StepTimer 6 — attack setup; loc_80FCAF0:
+    AttackStepIndex = SubStepIndex ^ Alliance passed to sprite_setFlip — side-dependent sprite mirroring;
+    byte_80FCB48 indexed Alliance*8+SubStepIndex*2 gives signed dx,dy added to TargetPanelX/Y — per-step
+    movement offsets; tst r0, 0x800000 after object_getPanelParameters: blocked destination writes HitElement=0x14,
+    else commits panel coords and updates collision panels; StepTimer<=0 writes HitElement=0xC — step
+    sequence completion'
+  refs:
+  - bn6f/asm/asm31.s:147193
+  - 0x080FCF9C clearWordIfNonNull
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FCAC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described flow: init sets AttackElement=4 and StepTimer=6; each tick decrements
+    StepTimer; at 3 it flips, computes dx/dy from byte_80FCB48, checks 0x800000 and either commits the
+    move or sets HitElement=0x14; below 0 sets HitElement=0xC. However, the data at dword_80FCB5C is 0x01000100
+    (little-endian bytes 0,1,0,1), correctly noted, and the dword_80FCB60 mask is 0x800000. The summary''s
+    ''zig-zag panel step per tick'' is fine but the name ''ai_stepMoveAttackUpdate'' is okay; the panel-block
+    test uses 0x800000, which actually means a hole/missing panel rather than a ''blocked panel''. Minor
+    naming tweak would be ''ai_stepMoveAttackUpdate'' is acceptable; prefer ''ai_advanceToTargetStep''
+    to emphasize stepping toward target panel.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which enemy/attack uses this and the meaning of element 4 and HitElement values
+  0xC/0x14 in the surrounding AI dispatch are unconfirmed
+- Exact meaning of panel flag 0x800000 (hole vs. blocked) is inferred from it aborting the step
+- 'The code matches the described flow: init sets AttackElement=4 and StepTimer=6; each tick decrements
+  StepTimer; at 3 it flips, computes dx/dy from byte_80FCB48, checks 0x800000 and either commits the move
+  or sets HitElement=0x14; below 0 sets HitElement=0xC. However, the data at dword_80FCB5C is 0x01000100
+  (little-endian bytes 0,1,0,1), correctly noted, and the dword_80FCB60 mask is 0x800000. The summary''s
+  ''zig-zag panel step per tick'' is fine but the name ''ai_stepMoveAttackUpdate'' is okay; the panel-block
+  test uses 0x800000, which actually means a hole/missing panel rather than a ''blocked panel''. Minor
+  naming tweak would be ''ai_stepMoveAttackUpdate'' is acceptable; prefer ''ai_advanceToTargetStep'' to
+  emphasize stepping toward target panel.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FCAC0 -> ai_advanceToTargetStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCAC0

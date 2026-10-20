@@ -1,0 +1,72 @@
+name: object_checkMovePanel
+address: '0x080CBF04'
+kind: function
+status: probable
+summary: After a battle object's x position changes, sets byte obj+5 to 1 if the panel at the object's
+  y position fails a flag test (required mask 0x10, forbidden mask 0x6800000), when facing/skip conditions
+  are met; unconditionally stores the new x and returns 1.
+interface: (r0 = new x position, 16.16 fixed, r1 = battle object) -> r0 = 1 always; obj+0x34 = new x,
+  byte obj+5 possibly set to 1
+details: 'Takes an object (r1) and a new x coordinate (r0). It first checks object+0x4c == 0xC0 (sub 0x60
+  then compare) and object+0x60 == 0 as gate conditions. It calls object_getFrontDirection for the object''s
+  +1/-1 side and computes the sign of ([obj+0x34]>>16) - dir; if the movement direction matches that sign
+  the check is skipped, so it only proceeds when the object moves opposite/against the stored relation.
+  It then converts (r0, [obj+0x38]) to panel coordinates via convertXYToPanelXY and calls object_checkPanelParameters
+  with required mask 0x10 and forbidden mask 0x6800000; if the panel does NOT satisfy this, byte obj+5
+  is set to 1, likely a trigger/event flag for a trap or reaction behavior. Unconditionally stores the
+  new x into obj+0x34 (previous-position field) and returns 1. Note: the shown asm uses r5 for the top
+  comparison and the strb target, but r5 is never set here, so those are likely r4/#imm encodings misread
+  or caller-planted registers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection and asr #0x1f sign test against cmp r2,r3 skip the flag set when
+    movement matches facing; bl convertXYToPanelXY_800E258 with r1=[r4,#0x38] feeds panel coords into
+    bl object_checkPanelParameters with dword_80CC02C=0x10 / dword_80CC030=0x6800000; cmp r0,#0; bne loc_80CBF4E
+    followed by mov r0,#1; strb r0,[r5,#5] sets a byte flag only when the panel check fails; str r1,[r4,#0x34]
+    at the end stores the input value unconditionally and mov r0,#1 gives a constant return; gate checks
+    ldr r2,[r4,#0x4c]; sub #0x60 and ldr r2,[r4,#0x60]; cmp #0 restrict this to a specific object state'
+  refs:
+  - bn6f/asm/asm31.s:43563
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080CBF04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly reads the body (sign comparison, convertXYToPanelXY, checkPanelParameters
+    with required 0x10 / forbidden 0x6800000, return 1, unconditional store of new x). However it guesses
+    ''reverse-move'' semantics from the sign-check, while the asm only compares a freshly returned object_getFrontDirection
+    (r2) against a sign derived from (old_x>>16) - (new_x>>16) - new_x; with r0 unmodified the subtraction
+    collapses to -new_x, so it is essentially comparing facing direction to the sign of -new_x, not against
+    the object''s stored relation. Naming this ''checkReverseMovePanel'' overstates the code; ''object_checkMovePanel''
+    is closer. Also r5 in the strb is read without ever being written in the function, so it is caller-supplied,
+    not a misread of r4.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the meaning of the 0xC0 gate on obj+0x4c, of obj+0x60, and of the byte at obj+5
+  is unconfirmed
+- The r5 references (cmp r2,r5 and strb [r5,#5]) are unexplained for a Thumb caller; a caller or corrected
+  disassembly is needed to confirm whether they are r4 or caller-planted registers
+- Which panel flag 0x10 represents (and what 0x6800000 forbids) is unknown without the panel-flag table,
+  so the gameplay trigger cannot be named precisely
+- The proposal correctly reads the body (sign comparison, convertXYToPanelXY, checkPanelParameters with
+  required 0x10 / forbidden 0x6800000, return 1, unconditional store of new x). However it guesses 'reverse-move'
+  semantics from the sign-check, while the asm only compares a freshly returned object_getFrontDirection
+  (r2) against a sign derived from (old_x>>16) - (new_x>>16) - new_x; with r0 unmodified the subtraction
+  collapses to -new_x, so it is essentially comparing facing direction to the sign of -new_x, not against
+  the object's stored relation. Naming this 'checkReverseMovePanel' overstates the code; 'object_checkMovePanel'
+  is closer. Also r5 in the strb is read without ever being written in the function, so it is caller-supplied,
+  not a misread of r4.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CBF04 -> object_checkMovePanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBF04

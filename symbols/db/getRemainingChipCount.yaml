@@ -1,0 +1,62 @@
+name: getRemainingChipCount
+address: '0x0802E830'
+kind: function
+status: probable
+summary: Returns the remaining usable count of chip r1 for record r0 by incrementing its per-chip counter
+  (capped at chipdata[0x1E]) in a 0x1D0-stride array at unk_2036120; returns 0xFF if already at cap.
+interface: (r0 = record index, r1 = chip ID) -> r0 = max - newCount (remaining), or 0xFF if count already
+  >= max; r1 = max - newCount on success path exit
+details: Looks up the 44-byte chip record for chip ID r1 via getChip8021DA8 and computes record[r0] (stride
+  0x1D0, base 0x2036120) via getEntryPtr_2036120_1D0_802E070. At record+0x60 it indexes a byte by the
+  chip ID, so each record holds a counter table for many chip IDs. The byte is compared against chipdata[0x1E]
+  (an apparent per-chip cap, e.g. max stock/copies); if below the cap it is incremented and written back
+  (the r7 flag is always 1, so the write always happens), then it returns cap - newCount. If the count
+  already equals or exceeds the cap, it returns 0xFF as a failure/full sentinel without writing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl getChip8021DA8 uses r1 as chip ID, giving the cap at ldrb r1,[r6,#0x1e]; add r0,#0x60; ldrb
+    r2,[r0,r5] indexes the counter byte by chip ID r5=r1 within the record; cmp r2,r1 / bge loc_802E85C
+    plus mov r0,#0xFF is the already-full early exit; add r2,#1 ... strb r2,[r0,r5] is the capped increment-and-store;
+    sub r0,r1,r2 returns remaining capacity; Callee getEntryPtr_2036120_1D0_802E070 confirms a 0x1D0-stride
+    record array indexed by r0
+  refs:
+  - bn6f/asm/asm03_0.s:18164
+  - 0x0800EE98 sub_800EE98
+  - 0x0802E2C4 sub_802E2C4
+  - 0x08021AA4 getChip8021DA8
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x0802E830
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The caller''s name ''getEntryPtr_2036120_1D0_802E070'' and the pattern of having r0=index and r1=chip_id,
+    with the chip-database lookup on r1, matches the proposal. The increment-and-cap logic against chipdata[0x1E]
+    returning 0xFF on full is also correct. However, the prefix should reflect that this increments a
+    counter, so ''increment'' is not a valid registered prefix; better to use ''get'' (e.g., getChipUseCount)
+    or just ''e'' isn''t appropriate either; ''req'' or a game-action prefix fits, but ''increment'' itself
+    can be reframed as a getter/returner of remaining count.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What structure lives at 0x2036120 (save/shop/folder work area) and what its 0x1D0-byte records represent
+- Meaning of ChipData field 0x1E (likely a max count or price-related quantity)
+- What the callers (sub_800EE98, sub_802E2C4) use the return value for, and whether the r7 store-enable
+  flag is ever cleared elsewhere in the family
+- The caller's name 'getEntryPtr_2036120_1D0_802E070' and the pattern of having r0=index and r1=chip_id,
+  with the chip-database lookup on r1, matches the proposal. The increment-and-cap logic against chipdata[0x1E]
+  returning 0xFF on full is also correct. However, the prefix should reflect that this increments a counter,
+  so 'increment' is not a valid registered prefix; better to use 'get' (e.g., getChipUseCount) or just
+  'e' isn't appropriate either; 'req' or a game-action prefix fits, but 'increment' itself can be reframed
+  as a getter/returner of remaining count.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802E830 -> getRemainingChipCount
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E830

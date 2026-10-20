@@ -1,0 +1,70 @@
+name: rfu_waitLinkRecordsForCutscene
+address: '0x0813096C'
+kind: function
+status: probable
+summary: 'RFU link-sync state handler (state byte 0x20): dispatches the wireless link state, seeds a pending
+  0xDC transfer entry, waits until two RFU link records both carry id 0xDC matching eLinkState (+0x1C
+  word, +0xA halfword), and once no fade is active launches cutscene script 0x68, advancing the owner
+  state ([r5+2]=4, [r5+0x14]=0, [r5+0x2A]=0xDC).'
+interface: (r0 = state byte value 0x20, r5 = owner state struct) -> r0 = void; writes owner fields 0x10/0x26/0x2A/0x32/0x02/0x14
+details: 'Stores 0x20 into [r5+0x10] and calls the eStruct200BC30 mode dispatcher; on mode 1 it returns
+  immediately, on mode 4 it delegates to sub_81313C0. Otherwise it tests the dispatch result bits: if
+  bit 0x10 is clear it calls sub_81325CC and seeds a pending record with id 0xDC (word 0 at +8, 0xDC at
+  +0xA) plus zeroes [r5+0x26]; if bit 8 is set it bails out. It then compares two 16-byte entries fetched
+  via sub_81323B0 against fields of eLinkState (+0x1C word, +0xA halfword) and requires both entries to
+  carry id 0xDC — a halving 0x8 bitmask counter proves both must match. When matched, no screen fade is
+  active, and it saves [r5+0x2A] into [r5+0x32], calls init_cutsceneSceneState (which starts chatbox script
+  0x68), sets the owner''s state bytes ([r5+2]=4, [r5+0x14]=0) and re-arms [r5+0x2A] to 0xDC.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_803EAE4; cmp r0,#4 / cmp r0,#1 — dispatches on the wireless comm struct''s mode byte,
+    so this is a link-state-driven handler; bl sub_803E8F8; mov r6,r0 then compares [r4+4] vs [r6+0x1C]
+    and [r4+2] vs [r6+0xA] — matches link-state records against a local pending entry; ldrh r1,[r4,#0xA];
+    ldr r2,byte_8130C88 (0xDC); bne skip and the r3=8 halving mask require BOTH entries to carry id 0xDC;
+    bl IsScreenFadeActive; beq skip, then bl init_cutsceneSceneState — waits for fade end before starting
+    scene script 0x68; strb #4,[r5,#2]; strh 0xDC,[r5,#0x2A] — advances the owner''s state machine and
+    re-arms the 0xDC marker'
+  refs:
+  - bn6f/asm/asm36.s:1193
+  - 0x081312FC init_cutsceneSceneState
+  - 0x0803E8F8 sub_803E8F8
+  - 0x0803EAE4 sub_803EAE4
+  reproduce: python3 tools/asmcat.py 0x0813096C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches most of the proposal: it stores 0x20 at [r5+0x10], dispatches via sub_803EAE4 (the
+    eStruct200BC30 dispatcher), handles mode 4 via sub_81313C0 and mode 1 as an early return, seeds a
+    pending 0xDC entry via sub_81325CC, loops over two 16-byte records comparing them against eLinkState
+    fields (+0x1C word and +0xA halfword) requiring id 0xDC, checks no fade, and then calls init_cutsceneSceneState
+    setting [r5+2]=4, [r5+0x14]=0, [r5+0x2A]=0xDC, copying old [r5+0x2A] into [r5+0x32]. The summary''s
+    wording about ''link drops'' / ''resetting pending entry when the link drops'' is wrong — the 0xDC
+    seeding is on the bit-0x10-clear branch which is the normal link-up path, not a drop handler. A cleaner
+    summary that doesn''t claim a drop path and a name reflecting RFU link-record sync would fit better.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the owner struct at r5 and which game feature drives it (brother link? trade?
+  wireless event) is unconfirmed
+- sub_81325CC, sub_81323B0 and sub_803EF74 are unnamed, so the exact record layout and the meaning of
+  id 0xDC are inferred only from field comparisons
+- 'The code matches most of the proposal: it stores 0x20 at [r5+0x10], dispatches via sub_803EAE4 (the
+  eStruct200BC30 dispatcher), handles mode 4 via sub_81313C0 and mode 1 as an early return, seeds a pending
+  0xDC entry via sub_81325CC, loops over two 16-byte records comparing them against eLinkState fields
+  (+0x1C word and +0xA halfword) requiring id 0xDC, checks no fade, and then calls init_cutsceneSceneState
+  setting [r5+2]=4, [r5+0x14]=0, [r5+0x2A]=0xDC, copying old [r5+0x2A] into [r5+0x32]. The summary''s
+  wording about ''link drops'' / ''resetting pending entry when the link drops'' is wrong — the 0xDC seeding
+  is on the bit-0x10-clear branch which is the normal link-up path, not a drop handler. A cleaner summary
+  that doesn''t claim a drop path and a name reflecting RFU link-record sync would fit better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813096C -> rfu_waitLinkRecordsForCutscene
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813096C

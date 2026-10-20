@@ -1,0 +1,66 @@
+name: ai_phaseSpawnFrontPanelElement
+address: '0x080BEE04'
+kind: function
+status: probable
+summary: AI action phase that once spawns an element-based attack object on the panel in front of the
+  caller, plays SFX 0xBA, spawns a kind-0xA secondary object with ExtraVars, then after 0x46 timer ticks
+  (with a tick at 0x28 firing sub_80D8FB8) advances CurAction to 0x20 and clears the phase.
+interface: (r5 = battle object) -> void; touches object header flags, timer, CurAnim/CurAction/PhaseInitialized
+details: 'Runs once (guarded by PhaseInitialized): sets CurAnim=0xF, computes the front panel (panelX
+  + object_getFrontDirection, panelY) and calls sub_80D8F98 with the object''s Element to spawn an attack
+  object there, ORs 0x10 into its header flags, stores it in ExtraVars+8, plays SFX 0xBA, and sets Timer=0x46;
+  it also spawns a secondary battle object via battle_spawnExtraVarsObject (kind 0xA, ExtraVars from r7)
+  using dword_80BF234 (0x10a00) as r4 data, then marks PhaseInitialized=4. On subsequent frames the timer
+  counts down; at Timer==0x28 it calls sub_80D8FB8 on the stored object (likely triggering its activation/fire).
+  When the timer reaches 0 the handler sets CurAction=0x20 and clears CurPhase/PhaseInitialized to move
+  to the next action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#oBattleObject_Element] passed with front-panel coords into sub_80D8F98, whose
+    result''s header flags get 0x10 and pointer stored to ExtraVars+8; mov r0,#0xba; bl PlaySoundEffect
+    plus Timer=0x46 and anim 0xF setup only under the PhaseInitialized==0 guard; bl battle_spawnExtraVarsObject
+    (kind 0xA) with r4=dword_80BF234=0x10a00 as a fixed template/data word; cmp r0,#0x28; bne skip; ldr
+    r0,[ExtraVars+8]; bl sub_80D8FB8 — fires the spawned object 40 frames in; on Timer expiry: CurAction=0x20
+    and CurPhaseAndPhaseInitialized=0, the standard phase-exit pattern'
+  refs:
+  - bn6f/asm/asm31.s:14806
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BEE04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes setting CurAnim=0xF, computing the front panel, calling sub_80D8F98
+    with Element and r6, ORing 0x10, storing at ExtraVars+8, playing SFX 0xBA, setting Timer=0x46, calling
+    battle_spawnExtraVarsObject, and PhaseInitialized=4, plus the 0x28 trigger and 0x20 transition. However,
+    it claims PhaseInitialized is set to 4 (it''s `mov r0,#4; strb` which is correct), but misses that
+    the final reset uses `strh` to a 16-bit field ''CurPhaseAndPhaseInitialized'' (clearing both), and
+    overstates ''sub_80D8FB8 on the stored object'' as triggering when it simply is called with the spawned
+    attack object. The name is acceptable since it lives in AI/action code, but it does not spawn a ''front
+    element attack'' per se — sub_80D8F98 is the spawner, this function merely orchestrates it; a tighter
+    summary helps.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy uses this handler (no known caller/context), and what attack sub_80D8F98/sub_80D8FB8 spawn/trigger
+- Meaning of dword_80BF234 (0x10a00) and what object kind 0xA renders as
+- The proposal correctly describes setting CurAnim=0xF, computing the front panel, calling sub_80D8F98
+  with Element and r6, ORing 0x10, storing at ExtraVars+8, playing SFX 0xBA, setting Timer=0x46, calling
+  battle_spawnExtraVarsObject, and PhaseInitialized=4, plus the 0x28 trigger and 0x20 transition. However,
+  it claims PhaseInitialized is set to 4 (it's `mov r0,#4; strb` which is correct), but misses that the
+  final reset uses `strh` to a 16-bit field 'CurPhaseAndPhaseInitialized' (clearing both), and overstates
+  'sub_80D8FB8 on the stored object' as triggering when it simply is called with the spawned attack object.
+  The name is acceptable since it lives in AI/action code, but it does not spawn a 'front element attack'
+  per se — sub_80D8F98 is the spawner, this function merely orchestrates it; a tighter summary helps.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEE04 -> ai_phaseSpawnFrontPanelElement
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEE04

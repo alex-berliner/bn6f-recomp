@@ -1,0 +1,67 @@
+name: battle_spawnElementalProjectileForward
+address: '0x080B8B08'
+kind: function
+status: probable
+summary: Battle-object phase that waits 34 frames, checks if the current panel has status bit 0x10; if
+  so it animates and plays sound 0x132, then on timer expiry spawns an elemental hitbox one panel forward
+  of the object via sub_80DBB0C, plays sound 0x1AB, and re-arms with Timer=90 in phase 4. If the panel
+  lacks bit 0x10 it just sets Timer=1 and exits to phase 4.
+interface: (r0 unused on entry; r5 = battle object) -> sets oBattleObject_Timer and phase to 4; no return
+  value used
+details: 'This is one phase handler of a battle object''s state machine (it re-arms via PhaseInitialized
+  and always ends by setting CurPhase/PhaseInitialized = 4). On first entry it sets Timer=0x22 (34 frames).
+  When Timer hits 4 it reads the object''s panel via object_getPanelParameters and tests status bit 0x10:
+  if the bit is clear the phase simply terminates (Timer=1, phase 4), so the attack only fires on panels
+  carrying that flag; otherwise it sets CurAnim=0xC and plays sound 0x132. The timer then counts down
+  one per frame, and on expiry it calls sub_80DBB0C with the object''s X plus 10 * object_getFrontDirection
+  (one panel forward), its Y, its Element byte, and its DamageAndStaminaDamageCounterDisabler word — a
+  hitbox/attack spawn at the neighboring panel — followed by sound 0x1AB, then sets Timer=0x5A (90 frames)
+  and phase 4. The exact chip/trap this belongs to can''t be identified without seeing a caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Phase init block sets Timer=0x22 and PhaseInitialized=4, typical per-phase re-entry guard; object_getPanelParameters
+    result tested against 0x10; clear bit path jumps straight to Timer=1/phase 4 abort; sub_80DBB0C called
+    with X + facing*10, Y, Element and damage-counter field — a positioned attack spawn; Two PlaySoundEffect
+    calls (0x132 on wind-up, 0x1AB on firing) bracket the attack; Exit always writes CurPhaseAndPhaseInitialized=4,
+    so this is one phase of a larger object FSM
+  refs:
+  - bn6f/asm/asm31.s:1270
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080B8B08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface match the code: Timer=0x22/0x5A, phase 4 end, panel bit 0x10 check, sound
+    0x132 (0x33+0xFF), and sub_80DBB0C spawn at X offset by 10*frontDir. However, the function does not
+    set oBattleObject_Timer to 0x22 itself—loc_80B8B18 writes 0x22 to oBattleObject_Timer on first entry
+    (the proposal slightly misreads this as ''sets oBattleObject_Timer... on entry'' implying first entry,
+    which is fine, but conflates Timer with PhaseInitialized). More importantly, the proposed name ''battle_phaseFireElementalAttack''
+    is reasonable but the function doesn''t reliably ''fire''—when bit 0x10 is clear it aborts. A name
+    emphasizing the conditional one-panel-ahead elemental projectile spawn fits better.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which chip/trap/enemy attack this object belongs to (no callers known)
+- What panel status bit 0x10 means (hole? grass? special panel) — determines when the attack is suppressed
+- What sub_80DBB0C spawns exactly (hitbox type, damage source)
+- 'The summary and interface match the code: Timer=0x22/0x5A, phase 4 end, panel bit 0x10 check, sound
+  0x132 (0x33+0xFF), and sub_80DBB0C spawn at X offset by 10*frontDir. However, the function does not
+  set oBattleObject_Timer to 0x22 itself—loc_80B8B18 writes 0x22 to oBattleObject_Timer on first entry
+  (the proposal slightly misreads this as ''sets oBattleObject_Timer... on entry'' implying first entry,
+  which is fine, but conflates Timer with PhaseInitialized). More importantly, the proposed name ''battle_phaseFireElementalAttack''
+  is reasonable but the function doesn''t reliably ''fire''—when bit 0x10 is clear it aborts. A name emphasizing
+  the conditional one-panel-ahead elemental projectile spawn fits better.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80B8B08 -> battle_spawnElementalProjectileForward
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8B08

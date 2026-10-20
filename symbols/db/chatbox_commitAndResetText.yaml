@@ -1,0 +1,64 @@
+name: chatbox_commitAndResetText
+address: '0x081288BC'
+kind: function
+status: probable
+summary: When no screen fade is active, commits the caller's 0x80-byte chatbox text buffer (r5) to unk_2037780,
+  clears it, seeds it with 0x30, and pings the chatbox via chatbox_8040818.
+interface: (r5 = 0x80-byte text buffer, set by caller) -> r0 = clobbered; copies buffer to unk_2037780,
+  zeroes it, sets [r5] = 0x30
+details: Returns immediately if IsScreenFadeActive reports a fade in progress. Otherwise CopyWords copies
+  0x80 bytes from r5 to unk_2037780, then ZeroFillByWord clears the same 0x80 bytes of r5, so the caller's
+  buffer is consumed/moved into the static backup. The byte 0x30 (48, or '0') is stored at [r5] as the
+  new first byte, plausibly a length/type/marker for the reset buffer. Finally chatbox_8040818 is called,
+  presumably to make the chatbox notice the cleared buffer. r5 is never initialized in this function,
+  so it depends entirely on the caller's register state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive; beq locret_81288DE — whole body is gated on no fade being active; ldr
+    r1, =unk_2037780; mov r2, #0x80; bl CopyWords with r0=r5 — copies caller''s 0x80 bytes into the static
+    buffer; mov r1, #0x80; bl ZeroFillByWord with r0=r5 — clears the same buffer after the copy; mov r0,
+    #0x30; strb r0, [r5] — seeds the cleared buffer''s first byte with 0x30; bl chatbox_8040818 — only
+    callee besides the copy/fill helpers is a chatbox routine'
+  refs:
+  - bn6f/asm/asm33.s:11146
+  - 0x0800093C CopyWords
+  - 0x080008E0 ZeroFillByWord
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x081288BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanism matches the asm: it bails on IsScreenFadeActive, CopyWords copies r5 into
+    unk_2037780, ZeroFillByWord clears r5, 0x30 is stored at [r5], and chatbox_8040818 is invoked (lines
+    1-15). However the proposed interface claims ''r5 is never initialized in this function, so it depends
+    entirely on the caller''s register state'' — the asm shows mov r0, r5 uses r5 directly, so r5 is a
+    caller-supplied pointer to the active text buffer. The name ''chatbox_backupTextBuffer'' overstates
+    this as a true backup; it''s really a commit-then-reset of the current chatbox text. No callers are
+    known, so its role can''t be fully confirmed.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, and r5 is never set inside — a caller would show what buffer is passed and when the
+  backup runs
+- Meaning of the 0x30 byte written to [r5] (length? state? character?)
+- What unk_2037780 is and who consumes it
+- What chatbox_8040818 does and why the fade check gates this
+- 'The proposal''s mechanism matches the asm: it bails on IsScreenFadeActive, CopyWords copies r5 into
+  unk_2037780, ZeroFillByWord clears r5, 0x30 is stored at [r5], and chatbox_8040818 is invoked (lines
+  1-15). However the proposed interface claims ''r5 is never initialized in this function, so it depends
+  entirely on the caller''s register state'' — the asm shows mov r0, r5 uses r5 directly, so r5 is a caller-supplied
+  pointer to the active text buffer. The name ''chatbox_backupTextBuffer'' overstates this as a true backup;
+  it''s really a commit-then-reset of the current chatbox text. No callers are known, so its role can''t
+  be fully confirmed.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81288BC -> chatbox_commitAndResetText
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81288BC

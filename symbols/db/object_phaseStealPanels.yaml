@@ -1,0 +1,60 @@
+name: object_phaseStealPanels
+address: '0x080E6600'
+kind: function
+status: probable
+summary: Battle-object phase handler that on first run XORs the object's Alliance with 1 and claims its
+  PanelX/PanelY tiles for the opposite alliance via object_setPanelAlliance + object_setPanelAllianceTimerLong
+  (0x708), then stores Timer=0x13 and PhaseInitialized=4. Each subsequent frame it decrements Timer; on
+  expiry it clears CurAnim, plays sound effect 0x12A (0x2b + 0xff), sets CurAction=4, and clears CurPhaseAndPhaseInitialized.
+interface: (r5 = battle object pointer, no args) -> void; r0 clobbered by calls
+details: A per-object phase routine keyed off oBattleObject_PhaseInitialized. On first run it reads the
+  object's PanelX/PanelY and Alliance, XORs the alliance with 1, and calls object_setPanelAlliance to
+  claim the panels at those coordinates for the opposite alliance, immediately refreshing them with object_setPanelAllianceTimerLong
+  (0x708). It then stores Timer = 0x13 and sets PhaseInitialized = 4. On subsequent frames it decrements
+  Timer; when it reaches 0 it resets CurAnim to 0, plays sound effect 0x2C (0x2b + 0xff), sets CurAction
+  = 4 (idle/fallback action), and clears CurPhaseAndPhaseInitialized. The panel claim for the flipped
+  alliance plus the timed revert pattern matches a panel-stealing/capture trap or boss mechanic that holds
+  stolen tiles for a while.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor r2,#1 on oBattleObject_Alliance before object_setPanelAlliance: claims the object''s own
+    panel tiles for the opposite alliance; object_setPanelAllianceTimerLong immediately after with the
+    same x/y sets the stolen panels'' 0x708 ownership timer; Timer = 0x13 then a decrement loop that ends
+    with PlaySoundEffect(0x2C) and CurAction = 4; PhaseInitialized guard (bne) plus final strh 0 to CurPhaseAndPhaseInitialized
+    shows standard phase-state machine shape; Callees list confirms only panel-claim and sound APIs are
+    touched'
+  refs:
+  - bn6f/asm/asm31.s:101024
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CC14 object_setPanelAlliance
+  - 0x0800CC36 object_setPanelAllianceTimerLong
+  reproduce: python3 tools/asmcat.py 0x080E6600
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s structure matches the asm: first-run XOR-flip alliance + setPanelAlliance + setPanelAllianceTimerLong
+    (0x708), Timer=0x13, PhaseInitialized=4, decrement loop, then reset CurAnim, PlaySoundEffect, CurAction=4,
+    clear phase. However, the sound ID is wrong: 0x2b + 0xff = 0x12A, not 0x2C. The rest of the summary
+    fits the code at 0x080E6600.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which entity uses this phase (trap, boss, or attack object) — no callers are known, so the exact game
+  identity of the panel-stealing behavior is unconfirmed
+- What sound 0x2C corresponds to in-game
+- What CurAction 4 represents
+- 'The proposal''s structure matches the asm: first-run XOR-flip alliance + setPanelAlliance + setPanelAllianceTimerLong
+  (0x708), Timer=0x13, PhaseInitialized=4, decrement loop, then reset CurAnim, PlaySoundEffect, CurAction=4,
+  clear phase. However, the sound ID is wrong: 0x2b + 0xff = 0x12A, not 0x2C. The rest of the summary
+  fits the code at 0x080E6600.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E6600 -> object_phaseStealPanels
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6600

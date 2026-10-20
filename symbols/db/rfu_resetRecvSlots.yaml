@@ -1,0 +1,69 @@
+name: rfu_resetRecvSlots
+address: '0x08146E90'
+kind: function
+status: probable
+summary: 'Resets RFU receive state for up to 4 connection slots: clears queue globals, rebuilds the active-slot
+  bitmask from dword_2010CC0+2, zeroes per-slot/recv state, then for each active slot calls rfu_clearSlot(0xC)
+  and rfu_setRecvBuffer(0x20, slot, r1[slot], size).'
+interface: (r0 = buffer cleared with size>>1 halfwords, r1 = array[4] of recv buffer pointers, r2 = buffer
+  size in bytes) -> r0 = 0; sets error bit 0x80 in word_200BC58 if buffer setup fails
+details: 'Takes a size (r2), CpuSet-fills two regions (r0 with size>>1 units, r1 with size<<1 units) with
+  zero from a stack halfword, then clears the global queue structures unk_200FFF0 and unk_200FE90 via
+  sub_8146A70. Sets byte_20101B4 = 1 and builds a slot bitmask byte_2010292 from byte 2 of the structure
+  at dword_2010CC0 (bit<<1 | 1). Zeroes four per-slot entries: byte_2010220[i], word_2010400[i*2], word_2010428[i*2],
+  plus flags byte_20101E0 and word_200BC58. For each of the 4 slots whose bit is set in byte_2010292 it
+  calls rfu_clearSlot(0x0C, slot) and rfu_setRecvBuffer(0x20, slot, r1[slot*4], size), setting the 0x80
+  flag in eS200BC50+8 on failure.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two SWI_CpuSet zero-fills using (r2>>1)&0x1FFFFF and (r2<<1)&0x1FFFFF counts (sub_8146E90 +0x10..+0x2C);
+    calls rfu_clearSlot(0x0C, i) and rfu_setRecvBuffer(0x20, i, r8+i*4, r7) inside the 4-iteration loop
+    at loc_8146F14; slot-active mask byte_2010292 tested with (1<<i) before each rfu_setRecvBuffer call;
+    per-slot state arrays byte_2010220/word_2010400/word_2010428 zeroed in the loc_8146EF2 loop over i=0..3;
+    error path sets word_200BC58 |= 0x80 when rfu_setRecvBuffer returns nonzero, cleared to 0 at end
+  refs:
+  - bn6f/asm/libs.s:6437
+  - 0x08146E60 sub_8146E60
+  - 0x0814D8B8 SWI_CpuSet
+  - 0x0814A934 rfu_clearSlot
+  - 0x0814AAF0 rfu_setRecvBuffer
+  reproduce: python3 tools/asmcat.py 0x08146E90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal mostly matches: it zeroes a buffer at r0 (size>>1 halfwords) and an array at r1 (size<<1
+    halfwords), clears unk_200FFF0/unk_200FE90 via sub_8146A70, sets byte_20101B4=1, builds the slot mask
+    at byte_2010292 from dword_2010CC0+2, zeroes per-slot state including byte_20101E0, and calls rfu_clearSlot(0xC,slot)
+    / rfu_setRecvBuffer(0x20,slot,...) while setting the 0x80 error bit on failure. However word_200BC58
+    is cleared at the end (strh r0,[r5,#0x8]=0) rather than ''cleared along with byte_20101E0'', and r0
+    is not explicitly returned as 0 (it returns via pop {r0}); also rfu_clearSlot with cmd 0xC (12) is
+    RFU_RESET_SLOT not strictly ''reset recv state'', so the name better fits rfu_resetRecvSlots since
+    it sets up recv buffers. Naming is acceptable but summary should mention it resets up to 4 RFU slots
+    and installs per-slot recv buffers.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of constant 0x0C passed to rfu_clearSlot and 0x20 to rfu_setRecvBuffer (likely slot-count
+  and protocol/id constants)
+- identity of the structure at dword_2010CC0 whose byte 2 provides the slot bitmask
+- what sub_8146A70 clears in unk_200FFF0/unk_200FE90 (queue or connection state)
+- 'The proposal mostly matches: it zeroes a buffer at r0 (size>>1 halfwords) and an array at r1 (size<<1
+  halfwords), clears unk_200FFF0/unk_200FE90 via sub_8146A70, sets byte_20101B4=1, builds the slot mask
+  at byte_2010292 from dword_2010CC0+2, zeroes per-slot state including byte_20101E0, and calls rfu_clearSlot(0xC,slot)
+  / rfu_setRecvBuffer(0x20,slot,...) while setting the 0x80 error bit on failure. However word_200BC58
+  is cleared at the end (strh r0,[r5,#0x8]=0) rather than ''cleared along with byte_20101E0'', and r0
+  is not explicitly returned as 0 (it returns via pop {r0}); also rfu_clearSlot with cmd 0xC (12) is RFU_RESET_SLOT
+  not strictly ''reset recv state'', so the name better fits rfu_resetRecvSlots since it sets up recv
+  buffers. Naming is acceptable but summary should mention it resets up to 4 RFU slots and installs per-slot
+  recv buffers.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8146E90 -> rfu_resetRecvSlots
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146E90

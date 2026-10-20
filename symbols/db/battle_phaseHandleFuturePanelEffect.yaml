@@ -1,0 +1,69 @@
+name: battle_phaseHandleFuturePanelEffect
+address: '0x080C2CB4'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on first tick spawns a type-0x28 effect on the Future panel, plays
+  SFX 0xBD and sets PhaseInitialized=4; on subsequent ticks decrements Timer and on expiry either sets
+  owner byte r7+0x19=1 with CurPhase=8, or if Timer2!=0 zeroes CurPhase and sets CurAction=8.'
+interface: (r5 = battle object, r7 = owner/context struct) -> void; writes oBattleObject_PhaseInitialized,
+  oBattleObject_CurPhaseAndPhaseInitialized, owner byte at r7+0x19
+details: 'First run (PhaseInitialized==0): converts FuturePanelX/Y to screen pixels and spawns a type-1
+  effect object with arg 0x28, copying the object''s own Timer into the effect so they expire together;
+  plays sound effect 0xBD and sets PhaseInitialized=4. On later ticks it decrements Timer; when it hits
+  0 it either sets owner byte r7+0x19=1 and moves to phase 8, or, if Timer2 is nonzero, falls into a tail
+  that zeroes CurPhase and sets CurAction=8. Odd quirk: r7+0x14/0x15 (or 0x16/0x17 when Timer2 set) are
+  loaded as coordinates but immediately overwritten by FuturePanelX/Y, so those loads are dead. The second
+  block from loc_80C2D06 is a sibling phase handler (anim 4, timer 3, calls sub_80C2EC4 on Timer2) sharing
+  the same exit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80C2CCA: FuturePanelX/Y -> object_getCoordinatesForPanels -> spawn_t1_0x0_EffectObject
+    with r4=0x28; PlaySoundEffect(0xbd) right after the spawn, then PhaseInitialized=4; loc_80C2CEE: decrements
+    oBattleObject_Timer and on expiry writes r7+0x19=1 and CurPhase=8; loc_80C2D42: alternate expiry path
+    sets CurPhase=0 and CurAction=8; dead coordinate loads from r7+0x14/0x15/0x16/0x17 are clobbered before
+    use'
+  refs:
+  - bn6f/asm/asm31.s:23645
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C2CB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the main handler: at sub_80C2CB4 it checks PhaseInitialized, on first
+    run loads FuturePanelX/Y, spawns a type-1 effect with arg 0x28, copies Timer into it, plays SFX 0xBD,
+    sets PhaseInitialized=4. On later ticks it decrements Timer and on expiry either sets r7+0x19=1 with
+    CurPhase=8 (loc_80C2D08 path) or, if Timer2!=0, falls to loc_80C2D42 which sets CurPhase=0 and CurAction=8.
+    The dead-load quirk (r7+0x14/0x15 overwritten by FuturePanelX/Y) is correctly identified. However
+    loc_80C2D06 is not a ''sibling phase handler sharing the same exit'' — it''s a separate function reachable
+    only via an absolute jump from elsewhere; sub_80C2CB4 itself ends at locret_80C2D04, so the second
+    block is a different function (likely sub_80C2D06). The proposed name is decent but ''Spawn'' is misleading
+    since the primary role is phase handling; a better name is ''battle_phaseHandleFuturePanel''.; run
+    wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which attack/boss object owns this phase (r7 struct layout and its 0x14-0x19 fields unknown)
+- Meaning of effect argument 0x28 and of sub_80C2EC4's check on Timer2
+- No caller known, so where in the phase table this handler is registered is unconfirmed
+- 'The summary correctly captures the main handler: at sub_80C2CB4 it checks PhaseInitialized, on first
+  run loads FuturePanelX/Y, spawns a type-1 effect with arg 0x28, copies Timer into it, plays SFX 0xBD,
+  sets PhaseInitialized=4. On later ticks it decrements Timer and on expiry either sets r7+0x19=1 with
+  CurPhase=8 (loc_80C2D08 path) or, if Timer2!=0, falls to loc_80C2D42 which sets CurPhase=0 and CurAction=8.
+  The dead-load quirk (r7+0x14/0x15 overwritten by FuturePanelX/Y) is correctly identified. However loc_80C2D06
+  is not a ''sibling phase handler sharing the same exit'' — it''s a separate function reachable only
+  via an absolute jump from elsewhere; sub_80C2CB4 itself ends at locret_80C2D04, so the second block
+  is a different function (likely sub_80C2D06). The proposed name is decent but ''Spawn'' is misleading
+  since the primary role is phase handling; a better name is ''battle_phaseHandleFuturePanel''.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2CB4 -> battle_phaseHandleFuturePanelEffect
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2CB4

@@ -1,0 +1,64 @@
+name: battle_scanPanelColumnForMatch
+address: '0x0800D15A'
+kind: function
+status: probable
+summary: Walks rows of a column from a starting row by step r4, tracking the last row whose panel passes
+  object_checkPanelParameters, and returns the original column (with last matching row) unless only the
+  start row ever matched, in which case it returns 0.
+interface: (r0 = column, r1 = start row, r4 = row step [not saved by this func]) -> r0 = column if some
+  later row matched else 0, r1 = last matching row; flags clobbered by tst/cmp
+details: 'Loops from the starting cell: object_checkPanelParameters(r0, r1) tests the panel''s flag mask
+  at (col, row); when it passes, r7 (last matching row) is set to the current row. The row is then advanced
+  by r4 and object_isValidPanel bounds it to the 1-based 6x3 grid; the loop ends once the row leaves the
+  grid. On return r1 holds the last row that matched, and r0 holds the original column unless no row beyond
+  the start row ever matched, in which case r0 = 0. r6/r7 are callee-saved, but r4 is used without being
+  saved, suggesting the caller is expected to have set it (possibly a misattributed fragment or an inlined
+  step value).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_800D166: pushes r0-r3 and calls object_checkPanelParameters, tst r0, then ''mov r7, r1''
+    on pass — tracks last matching row; ''add r1, r1, r4'' then object_isValidPanel with bne back to the
+    loop head — steps the row until it leaves the 6x3 grid; ''ldr r1, [sp,#4]; cmp r1, r7'' — compares
+    the starting row to the last match to decide the 0 return; Callees object_checkPanelParameters/object_isValidPanel
+    are the known panel-flag and 6x3-grid-bounds helpers, tying this to battle panel state; Only caller
+    seen is sub_800FA20, itself undocumented, so the use site is unconfirmed'
+  refs:
+  - bn6f/asm/object.s:3624
+  - 0x0800FA20 sub_800FA20
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800D15A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The loop logic is correct: it scans rows, updates r7 to last matching row, and returns r0=0 only
+    when the start row was the last match (cmp r1, r7). However, the name implies scanning ''down a column''
+    specifically, but r4 is a generic step (could be +1 or -1) and the column is just passed through,
+    so ''scanPanelColumn'' is fine but the summary''s ''returns the column if a row past the start matched''
+    is backwards — it returns 0 when no later row matched, and the original column otherwise. Minor wording
+    fix needed.; run wf investigate investigate-20261019-003606; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Where r4 comes from — it is read without being initialized or saved here, so the true row step (and
+  direction) is unknown
+- What sub_800FA20 does with the returned column/last-row pair, which would confirm whether this is a
+  spawn/search helper
+- Which panel flag masks the caller passes to object_checkPanelParameters (hole, broken, grass, etc.)
+- 'The loop logic is correct: it scans rows, updates r7 to last matching row, and returns r0=0 only when
+  the start row was the last match (cmp r1, r7). However, the name implies scanning ''down a column''
+  specifically, but r4 is a generic step (could be +1 or -1) and the column is just passed through, so
+  ''scanPanelColumn'' is fine but the summary''s ''returns the column if a row past the start matched''
+  is backwards — it returns 0 when no later row matched, and the original column otherwise. Minor wording
+  fix needed.'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800D15A -> battle_scanPanelColumnForMatch
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D15A

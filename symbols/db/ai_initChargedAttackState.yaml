@@ -1,0 +1,59 @@
+name: ai_initChargedAttackState
+address: '0x080EEA5C'
+kind: function
+status: probable
+summary: 'Initializes an AI charged-attack state on the working object: sets ChargeCycles=3, plays SOUND_LOG_IN_77,
+  resets the counter timer to 0x10, grants indefinite invulnerability (0xFFFF), and sets HitElement=4.'
+interface: (r7 = working object) -> void; sets oAIAttackVars_ChargeCycles=3, oAIAttackVars_HitElement=4
+  on the object
+details: Stores 3 into the object's oAIAttackVars_ChargeCycles field (r7-based object struct), then plays
+  SOUND_LOG_IN_77 via PlaySoundEffect, resets the object's counter timer to the default 0x10 frames with
+  object_setDefaultCounterTime, and sets invulnerability time to 0xFFFF (effectively permanent) via object_setInvulnerableTime.
+  Finally it writes 4 into oAIAttackVars_HitElement, defining the element/type the attack deals while
+  active. This reads as the setup step of a charged enemy attack where the enemy charges and stays invulnerable
+  until the attack fires or is reset.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0,[r7,#oAIAttackVars_ChargeCycles] with r0=3 sets a 3-cycle charge on the AI attack struct;
+    bl PlaySoundEffect with SOUND_LOG_IN_77 plays the attack's charge/launch sound; bl object_setDefaultCounterTime
+    resets the working object's timer to 0x10 frames; bl object_setInvulnerableTime with 0xffff makes
+    the object invulnerable for a very long time; strh r0,[r7,#oAIAttackVars_HitElement] with r0=4 assigns
+    the attack's hit element
+  refs:
+  - bn6f/asm/asm31.s:118360
+  - 0x080005CC PlaySoundEffect
+  - 0x0800FDB6 object_setDefaultCounterTime
+  - 0x0800EAFA object_setInvulnerableTime
+  reproduce: python3 tools/asmcat.py 0x080EEA5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: ChargeCycles=3, SOUND_LOG_IN_77 played, default counter timer set,
+    invuln=0xFFFF, HitElement=4 — all confirmed in the asm. However the name ''ai_startChargedInvulnAttack''
+    implies a single charged-attack start, while this looks like a reusable init/setup helper (no callers
+    known, no return-state flags). ''ai_initChargedAttackState'' better reflects that it''s a state initializer
+    without implying it triggers an attack.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which enemy/attack uses this and the meaning of element value 4 (which element
+  enum it maps to) are unconfirmed
+- Exact semantics of ChargeCycles=3 (frames vs cycles) depend on the attack's update handler, not seen
+  here
+- 'The code matches the summary: ChargeCycles=3, SOUND_LOG_IN_77 played, default counter timer set, invuln=0xFFFF,
+  HitElement=4 — all confirmed in the asm. However the name ''ai_startChargedInvulnAttack'' implies a
+  single charged-attack start, while this looks like a reusable init/setup helper (no callers known, no
+  return-state flags). ''ai_initChargedAttackState'' better reflects that it''s a state initializer without
+  implying it triggers an attack.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EEA5C -> ai_initChargedAttackState
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EEA5C

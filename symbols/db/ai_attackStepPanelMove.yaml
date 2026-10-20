@@ -1,0 +1,61 @@
+name: ai_attackStepPanelMove
+address: '0x08104586'
+kind: function
+status: probable
+summary: 'AI attack step: once the step timer expires, asks the per-alliance panel-choose callback for
+  an (x,y) panel, snaps the object there, updates coords/collision, marks z=0xFF, clears a matching entry
+  from a four-slot id table, and arms the hit phase (HitElement=8); otherwise aborts the attack.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0; moves object to chosen panel and sets
+  oAIAttackVars_HitElement=8, or clears HasMoved and tears down the attack
+details: Each invocation decrements oAIAttackVars_StepTimer and returns until it expires. It then indexes
+  byte_81045D8 by oBattleObject_Alliance (stride 8) and calls the stored panel-choose callback (oAIAttackVars_PanelChooseCallback)
+  with the two table words plus oAIAttackVars_TargetObjectPtr; the callback returns an x/y in r0/r1. On
+  success it writes that panel to FuturePanelX/Y and PanelX/Y, recomputes pixel coordinates and collision
+  panels, sets oBattleObject_Z16 to 0xFF (reappear/rise-from-ground height), clears the object's collision
+  region, and clears a matching id record in the byte_203EB50 table (likely a reserved/warp marker). It
+  then sets oAIAttackVars_HitElement to 8, handing off to the attack's hit phase. If no panel is returned
+  it clears oAIAttackVars_HasMoved and calls object_exitAttackState_801171C to abort the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'timer gate: ldrh/sub/strh on oAIAttackVars_StepTimer with bgt to return; per-alliance table
+    byte_81045D8 indexed by oBattleObject_Alliance<<3 passed as r2/r3 to the panel-choose callback; teleport:
+    writes r0/r1 to FuturePanelX/Y and PanelX/Y then calls object_setCoordinatesFromPanels + object_updateCollisionPanels;
+    reappear cues: oBattleObject_Z16 = 0xFF, object_clearCollisionRegion, sub_801DD34 clears the id''s
+    record in byte_203EB50; failure path: clears oAIAttackVars_HasMoved and calls object_exitAttackState_801171C'
+  refs:
+  - bn6f/asm/asm31.s:163483
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08104586
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does decrement StepTimer, call the panel-choose callback via the byte_81045D8 table, set
+    PanelX/Y, recompute coords, set Z16=0xFF, clear collision, and call sub_801DD34 — but the proposal''s
+    earlier description of HitElement state is wrong, and it claims ''sets oAIAttackVars_HitElement=8''.
+    The summary is essentially correct, but the proposal guesses at ''teleport''/''warp marker'' without
+    code evidence; Z16=0xFF is likely just a height write, not a reappear. The name itself is fine.; run
+    wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/virus attack uses this step (no caller found) and what HitElement=8 selects
+- exact meaning of the two per-alliance words passed to the panel-choose callback
+- what the byte_203EB50 record cleared via sub_801DD34 marks (reserved teleport panel?)
+- The code does decrement StepTimer, call the panel-choose callback via the byte_81045D8 table, set PanelX/Y,
+  recompute coords, set Z16=0xFF, clear collision, and call sub_801DD34 — but the proposal's earlier description
+  of HitElement state is wrong, and it claims 'sets oAIAttackVars_HitElement=8'. The summary is essentially
+  correct, but the proposal guesses at 'teleport'/'warp marker' without code evidence; Z16=0xFF is likely
+  just a height write, not a reappear. The name itself is fine.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8104586 -> ai_attackStepPanelMove
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104586

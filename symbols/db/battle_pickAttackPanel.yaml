@@ -1,0 +1,77 @@
+name: battle_pickAttackPanel
+address: '0x080C2518'
+kind: function
+status: probable
+summary: Picks the panel to attack/occupy by scanning a per-id table of {tag,dx,dy} offsets around per-round
+  base panel coords, mirroring dx by facing, returning the first panel with 0x10000 set and none of 0xF8800080,
+  otherwise the related object's own panel (tag=0), otherwise none.
+interface: (r0 = pattern table index (0-2), r5 = battle object) -> r0 = panel x (0 = none found), r1 =
+  panel y, r2 = entry tag; advances oBattleObject_Param1 (wraps to 0 after oBattleObject_Param2)
+details: r0 indexes off_80C25E4 into one of three pattern tables; each entry is 3 bytes {tag, signed dx,
+  signed dy}, terminated by tag 0xFF, scanned up to 6 entries. For each round r4 from oBattleObject_Param1
+  while r4 < oBattleObject_Param2, the packed byte at oBattleObject+0x6C+r4 is split into base x (low
+  3 bits) and base y (bits 4-7); candidates are base + dx*object_getEnemyDirection(alliance) and base
+  + dy. object_checkPanelParameters filters candidates by panel-flag masks (require 0x10000 set, none
+  of 0x0F880080 set); the first pass returns immediately with r4+1 (or 0 on wrap) stored to Param1. If
+  no candidate passes but one equals the related object's PanelX/PanelY, that panel is returned with r2=0;
+  total failure returns r0=0. The tag byte is only forwarded in r2, likely telling the caller what kind
+  of attack/effect to place there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_80C25E4/byte_80C25B8-C0-D0: three 3-byte-entry tables, 0xFF tag terminator, signed dx/dy
+    offsets; bl object_getEnemyDirection; mul r2,r3 mirrors dx by the object''s alliance-facing; ldrb
+    r0,[r0,r4] at object+0x6C with lsr/lsl 0x1d splits base x (3 bits) and y (nibble); push {r0,r1} around
+    bl object_checkPanelParameters with masks 0x10000/0x0F880080; first pass exits via loc_80C25A6 returning
+    that panel; callers battle_phaseChargeSpawnAttack and battle_slideToPanelAction reserve/attack the
+    panel this returns; Param1/Param2 loop with wraparound at loc_80C25B0'
+  refs:
+  - bn6f/asm/asm31.s:22635
+  - 0x080C2256 battle_phaseChargeSpawnAttack
+  - 0x080C2324 battle_slideToPanelAction
+  - 0x080C23F0 sub_80C23F0
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080C2518
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The caller list and the candidates-first-fallback-to-own-panel behavior match the proposal, but
+    the flag masks are swapped: dword_80C25F8 holds 0x10000 and dword_80C25FC holds 0xF880080, so the
+    call requires 0x10000 set and forbids none of 0xF8800080 — actually the proposal states exactly that,
+    so that part agrees. However, the proposal says ''target''s own panel as fallback'' returns r2=0;
+    in the code the fallback stores 1 in [sp,#8] and returns r7=0 (loc_80C25A4 sets r7=0), so r2 is 0
+    on the fallback. The summary''s wording ''first panel passing flag checks (target''s own panel as
+    fallback)'' is fine. The bigger issue is the name: ''battle_pickPatternTargetPanel'' adds nothing
+    and ''Pattern'' suggests a code pattern; a clearer convention is ''battle_pickAttackPanel''. Additionally,
+    the proposal claims Param1 ''wraps to 0 after oBattleObject_Param2'' but the code wraps to 0 only
+    when adding 1 makes it >= Param2, and only on the success path (loc_80C25B0) — accurate but the summary
+    phrasing ''advances... wraps'' is just a restatement.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Meaning of the 3-byte entry's tag byte returned in r2 (how callers consume it)
+- Exact panel-flag semantics behind masks 0x10000 (required) and 0x0F880080 (forbidden)
+- What fills the packed coordinate array at oBattleObject+0x6C (set by the spawner?)
+- 'The caller list and the candidates-first-fallback-to-own-panel behavior match the proposal, but the
+  flag masks are swapped: dword_80C25F8 holds 0x10000 and dword_80C25FC holds 0xF880080, so the call requires
+  0x10000 set and forbids none of 0xF8800080 — actually the proposal states exactly that, so that part
+  agrees. However, the proposal says ''target''s own panel as fallback'' returns r2=0; in the code the
+  fallback stores 1 in [sp,#8] and returns r7=0 (loc_80C25A4 sets r7=0), so r2 is 0 on the fallback. The
+  summary''s wording ''first panel passing flag checks (target''s own panel as fallback)'' is fine. The
+  bigger issue is the name: ''battle_pickPatternTargetPanel'' adds nothing and ''Pattern'' suggests a
+  code pattern; a clearer convention is ''battle_pickAttackPanel''. Additionally, the proposal claims
+  Param1 ''wraps to 0 after oBattleObject_Param2'' but the code wraps to 0 only when adding 1 makes it
+  >= Param2, and only on the success path (loc_80C25B0) — accurate but the summary phrasing ''advances...
+  wraps'' is just a restatement.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C2518 -> battle_pickAttackPanel
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2518

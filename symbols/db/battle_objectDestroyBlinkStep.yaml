@@ -1,0 +1,59 @@
+name: battle_objectDestroyBlinkStep
+address: '0x0800F8CE'
+kind: function
+status: probable
+summary: 'Per-frame destroy-state step for a battle object: returns 2 if bit 0x40000 is clear, otherwise
+  runs a 20-frame blink timer that clears the visible bit on odd-half frames and returns 1 when the timer
+  expires, else 0.'
+interface: (r0 = object status/flags word, r5 = battle object pointer, not saved) -> r0 = 2 if bit 0x40000
+  clear, 0 while counting down, 1 when timer expired; no flags of interest
+details: The caller preloads r5 with the battle object; the function only saves r4/lr. If bit 0x40000
+  of r0 is clear it returns 2 immediately (state not applicable). On first entry it sets oBattleObject_PhaseInitialized=1
+  and loads oBattleObject_Timer=0x14, then sets bit 2 (visible/active) in oObjectHeader_Flags. While the
+  timer runs, bit 2 is cleared on frames where (Timer & 2) != 0 and re-set otherwise, producing a 2-frame-period
+  flicker. The timer is decremented each call; when it reaches 0 it returns 1 (done), otherwise 0 (still
+  blinking). It is a state-handler step returning a tri-state code, matching the bomb explode/destroy
+  flows that call it before tearing the object down.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_800F8CE: tst r0, r1 (0x40000); beq -> return 2 — early-out when the destroy condition isn''t
+    set; loc_800F8E8-loc_800F8F6: sets/clears bit 2 of oObjectHeader_Flags depending on Timer&2 — blink
+    pattern; Timer initialized to 0x14 and decremented; ''mov r4,#1'' on expiry — 20-frame countdown before
+    returning done; Called from battle_finalizeObjectRemoval (0x080DB252) and battle_bombExplode (0x080CBDE6/0x080CBE48)
+    — destruction paths of battle objects; Called from battle_bombObjectUpdate (0x080DA2EC) which ''spawns
+    an explosion effect and destroys/cleans up the object'' — same destroy sequence'
+  refs:
+  - bn6f/asm/asm00_2.s:1754
+  - 0x080CBDE6 battle_bombExplode
+  - 0x080CBE48 battle_bombExplode
+  - 0x080DA2EC battle_bombObjectUpdate
+  reproduce: python3 tools/asmcat.py 0x0800F8CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal almost matches, but the visibility-toggle logic is inverted: at loc_800F8E8 bit 2 is
+    ORR''d (set), and only at loc_800F900 (taken when timer&2 != 0) is it cleared. So the flag is cleared
+    on frames where bit 1 of the timer is set, not the other way around. The name ''battle_objectDestroyBlinkStep''
+    is reasonable given all callers are destruction/teardown paths.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the 0x40000 bit in r0 (caller-side object flags?)
+- precise meaning of oObjectHeader_Flags bit 2 (visibility vs active) and how the tri-state return codes
+  are dispatched by the callers
+- 'The proposal almost matches, but the visibility-toggle logic is inverted: at loc_800F8E8 bit 2 is ORR''d
+  (set), and only at loc_800F900 (taken when timer&2 != 0) is it cleared. So the flag is cleared on frames
+  where bit 1 of the timer is set, not the other way around. The name ''battle_objectDestroyBlinkStep''
+  is reasonable given all callers are destruction/teardown paths.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_800F8CE -> battle_objectDestroyBlinkStep
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F8CE

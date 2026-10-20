@@ -1,0 +1,65 @@
+name: t3_refreshTextScriptOnChange
+address: '0x08118C8C'
+kind: function
+status: probable
+summary: Task tick handler that derives a state byte from a chatbox cutscene flag and an item flag, then
+  re-renders TextScript873EA50 into byte_2017A00/0x6013C00 only when a toolkit version counter changes,
+  before tail-calling sub_8118CF4.
+interface: (r0 = entry index for toolkit_getUnk2004190EntryPtr, r5 = task struct, r6 = object/task context)
+  -> r0 = byte from sub_8118CF4; flags set by that call
+details: Reads cutscene/event flag bit 0x80 of eFlags2009F38; if clear it sets r4=0x43, otherwise r4 stays
+  1, and battle_checkItemFlagFor(r6+0x28, r6+0x2c) forces r4 back to 1 when its flag is clear; r4 is stored
+  to [r5]. If the item-flag call returned >=0, it fetches the oToolkit_Unk2004190 entry for the given
+  index, takes halfword>>2, and compares it to [r5+0xd]; when different it stores the new value to [r5+0xc],
+  renders TextScript873EA50 (buffer byte_2017A00, font data dword_86B7AE0, BG tile VRAM 0x6013C00, 8x1
+  tiles?) via renderTextGfx_8045F8C, and stores its result at [r5+0xe]. Finally it calls sub_8118CF4 and
+  returns its value. The version-compare-then-redraw pattern suggests a dynamic notice/board text that
+  only redraws when its source data changes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with 0x80, then r4=0x43/1 and strb r4,[r5]: state byte chosen
+    by event flag; bl battle_checkItemFlagFor with ldrh from [r6,#0x28]/[r6,#0x2c], resetting r4=1: second
+    gate on an item/key flag; bl toolkit_getUnk2004190EntryPtr + ldrh r1>>2 cmp [r5,#0xd]: change detection
+    against a version counter; push/arg block with TextScript873EA50, byte_2017A00, dword_86B7AE0, 0x6013C00
+    before bl renderTextGfx_8045F8C: renders a text script into BG VRAM; strb r1,[r5,#0xc] before redraw
+    and strb r0,[r5,#0xe] after: updates cached version and stores render result in the task struct'
+  refs:
+  - bn6f/asm/asm32.s:22299
+  - 0x0813B9B4 battle_checkItemFlagFor_813B9B4
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x08118C8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: chatbox_mask sets r4 to 0x43 or 1, battle_checkItemFlagFor can reset it to 1,
+    the result is stored to [r5], the version compare/redraw path with renderTextGfx using TextScript873EA50/byte_2017A00/dword_86B7AE0/0x6013C00
+    is correct, and it ends by calling sub_8118CF4. However, the interface claim ''r0 = byte from sub_8118CF4''
+    is wrong: sub_8118CF4 is tail-called with no captured return value (the epilogue pops to pc), so the
+    function returns void/undefined, not the byte. Also the redraw stores r0 to [r5,#0xe] before sub_8118CF4,
+    so a ''t3_'' prefix fits.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which task/object struct r5 points to and what fields 0x0/0xc/0xd/0xe mean (0x43 looks like a state
+  or ASCII code)
+- What sub_8118CF4 does and why its return value is passed through
+- Which in-game screen TextScript873EA50 belongs to (would identify the board/notice panel)
+- No known caller, so the meaning of r0/r6 on entry is inferred
+- 'The flow matches: chatbox_mask sets r4 to 0x43 or 1, battle_checkItemFlagFor can reset it to 1, the
+  result is stored to [r5], the version compare/redraw path with renderTextGfx using TextScript873EA50/byte_2017A00/dword_86B7AE0/0x6013C00
+  is correct, and it ends by calling sub_8118CF4. However, the interface claim ''r0 = byte from sub_8118CF4''
+  is wrong: sub_8118CF4 is tail-called with no captured return value (the epilogue pops to pc), so the
+  function returns void/undefined, not the byte. Also the redraw stores r0 to [r5,#0xe] before sub_8118CF4,
+  so a ''t3_'' prefix fits.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8118C8C -> t3_refreshTextScriptOnChange
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118C8C

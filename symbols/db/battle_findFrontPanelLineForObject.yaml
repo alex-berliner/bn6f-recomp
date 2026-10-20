@@ -1,0 +1,64 @@
+name: battle_findFrontPanelLineForObject
+address: '0x080FCDDE'
+kind: function
+status: probable
+summary: Scans rows opposite the object's facing from six rows behind using a side-dependent mask pair
+  from byte_80FCE30, verifies the found panel passes the same mask check, then validates the panel one
+  step in front is in-grid, returning the found (column, row) or 0.
+interface: (r0 = battle object r5 with r2/r3 = panel-flag mask pair passed through) -> r0,r1 = found panel
+  column/row, or r0 = 0; flags from last tst
+details: Reads the object's field 0x16 and uses it both as the search start and as an index (*8) into
+  byte_80FCE30, a table of {maskSet, maskClear} pairs (entry0 = 0/0x20, entry1 = 0x20/0), i.e. per-side
+  panel-flag requirements. Calls object_getClosestPanelMatchingRowFiltered(r0, 2, set, clear) to find
+  the first qualifying panel scanning from six rows back on the side opposite the object's facing. It
+  redundantly re-checks the found panel with object_checkPanelParameters using the same masks. Then it
+  computes getFrontDirection() * 2, adds it to the found coordinate, and requires object_isValidPanel
+  to pass; otherwise it returns 0. Success returns the found panel's (column, row) pair in r0/r1. Field
+  0x16 and the 0x20 panel-flag bit's exact meaning are inferred, not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#0x16]; lsl r2,#3; ldr off_80FCE30 -> per-side mask pair table byte_80FCE30 (asm
+    lines 3-8); bl object_getClosestPanelMatchingRowFiltered with r1=2 scans rows from behind for the
+    masked panel; push {r0,r1}; bl object_checkPanelParameters re-checks the found panel with the caller''s
+    masks; bl object_getFrontDirection; mul r2,#2; add r0; bl object_isValidPanel gates on the two-panels-front
+    panel being in-grid; loc_80FCE26: mov r0,#0 is the only failure exit; success falls through returning
+    the saved r0/r1 coords'
+  refs:
+  - bn6f/asm/asm31.s:147618
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080FCDDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanism is accurate: r0 = object, r2/r3 pass through as set/clear masks to byte_80FCE30[obj.0x16].
+    However, the summary is wrong — it says ''two panels toward the object''s front'', but the code only
+    validates ONE panel (adds getFrontDirection()*2 to the found coordinate once). Also, the side-dependent
+    table is indexed by *8, giving entries of 4 bytes (mask set) + 4 bytes (mask clear); entry 0 = 0/0x20,
+    entry 1 = 0x20/0, as the proposal states. The name is acceptable but a more precise prefix ''battle''
+    is already used; ''battle_findPanelLineForAttack'' is fine though ''attack-line'' is speculative.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the attack/effect that uses this placement check is unidentified
+- Exact meaning of object field 0x16 (side index vs row) and of the 0x20 panel flag byte
+- What r1=2 means to object_getClosestPanelMatchingRowFiltered (scan depth vs mode)
+- 'The proposal''s mechanism is accurate: r0 = object, r2/r3 pass through as set/clear masks to byte_80FCE30[obj.0x16].
+  However, the summary is wrong — it says ''two panels toward the object''s front'', but the code only
+  validates ONE panel (adds getFrontDirection()*2 to the found coordinate once). Also, the side-dependent
+  table is indexed by *8, giving entries of 4 bytes (mask set) + 4 bytes (mask clear); entry 0 = 0/0x20,
+  entry 1 = 0x20/0, as the proposal states. The name is acceptable but a more precise prefix ''battle''
+  is already used; ''battle_findPanelLineForAttack'' is fine though ''attack-line'' is speculative.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FCDDE -> battle_findFrontPanelLineForObject
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCDDE

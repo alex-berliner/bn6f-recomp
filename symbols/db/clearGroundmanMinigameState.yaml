@@ -1,0 +1,53 @@
+name: clearGroundmanMinigameState
+address: '0x08143CC8'
+kind: function
+status: probable
+summary: Clears BBS flag, event flag 0x1BB, then for the selected groundman minigame map table, zeros
+  per-slot records at unk_2011EA0+index*4 and clears event flags 0x16F0+index for each nonzero entry.
+interface: () -> r0 = 0; no flags relevant
+details: First clears some BBS-related flag via reqBBS_clearFlag_8140A0C and event flag 0x1BB. It then
+  calls GetGroundmanMinigameMapIndex and uses the result to pick one of two entry tables (byte_8143D14
+  / byte_8143D30, stride 8, via off_8143D0C). For each entry whose first byte is nonzero, it writes 0
+  to the 4-byte word at unk_2011EA0 + index*4 and clears event flag 0x16F1 + (index-1), so indices 1..5
+  map to flags 0x16F1..0x16F5. This looks like wiping collected-item flags and per-slot records when the
+  GroundMan minigame area is (re)initialized. The 0xFF padding bytes in each 8-byte entry are unused by
+  this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetGroundmanMinigameMapIndex then table lookup ldr r4,[r4,r0] selects the per-map entry
+    list; loop: ldrb r0,[r4]; beq end; str 0 to unk_2011EA0+idx*4 zeroes a per-index 4-byte slot; dword_8143D48
+    = 0x16F1 with sub r1,#1: clears event flag 0x16F0+idx per entry; bl ClearEventFlagFromImmediate for
+    EVENT_1BB and reqBBS_clearFlag_8140A0C at entry show a reset/clearoutine context; tables only contain
+    indices 1..5, matching a small fixed set of collectible slots'
+  refs:
+  - bn6f/asm/asm37_1.s:3888
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08143B30 GetGroundmanMinigameMapIndex
+  reproduce: python3 tools/asmcat.py 0x08143CC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Summary is mostly correct but the flag indexing is wrong: `add r0, r0, r1` where r1 = index-1 means
+    flag = 0x16F0 + index, not 0x16F1 + (index-1), so index 0 maps to 0x16F0. Also the proposed name lacks
+    a valid prefix from the allowed list.; run wf investigate investigate-20261018-230610; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the trigger context (when this reset runs) is unknown
+- The exact meaning of the unk_2011EA0 slots (collected items vs scores) and of flag range 0x16F1..0x16F5
+  needs the minigame code that sets them
+- 'Summary is mostly correct but the flag indexing is wrong: `add r0, r0, r1` where r1 = index-1 means
+  flag = 0x16F0 + index, not 0x16F1 + (index-1), so index 0 maps to 0x16F0. Also the proposed name lacks
+  a valid prefix from the allowed list.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8143CC8 -> clearGroundmanMinigameState
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143CC8

@@ -1,0 +1,58 @@
+name: object_resetActionIfInterrupted
+address: '0x080CDEC8'
+kind: function
+status: probable
+summary: When the battle is over, resets a battle object's collision region, sets its action to 2, and
+  zeroes its phase if it has 0 HP, was hit this frame, or stands on a non-solid panel.
+interface: (r5 = battle object) -> void; destroys r0-r3/lr, no return value
+details: Loads oBattleObject_HP from r5 and branches to the reset path if HP is 0 (object defeated). Also
+  resets if oCollisionData_FlagsFromCollision (via oBattleObject_CollisionDataPtr) is nonzero, i.e. the
+  object just took a hit, or if object_isCurrentPanelSolid reports the object's panel is a hole/broken/off-grid.
+  Finally, the reset only fires while battle_isBattleOver reports the battle is still running (nonzero);
+  if the battle is over the function returns without touching the object. The reset path calls object_clearCollisionRegion,
+  stores 2 into oBattleObject_CurAction, and zeroes oBattleObject_CurPhaseAndPhaseInitialized, i.e. it
+  interrupts whatever the object was doing and restarts it at action 2, phase 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_HP]; tst/beq -> reset when HP==0 (sub_80CDEC8 start); ldr r0,[r1,#oCollisionData_FlagsFromCollision];
+    tst/bne -> reset when hit flags set; bl object_isCurrentPanelSolid; tst/beq -> reset when panel not
+    solid (hole/broken); bl battle_isBattleOver; tst/bne -> reset only while battle still running; reset:
+    object_clearCollisionRegion; mov r0,#2; strb [r5,#oBattleObject_CurAction]; strh 0 -> CurPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:47777
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080CDEC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the behavior, but the conditions are inverted in the summary. The
+    code branches to the reset when HP==0, FlagsFromCollision!=0, or panel is NOT solid (isCurrentPanelSolid
+    returns 0 -> beq taken). It returns early only when battle_isBattleOver returns nonzero, i.e. when
+    the battle is NOT over. So the function ''returns without touching'' when the battle is still running
+    and resets only when the battle is over.; run wf investigate investigate-20261018-235109; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller known, so what action 2 means for the object at each call site (defeat animation, falling,
+  flinch) is not confirmed; a caller showing which object types invoke this would pin the exact meaning
+- Exact semantics of oCollisionData_FlagsFromCollision (any hit vs. specific hit type) assumed from field
+  name
+- The proposal correctly describes the behavior, but the conditions are inverted in the summary. The code
+  branches to the reset when HP==0, FlagsFromCollision!=0, or panel is NOT solid (isCurrentPanelSolid
+  returns 0 -> beq taken). It returns early only when battle_isBattleOver returns nonzero, i.e. when the
+  battle is NOT over. So the function 'returns without touching' when the battle is still running and
+  resets only when the battle is over.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CDEC8 -> object_resetActionIfInterrupted
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDEC8

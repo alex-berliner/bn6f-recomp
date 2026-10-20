@@ -1,0 +1,64 @@
+name: battle_hitEffectUpdate
+address: '0x080E0CAA'
+kind: function
+status: probable
+summary: 'Per-frame update for a hit/impact effect object: if the target still has an active Barrier,
+  the effect is cancelled with a blocked SFX; if Barrier was just lost, it un-hides itself; if there was
+  never a Barrier, it waits for end-of-animation, unlinks its back-pointer, and frees itself.'
+interface: (r0 = unused, r5 = effect battle object) -> r0 = clobbered; no meaningful return
+details: 'On first entry (PhaseInitialized==0) it advances oBattleObject_CurAnim, sets PhaseInitialized=4,
+  and plays SFX 0x124 when oBattleObject_Param1==8 (a special variant). Each frame it reads the related
+  object''s oCollisionData: if Barrier is set, BarrierHP>0, and the target''s ObjectFlags1 lacks 0x80000000,
+  it undoes the anim increment, sets oObjectHeader_Flags bit 1 (hide), plays SFX 0x89 (0x12d for variant
+  8), and resets CurAction and the phase word — the attack was barrier-blocked. If the barrier is gone
+  (HP 0 or flag 0x80000000 set), it waits for sprite_getFrameParameters to report the end-of-animation
+  attribute (bit 0x80), then clears flags bit 1... actually bit 0x2 via BIC, clears the target''s pointer
+  field if it points back at this object, and calls object_freeMemory. Param1 selects between two SFX
+  pairs, suggesting one spawn function serves several impact-effect flavors.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb on oBattleObject_CurAnim with add/sub #1 around the barrier check shows the anim
+    advance is rolled back when blocked (0x80E0CC6 area vs 0x80E0D06); ldr r3,[r0,#oBattleObject_CollisionDataPtr]
+    + Barrier/BarrierHP checks implement the ''attack absorbed by Barrier'' test (0x80E0CCA-0x80E0D06);
+    PlaySoundEffect 0x89 / 0x12d on the blocked path vs 0x124 on init matches barrier-block SFX behavior;
+    tail: sprite_getFrameParameters bit 0x80 end-frame test, clearing target''s back-pointer then object_freeMemory,
+    is standard effect-object self-teardown (0x80E0D1C-0x80E0D34)'
+  refs:
+  - bn6f/asm/asm31.s:88255
+  - 0x080005CC PlaySoundEffect
+  - 0x08003458 object_freeMemory
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080E0CAA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is close but conflates the two branches at loc_80E0D08 and loc_80E0D1C. At loc_80E0D08
+    (Barrier==0 but BarrierHP==0 or 0x80000000 set) the code only clears oObjectHeader_Flags bit 2 and
+    exits without freeing; freeing only happens in the loc_80E0D1C branch (no Barrier at all) which also
+    clears the target''s related-pointer back-reference. So the summary should say the no-Barrier branch
+    frees, while the ''Barrier existed but is gone'' branch just unhides and stops. Name ''battle_hitEffectUpdate''
+    is fine.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which spawn site creates this object and with which Param1 values (would confirm it is the generic melee/shot
+  impact spark rather than a specific chip effect)
+- exact meaning of ObjectFlags1 bit 0x80000000 (skips the barrier-block path)
+- whether oBattleObject_ExtraVars+4 on the target is a dedicated 'attached effect pointer' field
+- The proposal is close but conflates the two branches at loc_80E0D08 and loc_80E0D1C. At loc_80E0D08
+  (Barrier==0 but BarrierHP==0 or 0x80000000 set) the code only clears oObjectHeader_Flags bit 2 and exits
+  without freeing; freeing only happens in the loc_80E0D1C branch (no Barrier at all) which also clears
+  the target's related-pointer back-reference. So the summary should say the no-Barrier branch frees,
+  while the 'Barrier existed but is gone' branch just unhides and stops. Name 'battle_hitEffectUpdate'
+  is fine.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E0CAA -> battle_hitEffectUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0CAA

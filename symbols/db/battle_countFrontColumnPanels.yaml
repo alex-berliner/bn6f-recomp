@@ -1,0 +1,62 @@
+name: battle_countFrontColumnPanels
+address: '0x080D37F4'
+kind: function
+status: probable
+summary: Per column directly in front of a battle object, up to the field's far edge, invokes object_getPanelsInColumnFiltered
+  and sums the returned counts into a caller-supplied accumulator, returning the per-function total.
+interface: (r5 = battle object, r7 = running accumulator, must be 0 on entry) -> r0 = total matching panels
+  in front columns; r7 also accumulates the same total (caller-visible side effect)
+details: Reads the object's PanelX from r5 (r5, not r0, holds the object pointer — a calling-convention
+  quirk) and gets its facing multiplier from object_getFrontDirection. Starting at panelX+dir, it loops
+  over columns while col != 0 and col <= 6, so it stops at both field edges. Each pass pushes the column,
+  calls GetAllianceDependentPanelParamArgs with r3 = off_80D3834 — a table selecting 0x4000000 for opponent-side
+  or 0x8000000 for player-side objects by alliance — then object_getPanelsInColumnFiltered, which counts
+  panels passing object_checkPanelParameters. The per-column counts are summed into r6 and also into r7,
+  which is not initialized here, so the caller must zero it; the total is returned in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection; add r0, panelX: iterates columns starting just in front of the
+    object; cmp r0, #0 / cmp r0, #6 / ble loc_80D3806: walks columns 1..6 toward the front edge; off_80D3834
+    holds 0x4000000/0x8000000 alliance flags passed in r3 to GetAllianceDependentPanelParamArgs; bl object_getPanelsInColumnFiltered
+    with add r6/r7: accumulates filtered panel counts per column; project comment above entry: ''get actors
+    in columns in front of this object'''
+  refs:
+  - bn6f/asm/asm31.s:59960
+  - 0x080D3770 sub_80D3770
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080D37F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly shows the loop compares col <= 6 (line ''cmp r0, #6'') not col != 0 as the edge check
+    — both edges are enforced, that part is right. But r6 is initialized to 0 in the function (''mov r6,
+    #0'') and is returned via ''mov r0, r6'', while r7 is only added to and never initialized, making
+    it a true caller-supplied accumulator; the proposal''s framing of r7 as the primary return is inverted.
+    The summary conflates ''panels matching'' with ''panels counted''; object_getPanelsInColumnFiltered
+    writes panel IDs and returns a count, so this genuinely counts filtered panels in front columns.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what object_checkPanelParameters accepts (actor occupancy vs. a specific panel state) — not shown here
+- why the total is accumulated into caller-owned r7 as well as r6; sub_80D3770's use of r7 would clarify
+- what the per-alliance panel-param table entry's args pointer is used for inside the filter
+- 'The assembly shows the loop compares col <= 6 (line ''cmp r0, #6'') not col != 0 as the edge check
+  — both edges are enforced, that part is right. But r6 is initialized to 0 in the function (''mov r6,
+  #0'') and is returned via ''mov r0, r6'', while r7 is only added to and never initialized, making it
+  a true caller-supplied accumulator; the proposal''s framing of r7 as the primary return is inverted.
+  The summary conflates ''panels matching'' with ''panels counted''; object_getPanelsInColumnFiltered
+  writes panel IDs and returns a count, so this genuinely counts filtered panels in front columns.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D37F4 -> battle_countFrontColumnPanels
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D37F4

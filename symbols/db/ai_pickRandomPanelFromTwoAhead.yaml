@@ -1,0 +1,65 @@
+name: ai_pickRandomPanelFromTwoAhead
+address: '0x080F0BD2'
+kind: function
+status: probable
+summary: 'Battle AI helper: validates the panels one and two tiles ahead of the object (blocking holes
+  via 0x3800000 and requiring 0x10000 two-ahead), then picks a random reachable panel relative to the
+  two-ahead panel via GetRandomRelativePanelFiltered with an alliance-based filter mask; returns 0 on
+  success, 1 on failure.'
+interface: (r0 unused, r5 = battle object ptr) -> r0 = 0 if a panel was selected, 1 if blocked; uses GetRandomRelativePanelFiltered
+  out params
+details: 'Reads the object''s PanelX/PanelY, gets its facing multiplier via object_getFrontDirection,
+  and tests the panel one tile ahead: if any of the 0x3800000 flag bits are set it returns 1 immediately.
+  It then tests the panel two tiles ahead, requiring flag bit 0x10000, again returning 1 if absent. If
+  both pass, it calls GetRandomRelativePanelFiltered with a filter mask selected by the object''s Alliance
+  (0x4000000 for one side, 0x8000000 for the other, via off_80F0C24) relative to the two-ahead panel;
+  if the result is nonzero it returns 1, otherwise 0. The 0x3800000 bits likely mark broken/holes and
+  0x10000 a walkable/valid panel class.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r4,[r5,#oBattleObject_PanelX]; add r4,r4,r0 after object_getFrontDirection => panel one
+    ahead in facing direction; tst r0, 0x3800000 / bne loc_80F0C1C (r0=1): reject if any blocked-panel
+    bits set on first panel; second object_getFrontDirection+getPanelParameters at X+2 with tst 0x10000
+    / beq fail: requires specific flag two panels ahead; GetRandomRelativePanelFiltered with filter from
+    off_80F0C24 indexed by Alliance*4; tst r2 / bne fail, mov r0,#0 on success; sole caller sub_80F09DC
+    (unknown) and the all-data-in-r5 convention suggest an AI routine querying panels ahead of an enemy'
+  refs:
+  - bn6f/asm/asm31.s:122979
+  - 0x080F09DC sub_80F09DC
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080F0BD2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function tests the panel one tile ahead for flag 0x3800000 (broken/hole bits) and the panel
+    two tiles ahead for flag 0x10000, then calls GetRandomRelativePanelFiltered from the two-ahead panel
+    with an alliance-based mask. It returns 1 on failure (any blocked check fails or filter returns nonzero)
+    and 0 on success. The summary is essentially correct but the name ''findRandomPanelTwoAhead'' misrepresents
+    behavior: it picks a random panel relative to the two-ahead panel (i.e. any reachable neighbor), not
+    necessarily two tiles ahead. A name reflecting ''find a random valid move from the two-ahead panel''
+    would be more accurate.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the panel status bits 0x3800000 and 0x10000 (hole/broken vs. valid) not confirmed
+- Caller sub_80F09DC's purpose unknown, so which AI/attack uses this panel search is unclear
+- 'The function tests the panel one tile ahead for flag 0x3800000 (broken/hole bits) and the panel two
+  tiles ahead for flag 0x10000, then calls GetRandomRelativePanelFiltered from the two-ahead panel with
+  an alliance-based mask. It returns 1 on failure (any blocked check fails or filter returns nonzero)
+  and 0 on success. The summary is essentially correct but the name ''findRandomPanelTwoAhead'' misrepresents
+  behavior: it picks a random panel relative to the two-ahead panel (i.e. any reachable neighbor), not
+  necessarily two tiles ahead. A name reflecting ''find a random valid move from the two-ahead panel''
+  would be more accurate.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F0BD2 -> ai_pickRandomPanelFromTwoAhead
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0BD2

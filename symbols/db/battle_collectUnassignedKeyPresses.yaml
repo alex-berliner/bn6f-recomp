@@ -1,0 +1,64 @@
+name: battle_collectUnassignedKeyPresses
+address: '0x0812EAC4'
+kind: function
+status: probable
+summary: Builds a list of (keyItem, remainingPresses) pairs at word_2023FA0 for key items 0x91..0x14B
+  whose presses weren't already claimed in the toolkit's 0x31-entry 8-byte/entry table, skipping pairs
+  whose battle object has byte[3]==0; updates the scroll/entry-count fields of the struct from sub_812ED2C.
+interface: () -> void; writes a pair list at word_2023FA0 and cursor fields [r5+0x1e/0x20/0x24] of the
+  struct returned by sub_812ED2C
+details: Zero-fills 0x2F0 bytes at word_2023FA0 and seeds it with the pair (0x90, 1). For each key item
+  0x91..0x14B it gets the press count from CheckKeyItem, then subtracts one press for every entry of the
+  0x31-entry 8-byte toolkit array (oToolkit_Unk2004190_Ptr) whose first halfword equals keyItem-0x90,
+  i.e. objects that already claimed that key. If presses remain and the battle object at index keyItem-0x90
+  has byte[3] != 0, the pair (keyItem, remainingPresses) is appended to the list, building it as (u16
+  id, u16 count) pairs. The final pair count is stored at [r5+0x1e], and fields 0x20/0x24 are adjusted
+  to keep a 7-entry scroll window over the list (clamped when count >= 8, else window starts at 0). The
+  seed entry 0x90/1 suggests key item 0x90 is a always-present default entry handled separately.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZeroFillByEightWords(word_2023FA0, 0xBC*4) then strh 0x90/1 into word_2023FA0/2 seeds the list
+    buffer; loop r4 = 0x91..0x14B with CheckKeyItem(r4) and r7 as remaining-press counter; toolkit_getUnk2004190EntryPtr
+    entry halfword + 0x90 == r4 decrements r7, matching claimed keys to object index keyItem-0x90; battleObject_getByIndex(r4-0x90);
+    byte[3] != 0 gates appending (strh r4 / strh r7) at the [sp] write cursor; count = (writeptr - word_2023FA0)/4
+    stored to [r5+0x1e], then 7-window clamp on [r5+0x20]/[r5+0x24]
+  refs:
+  - bn6f/asm/asm35.s:24
+  - 0x0812E9AC sub_812E9AC
+  - 0x08000900 ZeroFillByEightWords
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
+  reproduce: python3 tools/asmcat.py 0x0812EAC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: word_2023FA0 is zero-filled with 0xBC/4=0x2F0 length, seeded with
+    (0x90,1), then loops keyItems 0x91..0x14B, subtracts toolkit entries whose id+0x90 equals the keyItem,
+    and appends remaining (id,count) pairs while the battle object''s byte[3]!=0. The cursor adjustment
+    at [r5+0x1e/0x20/0x24] matches a 7-entry scroll window clamp. However, the name ''battle_collectUnassignedKeyPresses''
+    is slightly misleading: keys are subtracted but also filtered by byte[3]!=0, so it''s better described
+    as collecting unassigned-but-eligible key presses.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sub_812ED2C returns (list/cursor struct) and what fields 0x20/0x24 mean
+- which game feature the key items 0x90-0x14B correspond to and who consumes the word_2023FA0 pair list
+  (caller sub_812E9AC and sub_812ED2C are undocumented)
+- 'The code matches the proposal: word_2023FA0 is zero-filled with 0xBC/4=0x2F0 length, seeded with (0x90,1),
+  then loops keyItems 0x91..0x14B, subtracts toolkit entries whose id+0x90 equals the keyItem, and appends
+  remaining (id,count) pairs while the battle object''s byte[3]!=0. The cursor adjustment at [r5+0x1e/0x20/0x24]
+  matches a 7-entry scroll window clamp. However, the name ''battle_collectUnassignedKeyPresses'' is slightly
+  misleading: keys are subtracted but also filtered by byte[3]!=0, so it''s better described as collecting
+  unassigned-but-eligible key presses.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812EAC4 -> battle_collectUnassignedKeyPresses
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EAC4

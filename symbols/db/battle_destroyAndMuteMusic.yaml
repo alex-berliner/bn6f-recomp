@@ -1,0 +1,56 @@
+name: battle_destroyAndMuteMusic
+address: '0x080171CC'
+kind: function
+status: probable
+summary: Chains battleObject_destroy_80170E4 (tears down a battle object, clearing collision/charges/chips/AI/sprite
+  and dispatching destroy events) with musicGameState_8000784 (switches sound driver music state and marks
+  BGM as off). A no-arg, no-return thunk.
+interface: () -> void; no arguments used, no return value
+details: 'A tiny thunk that chains two calls: first battleObject_destroy_80170E4, the battle-object destroy
+  handler that clears collision state, charges, chips, AI/barrier, sprite flip, decrements the alliance
+  counter, dispatches destroy events and sets the phase to 0x4 (CUR_STATE_UPDATE); then musicGameState_8000784,
+  which asks the sound driver to switch music state via callback sub_814EA58 and flags the game state
+  so background music counts as off. The pairing of ''kill every battle object'' with ''kill the music''
+  fits an end-of-battle or state-exit cleanup path (e.g. game over or return to overworld). It preserves
+  no registers and takes no parameters, so it is likely invoked as a state handler or callback rather
+  than a general routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: body is only bl battleObject_destroy_80170E4; bl musicGameState_8000784 — destroy-then-music-reset
+    ordering; battleObject_destroy_80170E4 sets phase to 0x4 CUR_STATE_UPDATE, indicating teardown before
+    a state transition; musicGameState_8000784 marks BGM off via sub_814EA58, matching an end-of-battle
+    music stop; no arguments consumed and lr popped directly to pc, consistent with a state-handler/callback
+    signature
+  refs:
+  - bn6f/asm/asm00_2.s:18880
+  - 0x080170E4 battleObject_destroy_80170E4
+  - 0x08000784 musicGameState_8000784
+  reproduce: python3 tools/asmcat.py 0x080171CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_80171CC matches the described behavior: it pushes lr, calls battleObject_destroy_80170E4,
+    calls musicGameState_8000784, then pops pc. The summary accurately describes the sequence. However,
+    ''battle_endCleanup'' is speculative about context (end-of-battle) without code confirmation; a more
+    neutral name reflecting what the function literally does is preferable.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller is known, so whether this runs on battle end, game over, or a state-exit hook is unconfirmed;
+  a caller showing the surrounding state transition would pin the exact trigger
+- 'The code at sub_80171CC matches the described behavior: it pushes lr, calls battleObject_destroy_80170E4,
+  calls musicGameState_8000784, then pops pc. The summary accurately describes the sequence. However,
+  ''battle_endCleanup'' is speculative about context (end-of-battle) without code confirmation; a more
+  neutral name reflecting what the function literally does is preferable.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80171CC -> battle_destroyAndMuteMusic
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80171CC

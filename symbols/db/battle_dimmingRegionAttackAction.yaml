@@ -1,0 +1,65 @@
+name: battle_dimmingRegionAttackAction
+address: '0x080E2EBC'
+kind: function
+status: probable
+summary: Battle action that spawns a dimming collision region on its panel (kind-0xA extra-vars object,
+  SE 0xBC), sets Timer=60, white-flashes the linked object each tick, and on expiry advances CurAction
+  to 0xC with phase reset.
+interface: (r5 = battle object, oBattleObject fields; no args) -> updates object phase/timer fields; sets
+  CurAction=0xC, CurPhaseAndPhaseInitialized=0 on expiry
+details: First entry (PhaseInitialized==0) sets Timer=60, spawns a kind-0xA object via battle_spawnExtraVarsObject
+  with ExtraVars 0x13C00 (likely a graphic/animation id), plays sound effect 0xBC, then calls object_spawnDimmingCollisionRegion
+  with PanelX/PanelY as r0/r1, the object's own Element as r2, r4 = byte_80E2F18[Alliance] (entries 0x82,0xFF,0x05,0x34
+  for ally/enemy), r3=0 and r7=0x3000 — so the region's look depends on which side spawned it and the
+  attack element. Then PhaseInitialized=4. Every tick after that it decrements Timer and calls sprite_forceWhitePalette
+  on the object pointed to by RelatedObject1Ptr, producing a flashing-white highlight while the region
+  is active; when the timer goes negative it sets CurAction=0xC and clears phase so the normal action
+  script continues.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_spawnExtraVarsObject with r4=0x13C00 right after Timer=60 setup (first-run block);
+    bl object_spawnDimmingCollisionRegion passed PanelX/PanelY/Element and byte_80E2F18[Alliance<<2] per-side
+    parameter table; bl PlaySoundEffect 0xBC during initialization; loc_80E2F02 loads RelatedObject1Ptr
+    and calls sprite_forceWhitePalette every frame while Timer counts down; Expiry path writes CurAction=0xC
+    and CurPhaseAndPhaseInitialized=0, matching an action-phase handler pattern
+  refs:
+  - bn6f/asm/asm31.s:92872
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080E2EBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: Timer=0x3C (60), spawns kind-0xA with ExtraVars 0x13C00,
+    plays SE 0xBC, calls object_spawnDimmingCollisionRegion with PanelX/PanelY/Alliance-table/Element/0,
+    sets PhaseInitialized=4, decrements Timer, flashes RelatedObject1Ptr white, and on expiry sets CurAction=0xC
+    with CurPhaseAndPhaseInitialized=0. The byte_80E2F18 entries in code are 0x82,0xFF,0x05,0x34 then
+    0x81,0xFF,0x05,0x34 (proposal said entries 0x82,0xFF,0x05,0x34 for all four alliances). Name ''battle_dimmingRegionAttackUpdate''
+    is reasonable but the ''Update'' suffix is non-standard; a tighter name would fit the battle-action
+    naming convention.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which in-game attack/boss action this handler belongs to (no known caller)
+- Meaning of the ExtraVars value 0x13C00 and the per-alliance table bytes (0x82/0x81,0xFF,0x05,0x34)
+- Why the related object is forced to the white palette — presumably a telegraph/flash for the dimming
+  region
+- 'The code matches the proposal''s mechanics: Timer=0x3C (60), spawns kind-0xA with ExtraVars 0x13C00,
+  plays SE 0xBC, calls object_spawnDimmingCollisionRegion with PanelX/PanelY/Alliance-table/Element/0,
+  sets PhaseInitialized=4, decrements Timer, flashes RelatedObject1Ptr white, and on expiry sets CurAction=0xC
+  with CurPhaseAndPhaseInitialized=0. The byte_80E2F18 entries in code are 0x82,0xFF,0x05,0x34 then 0x81,0xFF,0x05,0x34
+  (proposal said entries 0x82,0xFF,0x05,0x34 for all four alliances). Name ''battle_dimmingRegionAttackUpdate''
+  is reasonable but the ''Update'' suffix is non-standard; a tighter name would fit the battle-action
+  naming convention.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E2EBC -> battle_dimmingRegionAttackAction
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2EBC

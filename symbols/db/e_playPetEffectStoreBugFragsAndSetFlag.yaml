@@ -1,0 +1,65 @@
+name: e_playPetEffectStoreBugFragsAndSetFlag
+address: '0x08099FFC'
+kind: function
+status: probable
+summary: 'Event-script helper: queues PET effect 0, calls event_playPetEffectAndReloadGfx and stores its
+  r1 byte into [r5+4] and [r5+8], then if that byte is 0x32 stores sub_802D15E''s value else stores the
+  Protected BugFrags counter at [r5+0x70], and finally sets a flag bit on eStruct2001010.'
+interface: (caller must pre-set r5 = event/dialog struct; r0 ignored, forced to 0) -> r0 = 0; no meaningful
+  flags
+details: The routine forces r0=0 and calls doPETEffect_8033fc0 (queue PET effect 0 in the eS2011E30 block),
+  then calls event_playPetEffectAndReloadGfx, which plays a PET effect, reloads the map's graphics to
+  VRAM and clears scenario/event flags; its r1 return value is stored as bytes at [r5+4] and [r5+8]. It
+  then re-reads [r5+8], and if that byte equals 0x32 (50) calls sub_802D15E, otherwise gameState_getProtectedBugfrags_803D0F4
+  to read the anti-tamper Protected BugFrags counter; whichever value results is stored to [r5+0x70],
+  likely a number field later rendered in dialog (e.g. '50 BugFrags'). Finally it calls sub_8003984 and
+  e_setFlag2001010Bit7 (sets bit 0x80 on the eStruct2001010 status byte) before returning 0. r5 is never
+  set inside the function, so it depends entirely on the caller's context, and the 50-check suggests a
+  scripted fixed reward amount versus the live counter.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0 + bl doPETEffect_8033fc0 queues PET effect 0 before the scene routine; bl sub_809A284
+    (event_playPetEffectAndReloadGfx) then strb r1,[r5,#8]/[r5,#4] stores its result into the event struct;
+    ldrb r0,[r5,#8]; cmp r0,#0x32 branches between sub_802D15E and gameState_getProtectedBugfrags_803D0F4;
+    str r0,[r5,#0x70] writes the chosen count into the struct's number field; bl e_setFlag2001010Bit7
+    sets event-flag bit 7, then returns mov r0,#0
+  refs:
+  - bn6f/asm/asm28_0.s:994
+  - 0x08033FC0 doPETEffect_8033fc0
+  - 0x08003AD4 e_setFlag2001010Bit7
+  - 0x0809A284 event_playPetEffectAndReloadGfx
+  reproduce: python3 tools/asmcat.py 0x08099FFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee at 0x0809A284 is named event_playPetEffectAndReloadGfx, not ''event_playPetEffectAndReloadGfx''
+    (typo aside, it only plays ONE PET effect and reloads gfx); the proposal confuses it with its own
+    caller. Also strb/ldrb on bytes (not words) at [r5+4]/[r5+8] are consistent, and the 50-vs-ProtectedBugFrags
+    branching matches. The summary inaccurately implies the routine itself ''plays a PET effect, reloads
+    map graphics, stores a count and sets a flag'' - it queues effect 0 then *calls* another routine that
+    does the effect+reload. Caller-uses-r5 is plausible but unverifiable since no callers are documented.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_802D15E computes (the 50-branch value)
+- which event script invokes this and what r5 points to (dialog struct vs. scene state)
+- what sub_8003984 does
+- why effect index 0 is used and what scene plays it
+- The callee at 0x0809A284 is named event_playPetEffectAndReloadGfx, not 'event_playPetEffectAndReloadGfx'
+  (typo aside, it only plays ONE PET effect and reloads gfx); the proposal confuses it with its own caller.
+  Also strb/ldrb on bytes (not words) at [r5+4]/[r5+8] are consistent, and the 50-vs-ProtectedBugFrags
+  branching matches. The summary inaccurately implies the routine itself 'plays a PET effect, reloads
+  map graphics, stores a count and sets a flag' - it queues effect 0 then *calls* another routine that
+  does the effect+reload. Caller-uses-r5 is plausible but unverifiable since no callers are documented.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8099FFC -> e_playPetEffectStoreBugFragsAndSetFlag
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8099FFC

@@ -1,0 +1,66 @@
+name: battle_phaseInitPanelOffset
+address: '0x080BEBD8'
+kind: function
+status: probable
+summary: Phase-3 init that sets anim 3, conditionally plays SFX 0x94 and sets a header-flag bit (when
+  Param4<3), repositions the object on its panel using a Param4-indexed table offset and front direction,
+  waits ~3 frames, then advances to phase 4.
+interface: (r5 = battle object pointer, no args) -> void; updates oBattleObject_CurAnim, Param4-indexed
+  offset, X/Y, Timer, PhaseInitialized, and oObjectHeader_Flags bit 1
+details: 'Standard one-shot phase init: on first entry (PhaseInitialized==0) it sets CurAnim=3, and if
+  Param4 < 3 plays sound effect 0x94 and sets bit 1 of oObjectHeader_Flags (likely ''invisible/no draw''
+  or similar). It then reads byte_80BEC38[Param4] ({0,0x55,0xAA,0x78,0xC8}), adds 0x14 to it, and together
+  with the object''s panel coordinates and front direction computes new X/Y via object_getFrontDirection,
+  object_getCoordinatesForPanels and sub_80E58D2 (the two stack-pushed values survive the intervening
+  calls), storing the result in oBattleObject_X/Y. Timer is set to 3; each subsequent frame decrements
+  it and, on expiry, writes phase 4 into CurPhaseAndPhaseInitialized. Param4 appears to select a variant
+  of the object''s placement/behavior; the exact meaning of the table values depends on sub_80E58D2, which
+  is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized plus 'mov r0,#4; strb' at end = one-shot phase-init
+    pattern; cmp Param4,#3 / bge guard around PlaySoundEffect(0x94) and flag |= 2 shows conditional sound+flag
+    on early variants; push {r0,r1} of (0x14, table[Param4]+0x14) popped after object_getCoordinatesForPanels
+    shows the pair is offset args to sub_80E58D2; results of sub_80E58D2 stored to oBattleObject_X/Y show
+    the call repositions the object on its panel; Timer=3 then 'sub r0,#1; bgt' writing phase 4 to CurPhaseAndPhaseInitialized
+    shows a 3-frame wait before the next phase
+  refs:
+  - bn6f/asm/asm31.s:14506
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BEBD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely: it sets CurAnim=3, optionally plays 0x94 and OR=2 into Flags
+    when Param4<3, computes offset via byte_80BEC38[Param4]+0x14, calls getFrontDirection/getCoordinatesForPanels/sub_80E58D2,
+    sets Timer=3, and transitions to phase 4. However, PhaseInitialized is also used as CurPhaseAndPhaseInitialized
+    in many battle objects, so the last write sets both fields at once; also ''PhaseInitialized'' stores
+    phase in the high bits per the standard layout, so writing #4 there sets both fields. The minor naming
+    nit: ''battle_phaseInitPanelOffset'' is fine but a bit vague; overall the functional summary is accurate.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object/attack this phase belongs to (no callers known); a caller would identify the entity
+- What sub_80E58D2 computes from (0x14, table value, x, y, front direction) — needed to interpret byte_80BEC38
+  as heights, angles, or distances
+- Exact meaning of oObjectHeader_Flags bit 1 set here
+- 'The code matches the proposal closely: it sets CurAnim=3, optionally plays 0x94 and OR=2 into Flags
+  when Param4<3, computes offset via byte_80BEC38[Param4]+0x14, calls getFrontDirection/getCoordinatesForPanels/sub_80E58D2,
+  sets Timer=3, and transitions to phase 4. However, PhaseInitialized is also used as CurPhaseAndPhaseInitialized
+  in many battle objects, so the last write sets both fields at once; also ''PhaseInitialized'' stores
+  phase in the high bits per the standard layout, so writing #4 there sets both fields. The minor naming
+  nit: ''battle_phaseInitPanelOffset'' is fine but a bit vague; overall the functional summary is accurate.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80BEBD8 -> battle_phaseInitPanelOffset
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEBD8

@@ -1,0 +1,63 @@
+name: object_allocResourcesStepStateFade
+address: '0x08129D78'
+kind: function
+status: probable
+summary: Loops [r5+0x20] times calling sub_812B218 to allocate pooled resources per slot, then transitions
+  the state byte at [r5+3] (0x2c→0x30, 0x20→0x24, else→0x14), selects animation 4/5/7 based on [r5+2]
+  and calls sprite_setEntityAnimation(r0,0), ORs 0x10 into flags at [r5+0x1b], and starts SetScreenFade(8,0x10).
+interface: '(r5 = entity/record pointer, fields: +0x02 anim selector, +0x03 state byte, +0x1b flags, +0x20
+  resource count) -> r0 destroyed; no meaningful return'
+details: Reads a count from [r5+0x20] and calls sub_812B218 that many times, each call allocating one
+  entry from the shared pool at unk_20251A0 for this record's slot. It then advances the state byte at
+  [r5+3] by +4, mapping 0x2c→0x30 and 0x20→0x24 specially. Animation index is 4 when [r5+2]==0x14, 5 when
+  ==0x18, otherwise 7, passed with r1=0 to sprite_setEntityAnimation. It ORs 0x10 into the flag byte [r5+0x1b]
+  and finally calls SetScreenFade(8, 0x10). Note r5 is never set inside — the caller must establish the
+  record pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8129D7E loop: ldrb r4,[r5,#0x20] then bl sub_812B218 with sub r4,#1 / bgt — batch allocation
+    of pooled entries; state byte [r5,#3] compared to 0x2c/0x20 and rewritten 0x30/0x24 — a +4 state-machine
+    advance; branch table on [r5,#2] (0x14/0x18) selecting r0=4/5/7 before bl sprite_setEntityAnimation;
+    ldrb [r5,#0x1b]; orr 0x10; strb — sets a flag bit on the entity; tail: mov r0,#8; mov r1,#0x10; bl
+    SetScreenFade — starts a screen fade'
+  refs:
+  - bn6f/asm/asm33.s:13976
+  - 0x0811A610 sprite_setEntityAnimation
+  - 0x0812B218 sub_812B218
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08129D78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary fit the code well: it loops [r5+0x20] times calling sub_812B218, conditionally
+    updates [r5+3] (0x2c→0x30, 0x20→0x24, else→0x14), picks anim 4/5/7 from [r5+2], sets flag bit 0x10,
+    and calls SetScreenFade(8,0x10). The name prefix should be ''object'' but a clearer one is ''object_advanceStateAllocPoolAndFade''.
+    However note the state advance is not unconditional +4 — 0x14 maps to 0x2c→0x30 (+4) and 0x20→0x24
+    (+4), otherwise 0x14 stays — the summary''s ''advances by +4'' oversimplifies but is close enough;
+    the name ''object_allocResourcesStepStateFade'' is acceptable.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no callers are known, so the entity/scene this serves is unidentified
+- what sub_812B218's allocated entries are used for (sprite frames? spawned objects?) is only inferred
+  from its summary
+- meaning of state values 0x20/0x24/0x2c/0x30 and selector values 0x14/0x18 in the record structure is
+  unknown; a caller would need to show how r5 records are set up
+- 'The name and summary fit the code well: it loops [r5+0x20] times calling sub_812B218, conditionally
+  updates [r5+3] (0x2c→0x30, 0x20→0x24, else→0x14), picks anim 4/5/7 from [r5+2], sets flag bit 0x10,
+  and calls SetScreenFade(8,0x10). The name prefix should be ''object'' but a clearer one is ''object_advanceStateAllocPoolAndFade''.
+  However note the state advance is not unconditional +4 — 0x14 maps to 0x2c→0x30 (+4) and 0x20→0x24 (+4),
+  otherwise 0x14 stays — the summary''s ''advances by +4'' oversimplifies but is close enough; the name
+  ''object_allocResourcesStepStateFade'' is acceptable.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8129D78 -> object_allocResourcesStepStateFade
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129D78

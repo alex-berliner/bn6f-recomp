@@ -1,0 +1,69 @@
+name: object_findNearestPanelAheadFiltered
+address: '0x080D7CCC'
+kind: function
+status: probable
+summary: 'Scans from the object''s row from its own side of the field toward the front (using its facing
+  direction): first tries the nearer column, then iterates successive columns in the facing direction,
+  returning the encoded coordinates (column high nibble, row low 3 bits) of the first matching panel,
+  or a sentinel column beyond the field edge if none qualifies.'
+interface: (r5 = battle object ptr) -> r0/r1 = found panel coordinates (r0 = row bits / fallback column,
+  r1 = column nibble / PanelY); no flags of consequence
+details: Gets the object's facing multiplier (+1 player, -1 enemy) via object_getFrontDirection and its
+  Alliance from [r5+oBattleObject_Alliance]. It starts at column 1 for alliance 0 (or column 6 otherwise),
+  reads PanelY for the row, and first tries object_getFirstPanelInDirectionFiltered with the per-alliance
+  panel-base from off_80D7D44 ({0x4000000,0x8000000}); on success it splits the returned encoded panel
+  ID into column (high nibble -> r1) and row (low 3 bits -> r0). If that column has no qualifying panel,
+  it loops over successive columns stepping by the facing direction, staying within columns 1..6, calling
+  object_getPanelsInColumnFiltered each time and decoding the first buffered panel ID the same way. If
+  every column is exhausted, it falls back to r0 = 7 for player side (or 0 for enemy side) with r1 = PanelY,
+  i.e. a virtual column just beyond the field. The filter itself lives in object_checkPanelParameters
+  inside the callees, not here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'reads oBattleObject_Alliance and oBattleObject_PanelY from r5 and uses object_getFrontDirection
+    for scan direction; off_80D7D44 table {0x4000000,0x8000000} indexed by Alliance*4 is the panel-base
+    passed to both scan callees; column loop: add r6,r6,r0; cmp r6,#1 / cmp r6,#6 clamps the scan to the
+    6 battle columns stepping toward the front; success decodes an encoded panel ID: lsr r1,r0,#4 (column)
+    and lsl/lsr by 0x1d (row bits); fallback sets r0=7 (alliance 0) or 0 (else) with r1=PanelY, a column
+    just off the far edge of the field'
+  refs:
+  - bn6f/asm/asm31.s:69161
+  - 0x080D7BE0 sub_80D7BE0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x080D7CCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The control flow has a bug or different semantics than described. At loc_80D7D00, r6 starts at 1
+    or 6 depending on alliance, but then on no-match (`beq loc_80D7D22`) it increments r6 by `r0` (the
+    saved front direction) and loops while r6 is in 1..6. This is correct, but `loc_80D7D2E` has a redundant
+    `cmp r6,#1; blt loc_80D7D2E`: blt is never taken because loc_80D7D2E falls through to loc_80D7D3A
+    either way. The name is fine but ''object_findNearestFilteredPanelAhead'' conveys intent reasonably;
+    ''object_findNearestPanelAheadFiltered'' reads slightly better.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what object_checkPanelParameters filters for (empty, hole, occupied?), which decides what 'first panel'
+  means
+- exact semantics of the 0x4000000/0x8000000 panel-base values passed to the scan callees
+- what caller sub_80D7BE0 does with the returned coordinates
+- 'The control flow has a bug or different semantics than described. At loc_80D7D00, r6 starts at 1 or
+  6 depending on alliance, but then on no-match (`beq loc_80D7D22`) it increments r6 by `r0` (the saved
+  front direction) and loops while r6 is in 1..6. This is correct, but `loc_80D7D2E` has a redundant `cmp
+  r6,#1; blt loc_80D7D2E`: blt is never taken because loc_80D7D2E falls through to loc_80D7D3A either
+  way. The name is fine but ''object_findNearestFilteredPanelAhead'' conveys intent reasonably; ''object_findNearestPanelAheadFiltered''
+  reads slightly better.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D7CCC -> object_findNearestPanelAheadFiltered
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7CCC

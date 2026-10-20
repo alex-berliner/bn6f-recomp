@@ -1,0 +1,64 @@
+name: ow_bugfragTraderDrawScreen
+address: '0x0809A360'
+kind: function
+status: probable
+summary: 'Draws the BugFrag trader''s result screen: stashes a caller value into toolkit state, copies
+  a 9x5 tile block from byte_86C54D4 and a 7x2 tile block from byte_8099E5C into BG tile block 0 at column
+  r0/row 0 and column r0+1/row 2, then renders the ChipTrader text script (TextScriptChipTrader86C580C)
+  into VRAM at 0x600D400.'
+interface: (r0 = column/offset j for first tile copy) -> void; stores [r5+0x70] into toolkit->unk200a220+8
+details: 'Saves r0 as the j parameter, then stashes the caller''s value at [r5+0x70] into the toolkit
+  object (oToolkit_Unk200a220_Ptr) field +8, likely a state/counter the trader UI reads. It calls CopyBackgroundTiles
+  twice into tileBlock32x32 0: first a 9x5 block of tiles from byte_86C54D4 starting at the r0 column,
+  then a 7x2 block from byte_8099E5C at column r0+1, row 2 — the trader machine/window art. Finally it
+  calls renderTextGfx_8045F8C with TextScriptChipTrader86C580C (the ChipTrader text script), a 0x40 parameter,
+  the unk_200EF40 buffer as destination, VRAM address 0x600D400, and parameters 7/1/dword_86A5D60/4, publishing
+  the text graphics. Runs right when ow_bugfragTraderExchange has taken 10 BugFrags and granted a chip,
+  so it draws the trader''s result screen/dialogue.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ow_bugfragTraderExchange calls this after taking 10 bugfrags and granting a random chip, then
+    opens the ChipTrader text script; two CopyBackgroundTiles calls with byte_86C54D4 (9x5) and byte_8099E5C
+    (7x2) lay out the trader's background tile art; renderTextGfx_8045F8C is invoked with TextScriptChipTrader86C580C
+    and VRAM dst 0x600D400, rendering the trader text; str r1,[r0,#8] writes [r5+0x70] into the toolkit
+    object, syncing a UI state field before drawing
+  refs:
+  - bn6f/asm/asm28_0.s:1419
+  - 0x0809A078 ow_bugfragTraderExchange
+  - 0x0809A03C sub_809A03C
+  - 0x0809A05C sub_809A05C
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0809A360
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: it copies two tile blocks (9x5 from byte_86C54D4 and 7x2 from byte_8099E5C)
+    into tileBlock 0 and renders the ChipTrader text script via renderTextGfx_8045F8C. However, the caller
+    ow_bugfragTraderExchange takes 10 BugFrags and grants a chip then opens the text script — sub_809A360
+    is called afterward to draw the screen, but the proposal''s r0 parameter is described as ''column/offset
+    j for first tile copy'', when it is simply the caller-supplied offset (r7=r0). The function name should
+    reflect drawing the trader UI rather than an ''exchange''.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- exact meaning of the r0 argument and the [r5+0x70] value written to the toolkit object
+- what the 0x40/7/1/4 renderTextGfx parameters control precisely
+- 'The summary is largely correct: it copies two tile blocks (9x5 from byte_86C54D4 and 7x2 from byte_8099E5C)
+  into tileBlock 0 and renders the ChipTrader text script via renderTextGfx_8045F8C. However, the caller
+  ow_bugfragTraderExchange takes 10 BugFrags and grants a chip then opens the text script — sub_809A360
+  is called afterward to draw the screen, but the proposal''s r0 parameter is described as ''column/offset
+  j for first tile copy'', when it is simply the caller-supplied offset (r7=r0). The function name should
+  reflect drawing the trader UI rather than an ''exchange''.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809A360 -> ow_bugfragTraderDrawScreen
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A360

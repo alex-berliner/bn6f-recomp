@@ -1,0 +1,60 @@
+name: ai_cycleAttackPatterns
+address: '0x08107DD4'
+kind: function
+status: probable
+summary: 'Enemy AI turn scheduler: spends the first 4 turns closing in via ai_attackRandomFreePanel, then
+  alternates between battle_aiInitAttack0/sub_8108046 (and every 5th step calls sub_81080A6), and after
+  AttackCounter reaches 5 toggles SubState to swap between ai_initAttackState and sub_81080E6. When HP
+  is at or below half MaxHP, it sets ScriptId to 0xC and resets TurnCounter and SubState.'
+interface: (r5 = battle object, r6 = AI state struct) -> void; no meaningful return value, r0/r1 clobbered
+details: 'Each call increments oAIState_TurnCounter; for the first 4 turns it only calls ai_attackRandomFreePanel
+  (move toward a free panel). On the turn after the 4th, it resets the turn counter and increments oAIState_AttackCounter:
+  each such turn toggles oAIState_AttackDecisionFlag and alternates between battle_aiInitAttack0 and sub_8108046,
+  except every 5th attack (StepCounter) which resets the step count and calls sub_81080A6 instead. When
+  the attack counter passes 5, it resets and toggles oAIState_SubState, swapping between ai_initAttackState
+  and sub_81080E6 as the long-cycle attack set. Finally, if the object''s HP (r5+oBattleObject_HP) is
+  below half of MaxHP, it sets oAIState_ScriptId to 0xC and clears the counters, handing control to the
+  desperation/phase-2 AI script.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/cmp #4 on TurnCounter with ai_attackRandomFreePanel call in the early branch = 4 approach
+    turns before attacking (loc_8107DE4 vs loc_8107E3E); eor on AttackDecisionFlag toggles between battle_aiInitAttack0
+    and sub_8108046 each attack turn; eor on SubState with attack-counter wrap chooses between ai_initAttackState
+    and sub_81080E6; tail: lsr MaxHP,#1 vs HP, then ScriptId=0xC and counter reset = low-HP script switch
+    (locret_8107E58 block); callees ai_attackRandomFreePanel/ai_initAttackState/battle_aiInitAttack0 are
+    documented attack-setup routines, confirming this is attack scheduling'
+  refs:
+  - bn6f/asm/asm31.s:171216
+  - 0x08107FF4 ai_attackRandomFreePanel
+  - 0x0810806E ai_initAttackState
+  - 0x08108014 battle_aiInitAttack0
+  reproduce: python3 tools/asmcat.py 0x08107DD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The cycle logic, attack-set alternation (battle_aiInitAttack0/sub_8108046, then ai_initAttackState/sub_81080E6),
+    and StepCounter==4 branch (sub_81080A6) match the proposal. However, the rage trigger at loc_8107E42
+    uses `bge` so it fires when MaxHP/2 >= HP (≤ half, not strictly below), and only TurnCounter (strb)
+    plus SubState (strh) are cleared — AttackCounter/StepCounter/AttackDecisionFlag are not reset as claimed.;
+    run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_8108046, sub_81080A6 and sub_81080E6 do specifically (only battle_aiInitAttack0/ai_initAttackState
+  are known)
+- Which enemy/meteors this AI state struct belongs to, and what script 0xC contains
+- The cycle logic, attack-set alternation (battle_aiInitAttack0/sub_8108046, then ai_initAttackState/sub_81080E6),
+  and StepCounter==4 branch (sub_81080A6) match the proposal. However, the rage trigger at loc_8107E42
+  uses `bge` so it fires when MaxHP/2 >= HP (≤ half, not strictly below), and only TurnCounter (strb)
+  plus SubState (strh) are cleared — AttackCounter/StepCounter/AttackDecisionFlag are not reset as claimed.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8107DD4 -> ai_cycleAttackPatterns
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107DD4

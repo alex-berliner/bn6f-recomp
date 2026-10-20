@@ -1,0 +1,69 @@
+name: ai_enemyFrontStepStrike
+address: '0x080EC044'
+kind: function
+status: probable
+summary: 'Enemy AI front-step strike: on first call spawns a t1 subtype-5 step object on the front panel,
+  adds AttackBoost to Damage, spawns a 0x1B strike effect (sub_80CEAA2 or sub_80E85FA at difficulty 1)
+  into RelatedObject1Ptr, arms a 30-frame timer, and advances AttackElement to 4. On later calls, marks
+  HitElement=4 once the spawned object is cleared.'
+interface: (r5 = battle object via working register, r7 = AI attack vars block) -> r0 = clobbered; no
+  meaningful return
+details: 'Guarded by oAIAttackVars_AttackElement == 0, so it runs once per attack: sets animation 0xA,
+  resets the counter timer to default, spawns a type-1 subtype-5 temp attack object linked to the enemy,
+  and computes a target panel X as PanelX + object_getFrontDirection(). It adds oAIAttackVars_AttackBoost
+  to Damage for the attack, then calls sub_80CEAA2 (or sub_80E85FA when AiDifficultyTier == 1) with parameter
+  0x1B to create an effect object, storing it in oBattleObject_RelatedObject1Ptr. It sets oAIAttackVars_StepTimer
+  to 0x1E (30 frames) and sets AttackElement to 4 (attack in progress). On later calls (AttackElement
+  != 0), it only checks RelatedObject1Ptr and sets HitElement to 4 once the spawned object is gone, ending
+  the step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst on [r7,#oAIAttackVars_AttackElement] with bne skip makes the spawn block run only once per
+    attack state; bl spawn_t1_0x5_tempAttackObject_80B8E30 right after object_setAnimation/object_setDefaultCounterTime
+    spawns the attack object; add r0,r0,PanelX after object_getFrontDirection computes the adjacent-panel
+    X for the strike; difficulty branch picks sub_80CEAA2 vs sub_80E85FA (both with r3=0x1B) and stores
+    the result in oBattleObject_RelatedObject1Ptr; exit path waits on RelatedObject1Ptr and writes HitElement=4,
+    the standard AI attack-state handoff
+  refs:
+  - bn6f/asm/asm31.s:112534
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  reproduce: python3 tools/asmcat.py 0x080EC044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mention of Damage and AttackBoost matches the code: `add r6, r6, r3` where r3 is
+    `oAIAttackVars_AttackBoost` and r6 holds Damage, which is then passed to sub_80CEAA2/sub_80E85FA.
+    The front-panel spawn also matches: `object_getFrontDirection` + PanelX gives the target X, and PanelY
+    is loaded but only used to position the spawned t1_0x5 object (not the strike). The HitElement write
+    at loc_80EC0B4 matches the proposal. However the name is misleading: this is not a generic ''attackStep''
+    but specifically the ''enemy steps onto front panel and strikes'' behavior (t1 subtype 5 = FrontStep).
+    A name like `ai_enemyFrontStepStrike` better reflects the t1_0x5 spawn, and the summary should note
+    the spawned t1 object inherits panel XY (used for the step), while sub_80CEAA2 creates the actual
+    strike effect.; run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack this belongs to and what object type 0x1B (passed to sub_80CEAA2/sub_80E85FA) actually
+  spawns
+- What sub_80CEAA2 and sub_80E85FA do differently besides the difficulty-tier split
+- 'The summary''s mention of Damage and AttackBoost matches the code: `add r6, r6, r3` where r3 is `oAIAttackVars_AttackBoost`
+  and r6 holds Damage, which is then passed to sub_80CEAA2/sub_80E85FA. The front-panel spawn also matches:
+  `object_getFrontDirection` + PanelX gives the target X, and PanelY is loaded but only used to position
+  the spawned t1_0x5 object (not the strike). The HitElement write at loc_80EC0B4 matches the proposal.
+  However the name is misleading: this is not a generic ''attackStep'' but specifically the ''enemy steps
+  onto front panel and strikes'' behavior (t1 subtype 5 = FrontStep). A name like `ai_enemyFrontStepStrike`
+  better reflects the t1_0x5 spawn, and the summary should note the spawned t1 object inherits panel XY
+  (used for the step), while sub_80CEAA2 creates the actual strike effect.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EC044 -> ai_enemyFrontStepStrike
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC044

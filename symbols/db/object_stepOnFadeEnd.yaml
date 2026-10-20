@@ -1,0 +1,60 @@
+name: object_stepOnFadeEnd
+address: '0x08017274'
+kind: function
+status: probable
+summary: 'Object step: if no screen fade is active, writes CUR_STATE_DESTROY to terminate the object;
+  otherwise, if bit 2 of the fade state is set, forces the sprite palette white, presumably to blend with
+  an in-progress white-out fade.'
+interface: (r0 = fade state bitfield from IsScreenFadeActive, r5 = battle object) -> writes r5->curStateActionPhase
+  (oBattleObject_CurStateActionPhaseAndPhaseInitialized) = CUR_STATE_DESTROY, or forces sprite palette
+  white; flags clobbered
+details: 'Reads IsScreenFadeActive''s result in r0 as a bitfield. If r0 == 0 (no fade in progress), it
+  writes CUR_STATE_DESTROY into the object''s curState field at [r5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized],
+  ending the object. If a fade is active, it tests bit 2 (lsr #2, carry = white-fade flag): when clear
+  the handler does nothing this tick, when set it calls sprite_forceWhitePalette so the object''s sprite
+  renders fully white and blends into the white fade screen. r5 must already hold the object pointer when
+  this handler is entered, i.e. it is an object-state/AI step invoked with r5 as the object context. The
+  bit-2 test means it only whitens during fade-out-to-white transitions, not other fades.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bne loc_8017284 skips destruction only when IsScreenFadeActive returned nonzero (fade running);
+    str r0,#CUR_STATE_DESTROY,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] destroys the
+    object when no fade is active; lsr r0,#2 / bcc gates sprite_forceWhitePalette on bit 2 of the fade
+    state, i.e. a white-fade flag; callees IsScreenFadeActive and sprite_forceWhitePalette match the fade-check
+    + white-render behavior
+  refs:
+  - bn6f/asm/asm00_2.s:18988
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08002DB0 sprite_forceWhitePalette
+  reproduce: python3 tools/asmcat.py 0x08017274
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Callee 0x080062F8 IsScreenFadeActive is annotated as returning only a zero flag (`() -> zf`), so
+    r0 is not necessarily a bitfield — but `lsr r0,#2; bcc` does isolate bit 2. The destroy-vs-whiten
+    logic matches the proposal exactly. However, the name overemphasizes ''white fade''; the destroy happens
+    when no fade is active at all (any fade end), and the whitening is gated on bit 2 during an active
+    fade. Suggested name reflects the object''s self-cleanup role.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- 'No callers known: unclear which object/script spawns this handler and whether bit 2 of the fade state
+  is specifically ''fade to white'' vs another fade subtype'
+- Whether r5 points to a battle object or another actor struct with the same curState layout
+- Callee 0x080062F8 IsScreenFadeActive is annotated as returning only a zero flag (`() -> zf`), so r0
+  is not necessarily a bitfield — but `lsr r0,#2; bcc` does isolate bit 2. The destroy-vs-whiten logic
+  matches the proposal exactly. However, the name overemphasizes 'white fade'; the destroy happens when
+  no fade is active at all (any fade end), and the whitening is gated on bit 2 during an active fade.
+  Suggested name reflects the object's self-cleanup role.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8017274 -> object_stepOnFadeEnd
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017274

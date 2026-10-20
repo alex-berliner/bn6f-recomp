@@ -1,0 +1,60 @@
+name: startCompanionInit
+address: '0x0812A4FC'
+kind: function
+status: probable
+summary: 'Initializes companion-link mode: calls sub_813D90C(1) and sub_8147F98, configures camera via
+  sub_803DCE8(0xC,3,2,0), tags eLinkState with ''ER2B''/0x2000 via sub_803DCD8, dispatches through sub_81322E8,
+  zero-fills a 0x100 buffer, writes state id 4 and sub-state 0 on the owning struct, and finishes via
+  sub_803CB00(1).'
+interface: (r0..r3 ignored/scratch, r5 = owning state struct) -> r0 = sub_803CB00 return; no flags guarantee
+details: 'Runs a fixed init sequence: calls sub_813D90C(1) and sub_8147F98, then configures the camera/screen
+  block via sub_803DCE8(0xC, 3, 2, 0). It passes a literal tag 0x42523545 (ASCII "ER2B") and size 0x2000
+  to sub_803DCD8, which stores them plus a link index into the global eLinkState struct, then dispatches
+  via sub_81322E8 and zero-fills a 0x100-byte work buffer via sub_803EF60. It writes 4 to [r5,#3] and
+  0 to [r5,#0xC] (state id and sub-state/counter fields), and finishes with sub_803CB00(1). The ''ER2B''
+  fourcc suggests a specific link partner/game (plausibly the Boktai crossover companion).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_803DCD8 callee summary: stores link index and halfword fields into global eLinkState; here
+    called with r0=0x42523545 (''ER2B''), r1=0x2000, r2=0; sub_803DCE8 callee summary: init camera/screen
+    block linked from eLinkState; called with (0xC, 3, 2, 0); sub_803EF60 zero-fills 0x100-byte buffer
+    right after sub_81322E8 object dispatch; strb #4,[r5,#3] / strb #0,[r5,#0xC] set the caller struct''s
+    state and counter fields, typical of a mode-entry handler; sub_813D90C called with r0=1 as the first
+    step, matching other mode-entry sequences'
+  refs:
+  - bn6f/asm/asm33.s:14986
+  - 0x0803DCD8 sub_803DCD8
+  - 0x0803DCE8 sub_803DCE8
+  - 0x0803EF60 sub_803EF60
+  reproduce: python3 tools/asmcat.py 0x0812A4FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior described match the code well. However the proposed name mixes two concepts
+    (''start_linkCompanionInit'') and contains a redundant infix; a cleaner camelCase from the allowed
+    ''start''/''e''/''init'' prefixes would be ''startCompanionInit'' since the tag/buffer setup and camera
+    init fits a companion-link startup. Also ''ER2B'' reversed from the literal is actually ''5ERB''-ish
+    but 0x42523545 is ''ER2B'' little-endian, fine; the summary''s eLinkState tag detail is accurate.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the game screen/mode that triggers this is unconfirmed
+- Meaning of the 'ER2B' fourcc (which link partner/game it selects) and the exact layout of the r5 state
+  struct
+- The summary and behavior described match the code well. However the proposed name mixes two concepts
+  ('start_linkCompanionInit') and contains a redundant infix; a cleaner camelCase from the allowed 'start'/'e'/'init'
+  prefixes would be 'startCompanionInit' since the tag/buffer setup and camera init fits a companion-link
+  startup. Also 'ER2B' reversed from the literal is actually '5ERB'-ish but 0x42523545 is 'ER2B' little-endian,
+  fine; the summary's eLinkState tag detail is accurate.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812A4FC -> startCompanionInit
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A4FC

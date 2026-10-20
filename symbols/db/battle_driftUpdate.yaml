@@ -1,0 +1,66 @@
+name: battle_driftUpdate
+address: '0x080E213C'
+kind: function
+status: probable
+summary: Per-frame update that drifts a battle object by its XVelocity/ZVelocity until Timer expires,
+  then re-anchors it behind the owner; frees the object if the battle ends or the owner's CurAction no
+  longer matches the value in dword_80E21A8 indexed by Param2.
+interface: (r0 = battle object ptr, stashed in r5 by caller convention) -> void; no return value, may
+  call object_freeMemory on the object
+details: If the battle is over the object is freed. Otherwise, unless Param2==2, it compares the related
+  object's CurAction against an expected-action table at dword_80E21A8 indexed by Param2 (bytes 0x0D,
+  0x0E, 0x5E for states 0,1,3) and frees the object on mismatch; battle time-stop pauses the countdown.
+  Each frame it decrements Timer2 and, while positive, applies XVelocity to X and ZVelocity to Z. When
+  Timer reaches 0 it calls object_setCoordinatesFromPanels, then sets X to panel-X minus frontDirection*0x140000
+  (i.e. 20.0 fixed-point units behind the facing) and Z to 0x800000 (8.0), and reloads Timer with 0xF
+  to start the next drift cycle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver / bne loc_80E219E leading to bl object_freeMemory: teardown on battle
+    end; ldrb r0,[r5,#oBattleObject_CurAction] vs table byte indexed by Param2, mismatch -> loc_80E219E
+    (free): object dies when owner leaves expected action; X += XVelocity, Z += ZVelocity gated by Timer2
+    countdown: per-frame drift movement; on Timer expiry: object_setCoordinatesFromPanels, X -= frontDirection*0x140000,
+    Z=0x800000, Timer=0xF: snap back behind front direction and restart cycle; bl battle_isTimeStop /
+    bne locret: countdown paused during time-stop, confirming it is an active-object tick'
+  refs:
+  - bn6f/asm/asm31.s:91150
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E213C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: it checks battle-over, matches RelatedObject1Ptr''s CurAction against dword_80E21A8
+    (bytes 0x0D/0x0E/0x5E for Param2=0,1,3; Param2==2 skips), pauses on time-stop, decrements Timer2 to
+    gate drift, applies XVelocity/ZVelocity, and on Timer expiry re-anchors via object_setCoordinatesFromPanels
+    with X = panelX - 20*frontDir and Z=8.0, then reloads Timer=0xF. However, the name omits the ''re-anchor
+    / re-cycle'' aspect and ''hover'' is unsupported by the code; a tighter name would be battle_driftUpdate
+    reflecting the drift-and-recycle behavior shown in the asm.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the object type and which enemy/attack uses this movement (and what Param2 states
+  0/1/2/3 mean for it) are unknown
+- The identity of the related object (owner?) and the meaning of actions 0x0D/0x0E/0x5E in its action
+  table
+- Whether the drift is horizontal flight or hover bobbing depends on the velocity values set by the spawner,
+  not visible here
+- 'The summary is accurate: it checks battle-over, matches RelatedObject1Ptr''s CurAction against dword_80E21A8
+  (bytes 0x0D/0x0E/0x5E for Param2=0,1,3; Param2==2 skips), pauses on time-stop, decrements Timer2 to
+  gate drift, applies XVelocity/ZVelocity, and on Timer expiry re-anchors via object_setCoordinatesFromPanels
+  with X = panelX - 20*frontDir and Z=8.0, then reloads Timer=0xF. However, the name omits the ''re-anchor
+  / re-cycle'' aspect and ''hover'' is unsupported by the code; a tighter name would be battle_driftUpdate
+  reflecting the drift-and-recycle behavior shown in the asm.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E213C -> battle_driftUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E213C

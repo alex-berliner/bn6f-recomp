@@ -1,0 +1,64 @@
+name: battle_beastOutTransformTick
+address: '0x0811847C'
+kind: function
+status: probable
+summary: 'Per-tick handler for the beast-out transformation: writes a state byte (0x23 if chatbox event
+  bit 0x80 clear, else 1) to r5+0x00 and a scroll-active byte (2, or 0 when r6+0x10 nonzero, which also
+  forces state byte to 1) to r5+0x0C, then runs the scroll step, palette refresh and beast-sp slot-mask
+  update on the battle object in r6.'
+interface: (r5 = beast-out state struct, r6 = battle object) -> r0 = result of battle_beastOutScrollStep
+  (count of scroll strips arrived); writes bytes r5+0x00 and r5+0x0C
+details: 'Checks event-flag bit 0x80 of eFlags2009F38: if clear, r5+0x00 is set to 0x23, otherwise 1 —
+  a state byte for the transformation. If the object''s byte r6+0x10 is nonzero, r5+0x0C is cleared to
+  0 and the state byte forced back to 1; otherwise r5+0x0C = 2 (scroll active). It then calls battle_beastOutScrollStep
+  to move the two scrolling strips toward their targets, battleObject_setPaletteFromOffsetTable to pick
+  the palette from the 0x0201DA80 offset table, and battleObject_updateBeastSpSlotMask to update the object''s
+  sprite Unk0x2c slot mask. r6+0x10 acting as an override/reset flag is a notable quirk; the meaning of
+  state byte 0x23 vs 1 is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,[r5,#0xc] / strb r4,[r5] write scroll-active and state bytes after the eFlags 0x80 and
+    r6+0x10 tests; bl battle_beastOutScrollStep immediately follows, tying it to the beast-out strip scrolling;
+    bl battleObject_setPaletteFromOffsetTable_81185E4 and battleObject_updateBeastSpSlotMask_8118604 both
+    operate on the r6 battle object each call; all three callees are beast-out-specific, so the function
+    is the per-frame transformation updater; state byte becomes 0x23 only when chatbox_mask_eFlags2009F38(0x80)
+    returns zero
+  refs:
+  - bn6f/asm/asm32.s:21159
+  - 0x081185E4 battleObject_setPaletteFromOffsetTable_81185E4
+  - 0x08118604 battleObject_updateBeastSpSlotMask_8118604
+  - 0x081186A8 battle_beastOutScrollStep
+  reproduce: python3 tools/asmcat.py 0x0811847C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The callees, state-byte logic (0x23 vs 1, forced back to 1 when r6+0x10 nonzero), scroll step, palette
+    refresh and slot-mask refresh all match the proposal. The interface description is slightly off: r5+0x00
+    holds the state byte (1 or 0x23), but it is also forced to 1 in the r6+0x10 branch, not ''r5+0x0C
+    forced back to 1''; r5+0x0C is the scroll-active byte set to 2 or 0. The function is called from nowhere
+    known, so ''driver/tick'' wording is reasonable but not certain. Name and summary are otherwise fine;
+    just the summary''s claim about r5+0x0C being forced is wrong.; run wf investigate investigate-20261018-230610;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller is known, so when/why this tick runs (which state machine owns r5) is unconfirmed
+- meaning of state bytes 1 vs 0x23 and of r6+0x10 (progress counter? skip flag?) is not shown in this
+  code
+- 'The callees, state-byte logic (0x23 vs 1, forced back to 1 when r6+0x10 nonzero), scroll step, palette
+  refresh and slot-mask refresh all match the proposal. The interface description is slightly off: r5+0x00
+  holds the state byte (1 or 0x23), but it is also forced to 1 in the r6+0x10 branch, not ''r5+0x0C forced
+  back to 1''; r5+0x0C is the scroll-active byte set to 2 or 0. The function is called from nowhere known,
+  so ''driver/tick'' wording is reasonable but not certain. Name and summary are otherwise fine; just
+  the summary''s claim about r5+0x0C being forced is wrong.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811847C -> battle_beastOutTransformTick
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811847C

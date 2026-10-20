@@ -1,0 +1,56 @@
+name: battle_setHudVariant
+address: '0x0801E474'
+kind: function
+status: probable
+summary: Sets the HUD variant (0..2) in eStruct2035280+0xB, queues the matching GFX transfer list, marks
+  the HUD dirty (0x3F at +0x0), and dispatches bit 0x1000.
+interface: (r0 = variant index 0..2) -> r0 = dispatch_801DA48(0x1000) result; touches eStruct2035280 bytes
+  +0xB and +0x0
+details: Stores r0 into eStruct2035280+0xB, then uses it as an index (r0*4) into a 3-entry table at off_801E4A0
+  whose entries (off_801EF30/EF4C/EF68) are graphics transfer lists passed to QueueGFXTransfersInList.
+  It then writes 0x3F to eStruct2035280+0x0 (likely a redraw work/counter byte), ORs bit 0x1000 into the
+  request dword at +0x40 via eStruct2035280_SetRequestBits_801BECC, and finally calls dispatch_801DA48
+  with 0x1000 so the flagged request is processed. No bounds check on r0; out-of-range values read garbage
+  pointers from the table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0,[r1,#0xb] saves the variant selector into eStruct2035280+0xB; lsl r0,r0,#2 + ldr r0,[r1,r0]
+    indexes off_801E4A0''s three list pointers; bl QueueGFXTransfersInList queues the chosen list''s VRAM
+    copies; strb #0x3F,[eStruct2035280] then SetRequestBits(0x1000) flags HUD redraw state; bl dispatch_801DA48(0x1000)
+    services the just-set request bit'
+  refs:
+  - bn6f/asm/asm00_2.s:32299
+  - 0x08000B8E QueueGFXTransfersInList
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801E474
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal matches the code: it stores r0 to eStruct2035280+0xB, indexes off_801E4A0 (3 entries)
+    to get a list passed to QueueGFXTransfersInList at 0x0801E47E, writes 0x3F to +0x0, calls SetRequestBits
+    with 0x1000, then dispatch_801DA48(0x1000). The variant-index idea fits. However ''battle_queueHudGfxVariant''
+    overemphasizes queueing — the redraw flag (0x3F) and request dispatch are equally central; a name
+    like ''battle_setHudVariant'' fits the lowerCamel prefix rules better.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the meaning of the 3 variants (HP box color scheme? HUD style setting?) is unconfirmed
+- Exact meaning of the 0x3F stored to +0x0 and what dispatch_801DA48 does with request 0x1000
+- 'The proposal matches the code: it stores r0 to eStruct2035280+0xB, indexes off_801E4A0 (3 entries)
+  to get a list passed to QueueGFXTransfersInList at 0x0801E47E, writes 0x3F to +0x0, calls SetRequestBits
+  with 0x1000, then dispatch_801DA48(0x1000). The variant-index idea fits. However ''battle_queueHudGfxVariant''
+  overemphasizes queueing — the redraw flag (0x3F) and request dispatch are equally central; a name like
+  ''battle_setHudVariant'' fits the lowerCamel prefix rules better.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801E474 -> battle_setHudVariant
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E474

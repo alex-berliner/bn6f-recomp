@@ -1,0 +1,59 @@
+name: e_waitFadeThenCloseChat
+address: '0x0812C010'
+kind: function
+status: probable
+summary: Waits for the screen fade to finish, then zero-fills unk_2037780, calls chatbox_8040818, sets
+  story flag EVENT_1710, and advances the caller's state byte at [r5,#3] to 4.
+interface: (r5 = event/task object whose byte at +3 is the state/phase counter) -> void; flags clobbered
+  by calls
+details: This is one step of a scripted event state machine. It first checks IsScreenFadeActive and does
+  nothing if a fade is still in progress, so the step waits for the fade to finish. It then zero-fills
+  0x80 bytes at unk_2037780 (likely a text/chatbox work buffer) and calls chatbox_8040818 to tear down
+  or close the chatbox. It sets story flag EVENT_1710 via SetEventFlagFromImmediate, recording that the
+  event point was reached, and finally writes 4 to the state byte at [r5,#3], moving the event to its
+  next phase. The ZF-return convention of IsScreenFadeActive makes beq skip the body while the fade is
+  active.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret_812C030: whole body gated on no fade being active; ldr r0,
+    =unk_2037780 + ZeroFillByEightWords(r0, 0x80): clears a 128-byte work buffer; bl chatbox_8040818 immediately
+    after the clear: chatbox teardown/reset; movflag EVENT_1710 + bl SetEventFlagFromImmediate: marks
+    a story/progress flag; mov r0,#4 / strb r0,[r5,#3]: writes a small state value to a caller-held object,
+    typical event phase advance'
+  refs:
+  - bn6f/asm/asm33.s:18555
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08000900 ZeroFillByEightWords
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x0812C010
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee name (chatbox_8040818) and unk_2037780 zero-fill match the proposal. However, the function
+    writes byte 4 at [r5,#3] before returning, which matches a state advance; nothing in the code indicates
+    it is closing anything itself or that the caller is chat-specific. The name ''e_closeChatAndSetEventFlag''
+    overclaims what the callee chatbox_8040818 does — this routine just invokes it. The body is closer
+    to ''e_waitFadeThenAdvance'' with side effects.; run wf investigate investigate-20261018-230610; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What r5 points to (event controller/task struct) and which event this step belongs to — no callers known
+- Exact effect of chatbox_8040818 (close vs clear) and the meaning of the 0x80-byte buffer at unk_2037780
+- Semantics of state value 4 at +3 within the event state machine
+- The callee name (chatbox_8040818) and unk_2037780 zero-fill match the proposal. However, the function
+  writes byte 4 at [r5,#3] before returning, which matches a state advance; nothing in the code indicates
+  it is closing anything itself or that the caller is chat-specific. The name 'e_closeChatAndSetEventFlag'
+  overclaims what the callee chatbox_8040818 does — this routine just invokes it. The body is closer to
+  'e_waitFadeThenAdvance' with side effects.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_812C010 -> e_waitFadeThenCloseChat
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812C010

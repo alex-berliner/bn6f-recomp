@@ -1,0 +1,67 @@
+name: battle_initObjAE
+address: '0x080DB474'
+kind: function
+status: probable
+summary: 'Spawn-and-initialize helper for battle object type 0xAE: calls object_spawnType3 with type id
+  0xAE (preserving caller args in r1-r3) and, if the spawn returned a non-null pointer, invokes BasicBattleObjectInitialize
+  on the new entity before returning it in r0.'
+interface: (r0-r3 = spawn/args, r0 shifted into the spawn's param slot) -> r0 = spawned object pointer
+  (0 on failure); branches on spawn success before initializing
+details: 'The wrapper saves the caller''s arguments (r0-r2 plus r5 for stack alignment), then loads the
+  literal object-type id 0xAE into r0 and calls object_spawnType3, so the original arguments are shifted
+  down into r1-r3. object_spawnType3 returns the new battle object (or 0 on failure) and its return value
+  sets the flags. The wrapper restores the saved arguments into r1-r3 and, only if the spawn returned
+  non-zero (beq skips the init call), calls BasicBattleObjectInitialize to fill in the base battle-object
+  fields (position, element, related object, flags) for the freshly spawned entity. It is a thin per-type
+  spawn helper: all behavior comes from the chosen type id 0xAE and the two known callees.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80DB474+6: mov r0, #0xAE immediately before bl object_spawnType3 — the wrapper''s only
+    real decision is the object type id; sub_80DB474: push {r0-r2,r5} / pop {r1-r3,r5} — original arguments
+    are saved and shifted to r1-r3 around the spawn call; sub_80DB474: beq locret_80DB488 after the spawn
+    (pop preserves flags) — BasicBattleObjectInitialize runs only when the spawn returned non-zero; callee
+    object_spawnType3: ''Spawns a battle object of type 3 from five caller-supplied arguments and runs
+    its initializer if the spawn succeeded''; callee BasicBattleObjectInitialize: ''Fills in the base
+    battle-object fields ... for a newly spawned battle entity'' — matches the guarded post-spawn call'
+  refs:
+  - bn6f/asm/asm31.s:76640
+  - 0x080DB4B4 sub_80DB4B4
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DB474
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is nearly right except for one wrong detail: the proposal says BasicBattleObjectInitialize
+    is called only on spawn success, but in the asm the `beq locret_80DB488` actually branches to the
+    return when the spawn failed (eq = the spawn returned 0), so the init runs on success — close enough.
+    However the proposed name `battle_spawnObjAE` is misleading: object_spawnType3 at 0x08003358 takes
+    a type id as its first argument (r0 = 0xAE) but its name implies type 3, and the wrapper''s purpose
+    is to inject BasicBattleObjectInitialize for that specific type id. A more honest name reflecting
+    the construction call is better.; run wf investigate investigate-20261018-235109; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What game entity object type 0xAE actually is — the sole caller sub_80DB4B4 is undocumented, so the
+  spawn context is unknown
+- Exact argument mapping passed through to object_spawnType3/BasicBattleObjectInitialize (which saved
+  arg lands in which parameter slot)
+- Whether the mov r0,r5 sequence passes the new object pointer or another field to BasicBattleObjectInitialize
+- 'The summary is nearly right except for one wrong detail: the proposal says BasicBattleObjectInitialize
+  is called only on spawn success, but in the asm the `beq locret_80DB488` actually branches to the return
+  when the spawn failed (eq = the spawn returned 0), so the init runs on success — close enough. However
+  the proposed name `battle_spawnObjAE` is misleading: object_spawnType3 at 0x08003358 takes a type id
+  as its first argument (r0 = 0xAE) but its name implies type 3, and the wrapper''s purpose is to inject
+  BasicBattleObjectInitialize for that specific type id. A more honest name reflecting the construction
+  call is better.'
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80DB474 -> battle_initObjAE
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB474

@@ -1,0 +1,62 @@
+name: battle_panelTrailStepUpdate
+address: '0x080E2628'
+kind: function
+status: probable
+summary: Per-8-frame update that decrements an index into a byte list of packed panel (row/col) coordinates,
+  converting each to screen pixels and spawning a panel-trail effect (Param1=2 uses SFX 0x90 via sub_80E1D7A,
+  otherwise spawns type-2 effect object with SFX 0x97), gated by a callback at oBattleObject_ExtraVars[0]+0x14,
+  then self-destructs when the index underflows.
+interface: (r5 = battle object self) -> r0 = 0/none; flags from timer/subtractions, not meaningful
+details: 'Every 8 frames (Timer reset to 8 after hitting 0) it decrements a counter at oBattleObject_ExtraVars+4
+  which indexes a byte array at object+0x68; when the index goes negative it sets CurState=CUR_STATE_DESTROY.
+  Each byte packs panel coordinates: low nibble = column, high nibble = row. Before spawning, it calls
+  the callback at [[oBattleObject_ExtraVars]+0x14] and only proceeds when that returns nonzero. It converts
+  the panel coords via object_getCoordinatesForPanels, then either calls sub_80E1D7A (if oBattleObject_Param1
+  == 2, playing SFX 0x90) or spawns a type-4 effect object with effect type 2 via spawn_t1_0x0_EffectObject
+  (playing SFX 0x97), so Param1 selects the visual variant.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer] / sub #1 ... mov r0,#8: 8-frame step cadence typical of per-frame
+    object updates; ldrb r0,[r6,r0] with r6=r5+0x68, then lsr #4 / lsl+lsr 0x1d: unpacks high/low nibbles
+    as panel coords; ldr r7,[r5,#oBattleObject_ExtraVars]; ldr r7,[r7,#0x14]; bx r7; tst r0,r0 / beq:
+    gated spawn via object''s callback table; bl object_getCoordinatesForPanels then bl spawn_t1_0x0_EffectObject
+    / bl sub_80E1D7A with SFX 0x97 or 0x90 depending on oBattleObject_Param1; bmi loc_80E2686: mov r0,#CUR_STATE_DESTROY;
+    strb into oBattleObject_CurState when the list index underflows'
+  refs:
+  - bn6f/asm/asm31.s:92037
+  - 0x080E25F0 sub_80E25F0
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080E2628
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code confirms 8-frame timer, decrementing index into byte array at +0x68 with row/col nibble split,
+    callback gate at ExtraVars+0x14, panel coordinate conversion, and Param1==2 selecting sub_80E1D7A
+    with SFX 0x90 vs spawn_t1_0x0_EffectObject with SFX 0x97. However, spawn_t1_0x0_EffectObject is called
+    with r4=2 in r3 (effect type), not ''type 0'' as the callee description suggests—this is fine but
+    the proposal is otherwise accurate. Name should use a clearer battle-effect prefix.; run wf investigate
+    investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- What effect type 0 object and what sub_80E1D7A actually spawn (visual identity of the trail)
+- Which attack/chip creates this object and what the callback at [ExtraVars]+0x14 checks (e.g. occupied-panel
+  test)
+- Code confirms 8-frame timer, decrementing index into byte array at +0x68 with row/col nibble split,
+  callback gate at ExtraVars+0x14, panel coordinate conversion, and Param1==2 selecting sub_80E1D7A with
+  SFX 0x90 vs spawn_t1_0x0_EffectObject with SFX 0x97. However, spawn_t1_0x0_EffectObject is called with
+  r4=2 in r3 (effect type), not 'type 0' as the callee description suggests—this is fine but the proposal
+  is otherwise accurate. Name should use a clearer battle-effect prefix.
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E2628 -> battle_panelTrailStepUpdate
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2628

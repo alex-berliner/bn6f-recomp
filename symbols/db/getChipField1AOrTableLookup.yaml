@@ -1,0 +1,56 @@
+name: getChipField1AOrTableLookup
+address: '0x08010CE0'
+kind: function
+status: probable
+summary: Returns the halfword at chip record +0x1A if < 1001, otherwise indexes the lookup table at byte_8020E54
+  (22-byte entries) using (value-1001) and reads the halfword at +0xA within that entry.
+interface: (r0 = chip ID) -> r0 = halfword index (raw chip data field +0x1A if < 1001, else table byte_8020E54
+  entry [(field-1001)] halfword at +0xA); flags clobbered
+details: Calls getChip8021DA8 to get the 44-byte chip record and reads the halfword at offset 0x1A. Values
+  below 0x3E9 (1001) are returned unchanged. For values >= 1001 it computes (value-1001)*2*11 = 22 bytes
+  per entry, i.e. an 11-halfword record table at byte_8020E54, and returns the halfword at record offset
+  0xA. The sole caller is the chip panel renderer, so this value feeds icon/gfx selection for chips in
+  the >=1001 ID range. The exact meaning of field 0x1A and of the table records is not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getChip8021DA8 then ldrh r1,[r0,#0x1a]: reads halfword field 0x1A of the chip data record;
+    ldr r2,off_8010D28 (=0x3e9); cmp/blt: threshold 1001 decides between raw value and table path; mul
+    r0,r4 (stride 22 bytes) + ldrh r0,[r2,r0] off byte_8020E54+0xA: indexed halfword table lookup; caller
+    chipPanel_renderChipGfxAndText_8119438 draws selected chip icon/palettes, so result is a render lookup
+    value'
+  refs:
+  - bn6f/asm/asm00_2.s:4647
+  - 0x08119438 chipPanel_renderChipGfxAndText_8119438
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x08010CE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads halfword at +0x1A, returns it raw if < 0x3E9, else computes (val-0x3E9)*0x16
+    (22) and indexes into byte_8020E54+0xA, returning the halfword there. The summary''s claim about an
+    ''11-halfword record table'' with a halfword at record offset 0xA is correct (11 halfwords = 22 bytes,
+    offset 0xA within record). However, the proposed name ''getChipIconLookupIndex'' assumes icon rendering,
+    which is not confirmed by the code; a more neutral name is warranted.; run wf investigate investigate-20261019-003606;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what chip-data field 0x1A represents and why values >=1001 exist
+- what the 11-halfword records at byte_8020E54 encode (icon tiles? palette? sort data?)
+- whether other callers exist that would confirm the returned value's use
+- The function reads halfword at +0x1A, returns it raw if < 0x3E9, else computes (val-0x3E9)*0x16 (22)
+  and indexes into byte_8020E54+0xA, returning the halfword there. The summary's claim about an '11-halfword
+  record table' with a halfword at record offset 0xA is correct (11 halfwords = 22 bytes, offset 0xA within
+  record). However, the proposed name 'getChipIconLookupIndex' assumes icon rendering, which is not confirmed
+  by the code; a more neutral name is warranted.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8010CE0 -> getChipField1AOrTableLookup
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010CE0
