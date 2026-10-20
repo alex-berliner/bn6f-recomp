@@ -1,0 +1,61 @@
+name: ow_computePointFromPlayerAngle
+address: '0x080A84C4'
+kind: function
+status: probable
+summary: Computes an X/Y/Z point offset from the overworld player's position by a given angle (cos/sin
+  * 0x6000) and stores it into a destination structure.
+interface: (r5 = dest struct, angle from sub_80A84FC in r0) -> writes [r5+0xC]=x, [r5+0x10]=y, [r5+0x14]=z;
+  no return value
+details: sub_80A84FC presumably resolves an angle (and sets r5 to the destination struct), since r5 is
+  never initialized here but is used after the call. The angle is doubled (lsl r0,#1) to index 16-bit
+  math_cosTable/math_sinTable entries, which are multiplied by 0x6000 as fixed-point offsets added to
+  the player object's X and Y from ReadOWPlayerObjectCoords (which returns x in r0, y in r1, z in r2 and
+  the object pointer in r0). The Z coordinate gets 0x800000 (0x80<<16) added before being stored at r5+0x14.
+  Fields 0xC/0x10/0x14 look like a standard position triple in the target struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r0,r0,#1 + cos/sin table loads at 0x80A84CA-0x80A84D0: angle-indexed direction vector;
+    bl ReadOWPlayerObjectCoords then add r0,r0,r4 / add r1,r1,r6: player position offset by direction;
+    mul r4/mul r6 by 0x6000 (mov r7,#0x60; lsl r7,#8): fixed-point offset scale; str r0,[r5,#0xC] / str
+    r1,[r5,#0x10] / add r2,#0x800000; str r2,[r5,#0x14]: stores x/y/z triple; called only by sub_80A83B8
+    and recorded on the ''beastsp'' route, suggesting a spawn-related position calculation'
+  refs:
+  - bn6f/asm/asm29.s:6443
+  - 0x080A83B8 sub_80A83B8
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x080A84FC sub_80A84FC
+  reproduce: python3 tools/asmcat.py 0x080A84C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (cos/sin lookup, 0x6000 multiplier via mov r7,#0x60 +
+    lsl #8, offset added to player''s X/Y, Z lifted by 0x800000). However, the claim that r5 is set by
+    sub_80A84FC is not supported by the listing (sub_80A84FC isn''t shown and r5 isn''t used before its
+    stores). Also ReadOWPlayerObjectCoords returns the object pointer, not x/y/z in r0/r1/r2, so the interface
+    description is inconsistent.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- 'sub_80A84FC is unknown: what angle it returns and what struct it sets r5 to (fields 0xC/0x10/0x14 of
+  what object type)'
+- what the caller sub_80A83B8 does with the resulting position (which spawn/entity consumes it)
+- why Z is offset by exactly 0x800000 and the meaning of the 0x6000 scale in the engine's fixed-point
+  convention
+- 'The code matches the proposal''s mechanics (cos/sin lookup, 0x6000 multiplier via mov r7,#0x60 + lsl
+  #8, offset added to player''s X/Y, Z lifted by 0x800000). However, the claim that r5 is set by sub_80A84FC
+  is not supported by the listing (sub_80A84FC isn''t shown and r5 isn''t used before its stores). Also
+  ReadOWPlayerObjectCoords returns the object pointer, not x/y/z in r0/r1/r2, so the interface description
+  is inconsistent.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A84C4 -> ow_computePointFromPlayerAngle
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A84C4

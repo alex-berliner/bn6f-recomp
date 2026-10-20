@@ -1,0 +1,64 @@
+name: navicust_finalizePieceDrop
+address: '0x081371B0'
+kind: function
+status: probable
+summary: On releasing a program in the Navi Customizer, runs up to three placement-validation checks against
+  the drop coordinates and the held piece, showing error dialogs 0x17/0x18/0x16 and setting state 0x44
+  on failure, or clearing the drag offset and setting state 0x48 on success.
+interface: ()(r5 = customizer state struct, r7 = drag context with x/y at +0x28/+0x2C) -> sets state byte
+  [r5] to 0x44 (invalid, show dialog) or 0x48 (placed); no return value used
+details: 'Entry plays/sets something with id 0x3F8 via sub_8137670 and bails out if flag [r7,#0xD] is
+  set. It then runs three placement checks against the drop coordinates (ldrh [r7,#0x28]/[r7,#0x2C]) and
+  the held piece pointer [r7,#0x44]: sub_813BB68 fails -> dialog 0x17, sub_813BFB8 fails -> dialog 0x18,
+  sub_813BF60 fails -> dialog 0x16, each leaving state 0x44 (stay in drag/error mode). If all checks pass,
+  it calls sub_8137670(1), clears the halfword at [r5,#0xE] (likely drag offset) and sets state 0x48,
+  which presumably commits the program into the grid. Dialog IDs 0x16-0x18 are NaviCust error messages
+  such as overlapping programs or illegal cells.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: three sequential validity checks (sub_813BB68/BFB8/BF60) each branch to RunTextScriptNaviCustDialog
+    with 0x17, 0x18, 0x16 on failure; drop coordinates read from r7+0x28/0x2C and held-piece data at r7+0x44
+    passed to the checks; success path clears [r5,#0xE] and writes state 0x48 vs error path writing 0x44,
+    a typical UI state-machine transition; callee RunTextScriptNaviCustDialog identifies this as the Navi
+    Customizer screen's dialog flow
+  refs:
+  - bn6f/asm/asm36.s:14800
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  - 0x08137648 sub_8137648
+  - 0x08137670 sub_8137670
+  reproduce: python3 tools/asmcat.py 0x081371B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely correct: it sets state 0x44 on validation failure (bne cases at loc_81371E2
+    and locret_8137222 via loc_8137208) and 0x48 on success at loc_8137214, and the three checks with
+    dialogs 0x17/0x18/0x16 match the asm. However, the success path calls sub_8137670(1) and clears [r5,#0xe],
+    while the failure paths call sub_8137670(0); the initial sub_8137670(0x3F8) at entry matches sub_8137670
+    taking an ID/argument, not a commit/confirm. The summary''s ''commits the placement'' is an overreach
+    — it just finalizes the visual/state. A better name: navicust_finalizePieceDrop.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of dialogs 0x16/0x17/0x18 and which check (overlap, plus cell, colored cell) maps to which
+  message
+- semantics of sub_8137670's argument (0x3F8/0/1) and state values 0x44/0x48 in the caller's state machine
+- 'The proposal is largely correct: it sets state 0x44 on validation failure (bne cases at loc_81371E2
+  and locret_8137222 via loc_8137208) and 0x48 on success at loc_8137214, and the three checks with dialogs
+  0x17/0x18/0x16 match the asm. However, the success path calls sub_8137670(1) and clears [r5,#0xe], while
+  the failure paths call sub_8137670(0); the initial sub_8137670(0x3F8) at entry matches sub_8137670 taking
+  an ID/argument, not a commit/confirm. The summary''s ''commits the placement'' is an overreach — it
+  just finalizes the visual/state. A better name: navicust_finalizePieceDrop.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81371B0 -> navicust_finalizePieceDrop
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81371B0

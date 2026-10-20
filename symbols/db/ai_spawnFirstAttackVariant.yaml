@@ -1,0 +1,56 @@
+name: ai_spawnFirstAttackVariant
+address: '0x08111BDE'
+kind: function
+status: probable
+summary: Clears AttackBoost2, then iterates AI attack variant ids 0..4 calling ai_attackSpawnVariant;
+  on each successful spawn decrements the r4 counter and exits when it reaches zero, else retries all
+  five variants.
+interface: (r0 = attempt count, r7 = AI attack vars struct) -> r0 = clobbered; clears oAIAttackVars_AttackBoost2
+details: 'Zeros the byte oAIAttackVars_AttackBoost2 in the AI attack-vars struct passed in r7, then loops
+  variant ids 0..4, calling ai_attackSpawnVariant for each. Each call returns nonzero on success; when
+  it does, the attempt counter (r4, taken from r0) is decremented and if it reaches zero the function
+  returns, otherwise the loop keeps trying the next variant. If all five variants fail, r6 wraps after
+  5 and the loop restarts until the attempt budget is exhausted. So it acts as a fallback: pick whichever
+  of the up-to-five variants yields a spawnable attack, allowing up to r0 tries.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8111BDE loops r6 = 0..4 and ''bl ai_attackSpawnVariant'', branching back only while r0
+    == 0; ''sub r4, #1; beq locret'' consumes r0 as a retry budget before restarting the variant loop;
+    ''strb r0, [r7,#oAIAttackVars_AttackBoost2]'' clears an AI attack-vars field at entry; sole caller
+    sub_8111B88 feeds it the attempt count; callee ai_attackSpawnVariant spawns a variant''s attack object'
+  refs:
+  - bn6f/asm/asm32.s:7891
+  - 0x08111B88 sub_8111B88
+  - 0x08111BFE ai_attackSpawnVariant
+  reproduce: python3 tools/asmcat.py 0x08111BDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop iterates variant ids 0..4, but r6 starts at 0 (not r4), and r4 (taken from r0) is the attempt
+    budget that decrements only on success. On full success r4 reaches 0 and BEQ to locret exits; otherwise
+    it loops through all five variants. The proposal''s name is fine, but the summary''s ''up to r0 tries''
+    framing slightly miscasts it: r4 is decremented on success, not failure, and acts as a max-spawns
+    cap.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8111B88 passes as the attempt count and where r7's struct is allocated (enemy AI state?)
+- exact meaning of the AttackBoost2 field cleared here
+- 'The loop iterates variant ids 0..4, but r6 starts at 0 (not r4), and r4 (taken from r0) is the attempt
+  budget that decrements only on success. On full success r4 reaches 0 and BEQ to locret exits; otherwise
+  it loops through all five variants. The proposal''s name is fine, but the summary''s ''up to r0 tries''
+  framing slightly miscasts it: r4 is decremented on success, not failure, and acts as a max-spawns cap.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111BDE -> ai_spawnFirstAttackVariant
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111BDE

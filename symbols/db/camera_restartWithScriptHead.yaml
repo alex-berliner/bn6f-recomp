@@ -1,0 +1,65 @@
+name: camera_restartWithScriptHead
+address: '0x0809C7A0'
+kind: function
+status: probable
+summary: Backs up the current camera script pointer, builds an 8-byte header-only copy (command IDs of
+  the first three script words plus an 0x08 terminator) in the static buffer byte_20065E0, then calls
+  SetCutsceneCameraScript to restart playback from that stripped header.
+interface: (r0 = unused/scratch, r5 = cutscene/camera engine state) -> r0 = 0; no meaningful flags
+details: 'r5+4 holds the pointer to the currently running camera script; it is backed up to r5+0x70 (presumably
+  to restore later). The function then assembles an 8-byte script at byte_20065E0: byte 0 = 0, then for
+  the script words at offsets 0, 4 and 8 it takes the high halfword (command field), shifts it left by
+  4 and stores it as a byte pair ((cmd&0xF)<<4, cmd>>4), i.e. the command IDs re-packed into the engine''s
+  byte-pair nibble format with their word arguments dropped. Byte 7 is set to 8, likely an end/terminator
+  opcode. It sets state flag r5+0x13 = 1, stores the buffer pointer at r5+0x3c, and calls SetCutsceneCameraScript
+  with the buffer, resetting the camera command timer so playback restarts. Always returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#4]/str r0,[r5,#0x70] saves the current camera script pointer before replacing it;
+    three loads at [r0,#0/#4/#8] with lsr#16/lsl#4 extract only the command field of each script word,
+    discarding parameters; bytes are written as nibble-split pairs plus terminator 8 at byte_20065E0+7,
+    then mov r0,r1; bl SetCutsceneCameraScript; SetCutsceneCameraScript is known to point the cutscene
+    camera engine at a new script and reset its command timer; executed on recorded beastsp routes, consistent
+    with a cutscene camera manipulation
+  refs:
+  - bn6f/asm/asm28_0.s:4448
+  - 0x08036F98 SetCutsceneCameraScript
+  reproduce: python3 tools/asmcat.py 0x0809C7A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: it reads r5+0x4, builds an 8-byte stripped script at byte_20065E0 from
+    the command IDs (high halfwords) of words 0, 4, 8 of the current script, writes 8 as a terminator
+    at offset 7, then calls SetCutsceneCameraScript. However, the proposed name camera_queueStrippedScriptHead
+    implies queueing rather than overwriting playback; the function immediately replaces the active script.
+    Also the summary says the new script is parameter-less, but only the argument words are dropped; the
+    actual command IDs/bytes retain ordering, so a more accurate name should convey ''restart with header-only
+    copy''.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- no caller is recorded, so the identity of the r5 struct and the meaning of flags 0x13 and backup slot
+  0x70 are unconfirmed
+- the exact byte-pair camera-script opcode encoding (and what opcode 8 means) is inferred, not verified
+  against the camera engine's parser
+- why exactly the first three commands are copied (fixed head length vs. scripted requirement) is unknown
+- 'The summary is accurate: it reads r5+0x4, builds an 8-byte stripped script at byte_20065E0 from the
+  command IDs (high halfwords) of words 0, 4, 8 of the current script, writes 8 as a terminator at offset
+  7, then calls SetCutsceneCameraScript. However, the proposed name camera_queueStrippedScriptHead implies
+  queueing rather than overwriting playback; the function immediately replaces the active script. Also
+  the summary says the new script is parameter-less, but only the argument words are dropped; the actual
+  command IDs/bytes retain ordering, so a more accurate name should convey ''restart with header-only
+  copy''.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809C7A0 -> camera_restartWithScriptHead
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809C7A0

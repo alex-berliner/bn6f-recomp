@@ -1,0 +1,62 @@
+name: battle_spawnBumpEffect
+address: '0x080DFBE4'
+kind: function
+status: probable
+summary: When a battle object's collision flags include 0x2000, spawns a small effect object at its position
+  with Z raised by 0x180000 and plays sound 0xA2.
+interface: (r5 = battle object) -> r0 clobbered; no return value
+details: Loads the object's collision data and tests flags & 0x2000; if clear, returns immediately. Otherwise
+  reads the byte at oBattleObject+0x60, doubles it as an index into a 20-byte table at byte_80DFC18 (entries
+  0-2 hold 0x21, the rest 0) and loads that value into r4 — which is never used afterward, so it looks
+  like a leftover variant/effect-id field. It then spawns a type-1 (effect type 0) battle object at the
+  object's X/Y with Z raised by 0x180000 (1.5 height units, i.e. near ground level), and plays sound effect
+  0xA2 via the M4A wrapper. This reads as the generic 'bumped into something' dust/thud feedback. The
+  0x2000 flag is presumably 'collided with an obstacle/edge', set by the collision system.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,=0x2000 / and with [collisionData+FlagsFromCollision] / beq skip — gates everything
+    on one collision flag; bl spawn_t1_0x0_EffectObject with r1-r3 = object X/Y/Z and r3 += 0x180000 —
+    effect spawned at the object, slightly elevated; mov r0,#0xA3; add r0,#0xFF (=0xA2); bl PlaySoundEffect
+    — paired feedback sound; ldrb r0,[r5,#0x60]; lsl #2; ldr r4,[table,r0] — r4 loaded but never consumed,
+    dead variant lookup; single caller sub_80DFB80 on recorded battlesweep routes fits collision feedback
+    timing'
+  refs:
+  - bn6f/asm/asm31.s:85381
+  - 0x080DFB80 sub_80DFB80
+  - 0x080005CC PlaySoundEffect
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DFBE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does match the description (flag 0x2000 check, Z+0x180000 spawn, sound play). However,
+    the proposal gets the table access wrong: `ldrb r0,[r5,r0]` then `lsl r0,r0,#2` indexes 4-byte words,
+    and the table has 0x21 at offsets 0, 4, and 8 only — not ''0-2 hold 0x21''. Also, the loaded r4 is
+    actually passed (via r4 surviving the call) and is not necessarily unused, and the sound is 0xA2 computed
+    as `mov r0,#0xa3; add r0,#0xff` (=0xA2), which the proposal correctly states. The summary is fine
+    but slightly off on the table layout.; run wf investigate investigate-20261018-200615; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of collision flag 0x2000 (wall bump vs. entity contact)
+- what the table byte 0x21 / the r4 value was meant to select (unused variant id?)
+- what effect type 0 renders as, to confirm the dust/bump visual
+- 'The code does match the description (flag 0x2000 check, Z+0x180000 spawn, sound play). However, the
+  proposal gets the table access wrong: `ldrb r0,[r5,r0]` then `lsl r0,r0,#2` indexes 4-byte words, and
+  the table has 0x21 at offsets 0, 4, and 8 only — not ''0-2 hold 0x21''. Also, the loaded r4 is actually
+  passed (via r4 surviving the call) and is not necessarily unused, and the sound is 0xA2 computed as
+  `mov r0,#0xa3; add r0,#0xff` (=0xA2), which the proposal correctly states. The summary is fine but slightly
+  off on the table layout.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DFBE4 -> battle_spawnBumpEffect
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFBE4

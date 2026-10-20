@@ -1,0 +1,64 @@
+name: getFlaggedSubId
+address: '0x080F7744'
+kind: function
+status: probable
+summary: Reads a 4-byte id list from dword_80F7764 and calls sub_800FE28 to resolve a base id; if object_getFlag()
+  & 0xA000, adds 0x3C and returns the id.
+interface: (r0 = &dword_80F7764, id list) -> r0 = base id (from sub_800FE28) or base id + 0x3C if object_getFlag()
+  & 0xA000; no meaningful flags
+details: Stores r0 = pointer to the inline dword 0x1014181E (four byte-sized ids read as 0x1E,0x18,0x14,0x10)
+  and calls sub_800FE28, keeping its return in r4. It then calls object_getFlag with no arguments, so
+  sub_800FE28 presumably selects/sets a current battle object from that id list; object_getFlag returns
+  that object's first collision-flag word. tst against 0xA000 checks bits 0x8000 and 0x2000; if either
+  is set, r4 gains 0x3C (60), turning the returned id into a second variant slot (e.g. ids 0x10..0x1E
+  vs 0x4C..0x5A). The dword_80F7764 literal doubles as the data table, a common inline-constant pattern.
+  Without sub_800FE28's behavior the exact domain of the returned id (chip, animation, sound, etc.) is
+  not provable from this file.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80F7744+4: ldr r0, off_80F7760 (=0x1014181E) then bl sub_800FE28 — four inline object ids
+    passed to the lookup; sub_80F7744+0xC: bl object_getFlag then tst r0, 0xA000 / beq — the +0x3C branch
+    depends on the matched object''s flag word; sub_80F7744+0x12: add r4, #0x3C — alternate value is exactly
+    base + 60, implying paired id variants; Callee object_getFlag is documented as reading the first object-flag
+    word of battle collision data, confirming a battle-object context'
+  refs:
+  - bn6f/asm/asm31.s:135453
+  - 0x080F7856 sub_80F7856
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F7744
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s analysis of the asm is largely correct: it loads dword_80F7764 (0x1014181E) and
+    calls sub_800FE28, then object_getFlag() with no args, testing bits 0xA000. However, ''sub_800FE28''s
+    behavior is unknown, and ''battle_getFlaggedObjectId'' embeds a guess (''battle object'') the code
+    does not settle. A neutral ''get'' prefix is safer given the file''s ambiguity about the domain.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What sub_800FE28 does with the id list — find-first-matching object, or something else — and what its
+  return value (r4) actually counts
+- What game value the returned id selects (chip id, animation, sound, etc.)
+- What flag bits 0x8000/0x2000 mean on a battle object
+- What sole caller sub_80F7856 does with the returned value
+- 'The proposal''s analysis of the asm is largely correct: it loads dword_80F7764 (0x1014181E) and calls
+  sub_800FE28, then object_getFlag() with no args, testing bits 0xA000. However, ''sub_800FE28''s behavior
+  is unknown, and ''battle_getFlaggedObjectId'' embeds a guess (''battle object'') the code does not settle.
+  A neutral ''get'' prefix is safer given the file''s ambiguity about the domain.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7744 -> getFlaggedSubId
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7744

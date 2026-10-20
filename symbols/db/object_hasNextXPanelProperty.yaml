@@ -1,0 +1,64 @@
+name: object_hasNextXPanelProperty
+address: '0x08110D34'
+kind: function
+status: probable
+summary: Returns 1 if the battle panel at the object's next X position (X + XVelocity) has the panel-status
+  bit masked by byte_8110DB0 set, else 0; r5 = battle object pointer.
+interface: (r0 unused; r5 = battle object pointer) -> r0 = 1 if flagged panel at next position, else 0;
+  flags clobbered by callees
+details: Computes the object's prospective X by adding oBattleObject_XVelocity to oBattleObject_X, keeps
+  Y and Z unchanged, and passes (X, Y, Z) to convertXYToPanelXY_800E258 to get panel column/row. It then
+  calls object_getPanelParameters to fetch that panel's status word and ANDs it with a fixed mask from
+  the literal at byte_8110DB0; nonzero means the flag is present and it returns 1, otherwise 0. The object
+  is taken from r5, not r0, so the caller must have the object in r5 (a common project convention). The
+  mask byte's documented value is unresolved (shown as 0x0), so which panel property is tested (e.g. hole/broken)
+  is not confirmed from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8110D34: ldr r0,[r5,#oBattleObject_X]; add r0,r0,r1 with r1=oBattleObject_XVelocity — tests
+    the position after one X step; calls convertXYToPanelXY_800E258 with (X+XVel, Y, Z) then object_getPanelParameters
+    — queries target panel''s status word; ldr r1, byte_8110DB0; and r0,r1; bne -> mov r0,#1 else #0 —
+    returns boolean of a single panel flag; callers sub_811095E and sub_8110C26 (battlesweep/beastsp routes)
+    presumably branch on the result to cancel movement into such panels'
+  refs:
+  - bn6f/asm/asm32.s:6156
+  - 0x0811095E sub_811095E
+  - 0x08110C26 sub_8110C26
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08110D34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm at 0x08110D34 loads X from r5+oBattleObject_X, adds XVelocity, passes (X,Y,Z) to convertXYToPanelXY,
+    then calls object_getPanelParameters and ANDs with the literal at byte_8110DB0, returning 1/0 — matching
+    the proposal''s mechanics. However the function does not look at any ''next X panel flag'' per se;
+    it tests a panel-status bit on the panel the object would occupy if it advanced by its current X velocity.
+    A cleaner name reflects ''does the next X panel have a property'' rather than ''flag.'' Also the proposal
+    correctly notes r5 is the object pointer (push r4-r7,lr; r5 is callee-saved).; run wf investigate
+    investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- actual value of the mask byte_8110DB0 (which panel flag is tested, e.g. hole vs. broken)
+- summaries of callers sub_811095E/sub_8110C26 to confirm the movement-blocking use
+- The asm at 0x08110D34 loads X from r5+oBattleObject_X, adds XVelocity, passes (X,Y,Z) to convertXYToPanelXY,
+  then calls object_getPanelParameters and ANDs with the literal at byte_8110DB0, returning 1/0 — matching
+  the proposal's mechanics. However the function does not look at any 'next X panel flag' per se; it tests
+  a panel-status bit on the panel the object would occupy if it advanced by its current X velocity. A
+  cleaner name reflects 'does the next X panel have a property' rather than 'flag.' Also the proposal
+  correctly notes r5 is the object pointer (push r4-r7,lr; r5 is callee-saved).
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8110D34 -> object_hasNextXPanelProperty
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110D34

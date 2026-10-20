@@ -1,0 +1,63 @@
+name: e_loadHudBattleFormByte
+address: '0x0802A040'
+kind: function
+status: probable
+summary: Resolves a battle form/emotion-dependent base pointer (r6) and stores a byte derived via sub_801E660
+  into eStruct2035280+0x4C, returning it in r0.
+interface: (r0 = base struct ptr or NULL) -> r0 = stored byte; writes eStruct2035280+0x4C, clobbers r1-r3/r5
+  flags per bls
+details: 'Computes r6 = r0 + 0xC. When r0 is NULL, it picks a source from eStruct2035280: if the pointer
+  at +0x48 has byte +0x16 nonzero while HUD field +0x17 is nonzero and +0x16 is zero, it calls the emotion
+  query (which accounts for beast-out/transformation) and uses its r1 as the base; otherwise it calls
+  the plain variant sub_8015B5C. If a nonzero base was obtained, r6 = base + 0xC. It then calls sub_801E660
+  with r6 and stores the returned byte at eStruct2035280+0x4C (byte_20352CC), returning that byte in r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'add r6, r0, #0xC / tst r0, r0 / bne: base+0xC used directly only when caller passed a pointer;
+    bl callPossiblyGetBattleEmotion_8015B54 with result in r1 added to 0xC as alternate base, gated by
+    HUD fields +0x16/+0x17; bl sub_801E660 (r0=r6) then strb r0, [r5,#0x4C]: result byte written to eStruct2035280+0x4C;
+    both callers sub_8027672/sub_8027796 invoke it along the recorded beastsp routes, consistent with
+    form-dependent HUD data'
+  refs:
+  - bn6f/asm/asm03_0.s:8605
+  - 0x08027672 sub_8027672
+  - 0x08027796 sub_8027796
+  - 0x08015B54 callPossiblyGetBattleEmotion_8015B54
+  - 0x08015B5C sub_8015B5C
+  - 0x0801E660 sub_801E660
+  reproduce: python3 tools/asmcat.py 0x0802A040
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function does load a base (r6) and pass it to sub_801E660 then store the returned byte at eStruct2035280+0x4C,
+    matching the description. However, the ''emotion-adjusted'' framing in the name/summary is wrong:
+    the code at loc_802A064 chooses sub_8015B5C when not both +0x16 of the +0x48 pointer and HUD +0x17
+    are nonzero, and only calls the emotion query (callPossiblyGetBattleEmotion_8015B54) when the special
+    beast-out/transformation condition holds. r0 returned is sub_801E660''s result (not the ''stored byte''
+    per se, though they coincide). Naming it e_hudLoadEmotionAdjustedByte is misleading since the non-emotion
+    path is more common.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_801E660 computes from base+0xC (a lookup, clamp, or conversion?)
+- Meaning of the stored HUD byte at +0x4C and how the HUD renders it
+- What structure r0 points to in the two callers, and why base is offset by 0xC
+- 'The function does load a base (r6) and pass it to sub_801E660 then store the returned byte at eStruct2035280+0x4C,
+  matching the description. However, the ''emotion-adjusted'' framing in the name/summary is wrong: the
+  code at loc_802A064 chooses sub_8015B5C when not both +0x16 of the +0x48 pointer and HUD +0x17 are nonzero,
+  and only calls the emotion query (callPossiblyGetBattleEmotion_8015B54) when the special beast-out/transformation
+  condition holds. r0 returned is sub_801E660''s result (not the ''stored byte'' per se, though they coincide).
+  Naming it e_hudLoadEmotionAdjustedByte is misleading since the non-emotion path is more common.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802A040 -> e_loadHudBattleFormByte
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A040

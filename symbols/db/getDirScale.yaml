@@ -1,0 +1,69 @@
+name: getDirScale
+address: '0x080A8580'
+kind: function
+status: probable
+summary: Returns a fixed-point scalar (0x24000 normally, 0x12000 when calcAngle of (r6 - r5) yields exactly
+  0x20 or 0xA0) loaded from byte_80A85AC at offset r4; r4 is 0 or 4 based on the diagonal test.
+interface: (r5 = ptr to struct with 16.16 fixed x,y at +0xC/+0x10, r6 = ptr to struct with integer x,y
+  at +0x1A/+0x1B) -> r0 = 0x24000 (2.25) normally, 0x12000 (1.125) on diagonal; clobbers r0-r3, lr
+details: 'It forms the 16.16 fixed vector (r6 x - r5 x, r6 y - r5 y) by shifting r6''s 16-bit coords up
+  16 bits and subtracting r5''s pre-scaled coords, then calls calcAngle (BIOS ArcTan2 wrapper) to get
+  a 0..255 direction byte. If the result is exactly 0x20 or 0xA0 — one full diagonal axis and its opposite
+  — it selects table entry 1 instead of 0. It then returns the word loaded from byte_80A85AC at offset
+  r4: 0x00024000 normally, 0x00012000 for the diagonal case, i.e. the diagonal case yields exactly half
+  the value. r6''s fields at 0x1A/0x1C look like an object/entity position pair and r5''s 0xC/0x10 another
+  tracked point.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0/r1 from [r6,#0x1A/0x1C] lsl 16 minus [r5,#0xC/0x10] then bl calcAngle_800117C: computes
+    direction between two entity points; cmp r0,#0x20 / cmp r0,#0xA0 with fallthrough to r4=4: only the
+    45°/225° axis triggers the alternate value; ldr r1,off_80A85A8; ldr r0,[r1,r4]: table {0x24000, 0x12000}
+    selected by r4 (0 or 4); only caller sub_80A85B4 runs in the recorded beastsp route; r5/r6 are set
+    up there and not otherwise documented'
+  refs:
+  - bn6f/asm/asm29.s:6550
+  - 0x080A85B4 sub_80A85B4
+  - 0x0800117C calcAngle_800117C
+  reproduce: python3 tools/asmcat.py 0x080A8580
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function correctly computes the direction vector from r5 to r6, calls calcAngle, and picks one
+    of two table entries based on whether the angle equals 0x20 or 0xA0. However, the proposed summary/value
+    misreads byte_80A85AC: at offset 0 it is 0x00024000 (normal case), and at offset 4 it is 0x00012000
+    (diagonal case), not ''halved diagonally'' — the diagonal yields 1.125 vs 2.25, which is exactly half,
+    so the numeric claim is right but the summary''s framing is fine. The bigger issue is the name: the
+    function is not specific to entity-to-entity distance; the inputs look like one entity (r5 has fixed-point
+    at 0xC/0x10) and an object/field (r6 has 16-bit coords at 0x1A/0x1C). Calling it ''getScaleByAngleToEntity''
+    assumes more than the code shows. The function just returns one of two fixed-point scalars selected
+    by a diagonal direction test, used by caller 0x080A85B4.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what structures r5 and r6 are (entity structs?) and what the caller does with 0x24000/0x12000 (movement
+  speed, affine scale, offset?)
+- why only the 0x20/0xA0 diagonal is special — whether other diagonals can occur given how r5/r6 positions
+  are produced
+- 'The function correctly computes the direction vector from r5 to r6, calls calcAngle, and picks one
+  of two table entries based on whether the angle equals 0x20 or 0xA0. However, the proposed summary/value
+  misreads byte_80A85AC: at offset 0 it is 0x00024000 (normal case), and at offset 4 it is 0x00012000
+  (diagonal case), not ''halved diagonally'' — the diagonal yields 1.125 vs 2.25, which is exactly half,
+  so the numeric claim is right but the summary''s framing is fine. The bigger issue is the name: the
+  function is not specific to entity-to-entity distance; the inputs look like one entity (r5 has fixed-point
+  at 0xC/0x10) and an object/field (r6 has 16-bit coords at 0x1A/0x1C). Calling it ''getScaleByAngleToEntity''
+  assumes more than the code shows. The function just returns one of two fixed-point scalars selected
+  by a diagonal direction test, used by caller 0x080A85B4.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8580 -> getDirScale
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8580

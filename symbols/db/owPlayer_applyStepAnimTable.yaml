@@ -1,0 +1,61 @@
+name: owPlayer_applyStepAnimTable
+address: '0x0809B7A4'
+kind: function
+status: probable
+summary: Indexes a 4-byte table via a byte from [r10+0x3c]+4, writes entry[0..1] into r5+4/+5, sets the
+  overworld player facing via entry[0], stores entry[2] as a fixed animation id via owPlayer_setS200ace0_fixedAnimationSelect_809e13c,
+  then clears byte [r10+0x14]+0x10 and returns 0.
+interface: (r0 unused; r10 struct supplies index and state pointer, r5 = target struct) -> r0 = 0
+details: 'Reads a byte at +4 of the struct at [r10+0x3c], multiplies by 4, and indexes table byte_809B7D4
+  (entries: {0x32,5,1,0xFF}, {0xA,5,1,0xFF}, {0xFF...}, {0x14,5,1,0xFF}, {0x1E,3,7,0xFF}, {0x28,3,7,0xFF}).
+  Copies entry bytes 0 and 1 to [r5+4] and [r5+5]. Passes entry byte 0 to SetOWPlayerFacingDirection and
+  entry byte 2 to owPlayer_setS200ace0_fixedAnimationSelect_809e13c, which stores the animation id into
+  eStruct200ace0 and raises EVENT_1719. Finally zeroes byte +0x10 of the struct at [r10+0x14] (likely
+  a step/progress counter) and returns 0. The 0xFF-filled third table slot looks like a terminator/no-op
+  entry. Fits a cutscene/script-driven player pose change, matching the beastsp recorded route.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r0,#0x3c]; ldrb r0,[r0,#4]; lsl r0,#2; add r4,r4,r0 — table indexed by 4-byte entries;
+    ldrb r0,[r4]; ... bl SetOWPlayerFacingDirection — entry byte 0 sets facing; ldrb r0,[r4,#2]; bl owPlayer_setS200ace0_fixedAnimationSelect_809e13c
+    — entry byte 2 sets fixed anim + EVENT_1719; mov r0,#0; strb r0,[r4,#0x10] (after ldr r4,[r10,#0x14])
+    — clears a counter/flag in a related state struct; Table byte_809B7D4 has a 0xFF-filled slot, suggesting
+    a terminator or unused entry
+  refs:
+  - bn6f/asm/asm28_0.s:3340
+  - 0x0809E2AE SetOWPlayerFacingDirection
+  - 0x0809E13C owPlayer_setS200ace0_fixedAnimationSelect_809e13c
+  reproduce: python3 tools/asmcat.py 0x0809B7A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The table indexing, the two writes to r5+4/+5, the call to SetOWPlayerFacingDirection with entry[0],
+    and the call to owPlayer_setS200ace0_fixedAnimationSelect_809e13c with entry[2] all match the proposal.
+    However, the proposal misreads the offset/length: it indexes [r10+0x3c] and reads byte+4 then multiplies
+    by 4, and the third entry is {0xFF,0xFF,0xFF,0xFF} (terminator), not as listed. Also entry[1] is written
+    to r5+5 but never used by either callee. A tighter name reflecting that this applies a scripted overworld
+    animation table entry (facing+anim) is appropriate.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so which script/scene invokes it and what r5 and the r10 structs are is unknown
+- Meaning of entry byte 1 (copied to [r5+5]) and of the 0xFF terminator entry not confirmed
+- 'The table indexing, the two writes to r5+4/+5, the call to SetOWPlayerFacingDirection with entry[0],
+  and the call to owPlayer_setS200ace0_fixedAnimationSelect_809e13c with entry[2] all match the proposal.
+  However, the proposal misreads the offset/length: it indexes [r10+0x3c] and reads byte+4 then multiplies
+  by 4, and the third entry is {0xFF,0xFF,0xFF,0xFF} (terminator), not as listed. Also entry[1] is written
+  to r5+5 but never used by either callee. A tighter name reflecting that this applies a scripted overworld
+  animation table entry (facing+anim) is appropriate.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809B7A4 -> owPlayer_applyStepAnimTable
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809B7A4

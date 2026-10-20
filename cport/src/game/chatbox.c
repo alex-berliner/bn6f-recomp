@@ -1996,10 +1996,10 @@ static u32 chip_count_of_code(u32 code, u32 code_param) {
     return R0;
 }
 
-/* register form: calls sub_8021C02 outside this file, which has no typed C interface yet */
+/* register form: calls chatbox_countChipAcrossFolders outside this file, which has no typed C interface yet */
 static u32 chip_limit_of_code(u32 code, u32 code_param) {
     R0 = code; R1 = code_param;
-    GUEST_CALL(sub_8021C02);
+    GUEST_CALL(chatbox_countChipAcrossFolders);
     return R0;
 }
 
@@ -3189,7 +3189,7 @@ Next chatbox_F7_move(void) {
     case 5: R0 = 0x080428FC; GUEST_CALL(sub_80428FC); break;
     case 6: R0 = 0x08042910; GUEST_CALL(sub_8042910); break;
     case 7: R0 = 0x0804293C; GUEST_CALL(chatbox_placeCenteredTextRun_804293C); break;
-    case 8: R0 = 0x08042990; GUEST_CALL(sub_8042990); break;
+    case 8: R0 = 0x08042990; GUEST_CALL(chatbox_centerTextX); break;
     case 9: R0 = 0x080429D8; GUEST_CALL(sub_80429D8); break;
     }
 

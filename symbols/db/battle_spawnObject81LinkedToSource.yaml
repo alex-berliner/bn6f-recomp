@@ -1,0 +1,69 @@
+name: battle_spawnObject81LinkedToSource
+address: '0x080D5718'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x81 at the caller's panel/element, copies AllianceAndDirectionFlip
+  from a source battle object (r5), stores a damage/counter word (r6) and the source pointer into the
+  new object, and returns with Z clear on success (stores skipped on failure).
+interface: (r0 = panelX, r1 = panelY, r2 = element; r5 = pointer to source battle object, r6 = damage/counter
+  word) -> r0 = new object pointer (0 if spawn failed); Z flag reflects spawn success
+details: 'The function calls object_spawnType3 with ID 0x81, passing the caller''s r0-r2 through as spawn
+  arguments. The push {r0-r2,r5} / pop {r1-r3,r5} pair is a register-shift trick that recovers the original
+  arguments (shifted one register up) after the spawn call clobbers r0, so the new object''s fields can
+  be filled: panelX, panelY and element as bytes, the halfword oBattleObject_AllianceAndDirectionFlip
+  copied by value from the source object pointed to by the caller''s r5, a full word into DamageAndStaminaDamageCounterDisabler
+  from the caller''s r6, and the source pointer stored into RelatedObject1Ptr. All stores are skipped
+  (beq) when the spawn failed. Note r5 and r6 carry inputs despite not being argument registers, so callers
+  must set them before the call; the ''mov r0,r5'' before the pop looks like a decode artifact since every
+  subsequent store uses r0 as the new-object base.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType3 with r0=0x81 fixes the spawned object species/type-3 initializer; strb
+    r1/r2/r3 to oBattleObject_PanelX/PanelY/Element fills position and element of the new object; ldrh
+    r3,[r5,#oBattleObject_AllianceAndDirectionFlip] + strh copies alliance/direction-flip from the r5
+    object; str r6,[DamageAndStaminaDamageCounterDisabler] and str r5,[RelatedObject1Ptr] attach the damage
+    word and source link; beq locret_80D5736 bypasses all field stores when the spawn returned failure
+  refs:
+  - bn6f/asm/asm31.s:63558
+  - 0x080EE060 sub_80EE060
+  - 0x08106690 sub_8106690
+  - 0x08108F28 sub_8108F28
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D5718
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s interface claim ''r0 = new object pointer (0 if spawn failed)'' is wrong: `mov r0,
+    r5` (line 0x080D5720) sets r0 to the source pointer before the pop, and r0 is never reassigned, so
+    r0 at return is r5 on both paths. The Z flag from object_spawnType3 does gate the stores (beq at 0x080D5726),
+    but r0 does not hold the new pointer. The ''register-shift trick'' phrasing is backwards — the push
+    saves r0-r2,r5; after spawn, r0 is overwritten with r5 (source), then the pop recovers panelX/panelY/element
+    into r1-r3 and r5 back into r5, used for the AllianceAndDirectionFlip copy and RelatedObject1Ptr store.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what battle object species 0x81 actually is (its initializer, not shown here, determines the gameplay
+  role)
+- why callers pass the source pointer and damage word in r5/r6 instead of r0-r3
+- whether 'mov r0,r5' is a genuine instruction or a mis-decode, and exactly which instruction sets the
+  Z flag tested after the pop
+- 'The summary''s interface claim ''r0 = new object pointer (0 if spawn failed)'' is wrong: `mov r0, r5`
+  (line 0x080D5720) sets r0 to the source pointer before the pop, and r0 is never reassigned, so r0 at
+  return is r5 on both paths. The Z flag from object_spawnType3 does gate the stores (beq at 0x080D5726),
+  but r0 does not hold the new pointer. The ''register-shift trick'' phrasing is backwards — the push
+  saves r0-r2,r5; after spawn, r0 is overwritten with r5 (source), then the pop recovers panelX/panelY/element
+  into r1-r3 and r5 back into r5, used for the AllianceAndDirectionFlip copy and RelatedObject1Ptr store.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5718 -> battle_spawnObject81LinkedToSource
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5718

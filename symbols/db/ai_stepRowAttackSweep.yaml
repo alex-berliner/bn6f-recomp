@@ -1,0 +1,71 @@
+name: ai_stepRowAttackSweep
+address: '0x080F357C'
+kind: function
+status: probable
+summary: 'AI attack state-handler: on first entry picks element 4, anim 0x15, counter 0x1E and a 0x12-frame
+  StepTimer; at remaining 0xA forwards (Alliance-derived column, PanelY, InitFlag, TimerOrCycles<<8|AiDifficultyTier,
+  Damage, ScratchVar) to sub_80C8F74 and switches to anim 0x10; when StepTimer reaches 0 sets HitElement=0x1C;
+  each call increments ChargeCycles and highlights a 3-panel row every 8th call.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = 0 on return; updates attack-vars fields and
+  object anim/counter; no meaningful flags
+details: On first entry (AttackElement == 0) it commits to element 4, sets anim 0x15, a 0x1E counter time,
+  and a 0x12-frame StepTimer. Each frame it decrements StepTimer; at the remaining value 0xA it calls
+  sub_80C8F74 with the attack row derived from Alliance (6 for side 0, else 1), the object's PanelY, InitFlag,
+  (TimerOrCycles<<8 | AiDifficultyTier), Damage and ScratchVar — i.e. it forwards the whole attack parameter
+  block — and switches to anim 0x10. While StepTimer counts down it keeps the pre-hit element; when it
+  hits 0 it sets HitElement = 0x1C (attack finished/fizzle). Independently, ChargeCycles increments every
+  entry and battle_highlightRowPanels3 is invoked on frames where the counter's bit 3 clears (every 8
+  calls), telegraphing the 3-panel row in the object's own row.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: init branch stores element 4, anim 0x15, object_setCounterTime(0x1E), StepTimer=0x12 (first
+    instructions); StepTimer==0xA path packs alliance-derived row, PanelY, tier and damage into args for
+    sub_80C8F74, then sets anim 0x10; StepTimer<=0 path stores 0x1C to oAIAttackVars_HitElement, marking
+    the attack's end state; ChargeCycles bit-3 test gates repeated battle_highlightRowPanels3 calls (row
+    telegraphing); row arg = 6 when Alliance==0 else 1, i.e. the object's own side's row, matching battle_highlightRowPanels3's
+    own-row highlight
+  refs:
+  - bn6f/asm/asm31.s:127343
+  - 0x080F38AA battle_highlightRowPanels3
+  - 0x0800E9DC object_setCounterTime
+  - 0x080C8F74 sub_80C8F74
+  reproduce: python3 tools/asmcat.py 0x080F357C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are accurate: the code does init AttackElement=4, CurAnim=0x15, counter
+    0x1E, StepTimer=0x12, then decrements StepTimer; at 0xA it forwards Alliance-derived column (6/1),
+    PanelY, InitFlag, (TimerOrCycles<<8|AiDifficultyTier), Damage and ScratchVar to sub_80C8F74 and sets
+    CurAnim=0x10; at <=0 it sets HitElement=0x1C; it bumps ChargeCycles each call and calls battle_highlightRowPanels3
+    every 8 entries. However, (TimerOrCycles<<8|AiDifficultyTier) is what gets packed, not (TimerOrCycles<<8
+    | AiDifficultyTier) with TimerOrCycles swapped — the description is fine but the name ai_stepRowBeamAttack
+    misreads the AI: sub_80C8F74 isn''t necessarily a beam projectile, only row-attack element 4 is set.
+    A safer ''sweep'' name fits the rowsweep caller route.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80C8F74 spawns (projectile type/ID) — its assembly is unknown here
+- meaning of element id 4 and HitElement 0x1C in the element table
+- how r5/r7 are established by the AI dispatcher that calls this handler
+- 'The proposal''s mechanics are accurate: the code does init AttackElement=4, CurAnim=0x15, counter 0x1E,
+  StepTimer=0x12, then decrements StepTimer; at 0xA it forwards Alliance-derived column (6/1), PanelY,
+  InitFlag, (TimerOrCycles<<8|AiDifficultyTier), Damage and ScratchVar to sub_80C8F74 and sets CurAnim=0x10;
+  at <=0 it sets HitElement=0x1C; it bumps ChargeCycles each call and calls battle_highlightRowPanels3
+  every 8 entries. However, (TimerOrCycles<<8|AiDifficultyTier) is what gets packed, not (TimerOrCycles<<8
+  | AiDifficultyTier) with TimerOrCycles swapped — the description is fine but the name ai_stepRowBeamAttack
+  misreads the AI: sub_80C8F74 isn''t necessarily a beam projectile, only row-attack element 4 is set.
+  A safer ''sweep'' name fits the rowsweep caller route.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F357C -> ai_stepRowAttackSweep
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F357C

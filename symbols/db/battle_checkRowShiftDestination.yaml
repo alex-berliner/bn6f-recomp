@@ -1,0 +1,74 @@
+name: battle_checkRowShiftDestination
+address: '0x0811567E'
+kind: function
+status: probable
+summary: 'Validates a battle object''s one-step vertical (row) destination by computing a delta from its
+  current PanelY (cached in ExtraVars: reuses prior value if at row 2, +1 if row 1, -1 otherwise), then
+  checks the destination panel against alliance-dependent required panel flags via GetAllianceDependentPanelParamArgs/object_checkPanelParameters.'
+interface: (object in r5; r3 = allianceDependentPanelFlags_81156D0) -> r0 = panel param word if destination
+  panel passes check, else 0; r1 = args pointer from the panel-param table; r5->ExtraVars overwritten
+  with the chosen delta
+details: 'It loads ExtraVars and PanelY: if PanelY==2 the delta is the existing ExtraVars value, if PanelY==1
+  the delta is forced to 1, otherwise (PanelY==0) delta becomes -1 (mov #1 / sub #2); the delta is written
+  back to ExtraVars, so it acts as a remembered per-call shift amount. The candidate row is PanelY+delta,
+  combined with PanelX, and looked up in an alliance-dependent panel-effect parameter table via GetAllianceDependentPanelParamArgs,
+  so the required panel state differs for player- vs enemy-side objects. The returned param word and args
+  pointer are handed to object_checkPanelParameters (push/pop just preserves the args across that call),
+  and on success the param word is returned; on failure r0 is zeroed. The object''s PanelX/PanelY are
+  never written here, so the caller performs any actual movement after this validation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'delta selection: cmp PanelY,#2 keeps ExtraVars, Y==1 keeps mov #1, else sub r0,#2 gives -1;
+    str back to ExtraVars (asm 0x8115682-0x8115694); r1 = PanelY + delta, r0 = PanelX, r3 = allianceDependentPanelFlags_81156D0,
+    then bl GetAllianceDependentPanelParamArgs; push {r0,r1} / bl object_checkPanelParameters / pop {r0,r1}:
+    args are forwarded to the panel-flag test and restored after it clobbers r0-r3; cmp r0,#0 / bne locret:
+    failure path zeroes r0, success returns the param word; object pointer comes from r5 (oBattleObject_ExtraVars/PanelX/PanelY
+    offsets), so the caller passes the object in r5 rather than r0'
+  refs:
+  - bn6f/asm/asm32.s:14894
+  - 0x08115668 sub_8115668
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x0811567E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary, interface, and details accurately describe the code: ExtraVars/PanelY branch computes
+    the delta (PanelY==2 keeps cached value, PanelY==1 forces +1, else -1 via mov #1/sub #2), writes it
+    back, computes PanelY+delta, and validates the destination panel against GetAllianceDependentPanelParamArgs''s
+    alliance-dependent flags via object_checkPanelParameters. However, the proposed name is misleading:
+    this is not a generic ''row shift target panel'' check — it''s specifically a row-slide/row-shift
+    step validator used during column-row movement (likely sliding along a row, since PanelX is preserved
+    and only PanelY changes). A clearer name would reflect that it validates a vertical row-step destination,
+    not a ''target panel'' in general.; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which in-game attack/effect invokes this (recorded routes battlesweep and beastsp hint at a boss sweep/BeastSP
+  attack) — the caller sub_8115668 is undocumented
+- Initial/typical value and sign semantics of ExtraVars, and why PanelY==2 reuses it instead of forcing
+  a direction
+- How the caller consumes the returned param word and args pointer, and whether it applies the row shift
+  itself
+- 'The summary, interface, and details accurately describe the code: ExtraVars/PanelY branch computes
+  the delta (PanelY==2 keeps cached value, PanelY==1 forces +1, else -1 via mov #1/sub #2), writes it
+  back, computes PanelY+delta, and validates the destination panel against GetAllianceDependentPanelParamArgs''s
+  alliance-dependent flags via object_checkPanelParameters. However, the proposed name is misleading:
+  this is not a generic ''row shift target panel'' check — it''s specifically a row-slide/row-shift step
+  validator used during column-row movement (likely sliding along a row, since PanelX is preserved and
+  only PanelY changes). A clearer name would reflect that it validates a vertical row-step destination,
+  not a ''target panel'' in general.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811567E -> battle_checkRowShiftDestination
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811567E

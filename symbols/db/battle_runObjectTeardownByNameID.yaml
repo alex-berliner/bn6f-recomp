@@ -1,0 +1,68 @@
+name: battle_runObjectTeardownByNameID
+address: '0x08011044'
+kind: function
+status: probable
+summary: 'Tails the per-NamesID teardown/cleanup handler for a battle object: indexes a handler table
+  by NameID (r1) within a kind-selected sub-table (r0), passing caller r0-r3 to the handler via mov lr,pc;bx
+  r2.'
+interface: (r0 = table/event selector, r1 = object NameID index) -> r0 = handler return value; original
+  r0-r3 passed through to the dispatched handler via mov lr,pc/bx tail-call.
+details: The function computes r0<<2 and r1<<2, loads a table-of-tables pointer from off_8011058, selects
+  a sub-table with r0 and an entry with r1, then performs a classic ARM-style 'mov lr, pc; bx r2' call
+  so the handler still sees the caller's r0-r3. Sub-table 0 (off_8011068, 35 entries) is entirely nullsub_43,
+  while sub-tables at off_80110F4 (~51 entries) contain real handlers, including battle_object_detachRelatedObject2_80111B8
+  and small subs (sub_80111CA..sub_801140E). The ~51-entry dimension matches the battle-object NameID
+  range, so r1 is almost certainly a NameID and r0 an event/despawn selector whose slot 0 is a no-op case.
+  Callers such as battle_despawnEnemyObject and teardown sub-states invoke it once per removed object,
+  consistent with firing a per-type teardown/despawn event.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8011044 body: lsl r0/r1,#2 + double table load off_8011058 -> indexed call, a pure two-level
+    dispatcher; off_80110F4 entry 0 = battle_object_detachRelatedObject2_80111B8+1, a known battle-object
+    routine, tying the table to object teardown; sub-table off_8011068 is all nullsub_43 (35 slots) while
+    off_80110F4 has ~51 mostly real slots, matching a per-NameID handler table with a no-op case for r0=0;
+    Caller battle_despawnEnemyObject (0x080E33D2) calls it while freeing a defeated enemy''s object slot,
+    consistent with a despawn event dispatch; Teardown sub-states sub_80C0EE2/sub_80B8B6E etc. call it
+    once around destroying their related object, matching an event-notification helper'
+  refs:
+  - bn6f/asm/asm00_2.s:5092
+  - 0x080E33D2 battle_despawnEnemyObject
+  - 0x080C0EE2 sub_80C0EE2
+  - 0x08011438 sub_8011438
+  reproduce: python3 tools/asmcat.py 0x08011044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch is two-level but off_801105C has only 3 entries (0=35-nullsub table, 1=2=51-entry handler
+    table), so r0 distinguishes at most 3 categories rather than acting as a free ''event selector''.
+    Caller battle_despawnEnemyObject and sub_80C0EE2 (wait 4 frames then queue destruction) strongly imply
+    a teardown hook, not an arbitrary event dispatch. The interface (r0,r1 preserved across mov lr,pc;bx
+    r2) is correct but the per-object teardown framing is more specific than ''dispatchObjectEvent''.;
+    run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- story9
+open_questions:
+- Exact meaning of r0's three table slots (which event IDs map to tables 1/2) and the full argument set
+  handlers receive
+- Whether handlers take the object pointer in r2/r3 or re-derive it; needs the callee sub_80111CA/sub_80111DC
+  bodies or the caller call sites' register setup
+- The dispatch is two-level but off_801105C has only 3 entries (0=35-nullsub table, 1=2=51-entry handler
+  table), so r0 distinguishes at most 3 categories rather than acting as a free 'event selector'. Caller
+  battle_despawnEnemyObject and sub_80C0EE2 (wait 4 frames then queue destruction) strongly imply a teardown
+  hook, not an arbitrary event dispatch. The interface (r0,r1 preserved across mov lr,pc;bx r2) is correct
+  but the per-object teardown framing is more specific than 'dispatchObjectEvent'.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011044 -> battle_runObjectTeardownByNameID
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011044

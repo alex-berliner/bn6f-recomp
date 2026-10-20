@@ -1,0 +1,58 @@
+name: battle_syncFromRelatedAndAdvanceYZ
+address: '0x080C00CE'
+kind: function
+status: probable
+summary: Copies 12 bytes (three words) from RelatedObject1Ptr+0x34 into the battle object at +0x34, then
+  increments its Y16 and Z16 by 1, returning new Y16 in r0 and Z16 in r1.
+interface: (r5 = battle object; r0/r1 scratch) -> r0/r1 = new Y16/Z16 values; flags from last strh path
+details: Loads the pointer at oBattleObject_RelatedObject1Ptr, block-copies three words from related+0x34
+  into this object's offset 0x34 (fields at 0x34..0x3F shared with/derived from the related object, likely
+  target/attack-area data). It then reads oBattleObject_Y16 and oBattleObject_Z16, increments each by
+  1, and stores them back, so the object advances one step in both Y and Z each call. r0 is clobbered
+  immediately, so callers pass nothing meaningful in r0. Called from three nearby wrappers (sub_80C0030/4C/72),
+  so it is a small shared movement/sync primitive.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]; ldmia/stmia r0! {r1-r3} copies 12 bytes between
+    the two objects'' 0x34 areas; ldrh/add #1/strh on oBattleObject_Y16 and oBattleObject_Z16 is a diagonal
+    one-unit step; three callers sub_80C0030/4C/72 sit adjacent, indicating a shared primitive rather
+    than a one-off'
+  refs:
+  - bn6f/asm/asm31.s:17395
+  - 0x080C0030 sub_80C0030
+  - 0x080C004C sub_80C004C
+  - 0x080C0072 sub_80C0072
+  reproduce: python3 tools/asmcat.py 0x080C00CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The copy is correct: it loads RelatedObject1Ptr, copies 12 bytes (three words via ldmia r0!, {r1-r3})
+    from src+0x34 into self+0x34, and increments Y16 and Z16 by 1. However, the summary says ''moves itself
+    one unit diagonally (Y16+1, Z16+1)'', which is accurate but the proposed name ''battle_copyRelatedObjFieldsAndStepDiag''
+    awkwardly mashes both responsibilities; a tighter name reflecting just the movement/sync helper is
+    preferable. The function has no callees and is a leaf used by three wrappers.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what fields live at battle-object offset 0x34..0x3F that are copied from the related object
+- what the three callers are (attack/movement AI?) that would pin the in-game meaning of the diagonal
+  step
+- 'The copy is correct: it loads RelatedObject1Ptr, copies 12 bytes (three words via ldmia r0!, {r1-r3})
+  from src+0x34 into self+0x34, and increments Y16 and Z16 by 1. However, the summary says ''moves itself
+  one unit diagonally (Y16+1, Z16+1)'', which is accurate but the proposed name ''battle_copyRelatedObjFieldsAndStepDiag''
+  awkwardly mashes both responsibilities; a tighter name reflecting just the movement/sync helper is preferable.
+  The function has no callees and is a leaf used by three wrappers.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C00CE -> battle_syncFromRelatedAndAdvanceYZ
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C00CE

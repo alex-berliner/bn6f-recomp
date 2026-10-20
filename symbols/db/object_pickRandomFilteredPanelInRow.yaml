@@ -1,0 +1,68 @@
+name: object_pickRandomFilteredPanelInRow
+address: '0x080FCD92'
+kind: function
+status: probable
+summary: Selects a random panel from a filtered set in the object's battle row (row byte at [r0+0x13]),
+  returning column in r0 (bits 0-2) and row in r1 (bits 4-7); returns undefined r0/r1 if no panels pass
+  the filter.
+interface: (r0 = object ptr; row byte at [r0+0x13]) -> r0 = coordinate low bits (row), r1 = coordinate
+  high bits (column); both 0 if no panels pass the filter
+details: 'Reads the object''s row from offset 0x13 and calls object_getPanelsInRowFiltered, which fills
+  a 24-byte stack buffer with bytes for the six columns of that row and returns the count. If count is
+  nonzero it draws a random number with GetPositiveSignedRNG and uses SWI 6 (Divide), taking the remainder
+  as an index 0..count-1 into the buffer. It then unpacks the selected byte: bits 0-2 into r0 and bits
+  4-7 into r1. If the count is zero it returns the uninitialized stack buffer byte path skipped (returns
+  whatever is in r1/r0 from the calls). Used in battle routes, likely for enemy movement/teleport target
+  selection.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r0,#0x13] followed by bl object_getPanelsInRowFiltered selects the row and fills the
+    stack buffer with panel bytes; svc 6 after GetPositiveSignedRNG with r1=count: quotient in r0, remainder
+    in r1 = random index in range; ldrb r0,[r0,r1] then lsr #4 / lsl #0x1d+lsr #0x1d splits the byte into
+    a 3-bit low field (r0) and a 4-bit high field (r1); beq loc_80FCDB6 skips everything when object_getPanelsInRowFiltered
+    returns 0 panels'
+  refs:
+  - bn6f/asm/asm31.s:146541
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800D012 object_getPanelsInRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080FCD92
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: it reads row from [r0+0x13], calls object_getPanelsInRowFiltered
+    into a 24-byte stack buffer, uses GetPositiveSignedRNG and SVC 6 (Divide) for a random index, then
+    unpacks bits 0-2 into r0 and bits 4-7 into r1. However, the proposed name ''object_pickRandomPanelInRow''
+    carries the ''object'' tag which is acceptable, but the more conventional ''object_pickRandomFilteredPanelInRow''
+    (or simply ''object_randomFilteredPanelInRow'') better reflects that the filter is the key step. The
+    return packing: bits 0-2 into r0 means r0 holds the column (0-5), and bits 4-7 into r1 means r1 holds
+    the row (0-7), which matches the description. The ''no panels'' fallback leaving r0/r1 undefined is
+    correct per the code path skipping initialization.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the two unpacked coordinate fields (column vs row vs panel-type bits) depends on object_getPanelsInRowFiltered's
+  buffer packing
+- Which battle behavior consumes the result (movement, teleport, attack target) is unknown without identified
+  callers
+- 'The summary is mostly correct: it reads row from [r0+0x13], calls object_getPanelsInRowFiltered into
+  a 24-byte stack buffer, uses GetPositiveSignedRNG and SVC 6 (Divide) for a random index, then unpacks
+  bits 0-2 into r0 and bits 4-7 into r1. However, the proposed name ''object_pickRandomPanelInRow'' carries
+  the ''object'' tag which is acceptable, but the more conventional ''object_pickRandomFilteredPanelInRow''
+  (or simply ''object_randomFilteredPanelInRow'') better reflects that the filter is the key step. The
+  return packing: bits 0-2 into r0 means r0 holds the column (0-5), and bits 4-7 into r1 means r1 holds
+  the row (0-7), which matches the description. The ''no panels'' fallback leaving r0/r1 undefined is
+  correct per the code path skipping initialization.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FCD92 -> object_pickRandomFilteredPanelInRow
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCD92

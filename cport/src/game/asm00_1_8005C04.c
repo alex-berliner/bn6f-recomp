@@ -857,7 +857,7 @@ Next sub_800647C(void) {
  *
  * After the position is updated and the palettes repainted via sub_8002378
  * (slots base+0x12 and base+0x13), one of the two handlers in the table at
- * off_8006510 is invoked: sub_8006518 while the fade is still running
+ * off_8006510 is invoked: e_stepColorCycle while the fade is still running
  * (table index 0), sub_8006580 once it finished (table index 4).
  */
 
@@ -875,13 +875,13 @@ static void set_palette_color(u32 arg0, u32 color, u32 arg2, u32 slot, u32 arg4,
     GUEST_CALL(sub_8002378);
 }
 
-/* register form: calls sub_8006518 outside this file, which has no typed C interface yet.
+/* register form: calls e_stepColorCycle outside this file, which has no typed C interface yet.
  * The original reaches it through the table at off_8006510 and enters it with the
  * fetched table entry in r0; r1-r7 still hold the values set up for sub_8002378
  * (r3 deliberately keeps whatever sub_8002378 left behind, as in the original). */
 static void call_fade_step_handler(u32 handler) {
     R0 = handler;
-    GUEST_CALL(sub_8006518);
+    GUEST_CALL(e_stepColorCycle);
 }
 
 /* register form: calls sub_8006580 outside this file, which has no typed C interface yet.

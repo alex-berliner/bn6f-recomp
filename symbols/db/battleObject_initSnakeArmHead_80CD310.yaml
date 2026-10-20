@@ -4,56 +4,54 @@ kind: function
 previous_names:
 - sub_80CD310
 status: probable
-summary: Battle-object init/state handler for a snake-arm head — spawns the head, sprite/flip/element
-  setup, builds collision data, and jumps to sub_80CD3B0.
-interface: '(r5 = battle object, r10 = toolkit) -> void ; side effects: allocates/initializes the object''s
-  sprite, palette, flip, collision block, and sets CurState to CUR_STATE_UPDATE'
+summary: Battle-object init/state handler for a snake-arm head — spawns the head, sprite/flip/element setup, builds
+  collision data, and jumps to sub_80CD3B0.
+interface: '(r5 = battle object, r10 = toolkit) -> void ; side effects: allocates/initializes the object''s sprite,
+  palette, flip, collision block, and sets CurState to CUR_STATE_UPDATE'
 details: 'Pushes only lr (restores via pop {pc}); r5 holds the freshly-allocated battle object.
 
-  Reads Param1 to derive initial behavior: when carry is clear (Param1 < 8), it sets object flag 0x02
-  (Visible) on the header at oObjectHeader_Flags via `orr r0, r1`.
+  Reads Param1 to derive initial behavior: when carry is clear (Param1 < 8), it sets object flag 0x02 (Visible)
+  on the header at oObjectHeader_Flags via `orr r0, r1`.
 
   Loads the head sprite via `sprite_load(0x80, 0x0C, 0x2E)`, applies `sprite_noShadow`, sets CurAnimAndCurAnimCopy
   to 0, then `sprite_setAnimation(0)` + `sprite_loadAnimationData` + `sprite_update`.
 
-  Sets the sprite flip from object_getFlip() XOR Param1 with `sprite_setFlip`, writes Element = 0x5, palette
-  = Param1*2 via `sprite_setPalette`, and calls `object_setCoordinatesFromPanels` to fix up X/Y from PanelX/Y.
+  Sets the sprite flip from object_getFlip() XOR Param1 with `sprite_setFlip`, writes Element = 0x5, palette = Param1*2
+  via `sprite_setPalette`, and calls `object_setCoordinatesFromPanels` to fix up X/Y from PanelX/Y.
 
-  Zeros Z, computes XVelocity = object_getFlipDirection(...) * 0xA0000 (fixed-point ±1.0 * step) so the
-  head drifts sideways based on Param1 XOR Alliance vs DirectionFlip.
+  Zeros Z, computes XVelocity = object_getFlipDirection(...) * 0xA0000 (fixed-point ±1.0 * step) so the head drifts
+  sideways based on Param1 XOR Alliance vs DirectionFlip.
 
   Calls `object_createCollisionData`; on failure it `object_freeMemory`s and returns.
 
   On success it picks a self-collision-type base (0x8 normally, 0x4 if Param1 bit 0 is set), then `object_setupCollisionData(0x1E,
-  5)` plus clearing `StaminaDamageCounterDisabler` (offset 0x2e) on the returned collision block and runs
-  `object_presentCollisionData`.
+  5)` plus clearing `StaminaDamageCounterDisabler` (offset 0x2e) on the returned collision block and runs `object_presentCollisionData`.
 
-  Sets `CurState = CUR_STATE_UPDATE` (0x4), tails into sub_80CD3B0 (the object''s per-frame state machine)
-  and returns via the saved lr.
+  Sets `CurState = CUR_STATE_UPDATE` (0x4), tails into sub_80CD3B0 (the object''s per-frame state machine) and returns
+  via the saved lr.
 
-  The branch on Param1 bit 0 controlling 8 vs 4 plus the explicit `mul r0, r1` with 0xA0000 strongly suggest
-  this is the "snake head" spawner (the SNAKEARM_EV_* constants live in the same translation unit header).
+  The branch on Param1 bit 0 controlling 8 vs 4 plus the explicit `mul r0, r1` with 0xA0000 strongly suggest this
+  is the "snake head" spawner (the SNAKEARM_EV_* constants live in the same translation unit header).
 
   '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r0, #0x80 ; mov r1, #0xc ; mov r2, #0x2e ; bl sprite_load` defines a fixed sprite/animation
-    header (0x80/0x0C/0x2E). - `bl sprite_noShadow` then `mov r0, #0 ; strh r0, [r5,#oBattleObject_CurAnimAndCurAnimCopy]
-    ; bl sprite_setAnimation ; bl sprite_loadAnimationData ; bl sprite_update` is the standard battle-object
-    sprite bootstrap. - `bl object_getFlip` followed by `ldrb r1,[r5,#oBattleObject_Param1] ; eor r0,r1
-    ; bl sprite_setFlip` is the standard "flip XOR Param1" idiom used elsewhere for snake/arm pieces.
-    - `mov r0,#5 ; strb r0,[r5,#oBattleObject_Element]` hard-codes element 5 (Wood) — the element specific
-    to snake-arm pieces. - `ldrb r0,[r5,#oBattleObject_Param1] ; add r0,r0,r0 ; bl sprite_setPalette`
-    uses Param1 directly to pick palette index. - `mul r0,r1` where `r1 = 0xA0000` (`dword_80CD3AC`) sets
-    XVelocity to ±0xA0000 per frame for sideways drift. - `bl object_createCollisionData` + `tst r0,r0
-    ; bne loc_80CD386`; failure path calls `object_freeMemory` and `pop {pc}` — i.e. abort. - At loc_80CD386:
-    `mov r3,#8` / `mov r3,#4` selected by `tst r1,#1` of Param1 — Param1''s low bit chooses collision-type
-    base. - `mov r1,#0x1e ; mov r2,#5 ; bl object_setupCollisionData ; mov r1,#0 ; strh r1,[r0,#0x2e]`
-    writes 0 into offset 0x2e of the returned collision block (StaminaDamageCounterDisabler). - `mov r0,#CUR_STATE_UPDATE
-    ; strb r0,[r5,#oBattleObject_CurState] ; bl sub_80CD3B0 ; pop {pc}` moves the object into its update
-    state and dispatches to its per-frame handler. - SNAKEARM_EV_* constants (0x1, 0x2, 0x3, 0x20) live
-    in the same BattleObject.inc header, matching the Param1-driven palette/flip/collision setup.'
+  detail: '- `mov r0, #0x80 ; mov r1, #0xc ; mov r2, #0x2e ; bl sprite_load` defines a fixed sprite/animation header
+    (0x80/0x0C/0x2E). - `bl sprite_noShadow` then `mov r0, #0 ; strh r0, [r5,#oBattleObject_CurAnimAndCurAnimCopy]
+    ; bl sprite_setAnimation ; bl sprite_loadAnimationData ; bl sprite_update` is the standard battle-object sprite
+    bootstrap. - `bl object_getFlip` followed by `ldrb r1,[r5,#oBattleObject_Param1] ; eor r0,r1 ; bl sprite_setFlip`
+    is the standard "flip XOR Param1" idiom used elsewhere for snake/arm pieces. - `mov r0,#5 ; strb r0,[r5,#oBattleObject_Element]`
+    hard-codes element 5 (Wood) — the element specific to snake-arm pieces. - `ldrb r0,[r5,#oBattleObject_Param1]
+    ; add r0,r0,r0 ; bl sprite_setPalette` uses Param1 directly to pick palette index. - `mul r0,r1` where `r1 =
+    0xA0000` (`dword_80CD3AC`) sets XVelocity to ±0xA0000 per frame for sideways drift. - `bl object_createCollisionData`
+    + `tst r0,r0 ; bne loc_80CD386`; failure path calls `object_freeMemory` and `pop {pc}` — i.e. abort. - At loc_80CD386:
+    `mov r3,#8` / `mov r3,#4` selected by `tst r1,#1` of Param1 — Param1''s low bit chooses collision-type base.
+    - `mov r1,#0x1e ; mov r2,#5 ; bl object_setupCollisionData ; mov r1,#0 ; strh r1,[r0,#0x2e]` writes 0 into offset
+    0x2e of the returned collision block (StaminaDamageCounterDisabler). - `mov r0,#CUR_STATE_UPDATE ; strb r0,[r5,#oBattleObject_CurState]
+    ; bl sub_80CD3B0 ; pop {pc}` moves the object into its update state and dispatches to its per-frame handler.
+    - SNAKEARM_EV_* constants (0x1, 0x2, 0x3, 0x20) live in the same BattleObject.inc header, matching the Param1-driven
+    palette/flip/collision setup.'
   refs:
   - bn6f/asm/asm31.s
   reproduce: 'python3 tools/asmcat.py 0x080CD310
@@ -64,9 +62,9 @@ evidence:
 
     '
 open_questions:
-- Without a caller, the Param1 convention (each spawned piece's index, low bit selects collision base
-  4 vs 8) is inferred; a caller plus the snake-arm EV constants would confirm exact slot semantics and
-  which EV this initializer services (head vs segment).
+- Without a caller, the Param1 convention (each spawned piece's index, low bit selects collision base 4 vs 8) is
+  inferred; a caller plus the snake-arm EV constants would confirm exact slot semantics and which EV this initializer
+  services (head vs segment).
 sources:
 - discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
 changes:
@@ -78,3 +76,7 @@ changes:
   what: rename sub_80CD310 -> battleObject_initSnakeArmHead_80CD310
   where: bn6f f491ae79
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py

@@ -1,0 +1,77 @@
+name: drawChipNameTileRow
+address: '0x0802C75C'
+kind: function
+status: probable
+summary: Renders a chip name text graphic and a fixed 2-row tilemap block into the 24-wide row buffer
+  at unk_2034B30, writing to unk_2035320/unk_2035520.
+interface: '(r0 = (table<<8)|chipIndex packed: low byte chip index 0-0xFF, high byte selects TextScriptChipNames0/1)
+  -> void; clobbers r5, writes text-render state unk_2035320/unk_2035520 and the row buffer'
+details: r0's low byte is the chip index and r0>>8<<2 indexes a 2-entry table of text-script bases (TextScriptChipNames0/1);
+  that base plus the index is passed to renderTextGfx_8045F8C with glyph VRAM base 0x600BA80 and palette/font
+  params (8,1,dword_86B7AE0,8). It then blits a fixed 2x12 tilemap block (byte_802C7EC, tile indices 0x91D4-0x91E3
+  + 0x90C5) into the row buffer via blitTileBlockToRowBuffer_802C4B6, followed by a 2x1 block of tiles
+  0x91E4/0x91E5 (0x91E4 strh'd inline, incremented for the second halfword). Finally it re-uses the saved
+  r0/r1 (pop {r0,r1,r6} restores the caller's original arguments, so r1 is the caller's r1, not the chip
+  index) to render a second fixed string TextScript86EF71C with glyph base 0x600BC80 into unk_2035520.
+  The row buffer is the same one blitTileBlockToRowBuffer_802C4B6 documents, so the output is a slice
+  of a wider banner, drawn every frame from menus and story routes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsr r0,r0,#8 / lsl r0,r0,#2 / ldr r0,[r2,r0] with off_802C7C4 -> TextScriptChipNames0/1: table
+    selected by high byte, low byte kept in r1 as the glyph index; bl renderTextGfx_8045F8C twice, with
+    bases 0x600BA80 and 0x600BC80 and shared params dword_86B7AE0/8: two text renderings through the text
+    toolkit; byte_802C7EC holds consecutive tile indices 0x91D4-0x91E3 with 0x90C5 padding, and dword_802C7E0=0x91E4
+    is strh''d and incremented: fixed tilemap art blitted around the text; pop {r0,r1,r6} before each
+    blit restores the caller''s original r0/r1, so the second renderTextGfx call renders the constant
+    TextScript86EF71C with the caller''s r1, not the chip index; callee blitTileBlockToRowBuffer_802C4B6
+    targets the 24-halfword row buffer at unk_2034B30, matching the banner-slice pattern'
+  refs:
+  - bn6f/asm/asm03_0.s:13491
+  - 0x0802C0A4 sub_802C0A4
+  - 0x0802C4B6 blitTileBlockToRowBuffer_802C4B6
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0802C75C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does render a chip name plus a fixed tilemap block into unk_2034B30, but the proposal misreads
+    several details. The first renderTextGfx_8045F8C call writes into unk_2035320 (not the row buffer),
+    and the second writes into unk_2035520, so the chip-name string is not in the row buffer. The tile
+    block at byte_802C7EC is 2x16 (two rows of 9 halfwords from r3=#9, r4=#2), not 2x12. The final 2x1
+    block is not 0x91E4/0x91E5 — strh writes 0x91E4 and 0x91E5 as the two halfwords in the 2x1 region,
+    which is what the asm shows. The 2x12 size in the proposal is contradicted by mov r4,#2 immediately
+    before the blit.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What the second string TextScript86EF71C says and what the caller's original r1 means for it
+- Which screen/panel the row buffer at unk_2034B30 is eventually copied to (likely a chip-library or folder
+  banner) — needs sub_802C0A4's context or the row-buffer consumer
+- The code does render a chip name plus a fixed tilemap block into unk_2034B30, but the proposal misreads
+  several details. The first renderTextGfx_8045F8C call writes into unk_2035320 (not the row buffer),
+  and the second writes into unk_2035520, so the chip-name string is not in the row buffer. The tile block
+  at byte_802C7EC is 2x16 (two rows of 9 halfwords from r3=#9, r4=#2), not 2x12. The final 2x1 block is
+  not 0x91E4/0x91E5 — strh writes 0x91E4 and 0x91E5 as the two halfwords in the 2x1 region, which is what
+  the asm shows. The 2x12 size in the proposal is contradicted by mov r4,#2 immediately before the blit.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802C75C -> drawChipNameTileRow
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802C75C

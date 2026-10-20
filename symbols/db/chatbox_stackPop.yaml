@@ -1,0 +1,66 @@
+name: chatbox_stackPop
+address: '0x0803C068'
+kind: function
+status: probable
+summary: Pops the top entry from a 2-byte-per-entry stack backed by a struct at r5, freeing it (writes
+  0x00,0xE5) and compacting trailing free slots via sub_803C0BE; returns 1 on success or 0 if the top
+  slot is empty/free/terminator (0xE5, 0x00, or 0xE6).
+interface: (r0 = offset of the stack-count byte within the struct at r5, r1 = offset of the 2-byte entry
+  array within the struct) -> r0 = 1 if an occupied entry was popped/freed, 0 if the stack was already
+  empty; uses r5 as a global struct base.
+details: 'The function reads the count byte at [r5+r0] and indexes the entry table at r5+r1 with count*2.
+  If the entry''s low byte is 0xE5 (free marker) or 0x00, the pop fails: the count is decremented (saturating
+  at 0) and 0 is returned. Otherwise the entry is freed by writing 0x00,0xE5 into its two bytes, sub_803C0BE
+  compacts the table (rewrites trailing 0x00/0xE5 slots to canonical 0xE5 0xE5 pairs up to the 0xE6 terminator),
+  the count is decremented, and 1 is returned. The count byte is a top-of-stack cursor and the 0xE6 byte
+  acts as the end-of-stack terminator.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,r6]; lsl #1 + add r7 indexes a 2-byte entry array — entries are 2 bytes wide, count
+    is a cursor; cmp r1,#0xe5 / #0 / #0xe6 with bne — 0xE5/0x00 mean free slot, anything else is an occupied
+    entry; strb 0x00/[r0] + strb 0xE5 [r0,#1] — occupied entry is overwritten with the free marker 0x00E5;
+    count decremented with saturating ''sub #1; bge; mov #0'' and returned as r4 success/fail flag; callee
+    sub_803C0BE normalizes trailing free slots to 0xE5 0xE5 up to the 0xE6 terminator, matching a stack-compaction
+    helper'
+  refs:
+  - bn6f/asm/asm03_1_1.s:6448
+  - 0x0803AA24 handleExitSubmenu_803AA24
+  - 0x0803AD04 sub_803AD04
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x0803C068
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it reads a count byte at [r5+r6], indexes entries of size 2 at [r5+r7], and frees
+    the top by writing 0x00,0xE5 then calling sub_803C0BE to compact. However, the failure branch returns
+    0 only when the top entry is 0xE5, 0x00, or 0xE6 (the terminator), so 0xE6 is also treated as empty
+    — the proposal omits this. Also, r4 is preloaded with 1 and only cleared to 0 on failure, so the return
+    semantics match. The function is not chatbox-specific; callers like sub_803AD04 and the submenu-exit
+    handler suggest a generic data-structure helper.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles2
+- maps
+open_questions:
+- Which global struct r5 points to and whether the stack holds text-script IDs, submenu entries, or something
+  else — the caller sub_803AD04 is unknown, and handleExitSubmenu's exact use (what it pops when closing
+  the submenu) is not shown
+- 'The code matches: it reads a count byte at [r5+r6], indexes entries of size 2 at [r5+r7], and frees
+  the top by writing 0x00,0xE5 then calling sub_803C0BE to compact. However, the failure branch returns
+  0 only when the top entry is 0xE5, 0x00, or 0xE6 (the terminator), so 0xE6 is also treated as empty
+  — the proposal omits this. Also, r4 is preloaded with 1 and only cleared to 0 on failure, so the return
+  semantics match. The function is not chatbox-specific; callers like sub_803AD04 and the submenu-exit
+  handler suggest a generic data-structure helper.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C068 -> chatbox_stackPop
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C068

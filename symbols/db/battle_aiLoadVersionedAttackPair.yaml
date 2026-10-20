@@ -1,0 +1,61 @@
+name: battle_aiLoadVersionedAttackPair
+address: '0x0810067E'
+kind: function
+status: probable
+summary: Loads two versioned AI table halfwords for an attack index, combines them into a word, and stores
+  it into the battle object's AI attack vars.
+interface: (r0 = attack/table index, r5 pre-set by caller = battle object ptr) -> r0 = loaded value; writes
+  word to [oBattleObject_AIDataPtr+0xA0+oAIAttackVars_Damage]
+details: Multiplies r0 by 8 and reads a halfword from table byte_81006E8 via battle_aiGetVersionedTableEntry_800FE12
+  (which picks entries by the object's AI version, with scaled handling for version 4), then does the
+  same against byte_8100724. The second halfword is shifted left 16 and OR'ed with the first, forming
+  one word. That word is stored at [AIDataPtr+0xA0 + oAIAttackVars_Damage], i.e. damage in the low half
+  and the second table value (likely element or type) in the high half. The battle object pointer arrives
+  in r5 rather than r0/r1, so the callers must set r5 before the call. r6 is used as a scratch for the
+  combined value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,#8; add r0,byte_81006E8; bl battle_aiGetVersionedTableEntry_800FE12 — indexed versioned
+    table read; second read from byte_8100724, lsl r0,#0x10, orr r6 — packs two halfwords into one word;
+    ldr r3,[r5,#oBattleObject_AIDataPtr]; add r3,#0xa0; str r6,[r3,#oAIAttackVars_Damage] — writes into
+    AI attack vars; r5 is never set inside the function, so callers (sub_8100580..sub_810064C) must pre-load
+    the battle object into r5
+  refs:
+  - bn6f/asm/asm31.s:154207
+  - 0x08100580 sub_8100580
+  - 0x081005A6 sub_81005A6
+  - 0x081005DE sub_81005DE
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x0810067E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the assembly: two table reads via battle_aiGetVersionedTableEntry_800FE12
+    (byte_81006E8 and byte_8100724), index*8 scaling, OR-shift to combine into a word stored at [AIDataPtr+0xA0+oAIAttackVars_Damage].
+    However, naming it battle_aiLoadAttackDamage assumes one halfword is damage when the code does not
+    distinguish them, and there is no explicit damage semantics in the asm. A more neutral name reflecting
+    the double-table load is appropriate.; run wf investigate investigate-20261018-212108; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of the high halfword from byte_8100724 (element? hitcount?) not confirmed without the table
+  data
+- Why callers pass the battle object in r5 instead of a standard argument register
+- 'The proposal''s mechanics match the assembly: two table reads via battle_aiGetVersionedTableEntry_800FE12
+  (byte_81006E8 and byte_8100724), index*8 scaling, OR-shift to combine into a word stored at [AIDataPtr+0xA0+oAIAttackVars_Damage].
+  However, naming it battle_aiLoadAttackDamage assumes one halfword is damage when the code does not distinguish
+  them, and there is no explicit damage semantics in the asm. A more neutral name reflecting the double-table
+  load is appropriate.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810067E -> battle_aiLoadVersionedAttackPair
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810067E

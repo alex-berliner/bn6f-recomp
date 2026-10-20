@@ -1,0 +1,64 @@
+name: battle_playOneShotAnimState
+address: '0x080C025C'
+kind: function
+status: probable
+summary: 'Battle-object state handler: gated by sub_80C031E, on first entry sets CurPhase=4, Timer=0,
+  CurAnim=0x21; on tick 2 plays SFX 0x17B; checks frame-end flag (0x80) via sprite_getFrameParameters
+  and resets Timer/CurAction/CurPhase to 0.'
+interface: (r5 = battle object) -> r0 = destroyed; no meaningful return; side effects on object fields
+details: Reads the object at r5 (no argument register setup, so it is invoked with the object preloaded
+  in r5, likely as a state-handler). First calls sub_80C031E and bails if it returns 0 (probably 'not
+  this object's turn/active'). On first entry (CurPhase == 0) it sets CurPhase = 4, Timer = 0 and CurAnim
+  = 0x21. Each tick it increments Timer and, when Timer hits 2, plays sound effect 0x17B (0x7C + 0xFF).
+  It then calls sub_80C02F8 and sprite_getFrameParameters; if the frame's attribute byte has bit 0x80
+  set (animation-end flag) it resets Timer, CurAction and CurPhase to 0, handing the object back to its
+  idle/default behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry block: CurPhase 0 -> phase 4, Timer 0, CurAnim 0x21 (one-shot state init); cmp r0,#2
+    / PlaySoundEffect(0x7C+0xFF=0x17B) fires the sound exactly once two ticks in; sprite_getFrameParameters
+    + tst bit 0x80 is the standard animation-finished test; on anim end: Timer/CurAction/CurPhase all
+    cleared to 0, i.e. return to idle state; uses r5 without setup, so it is a state handler with the
+    object pointer already in r5'
+  refs:
+  - bn6f/asm/asm31.s:17607
+  - 0x080005CC PlaySoundEffect
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080C02F8 sub_80C02F8
+  reproduce: python3 tools/asmcat.py 0x080C025C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior (state handler gated by sub_80C031E, CurPhase init to
+    4, Timer reset, CurAnim 0x21, sound 0x17B on tick 2, sub_80C02F8 + sprite_getFrameParameters end-frame
+    check via 0x80 bit, reset Timer/CurAction/CurPhase to 0). However the prefix rules require a ''battle_''
+    or ''object_'' style prefix; ''battle_playOneShotAnimState'' fits, but the sound ID is 0x17B, not
+    0x7C+0xFF (the add is to 0xFF, giving 0x17B), and the name ''playOneShotAnimState'' is reasonable.
+    Minor: the summary says ''idle state'' but the code returns to CurPhase 0 / CurAction 0 without explicit
+    idle mention, which is fine.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80C031E checks (turn/active flag?) and what sub_80C02F8 does
+- which enemy/boss and which animation 0x21 represents; no callers known to confirm which object uses
+  this handler
+- 'The code matches the proposal''s behavior (state handler gated by sub_80C031E, CurPhase init to 4,
+  Timer reset, CurAnim 0x21, sound 0x17B on tick 2, sub_80C02F8 + sprite_getFrameParameters end-frame
+  check via 0x80 bit, reset Timer/CurAction/CurPhase to 0). However the prefix rules require a ''battle_''
+  or ''object_'' style prefix; ''battle_playOneShotAnimState'' fits, but the sound ID is 0x17B, not 0x7C+0xFF
+  (the add is to 0xFF, giving 0x17B), and the name ''playOneShotAnimState'' is reasonable. Minor: the
+  summary says ''idle state'' but the code returns to CurPhase 0 / CurAction 0 without explicit idle mention,
+  which is fine.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C025C -> battle_playOneShotAnimState
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C025C

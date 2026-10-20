@@ -1,0 +1,65 @@
+name: battle_startEdgeDash
+address: '0x080D11B4'
+kind: function
+status: probable
+summary: Sets the object's XVelocity toward the far edge panel using a Param1-indexed speed table and
+  facing step, then computes and stores a halfword Timer = (panel distance * 0x280000) / speed via SWI
+  6.
+interface: (r5 = battle object pointer; r0 clobbered) -> r0 = computed frame count; writes oBattleObject_XVelocity
+  and oBattleObject_Timer
+details: 'Reads the object''s Param1 as a speed index into a word table at byte_80D11EC (0x30000, 0x380000,
+  0x40000, 0x40000 — 16.16 fixed-point velocities), multiplies it by object_getEnemyDirection''s ±1 alliance-based
+  facing step, and stores the product in XVelocity. It then computes the remaining horizontal distance
+  to the target edge panel: 7-PanelX for alliance 0, 0-PanelX otherwise, taking the absolute value. That
+  distance is scaled by 0x28<<16 (panel width in fixed point) and divided by the speed via SWI 6 (GBA
+  Div, quotient in r0), giving the number of frames the dash will take, which is stored in the object''s
+  Timer. So the routine launches the object into a straight rush across the battlefield and arms a timer
+  that presumably ends the move when it reaches the far edge.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0,r1 then str r0,[r5,#oBattleObject_XVelocity] combines the ±1 direction from object_getEnemyDirection
+    with table speed byte_80D11EC[Param1]; target panel is 7 for alliance 0 and 0 otherwise (mov r0,#7
+    / tst Alliance / sub PanelX), i.e. the far edge of the 8-panel-wide field; svc 6 is GBA Div: distance*(0x28<<16)
+    divided by the still-live r1 speed yields a frame count, stored to oBattleObject_Timer; table words
+    0x30000/0x380000/0x40000 are plausible fixed-point velocities, matching battle velocity conventions'
+  refs:
+  - bn6f/asm/asm31.s:54340
+  - 0x080D1136 sub_80D1136
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x080D11B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the code: Param1 indexes the table at 0x080D11EC, gets multiplied
+    by object_getEnemyDirection''s ±1 step into XVelocity, the edge distance is computed as 7-PanelX or
+    0-PanelX and made positive, then multiplied by 0x280000 and divided via SWI 6 into Timer. However,
+    Timer is stored with strh, so it is a 16-bit halfword, not a full word. Also the name ''battle_startEdgeDash''
+    is reasonable but ''start'' fits the prefix list better than a generic ''battle''; a tighter name
+    reflecting the two outputs (set velocity toward edge + arm timer) would be clearer.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/AI state invokes this (caller sub_80D1136 is undocumented), and what the Timer firing triggers
+  (state change, collision check, or attack end)
+- exact fixed-point scale of battle XVelocity and whether Timer is decremented per frame by the object
+  engine
+- 'The proposal''s mechanics match the code: Param1 indexes the table at 0x080D11EC, gets multiplied by
+  object_getEnemyDirection''s ±1 step into XVelocity, the edge distance is computed as 7-PanelX or 0-PanelX
+  and made positive, then multiplied by 0x280000 and divided via SWI 6 into Timer. However, Timer is stored
+  with strh, so it is a 16-bit halfword, not a full word. Also the name ''battle_startEdgeDash'' is reasonable
+  but ''start'' fits the prefix list better than a generic ''battle''; a tighter name reflecting the two
+  outputs (set velocity toward edge + arm timer) would be clearer.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D11B4 -> battle_startEdgeDash
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D11B4

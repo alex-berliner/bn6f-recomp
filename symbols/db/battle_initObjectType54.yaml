@@ -1,0 +1,71 @@
+name: battle_initObjectType54
+address: '0x080CF058'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x54 via object_spawnType3, then in the non-NULL target struct
+  stores caller r0-r2 as PanelX/PanelY/Element, r6 as DamageAndStaminaDamageCounterDisabler, r7 as ExtraVars,
+  and ORs flag 0x10 into oObjectHeader_Flags.
+interface: (r0-r4 = spawn args, r5 = target object struct ptr (nonstandard), r6 = damage/stamina word,
+  r7 = extra vars) -> spawns type 0x54 object; fills r5 struct's PanelX/PanelY/Element/Damage/ExtraVars,
+  sets header flag 0x10; no return value
+details: 'The function passes its arguments through to object_spawnType3 with r0 forced to object type
+  0x54 (0x54, r1-r4 untouched). It saves the entry r0-r2 on the stack with push {r0-r2,r5} and reloads
+  them shifted into r1-r3 via pop {r1-r3,r5}, then stores them into the battle-object struct pointed to
+  by r5: PanelX = original r0, PanelY = original r1, Element = original r2. It also stores the caller''s
+  r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler and r7 into oBattleObject_ExtraVars, so
+  those two values are extra out-of-band arguments the caller must set. It re-reads AllianceAndDirectionFlip
+  from the same struct and writes it back (an apparently redundant self-copy), and ORs flag 0x10 into
+  oObjectHeader_Flags. All work after the spawn is skipped when r5 is NULL (beq after mov r0,r5). The
+  reliance on r5/r6/r7 as extra arguments is a nonstandard convention the single caller must honor.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x54 followed by bl object_spawnType3 selects battle object type 0x54 with r1-r4 passed
+    through unchanged; push {r0-r2,r5} / pop {r1-r3,r5} rotates the saved entry arguments into r1-r3 for
+    the field stores; strb r1,[r0,#oBattleObject_PanelX], strb r2,[r0,#oBattleObject_PanelY], strb r3,[r0,#oBattleObject_Element]
+    fill position/element from the entry arguments; str r6 / str r7 into DamageAndStaminaDamageCounterDisabler
+    and ExtraVars shows r6/r7 carry caller-set spawn parameters; mov r0,r5 before pop then beq locret
+    means the stores target the caller's r5 pointer and are skipped when it is NULL
+  refs:
+  - bn6f/asm/asm31.s:49834
+  - 0x08103B10 sub_8103B10
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CF058
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s structural description matches the asm (push {r0-r2,r5}, bl object_spawnType3 with
+    r0=0x54, pop {r1-r3,r5}, conditional writes via r0=r5, flag OR 0x10). However the proposed name ''battle_spawnType54''
+    implies a generic spawner, while the body shows this is specifically a spawn+post-init that fills
+    PanelX/PanelY/Element/Damage/ExtraVars and sets flag 0x10, more like an ''init'' routine. Also the
+    ''redundant self-copy'' claim is wrong: ldrh r3,[r5,...] loads from r5 but strh writes to [r0,...],
+    and r0 has been set to r5 only in the taken branch — they are the same pointer, so it really is a
+    self-copy. The summary''s wording is acceptable but could be tightened.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What gameplay object type 0x54 is (its initializer/behavior would say, e.g. a panel-bound elemental
+  object)
+- Why the caller's r5 struct receives the fields while the spawned object pointer from object_spawnType3
+  is discarded — need sub_8103B10 to see what r5 points to
+- Meaning of oObjectHeader_Flags bit 0x10 and of the redundant AllianceAndDirectionFlip self-copy
+- 'The summary''s structural description matches the asm (push {r0-r2,r5}, bl object_spawnType3 with r0=0x54,
+  pop {r1-r3,r5}, conditional writes via r0=r5, flag OR 0x10). However the proposed name ''battle_spawnType54''
+  implies a generic spawner, while the body shows this is specifically a spawn+post-init that fills PanelX/PanelY/Element/Damage/ExtraVars
+  and sets flag 0x10, more like an ''init'' routine. Also the ''redundant self-copy'' claim is wrong:
+  ldrh r3,[r5,...] loads from r5 but strh writes to [r0,...], and r0 has been set to r5 only in the taken
+  branch — they are the same pointer, so it really is a self-copy. The summary''s wording is acceptable
+  but could be tightened.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF058 -> battle_initObjectType54
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF058

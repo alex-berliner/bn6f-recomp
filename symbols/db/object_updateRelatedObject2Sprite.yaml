@@ -1,0 +1,54 @@
+name: object_updateRelatedObject2Sprite
+address: '0x080E5700'
+kind: function
+status: probable
+summary: Advances the sprite animation of the object reachable via this->RelatedObject1Ptr->RelatedObject2Ptr
+  by calling object_updateSpriteTimestop on it if non-null.
+interface: (r5 = battle object) -> r0 = result of object_updateSpriteTimestop; flags from that call
+details: Takes the battle object in r5 and reads its RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr),
+  then from that object reads RelatedObject2Ptr. If the resulting pointer is non-null, it calls object_updateSpriteTimestop
+  on it, advancing that linked object's sprite animation one frame unless paused or time-stopped. It is
+  essentially a sprite-tick helper that redirects the update from the current object to a dependent/attached
+  object. The r5 'this' convention is the standard battle-object calling convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldr r5,[r0,#oBattleObject_RelatedObject2Ptr] —
+    chains two related-object pointers to find the target; tst r5,r5; beq locret — skips the update when
+    the linked object pointer is NULL; bl object_updateSpriteTimestop — sole call, so the only action
+    is animating the target object's sprite; Called from sub_80E566C/sub_80E569C, wrapper objects that
+    own a secondary linked object needing sprite updates
+  refs:
+  - bn6f/asm/asm31.s:98013
+  - 0x080E566C sub_80E566C
+  - 0x080E569C sub_80E569C
+  - 0x0801BBF4 object_updateSpriteTimestop
+  reproduce: python3 tools/asmcat.py 0x080E5700
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080E5700 matches the proposal: it dereferences r5->RelatedObject1Ptr then ->RelatedObject2Ptr
+    (two-level indirection via ldr at +0 and +4), null-checks, then calls object_updateSpriteTimestop.
+    The summary is accurate, but the name ''updateRelatedObjectSprite'' is ambiguous about which related
+    object (1 vs 2).; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What kind of object owns RelatedObject2 (the callers' purpose is unknown), which would confirm the exact
+  relationship, e.g. an attached effect or a follower object
+- 'The code at 0x080E5700 matches the proposal: it dereferences r5->RelatedObject1Ptr then ->RelatedObject2Ptr
+  (two-level indirection via ldr at +0 and +4), null-checks, then calls object_updateSpriteTimestop. The
+  summary is accurate, but the name ''updateRelatedObjectSprite'' is ambiguous about which related object
+  (1 vs 2).'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5700 -> object_updateRelatedObject2Sprite
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5700

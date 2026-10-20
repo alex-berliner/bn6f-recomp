@@ -1,0 +1,65 @@
+name: battle_initBackstepDash
+address: '0x080B87AC'
+kind: function
+status: probable
+summary: 'Conditional (mode==4) step-back setup: stores panel coords and an extra param, refreshes pixel
+  position, shifts fixed-point x 20px opposite facing, loads three motion constants, and transitions the
+  object to state 3 (+0x20/+0x10) with mode byte 8.'
+interface: (r0 = battle object, r1 = value for field 0x2c, r2/r3 = panel x/y) -> void; no return value
+details: Only runs when the object's byte at +9 equals 4 (some prior mode); otherwise it returns immediately.
+  It stores r1 at +0x2c and r2/r3 as panel grid coordinates at +0x12/+0x13, then calls object_setCoordinatesFromPanels
+  to refresh pixel position. It multiplies object_getFrontDirection (+1/-1 by alliance) by 0x140000 (20.0
+  in 16.16 fixed point) and subtracts it from field +0x34, moving the object's fixed-point x 20px opposite
+  its facing. It then sets +0x3c = 0x280000 (40.0), +0x40 = 0x6aaaa (6.67) * direction, and +0x48 = 0xd5555
+  (13.33) — signed horizontal velocity and related motion constants. Finally it writes state 3 to halfword
+  +0x20 and byte +0x10, sets byte +9 to 8 and halfword +0xa to 0, switching the object into a new movement/attack
+  state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#9]; cmp #4 bne exit, later mov #8 strb [r5,#9] — mode gate and state switch on
+    the object''s state byte; strb r2,[r5,#0x12]/strb r3,[r5,#0x13] followed by bl object_setCoordinatesFromPanels
+    — writes panel grid coords then resnaps pixel position; bl object_getFrontDirection; mul r1,r0 with
+    dword_80B88BC=0x140000; sub from [r5,#0x34] — moves fixed-point x 20px opposite the facing direction;
+    0x280000/0x6aaaa*dir/0xd5555 stored to +0x3c/+0x40/+0x48 — fixed-point motion velocity constants,
+    one signed by facing; strh #3,[r5,#0x20]; strb #3,[r5,#0x10]; strh #0,[r5,#0xa] — resets counters/phase
+    fields for the new state'
+  refs:
+  - bn6f/asm/asm31.s:801
+  - 0x08115876 sub_8115876
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080B87AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The state byte at +9 is set to 8 (matching the proposal), but the halfword at +0x20 and byte at
+    +0x10 are both set to 3, not 8 as implied. The motion is mostly correct: +0x3c=0x280000, +0x40=0x6aaaa*dir,
+    +0x48=0xd5555, and +0x34 is shifted by -0x140000*dir. This is a step/dash setup, but the final state
+    written is 3 at +0x20/+0x10 with mode byte 8, suggesting an animation/action state transition rather
+    than pure movement. Name ''initBackstepDash'' is reasonable but ''initDashState'' or ''initStepBackState''
+    may fit better given the ambiguity.; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy or attack this movement belongs to — the only caller sub_8115876 is undocumented
+- Exact meaning of fields 0x2c, 0x3c, 0x40 and 0x48 in the battle object struct (velocity vs. target/limit)
+- What state byte 8 and the values 3 at +0x10/+0x20 drive in the object's update handler
+- 'The state byte at +9 is set to 8 (matching the proposal), but the halfword at +0x20 and byte at +0x10
+  are both set to 3, not 8 as implied. The motion is mostly correct: +0x3c=0x280000, +0x40=0x6aaaa*dir,
+  +0x48=0xd5555, and +0x34 is shifted by -0x140000*dir. This is a step/dash setup, but the final state
+  written is 3 at +0x20/+0x10 with mode byte 8, suggesting an animation/action state transition rather
+  than pure movement. Name ''initBackstepDash'' is reasonable but ''initDashState'' or ''initStepBackState''
+  may fit better given the ambiguity.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B87AC -> battle_initBackstepDash
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B87AC

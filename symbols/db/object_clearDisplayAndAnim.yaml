@@ -1,0 +1,61 @@
+name: object_clearDisplayAndAnim
+address: '0x080C023C'
+kind: function
+status: probable
+summary: Clears bit 1 of the object's header flags (hiding/resetting its display flag), zeroes CurAnim
+  to 0, and if sub_80C031E returns nonzero calls sub_80C02DA and sub_80C02F8.
+interface: (r5 = battle object header, r0/r1 clobbered) -> r0 = result of sub_80C031E test; flags from
+  tst
+details: Reads oObjectHeader_Flags from the object at r5, clears bit 1 (0x2) with bic, and writes it back
+  — likely a 'visible/active' bit. It then zeroes oBattleObject_CurAnim, forcing the default animation.
+  It calls sub_80C031E as a test; if it returns nonzero it calls sub_80C02DA and sub_80C02F8, presumably
+  to dequeue/free the object's OAM entries or reset sprite state. The function takes no arguments in registers
+  and operates entirely through r5, so it is called with r5 already pointing at the object. Without the
+  callees' bodies it is unclear whether this despawns the object or merely resets its rendering.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bic r0,r1 with r1=2 then strb to oObjectHeader_Flags clears a single status bit on the object;
+    strb r0(=0) to oBattleObject_CurAnim resets the animation counter to the first frame; tst r0,r0 after
+    bl sub_80C031E guards the two cleanup calls sub_80C02DA/sub_80C02F8; uses object-header fields directly
+    via r5, consistent with a per-object show/hide/reset helper; executed on battlesweep routes, consistent
+    with battle-object teardown or state reset
+  refs:
+  - bn6f/asm/asm31.s:17593
+  - 0x080C02DA sub_80C02DA
+  - 0x080C02F8 sub_80C02F8
+  - 0x080C031E sub_80C031E
+  reproduce: python3 tools/asmcat.py 0x080C023C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches clearing a display flag (bic #2), zeroing CurAnim, and conditionally calling the
+    two subroutines based on sub_80C031E. However, the function does push {lr}/pop {pc} and has no explicit
+    ''test result returned in r0'' contract beyond tst/beq, so framing r0 as the test result is fine but
+    the summary overstates ''releases sprite resources'' when callees are unknown. A better name focuses
+    on the visible action: clearing the display/hide flag and resetting animation.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- meaning of bit 1 in oObjectHeader_Flags (visible vs active vs something else)
+- what sub_80C031E tests (OAM occupancy? anim state?) and why cleanup is conditional on it
+- what sub_80C02DA and sub_80C02F8 actually do (free OAM queue entries vs reset sprite buffers)
+- a known caller would show which object types and when this is invoked
+- 'The code matches clearing a display flag (bic #2), zeroing CurAnim, and conditionally calling the two
+  subroutines based on sub_80C031E. However, the function does push {lr}/pop {pc} and has no explicit
+  ''test result returned in r0'' contract beyond tst/beq, so framing r0 as the test result is fine but
+  the summary overstates ''releases sprite resources'' when callees are unknown. A better name focuses
+  on the visible action: clearing the display/hide flag and resetting animation.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C023C -> object_clearDisplayAndAnim
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C023C

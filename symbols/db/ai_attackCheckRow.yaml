@@ -1,0 +1,61 @@
+name: ai_attackCheckRow
+address: '0x080F3EF0'
+kind: function
+status: probable
+summary: 'AI attack step: invokes the panel-choose callback and compares its returned row against the
+  target object''s PanelY to pick between two hit-element outcomes (0xC on match, 4 otherwise), or exits
+  the attack state if the object can''t move or the callback returns 0.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> r0 = hit element stored to oAIAttackVars_HitElement;
+  no return value
+details: 'If object_canMove says the attacker is free, it clears oAIAttackVars_PanelParamFlags2, then
+  tail-invokes oAIAttackVars_PanelChooseCallback with lr=pc, passing oAIAttackVars_TargetObjectPtr in
+  r0, oAIAttackVars_AiAttackParam in r1 and the flags in r2. The callback''s return (a row/panel value)
+  is kept in oAIAttackVars_AttackBoost2 and compared with the target-ish object''s oBattleObject_PanelY:
+  on match it writes 0xC, otherwise 4, into oAIAttackVars_HitElement — two flavours of the same attack
+  distinguished by hitting the chosen row. If the object cannot move or the callback returns 0, it instead
+  calls object_exitAttackState to leave the attack state. This is one step of the AI attack coroutine
+  state machine, all state living in the r7 struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq after bl object_canMove routes to bl object_exitAttackState — only acts when the object
+    is free to act; mov lr, pc; bx r2 with r2=oAIAttackVars_PanelChooseCallback calls a chosen-panel callback
+    with target ptr and attack param; cmp r0, r1 (PanelY) with two strh values 0xC vs 4 into oAIAttackVars_HitElement
+    distinguishes hit-on-chosen-row vs miss; callee object_exitAttackState's known summary confirms this
+    is an AI attack state that can be aborted
+  refs:
+  - bn6f/asm/asm31.s:128361
+  - 0x0800E5E2 object_canMove
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F3EF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanics are accurately described (Pan[PanelY] compare yielding 0xC vs 4, strh to HitElement,
+    exit on canMove==0 or callback ret==0), but the summary overstates ''aborts if blocked'' — it also
+    aborts when the callback returns 0, not just on blocked movement. Also ''chooses row'' implies selection,
+    whereas this function only checks whether the target''s PanelY matches a callback-returned row value
+    (PanelX is never tested here).; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of HitElement values 0xC vs 4 (damage vs effect tag depends on consumers not shown)
+- what the PanelChooseCallback computes and the semantics of AttackBoost2 (a row index?)
+- which attack/character uses this step (no caller known)
+- The mechanics are accurately described (Pan[PanelY] compare yielding 0xC vs 4, strh to HitElement, exit
+  on canMove==0 or callback ret==0), but the summary overstates 'aborts if blocked' — it also aborts when
+  the callback returns 0, not just on blocked movement. Also 'chooses row' implies selection, whereas
+  this function only checks whether the target's PanelY matches a callback-returned row value (PanelX
+  is never tested here).
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F3EF0 -> ai_attackCheckRow
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3EF0

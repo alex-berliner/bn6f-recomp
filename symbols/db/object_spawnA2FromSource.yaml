@@ -1,0 +1,69 @@
+name: object_spawnA2FromSource
+address: '0x080D964E'
+kind: function
+status: probable
+summary: Spawns battle object 0xA2 via object_spawnType3, then initializes its ExtraVars[0..1], HP, MaxHP,
+  and 0x68 halfword from the saved r0-r2, copies AllianceAndDirectionFlip from the source object in r5,
+  sets RelatedObject1Ptr to that source, stores caller's r6 in DamageAndStaminaDamageCounterDisabler,
+  and sets flag 0x10.
+interface: (r0, r1 = two words for oBattleObject_ExtraVars, r2 = HP value, r5 = source battle object ptr,
+  r6 = DamageAndStaminaDamageCounterDisabler value) -> r0 = new object ptr (or callee's failure value);
+  flags from object_spawnType3 drive the success branch
+details: 'Saves the caller''s r0-r2 and r5 on the stack, then calls object_spawnType3 with id 0xA2 (r0=0xA2)
+  passing the saved argument values along. On success the spawned object is initialized: ExtraVars[0]
+  and [1] get the caller''s first two words, HP, MaxHP and the halfword at offset 0x68 all get the caller''s
+  r2 value, AllianceAndDirectionFlip is copied from the source object in r5, RelatedObject1Ptr is set
+  to that source object, DamageAndStaminaDamageCounterDisabler gets caller r6, and oObjectHeader_Flags
+  gains bit 0x10. The push {r0-r2,r5} / pop {r1-r3,r5} trick re-loads the caller''s arguments into r1-r3
+  for the stores; r6 is not saved, so the caller must set it up. On spawn failure only the pops run and
+  the new-object initialization is skipped. The result pointer the stores use comes back in r5 from object_spawnType3
+  (r0=r5 after the call), with the original r5 source pointer restored by the pop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0xa2; bl object_spawnType3 — spawns object id 0xA2 via the type-3 spawn helper; str
+    r1,[r0,#oBattleObject_ExtraVars] / str r2,[r0,#ExtraVars+4] — caller r0,r1 stored as the new object''s
+    extra vars; strh r3,[r0,#oBattleObject_HP] / MaxHP / [r0,#0x68] — caller r2 sets HP=MaxHP and field
+    0x68; ldrh r3,[r5,#AllianceAndDirectionFlip]; str r5,[r0,#RelatedObject1Ptr] — new object copies alliance
+    from and links back to the caller''s r5 object; push {r0-r2,r5} / pop {r1-r3,r5} — preserves args
+    across the spawn call; r6 stored unwrapped, so caller-supplied'
+  refs:
+  - bn6f/asm/asm31.s:71914
+  - 0x080BC3B8 sub_80BC3B8
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D964E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the code well: the push/pop trick, the 0xA2 spawn, ExtraVars, HP/MaxHP,
+    0x68 field, AllianceAndDirectionFlip copy, RelatedObject1Ptr = r5 source, DamageAndStaminaDamageCounterDisabler
+    = r6, and flag bit 0x10 are all visible in the asm. However the proposal calls r2 ''HP value'' and
+    says HP/MaxHP and 0x68 get ''caller''s r2'' — fine. The main issue is the proposed name ''object_spawnA2BoundToSource''
+    is overly long and reads awkwardly; a tighter name like ''object_spawnA2FromSource'' fits the prefix
+    list and the actual behavior (binding by setting RelatedObject1Ptr).; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What gameplay object id 0xA2 is and which initializer object_spawnType3 runs on it
+- Meaning of oObjectHeader_Flags bit 0x10 set here
+- What the DamageAndStaminaDamageCounterDisabler value in caller r6 means and why it is not stack-saved
+- Why HP is taken from an argument instead of the source object at r5
+- 'The proposal''s mechanics match the code well: the push/pop trick, the 0xA2 spawn, ExtraVars, HP/MaxHP,
+  0x68 field, AllianceAndDirectionFlip copy, RelatedObject1Ptr = r5 source, DamageAndStaminaDamageCounterDisabler
+  = r6, and flag bit 0x10 are all visible in the asm. However the proposal calls r2 ''HP value'' and says
+  HP/MaxHP and 0x68 get ''caller''s r2'' — fine. The main issue is the proposed name ''object_spawnA2BoundToSource''
+  is overly long and reads awkwardly; a tighter name like ''object_spawnA2FromSource'' fits the prefix
+  list and the actual behavior (binding by setting RelatedObject1Ptr).'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D964E -> object_spawnA2FromSource
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D964E

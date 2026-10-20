@@ -1,0 +1,65 @@
+name: ai_attackChargeFrontPanel
+address: '0x080FC4D2'
+kind: function
+status: probable
+summary: 'Wind-up phase of an AI enemy attack: initializes AttackElement=4 and a StepTimer from AttackBoost2,
+  increments ChargeCycles each frame and highlights the single panel directly in front of the object every
+  8th cycle as a telegraph, then sets HitElement=0x18 when the timer expires to hand off to the next state.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets oAIAttackVars_HitElement=0x18 when wind-up
+  ends
+details: 'On first entry (AttackElement==0) it initializes the attack: AttackElement=4, StepTimer=AttackBoost2
+  (wind-up length), ChargeCycles=0, and frees sub_80D4C34 if ScratchPointerOrPanel is set. While charging
+  it increments ChargeCycles every frame and every 8th cycle highlights the single panel directly in front
+  of the object (object_getFrontDirection gives facing offset, object_highlightPanelRegion with count=1),
+  telegraphing the target. Each frame it decrements StepTimer; when it reaches 0 the handler sets HitElement=0x18,
+  presumably switching the attack state machine to the hit/damage phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; beq-path stores 4 and copies AttackBoost2 into StepTimer
+    (init branch); ChargeCycles++ then lsr #3 gate calls object_getFrontDirection + object_highlightPanelRegion
+    on PanelX/Y (front panel flash); StepTimer countdown ending stores 0x18 to oAIAttackVars_HitElement,
+    the next attack stage; Callee object_highlightPanelRegion marks a panel region, consistent with attack
+    telegraph/targeting'
+  refs:
+  - bn6f/asm/asm31.s:145376
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  - 0x080D4C34 sub_80D4C34
+  reproduce: python3 tools/asmcat.py 0x080FC4D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The init/timing logic and panel-highlight telegraph match the proposal exactly: AttackElement=4,
+    StepTimer=AttackBoost2, ChargeCycles increment, highlight every 8 cycles in front, HitElement=0x18
+    on expiry (lines 0x80FC4E0-0x80FC514). However the summary says ''charges while flashing'' — the highlight
+    is conditional on bit3 of ChargeCycles (lsr #3; bcs), so it flashes only every 8 frames, worth noting.
+    More importantly, the summary says ''fires the strike'' on completion, but the code only sets HitElement=0x18;
+    whether that triggers a strike is inferred from context (no caller/callee confirms the attack fires).
+    Name ''ai_attackChargeFrontPanel'' fits: ai prefix, lowerCamel, descriptive of front-panel wind-up.;
+    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of AttackElement=4 and HitElement=0x18 in the AI attack state machine
+- What sub_80D4C34 frees/clears when ScratchPointerOrPanel is set
+- Which enemy/attack uses this handler (no callers recorded)
+- 'The init/timing logic and panel-highlight telegraph match the proposal exactly: AttackElement=4, StepTimer=AttackBoost2,
+  ChargeCycles increment, highlight every 8 cycles in front, HitElement=0x18 on expiry (lines 0x80FC4E0-0x80FC514).
+  However the summary says ''charges while flashing'' — the highlight is conditional on bit3 of ChargeCycles
+  (lsr #3; bcs), so it flashes only every 8 frames, worth noting. More importantly, the summary says ''fires
+  the strike'' on completion, but the code only sets HitElement=0x18; whether that triggers a strike is
+  inferred from context (no caller/callee confirms the attack fires). Name ''ai_attackChargeFrontPanel''
+  fits: ai prefix, lowerCamel, descriptive of front-panel wind-up.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC4D2 -> ai_attackChargeFrontPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC4D2

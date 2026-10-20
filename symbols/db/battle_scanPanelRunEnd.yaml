@@ -1,0 +1,66 @@
+name: battle_scanPanelRunEnd
+address: '0x080E52B0'
+kind: function
+status: probable
+summary: Battle-object phase routine that, if Param3 is unset (or alliance pointer at BattleState+0xC0
+  is set) and overlap flags at +0x60/+0x61 are clear, decrements a counter at ExtraVars+0xC (wrapping
+  3→0) and calls object_findMatchingPanelRunEnd; on success it invokes sub_80CD488 and sets Timer2=12
+  frames with phase=4.
+interface: (r0-r3 = scratch; r5 = battle object, r10 = toolkit) -> void; sets oBattleObject_Timer2=0xC
+  and oBattleObject_CurPhase=4 when a run is found
+details: 'Gates on oBattleObject_Param3: if set, it aborts unless the alliance''s pointer at BattleState
+  + alliance*4 + 0xC0 is non-null. It also aborts if either byte at r5+0x60/r5+0x61 (likely overlap/collision
+  flags) is nonzero. Otherwise it decrements the counter at oBattleObject_ExtraVars+0xC, wrapping 0 to
+  3, so the scan cycles r1 = 3,2,1 — the side argument to object_findMatchingPanelRunEnd, making it probe
+  a different direction each 4th call. If that callee finds the far edge of a matching panel run (nonzero
+  return), it calls sub_80CD488 with r2 = AllianceAndDirectionFlip, r4 = Param1, r6 = 0 (probably moving/acting
+  toward the found edge), then sets Timer2 = 12 frames and phase = 4.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param3] plus alliance-indexed BattleState+0xC0 pointer check gates
+    the scan; ExtraVars+0xC is decremented and wrapped to 3, then passed as r1 to object_findMatchingPanelRunEnd
+    (side rotation); on hit: sub_80CD488 called with AllianceAndDirectionFlip/Param1, then Timer2=0xC
+    and CurPhase=4 written; no known callers; recorded in battlesweep and beastsp routes'
+  refs:
+  - bn6f/asm/asm31.s:97506
+  - 0x080E5386 object_findMatchingPanelRunEnd
+  - 0x080CD488 sub_80CD488
+  reproduce: python3 tools/asmcat.py 0x080E52B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches the proposal (Param3 gate, alliance pointer at +0xC0, decrementing ExtraVars+0xC
+    wrapping to 3, calling object_findMatchingPanelRunEnd, then sub_80CD488 with Param1/AllianceAndDirectionFlip,
+    Timer2=0xC, phase=4). However, Timer2 is set to 0xC frames and the next phase is written as phase=4
+    (strh, both bytes), but the proposal says oBattleObject_CurPhase=4 ignoring it''s a halfword write
+    of phase+initialized. More importantly, the function is a battle-object phase step, so the prefix
+    should be ''battle'' not ''object'', and the name should reflect the panel-run search action, not
+    ''PanelRunAdvance''. Also, no callers were captured, so ''periodically'' is speculative.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which in-game object/attack runs this routine (no caller known)
+- what sub_80CD488 does (move toward edge? damage?)
+- what phase 4 does next and what bytes r5+0x60/0x61 actually are
+- The behavior matches the proposal (Param3 gate, alliance pointer at +0xC0, decrementing ExtraVars+0xC
+  wrapping to 3, calling object_findMatchingPanelRunEnd, then sub_80CD488 with Param1/AllianceAndDirectionFlip,
+  Timer2=0xC, phase=4). However, Timer2 is set to 0xC frames and the next phase is written as phase=4
+  (strh, both bytes), but the proposal says oBattleObject_CurPhase=4 ignoring it's a halfword write of
+  phase+initialized. More importantly, the function is a battle-object phase step, so the prefix should
+  be 'battle' not 'object', and the name should reflect the panel-run search action, not 'PanelRunAdvance'.
+  Also, no callers were captured, so 'periodically' is speculative.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E52B0 -> battle_scanPanelRunEnd
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E52B0

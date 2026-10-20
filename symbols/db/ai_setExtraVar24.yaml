@@ -1,0 +1,58 @@
+name: ai_setExtraVar24
+address: '0x08115BB0'
+kind: function
+status: probable
+summary: Trivial AI hook that writes 0x18 into oBattleObject_ExtraVars+4 of the battle object in r5 and
+  returns 0x18 in r0.
+interface: (r5 = battle object pointer, ignored as arg convention) -> r0 = 0x18 after `mov r0,#0x18`;
+  no flags set meaningfully
+details: The whole routine is `mov r0,#0x18; str r0,[r5,#oBattleObject_ExtraVars+4]; mov pc,lr`, so it
+  is a trivial setter used as an AI hook. r5 is a battle object (uses the oBattleObject_ExtraVars field),
+  and the write targets the second word of its extra-vars area, most plausibly a frame timer or counter
+  reset to 24. The `mov r0,#0x18` before returning also leaves 0x18 in r0, which callers may ignore or
+  use. It is referenced from an AI hook table (off_81091D0-style long-call hooks) reached from battle_8108F74,
+  which dispatches by AIData.AIIndex. No other state is read or touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8115BB0: `str r0,[r5,#oBattleObject_ExtraVars+4]` — only effect is storing 0x18 into the
+    object''s extra-vars field; caller battle_8108F74 dispatches AI hooks long-call style, matching the
+    `mov pc,lr` tail (no stack use); trailing data (off_8115BB8..byte tables) is separate AI table material,
+    confirming this lives among AI helpers'
+  refs:
+  - bn6f/asm/asm32.s:15635
+  - 0x08108F74 battle_8108F74
+  reproduce: python3 tools/asmcat.py 0x08115BB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body `mov r0,#0x18; str r0,[r5,#oBattleObject_ExtraVars+4]; mov pc,lr` matches: it stores 0x18
+    into the second word of the battle object''s ExtraVars and returns the same value in r0. However,
+    calling it an ''extra timer'' is a guess; the proposal also claims it is referenced from off_81091D0
+    and battle_8108F74, but the disassembly after sub_8115BB0 shows it sits inside the data block (off_8115BB8
+    etc.) used by another routine, with no evidence of off_81091D0 referencing it. The name fits the trivial
+    setter but the AI-hook attribution is unverified.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- which meaning ExtraVars+4 has (timer, counter, state id) — needs the reader of that field
+- whether the caller uses the returned r0 value 0x18 or ignores it
+- 'The body `mov r0,#0x18; str r0,[r5,#oBattleObject_ExtraVars+4]; mov pc,lr` matches: it stores 0x18
+  into the second word of the battle object''s ExtraVars and returns the same value in r0. However, calling
+  it an ''extra timer'' is a guess; the proposal also claims it is referenced from off_81091D0 and battle_8108F74,
+  but the disassembly after sub_8115BB0 shows it sits inside the data block (off_8115BB8 etc.) used by
+  another routine, with no evidence of off_81091D0 referencing it. The name fits the trivial setter but
+  the AI-hook attribution is unverified.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115BB0 -> ai_setExtraVar24
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115BB0

@@ -1,0 +1,66 @@
+name: object_getRearPanelIfFlagsMatch
+address: '0x08107970'
+kind: function
+status: probable
+summary: Returns the rear-panel coordinates (x in r0, y in r1) of a battle object only if object_checkPanelParameters
+  confirms the rear panel matches the caller-supplied flag masks; on failure, returns x=0 with the computed
+  y left in r1.
+interface: '(r0 = battle object ptr, r1-r3: r2/r3 = panel-flag set/clear masks passed through) -> r0 =
+  rear panel x (or 0 if check fails), r1 = rear panel y; flags clobbered'
+details: The function negates object_getFrontDirection's +1/-1 side multiplier and adds the object's byte
+  at +0x12, giving x of the panel opposite the object's facing, i.e. the tile behind it (y taken from
+  +0x13). It preserves the caller's r2/r3 across the first call and forwards them to object_checkPanelParameters
+  as the flag masks, so the panel-behind is tested against caller-chosen panel states. The computed x/y
+  are kept live across the call via push/pop {r0,r1} and returned in r0/r1 when the check passes. On failure
+  it zeroes r0 only, leaving r1 = y (so a failed check still reports y). Note r0=0 is ambiguous with a
+  real x=0 tile, so callers likely only use it where the rear column is never 0 or only test nonzero.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0,r0 after object_getFrontDirection, then add r0,r0 = ldrb [r4,#0x12]: x = obj.x - frontDir,
+    the tile behind the object; push {r2,r3} before the first bl and pop {r2,r3} after: caller-supplied
+    r2/r3 are preserved and forwarded as checkPanelParameters'' mask args; push {r0,r1} / pop {r0,r1}
+    around object_checkPanelParameters: the computed coords are the return values, not just call arguments;
+    tst r0,r0 / bne / mov r0,#0: returns 0 when object_checkPanelParameters reports the panel flags don''t
+    match; callee summaries (object_getFrontDirection = +1/-1 alliance-side multiplier; object_checkPanelParameters
+    = panel flag test returning 1/0) match this data flow exactly'
+  refs:
+  - bn6f/asm/asm31.s:169084
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08107970
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: rear-panel x/y computed from object_getFrontDirection negated plus byte +0x12
+    (x) and +0x13 (y), then object_checkPanelParameters validates flags. However, the failure branch only
+    zeros r0 and leaves r1 intact (last line `mov r0,#0` before return), so on failure r1 is NOT zeroed
+    — the summary''s ''r1 = y (so a failed check still reports y)'' matches the asm but contradicts the
+    name ''returns rear panel or 0'' implying both coordinates are zeroed. A clearer name should reflect
+    the flag-conditioned rear-panel fetch.; run wf investigate investigate-20261018-200615; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so the in-game use (which panel flag states are requested and why the rear tile is
+  needed) is unconfirmed
+- Fields +0x12/+0x13 assumed to be the object's panel x/y byte coordinates; needs confirmation from the
+  battle object struct
+- Whether callers treat r0=0 as 'not found' or handle the x=0-column collision is unknown
+- 'The behavior matches: rear-panel x/y computed from object_getFrontDirection negated plus byte +0x12
+  (x) and +0x13 (y), then object_checkPanelParameters validates flags. However, the failure branch only
+  zeros r0 and leaves r1 intact (last line `mov r0,#0` before return), so on failure r1 is NOT zeroed
+  — the summary''s ''r1 = y (so a failed check still reports y)'' matches the asm but contradicts the
+  name ''returns rear panel or 0'' implying both coordinates are zeroed. A clearer name should reflect
+  the flag-conditioned rear-panel fetch.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107970 -> object_getRearPanelIfFlagsMatch
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107970

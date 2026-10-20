@@ -1,0 +1,52 @@
+name: getSignedHalfword
+address: '0x080A7B90'
+kind: function
+status: probable
+summary: Reads a little-endian signed 16-bit halfword from [r0]/[r0+1] and returns it sign-extended in
+  r1 (r0 is scratch, flags clobbered).
+interface: (r0 = pointer to two-byte field) -> r0 = sign-extended 16-bit value of [r0] | [r0+1]<<8; flags
+  clobbered
+details: 'Loads the byte at offset 0 and the byte at offset 1 of the struct pointed to by r0, combines
+  them into a halfword (low byte first, so little-endian), then sign-extends via lsl #16 / asr #16. This
+  is a standard accessor for a 16-bit signed field (e.g. a coordinate or counter) kept split across two
+  byte slots. It touches no other memory and calls nothing; r1/r2 are scratch. The single known caller
+  sub_80A7AFA sits directly before it, suggesting the pair are accessors for the same structure.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r0] + ldrb r2,[r0,#1]; lsl r2,#8; orr -> little-endian halfword assembly (sub_80A7B90
+    lines 1-4); lsl r1,#0x10; asr r1,#0x10 -> sign-extends the halfword, so the field is signed (sub_80A7B90
+    lines 5-6); no callee calls and only mov pc,lr -> pure inline-style getter; caller sub_80A7AFA immediately
+    precedes it at 0x080A7AFA, implying an accessor cluster for one struct
+  refs:
+  - bn6f/asm/asm29.s:5339
+  - 0x080A7AFA sub_80A7AFA
+  reproduce: python3 tools/asmcat.py 0x080A7B90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm loads two bytes, shifts byte[1] left by 8, ORs them into r1, sign-extends via lsl #16/asr
+    #16, and returns r1, not r0. The proposal correctly identifies the little-endian signed halfword read,
+    but the summary/state says r0 holds the result while it is actually r1. A simple get-prefixed name
+    fits better given the prefix options.; run wf investigate investigate-20261018-212108; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- which structure/field is accessed — need the caller sub_80A7AFA's context to name the subsystem prefix
+- whether the value is a coordinate, timer, or other quantity
+- 'The asm loads two bytes, shifts byte[1] left by 8, ORs them into r1, sign-extends via lsl #16/asr #16,
+  and returns r1, not r0. The proposal correctly identifies the little-endian signed halfword read, but
+  the summary/state says r0 holds the result while it is actually r1. A simple get-prefixed name fits
+  better given the prefix options.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A7B90 -> getSignedHalfword
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7B90

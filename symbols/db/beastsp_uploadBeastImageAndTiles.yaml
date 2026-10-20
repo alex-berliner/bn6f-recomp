@@ -1,0 +1,64 @@
+name: beastsp_uploadBeastImageAndTiles
+address: '0x08029D94'
+kind: function
+status: probable
+summary: Queues r1 row-bands of beast graphics (0x240 bytes each) from dword_86E7DCC into VRAM at 0x600A720
+  (offset by r0 bands, plus 5-band variant shift when r2>=2) and installs the matching 9x2 tile-id block
+  into BG block 3 at column 1, row 1+2*r0.
+interface: (r0 = band index 0-4, r1 = number of gfx rows to copy, r2 = variant id (>=2 shifts source by
+  5 bands)) -> r0/r1 clobbered; queues GFX DMA transfer
+details: The source is dword_86E7DCC, treated as bands of 0x240 bytes each (18 4bpp tiles); the variant
+  selector adds 5 bands when r2 >= 2, implying two image banks (e.g. Gregar and Falzar beast sprites)
+  sharing the base. It queues a copy of r1 bands starting at band (base+r0) to VRAM 0x600A720 + r0*0x240.
+  Then it writes tile-map entries from a 5-entry table of 9 u16 ids each (byte_8029DF8 + 0x12*2*band,
+  ids 0xA139..0xA192 sequentially with high byte 0xA1) into BG block 3 at (j=1, i=1+2*band) with size
+  9x2 — so the 90 tiles form a 9-wide, 10-tall image drawn band by band. Sequential tile ids confirm the
+  tilemap is a plain raster of the uploaded tiles.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul by 0x240 and base dword_86E7DCC: bands of 18 tiles in a shared gfx blob (lines 10-19);
+    ''cmp r2,#2 / mov r0,#5'' selects second 5-band bank, i.e. a second variant image; QueueEightWordAlignedGFXTransfer
+    to 0x600A720 + band*0x240 uploads the tiles; tile-id tables byte_8029DF8..byte_8029E88 are sequential
+    ids 0xA139-0xA192, 9 entries per band; CopyBackgroundTiles(1, 1+2*band, block 3, ids, 9, 2) places
+    each 18-tile band in the tilemap'
+  refs:
+  - bn6f/asm/asm03_0.s:8267
+  - 0x0802794A sub_802794A
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x08029D94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it queues r1 bands of 0x240 bytes from dword_86E7DCC (shifted by 5 bands when
+    r2>=2) into VRAM 0x600A720 + r0*0x240, then calls CopyBackgroundTiles with j=1, i=1+2*r0, block 3,
+    a 9x2 area, and sequential 0xA1xx tile ids from byte_8029DF8. However, the band offset is 0x240 bytes
+    and each band is 0x240, not 0x12*2 as the proposal implies for the tile table stride; the proposal''s
+    detail about 0x12*2*band is wrong (the table stride is 0x12 bytes, not 0x24). The summary''s ''one
+    row-band'' is also imprecise since the function uploads *r1* bands starting at band r0, not a single
+    band.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What image this is exactly (beast-out burst, selection-screen portrait, etc.) depends on the caller
+  sub_802794A and what dword_86E7DCC contains
+- Meaning of r1>1 (multi-row copy) and of r2 values beyond 0/1 not seen in the captured route
+- 'The code matches: it queues r1 bands of 0x240 bytes from dword_86E7DCC (shifted by 5 bands when r2>=2)
+  into VRAM 0x600A720 + r0*0x240, then calls CopyBackgroundTiles with j=1, i=1+2*r0, block 3, a 9x2 area,
+  and sequential 0xA1xx tile ids from byte_8029DF8. However, the band offset is 0x240 bytes and each band
+  is 0x240, not 0x12*2 as the proposal implies for the tile table stride; the proposal''s detail about
+  0x12*2*band is wrong (the table stride is 0x12 bytes, not 0x24). The summary''s ''one row-band'' is
+  also imprecise since the function uploads *r1* bands starting at band r0, not a single band.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8029D94 -> beastsp_uploadBeastImageAndTiles
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029D94

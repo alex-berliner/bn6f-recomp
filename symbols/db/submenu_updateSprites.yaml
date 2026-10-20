@@ -1,0 +1,66 @@
+name: submenu_updateSprites
+address: '0x08117DE0'
+kind: function
+status: probable
+summary: 'Per-frame sprite refresh dispatcher for the submenu: calls sprite_update when sSubmenu[1] ==
+  8, otherwise tail-calls a handler from a 7-entry table indexed by sSubmenu[2] (split between battle_refreshObjectSprite_8117E20
+  and sub_8117E60).'
+interface: () -> void; calls sprite_update when sSubmenu+1 == 8, otherwise calls table[sSubmenu+2] handler
+  with no arguments
+details: Loads sSubmenu and a pointer to a 7-entry dispatch table at 0x8117E00. If sSubmenu byte 1 equals
+  8, it calls sprite_update directly (with r0 still pointing at the table, which looks like a quirk or
+  a mislabel worth checking). Otherwise it indexes the table with sSubmenu byte 2 and tail-calls the selected
+  handler via blx-style bx lr. Five of the seven slots point to battle_refreshObjectSprite_8117E20 and
+  three to sub_8117E60, so the byte-2 value selects between two kinds of sprite refresh for the open submenu.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r7,#0x1]; cmp r1,#8; bne — dispatch keyed on sSubmenu byte 1; ldrb r1,[r7,#0x2]; ldr
+    r0,[r0,r1]; bx r0 — jump table indexed by sSubmenu byte 2; off_8117E00 entries are all battle_refreshObjectSprite_8117E20
+    or sub_8117E60, i.e. sprite-refresh handlers; bl sprite_update in the ==8 branch ties the routine
+    to the known sprite-update subsystem; sSubmenu is the only data touched, matching the menus3/recorded
+    menu routes it runs on
+  refs:
+  - bn6f/asm/asm32.s:19840
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x08117DE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic matches: it checks sSubmenu byte 1 == 8 and calls sprite_update, otherwise indexes
+    a 7-entry table at off_8117E00 with byte 2 and bx-tail-calls. However, the proposal incorrectly claims
+    ''Five of the seven slots point to battle_refreshObjectSprite_8117E20 and three to sub_8117E60'' —
+    the table has 7 entries with 4 pointing to battle_refreshObjectSprite_8117E20 and 3 to sub_8117E60.
+    The ''r0 pointing at the table'' on the sprite_update call is a Thumb ABI quirk, not a mislabel. The
+    callee name ''battle_refreshObjectSprite_8117E20'' strongly suggests this is a battle refresh routine
+    called from the submenu context, so the ''submenu'' prefix is more accurate than ''sprite''.; run
+    wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- No known callers, so when byte 1 == 8 vs the table dispatch is used is unclear
+- sprite_update appears to be called with r0 = table base rather than an object pointer — verify the label
+  or whether r0 should be reloaded
+- what sub_8117E60 does differently from battle_refreshObjectSprite_8117E20
+- meaning of each sSubmenu byte-2 value (0-6)
+- 'The dispatch logic matches: it checks sSubmenu byte 1 == 8 and calls sprite_update, otherwise indexes
+  a 7-entry table at off_8117E00 with byte 2 and bx-tail-calls. However, the proposal incorrectly claims
+  ''Five of the seven slots point to battle_refreshObjectSprite_8117E20 and three to sub_8117E60'' — the
+  table has 7 entries with 4 pointing to battle_refreshObjectSprite_8117E20 and 3 to sub_8117E60. The
+  ''r0 pointing at the table'' on the sprite_update call is a Thumb ABI quirk, not a mislabel. The callee
+  name ''battle_refreshObjectSprite_8117E20'' strongly suggests this is a battle refresh routine called
+  from the submenu context, so the ''submenu'' prefix is more accurate than ''sprite''.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8117DE0 -> submenu_updateSprites
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117DE0

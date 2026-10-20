@@ -1,0 +1,77 @@
+name: ai_stepPanelAttack
+address: '0x08112F70'
+kind: function
+status: probable
+summary: 'AI panel-attack step: first call sets AttackElement=1, PanelCleared=0 and starts anim 1 (wind-up);
+  subsequent calls poll sprite_getFrameParameters for attr bit 0x80, then fire sub_80E3CF2 at the object''s
+  panel with ScratchVar, 0xC0000, AttackBoost2|0x100, store the returned handle, and set HitElement=4.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = attack/effect handle stored to oAIAttackVars_PanelChooseCallback
+  on fire; flags clobbered by bl calls
+details: The routine is a two-phase attack step keyed off oAIAttackVars_AttackElement. On the first call
+  (element == 0) it latches element 1, zeroes PanelChooseCallback, and sets the object's current animation
+  to 1 (the charge/wind-up). On later calls it reads the current frame's parameters via sprite_getFrameParameters
+  and waits until attribute bit 0x80 (attack-release frame) is set. At that point it calls sub_80E3CF2
+  with the object's PanelX/PanelY, ScratchVar, 0xC0000 (likely power/damage 12 << 16) and AttackBoost2
+  | 0x100, plus pointers into r7+0x16 and r5+0x4C; the returned handle is saved into oAIAttackVars_PanelChooseCallback
+  and HitElement is set to 4. Uses register arguments r5/r7 rather than r0-r3, so callers must pre-load
+  them.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; cmp #0; bne — one-shot init branch sets anim 1 and
+    clears callback (8112F70-8112F84); bl sprite_getFrameParameters; mov r1,#0x80; tst r0,r1; beq return
+    — waits for attack frame of anim (8112F86-8112F8E); ldrb PanelX/PanelY + ScratchVar + AttackBoost2|0x100
+    passed to sub_80E3CF2, result stored to PanelChooseCallback (8112F92-8112FB2); str #4 to oAIAttackVars_HitElement
+    after the spawn — attack element recorded for the hit; Struct fields oAIAttackVars_* and oBattleObject_PanelX/PanelY/CurAnim
+    show this is an AI-controlled battle attack step'
+  refs:
+  - bn6f/asm/asm32.s:10311
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080E3CF2 sub_80E3CF2
+  reproduce: python3 tools/asmcat.py 0x08112F70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The two-phase logic matches (entry sets element=1, anim=1, PanelCleared=0; then waits for frame
+    attr 0x80, calls sub_80E3CF2 with PanelX/PanelY/ScratchVar/0xC0000/AttackBoost2|0x100 and stores the
+    handle into PanelCleared, sets HitElement=4). However the proposal''s summary misnames the field (PanelChooseCallback
+    is actually PanelCleared, used to dedup ''already fired'' on re-entry), and ''attack/effect handle
+    stored to oAIAttackVars_PanelChooseCallback on fire'' is wrong; the field is a cleared flag, not a
+    handle. The returned r0 from sub_80E3CF2 is stored into the *post-pop* r7+PanelCleared (not into the
+    pre-pop r7+r6-callers'' setup), so callers also must not rely on r7 surviving the bl.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus3
+- story2
+- story4
+- story5
+- story8
+- story9
+open_questions:
+- What sub_80E3CF2 spawns (attack entity vs. effect) and the exact meaning of its 0xC0000 and AttackBoost2|0x100
+  arguments
+- Which caller invokes this and with which enemy/AI context, to confirm it is a generic step vs. a specific
+  boss attack
+- The two-phase logic matches (entry sets element=1, anim=1, PanelCleared=0; then waits for frame attr
+  0x80, calls sub_80E3CF2 with PanelX/PanelY/ScratchVar/0xC0000/AttackBoost2|0x100 and stores the handle
+  into PanelCleared, sets HitElement=4). However the proposal's summary misnames the field (PanelChooseCallback
+  is actually PanelCleared, used to dedup 'already fired' on re-entry), and 'attack/effect handle stored
+  to oAIAttackVars_PanelChooseCallback on fire' is wrong; the field is a cleared flag, not a handle. The
+  returned r0 from sub_80E3CF2 is stored into the *post-pop* r7+PanelCleared (not into the pre-pop r7+r6-callers'
+  setup), so callers also must not rely on r7 surviving the bl.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112F70 -> ai_stepPanelAttack
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112F70

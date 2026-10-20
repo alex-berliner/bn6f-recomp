@@ -1,0 +1,64 @@
+name: object_spawnElementPanel
+address: '0x080D71D6'
+kind: function
+status: probable
+summary: Spawns a type-0x90 element-panel battle object at (panelX, panelY) with the given element, copies
+  alliance/header-flag bits from the source object, and links RelatedObject1Ptr back to the source.
+interface: (r0 = panel X, r1 = panel Y, r2 = element; requires r5 = source battle object ptr, r6 = value
+  for damage/stamina-disabler field) -> r0 = new object ptr, or 0 if spawn failed; flags preserved via
+  stacked args
+details: The function pushes {r0-r2,r5} so the caller's three register arguments double as stack arguments
+  for object_spawnType3, then calls it with r0 = 0x90 as the object type. On success it fills the new
+  object's PanelX, PanelY and Element bytes from the original r0-r2 (restored by pop {r1-r3,r5}), stores
+  r5 as RelatedObject1Ptr and r6 as the damage/stamina-counter-disabler word, copies the AllianceAndDirectionFlip
+  halfword from the source object at r5, and sets bit 0x10 in the new object's header flags. The r5/r6
+  values are not arguments in registers — the caller must have them set before the call, a quirk worth
+  noting for other callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x90; bl object_spawnType3 — spawns battle object type 0x90; pop {r1-r3,r5} then strb
+    r1/r2/r3 to oBattleObject_PanelX/PanelY/Element — original args become panel pos + element; str r5,[r0,#oBattleObject_RelatedObject1Ptr];
+    ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] — links new object to the source object and copies
+    its alliance; orr r2,#0x10 into oObjectHeader_Flags — marks the spawned object with flag 0x10; Caller
+    sub_810112C is the ElementMan picker using GetPositiveSignedRNG % count over candidates, calling this
+    per picked panel
+  refs:
+  - bn6f/asm/asm31.s:67138
+  - 0x0810112C sub_810112C
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D71D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The push {r0-r2,r5} and pop {{r1-r3,r5}} confirms r0-r2 are passed via the stack as the three args
+    to object_spawnType3 (along with r5 and an implied r6 in r5-r0 before the call), matching the proposal''s
+    mechanics. The stored fields (PanelX, PanelY, Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler,
+    AllianceAndDirectionFlip, flag 0x10) also match. However, the proposed name elementman_spawnElementPanelObject
+    suggests an ElementMan-specific function, but the only documented caller is sub_810112C which iterates
+    candidates and is not strictly ElementMan-bound by the snippet shown, so a more generic name like
+    object_spawnElementPanel is safer.; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of header flag 0x10 and the value passed in r6 (damage/stamina-disabler) — needs the
+  type-0x90 object's own handler to confirm what kind of panel effect it performs
+- The push {r0-r2,r5} and pop {{r1-r3,r5}} confirms r0-r2 are passed via the stack as the three args to
+  object_spawnType3 (along with r5 and an implied r6 in r5-r0 before the call), matching the proposal's
+  mechanics. The stored fields (PanelX, PanelY, Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler,
+  AllianceAndDirectionFlip, flag 0x10) also match. However, the proposed name elementman_spawnElementPanelObject
+  suggests an ElementMan-specific function, but the only documented caller is sub_810112C which iterates
+  candidates and is not strictly ElementMan-bound by the snippet shown, so a more generic name like object_spawnElementPanel
+  is safer.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D71D6 -> object_spawnElementPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D71D6

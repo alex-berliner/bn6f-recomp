@@ -1,0 +1,66 @@
+name: submenu_applySpriteParamForRow
+address: '0x081181DC'
+kind: function
+status: probable
+summary: For the submenu row at sSubmenu.unk_24 + [r5+4] - 2 (bounds-checked against sSubmenu.unk_1e),
+  reads word_201DA80[row].wordIndex, looks up the corresponding 32-bit sprite parameter in the table at
+  byte_811820C, and writes it via sprite_setUnk0x2c.
+interface: (r5 = context object, byte at r5+4 = row offset) -> r0 = preserved/void; sets no meaningful
+  flags for callers (returns early via blt/bge on bounds check)
+details: 'Computes a row index as sSubmenu.unk_24 (u16, likely first visible row) plus the u8 at [r5+4]
+  (likely a cursor/selection offset passed via the caller''s r5), minus 2; returns immediately if negative
+  or >= sSubmenu.unk_1e (entry count), so it only acts on valid list rows. It then indexes the array word_201DA80
+  (4-byte entries) with that row and reads the u16 at entry+2, which serves as an index into the word
+  table at byte_811820C (10 entries: 0xFFFFFFFF, 0x0003FE00, 0x0000FE00, 0x00017E00, 0x0001BE00, 0x0001DE00,
+  0x0001EE00, 0x0001F600, 0x0001FA00, 0x0001FC00 — the later ones look like <<9-shifted tile indices converging
+  on 127/511). The selected word is passed to sprite_setUnk0x2c, which writes it into field 0x2c of an
+  object''s sprite struct. The 0xFFFFFFFF sentinel is presumably a ''no value / keep'' entry. Exact meaning
+  of field 0x2c and of the word_201DA80 entry layout is not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r6,#0x24]; ldrb r1,[r5,#4]; add/sub/blt/bge — visible-row + offset bounds check against
+    sSubmenu.unk_1e count (asm lines 3-8); lsl r0,#2; ldr r1,=word_201DA80; ldrh r1,[r0,#2] — 4-byte entry
+    array, u16 at +2 selects a preset; lsl r1,#2; ldr r0,=byte_811820C; ldr r0,[r0,r1] — preset word table
+    indexed by that u16; bl sprite_setUnk0x2c — result stored into an object's sprite struct field 0x2c;
+    byte_811820C words 0x7E00..0xFC00 (>>9 = 63..126) look like tile-index-like sprite values with a 0xFFFFFFFF
+    sentinel
+  refs:
+  - bn6f/asm/asm32.s:20545
+  - 0x08117F9C sub_8117F9C
+  - 0x08118030 sub_8118030
+  - 0x0811805C sub_811805C
+  - 0x08002FA6 sprite_setUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x081181DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it indexes word_201DA80 with (sSubmenu.unk_24 + [r5+4] - 2), bounds-checks
+    against sSubmenu.unk_1e, reads the u16 at +2, uses it as a word index into byte_811820C, and passes
+    the resulting u32 to sprite_setUnk0x2c. The main issue is the name: this is a generic lookup-table-to-sprite
+    setter for submenu rows, not specifically a ''setEntrySpriteParam'' style function; it reads the word
+    index from entry+2, so a clearer name reflects the lookup-and-set pattern.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Semantics of sprite struct field 0x2c and of the 10 preset words (tile index? attribute? palette?)
+- Layout of word_201DA80 entries and which submenu list it holds
+- What caller-supplied r5 points to (only byte +4 is read here)
+- 'The code matches the proposal: it indexes word_201DA80 with (sSubmenu.unk_24 + [r5+4] - 2), bounds-checks
+  against sSubmenu.unk_1e, reads the u16 at +2, uses it as a word index into byte_811820C, and passes
+  the resulting u32 to sprite_setUnk0x2c. The main issue is the name: this is a generic lookup-table-to-sprite
+  setter for submenu rows, not specifically a ''setEntrySpriteParam'' style function; it reads the word
+  index from entry+2, so a clearer name reflects the lookup-and-set pattern.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81181DC -> submenu_applySpriteParamForRow
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81181DC

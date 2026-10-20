@@ -1,0 +1,56 @@
+name: battle_forceStateCIfFlag80Clear
+address: '0x08009E40'
+kind: function
+status: probable
+summary: 'Battle state-machine hook: if chatbox flag bit 0x80 is clear, force the battle state to 0xC
+  and reset its phase/init counter; otherwise leave it alone.'
+interface: (r5 = battle state object) -> none; r0 clobbered, flags set by chatbox_mask_eFlags2009F38 test
+details: Reads bit 0x80 of the chatbox/cutscene event flag word eFlags2009F38 via chatbox_mask_eFlags2009F38.
+  If that bit is set, the function returns immediately without touching anything. If the bit is clear,
+  it stores 0xC into oBattleState_Index_01 of the battle state struct at r5 and zeroes oBattleState_StatePhaseAndInitFlag,
+  resetting that state's phase/init counter. It takes r5 as an implicit argument, so it is a state-handler
+  callback rather than a general utility. Run on recorded battle routes, consistent with being part of
+  the battle state dispatch table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80 tests a single event-flag bit; bne locret_8009E54
+    makes flag-set the no-op path; strb #0xC,[r5,#oBattleState_Index_01] rewrites the current battle state
+    index; strh #0,[r5,#oBattleState_StatePhaseAndInitFlag] clears the phase/init field, restarting the
+    new state'
+  refs:
+  - bn6f/asm/asm00_1.s:15249
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08009E40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s conditional logic is inverted against the asm: it checks bit 0x80 and only writes
+    0xC / resets the phase when the bit is clear (cmp r0,#0 / bne locret skips the writes, so the fallthrough
+    runs them). Interface is also inverted: the writes occur when R0==0 (bit clear), not ''when the bit
+    is set, returns immediately.'' Otherwise the structural description (r5 battle state, struct offset
+    0xC not 0x01 since it''s strb [r5,#oBattleState_Index_01] but value 0xC, phase zeroed via strh) matches.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What in-game condition bit 0x80 of eFlags2009F38 represents (likely a text/flag-clear check, but unconfirmed)
+- Which battle state index 0xC is, and whether r5 points to the global battle state or a per-entity state
+  entry
+- 'The summary''s conditional logic is inverted against the asm: it checks bit 0x80 and only writes 0xC
+  / resets the phase when the bit is clear (cmp r0,#0 / bne locret skips the writes, so the fallthrough
+  runs them). Interface is also inverted: the writes occur when R0==0 (bit clear), not ''when the bit
+  is set, returns immediately.'' Otherwise the structural description (r5 battle state, struct offset
+  0xC not 0x01 since it''s strb [r5,#oBattleState_Index_01] but value 0xC, phase zeroed via strh) matches.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009E40 -> battle_forceStateCIfFlag80Clear
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009E40

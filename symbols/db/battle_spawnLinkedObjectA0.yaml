@@ -1,0 +1,69 @@
+name: battle_spawnLinkedObjectA0
+address: '0x080D94F2'
+kind: function
+status: probable
+summary: Spawns a type-3 battle object with id 0xA0 and, on success, initializes its panel position, element,
+  alliance, and damage counter from caller arguments, links its ExtraVars to a caller struct, and records
+  battle_isPaused() into ExtraVars+8.
+interface: (r0 = object id arg overwritten with 0xA0, r1 = panel X, r2 = panel Y, r3 = element, r4 = state
+  struct ptr, r5/r6 = source object data) -> r0 = new battle object (or original r5 on failure); flags
+  from spawn result
+details: Saves the caller's arguments, calls object_spawnType3 with id 0xA0 (160), and on success fills
+  the new battle object's PanelX/PanelY/Element and DamageAndStaminaDamageCounterDisabler fields. It copies
+  oBattleObject_AllianceAndDirectionFlip from the source object r5 and copies oBattleObject_Param3 to
+  offset 0x64 of the new object. It sets oObjectHeader_Flags bits 0x14, cross-links the new object's oBattleObject_ExtraVars
+  with the caller's r4 struct (each stores a pointer to the other), and finally stores battle_isPaused()'s
+  result into ExtraVars+8 so the object can react to a paused battle. The listing is partially garbled
+  (push/pop imbalance), so register roles are inferred from the store targets.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0xa0; bl object_spawnType3 — spawns type-3 battle object 0xA0; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    — caller args become spawn placement/element; str r4,[r0,#oBattleObject_ExtraVars]; str r0,[r4] —
+    bidirectional link with an external struct; orr r2, #0x14 into oObjectHeader_Flags — sets a fixed
+    behavior-flag pair on the new object; bl battle_isPaused; str r1,[r0,#oBattleObject_ExtraVars+8] —
+    caches pause state in the object''s extra vars'
+  refs:
+  - bn6f/asm/asm31.s:71725
+  - 0x080DA3C0 sub_80DA3C0
+  - 0x0810BAAC sub_810BAAC
+  - 0x0800A03C battle_isPaused
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D94F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does spawn a type-3 object with id 0xA0, but the register layout differs from the proposal.
+    After object_spawnType3, r0 is moved from r5 (original id), then r1/r2/r3/r5 are restored — meaning
+    r0 holds r5''s original id, r1=panelX, r2=panelY, r3=element, r4=state ptr, r5=original id (not source
+    object), r6=source object. The panel/element fields and ExtraVars linking match. However, it copies
+    oBattleObject_Param3 to offset 0x64 and ORs 0x14 into oObjectHeader_Flags. Note ''mov r0, r5'' before
+    the beq suggests on failure r0 returns the original r5 (the spawn target id), not a spawned object.
+    Name fits but summary misattributes some register roles.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what gameplay object id 0xA0 is and what battlesweep-context callers sub_80DA3C0/sub_810BAAC pass in
+  r4/r5/r6
+- exact meaning of the ExtraVars struct and the flag bits 0x14
+- the listing is corrupted around the push/pop sequence, so the exact argument mapping is inferred
+- The code does spawn a type-3 object with id 0xA0, but the register layout differs from the proposal.
+  After object_spawnType3, r0 is moved from r5 (original id), then r1/r2/r3/r5 are restored — meaning
+  r0 holds r5's original id, r1=panelX, r2=panelY, r3=element, r4=state ptr, r5=original id (not source
+  object), r6=source object. The panel/element fields and ExtraVars linking match. However, it copies
+  oBattleObject_Param3 to offset 0x64 and ORs 0x14 into oObjectHeader_Flags. Note 'mov r0, r5' before
+  the beq suggests on failure r0 returns the original r5 (the spawn target id), not a spawned object.
+  Name fits but summary misattributes some register roles.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D94F2 -> battle_spawnLinkedObjectA0
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D94F2

@@ -1,0 +1,61 @@
+name: ow_initSlipRunDirs
+address: '0x0809DE60'
+kind: function
+status: probable
+summary: Initializes the overworld player object's per-facing-direction slip-run delta values (Unk_38/Unk_3c)
+  by indexing a map-group-dependent table (byte_809CFBC or byte_809D0DC) with the player's facing direction
+  (dir*12).
+interface: (r5 = overworld player object) -> void; writes oOWPlayerObject_Unk_38 and Unk_3c from the direction-indexed
+  table entry
+details: Reads the current map group from the game state; if it is >= 0x80 it takes a selector byte from
+  eStruct2000aa0+3 to pick one of two 12-byte-stride tables (byte_809CFBC / byte_809D0DC), otherwise uses
+  the first. It indexes by the player's facing direction (dir*12) and copies the words at entry+4 and
+  entry+8 into the player object's fields 0x38 and 0x3c, which the slip-run logic (its only caller, oowExitSlipRun_809DDF0)
+  uses as per-direction movement deltas while slip-running.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oGameState_MapGroup]; cmp #0x80; ldrb r1,[r7,#3] picks table via eStruct2000aa0
+    byte; off_809DE90 holds two table bases byte_809CFBC/byte_809D0DC selected by that byte; lsl r1,r0,#3
+    + lsl r0,#2 + add gives direction*12 entry stride from facing direction; ldr [r7,#4]/[r7,#8] stored
+    to oOWPlayerObject_Unk_38/Unk_3c (movement fields); caller oowExitSlipRun_809DDF0 is the slip-run
+    exit handler, matching a slip-run velocity setter'
+  refs:
+  - bn6f/asm/ow_player.s:1738
+  - 0x0809DDF0 oowExitSlipRun_809DDF0
+  reproduce: python3 tools/asmcat.py 0x0809DE60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics match the asm: map group < 0x80 selects byte_809CFBC, >= 0x80 uses a selector
+    byte from eStruct2000aa0+3 to choose between byte_809CFBC and byte_809D0DC (off_809DE8C -> off_809DE90).
+    Facing direction (ldrb r0,[r5,#FacingDirection]) is multiplied by 12 (r0*8 + r0*4) to stride correctly,
+    and entry+4/+8 are stored into Unk_38/Unk_3c. However, the name ''ow_setSlipRunVelocity'' is misleading:
+    these fields are movement deltas written at slip-run exit (caller oowExitSlipRun_809DDF0), so this
+    initializes/resets per-direction slip-run values rather than setting a velocity, and it lacks an established
+    ''ow_'' action verb.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of fields 0x38/0x3c (pixel deltas vs subpixel velocity) not confirmed
+- what sets eStruct2000aa0+3 and which forms (beast forms?) it distinguishes
+- contents of the two tables not dumped, so exact per-direction values unknown
+- 'The summary''s mechanics match the asm: map group < 0x80 selects byte_809CFBC, >= 0x80 uses a selector
+  byte from eStruct2000aa0+3 to choose between byte_809CFBC and byte_809D0DC (off_809DE8C -> off_809DE90).
+  Facing direction (ldrb r0,[r5,#FacingDirection]) is multiplied by 12 (r0*8 + r0*4) to stride correctly,
+  and entry+4/+8 are stored into Unk_38/Unk_3c. However, the name ''ow_setSlipRunVelocity'' is misleading:
+  these fields are movement deltas written at slip-run exit (caller oowExitSlipRun_809DDF0), so this initializes/resets
+  per-direction slip-run values rather than setting a velocity, and it lacks an established ''ow_'' action
+  verb.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809DE60 -> ow_initSlipRunDirs
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809DE60

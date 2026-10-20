@@ -1,0 +1,61 @@
+name: battle_spawnLinkedType1b
+address: '0x080BC844'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x1b on the panel at (r1,r2), linked to the parent in r5, with
+  Timer=6, parent alliance copied, and a 0x62 halfword set from r3.
+interface: (r0 unused/spawn idx 0x1b, r1 = panel X, r2 = panel Y, r3 = value for +0x62 halfword, r5 =
+  parent BattleObject) -> r0 = spawned object ptr or 0; flags unchanged
+details: Calls object_spawnType1 with type 0x1b; if the spawn succeeds, it positions the new object at
+  the panel coordinates given in r1/r2 (PanelX/PanelY bytes), writes r3 to the halfword at offset 0x62,
+  copies AllianceAndDirectionFlip from the parent object in r5, stores the parent in RelatedObject1Ptr,
+  and sets Timer to 6. It also ORs 0x14 (bits 0x10|0x04) into oObjectHeader_Flags. The parent-link and
+  copied alliance suggest a short-lived effect tied to the spawning object. The trailing words 0x280000/0x180000/0x1A0
+  look like per-type velocity/tile data used elsewhere for this object type. What the type-0x1b object
+  actually does in game terms is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x1b; bl object_spawnType1 — spawns object of type 0x1b; strb r1,[r0,#oBattleObject_PanelX]
+    / strb r2,[r0,#oBattleObject_PanelY] — placed at caller-given panel; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    + copied AllianceAndDirectionFlip — linked to parent object from r5; mov r1,#6; strh r1,[r0,#oBattleObject_Timer]
+    — fixed 6-frame lifetime; orr r1,#0x14 into oObjectHeader_Flags — sets two flag bits on the new object
+  refs:
+  - bn6f/asm/asm31.s:9628
+  - 0x08014B98 sub_8014B98
+  - 0x0801544C sub_801544C
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BC844
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary, interface, and detail behavior match the code: spawn type 0x1b via object_spawnType1,
+    set PanelX/PanelY from r1/r2, store r3 at +0x62, copy AllianceAndDirectionFlip from r5, store r5 in
+    RelatedObject1Ptr, set Timer=6, and OR 0x14 into Flags. The only nits are naming: ''spawnType1bLinkedEffect''
+    is fine but the ''Type1b'' in the name is redundant since object_spawnType1 already implies the spawn
+    route; a cleaner lowerCamel would be ''battle_spawnLinkedType1b''. Summary and details otherwise agree
+    with the asm.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What object type 0x1b does behaviourally (its type-1 initialiser's effect) — need the type handler or
+  the callers sub_8014B98/sub_801544C summaries
+- Meaning of the halfword written at offset 0x62 from r3 (animation id, power, or subtype?)
+- 'The summary, interface, and detail behavior match the code: spawn type 0x1b via object_spawnType1,
+  set PanelX/PanelY from r1/r2, store r3 at +0x62, copy AllianceAndDirectionFlip from r5, store r5 in
+  RelatedObject1Ptr, set Timer=6, and OR 0x14 into Flags. The only nits are naming: ''spawnType1bLinkedEffect''
+  is fine but the ''Type1b'' in the name is redundant since object_spawnType1 already implies the spawn
+  route; a cleaner lowerCamel would be ''battle_spawnLinkedType1b''. Summary and details otherwise agree
+  with the asm.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC844 -> battle_spawnLinkedType1b
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC844

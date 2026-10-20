@@ -1,0 +1,64 @@
+name: battle_spawnObject21
+address: '0x080C8514'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x21 at the caller's panel/element, copies damage from r6 and
+  the alliance/flip flag from the donor object in r5, then sets bit 0x10 in oObjectHeader_Flags.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r4 = extra arg passed through, r5 = donor object,
+  r6 = damage word) -> r0 = spawned battle object; failure skips field setup.
+details: 'Saves the caller''s r0-r2 on the stack, loads 0x21 into r0 and calls object_spawnType3, which
+  receives 0x21 plus the passthrough arguments (five args total). If the spawn reports failure the function
+  returns immediately; otherwise it writes the three saved arguments into the new object''s oBattleObject_PanelX,
+  PanelY and Element, stores the caller''s r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and copies oBattleObject_AllianceAndDirectionFlip from the object pointer the caller keeps in r5, making
+  the spawned entity join that side. Finally it sets bit 0x10 in oObjectHeader_Flags of the new object
+  (some ''special/auxiliary'' marker). The push {r0-r2,r5} / pop {r1-r3,r5} pairing shows the args are
+  reloaded shifted into r1-r3, and that r5 and r6 are an undocumented side-channel: either the caller
+  must set them, or object_spawnType3 leaves values there.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x21 + bl object_spawnType3: spawns battle object 0x21, forwarding r1-r4; strb r1/r2/r3
+    to oBattleObject_PanelX/PanelY/Element fill position and element from the saved args; str r6,[oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    stores the damage word coming via r6; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] / strh
+    to new object copies team and flip from r5''s object; ldrb flags / orr #0x10 / strb sets header flag
+    0x10; beq locret skips all writes when the spawn failed'
+  refs:
+  - bn6f/asm/asm31.s:35408
+  - 0x080B903A sub_80B903A
+  - 0x080FDC2A sub_80FDC2A
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C8514
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are correct in substance, but the interface description overspecifies r6 as
+    ''damage word'' and frames r5/r6 as an undocumented side-channel. The pop shifts r0-r2 (saved caller
+    args) into r1-r3, and r6 holds the damage passed in by the caller (not r5); r5 holds the donor object
+    used both as the spawn''s 5th arg and as the alliance copy source. object_spawnType3 is a normal documented
+    callee. The bit-0x10 setting on oObjectHeader_Flags is correct.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What object ID 0x21 is in game terms (trap, helper entity, boss part?)
+- Whether r5 (alliance donor) and r6 (damage) are set by the callers sub_80B903A/sub_80FDC2A or returned
+  by object_spawnType3
+- Meaning of header flag 0x10 set on the spawned object
+- The name and summary are correct in substance, but the interface description overspecifies r6 as 'damage
+  word' and frames r5/r6 as an undocumented side-channel. The pop shifts r0-r2 (saved caller args) into
+  r1-r3, and r6 holds the damage passed in by the caller (not r5); r5 holds the donor object used both
+  as the spawn's 5th arg and as the alliance copy source. object_spawnType3 is a normal documented callee.
+  The bit-0x10 setting on oObjectHeader_Flags is correct.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8514 -> battle_spawnObject21
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8514

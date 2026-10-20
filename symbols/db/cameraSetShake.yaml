@@ -1,0 +1,53 @@
+name: cameraSetShake
+address: '0x080302B6'
+kind: function
+status: probable
+summary: Stores the shake pattern index (r0) and duration in frames (r1) into the camera struct as halfwords,
+  priming a camera shake applied by later camera-tick code.
+interface: (r0 = shake index/pattern, r1 = shake duration in frames) -> r0 = unchanged; flags unchanged
+details: Loads the toolkit's camera pointer (oToolkit_CameraPtr) from the r10-based toolkit struct and
+  writes r0 to oCamera_ShakeIndex and r1 to oCamera_ShakeFrames as halfwords. It only primes the shake
+  parameters; the actual per-frame shake offset is applied elsewhere by whatever ticks the camera. r0
+  likely selects which of several shake magnitudes/patterns to use. No callee or return value; it is a
+  plain setter.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r2,[r10,#oToolkit_CameraPtr] then strh r0,[r2,#oCamera_ShakeIndex] — writes shake selection
+    into camera; strh r1,[r2,#oCamera_ShakeFrames] — writes the frame count, i.e. duration, not a coordinate;
+    called from many route contexts in beastsp at 0x08014D70/0x08027624 etc., consistent with event-triggered
+    screen shake
+  refs:
+  - bn6f/asm/asm03_0.s:21851
+  - 0x08014D70 sub_8014D70
+  - 0x08014FA8 sub_8014FA8
+  - 0x080151D4 sub_80151D4
+  reproduce: python3 tools/asmcat.py 0x080302B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal: it writes r0 to oCamera_ShakeIndex and r1 to oCamera_ShakeFrames
+    via the camera pointer from the toolkit struct, and mov pc, lr confirms no return change. However,
+    the proposed name ''camera_setShake'' uses snake_case, violating the lowerCamel naming rule. A corrected
+    name should be lowerCamel.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact semantics of ShakeIndex (which patterns/magnitudes the camera update maps it to)
+- whether r1 is a frame countdown or total duration, needs the camera tick function
+- 'The assembly matches the proposal: it writes r0 to oCamera_ShakeIndex and r1 to oCamera_ShakeFrames
+  via the camera pointer from the toolkit struct, and mov pc, lr confirms no return change. However, the
+  proposed name ''camera_setShake'' uses snake_case, violating the lowerCamel naming rule. A corrected
+  name should be lowerCamel.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80302B6 -> cameraSetShake
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80302B6

@@ -1,6 +1,6 @@
 /*
  * sprite_oam.c — queue an animated sprite's pieces as OAM entries
- * (sprite_queueFramePieces, sub_3006594, sprite_queueOamEntries and sprite_queueOamEntry in bn6f asm38.s;
+ * (sprite_queueFramePieces, sprite_transformPieceOffsets, sprite_queueOamEntries and sprite_queueOamEntry in bn6f asm38.s;
  * IWRAM routines in the original).
  *
  * A sprite's current animation frame is a list of 5-byte pieces (tile,
@@ -83,7 +83,7 @@ COLD_PATH static void affine_piece_offset(u32 spr, u32 piece, u32 *attr, u32 fir
     *dy = ((s32)((u32)sx * (u32)-cos + (u32)sy * (u32)sin) >> 12) + kHeight[k];
 }
 
-/* Offset of a piece from the sprite's position (sub_3006594): regular
+/* Offset of a piece from the sprite's position (sprite_transformPieceOffsets): regular
  * sprites mirror it if flipped. */
 IWRAM_HELPER static void piece_offset(u32 spr, u32 piece, u32 *attr, u32 first, s32 *dx, s32 *dy) {
     if (*attr & 0x300) {

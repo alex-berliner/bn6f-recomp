@@ -1,0 +1,57 @@
+name: ai_getCircusManAttackParams
+address: '0x080FE9E4'
+kind: function
+status: probable
+summary: Looks up two per-difficulty CircusMan attack parameters from a fixed 8-byte table via sub_800FE28,
+  returning them in r0 and r1.
+interface: () -> r0 = param A (table[difficulty]), r1 = param B (table[4+difficulty]); flags from sub_800FE28
+details: 'The function loads the address of an 8-byte table (byte_80FEA00: 14 10 0C 06 01 03 03 05) and
+  calls sub_800FE28 twice, once with the table base and once with base+4, collecting both results in r0/r1.
+  sub_800FE28 presumably indexes the table by the game''s current difficulty tier, so the first four bytes
+  are one per-difficulty value (20/16/12/6 — plausibly damage) and the last four a second per-difficulty
+  value (1/3/3/5 — plausibly a count or delay). It is a pure getter used by ai_circusManAttackInit when
+  setting up a CircusMan attack. The pairing of one returned value in r0 and one in r1 via the push/pop
+  around the second call confirms two simultaneous outputs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two sub_800FE28 calls with byte_80FEA00 and byte_80FEA00+4 yield r0/r1 pair (asm lines 3-13);
+    table bytes 14 10 0C 06 | 01 03 03 05 form two per-difficulty 4-entry arrays; sole caller ai_circusManAttackInit
+    sets up CircusMan attack state, matching an attack-parameter fetch
+  refs:
+  - bn6f/asm/asm31.s:150251
+  - 0x080FEB20 ai_circusManAttackInit
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080FE9E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: ldr r0,=byte_80FEA00 + bl sub_800FE28 + push r0 + ldr r0,=byte_80FA00
+    + add r0,#4 + bl sub_800FE28 then pop r0/mov r1,r0/pop pc clearly yields two table lookups returning
+    into r0 and r1, and the table contents are 4+4 bytes consistent with per-difficulty values. The summary
+    and name fit. A slightly better name reflecting it is a generic per-tier getter would be ''ai_getCircusManAttackParams''
+    (prefix ai, lowerCamel).; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_800FE28 indexes with (assumed global difficulty tier) — confirm from its body
+- exact meaning of each returned value (damage vs count/timer) — needs the CircusMan attack code that
+  consumes r0/r1
+- 'The code matches the proposal: ldr r0,=byte_80FEA00 + bl sub_800FE28 + push r0 + ldr r0,=byte_80FA00
+  + add r0,#4 + bl sub_800FE28 then pop r0/mov r1,r0/pop pc clearly yields two table lookups returning
+  into r0 and r1, and the table contents are 4+4 bytes consistent with per-difficulty values. The summary
+  and name fit. A slightly better name reflecting it is a generic per-tier getter would be ''ai_getCircusManAttackParams''
+  (prefix ai, lowerCamel).'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FE9E4 -> ai_getCircusManAttackParams
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE9E4

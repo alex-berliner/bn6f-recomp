@@ -1,0 +1,54 @@
+name: battle_advanceToAction4AfterDelay
+address: '0x080C8D64'
+kind: function
+status: probable
+summary: Battle-object phase handler that plays SFX 0xF7 and sets a 5-frame timer on first entry, then
+  on timer expiry writes CurAction=4 and clears CurPhaseAndPhaseInitialized to hand off to the next action.
+interface: (r5 = battle object pointer; r0 unused input) -> void; updates oBattleObject_CurPhase, oBattleObject_Timer,
+  oBattleObject_CurAction
+details: Runs once per frame as part of a battle object's action state machine. If oBattleObject_CurPhase
+  is 0 it sets phase to 4, plays sound effect 0xF7 via PlaySoundEffect, and loads oBattleObject_Timer
+  with 5. On later ticks it simply decrements oBattleObject_Timer; when it reaches 0 it writes 4 into
+  oBattleObject_CurAction and zeroes CurPhaseAndPhaseInitialized, handing control to the next action handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/beq: phase 0 branch does the one-time setup (80C8D66-80C8D74);
+    mov r0,#0xf7; bl PlaySoundEffect: plays SFX 0xF7 exactly once at entry; mov r0,#5; strh r0,[r5,#oBattleObject_Timer]:
+    5-frame countdown; sub r0,#1 / bgt: plain frame-wait loop on subsequent ticks; strb r0(4),[r5,#oBattleObject_CurAction]
+    + strh 0 to CurPhaseAndPhaseInitialized: transitions to action 4'
+  refs:
+  - bn6f/asm/asm31.s:36512
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080C8D64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially accurate: on first entry it sets CurPhase=4, plays SFX 0xF7, sets Timer=5,
+    then decrements Timer each frame and on reaching 0 writes CurAction=4 and zeroes CurPhaseAndPhaseInitialized.
+    However, the name ''playSfxAndWaitThenNextAction'' is misleading since the SFX is only played on the
+    first tick, not as a ''wait then play'' flow. A name like ''battle_advanceToAction4AfterDelay'' better
+    captures the core behavior of delaying then transitioning to action 4.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which battle object/enemy uses this (no callers known), and what action 4 and SFX 0xF7 mean in context
+  — more callers or the object's action table would clarify a more specific name
+- 'The summary is essentially accurate: on first entry it sets CurPhase=4, plays SFX 0xF7, sets Timer=5,
+  then decrements Timer each frame and on reaching 0 writes CurAction=4 and zeroes CurPhaseAndPhaseInitialized.
+  However, the name ''playSfxAndWaitThenNextAction'' is misleading since the SFX is only played on the
+  first tick, not as a ''wait then play'' flow. A name like ''battle_advanceToAction4AfterDelay'' better
+  captures the core behavior of delaying then transitioning to action 4.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8D64 -> battle_advanceToAction4AfterDelay
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8D64

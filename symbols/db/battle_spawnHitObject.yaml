@@ -1,0 +1,59 @@
+name: battle_spawnHitObject
+address: '0x080E5150'
+kind: function
+status: probable
+summary: Spawns a type-0x40 battle hit/damage object and initializes it with the parent's element, alliance,
+  and the caller's damage value, also clearing bit 0x10 of its header flags.
+interface: (no args read by this routine; caller has parent object ptr in r5, damage in r6) -> r0 = spawned
+  battle object ptr (or 0); no flags
+details: 'The routine calls object_spawnType4 with id 0x40, and if a object was returned it initializes
+  it from the attacker''s own object: RelatedObject1Ptr is set to the parent, the Element byte and the
+  AllianceAndDirectionFlip halfword are copied from the parent, and the DamageAndStaminaDamageCounterDisabler
+  word is set to the caller''s damage value. It then clears bit 0x10 of the new object''s oObjectHeader_Flags
+  (likely enabling it to deal/take contact damage). If the spawn fails, it skips all initialization and
+  just returns. Its only known caller, ai_attackPeriodicTick, invokes it every 15 frames to reapply the
+  attack''s damage, so the spawned object is a short-lived damage hitbox tied to the parent.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x40; bl object_spawnType4 — creates battle object type/id 0x40; str r5,[r0,#oBattleObject_RelatedObject1Ptr];
+    strb r2,[r0,#oBattleObject_Element] — new object is linked to and inherits from the parent; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    — carries the caller''s damage value into the spawned object; bic r1,#0x10 on oObjectHeader_Flags
+    — tweaks the spawned object''s hit/behavior flags after spawn; caller ai_attackPeriodicTick calls
+    this every 15 frames of its repeating attack state'
+  refs:
+  - bn6f/asm/asm31.s:97172
+  - 0x080ED700 ai_attackPeriodicTick
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E5150
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function clearly spawns a type-0x40 battle object and copies element (strb r2), alliance (ldrh/strh),
+    and damage (str r6) from the parent, matching the proposal. It also clears bit 0x10 of oObjectHeader_Flags
+    (bic r1, #0x10). However, the name ''battle_spawnPeriodicDamageObject'' overstates what this routine
+    knows — it doesn''t know about ''periodic'', only its caller does. A name tied to the type-0x40 damage
+    object role is more accurate.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What battle object type 0x40 actually is (its initializer/behavior) — the spawn wrapper's other parameters
+  and the garbled register usage around the call hide how element/damage args are passed
+- Exact meaning of flag bit 0x10 in oObjectHeader_Flags that gets cleared
+- 'The function clearly spawns a type-0x40 battle object and copies element (strb r2), alliance (ldrh/strh),
+  and damage (str r6) from the parent, matching the proposal. It also clears bit 0x10 of oObjectHeader_Flags
+  (bic r1, #0x10). However, the name ''battle_spawnPeriodicDamageObject'' overstates what this routine
+  knows — it doesn''t know about ''periodic'', only its caller does. A name tied to the type-0x40 damage
+  object role is more accurate.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5150 -> battle_spawnHitObject
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5150

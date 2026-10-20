@@ -1,0 +1,65 @@
+name: ai_attackPhaseSubStep
+address: '0x08112928'
+kind: function
+status: probable
+summary: 'Per-frame sub-step driver for an AI attack: initializes on first call (sets element=1, plays
+  charge SFX 0x1A8, loads ChargeCycles into StepTimer), decrements StepTimer each tick, and on expiry
+  either loops back to re-charge (while SubStepIndex < AttackStepIndex) or enters the hit phase by loading
+  AttackDuration into StepTimer and setting HitElement=0xC.'
+interface: (r0 = unused/scratch, object in r7) -> r0 = 0 or scratch; updates oAIAttackVars fields (AttackElement,
+  StepTimer, SubStepIndex, HitElement)
+details: 'Runs on an AI battle object whose attack vars are at [r7+oAIAttackVars_*]. When AttackElement==0
+  it initializes the attack: element:=1, calls sub_8112968 (probably animation start), plays SFX 0x1A8,
+  and copies ChargeCycles into StepTimer. Otherwise it decrements StepTimer; at zero it increments SubStepIndex.
+  If SubStepIndex < AttackStepIndex it clears AttackElement so the whole charge (with sound) repeats;
+  otherwise it sets StepTimer=AttackDuration and HitElement=0xC, signaling the attack''s damaging phase.
+  The 0xC hit element and multi-step loop suggest a repeated charge-then-strike AI attack pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; cmp #0 gates one-time init that plays PlaySoundEffect(0x1A8)
+    and sets StepTimer=ChargeCycles; StepTimer countdown then SubStepIndex++ compared against AttackStepIndex
+    implements multi-cycle charging; loop branch clears AttackElement to re-arm, else sets StepTimer=AttackDuration
+    and strh 0xC to HitElement (strike phase); callee list: PlaySoundEffect (M4A SFX start) confirms the
+    sound-on-charge behavior; recorded routes are battle-sweep/beast-overworld-style play, consistent
+    with battle AI execution'
+  refs:
+  - bn6f/asm/asm32.s:9449
+  - 0x080005CC PlaySoundEffect
+  - 0x08112968 sub_8112968
+  reproduce: python3 tools/asmcat.py 0x08112928
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed summary and per-field updates match the asm (init at AttackElement==0 sets element=1,
+    calls sub_8112968, plays SFX 0x1A8, copies ChargeCycles into StepTimer; tick decrements StepTimer
+    and advances SubStepIndex, looping while SubStepIndex < AttackStepIndex by clearing AttackElement,
+    else sets StepTimer=AttackDuration and HitElement=0xC). However the name ''ai_attackChargeStep'' implies
+    only the charge sub-step, while the function also transitions to the damaging phase (StepTimer=AttackDuration,
+    HitElement=0xC), so a name reflecting the full sub-state machine is more accurate.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- purpose of sub_8112968 (likely animation or pose set for the charge)
+- which enemy/attack uses this handler and what HitElement 0xC denotes in the element table
+- exact meaning of AttackStepIndex vs AttackDuration in the AI attack struct
+- The proposed summary and per-field updates match the asm (init at AttackElement==0 sets element=1, calls
+  sub_8112968, plays SFX 0x1A8, copies ChargeCycles into StepTimer; tick decrements StepTimer and advances
+  SubStepIndex, looping while SubStepIndex < AttackStepIndex by clearing AttackElement, else sets StepTimer=AttackDuration
+  and HitElement=0xC). However the name 'ai_attackChargeStep' implies only the charge sub-step, while
+  the function also transitions to the damaging phase (StepTimer=AttackDuration, HitElement=0xC), so a
+  name reflecting the full sub-state machine is more accurate.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112928 -> ai_attackPhaseSubStep
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112928

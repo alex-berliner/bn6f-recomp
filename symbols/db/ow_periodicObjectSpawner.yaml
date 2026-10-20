@@ -1,0 +1,62 @@
+name: ow_periodicObjectSpawner
+address: '0x0809B0D8'
+kind: function
+status: probable
+summary: 'Overworld object behavior: decrements a per-entity timer at +0x1a each tick and, when the gating
+  condition holds (state==2 with timer<=0, or state!=2 but variant==2 with timer>0), increments a counter
+  at +0x18 and calls SpawnOverworldMapObject every 8th tick with id 0xB and r4 = 0x48000001 | (variant<<16).
+  Always returns 1.'
+interface: '(r0 = ? unused, r5 = behavior struct: +6 state, +7 variant id, +0x18 spawn counter, +0x1a
+  timer) -> r0 = 1 always; no flags used'
+details: The struct at r5 holds a timer at +0x1a which is decremented each call. If state (+6) is 2, the
+  spawn block only runs once the timer reaches 0; otherwise the spawn block runs while the timer is still
+  positive, but only when the variant id (+7) equals 2. Each spawn-block pass increments a counter at
+  +0x18 and, when that counter is a multiple of 8 (tst r0,#7), calls SpawnOverworldMapObject with r0=0xB,
+  r1-r3 taken from a table pointer (r10+0x3C -> fields 0x1C,0x20,0x24), and r4 = 0x48000001 | (variant
+  id << 16), a packed argument word combining constant 0x4800, flag 1, and the id. Always returns 1, likely
+  meaning 'still active'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#6]; cmp r0,#2 selects between one-shot (timer expiry) and repeated spawn modes;
+    mov r0,#0x18; ldrh/add/strh + tst r0,#7 gates SpawnOverworldMapObject to every 8th tick; ldr r4,dword_809B12C
+    (=0x48000001) orr r4,(r5[7]<<16) builds the packed spawn argument; bl SpawnOverworldMapObject with
+    r0=0xB and r1-r3 from [r10+0x3C] table fields 0x1C/0x20/0x24; both exits return r0=1, consistent with
+    an 'alive' result of an object update step
+  refs:
+  - bn6f/asm/asm28_0.s:3049
+  - 0x080047E0 SpawnOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x0809B0D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code path and per-tick spawn-every-8 logic match the proposal, but the interface is wrong: r0 has
+    no ''?'' — it''s unused on entry (set to 0xb immediately before the call), and the fall-through ''mov
+    r0,#1 / pop {pc}'' at loc_809B0EC shows the function returns 1 in all paths, not just active. The
+    struct field checks (state==2 vs variant==2 gating) and packed argument 0x48000001|variant<<16 are
+    correct. Minor: the table offset is r10+0x3c then offset 0x18 (not +0x1C directly), then fields 0x1C/0x20/0x24
+    from there.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which overworld objects use this (only seen on beastsp routes); the meaning of SpawnOverworldMapObject
+  argument 0xB and of the 0x4800 constant in the packed word
+- The exact layout of the r10+0x3C table (fields 0x1C/0x20/0x24) passed as r1-r3
+- 'Code path and per-tick spawn-every-8 logic match the proposal, but the interface is wrong: r0 has no
+  ''?'' — it''s unused on entry (set to 0xb immediately before the call), and the fall-through ''mov r0,#1
+  / pop {pc}'' at loc_809B0EC shows the function returns 1 in all paths, not just active. The struct field
+  checks (state==2 vs variant==2 gating) and packed argument 0x48000001|variant<<16 are correct. Minor:
+  the table offset is r10+0x3c then offset 0x18 (not +0x1C directly), then fields 0x1C/0x20/0x24 from
+  there.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809B0D8 -> ow_periodicObjectSpawner
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809B0D8

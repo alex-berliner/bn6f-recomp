@@ -1,0 +1,59 @@
+name: battle_destroyUnlinkRelated2
+address: '0x080C7A58'
+kind: function
+status: probable
+summary: Destructor wrapper that, if the RelatedObject2 partner still points back at this object, nulls
+  out the partner's back-reference before falling through to object_genericDestroy.
+interface: (r5 = battle object being destroyed, engine current-object convention; r0 unused/stale) ->
+  void; r0 clobbered
+details: Reads [r5,#oBattleObject_RelatedObject2Ptr] to get the partner object, then reads the partner's
+  oBattleObject_ObjectHeader and compares it to r5. If the partner still points back at this object, the
+  field is zeroed first, preventing the partner from holding a dangling pointer (or from destroying it
+  back) once this object is freed. It then falls through to object_genericDestroy, which releases panel
+  tile reserves, collision data, and the object's memory. This is a custom destructor hook installed on
+  objects that have a RelatedObject2 partner; the plain generic destructor is used for unpaired objects.
+  Whether genericDestroy receives the target via r0 or via the engine's current-object register is not
+  visible here; r0 holds either 0 or the old header value at the call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_RelatedObject2Ptr] / ldr r0,[r1,#oBattleObject_ObjectHeader] / cmp
+    r0,r5: reads a partner object and tests a mutual back-reference; mov r0,#0 / str r0,[r1,#oBattleObject_ObjectHeader]:
+    zeroes the partner''s pointer to this object before teardown; bl object_genericDestroy whose known
+    summary is the generic battle-object destructor, so this is a destructor variant; executed on recorded
+    battlesweep routes, i.e. during battle object teardown'
+  refs:
+  - bn6f/asm/asm31.s:33934
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080C7A58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code reads the partner via [r5,#oBattleObject_RelatedObject2Ptr] into r1, then loads [r1,#oBattleObject_ObjectHeader]
+    into r0 and compares against r5 — so it checks whether the partner''s back-pointer still references
+    *this* object before clearing it. The name ''UnlinkRelated2'' is fine, but ''battle_destroyUnlinkRelated2''
+    puts the verb awkwardly; the engine convention is `battle_destroy…`. The summary is otherwise accurate.;
+    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- whether object_genericDestroy takes the object in r0 (which would make the r0 value at the call significant)
+  or uses an engine current-object pointer
+- which object kinds set RelatedObject2Ptr and what pairing it represents (e.g. chip-spawned companions,
+  Synchrone partners)
+- The code reads the partner via [r5,#oBattleObject_RelatedObject2Ptr] into r1, then loads [r1,#oBattleObject_ObjectHeader]
+  into r0 and compares against r5 — so it checks whether the partner's back-pointer still references *this*
+  object before clearing it. The name 'UnlinkRelated2' is fine, but 'battle_destroyUnlinkRelated2' puts
+  the verb awkwardly; the engine convention is `battle_destroy…`. The summary is otherwise accurate.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7A58 -> battle_destroyUnlinkRelated2
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7A58

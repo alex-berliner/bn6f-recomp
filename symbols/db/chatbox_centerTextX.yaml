@@ -1,0 +1,63 @@
+name: chatbox_centerTextX
+address: '0x08042990'
+kind: function
+status: probable
+summary: 'Chatbox text-script handler that positions the current text run centered on screen: width =
+  11*n+8, X base is 240 (or 176 if chatbox flag 0x2 set), shifted left by TextScriptCharIdx when flag
+  is clear; result is stored at chatbox+0x94 and a pointer at chatbox+0x7C is advanced by width*4. Returns
+  1.'
+interface: (r4 = text script cursor, r5 = chatbox object) -> r0 = 1; advances r4 past a 3-byte command
+details: 'Reads a byte n from [r4,#2] and treats the command as 3 bytes wide (r4 += 3 at the end), so
+  r4 points into the chatbox text script and this is one opcode handler. It computes a run width of 11*n
+  + 8 pixels, then centers it: base is 0xF0 (240, full screen width) or 0xB0 (176) depending on chatbox
+  flag bit 0x2 (queried twice via chatbox_maskFlags_3e), then r2 = (base - width)/2, minus the chatbox''s
+  TextScriptCharIdx when flag 0x2 is clear, i.e. the X of the current character relative to the centered
+  start. The resulting X byte is stored at chatbox+0x94, and chatbox+0x7C (pointer or per-char table cursor)
+  is advanced by 4*n. Returns 1 to the script dispatcher.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0,r1 / add r0,#8 computes width 11*n+8 from the script byte at [r4,#2]; r2 = 0xF0 or 0xB0
+    chosen by chatbox_maskFlags_3e(2) before (base-width)/2 — screen vs narrower box centering; sub r2,
+    r2, r1 with ldrb r1,[r5,#oChatbox_TextScriptCharIdx] adjusts for characters already printed; strb
+    r3,[r5+0x94] stores the computed X into chatbox draw state; [r5+0x7C] += n*4; add r4,#3 / mov r0,#1
+    / pop: 3-byte script opcode consumed, returns 1 to the text-script interpreter'
+  refs:
+  - bn6f/asm/chatbox.s:6572
+  - 0x08040938 chatbox_maskFlags_3e
+  reproduce: python3 tools/asmcat.py 0x08042990
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the centering math, the 3-byte opcode advance, the 0x94 store,
+    and the oChatbox_Unk_7C bump by width*4. But two details are off: r0 starts as #0xB and gets n*0xB+8
+    (11*n+8), not derived from the flag; the conditional `''b0'' when flag 0x2` reads as if 0xF0 is the
+    default — actually the code does the opposite (adds r7 only when flag set, since the beq falls through
+    to the r6 path). Also chatbox+0x7C is a pointer that gets += (width*4), not ''advanced by 4*n'', so
+    it''s a byte-to-32-bit stride lookup. The summary''s ''horizontally centered X'' is right; name is
+    fine.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so the caller-set r4/r5 convention and the opcode table this handler belongs to
+  are unconfirmed
+- Meaning of chatbox flag bit 0x2 (full-width vs 176px box) and of the 4*n advance of chatbox+0x7C are
+  inferred, not shown
+- 'The proposal correctly identifies the centering math, the 3-byte opcode advance, the 0x94 store, and
+  the oChatbox_Unk_7C bump by width*4. But two details are off: r0 starts as #0xB and gets n*0xB+8 (11*n+8),
+  not derived from the flag; the conditional `''b0'' when flag 0x2` reads as if 0xF0 is the default —
+  actually the code does the opposite (adds r7 only when flag set, since the beq falls through to the
+  r6 path). Also chatbox+0x7C is a pointer that gets += (width*4), not ''advanced by 4*n'', so it''s a
+  byte-to-32-bit stride lookup. The summary''s ''horizontally centered X'' is right; name is fine.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8042990 -> chatbox_centerTextX
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8042990

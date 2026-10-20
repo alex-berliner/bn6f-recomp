@@ -1,0 +1,63 @@
+name: object_stepReappear
+address: '0x080D9C1C'
+kind: function
+status: probable
+summary: Battle-object step handler that re-evaluates collision data with fixed args, sets CurAnim=1,
+  copies ExtraVars[0]+1 into Timer and ExtraVars[1] into HP/MaxHP, mirrors PanelX/Y into FuturePanelX/Y
+  and re-reserves the current panel, then sets CurAction=8 and zeroes CurPhaseAndPhaseInitialized to restart
+  the action loop.
+interface: (r5 = battle object ptr, held by caller; no args) -> void; clobbers r0-r3
+details: Zeroes the object's Z and re-evaluates collision data via object_updateCollisionData with arguments
+  0,0xC,0xD,3 (fresh hit modifier, fixed damage/type values), then sets CurAnim to 1 (likely an appear/return
+  animation). It loads the object's ExtraVars pointer and copies byte 0 into Timer and byte 1 into both
+  HP and MaxHP, so the stored extra vars carry the object's respawn delay and HP. PanelX/Y are copied
+  into FuturePanelX/Y and the current panel is re-claimed with object_reservePanel. Finally it sets CurAction=8
+  and clears the phase/phase-initialized halfword, restarting the object's action loop. r4 and r6 are
+  pushed but unused; this is one step-function in a dispatch table of object actions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str r0,[r5,#oBattleObject_Z] + object_updateCollisionData(0,0xc,0xd,3) resets hit/collision
+    state; ldrb r1,[r0,#1]; strh r1 to both oBattleObject_HP and MaxHP restores full HP from ExtraVars
+    byte 1; ldrb [r0]; add #1; strh to oBattleObject_Timer seeds a timer from ExtraVars byte 0; PanelX/Y
+    copied to FuturePanelX/Y then object_reservePanel re-claims the panel the object stands on; strb #8
+    to CurAction and zero to CurPhaseAndPhaseInitialized restarts the object''s action/phase state machine'
+  refs:
+  - bn6f/asm/asm31.s:72653
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D9C1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly reads most fields, but it misidentifies byte 0 of ExtraVars as the respawn
+    delay stored into Timer: the code does `ldrb r1,[r0]; add r1,#1; strh r1,[r5,#oBattleObject_Timer]`,
+    so Timer is set to (ExtraVars[0]+1), not ExtraVars[0]. Also CurAnim=1 is written as a byte, not as
+    halfword. The summary''s ''clears hit data'' overstates what object_updateCollisionData does; it''s
+    a re-evaluation with fixed args (0,0xC,0xD,3). Function is called from a step-function dispatch (none
+    known here), and starts CurAction=8, suggesting it triggers a ''reappear/return to standby'' loop.;
+    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- which enemy/object uses this handler (dispatch table not shown), what animation 1 and action 8 mean,
+  and what ExtraVars byte 0 counts down to
+- 'The proposal correctly reads most fields, but it misidentifies byte 0 of ExtraVars as the respawn delay
+  stored into Timer: the code does `ldrb r1,[r0]; add r1,#1; strh r1,[r5,#oBattleObject_Timer]`, so Timer
+  is set to (ExtraVars[0]+1), not ExtraVars[0]. Also CurAnim=1 is written as a byte, not as halfword.
+  The summary''s ''clears hit data'' overstates what object_updateCollisionData does; it''s a re-evaluation
+  with fixed args (0,0xC,0xD,3). Function is called from a step-function dispatch (none known here), and
+  starts CurAction=8, suggesting it triggers a ''reappear/return to standby'' loop.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9C1C -> object_stepReappear
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9C1C

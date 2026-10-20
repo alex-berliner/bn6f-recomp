@@ -1,0 +1,63 @@
+name: battle_getDirTowardPoint
+address: '0x080A8518'
+kind: function
+status: probable
+summary: Computes the 0–3 facing direction for the object in r5 toward a target point (r0/r1 shifted to
+  16-bit), via battle_calcAngleOctant_800118A and the table at 0x080A8540 mapping octants 1..4 to directions
+  {1,1,0,3}; on a zero vector returns the object's own direction byte at r5+0x4.
+interface: (r0 = target X (halfword, shifted to 16-bit), r1 = target Y; r5 = object with X at +0xC, Y
+  at +0x10, default dir at +0x4) -> r0 = direction index 0–3; flags clobbered by call
+details: Shifts both coordinates to 16 bits, subtracts the object's position at r5+0xC/+0x10 to form a
+  delta vector, and calls battle_calcAngleOctant_800118A to bucket the vector into one of four octants.
+  If the vector is zero (octant 0), it returns the byte at r5+4, the object's own direction field. Otherwise
+  it maps the octant 1–4 through byte_80A8540 = {1,1,0,3} (indexed by octant) to a final 0–3 direction
+  value. The table means two adjacent octants map to the same direction, giving a hysteresis/dead-zone
+  around one axis. Purely a direction-selector helper; it touches no other state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0/r1 by [r5,#0xC]/[r5,#0x10] then bl battle_calcAngleOctant_800118A shows it computes the
+    angular offset of a point from the object's position; cmp r0,#0 / beq loc_80A8536 with ldrb r0,[r5,#4]
+    shows the zero-vector case returns the object's stored default direction at +0x4; ldrb r0,[r0,r4]
+    over byte_80A8540 = 01 01 00 03 00 00 00 00 maps octants 1..4 to a small 0–3 direction code; single
+    caller sub_80A8548 and the beastsp route place it in battle-side object logic
+  refs:
+  - bn6f/asm/asm29.s:6489
+  - 0x080A8548 sub_80A8548
+  - 0x0800118A battle_calcAngleOctant_800118A
+  reproduce: python3 tools/asmcat.py 0x080A8518
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanic (shift, subtract object position, call battle_calcAngleOctant_800118A, table-lookup,
+    zero-vector fallback) matches the code at 0x080A8518–0x080A8538 exactly. The proposed name ''battle_getDirTowardPoint''
+    is fine, but the summary''s claim about ''hysterde addressing'' is unfounded; the table byte_80A8540
+    = {1,1,0,3,2,0,0,0} maps 1->1, 2->1, 3->0, 4->3 (two adjacent octants sharing 1, not symmetric dead-zone).
+    Also the interface should note that for octant 0 the function falls back to the object byte at r5+0x4,
+    and that the unused tail 0,0,0 of the table is dead bytes, not part of the mapping.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact semantic of the 0–3 return values (which facing each number is) is unconfirmed without seeing
+  the caller sub_80A8548 use the result
+- Which object structure r5 points to (its +0x4/+0xC/+0x10 fields) is inferred, not verified from a known
+  struct definition
+- The mechanic (shift, subtract object position, call battle_calcAngleOctant_800118A, table-lookup, zero-vector
+  fallback) matches the code at 0x080A8518–0x080A8538 exactly. The proposed name 'battle_getDirTowardPoint'
+  is fine, but the summary's claim about 'hysterde addressing' is unfounded; the table byte_80A8540 =
+  {1,1,0,3,2,0,0,0} maps 1->1, 2->1, 3->0, 4->3 (two adjacent octants sharing 1, not symmetric dead-zone).
+  Also the interface should note that for octant 0 the function falls back to the object byte at r5+0x4,
+  and that the unused tail 0,0,0 of the table is dead bytes, not part of the mapping.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8518 -> battle_getDirTowardPoint
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8518

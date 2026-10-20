@@ -1,0 +1,66 @@
+name: npc_stepTowardTargetPos
+address: '0x080A85B4'
+kind: function
+status: probable
+summary: Moves an overworld NPC's fixed-point X/Y one step toward target coordinates read from r6, clamping
+  to avoid overshoot, and writes a moved-flag to [r6+0xC].
+interface: (void; r5/r6 = actor & control structs set up by callees) -> r0 = clobbered; stores updated
+  X at [r5+0xC], Y at [r5+0x10], and moved-flag at [r6+0xC]
+details: First calls sub_80A8548 and sub_80A8580; the latter's return value in r0 is used as the per-frame
+  step size (speed). It then treats [r5+0xC] (X) and [r5+0x10] (Y) as <<16 fixed-point coordinates, comparing
+  each against integer targets read from [r6+0x1A] and [r6+0x1C] (shifted left 16 for the comparison).
+  For each axis it advances the coordinate toward the target by the step, clamping so it cannot overshoot
+  (no update if the remaining distance is less than the step). If either axis moved, r4 is set to 1 and
+  stored into [r6+0xC], apparently an 'actor still moving / position changed' flag; it is cleared to 0
+  at entry each frame. The caller npc_updateGuarded runs this as the per-frame movement for an NPC whose
+  special action only fires when no cutscene/chatbox/PET lock is active, consistent with a free-roaming
+  overworld NPC walking toward a destination.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,r1 with r1 = ldrh [r6+0x1A]<<16: fixed-point current X vs integer target X (0x080A85CB-85D4);
+    add/sub r0 by r2 guarded by cmp r3,r2 / blt: step toward target without overshoot on both axes; mov
+    r4,#1 ... str r4,[r6+0xC] only when a coordinate changed: per-frame ''moved/still-moving'' flag; step
+    value comes from callee sub_80A8580''s return in r0 (mov r2,r0); only caller is npc_updateGuarded,
+    an overworld NPC per-frame update gated on no cutscene/chatbox/PET lock'
+  refs:
+  - bn6f/asm/asm29.s:6602
+  - 0x080A8424 npc_updateGuarded
+  - 0x080A8548 sub_80A8548
+  - 0x080A8580 sub_80A8580
+  reproduce: python3 tools/asmcat.py 0x080A85B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the fixed-point X/Y step toward target with moved-flag at [r6+0xC],
+    and the assembly confirms sub_80A8548/sub_80A8580 calls, >>16 target reads, overshoot clamping via
+    `cmp r3, r2; blt`, and r4 set on any axis movement. However, the caller npc_updateGuarded wraps NPC
+    behavior so the per-frame movement toward a destination is an NPC walk-step rather than ''stepActor'';
+    also [r6+0xC] is not cleared to 0 here (no `mov r3, #0; str r3,[r6,#0xc]` in this function), so the
+    moved-flag write happens but is cleared elsewhere. Name ''npc_stepActorTowardTargetPos'' mixes NPC
+    and Actor; ''npc'' is the appropriate prefix.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the flag at [r6+0xC] (moved-this-frame vs still-en-route) and what sub_80A8548/sub_80A8580
+  do (set r5/r6, compute step size) are not shown
+- 'The proposal correctly identifies the fixed-point X/Y step toward target with moved-flag at [r6+0xC],
+  and the assembly confirms sub_80A8548/sub_80A8580 calls, >>16 target reads, overshoot clamping via `cmp
+  r3, r2; blt`, and r4 set on any axis movement. However, the caller npc_updateGuarded wraps NPC behavior
+  so the per-frame movement toward a destination is an NPC walk-step rather than ''stepActor''; also [r6+0xC]
+  is not cleared to 0 here (no `mov r3, #0; str r3,[r6,#0xc]` in this function), so the moved-flag write
+  happens but is cleared elsewhere. Name ''npc_stepActorTowardTargetPos'' mixes NPC and Actor; ''npc''
+  is the appropriate prefix.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A85B4 -> npc_stepTowardTargetPos
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A85B4

@@ -1,0 +1,69 @@
+name: object_scriptedEffectTick
+address: '0x080E50FE'
+kind: function
+status: probable
+summary: Per-frame handler reading one scripted byte per 8-frame tick from oBattleObject_ExtraVars, invoking
+  sub_80CE6E6(lowNibble, highNibble, element, 0) Param2 times, then destroying the battle object via CUR_STATE_DESTROY
+  when Param2 hits 0 or the battle ends.
+interface: (r5 = battle object) -> r0 = clobbered; updates oBattleObject fields; sets state to CUR_STATE_DESTROY
+  when finished or battle over
+details: On first entry (CurAction==0) it sets CurAction=1, then consumes one byte from the stream pointed
+  to by oBattleObject_ExtraVars (the pointer is incremented), splitting it into a high nibble (r1) and
+  low nibble (r0). It calls sub_80CE6E6(lowNibble, highNibble, oBattleObject_Element, 0), with oBattleObject_Param1
+  loaded into r4 but effectively unused by the call (r3 is forced to 0 via a dead 'orr'), then sets oBattleObject_Timer=8.
+  Each tick decrements Timer; on expiry it decrements oBattleObject_Param2, and if that reaches 0 the
+  action completes by resetting CurAction=0... wait, it actually falls through only via Param2==0 to destroy
+  otherwise keeps CurAction=0 for the next cycle. If battle_isBattleOver reports the battle ended, the
+  object is destroyed immediately via CUR_STATE_DESTROY in oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver + tst/bne -> CUR_STATE_DESTROY at loc_80E514A: battle-over teardown
+    path; ldr r0,[r5,#oBattleObject_ExtraVars]; add r1,r0,#1; str; ldrb r0,[r0]: ExtraVars used as script
+    byte pointer, consumed once; lsr/lsl nibble split of the byte into r1 (high) and r0 (low), with oBattleObject_Element
+    in r2 passed to bl sub_80CE6E6; mov r0,#8; strh [r5,#oBattleObject_Timer] and Timer/Param2 countdown
+    loop: repeats every 8 frames Param2 times; strb CurAction=1 on entry and CurAction=0 after each tick:
+    standard battle-object action state machine pattern'
+  refs:
+  - bn6f/asm/asm31.s:97253
+  - 0x080E50E4 sub_80E50E4
+  - 0x0800A18E battle_isBattleOver
+  - 0x080CE6E6 sub_80CE6E6
+  reproduce: python3 tools/asmcat.py 0x080E50FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly notes CurAction gating, the byte consumption from oBattleObject_ExtraVars,
+    the call to sub_80CE6E6 with element/Param1-loaded-but-zeroed r4, and the 8-frame timer. However,
+    the proposal misstates the destroy semantics: lines 0x80E514A set CUR_STATE_DESTROY only when battle_isBattleOver
+    OR Param2 reaches 0; the fall-through for Param2>0 resets CurAction=0 and continues (line ''mov r0,#0;
+    strb r0,[r5,#oBattleObject_CurAction]''), not ''keeps CurAction=0 for next cycle''. The destroy path
+    is also reached when the battle ends, which the proposal covers.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_80CE6E6 does with (nibbleA, nibbleB, element, 0) — likely spawns a panel/effect object, but
+  its body is unknown
+- Why oBattleObject_Param1 is loaded into r4 yet never passed (possible dead/incorrectly-inlined original
+  code)
+- Which enemy/object uses this handler (beastsp route only) and what the script stream format's other
+  consumers look like
+- 'The summary correctly notes CurAction gating, the byte consumption from oBattleObject_ExtraVars, the
+  call to sub_80CE6E6 with element/Param1-loaded-but-zeroed r4, and the 8-frame timer. However, the proposal
+  misstates the destroy semantics: lines 0x80E514A set CUR_STATE_DESTROY only when battle_isBattleOver
+  OR Param2 reaches 0; the fall-through for Param2>0 resets CurAction=0 and continues (line ''mov r0,#0;
+  strb r0,[r5,#oBattleObject_CurAction]''), not ''keeps CurAction=0 for next cycle''. The destroy path
+  is also reached when the battle ends, which the proposal covers.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E50FE -> object_scriptedEffectTick
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E50FE

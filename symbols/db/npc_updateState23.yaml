@@ -1,0 +1,59 @@
+name: npc_updateState23
+address: '0x08118998'
+kind: function
+status: probable
+summary: 'State-0x23 step for an object: writes 0x23 into its state byte, calls sub_8118AB0; if it returns
+  equal, sets a trigger byte in a related struct at +0xd, then requests animation 4 and loads it only
+  when it differs from the currently loaded animation.'
+interface: (r5 = object/sprite-slot struct, r6 = related struct) -> void; returns via pop {pc}, condition
+  flags from sub_8118AB0 used internally
+details: 'Stores 0x23 into [r5] (likely the object''s state/mode byte), then calls sub_8118AB0 and uses
+  its returned condition: if the branch is taken (bne), [r6,#0xd] is set to 1 (likely a ''start/trigger''
+  or ''first-frame'' flag). It then writes 4 to [r5,#0xc], the requested animation index, and compares
+  it with [r5,#0xd], the currently loaded animation index; if they differ it calls sprite_setAnimation(4)
+  followed by sprite_loadAnimationData() to apply and load the new animation. The compare-before-load
+  pattern is the standard ''don''t restart the same animation'' idiom, so this function is a per-frame
+  animation/state step for one object, specific to state 0x23.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0(=0x23), [r5] marks the object state this handler implements; bl sub_8118AB0 + bne gates
+    a write of 1 to [r6,#0xd]; strb r0(=4), [r5,#0xc] then ldrb cmp [r5,#0xc]/[r5,#0xd] guards the animation
+    change; bl sprite_setAnimation then bl sprite_loadAnimationData applies index 4 only when it changed
+  refs:
+  - bn6f/asm/asm32.s:21472
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  - 0x08118AB0 sub_8118AB0
+  reproduce: python3 tools/asmcat.py 0x08118998
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name fits, but the summary and interface description have the [r6,#0xd] flag set on
+    the wrong branch: the code at 0x081189A2 shows `bne loc_81189A8` skips the `mov r0,#1; strb r0,[r6,#0xd]`
+    block, so the flag is set when sub_8118AB0 returns Z (not NZ). Also, [r5] is `state`, while [r5,#0xc]/[r5,#0xd]
+    are animation request/current indices copied/compared, and `sprite_setAnimation` takes its arg in
+    r1 (r0 holds [r5,#0xc] copy), not r0.; run wf investigate investigate-20261018-200615; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_8118AB0 checks (its return condition decides the [r6,#0xd]=1 flag)
+- What structures r5 and r6 are and what field 0x23/flag 0xd mean in game terms; no callers are known,
+  so the object type and why animation 4 is used here remain unconfirmed
+- 'The proposed name fits, but the summary and interface description have the [r6,#0xd] flag set on the
+  wrong branch: the code at 0x081189A2 shows `bne loc_81189A8` skips the `mov r0,#1; strb r0,[r6,#0xd]`
+  block, so the flag is set when sub_8118AB0 returns Z (not NZ). Also, [r5] is `state`, while [r5,#0xc]/[r5,#0xd]
+  are animation request/current indices copied/compared, and `sprite_setAnimation` takes its arg in r1
+  (r0 holds [r5,#0xc] copy), not r0.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8118998 -> npc_updateState23
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118998

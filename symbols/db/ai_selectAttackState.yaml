@@ -1,0 +1,60 @@
+name: ai_selectAttackState
+address: '0x080F4108'
+kind: function
+status: probable
+summary: 'AI helper: derives a behavior code (default 3, or 4 when HP < MaxHP/2, downgraded to 1 if the
+  object''s collision flags mask 0xA000 is set), packs it with oAIAttackVars tier and calls sub_80C7A6C,
+  then writes 4 into oAIAttackVars_HitElement.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = ...; sets oAIAttackVars_HitElement
+  = 4
+details: 'Compares MaxHP/2 against current HP: if HP is still above half it uses state 3, otherwise state
+  4, and if the object''s collision flag word has bits 0xA000 set it downgrades to state 1. It packs the
+  chosen state into the high byte of a word with oAIAttackVars_AiDifficultyTier in the low byte and passes
+  it, together with the object (r0 still holds the flag word) and the AI struct fields Damage and ScratchVar,
+  to sub_80C7A6C (r7 pushed on the stack as an extra argument). Finally it writes element 4 into oAIAttackVars_HitElement
+  and returns. The struct fields (InitFlag, AiDifficultyTier, Damage, ScratchVar, HitElement) suggest
+  a shared custom-attack descriptor used by battle AI.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r1,[r5,#oBattleObject_MaxHP]; lsr r1,#1 vs ldrh r2,[r5,#oBattleObject_HP] picks state 3
+    or 4; bl object_getFlag then tst r0,#0xA000 forces state 1 when those object flags are set; orr r4,
+    r3 packs state<<8 | oAIAttackVars_AiDifficultyTier before the call; push {r7} around bl sub_80C7A6C
+    passes the oAIAttackVars pointer as a stack argument; mov r0,#4; strh r0,[r7,#oAIAttackVars_HitElement]
+    fixes the attack element to 4
+  refs:
+  - bn6f/asm/asm31.s:128634
+  - 0x0801A166 object_getFlag
+  - 0x080C7A6C sub_80C7A6C
+  reproduce: python3 tools/asmcat.py 0x080F4108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The state-selection, tier, scratch and damage arguments to sub_80C7A6C, plus writing element 4,
+    are accurately described. However the r4 default is 3, and the HP comparison branches to 4 when HP<MaxHP/2
+    (blt to loc_80F4118 sets r4=4), which matches ''still above half -> 3, otherwise 4''. The name ''ai_selectAttackState''
+    is fine but the summary overstates that it ''queues an attack''; sub_80C7A6C is opaque so claiming
+    queueing is a guess.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80C7A6C does with the packed state/argument word (attack queue vs state machine write)
+- which enemy/pattern routes here, since no caller is known
+- meaning of the 0xA000 flag bits on the battle object
+- The state-selection, tier, scratch and damage arguments to sub_80C7A6C, plus writing element 4, are
+  accurately described. However the r4 default is 3, and the HP comparison branches to 4 when HP<MaxHP/2
+  (blt to loc_80F4118 sets r4=4), which matches 'still above half -> 3, otherwise 4'. The name 'ai_selectAttackState'
+  is fine but the summary overstates that it 'queues an attack'; sub_80C7A6C is opaque so claiming queueing
+  is a guess.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F4108 -> ai_selectAttackState
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4108

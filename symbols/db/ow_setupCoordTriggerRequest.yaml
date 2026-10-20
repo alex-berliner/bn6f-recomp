@@ -1,0 +1,65 @@
+name: ow_setupCoordTriggerRequest
+address: '0x0809B00C'
+kind: function
+status: probable
+summary: 'Populates an overworld trigger/dialog request (r5) for the player at a coordinate trigger: looks
+  up the trigger id via checkCoordinateTrigger_8031a7a on player+0x1C, indexes dword_809B050 (after subtracting
+  0xC0) into r5+4, sets r5+5=0x1A, and stores r5+6=2 / r5+0x1A=0 if player+0x24>>16 >= 0x3C else r5+6=3
+  / r5+0x1A=0x18; r5+0x18=-1; returns 0.'
+interface: (r0 unused in, r4/r5 = dialog-request struct) -> fills r5+4 (table byte), r5+5 = 0x1A, r5+6
+  (2 or 3), r5+0x1A (0 or 0x18), r5+0x18 = -1; r0 = 0
+details: Reads the game state's overworld player object and calls checkCoordinateTrigger_8031a7a on its
+  +0x1C field (likely tile/trigger coordinates), then maps the returned trigger id by subtracting 0xC0
+  (trigger range 192+) and indexing a byte table at dword_809B050, storing the looked-up byte at r5+4
+  and a constant 0x1A at r5+5. It then reads player field +0x24 >> 16 (a coordinate, likely facing or
+  position component) and stores 2 if >= 0x3C else 3 at r5+6, storing a matching halfword (0 for the 2
+  case, 0x18 for the 3 case) at r5+0x1A, and -1 at r5+0x18. The r5 layout and values (0x1A/0x18 constants,
+  -1 sentinel) suggest an overworld dialog or scripted-event setup struct, but the struct type and the
+  meaning of the table bytes (0x05, 0x01) are unverified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r7,#oGameState_OverworldPlayerObjectPtr]; add r0,#0x1c; bl checkCoordinateTrigger_8031a7a
+    — result keyed to the player''s trigger coordinates; sub r0,#0xc0; ldrb r0,[r1,r0]; strb r0,[r5,#4]
+    — trigger id offset 0xC0 indexes byte table dword_809B050 into r5+4; ldr r1,[r1,#0x24]; asr r1,#0x10;
+    cmp r1,#0x3c — player field +0x24>>16 selects constant 2 vs 3 at r5+6; strh 0/0x18 at r5+0x1A and
+    -1 at r5+0x18 — paired pair of fields, pattern typical of dialog/queue setup structs; Callee checkCoordinateTrigger_8031a7a
+    is a known coordinate-trigger checker, placing this in overworld trigger handling; route: beastsp'
+  refs:
+  - bn6f/asm/asm28_0.s:2935
+  - 0x08031A7A checkCoordinateTrigger_8031a7a
+  reproduce: python3 tools/asmcat.py 0x0809B00C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The conditional direction is reversed in the summary: the asm `cmp r1,#0x3c; bge loc_809B034` skips
+    the ''mov r0,#3'' when r1>=0x3C, so r0=2 (stored at r5+6) corresponds to >=0x3C and r0=3 to <0x3C,
+    not the other way around. All other details (r5+4 table byte from dword_809B050 after subtracting
+    0xC0, r5+5=0x1A, r5+0x1A=0/0x18, r5+0x18=-1, final r0=0) match the asm. The call to checkCoordinateTrigger_8031a7a
+    on player+0x1C and the 0x24>>0x16 coordinate check are also correctly identified.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What structure r5 points to (dialog request? event script state?) — a caller would show where it is
+  allocated and consumed
+- Full contents of dword_809B050 beyond the first bytes (0x05, 0x01) and what the table value selects
+  (dialog id, NPC id, text bank?)
+- Meaning of player field +0x24 >> 16 and the 0x3C threshold (facing direction vs y-coordinate)
+- 'The conditional direction is reversed in the summary: the asm `cmp r1,#0x3c; bge loc_809B034` skips
+  the ''mov r0,#3'' when r1>=0x3C, so r0=2 (stored at r5+6) corresponds to >=0x3C and r0=3 to <0x3C, not
+  the other way around. All other details (r5+4 table byte from dword_809B050 after subtracting 0xC0,
+  r5+5=0x1A, r5+0x1A=0/0x18, r5+0x18=-1, final r0=0) match the asm. The call to checkCoordinateTrigger_8031a7a
+  on player+0x1C and the 0x24>>0x16 coordinate check are also correctly identified.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809B00C -> ow_setupCoordTriggerRequest
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809B00C

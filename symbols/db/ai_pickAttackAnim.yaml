@@ -1,0 +1,62 @@
+name: ai_pickAttackAnim
+address: '0x0810B9EC'
+kind: function
+status: probable
+summary: Looks up a per-version animation id for the enemy's attack by indexing one of three small tables
+  selected via a state byte at oBattleObject+0x63, using oAIAttackVars_AttackBoost2 as the version offset,
+  writing the result to oBattleObject_CurAnim and stashing the version byte at +0x63.
+interface: (r5 = battle object, r7 = AI attack vars) -> sets oBattleObject_CurAnim and byte 0x63 of r5;
+  no return value
+details: Reads a slot index from [r5+0x63], scales it by 4, and indexes the pointer table at off_810BA10
+  to get one of three byte tables (0x810BA1C/20/24, each 4 bytes). It then reads a byte from the selected
+  table using oAIAttackVars_AttackBoost2 (likely a version/form byte) as offset; if the value is 0xFF
+  the animation is left unchanged, otherwise the value is written to oBattleObject_CurAnim. Finally the
+  AttackBoost2 byte is saved back to [r5+0x63], so the next call reads a different row of the table —
+  cycling through up to 3 animation variants. The 0xFF padding bytes show each table row holds at most
+  two usable anim ids (e.g. row 0 gives 0x03 for one version and none/skip for the other). It is a helper
+  of ai_startAttack, which sets up version-dependent enemy attacks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x63]; lsl r0,r0,#2; ldr r0,[r2,r0]: [r5+0x63] is an index into pointer table
+    off_810BA10; cmp r0,#0xff; beq ...: 0xFF in the table means ''keep current animation'', other values
+    stored to oBattleObject_CurAnim; strb r0,[r5,#0x63] at end stores AttackBoost2 back, making byte 0x63
+    the persistent table-slot selector; dword_810BA1C/20/24 data (0xFFFF03FF, 0xFF04FF01, 0xFFFF06FF)
+    are rows of anim ids with 0xFF gaps; caller ai_startAttack ''begins a version-dependent enemy attack
+    ... selects attack 10'', matching a per-version animation pick'
+  refs:
+  - bn6f/asm/asm31.s:177161
+  - 0x0810BCBC ai_startAttack
+  reproduce: python3 tools/asmcat.py 0x0810B9EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanism matches (load table via [r5+0x63]*4, index by AttackBoost2, skip on 0xFF, write CurAnim).
+    But the data at 0x810BA1C is 0xFFFF03FF, meaning row 0 gives anim 0x03 only at offset 1 (version byte
+    1), not the claimed ''0x03 for one version, none for the other''. Also, the byte saved to [r5+0x63]
+    is AttackBoost2 (the version byte), not a slot index, so the proposal''s ''cycling through up to 3
+    animation variants'' framing is incorrect.; run wf investigate investigate-20261018-203615; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the oAIAttackVars_AttackBoost2 field (version vs. form/boost index)
+- which enemy/attack 10 these three animation ids belong to
+- whether [r5+0x63] has a known name elsewhere in the battle object struct
+- The mechanism matches (load table via [r5+0x63]*4, index by AttackBoost2, skip on 0xFF, write CurAnim).
+  But the data at 0x810BA1C is 0xFFFF03FF, meaning row 0 gives anim 0x03 only at offset 1 (version byte
+  1), not the claimed '0x03 for one version, none for the other'. Also, the byte saved to [r5+0x63] is
+  AttackBoost2 (the version byte), not a slot index, so the proposal's 'cycling through up to 3 animation
+  variants' framing is incorrect.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810B9EC -> ai_pickAttackAnim
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B9EC

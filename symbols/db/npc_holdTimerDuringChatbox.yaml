@@ -1,0 +1,60 @@
+name: npc_holdTimerDuringChatbox
+address: '0x08136FA4'
+kind: function
+status: probable
+summary: While bit 0x80 of chatbox eFlags2009F38 is clear, force r5+0 to 0x18 (24-frame timer) and r5+4
+  to 0; once the bit is set, do nothing.
+interface: (r5 = object/step struct, base not passed in r0-r3) -> void; flags from flag-mask test
+details: Calls chatbox_mask_eFlags2009F38 with 0x80; if the bit is already set the function returns without
+  touching memory. Otherwise it stores 0 to byte r5+4 (state/phase) and 0x18 to byte r5+0 (a frame counter,
+  24 = 0.4 s). This re-arms the timer each call, so the counter only starts counting down once the chatbox
+  flag condition is met. r5 is a caller-maintained context pointer (object or script state); no other
+  fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80 tests one flag word bit and branches back on bne
+    when set; strb r0,[r5,#4] with 0 and strb r0,[r5],#0x18 pattern writes only two bytes: state clear
+    + timer reload at +0; 10-instruction tail with pop {pc} and no other side effects fits a per-frame
+    step handler that exits early on the flag; chatbox_mask_eFlags2009F38''s known summary says it returns
+    the masked flag with NZ set so callers branch — exactly how this function uses it; captured run site
+    ''beastsp'' suggests it executes during a beast-related scripted scene, consistent with waiting on
+    chatbox text'
+  refs:
+  - bn6f/asm/asm36.s:14486
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08136FA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r0=0x80, mask-check via chatbox_mask_eFlags2009F38, bne short-circuit, then store
+    0 at r5+4 and 0x18 at r5. However the summary claims it ''clears its state byte every frame until
+    chatbox flag 0x80 is set'' and re-arms each call - in reality it writes the timer only when the flag
+    is NOT set (i.e. it keeps resetting the counter while idle, so animation stays parked). The name is
+    fine but the summary misframes the condition.; run wf investigate investigate-20261018-203615; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so the struct at r5 (whose +0 timer and +4 state byte these are) is unidentified
+- Exact meaning of eFlags2009F38 bit 0x80 (text fully shown vs. advance-acknowledged) is not established
+  from this snippet alone
+- Whether the function is a state-machine step (called each frame) or one-shot setup after the flag clears
+  is inferred, not proven
+- 'The code matches: r0=0x80, mask-check via chatbox_mask_eFlags2009F38, bne short-circuit, then store
+  0 at r5+4 and 0x18 at r5. However the summary claims it ''clears its state byte every frame until chatbox
+  flag 0x80 is set'' and re-arms each call - in reality it writes the timer only when the flag is NOT
+  set (i.e. it keeps resetting the counter while idle, so animation stays parked). The name is fine but
+  the summary misframes the condition.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136FA4 -> npc_holdTimerDuringChatbox
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136FA4

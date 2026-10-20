@@ -1,0 +1,68 @@
+name: ai_spawnEffectAtObjectPanel
+address: '0x08113C48'
+kind: function
+status: probable
+summary: Spawns a type-4 battle effect object at the given battle object's panel, packing a descriptor
+  whose low byte is 0x55, byte 1 is Alliance XOR DirectionFlip, byte 2 is (AI version + 0x10); calls sub_80E060E
+  on the spawned object.
+interface: (r4 = AIData ptr, r5 = battle object ptr) -> r0 = spawned effect object ptr or 0; flags from
+  cmp r0,#0 destroyed
+details: 'Builds a packed effect descriptor word: low byte 0x55 (base effect id, ORed in via off_8113C80),
+  byte 1 = oBattleObject_Alliance ^ oBattleObject_DirectionFlip (so the effect mirrors depending on which
+  way the object faces), byte 2 = oAIData_Version_16 + 0x10 (effect variant chosen by the AI''s version).
+  It converts the object''s PanelX/PanelY to 16.16 screen pixel coordinates with object_getCoordinatesForPanels
+  and calls the type-4 effect-object spawn wrapper with (descriptor, x, y, 0). If spawning succeeds it
+  calls sub_80E060E on the returned object (likely post-spawn init/register). Returns the object pointer,
+  or 0 if the spawn pool was full. The single caller sub_81138D8 is undocumented, so the game-play meaning
+  of variant ''version+0x10'' and id 0x55 is inferred only from structure.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r4,#oAIData_Version_16]; add r2,#0x10; lsl r2,#16 packs version+0x10 into byte 2 of
+    the descriptor; ldrb alliance/directionFlip from r5, eor, lsl #8: side/mirror byte derived from the
+    battle object; ldrb PanelX/PanelY then bl object_getCoordinatesForPanels gives the spawn position
+    from the object''s panel; ldr r4,=0x55; orr r4,r0 sets base effect id 0x55 before bl spawn_t1_0x0_EffectObject
+    with (desc,x,y,0); cmp r0,#0; beq return; bl sub_80E060E handles spawn-failure vs. spawned-object
+    path'
+  refs:
+  - bn6f/asm/asm32.s:11766
+  - 0x081138D8 sub_81138D8
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  - 0x080E060E sub_80E060E
+  reproduce: python3 tools/asmcat.py 0x08113C48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: oAIData_Version_16+0x10 goes into byte2, (Alliance XOR DirectionFlip) into byte1,
+    0x55 ORed into low byte, then object_getCoordinatesForPanels and spawn_t1_0x0_EffectObject(descriptor,
+    x, y, 0). sub_80E060E is called on the spawned object. However the low byte is 0x55 hardcoded from
+    off_8113C80, not ''0x55 base effect id'' — it''s just a constant. Also byte2 isn''t exactly ''version+0x10
+    effect variant''; the add #0x10 is part of the descriptor packing, and the spawned-by-AID flag in
+    the wrapper is type 0. The summary overstates what is inferred vs. settled.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What effect id 0x55 and variant oAIData_Version_16+0x10 render as in game (needs effect table/graphics
+  lookup)
+- What sub_81138D8 does and why it holds AIData in r4 / battle object in r5 (which AI routine triggers
+  this effect)
+- 'The code matches: oAIData_Version_16+0x10 goes into byte2, (Alliance XOR DirectionFlip) into byte1,
+  0x55 ORed into low byte, then object_getCoordinatesForPanels and spawn_t1_0x0_EffectObject(descriptor,
+  x, y, 0). sub_80E060E is called on the spawned object. However the low byte is 0x55 hardcoded from off_8113C80,
+  not ''0x55 base effect id'' — it''s just a constant. Also byte2 isn''t exactly ''version+0x10 effect
+  variant''; the add #0x10 is part of the descriptor packing, and the spawned-by-AID flag in the wrapper
+  is type 0. The summary overstates what is inferred vs. settled.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8113C48 -> ai_spawnEffectAtObjectPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113C48

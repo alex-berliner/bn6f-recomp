@@ -1,0 +1,63 @@
+name: battle_actionVanish
+address: '0x080C7306'
+kind: function
+status: probable
+summary: 'Battle-object action handler for action ID 7 (vanish): advances CurPhase to 4, sets up PanelX/PanelY
+  via sub_80E1E20, plays sound 0xC6, runs sub_80C73BE and starts animation 1; once PhaseInitialized reaches
+  5, resets CurAnim, optionally calls sub_80E1E3E cleanup, then sets CurAction=8 to mark done.'
+interface: (r5 = battle object) -> void; side effects on the object's phase/anim/action fields
+details: 'State-machine step for a battle object: when CurPhase is 0 it advances the phase to 4, calls
+  sub_80E1E20 with the object''s PanelX/PanelY (r7 = object+0x64 set up around the call, though not passed),
+  plays sound effect 0xC6, runs sub_80C73BE, and starts animation 1. The second half only runs after the
+  phase has been initialized: once PhaseInitialized reaches 5 (animation complete) it resets CurAnim to
+  0, calls cleanup sub_80E1E3E if ExtraVars+4 is nonzero, sets CurAction = 8 (action finished) and clears
+  CurPhase/PhaseInitialized. The pattern — start anim+sound, block until the animation reports completion,
+  then report done — matches the game''s one-shot object action handlers; sound 0xC6 and the panel-coordinate
+  setup suggest a vanish/hide/retreat effect rather than a movement.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase 0 branch sets CurPhase=4, plays SE 0xC6 and sets CurAnim=1 (start of a one-shot effect);
+    exit path triggers only on PhaseInitialized==5, i.e. after the started animation finished; completion
+    sets CurAction=8 and zeroes CurPhaseAndPhaseInitialized, the standard 'action done' handshake; sub_80E1E20
+    is called with oBattleObject_PanelX/PanelY, tying the effect to the object's panel position; cleanup
+    sub_80E1E3E is gated on ExtraVars+4, a per-object flag for extra state to release
+  refs:
+  - bn6f/asm/asm31.s:32926
+  - 0x080005CC PlaySoundEffect
+  - 0x080C73BE sub_80C73BE
+  - 0x080E1E20 sub_80E1E20
+  reproduce: python3 tools/asmcat.py 0x080C7306
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior (set CurPhase=4, call sub_80E1E20 with panel coords, PlaySoundEffect(0xC6),
+    sub_80C73BE, set CurAnim=1; then wait for PhaseInitialized=5, reset CurAnim, conditional cleanup,
+    set CurAction=8, clear phase). However ''battle_actionVanish'' is reasonable but the action is set
+    to 8 at the end, suggesting this completes an action whose ID is 7 (vanish). The prefix ''battle''
+    fits and ''Vanish'' describes the disappear effect well. The summary is accurate.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what animation 1 and sound 0xC6 correspond to visually (vanish vs. burrow vs. teleport) — needs the
+  anim table or a caller context
+- purpose of sub_80E1E20/sub_80E1E3E and the object+0x64 buffer; no callees are documented
+- no caller is known, so which enemy/objects use this action is unconfirmed
+- The code matches the described behavior (set CurPhase=4, call sub_80E1E20 with panel coords, PlaySoundEffect(0xC6),
+  sub_80C73BE, set CurAnim=1; then wait for PhaseInitialized=5, reset CurAnim, conditional cleanup, set
+  CurAction=8, clear phase). However 'battle_actionVanish' is reasonable but the action is set to 8 at
+  the end, suggesting this completes an action whose ID is 7 (vanish). The prefix 'battle' fits and 'Vanish'
+  describes the disappear effect well. The summary is accurate.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7306 -> battle_actionVanish
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7306

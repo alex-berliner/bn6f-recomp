@@ -1,0 +1,67 @@
+name: ai_countEnemyFilteredPanels
+address: '0x08111CE0'
+kind: function
+status: probable
+summary: AI helper that returns the count of enemy-side panels in the column indicated by r4 that pass
+  object_checkPanelParameters, or 0 if the alliance-derived index already matches an AI attack-vars byte.
+interface: '(r0/r1 setup internal: r5 = battle object, r7 = AI attack vars, r4 = panel/base buffer) ->
+  r0 = count of filtered panels (0 if the pre-check matches); clobbers r7'
+details: Loads the battle object's alliance from r5, XORs it with 1 to get the opposing side, and computes
+  an index (alliance^1)*3+2. If that index equals the byte stored at r7+oAIAttackVars_AttackBoost2, it
+  returns 0 immediately. Otherwise it calls GetAllianceDependentPanelParamArgs with that index to fetch
+  a param word and args pointer from the alliance-dependent panel-effect table, swaps r7/r4 (moving what
+  r4 held — likely the panel base or output buffer — into r7), and calls object_getPanelsInColumnFiltered
+  to enumerate the three panels of a column that pass object_checkPanelParameters, returning the resulting
+  count.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; mul r0,#3; add r0,#2 — builds an enemy-side
+    index into the alliance-dependent table; cmp r0, [r7+AttackBoost2] / bne around 'mov r0,#0' — early-out
+    returns 0 when the AI var already holds this index; bl GetAllianceDependentPanelParamArgs then bl
+    object_getPanelsInColumnFiltered — table lookup feeds the column panel filter; mov r7,r4 before the
+    second call — r4 held the argument the panel enumerator needs, r7 the AI vars; recorded execution
+    only from battlesweep/beastsp AI routes, no direct caller captured
+  refs:
+  - bn6f/asm/asm32.s:8035
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x08111CE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate: it loads alliance, XORs with 1, computes (alliance^1)*3+2,
+    early-returns 0 if that matches AttackBoost2, otherwise calls GetAllianceDependentPanelParamArgs,
+    swaps r7<->r4, and calls object_getPanelsInColumnFiltered, returning the count. However, ''ai_countOpponentFilteredPanels''
+    is not quite right since r4 holds a column index for object_getPanelsInColumnFiltered (per its signature),
+    and the function returns the count of enemy-side panels in that column passing object_checkPanelParameters.
+    A name like ai_countFilteredEnemyPanelsInColumn is closer, but still verbose; ai_countEnemyFilteredPanels
+    is concise and accurate.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- no caller captured, so the exact meaning of the return count in the AI decision flow is unknown
+- the true meaning of the compared AIAttackVars field (labeled AttackBoost2) and why matching it skips
+  the scan
+- exact contents/layout of the args pointer consumed by object_getPanelsInColumnFiltered and which column
+  it selects
+- 'The summary and interface are accurate: it loads alliance, XORs with 1, computes (alliance^1)*3+2,
+  early-returns 0 if that matches AttackBoost2, otherwise calls GetAllianceDependentPanelParamArgs, swaps
+  r7<->r4, and calls object_getPanelsInColumnFiltered, returning the count. However, ''ai_countOpponentFilteredPanels''
+  is not quite right since r4 holds a column index for object_getPanelsInColumnFiltered (per its signature),
+  and the function returns the count of enemy-side panels in that column passing object_checkPanelParameters.
+  A name like ai_countFilteredEnemyPanelsInColumn is closer, but still verbose; ai_countEnemyFilteredPanels
+  is concise and accurate.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111CE0 -> ai_countEnemyFilteredPanels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111CE0

@@ -1,0 +1,67 @@
+name: spawn_battleObjectAttached
+address: '0x080CBAB8'
+kind: function
+status: probable
+summary: Spawns a battle object via object_spawnType3 (caller-supplied type), attaches it to a parent
+  at r5 by copying its alliance and storing it into oBattleObject_RelatedObject1Ptr, sets panel coords
+  from packed arg, hard-codes Element=2, copies extra vars, and sets flag 0x10.
+interface: (r0-r3 = args, r5 = parent battle object, r6/r7 = extra values) -> r0 = new object pointer
+  or 0 on failure; flags from spawn success
+details: Calls object_spawnType3 with type 0x3D and the four arguments, using the push/pop trick to keep
+  the caller's registers alive across the call; on success r0 is the new object and r1-r5/r6/r7 hold the
+  original args plus parent. It stores three 32-bit values (args 2-4) into the new object's oBattleObject_ExtraVars
+  at offsets 0, 0x10 and 0xC, unpacks arg 1 as packed panel coords (PanelY = arg>>4, PanelX = arg & 7),
+  hard-sets Element = 2, and copies DamageAndStaminaDamageCounterDisabler (r6), ExtraVars+8 (r7) and AllianceAndDirectionFlip
+  from the parent (r5). It links the new object back to its parent via oBattleObject_RelatedObject1Ptr
+  and sets oObjectHeader_Flags bit 0x10, likely marking it as a spawned/attached object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnType3 with r0=0x3d spawns a type-3 battle object and returns its pointer in r0;
+    strb r1,[r0,#oBattleObject_PanelX] / strb r2 after lsr r2,r1,#4 decode packed panel coords from arg1;
+    str r5,[r0,#oBattleObject_RelatedObject1Ptr] and ldrh/strh of AllianceAndDirectionFlip from r5 link
+    it to the caller's object; mov r3,#2; strb r3,[r0,#oBattleObject_Element] fixes element to 2; orr
+    with 0x10 into oObjectHeader_Flags marks the new object; only-called-from sub_80D289E and sub_810F33C
+    on battlesweep/beastsp routes
+  refs:
+  - bn6f/asm/asm31.s:42680
+  - 0x080D289E sub_80D289E
+  - 0x0810F33C sub_810F33C
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CBAB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function is named ''spawn'' by convention and the spawn object type is 3 (object_spawnType3),
+    but the spec includes a parent field (r5) used to copy alliance flags and link via oBattleObject_RelatedObject1Ptr.
+    It is not ObjectType 0x3D; that 0x3D is the type code passed as r0 to object_spawnType3. The name
+    and summary confusingly call it ''Type3D'' when the type is a parameter to the spawn callee, not a
+    definition of this function. Everything else in the summary (panel unpack, ExtraVars store ordering,
+    Element=2, flag 0x10) matches the asm (lines str r3/r2/r4 into ExtraVars, lsr/lsl panel extract, mov
+    r3 #2 + strb, orr 0x10).; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What object kind 0x3D is in game terms (its initializer in object_spawnType3 would tell)
+- What element value 2 denotes in this battle engine
+- What the three ExtraVars words and r6/r7 values mean; callers' code not shown
+- 'The function is named ''spawn'' by convention and the spawn object type is 3 (object_spawnType3), but
+  the spec includes a parent field (r5) used to copy alliance flags and link via oBattleObject_RelatedObject1Ptr.
+  It is not ObjectType 0x3D; that 0x3D is the type code passed as r0 to object_spawnType3. The name and
+  summary confusingly call it ''Type3D'' when the type is a parameter to the spawn callee, not a definition
+  of this function. Everything else in the summary (panel unpack, ExtraVars store ordering, Element=2,
+  flag 0x10) matches the asm (lines str r3/r2/r4 into ExtraVars, lsr/lsl panel extract, mov r3 #2 + strb,
+  orr 0x10).'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBAB8 -> spawn_battleObjectAttached
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBAB8

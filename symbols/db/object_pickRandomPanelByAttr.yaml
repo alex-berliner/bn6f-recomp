@@ -1,0 +1,65 @@
+name: object_pickRandomPanelByAttr
+address: '0x08102C38'
+kind: function
+status: probable
+summary: Given an index from object+0x16 selecting one of two 8-byte (required-attr, forbidden-attr) filter
+  pairs, scans field panels excluding the object's own and, if any match, returns a randomly chosen matching
+  panel's x (low 3 bits) in r0 and y (high nibble) in r1; falls back to the object's stored coordinates
+  at +0x12/+0x13 if no panel matches either filter.
+interface: (r0 = object entity ptr; r5->0x16 selects filter entry) -> r0 = panel x (bits 0-2 of panel
+  byte), r1 = panel y (bits 4+); no flags used
+details: 'sub_8102CA0 prepares state, then the byte at object+0x16 indexes byte_8102C90 (8-byte entries:
+  required attribute mask + forbidden attribute mask, e.g. req 0x10 / forbid 0x0F8800A0). It fills a stack
+  list via object_getPanelsExceptCurrentFiltered with those masks; if any panels match, GetPositiveSignedRNG
+  divided by the count (svc 6 = BIOS Div, remainder kept) selects one at random, and its byte is split
+  into x (low 3 bits) and y (bits 4-7). If the first filter yields nothing, sub_8102CC4 runs and the second
+  mask pair (req 0x30 / forbid 0x0F880080) is retried. If both fail, the object''s own stored coordinates
+  at +0x12/+0x13 are returned instead. Likely used by battle AI/movement to choose a destination panel
+  of a certain terrain.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'masks taken from byte_8102C90[r5->0x16 * 8] are passed as r2/r3 to object_getPanelsExceptCurrentFiltered
+    (asm at 0x8102C40-0x8102C56); GetPositiveSignedRNG then svc 6 (BIOS Div) with r1 = panel count gives
+    a random index into the sp panel list (0x8102C5A-0x8102C66); lsr #4 / lsl #0x1d+lsr #0x1d split the
+    picked panel byte into y (bits 4+) and x (low 3 bits) return values (0x8102C66-0x8102C70); empty list
+    triggers sub_8102CC4 and a retry with the second filter entry; second failure returns object fields
+    +0x12/+0x13 (0x8102C6E-0x8102C8C); callee object_getPanelsExceptCurrentFiltered''s known summary matches
+    the filtered-panel collection use; route ''battlesweep'' confirms battle context'
+  refs:
+  - bn6f/asm/asm31.s:158941
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x08102CA0 sub_8102CA0
+  reproduce: python3 tools/asmcat.py 0x08102C38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The filter input index comes from r5+0x16, not r0 (r0 is unused); the data table holds two 8-byte
+    entries with both required and forbidden masks as proposed. The conditional flow is inverted from
+    the summary: BNE after the first call goes to RNG (first filter succeeds), while BEQ goes to sub_8102CC4
+    then a second filter attempt; only if both yields are zero does it fall through to r5+0x12/0x13. sub_8102CC4
+    runs in both success-bound branches, not just after first failure.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8102CA0 and sub_8102CC4 do (likely list init/clear or panel-attribute refresh)
+- the exact meaning of the +0x16 filter selector values and which caller(s) invoke this
+- 'The filter input index comes from r5+0x16, not r0 (r0 is unused); the data table holds two 8-byte entries
+  with both required and forbidden masks as proposed. The conditional flow is inverted from the summary:
+  BNE after the first call goes to RNG (first filter succeeds), while BEQ goes to sub_8102CC4 then a second
+  filter attempt; only if both yields are zero does it fall through to r5+0x12/0x13. sub_8102CC4 runs
+  in both success-bound branches, not just after first failure.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102C38 -> object_pickRandomPanelByAttr
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102C38

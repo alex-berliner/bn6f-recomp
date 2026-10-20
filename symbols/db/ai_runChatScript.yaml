@@ -1,0 +1,60 @@
+name: ai_runChatScript
+address: '0x08089CA4'
+kind: function
+status: probable
+summary: Wrapper that forwards r0 (script index) and the TextScriptArchive* at [r5+0x30] to chatbox_runScript,
+  queuing the AI-controlled entity's dialogue script.
+interface: (r0 = script index u8; r5 = AI/context struct whose +0x30 holds TextScriptArchive*) -> r0 =
+  chatbox_runScript return; calls chatbox_runScript(archive=[r5+0x30], idx=r0)
+details: 'Six-instruction wrapper: r0 (script index) is moved to r1, the archive base pointer is loaded
+  from offset 0x30 of the r5 context structure, and chatbox_runScript is called to reset the chatbox and
+  queue the text. All captured callers are AI state handlers (including ai_chipLockoutWaitState, which
+  apparently makes the enemy speak once the chip lockout expires), so r5 is the shared AI/object context
+  and +0x30 holds that character''s dialogue archive. No other state is touched. The r5 dependence makes
+  it a context-relative helper rather than a general-purpose script runner.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: mov r1, r0 / ldr r0,[r5,#0x30] / bl chatbox_runScript — index-to-second-arg swap with
+    archive from r5+0x30; caller 0x08089ACA ai_chipLockoutWaitState calls it right before switching AI
+    state to 0x68, i.e. mid-AI-state dialogue; all six callers are AI state handlers (0x08089792/0x0808989C/0x080898FC/0x08089B7E/0x08089BAA
+    region)'
+  refs:
+  - bn6f/asm/asm23.s:1752
+  - 0x08089ACA ai_chipLockoutWaitState
+  - 0x08089792 sub_8089792
+  - 0x0808989C sub_808989C
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x08089CA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal (mov r1,r0; ldr r0,[r5,#0x30]; bl chatbox_runScript; push/pop
+    r4-r7,lr), and chatbox_runScript''s signature (archive, idx) fits. However, r1 holds the idx but the
+    call passes it as the second arg without any shift, while chatbox_runScript takes u8 idx yet callers
+    pass what is effectively a character/handler reference in r0 — suggest verifying. Name fits: AI-chatter
+    wrapper that queues dialogue from a per-AI archive; the prefix ''ai'' is correct.; run wf investigate
+    investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of struct field r5+0x30 (per-character TextScriptArchive pointer vs. shared enemy text
+  archive)
+- whether the return value from chatbox_runScript is meaningful to callers
+- 'The assembly matches the proposal (mov r1,r0; ldr r0,[r5,#0x30]; bl chatbox_runScript; push/pop r4-r7,lr),
+  and chatbox_runScript''s signature (archive, idx) fits. However, r1 holds the idx but the call passes
+  it as the second arg without any shift, while chatbox_runScript takes u8 idx yet callers pass what is
+  effectively a character/handler reference in r0 — suggest verifying. Name fits: AI-chatter wrapper that
+  queues dialogue from a per-AI archive; the prefix ''ai'' is correct.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089CA4 -> ai_runChatScript
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089CA4

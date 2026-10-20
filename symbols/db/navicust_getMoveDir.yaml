@@ -1,0 +1,63 @@
+name: navicust_getMoveDir
+address: '0x08135EEC'
+kind: function
+status: probable
+summary: 'Returns a 4-way direction code (0/4/8/0xC) from the Navi Customizer cursor''s stored coordinates:
+  returns 0xC when r1 is nonzero, otherwise compares halfwords at [r5+0x24] and [r5+0x26], returning 0xC
+  if their absolute difference is 4, 0 if equal, 8 if [r5+0x24] > [r5+0x26], else 4.'
+interface: (r0 = unused, r1 = flag/axis selector (nonzero forces 0xC), r5 = board/cursor state struct)
+  -> r0 = direction code 0/4/8/0xC
+details: Reads halfword coordinates at [r5+0x24] and [r5+0x26] (likely current vs. previous cursor position,
+  or x/y pair). If r1 is nonzero it returns 0xC immediately. Otherwise it computes r0-r1, takes the absolute
+  value, and returns 0xC if the magnitude is exactly 4 (wrap or out-of-range case), 0 if the values are
+  equal, 8 if the first is greater, and 4 if smaller. Return values are multiples of 4, matching the game's
+  direction/facing enum scale; the caller navicust_handleBoardInput uses it after processing cursor movement
+  on the board screen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x24] / ldrh r1,[r5,#0x26] then sub/abs: compares two struct coordinates; mvn
+    r2,r2; add r2,#1 implements absolute value of the delta; cmp r2,#4 special-cases a delta of 4, returning
+    0xC like the r1!=0 path; tst r1,r1; bne returns 0xC, showing r1 is a selector that overrides the computed
+    direction; only caller is 0x08135830 navicust_handleBoardInput, the NaviCust board cursor handler'
+  refs:
+  - bn6f/asm/asm36.s:12324
+  - 0x08135830 navicust_handleBoardInput
+  reproduce: python3 tools/asmcat.py 0x08135EEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does compute a 4-way direction code (0/4/8/0xC) and returns 0xC early when r1 is nonzero,
+    reads halfwords at [r5+0x24]/[r5+0x26], and the return-0xC-if-magnitude-equals-4 / 0-if-equal / 8-or-4-otherwise
+    logic matches. However the interface description in the proposal says ''r5 = board/cursor state struct''
+    while in fact r5 is not set inside the function and is expected to come from the caller (navicust_handleBoardInput);
+    the function only uses r4,r0,r1,r2. Also the ''unused r0'' claim is unverified — r0 likely holds a
+    pointer the caller passes that simply isn''t touched. The name ''navicust_getBoardMoveDir'' is plausible
+    but the ''Board'' qualifier in caller is already conveyed by the prefix; a simpler name fits.; run
+    wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of each return value (which code maps to which facing/rotation)
+- what fields +0x24/+0x26 in the r5 struct actually are (cursor x/y vs. old/new position)
+- what r1 selects (axis? input bit?) and why 0xC is the forced/invalid result
+- why a delta of exactly 4 is treated as invalid — board width/wrap behavior
+- The code does compute a 4-way direction code (0/4/8/0xC) and returns 0xC early when r1 is nonzero, reads
+  halfwords at [r5+0x24]/[r5+0x26], and the return-0xC-if-magnitude-equals-4 / 0-if-equal / 8-or-4-otherwise
+  logic matches. However the interface description in the proposal says 'r5 = board/cursor state struct'
+  while in fact r5 is not set inside the function and is expected to come from the caller (navicust_handleBoardInput);
+  the function only uses r4,r0,r1,r2. Also the 'unused r0' claim is unverified — r0 likely holds a pointer
+  the caller passes that simply isn't touched. The name 'navicust_getBoardMoveDir' is plausible but the
+  'Board' qualifier in caller is already conveyed by the prefix; a simpler name fits.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8135EEC -> navicust_getMoveDir
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135EEC

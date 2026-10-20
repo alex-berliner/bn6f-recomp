@@ -1,0 +1,67 @@
+name: battle_beastOutReapplyCrossLevels
+address: '0x08136B10'
+kind: function
+status: probable
+summary: Subtracts r0 from toolkit RenderInfo+0x18, then for each of min(level_byte>>2, 7) cross levels
+  calls battle_beastOutApplyCrossChanges_813C06C(level, 3, (frame&8)>>3) to refresh beast-out chip/anim
+  swaps, with r5 as an implicit caller-supplied context pointer.
+interface: (r0 = value subtracted from toolkit RenderInfo+0x18 halfword, r5 = implicit ptr to struct whose
+  byte+3 holds level count) -> r0 = callee result of last call; no meaningful return
+details: Takes r0 from a nearby cutscene-step caller and subtracts it from the halfword at [toolkit RenderInfo+0x18],
+  apparently undoing or counting down some offset/timer set earlier in the scene. It then computes r7
+  = (current global frame & 8) >> 3, i.e. a value alternating 0/1 every 8 frames, likely an animation/variant
+  selector. It reads a byte at [r5+3], shifts right by 2, clamps it to 7, and loops that many times calling
+  battle_beastOutApplyCrossChanges_813C06C(r6, 3, r7) with r6 counting 0..N-1; the callee swaps matched
+  chip/animation pairs into unk_30019E0 for the beast-out forms the navi owns. r5 is never set inside
+  the function, so it is an implicit context argument supplied by the caller. The constant 3 as the callee's
+  second argument likely selects the beast-out (vs cross) slot class. Used by pet_naviHealCutsceneStep
+  and three sibling step functions in the same 0x81369xx block, all reached from the beastsp scripted
+  route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r1,r1,r0 / strh into [RenderInfoPtr+0x18]: subtracts caller value from render-info field
+    (sub_8136B10 lines 3-6); ldr CurFramePtr; and r0,#8; lsr r7,#3: parity bit of frame counter passed
+    to each callee call; ldrb r4,[r5,#3]; lsr #2; clamp to 7; loop calling battle_beastOutApplyCrossChanges(r6,3,r7):
+    iterates all cross levels; callee summary: swaps beast-out chip/animation pairs into unk_30019E0 per
+    owned flag — the loop is a bulk reapply; caller pet_naviHealCutsceneStep: scripted PET navi-heal scene
+    calls this as part of its flourish/advance'
+  refs:
+  - bn6f/asm/asm36.s:13931
+  - 0x081369D0 pet_naviHealCutsceneStep
+  - 0x0813691C sub_813691C
+  - 0x081369B8 sub_81369B8
+  - 0x0813C06C battle_beastOutApplyCrossChanges_813C06C
+  reproduce: python3 tools/asmcat.py 0x08136B10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s flow: subtracts r0 from RenderInfo+0x18, computes r7 = (frame &
+    8) >> 3, clamps byte at [r5+3]>>2 to 7, loops calling battle_beastOutApplyCrossChanges_813C06C(r6,
+    3, r7). However, r5 is simply preserved across the call (push {r4-r7,lr} / pop {r4-r7,pc}) and is
+    never loaded inside, making it an implicit caller-supplied context. The proposed name is too long
+    and unwieldy; a cleaner lowerCamel prefix name fits better.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the RenderInfo+0x18 halfword being decremented and what r0 represents (offset? timer?)
+- What structure r5 points to and what the byte at +3 encodes (cross level count? form ID?)
+- Meaning of the callee's constant argument 3 and of the r7 0/1 selector (animation bank vs form variant)
+- 'The code matches the proposal''s flow: subtracts r0 from RenderInfo+0x18, computes r7 = (frame & 8)
+  >> 3, clamps byte at [r5+3]>>2 to 7, loops calling battle_beastOutApplyCrossChanges_813C06C(r6, 3, r7).
+  However, r5 is simply preserved across the call (push {r4-r7,lr} / pop {r4-r7,pc}) and is never loaded
+  inside, making it an implicit caller-supplied context. The proposed name is too long and unwieldy; a
+  cleaner lowerCamel prefix name fits better.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136B10 -> battle_beastOutReapplyCrossLevels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136B10

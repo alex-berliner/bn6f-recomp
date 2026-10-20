@@ -1,0 +1,63 @@
+name: battle_spawnLinkedPanelObject
+address: '0x080E3976'
+kind: function
+status: probable
+summary: Spawns and initializes a battle object of type 0x2D at a given panel, linking it to a parent
+  object, copying the parent's alliance, and marking it with flag 0x10.
+interface: (r0 = panel X, r1 = panel Y; r5 = parent battle object, r7 = ptr to slot receiving the new
+  object) -> r0 = spawned object (NULL on failure); flags from spawn result (beq skips stores)
+details: Calls object_spawnType4 with type 0x2D, then fills the new object's oBattleObject_PanelX/PanelY
+  from the two arguments. It stores r5 (the caller's battle object) into oBattleObject_RelatedObject1Ptr
+  and r7 into oBattleObject_ExtraVars, then writes the new object pointer back through r7 (*r7 = new object),
+  giving both a parent link and an out-param link. It copies oBattleObject_AllianceAndDirectionFlip from
+  the parent so the new object shares the parent's side/direction. Finally it sets bit 0x10 in oObjectHeader_Flags
+  of the new object, likely marking it as a spawned/linked entity. If the spawn fails (r0 == 0), everything
+  is skipped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x2d + bl object_spawnType4: spawns battle object type 0x2D; strb r1/r2 [r0,#oBattleObject_PanelX/Y]:
+    arguments are panel coordinates; str r5,[r0,#oBattleObject_RelatedObject1Ptr] + ldrh/strh of AllianceAndDirectionFlip
+    from r5: inherits parent''s team and links back; ldrb flags; orr #0x10; strb: sets flag 0x10 on the
+    new object''s header; beq locret right after the spawn call: NULL return aborts all initialization'
+  refs:
+  - bn6f/asm/asm31.s:93820
+  - 0x080B966C sub_80B966C
+  - 0x080F7D34 sub_80F7D34
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E3976
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s behavior matches the code: it spawns type 0x2D, fills PanelX/PanelY, stores r5 into
+    RelatedObject1Ptr, r7 into ExtraVars, writes back through r7, copies AllianceAndDirectionFlip, and
+    sets 0x10 in object flags, skipping on null. However, `object_spawnType4` is described as a wrapper
+    that also runs the object''s initializer (per the project''s documentation of the callee), so the
+    summary should mention the spawned object is initialized. The name is fine since ''battle_spawnLinkedPanelObject''
+    fits the prefix list and intent.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what entity type 0x2D is in game terms (callers sub_80B966C and sub_80F7D34 are unidentified)
+- meaning of the 0x10 oObjectHeader_Flags bit
+- why r5/r7 come from the caller rather than arguments — the exact calling convention of the two callers
+- 'The proposal''s behavior matches the code: it spawns type 0x2D, fills PanelX/PanelY, stores r5 into
+  RelatedObject1Ptr, r7 into ExtraVars, writes back through r7, copies AllianceAndDirectionFlip, and sets
+  0x10 in object flags, skipping on null. However, `object_spawnType4` is described as a wrapper that
+  also runs the object''s initializer (per the project''s documentation of the callee), so the summary
+  should mention the spawned object is initialized. The name is fine since ''battle_spawnLinkedPanelObject''
+  fits the prefix list and intent.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3976 -> battle_spawnLinkedPanelObject
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3976

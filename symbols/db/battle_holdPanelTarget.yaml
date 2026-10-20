@@ -1,0 +1,62 @@
+name: battle_holdPanelTarget
+address: '0x080E569C'
+kind: function
+status: probable
+summary: Phase handler that pins a related battle object to Param1/Param2's panel for 60 frames via sub_80E5700,
+  then ends with object_timefreezeEnd.
+interface: (r5 = battle object ptr, implicit) -> void; sets target PanelX/PanelY from Param1/Param2 and
+  recomputes its pixel coords each frame
+details: 'Runs as a per-frame phase handler for a battle object: if CurPhase is 0 it sets CurPhase=4 and
+  Timer=60 (0x3C). Every frame it calls sub_80E5700 (unidentified, likely the effect''s own update/animation
+  step), then reads Param1 (panel X) and Param2 (panel Y) and writes them into RelatedObject1Ptr''s oBattleObject_PanelX/PanelY,
+  so the target object is forcibly held on that panel, followed by object_setCoordinatesFromPanels to
+  sync its pixel position. It decrements Timer each frame; when it reaches 0 it calls object_timefreezeEnd
+  to release the effect''s memory and reset both sides'' time-freeze state. Param1/Param2 are therefore
+  the destination panel coordinates and RelatedObject1Ptr the dragged/held target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb Param1/Param2 stored directly into RelatedObject1Ptr->PanelX/PanelY each frame, then object_setCoordinatesFromPanels
+    called (loc_80E56AC block); phase 0 sets CurPhase=4 and Timer=0x3C, and Timer is decremented with
+    bgt loop; object_timefreezeEnd called on timer expiry, the standard end for a timed time-freeze effect;
+    callee object_setCoordinatesFromPanels matches 'recompute pixel X/Y from panel grid coords', confirming
+    the target is being (re)placed on a panel
+  refs:
+  - bn6f/asm/asm31.s:97955
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0800BD34 object_timefreezeEnd
+  - 0x080E5700 sub_80E5700
+  reproduce: python3 tools/asmcat.py 0x080E569C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: Param1/Param2 are written into RelatedObject1Ptr''s panel coords and
+    pixel coords are recomputed, the per-frame sub_80E5700 is called, Timer is decremented from 0x3C,
+    and object_timefreezeEnd is called when it hits 0. However, it sets CurPhase=4 unconditionally on
+    first call (not ''0 means 4''), so ''sets CurPhase to 4'' is more accurate. A clearer name would be
+    ''battle_holdPanelTarget'' since ''holdObjectAtPanelPhase'' conflates two ideas.; run wf investigate
+    investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- sub_80E5700 is unknown — it may reveal the effect's animation or gameplay identity
+- no known caller, so which chip/attack/enemy spawns this effect and the semantics of Param1/Param2 (absolute
+  panel vs. offsets) is unconfirmed
+- whether the target is the player, an enemy, or a summoned object depends on who sets RelatedObject1Ptr
+- 'The code matches the summary: Param1/Param2 are written into RelatedObject1Ptr''s panel coords and
+  pixel coords are recomputed, the per-frame sub_80E5700 is called, Timer is decremented from 0x3C, and
+  object_timefreezeEnd is called when it hits 0. However, it sets CurPhase=4 unconditionally on first
+  call (not ''0 means 4''), so ''sets CurPhase to 4'' is more accurate. A clearer name would be ''battle_holdPanelTarget''
+  since ''holdObjectAtPanelPhase'' conflates two ideas.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E569C -> battle_holdPanelTarget
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E569C

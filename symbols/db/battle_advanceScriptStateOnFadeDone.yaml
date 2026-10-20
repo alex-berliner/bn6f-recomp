@@ -1,0 +1,62 @@
+name: battle_advanceScriptStateOnFadeDone
+address: '0x08027806'
+kind: function
+status: probable
+summary: Polls IsScreenFadeActive; once the fade clears, writes 4 to the state byte at [r5+1] and clears
+  the halfword at [r5+2], and if the substate byte at [r5+0xc] is 3, advances [r5+0xc] and [r5+0xd] to
+  4 and re-arms the state by writing 0x2c to [r5+1] and 0 to [r5+2].
+interface: (-, r5 = event/state struct) -> void; sets [r5+0x1] (state id), [r5+0x2] (counter, halfword),
+  and conditionally [r5+0xc]/[r5+0xd]
+details: 'Reads IsScreenFadeActive and does nothing while a fade is running. Once no fade is active it
+  writes 4 to the state byte at [r5+1] and clears the halfword counter at [r5+2]. It then checks the byte
+  at [r5+0xc]: if it equals 3, it advances it to 4, copies 4 into [r5+0xd], and re-arms the state machine
+  by writing 0x2c (44) to [r5+1] and 0 to [r5+2]. The adjacent literal TextScriptFirstBattleTutorials
+  ties this handler to the first-battle-tutorial text/event script. All state lives in the r5 struct,
+  so the caller must set r5 before invoking (likely a dispatched script/event handler).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive; bne skip — early-out gates all writes on fade completion; strb #4,[r5,#1];
+    strh #0,[r5,#2] — sets a state id and resets a counter in the struct; ldrb r2,[r5,#0xc]; cmp #3 —
+    conditional stage advance writing 4 to both [r5+0xc] and [r5+0xd]; strb #0x2c,[r5,#1] — jump to state
+    0x2c with counter reset, typical script state-machine step; literal pool .word TextScriptFirstBattleTutorials
+    — identifies the owning event as the first battle tutorial'
+  refs:
+  - bn6f/asm/asm03_0.s:2790
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08027806
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are accurate: the function polls IsScreenFadeActive, then writes 4/[r5+0xc]/[r5+0xd]
+    and 0x2c to [r5+0x1] when [r5+0xc]==3, matching the asm exactly. The name is reasonable but the prefix
+    ''t3'' isn''t clearly supported since the only clue tying it to ''first-battle-tutorial'' is the literal
+    TextScriptFirstBattleTutorials, which is just data and not a confirmed caller. Since this looks like
+    a generic ''wait-fade-then-advance-script-state'' helper dispatched via a state byte at r5+1, a more
+    neutral prefix like ''battle'' or ''submenu''/''start'' may fit better, but the evidence is thin.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which dispatch table invokes this (which t1–t4 subsystem) and how r5 is set up
+- Meaning of fields 0xc/0xd in the event struct and what state 0x2c does next
+- Whether the TextScriptFirstBattleTutorials literal is referenced by this function or by a neighbor sharing
+  the pool
+- 'The proposal''s mechanics are accurate: the function polls IsScreenFadeActive, then writes 4/[r5+0xc]/[r5+0xd]
+  and 0x2c to [r5+0x1] when [r5+0xc]==3, matching the asm exactly. The name is reasonable but the prefix
+  ''t3'' isn''t clearly supported since the only clue tying it to ''first-battle-tutorial'' is the literal
+  TextScriptFirstBattleTutorials, which is just data and not a confirmed caller. Since this looks like
+  a generic ''wait-fade-then-advance-script-state'' helper dispatched via a state byte at r5+1, a more
+  neutral prefix like ''battle'' or ''submenu''/''start'' may fit better, but the evidence is thin.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8027806 -> battle_advanceScriptStateOnFadeDone
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027806

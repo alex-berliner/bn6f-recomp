@@ -1,0 +1,59 @@
+name: chatbox_runScriptIfSlotsFree
+address: '0x08129AF0'
+kind: function
+status: probable
+summary: If both text-slot structs at unk_20251A0 have a zero byte at +7, clears bit31 on both slot pointers,
+  sets the caller's state byte at r5+3 to 8, runs a chatbox script on the second slot via sub_812B3B4,
+  and clears bit0 of r5+0x1b; otherwise returns without side effects.
+interface: (r5 = caller context struct, pre-set by caller; r0 unused on entry) -> r0 = script-runner result;
+  writes bit31 flags of both unk_20251A0 entries, r5[3] = 8, clears bit0 of r5[0x1b]
+details: The function walks two pointer slots at unk_20251A0 (offsets 0 and 4). Each pointer carries bit31
+  as a flag; it masks the flag off and reads byte +7 of the pointed-to struct. If either struct has a
+  nonzero byte at +7 the function returns immediately without side effects. Otherwise a second loop stores
+  both pointers back with bit31 cleared (releasing/claiming the slots), stores 8 into byte +3 of the caller's
+  struct r5, calls sub_812B3B4 with r0 = the second slot struct (which picks a script number via a byte
+  in that struct and runs it on eTextScript201BA20), and finally clears bit0 of r5[0x1b]. Note r5 is callee-saved
+  and never initialized here, so the caller owns this context struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8129AF6 loop: reads [unk_20251A0+0/+4], bics bit31, tests byte +7, bne exits early; loc_8129B0E
+    loop: stores the flag-cleared pointers back, so the two slots'' bit31 flags are cleared; strb r0(=8),
+    [r5,#3] then bl sub_812B3B4 with r0 = last slot pointer matches the callee''s ''runs a script from
+    a struct'' summary; ldrb r1,[r5,#0x1b]; bic r1,#1; strb — clears a busy/done flag in the caller''s
+    struct; Only executed on menus3 routes, no known callers — consistent with a menu-driven text-window
+    setup routine'
+  refs:
+  - bn6f/asm/asm33.s:13585
+  - 0x0812B3B4 sub_812B3B4
+  reproduce: python3 tools/asmcat.py 0x08129AF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: loops over 2 slots at unk_20251A0, early-exits if any slot''s +7
+    byte is nonzero (bne locret_8129B2E), clears bit31 on both pointers, stores 8 into r5+3, calls sub_812B3B4
+    with the second slot''s pointer, and clears bit0 of r5+0x1b. The r5 context is callee-saved (push
+    {r4-r7,lr}) and caller-owned, correct. A slightly tighter name reflecting the conditional script run
+    would be chatbox_runScriptIfSlotsFree.; run wf investigate investigate-20261018-212108; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- menus3
+open_questions:
+- What struct r5 belongs to (which menu/submenu state machine) and what state 8 means
+- Meaning of byte +7 in the slot structs (pending script index vs. active-window flag) and of bit31
+- Which script sub_812B3B4 ends up running and why the second slot rather than the first
+- 'The code matches the proposal: loops over 2 slots at unk_20251A0, early-exits if any slot''s +7 byte
+  is nonzero (bne locret_8129B2E), clears bit31 on both pointers, stores 8 into r5+3, calls sub_812B3B4
+  with the second slot''s pointer, and clears bit0 of r5+0x1b. The r5 context is callee-saved (push {r4-r7,lr})
+  and caller-owned, correct. A slightly tighter name reflecting the conditional script run would be chatbox_runScriptIfSlotsFree.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129AF0 -> chatbox_runScriptIfSlotsFree
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129AF0

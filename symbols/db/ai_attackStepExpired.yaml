@@ -1,0 +1,60 @@
+name: ai_attackStepExpired
+address: '0x08109A50'
+kind: function
+status: probable
+summary: 'AI attack step callback: when StepTimer reaches zero, clear ObjectFlags1 bit 0x40, set the OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+  flag, reload StepTimer from AttackDuration, mark HasMoved=1, and set HitElement=0xC.'
+interface: (r7 = battle object with oAIAttackVars fields) -> void; updates StepTimer, flags, HasMoved,
+  HitElement
+details: Each call decrements oAIAttackVars_StepTimer at [r7,StepTimer]; if the result is nonzero it returns
+  immediately. On expiry it clears ObjectFlags1 bit 0x40 via object_clearFlag, then ORs in the bit at
+  OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT via object_setFlag1, reloads oAIAttackVars_StepTimer from oAIAttackVars_AttackDuration,
+  sets byte oAIAttackVars_HasMoved to 1, and stores 0xC into halfword oAIAttackVars_HitElement. So the
+  object's movement/attack period is AttackDuration frames, and this callback schedules the object's next
+  step/move while tagging its hit element. The following byte_ arrays look like adjacent data for sibling
+  AI step tables, not part of this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] with bne skip shows a countdown gate; object_clearFlag(0x40)
+    then object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) marks movement state on the battle object;
+    strh AttackDuration -> StepTimer resets the period from the attack's configured duration; strb 1 ->
+    HasMoved and strh 0xC -> HitElement record the step outcome; routes battlesweep/beastsp place it inside
+    battle AI execution
+  refs:
+  - bn6f/asm/asm31.s:173302
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08109A50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it decrements oAIAttackVars_StepTimer, returns if nonzero, otherwise clears flag
+    0x40, sets OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT, reloads StepTimer from AttackDuration, sets HasMoved=1,
+    and writes 0xC to HitElement. However, the name ''ai_attackStepTick'' is slightly misleading since
+    this routine doesn''t ''tick'' but rather handles the *expiry* of the step timer and re-arms it; ''ai_attackStepExpired''
+    is more precise.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- no caller is known, so which enemy/attack uses this and the meaning of HitElement 0xC (likely a specific
+  element enum) is unconfirmed
+- what bit 0x40 means in ObjectFlags1 is not shown here
+- 'The code matches: it decrements oAIAttackVars_StepTimer, returns if nonzero, otherwise clears flag
+  0x40, sets OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT, reloads StepTimer from AttackDuration, sets HasMoved=1,
+  and writes 0xC to HitElement. However, the name ''ai_attackStepTick'' is slightly misleading since this
+  routine doesn''t ''tick'' but rather handles the *expiry* of the step timer and re-arms it; ''ai_attackStepExpired''
+  is more precise.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8109A50 -> ai_attackStepExpired
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8109A50

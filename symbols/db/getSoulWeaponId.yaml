@@ -1,0 +1,57 @@
+name: getSoulWeaponId
+address: '0x081427F2'
+kind: function
+status: probable
+summary: Calls GetSoulWeaponsMapIndex and returns a 16-bit per-soul-weapon ID from the byte_8142804 lookup
+  table (halfword stride, 8 entries 0x686-0x68D with a 0x0000 padding).
+interface: (r0 = ? passed through to GetSoulWeaponsMapIndex) -> r0 = halfword ID from byte_8142804[index];
+  no flag use
+details: Calls GetSoulWeaponsMapIndex to get a weapon index, doubles it (halfword stride), and loads a
+  16-bit entry from the table at byte_8142804. The table holds eight consecutive halfwords 0x686–0x68D,
+  so the map index is limited to 0–7, with a trailing 0x0000 entry (likely out-of-range/default or padding).
+  The returned value is a small sequential ID block, consistent with a text archive entry, sound, or similar
+  per-weapon resource id; the exact ID space is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetSoulWeaponsMapIndex supplies the index; result is doubled before the ldrh, so table entries
+    are halfwords; byte_8142804 contains 0x686,0x687,...,0x68D as halfwords — one contiguous block of
+    8 ids plus a 0x0,0x0 terminator; single caller sub_8142734 and callee GetSoulWeaponsMapIndex both
+    sit adjacent (0x081426CE/0x08142734), i.e. one subsystem around soul weapons
+  refs:
+  - bn6f/asm/asm37_1.s:1542
+  - 0x08142734 sub_8142734
+  - 0x081426CE GetSoulWeaponsMapIndex
+  reproduce: python3 tools/asmcat.py 0x081427F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The lookup and doubling match the code (ldr r1,off_8142800; lsl r0,r0,#1; ldrh r0,[r1,r0]) and the
+    table at byte_8142804 is correctly described as eight halfwords 0x686-0x68D followed by 0x0000. However,
+    the proposed name ''getSoulWeaponsTextId'' assumes the returned IDs are text entries, which the code
+    does not confirm; the name should reflect the generic per-weapon ID lookup. The single caller sub_8142734
+    confirms only that this is a per-weapon resource ID accessor.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the ID space 0x686–0x68D refers to (text archive entries, sound ids, or something else)
+- what arguments GetSoulWeaponsMapIndex takes and how the map index is produced
+- what sub_8142734 does with the returned id (would confirm text vs sound vs other)
+- The lookup and doubling match the code (ldr r1,off_8142800; lsl r0,r0,#1; ldrh r0,[r1,r0]) and the table
+  at byte_8142804 is correctly described as eight halfwords 0x686-0x68D followed by 0x0000. However, the
+  proposed name 'getSoulWeaponsTextId' assumes the returned IDs are text entries, which the code does
+  not confirm; the name should reflect the generic per-weapon ID lookup. The single caller sub_8142734
+  confirms only that this is a per-weapon resource ID accessor.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81427F2 -> getSoulWeaponId
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81427F2

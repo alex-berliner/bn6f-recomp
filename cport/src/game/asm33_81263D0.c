@@ -4879,7 +4879,7 @@ static inline call_sub_812B25C_result_sub_8129A98 call_sub_812B25C_sub_8129A98(u
 /* ------------------------------------------------------------------ */
 
 /* Dispatch table: phase byte -> Thumb routine address (bit 0 set).
- * 0 decideBattleAction_8129AC8, 1 sub_8129AF0, 2 sub_8129B34,
+ * 0 decideBattleAction_8129AC8, 1 chatbox_runScriptIfSlotsFree, 2 sub_8129B34,
  * 3 chipSelectInit_8129B90,     4 sub_8129BB0, 5 sub_8129BDC. */
 #define AI_STEP_TABLE A_off_8129AB0
 

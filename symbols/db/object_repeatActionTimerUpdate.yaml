@@ -1,0 +1,61 @@
+name: object_repeatActionTimerUpdate
+address: '0x080E99DC'
+kind: function
+status: probable
+summary: Skips update if related object's flag word has bits 0xA000 set; otherwise decrements Timer, and
+  when it hits zero calls sub_80E9A38 then reloads Timer from a 4-entry table (180/160/140/120 frames)
+  indexed by Param1<<2, producing a repeating action that fires more frequently as Param1 advances.
+interface: (r5 = battle object) -> void; clobbers r0/r1, flags set but unused by caller
+details: Reads the object's RelatedObject1Ptr and queries its collision-data flag word via object_getFlag;
+  if either bit of mask 0xA000 is set, the countdown is skipped this frame (e.g. paused while the related
+  object is in some state). Otherwise Timer is decremented; while it stays >0 the handler just returns.
+  When the Timer hits 0, sub_80E9A38 is called (the actual action of this object), then Param1<<2 indexes
+  the table off_80E9A0C (180, 160, 140, 120 frames) and the fetched value is stored back into Timer, so
+  successive firings come faster as long as Param1 advances (presumably incremented by sub_80E9A38). The
+  mask 0xA000 covers flag bits 15 and 13 of the related object's first flag word.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, #0xa000 + bne skips the countdown based on object_getFlag of RelatedObject1Ptr; ldrh/sub/strh
+    on oBattleObject_Timer with bgt: classic frame countdown; bl sub_80E9A38 fires the action exactly
+    when Timer reaches 0; Param1<<2 into off_80E9A0C (0xB4,0xA0,0x8C,0x78) reloaded into Timer: shrinking
+    repeat intervals; installed as an update handler called from battle_objectUpdate each frame'
+  refs:
+  - bn6f/asm/asm31.s:107342
+  - 0x080E99C0 battle_objectUpdate
+  - 0x0801A166 object_getFlag
+  - 0x080E9A38 sub_80E9A38
+  reproduce: python3 tools/asmcat.py 0x080E99DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The core logic (mask 0xA000 skip, decrement Timer, call sub_80E9A38, reload from 4-entry table off_80E9A0C)
+    matches the code. However, the table values in the code are 0xB4, 0xA0, 0x8C, 0x78 (180, 160, 140,
+    120), not 120/140/160/180 as one might read; also, since Timer is stored with strh and the entries
+    are shorts/words, successive firings actually get shorter (faster) as Param1 increases. The name ''battle_repeatActionTimerUpdate''
+    is fine but the prefix ''battle_'' is redundant since the caller is already battle_objectUpdate; ''object_repeatActionTimerUpdate''
+    fits the codebase conventions better.; run wf investigate investigate-20261018-200615; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80E9A38 does and whether it increments Param1 to step through the interval table
+- which gameplay states flag bits 15/13 of the related object's flag word represent (why the countdown
+  pauses)
+- The core logic (mask 0xA000 skip, decrement Timer, call sub_80E9A38, reload from 4-entry table off_80E9A0C)
+  matches the code. However, the table values in the code are 0xB4, 0xA0, 0x8C, 0x78 (180, 160, 140, 120),
+  not 120/140/160/180 as one might read; also, since Timer is stored with strh and the entries are shorts/words,
+  successive firings actually get shorter (faster) as Param1 increases. The name 'battle_repeatActionTimerUpdate'
+  is fine but the prefix 'battle_' is redundant since the caller is already battle_objectUpdate; 'object_repeatActionTimerUpdate'
+  fits the codebase conventions better.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E99DC -> object_repeatActionTimerUpdate
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E99DC

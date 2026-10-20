@@ -1,0 +1,60 @@
+name: battle_spawnType2LinkedChild
+address: '0x080B8786'
+kind: function
+status: probable
+summary: Spawns a type-2 battle object at (x,y,z) with the given params, links it to the caller's r5 parent
+  BattleObject, inherits the parent's alliance/facing, and sets the attached bit on the child's object-header
+  flags.
+interface: (r0 ignored, r1 = x, r2 = y, r3 = z, [sp] = params; caller's r5 = parent BattleObject) -> r0
+  = new BattleObject or 0; flags from spawn
+details: 'Hardcodes obj_idx = 2 and forwards r1-r3 and the stacked param to object_spawnType1. On success
+  (spawn result in r0, checked via flags after the pop), it stores the caller''s r5 object pointer into
+  the new object''s oBattleObject_RelatedObject1Ptr, copies the parent''s oBattleObject_AllianceAndDirectionFlip
+  halfword into the child, and sets bit 0x04 of oObjectHeader_Flags — likely the ''follow related object''
+  bit so the child tracks its parent. Quirk: r5 is read before the pop, i.e. it is purely the caller''s
+  register value, not a local.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #2 before bl object_spawnType1 fixes the spawned object index; str r5, [r0,#oBattleObject_RelatedObject1Ptr]
+    links child to caller''s r5 object; ldrh/strh of oBattleObject_AllianceAndDirectionFlip copies parent''s
+    team/flip to child; orr r1, r2 with r2=#4 on oObjectHeader_Flags sets the attachment-related flag;
+    callee object_spawnType1''s known summary confirms the 5-arg spawn + type init contract'
+  refs:
+  - bn6f/asm/asm31.s:774
+  - 0x081159B0 sub_81159B0
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B8786
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it pushes r2 and r5, hardcodes obj_idx=2, forwards r1/x, r2/y, r3/z,
+    and the stacked param to object_spawnType1, then links the parent''s r5 object into oBattleObject_RelatedObject1Ptr,
+    copies the parent''s oBattleObject_AllianceAndDirectionFlip halfword, and sets bit 0x04 of oObjectHeader_Flags.
+    However, the proposed name ''spawnLinkedObject'' is too generic — the function specifically spawns
+    type-2 objects and the called object''s r5 is the parent (caller''s context), so a more specific name
+    is warranted. The summary is accurate.; run wf investigate investigate-20261018-203615; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of ObjectHeader flag 0x04 (attachment/follow behaviour) not proven
+- which gameplay entity is object type 2 (spawned only via this wrapper in the captured routes)
+- 'The code matches the proposal: it pushes r2 and r5, hardcodes obj_idx=2, forwards r1/x, r2/y, r3/z,
+  and the stacked param to object_spawnType1, then links the parent''s r5 object into oBattleObject_RelatedObject1Ptr,
+  copies the parent''s oBattleObject_AllianceAndDirectionFlip halfword, and sets bit 0x04 of oObjectHeader_Flags.
+  However, the proposed name ''spawnLinkedObject'' is too generic — the function specifically spawns type-2
+  objects and the called object''s r5 is the parent (caller''s context), so a more specific name is warranted.
+  The summary is accurate.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8786 -> battle_spawnType2LinkedChild
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8786

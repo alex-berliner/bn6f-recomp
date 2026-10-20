@@ -1,0 +1,63 @@
+name: battle_commitStaticActorDamage
+address: '0x080D7A2A'
+kind: function
+status: probable
+summary: Static-actor damage-reaction helper that, once it sees 3 consecutive frames of HP drop (or a
+  forced Timer==1), commits the accumulated damage by setting CurAction=2, phase=0, and storing MaxHP-HP
+  into the low bits of the Damage field while preserving bits 12-14.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = 0 or clobbered; sets oBattleObject_CurAction=2,
+  phase=0, ExtraVars flags and Damage field
+details: 'Called from battle_updateStaticActor with r5 pointing at the object. Returns immediately if
+  CurAction==2 (already reacting). If Timer==1 it forces the transition on the first frame; otherwise
+  it requires ExtraVars+4 clear and a nonzero oCollisionData_FlagsFromCollision (object was hit). It caches
+  the current HP at ExtraVars+0xc and increments ExtraVars+0 whenever HP changed since the last frame;
+  after 3 such frames it commits: sets ExtraVars+4, writes Damage = (MaxHP - HP) | (Damage & 0x7000) so
+  the total HP lost replaces the low bits while damage-type flag bits 12-14 are preserved, then sets CurAction=2
+  and phase 0 to run the damaged/flinch state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst on ldr [CollisionDataPtr], FlagsFromCollision with beq exit — only proceeds when the object
+    registered a collision; compare of ExtraVars+0xc against HP after storing new HP — detects an HP change
+    (damage taken) frame by frame; strh (MaxHP-HP)|(Damage&0x7000) to Damage via dword_80D7AC8=0x7000
+    — records total damage, keeping type flag bits; strb #2 to CurAction and clearing CurPhaseAndPhaseInitialized
+    — transition into the hit-reaction action; called at 0x080D774C inside battle_updateStaticActor''s
+    per-frame state machine for the static-actor object'
+  refs:
+  - bn6f/asm/asm31.s:68287
+  - 0x080D774C battle_updateStaticActor
+  reproduce: python3 tools/asmcat.py 0x080D7A2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: it bails when CurAction==2, branches to the commit on Timer==1,
+    otherwise requires ExtraVars+4 clear and nonzero FlagsFromCollision, caches HP at ExtraVars+0xc and
+    increments ExtraVars+0 when HP drops, committing after 3 such frames by writing Damage=(MaxHP-HP)|(Damage&0x7000)
+    and setting CurAction=2 with phase=0. The ''queue'' framing is misleading though, since the function
+    only debounces 3 frames before committing and the summary overstates ''short confirm delay''; it is
+    a damage-debounce/transition helper. A tighter name would be battle_commitStaticActorDamage.; run
+    wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- chips
+open_questions:
+- what action state 2 renders (flinch animation vs. destruction)
+- why Timer==1 forces the transition immediately, bypassing the 3-frame confirm counter
+- semantics of the ExtraVars+4 latch for later frames of the same action
+- 'The code matches the described behavior: it bails when CurAction==2, branches to the commit on Timer==1,
+  otherwise requires ExtraVars+4 clear and nonzero FlagsFromCollision, caches HP at ExtraVars+0xc and
+  increments ExtraVars+0 when HP drops, committing after 3 such frames by writing Damage=(MaxHP-HP)|(Damage&0x7000)
+  and setting CurAction=2 with phase=0. The ''queue'' framing is misleading though, since the function
+  only debounces 3 frames before committing and the summary overstates ''short confirm delay''; it is
+  a damage-debounce/transition helper. A tighter name would be battle_commitStaticActorDamage.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7A2A -> battle_commitStaticActorDamage
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7A2A

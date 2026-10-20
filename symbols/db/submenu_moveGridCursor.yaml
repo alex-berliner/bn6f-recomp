@@ -1,0 +1,77 @@
+name: submenu_moveGridCursor
+address: '0x0811F91C'
+kind: function
+status: probable
+summary: Moves a 2D (row/column) cursor within limits by a direction bitmask (0x40=col-1, 0x80=col+1,
+  0x100/0x200=row±5, with bit7 of r1 selecting the row direction), optionally wrapping at edges when r2
+  is nonzero, and plays the cursor-move sound if either coordinate changed.
+interface: '(r0 = direction/key bitmask (0x40: coordA-1, 0x80: coordA+1, 0x100: coordB+5, 0x200: coordB-5),
+  r1 = limit value (bit7 = alt step flag, low bits-1 = coordA max index), r2 = nonzero to wrap at edges,
+  r3 = offset of record in the global struct at r5) -> r0 = 0xFF if cursor moved else 0; destroys r4-r7,
+  r8-r9, r12'
+details: 'Reads current coordinates from halfwords at record+0x20 and record+0x24 and a total count at
+  record+0x1E of a sub-record selected by r3 inside the structure r5 points at (r5 is never set here,
+  so it is a fixed global base). coordA steps by 1 for bits 0x40/0x80 and coordB by 5 for bits 0x100/0x200
+  (or unconditionally by 5 down when bit7 of r1 is set), clamped to [0, max] where coordA''s max is (r1
+  & ~0x80)-1 and coordB''s max is count-(maxA+1). With r2 nonzero, moving past an edge wraps: coordA jumps
+  to the opposite end and coordB shifts a row, with special cases resetting both to 0. If either coordinate
+  changed it plays SOUND_MENU_CUR_MOVE via PlaySoundEffect and returns 0xFF; otherwise returns 0. New
+  coordinates are stored back to record+0x20/+0x24.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r2/r3 from [r5, r8+0x20]/[r5, r8+0x24] and strh back at end: cursor coordinates in a record;
+    tst 0x40/0x80 steps r2 by 1, tst 0x100/0x200 steps r3 by 5: directional grid movement with 5-per-row
+    layout; clamps against r9=(r1&~0x80)-1 and [r5+r8+0x1E]-derived bound, with wrap logic gated on r2
+    (r12) flag; bl PlaySoundEffect with SOUND_MENU_CUR_MOVE and return r7=0xff on change, 0 otherwise;
+    single caller sub_8130370 and routes covering menus/maps/battles fit a shared menu cursor helper'
+  refs:
+  - bn6f/asm/asm32.s:35598
+  - 0x08130370 sub_8130370
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0811F91C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly right: direction bits 0x40/0x80 step coordA by 1, 0x100/0x200 step coordB
+    by 5, with wrap support and PlaySoundEffect on change. However, the direction-bit mapping is inverted
+    vs the proposal: lines testing 0x40 subtract (move up) and 0x80 add (move down) for coordA, and 0x100
+    adds/subtracts coordB while 0x200 triggers the alt path. Also r2 (r12 saved) being nonzero controls
+    wrap, not just ''wrap at edges'', and bit7 of r1 selects the coordB-direction branch (lines `lsr r1,
+    r1, #7; tst r1, r1` at both 0x811F946 and 0x811F990). The name and summary should reflect 2D cursor
+    movement with wrap.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which menu or screen owns this (identity of the global r5 base and what record offset r3 selects) —
+  caller sub_8130370 would show it
+- Exact meaning of bit7 of arg r1 and of the 0x100/0x200 bits of r0 (hardware keys vs. derived direction
+  flags)
+- 'The summary is mostly right: direction bits 0x40/0x80 step coordA by 1, 0x100/0x200 step coordB by
+  5, with wrap support and PlaySoundEffect on change. However, the direction-bit mapping is inverted vs
+  the proposal: lines testing 0x40 subtract (move up) and 0x80 add (move down) for coordA, and 0x100 adds/subtracts
+  coordB while 0x200 triggers the alt path. Also r2 (r12 saved) being nonzero controls wrap, not just
+  ''wrap at edges'', and bit7 of r1 selects the coordB-direction branch (lines `lsr r1, r1, #7; tst r1,
+  r1` at both 0x811F946 and 0x811F990). The name and summary should reflect 2D cursor movement with wrap.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811F91C -> submenu_moveGridCursor
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811F91C

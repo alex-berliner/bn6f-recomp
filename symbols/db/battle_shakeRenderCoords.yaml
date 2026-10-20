@@ -1,0 +1,67 @@
+name: battle_shakeRenderCoords
+address: '0x0801823C'
+kind: function
+status: probable
+summary: Jitters a battle object's render X/Z by a small random amount for up to 30 frames, using its
+  original X16/Z16 as scratch and writing the result to r5+0x34..0x3C before restoring the true coordinates.
+interface: (r5 = battle object, no args) -> writes jittered X/Y/Z render coords to r5+0x34..0x3C; no return
+  value
+details: First calls hideSummonsWhenBlind. If PreventAnim is clear, it snapshots oBattleObject_X16 into
+  the ChipID scratch field and Z16 into Z16Save, clears WobbleOrEffectTimer and sets PreventAnim=4 to
+  freeze animation. If the word at CollisionDataPtr+0x80 is nonzero, the shake timer is set to 30 frames.
+  Each frame while the timer is nonzero it decrements it and calls AddRandomVarianceToTwoCoords with mask
+  3 on the saved X16/Z16 (Y passed along), storing the jittered fixed-point coords into the scratch block
+  at r5+0x34 used for rendering, so the object visibly quakes around its original spot. When the timer
+  hits zero the saved X16/Z16 are written back, ending the shake. The ChipID/Z16Save fields are clearly
+  reused as scratch, not real chip data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Snapshot + PreventAnim=4 + timer setup at the top of sub_801823C freezes animation during the
+    effect; CollisionDataPtr+0x80 flag selects a 30-frame WobbleOrEffectTimer duration; shake loop calls
+    AddRandomVarianceToTwoCoords (known: centered random jitter, mask 3, one RNG roll) and stores results
+    at r5+0x34..; timer expiry path restores X16/Z16 from ChipID/Z16Save scratch; chip-route callers (0x801B4D4/B610/B750)
+    invoke it per-frame as a battle-object updater'
+  refs:
+  - bn6f/asm/asm00_2.s:20858
+  - 0x0801B4D4 sub_801B4D4
+  - 0x0801B610 sub_801B610
+  - 0x0801B750 sub_801B750
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x080181F6 hideSummonsWhenBlind_80181F6
+  reproduce: python3 tools/asmcat.py 0x0801823C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does run a position-shake using AddRandomVarianceToTwoCoords (mask 3) over saved X/Z with
+    the current Y, writing the result into r5+0x34..0x3C as jittered render coords, and ends by restoring
+    X16/Z16 from the ChipID/Z16Save scratch fields. However, the proposal claims PreventAnim is set to
+    4 to freeze animation, but the code only sets PreventAnim=4 once on the first call when it was zero,
+    not every frame; and the shake timer is 30 frames only if the CollisionDataPtr+0x80 word is nonzero.
+    The name is reasonable but should reflect it preserves the real coords as scratch rather than implying
+    the animation pause is its main purpose.; run wf investigate investigate-20261018-200615; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- chips
+open_questions:
+- Which chips/objects the callers 0x801B4D4/B610/B750 belong to, i.e. which attacks trigger this shake
+- Exact meaning of the CollisionDataPtr+0x80 flag and the role of the Y value passed to AddRandomVarianceToTwoCoords
+- The code does run a position-shake using AddRandomVarianceToTwoCoords (mask 3) over saved X/Z with the
+  current Y, writing the result into r5+0x34..0x3C as jittered render coords, and ends by restoring X16/Z16
+  from the ChipID/Z16Save scratch fields. However, the proposal claims PreventAnim is set to 4 to freeze
+  animation, but the code only sets PreventAnim=4 once on the first call when it was zero, not every frame;
+  and the shake timer is 30 frames only if the CollisionDataPtr+0x80 word is nonzero. The name is reasonable
+  but should reflect it preserves the real coords as scratch rather than implying the animation pause
+  is its main purpose.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801823C -> battle_shakeRenderCoords
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801823C

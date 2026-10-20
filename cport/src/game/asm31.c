@@ -1609,7 +1609,7 @@ Next sub_80C0EE2(void) {
     R0 = LD16(related + oBattleObject_NameID);
     GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
     R2 = 1;
-    GUEST_CALL(sub_8011044);
+    GUEST_CALL(battle_runObjectTeardownByNameID);
 
     /* If Param4 == 0, also poke the teardown helper on RelatedObject1. */
     if (LD8(R5 + oBattleObject_Param4) == 0) {

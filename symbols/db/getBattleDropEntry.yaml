@@ -1,0 +1,58 @@
+name: getBattleDropEntry
+address: '0x080E543C'
+kind: function
+status: probable
+summary: 'Returns two words from drop[index] in the battle state: word at entry+0 in r0 and word at entry+8
+  in r1; r0 is scaled by 4 and added to the Drop offset.'
+interface: (r0 = drop index) -> r0 = word at drop[idx]+0, r1 = word at drop[idx]+8; flags not meaningful
+  (last load sets them)
+details: 'Fetches the current battle state via the toolkit''s oToolkit_BattleStatePtr (r10), then indexes
+  the array/struct at oBattleState_Drop by r0*4 and loads two fields from the resulting address: [entry]
+  and [entry+8]. It is a pure getter — no writes, no calls. The 12-byte-ish stride implied by reading
+  +0 and +8 while indexing by 4 suggests r0 may actually be a byte/word offset or the entries overlap;
+  the exact drop-record layout (likely item ID plus amount/count, given this is the post-battle drop table)
+  needs the struct definition to confirm.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r2,[r10,#oToolkit_BattleStatePtr] then add r2 + (r0<<2) + oBattleState_Drop — indexes battle-state
+    drop data; ldr r0,[r2] / ldr r1,[r2,#8] — returns exactly the two fields at +0 and +8 of the indexed
+    entry; 8-instruction leaf with no callees — pure accessor into the battle state; only caller sub_80E532C
+    sits immediately before it, consistent with a small helper pair around drop handling
+  refs:
+  - bn6f/asm/asm31.s:97735
+  - 0x080E532C sub_80E532C
+  reproduce: python3 tools/asmcat.py 0x080E543C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does exactly what the summary says: ldr r2,[r2,#oToolkit_BattleStatePtr] fetches the state,
+    then lsl r0,#2 + add #oBattleState_Drop indexes into Drop, and ldr r0,[r2] / ldr r1,[r2,#8] returns
+    two words. The note about stride is just hand-waving. The name ''battle_getDropEntry'' is reasonable,
+    but a clearer prefix convention is ''get'' (e.g., getBattleDropEntry), and the function is a pure
+    getter with no flags involved.; run wf investigate investigate-20261018-212108; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact layout of the oBattleState_Drop records (item id? amount? zenny vs chip?) — need the struct definition
+  or sub_80E532C's body
+- whether r0 is a record index or a byte/word offset, given the *4 scaling versus the +8 field read
+- what sub_80E532C does with the two returned words (display, awarding, or drop-roll logic)
+- 'The code does exactly what the summary says: ldr r2,[r2,#oToolkit_BattleStatePtr] fetches the state,
+  then lsl r0,#2 + add #oBattleState_Drop indexes into Drop, and ldr r0,[r2] / ldr r1,[r2,#8] returns
+  two words. The note about stride is just hand-waving. The name ''battle_getDropEntry'' is reasonable,
+  but a clearer prefix convention is ''get'' (e.g., getBattleDropEntry), and the function is a pure getter
+  with no flags involved.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E543C -> getBattleDropEntry
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E543C

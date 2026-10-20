@@ -1,0 +1,56 @@
+name: ai_woodAttackCharge
+address: '0x08105CC0'
+kind: function
+status: probable
+summary: 'AI attack state: charges a wood-element attack (anim 0x19, SFX 0x193, 60-frame windup) then
+  marks the hit as wood.'
+interface: (r0 = unused, r7 = battle object AI attack vars, r5 = battle object) -> r0 = clobbered by PlaySoundEffect;
+  sets oAIAttackVars_AttackElement, HitElement, StepTimer, oBattleObject_CurAnim
+details: 'Run every frame for an enemy''s attack step. If oAIAttackVars_AttackElement is 0 it initializes:
+  writes element 4 (wood) into AttackElement, sets the object''s current animation to 0x19, plays sound
+  effect 0x93, and loads StepTimer with 0x3C frames. Otherwise it decrements StepTimer each frame; when
+  it reaches 0 it stores element 4 into oAIAttackVars_HitElement, which a later hit-resolution step presumably
+  reads to apply the wood attack. AttackElement being nonzero also acts as the ''initialized'' flag so
+  the charge phase only happens once.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips init on later frames; strb r0(=4),[r7,#oAIAttackVars_AttackElement]
+    and strh 0x3C into StepTimer set a 60-frame windup; strb 0x19,[r5,#oBattleObject_CurAnim] + bl PlaySoundEffect(0x93)
+    give the charge its animation and sound; on StepTimer expiry: strh 4,[r7,#oAIAttackVars_HitElement]
+    marks the resulting hit''s element; struct fields all live under oAIAttackVars_* / oBattleObject_*,
+    so this is battle AI-side, not player code'
+  refs:
+  - bn6f/asm/asm31.s:165226
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x08105CC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the function as setting element 4 (wood) and a 60-frame (0x3C)
+    windup, but the sound effect ID is wrong: the asm does `mov r0, #0x94; add r0, #0xff`, which computes
+    0x94 + 0xFF = 0x193 (with low byte 0x93), and the proposal states 0x93. Also, the store to oAIAttackVars_HitElement
+    uses `strh` (halfword), not `strb`, per `strh r0, [r7,#oAIAttackVars_HitElement]`.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack uses this (no known caller), and whether element ID 4 is indeed wood in this game's
+  enum
+- what consumes oAIAttackVars_HitElement to confirm the attack's actual damage/behavior
+- 'The proposal correctly identifies the function as setting element 4 (wood) and a 60-frame (0x3C) windup,
+  but the sound effect ID is wrong: the asm does `mov r0, #0x94; add r0, #0xff`, which computes 0x94 +
+  0xFF = 0x193 (with low byte 0x93), and the proposal states 0x93. Also, the store to oAIAttackVars_HitElement
+  uses `strh` (halfword), not `strb`, per `strh r0, [r7,#oAIAttackVars_HitElement]`.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105CC0 -> ai_woodAttackCharge
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105CC0

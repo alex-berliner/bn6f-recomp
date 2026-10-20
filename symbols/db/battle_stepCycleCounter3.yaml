@@ -1,0 +1,55 @@
+name: battle_stepCycleCounter3
+address: '0x08114D2C'
+kind: function
+status: probable
+summary: Increments a byte counter at caller-provided [r5+0x69]; if the new value exceeds 3, resets it
+  to 0 and returns 1, otherwise returns 0.
+interface: (r0 = ignored, always written 0; r5 = base of caller's structure) -> r0 = 1 if counter wrapped
+  3->0, else 0; flags clobbered by pop, r4-r7 preserved
+details: 'Reads the byte at [r5+0x69], increments it, stores it back; if the new value exceeds 3 (cmp
+  #3, ble), resets the field to 0 and returns r0=1, otherwise returns r0=0. The counter therefore cycles
+  0,1,2,3->0 wait: it stores values 1..3 then wraps to 0, so the cycle is 0,1,2,3 then 0 again — a 4-state
+  counter that signals on overflow past 3. r0 is zeroed at entry and only set on wrap; r5 is not set up
+  in this function, so the structure base must be a caller-provided register convention (e.g. a shared
+  ''current object'' register). Field 0x69 is a single-byte counter; no other fields are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#0x69] / add r1,#1 / strb r1,[r5,#0x69] — increments a single-byte field; cmp r1,#3
+    / ble locret — wrap test: only values above 3 trigger the reset path; mov r1,#0 / strb r1,[r5,#0x69]
+    / mov r0,#1 — on wrap, counter reset to 0 and return value 1; mov r0,#0 at entry and fallthrough to
+    locret — return 0 when no wrap; no callee calls and only r5-relative access — pure counter update
+    on a caller-owned struct'
+  refs:
+  - bn6f/asm/asm32.s:13885
+  reproduce: python3 tools/asmcat.py 0x08114D2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the described behavior: it increments a byte at [r5+0x69], wraps to 0 and returns
+    1 on overflow past 3, else returns 0. However, the counter actually cycles 1,2,3,0 (not 0,1,2,3,0
+    then 0 again), since it increments from any prior value including 0. A more precise name would reflect
+    the 3-state-after-increment wrap signal.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which structure has a counter at offset 0x69 and what the 4-state cycle selects (animation phase, AI
+  step, sweep pass) — needs the caller, which is unknown
+- How r5 is set to the structure base by callers (shared-register convention?) to confirm the struct identity
+- 'The assembly matches the described behavior: it increments a byte at [r5+0x69], wraps to 0 and returns
+  1 on overflow past 3, else returns 0. However, the counter actually cycles 1,2,3,0 (not 0,1,2,3,0 then
+  0 again), since it increments from any prior value including 0. A more precise name would reflect the
+  3-state-after-increment wrap signal.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8114D2C -> battle_stepCycleCounter3
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114D2C

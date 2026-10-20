@@ -1,0 +1,66 @@
+name: battle_findFarthestClearPanelColumn
+address: '0x080CD236'
+kind: function
+status: probable
+summary: Scans a row of the battle field from the far edge (column 6 for player, column 1 for enemy) toward
+  the object and returns the x of the first panel whose status word does not have bit 0x800000 set; returns
+  0 if none clear before x leaves the field.
+interface: (r0 = battle object ptr (r5 base), r1 = row y) -> r0 = column x of first panel lacking flag
+  0x800000, or 0/7 if none found; r4,r6,r7 clobbered
+details: Start column is computed as (Alliance ^ DirectionFlip ^ 1) * 5 + 1, i.e. column 6 for the player
+  side and column 1 for the enemy side (flip-aware), which is the far edge of the field relative to the
+  object. r6 = -object_getFrontDirection(), so the scan walks from that far edge back toward the object's
+  own side (decreasing x for the player, increasing for the enemy). Each iteration pushes the current
+  x/y and calls object_getPanelParameters; if the panel status word has bit 0x800000 set, x is stepped
+  by r6 and the loop continues; if the bit is clear, the current x is returned. If x reaches 0 (player-side
+  scan) it returns 0; on the enemy-side scan running past column 6 it falls through returning 7, an asymmetric
+  out-of-range sentinel. Used by sub_80CD160 on recorded chip routes, so it likely locates a placement
+  column for a chip effect that must avoid hole-type panels.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'start column ((Alliance^DirectionFlip^1)*5+1) yields 6 or 1: asm lines computing eor/mul/add
+    before loc_80CD252; neg r6, r0 after object_getFrontDirection makes the scan run from the far edge
+    back toward the object; loop calls object_getPanelParameters and tst r0, dword_80CD2E8 (0x800000),
+    continuing only when the flag is set; bounds: add r0,r0,r6; beq -> return 0, and cmp r0,#7 / blt loop
+    with fall-through returning 7; only caller is sub_80CD160 on chip routes, consistent with a chip-effect
+    panel search'
+  refs:
+  - bn6f/asm/asm31.s:45838
+  - 0x080CD160 sub_80CD160
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080CD236
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The scan logic, sentinel values (0 for one side, 7 via fall-through for the other), and the dword_80CD2E8
+    == 0x800000 check match the proposal. However, the loop condition is `cmp r0,#7; blt loc_80CD252`
+    — it continues while x < 7, so the far edge start is column 6 and it walks until x reaches 7, not
+    0 as the proposal claims. The asymmetric out-of-range sentinel is therefore 7 (off the far end), not
+    because x ''reaches 0''. The name and summary are essentially correct but the boundary description
+    in the summary is slightly off.; run wf investigate investigate-20261018-200615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- chips
+open_questions:
+- exact meaning of panel status flag 0x800000 (hole vs broken vs other)
+- what sub_80CD160 does with the returned column, which would pin down which chip effect this serves
+- whether the 7 fall-through return is intended or a latent bug
+- The scan logic, sentinel values (0 for one side, 7 via fall-through for the other), and the dword_80CD2E8
+  == 0x800000 check match the proposal. However, the loop condition is `cmp r0,#7; blt loc_80CD252` —
+  it continues while x < 7, so the far edge start is column 6 and it walks until x reaches 7, not 0 as
+  the proposal claims. The asymmetric out-of-range sentinel is therefore 7 (off the far end), not because
+  x 'reaches 0'. The name and summary are essentially correct but the boundary description in the summary
+  is slightly off.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD236 -> battle_findFarthestClearPanelColumn
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD236

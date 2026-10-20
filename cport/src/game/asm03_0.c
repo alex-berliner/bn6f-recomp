@@ -3236,10 +3236,10 @@ Next matchHalfwordPatternEntry_802961A(void) {
  * them, matching the original.
  */
 
-/* register form: calls sub_802996E outside this file, which has no typed C interface yet */
+/* register form: calls battleTutorialCheckCustomScreen outside this file, which has no typed C interface yet */
 static u32 tutorial_script_0(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_802996E);
+    GUEST_CALL(battleTutorialCheckCustomScreen);
     return R0;
 }
 
@@ -3250,10 +3250,10 @@ static u32 tutorial_script_1(u32 state) {
     return R0;
 }
 
-/* register form: calls sub_80299FA outside this file, which has no typed C interface yet */
+/* register form: calls battleTutorial_getMessageId outside this file, which has no typed C interface yet */
 static u32 tutorial_script_3(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_80299FA);
+    GUEST_CALL(battleTutorial_getMessageId);
     return R0;
 }
 

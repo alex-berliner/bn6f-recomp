@@ -1,0 +1,64 @@
+name: battle_highlightFrontPanel
+address: '0x080F8EAA'
+kind: function
+status: probable
+summary: Highlights the panel one tile in front of the battle object (r5) by calling object_highlightPanelRegion
+  with the object's PanelX shifted by the front-direction multiplier, the PanelY, highlight arg 0x11,
+  and the AllianceAndDirectionFlip halfword.
+interface: (r5 = battle object) -> r0 = object_highlightPanelRegion result; marks the panel at (PanelX
+  + frontDirection, PanelY) with highlight param 0x11
+details: The function gets the object's facing multiplier via object_getFrontDirection, adds it to the
+  object's PanelX to get the panel one tile ahead, and calls object_highlightPanelRegion with PanelY,
+  highlight parameter 0x11, and the AllianceAndDirectionFlip halfword. It sits immediately before a dispatch
+  table (off_80F8FAC) of battle object step handlers (flinch, paralyze, jumpLand, spawn animation, etc.),
+  so it is one step in that boss/AI state machine. It assumes r5 already holds the battle object pointer,
+  set up by its caller. The 0x11 argument likely encodes the highlight color/type shown while the attack
+  telegraphs its target panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection then add r0, r0, r1 with oBattleObject_PanelX computes the ahead-panel
+    X; r2 = 0x11 and r3 = oBattleObject_AllianceAndDirectionFlip passed to object_highlightPanelRegion;
+    Function is directly followed by off_80F8FAC, a step-handler table including battleObject_actionFlinch/Paralyze
+    and jumpLand steps; Caller sub_80F8A66 is in the same boss-step cluster, sharing the r5 object pointer
+    convention; Route captures (battlesweep, beastsp, chips) show it runs during battle, consistent with
+    panel-telegraph usage
+  refs:
+  - bn6f/asm/asm31.s:138556
+  - 0x080F8A66 sub_80F8A66
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080F8EAA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080F8EAA confirms it takes r5 as a battle object, gets front direction, computes PanelX+front,
+    and calls object_highlightPanelRegion with param 0x11 and the AllianceAndDirectionFlip field. However,
+    the function does not sit immediately before off_80F8FAC in execution; it sits at 0x080F8EAA with
+    data (byte_80F8EC0, byte_80F8EC8, 0xFF block) between it and off_80F8FAC, so it is not a step in that
+    dispatch table. The name and summary fit the actual code, but should drop that mischaracterization.;
+    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the 0x11 argument to object_highlightPanelRegion (highlight kind vs size)
+- which boss/state in the off_80F8FAC table invokes this step and what attack follows the highlight
+- The code at 0x080F8EAA confirms it takes r5 as a battle object, gets front direction, computes PanelX+front,
+  and calls object_highlightPanelRegion with param 0x11 and the AllianceAndDirectionFlip field. However,
+  the function does not sit immediately before off_80F8FAC in execution; it sits at 0x080F8EAA with data
+  (byte_80F8EC0, byte_80F8EC8, 0xFF block) between it and off_80F8FAC, so it is not a step in that dispatch
+  table. The name and summary fit the actual code, but should drop that mischaracterization.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8EAA -> battle_highlightFrontPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8EAA

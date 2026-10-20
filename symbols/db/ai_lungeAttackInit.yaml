@@ -1,0 +1,61 @@
+name: ai_lungeAttackInit
+address: '0x08110CC6'
+kind: function
+status: probable
+summary: Initializes a lunging enemy's X/Y velocity from a version-indexed table and computes per-axis
+  travel-time timers (stored at object+0x7c/0x7e) based on the delta to its target panel.
+interface: (r0 = unused/0-written, r4 = AI attack data, r5 = battle object) -> r0 = computed timer; object
+  X/YVelocity and fields 0x7c/0x7e written
+details: Reads oAIData_Version_16 from the AI data (r4), indexes table byte_8110E0C (pointer table via
+  off_8110DA4), and stores the entry as both oBattleObject_XVelocity and oBattleObject_YVelocity. For
+  each axis it computes target−current from object panel coords (oBattleObject_PanelX/Y vs fields 0x7a/0x7b,
+  the recorded target panel), negates the velocity if the delta is negative so motion heads toward the
+  target, then performs delta*scale/velocity (scale 0x280000 for X, 0x180000 for Y) via SWI 6 to get a
+  travel-time value stored as a halfword at object+0x7c (X) and +0x7e (Y). Both timer fields are zeroed
+  first. The scales differ, so the two timers are not simply equal — likely per-axis interpolation timers
+  consumed by the lunge update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r4,#oAIData_Version_16]; ldr r0,[r0,r1] with table byte_8110E0C → per-version velocity
+    selection; velocity negated when target−current < 0, targeting fields 0x7a/0x7b of the object; mul
+    by 0x280000/0x180000 then svc 6 (SWI Div) with velocity as divisor → frame-count timers stored to
+    +0x7c/+0x7e; caller ai_lungeAttackUpdate matches: records panel+velocity on first tick, then charges
+    until a timer expires'
+  refs:
+  - bn6f/asm/asm32.s:6149
+  - 0x08110B70 ai_lungeAttackUpdate
+  - 0x081108E4 sub_81108E4
+  reproduce: python3 tools/asmcat.py 0x08110CC6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal in every detail: it zeroes 0x7c/0x7e, looks up a velocity from a version-indexed
+    table at off_8110DA4/byte_8110E0C, stores it to XVelocity/YVelocity, negates it based on panel delta,
+    and computes delta*scale/velocity via SWI 6. However, the function is called by ai_lungeAttackUpdate
+    and sub_81108E4, both of which are AI-lunge setup/init code, so a clearer name reflecting its role
+    as the initialization/setup for the lunge attack (not the per-tick update) would be ai_lungeAttackInit.;
+    run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the differing X/Y scale constants and how the update consumes fields 0x7c/0x7e
+- what the entries of byte_8110E0C contain for each AI version (speed magnitudes presumably)
+- 'The code matches the proposal in every detail: it zeroes 0x7c/0x7e, looks up a velocity from a version-indexed
+  table at off_8110DA4/byte_8110E0C, stores it to XVelocity/YVelocity, negates it based on panel delta,
+  and computes delta*scale/velocity via SWI 6. However, the function is called by ai_lungeAttackUpdate
+  and sub_81108E4, both of which are AI-lunge setup/init code, so a clearer name reflecting its role as
+  the initialization/setup for the lunge attack (not the per-tick update) would be ai_lungeAttackInit.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8110CC6 -> ai_lungeAttackInit
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110CC6

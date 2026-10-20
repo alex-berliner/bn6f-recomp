@@ -1,0 +1,62 @@
+name: battle_spawnObject56WithRomParam
+address: '0x08011004'
+kind: function
+status: probable
+summary: Builds a ROM pointer from r2 (bank in r2 <<= 16 plus fixed low bits 0x010F) and calls battle_spawnObject56LinkedToOwner
+  to spawn a type-0x56 battle object, storing the returned pointer to owner+oBattleObject_RelatedObject2Ptr.
+interface: (r0 = owner battle object ptr, r1 = ?, r2 = 16-bit selector/param) -> r0 = spawned object ptr,
+  also stored to owner+oBattleObject_RelatedObject2Ptr; no meaningful flags
+details: The function takes the halfword in r2 (r2 <<= 16) and builds r4 = 0x0900010F + (r2 << 16), i.e.
+  an address/value in the 0x09xxxxxx ROM region whose bank comes from the caller's halfword, with fixed
+  low bits 0x010F. It then calls battle_spawnObject56LinkedToOwner_80C44A8, which spawns object type 0x56,
+  links it to the owner in r0, inherits alliance/direction and sets header flags 0x04|0x10. The returned
+  object pointer is written to r5+oBattleObject_RelatedObject2Ptr (r5 presumably the same owner passed
+  in r0). r0 and r1 are passed through unmodified, so r1 likely carries another spawn parameter defined
+  by the callee. The constructed 0x09xx010F value is most plausibly a pointer to per-instance data (script/AI/gfx)
+  for the spawned object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: r4 is composed as 0xF + (r2<<16) + 0x100 + (9<<24) = 0x0900010F + (arg<<16) before the call;
+    bl battle_spawnObject56LinkedToOwner_80C44A8 with known summary 'spawns type 0x56 linked to owner,
+    inheriting alliance/direction'; str r0,[r5,#oBattleObject_RelatedObject2Ptr] stores the spawn result
+    as the owner's related-object slot; r0/r1 untouched across the wrapper, so it only adds the computed
+    r2/r4 parameter to the callee's arguments
+  refs:
+  - bn6f/asm/asm00_2.s:5036
+  - 0x080C44A8 battle_spawnObject56LinkedToOwner_80C44A8
+  reproduce: python3 tools/asmcat.py 0x08011004
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core is correct: r2''s halfword is shifted into the high half of r4 and combined
+    with fixed low bits 0x010F and a 0x09xxxxxx bank to form a ROM address passed as the param to battle_spawnObject56LinkedToOwner_80C44A8,
+    and the returned pointer is stored to oBattleObject_RelatedObject2Ptr. However, the callee name is
+    incorrectly described as a wrapper at 80C44A8 (it is the callee, not this function). The name ''battle_spawnObject56WithRomParam''
+    is reasonable, but the summary inaccurately says r1 is passed through when this function has only
+    r0 implicit owner; r1 is not mentioned in the asm at all.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- 'Exact meaning of the r2-sourced value 0x0900010F+(arg<<16): ROM data pointer, or an encoded id consumed
+  by the spawn callee?'
+- What r1 contributes to the callee's spawn arguments, and whether r5 always equals the owner in r0
+- 'The summary''s core is correct: r2''s halfword is shifted into the high half of r4 and combined with
+  fixed low bits 0x010F and a 0x09xxxxxx bank to form a ROM address passed as the param to battle_spawnObject56LinkedToOwner_80C44A8,
+  and the returned pointer is stored to oBattleObject_RelatedObject2Ptr. However, the callee name is incorrectly
+  described as a wrapper at 80C44A8 (it is the callee, not this function). The name ''battle_spawnObject56WithRomParam''
+  is reasonable, but the summary inaccurately says r1 is passed through when this function has only r0
+  implicit owner; r1 is not mentioned in the asm at all.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011004 -> battle_spawnObject56WithRomParam
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011004

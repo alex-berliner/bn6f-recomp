@@ -1,0 +1,56 @@
+name: camera_raiseYWithLimit
+address: '0x080302C0'
+kind: function
+status: probable
+summary: If the new Y candidate (r0) is >= the camera's current Y limit at +0xE, updates camera+0xE with
+  r0 and camera+0xC with r1, allowing the Y bound to only increase.
+interface: (r0 = new halfword value, r1 = companion halfword value) -> void; writes [camera+0xC], [camera+0xE]
+  only if r0 >= [camera+0xE]; no flags returned
+details: Reads the camera object pointer from toolkit+oToolkit_CameraPtr (via r10). If the passed r0 is
+  less than the halfword at camera+0xE it does nothing; otherwise it stores r0 to camera+0xE and r1 to
+  camera+0xC. Both fields are halfwords, suggesting x/y screen-scroll positions or bounds in pixels. The
+  one-way comparison acts as a monotonic clamp — the camera's value at 0xE can only grow, never shrink,
+  with 0xC updated in lockstep.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r2,[r10,#oToolkit_CameraPtr] — the object edited is the camera from the toolkit; cmp r0,r3
+    / blt locret — early exit when r0 < camera+0xE halfword; strh r0,[r2,#0xe] / strh r1,[r2,#0xc] — writes
+    two adjacent halfword camera fields; single caller sub_8072B54 at 0x08072B54; executed on beastsp
+    routes
+  refs:
+  - bn6f/asm/asm03_0.s:21860
+  - 0x08072B54 sub_8072B54
+  reproduce: python3 tools/asmcat.py 0x080302C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r2 loads camera pointer, compares r0 to camera+0xE (line 4 ldrh+cmp+blt), stores
+    r0 to +0xE and r1 to +0xC only when r0 >= current (lines 5-6 strh). However the proposal has the offset
+    roles reversed: r0 is stored to +0xE and r1 to +0xC, not the other way. Also the field meaning is
+    unclear; "monotonic clamp" is plausible but since 0xE vs 0xC roles are swapped in the summary the
+    name should reflect the primary halfword being updated.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of camera+0xC/0xE (bottom scroll limit vs. target y vs. something else) needs the camera
+  struct's other fields or caller sub_8072B54's context
+- Whether the >= (allowing equal) rather than > comparison is deliberate
+- 'The code matches: r2 loads camera pointer, compares r0 to camera+0xE (line 4 ldrh+cmp+blt), stores
+  r0 to +0xE and r1 to +0xC only when r0 >= current (lines 5-6 strh). However the proposal has the offset
+  roles reversed: r0 is stored to +0xE and r1 to +0xC, not the other way. Also the field meaning is unclear;
+  "monotonic clamp" is plausible but since 0xE vs 0xC roles are swapped in the summary the name should
+  reflect the primary halfword being updated.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80302C0 -> camera_raiseYWithLimit
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80302C0

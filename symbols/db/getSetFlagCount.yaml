@@ -1,0 +1,57 @@
+name: getSetFlagCount
+address: '0x081420C8'
+kind: function
+status: probable
+summary: Given a group index into byte_8142120, returns how many of its contiguous event flags (base..base+count)
+  are currently set, by tallying TestEventFlag results.
+interface: (r0 = index into flag-group table at byte_8142120) -> r0 = number of set flags in that group;
+  flags clobbered
+details: Indexes the table at byte_8142120 by r0*4, giving entries with a u16 base flag id at +0 and a
+  u16 count at +2. It loops count times calling TestEventFlag on base+i and tallies the set ones in r6,
+  which it returns. Effectively it checks how many story/progress flags of a given set are already done.
+  No writes to game state; purely a query.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7, off_814211C; lsl r0,r0,#2; add r7,r7,r0 — selects an entry of the byte_8142120 table;
+    ldrh r0,[r7,#2] used as loop bound; ldrh r0,[r7] used as base flag id added to the loop counter; bl
+    TestEventFlag (flag: u16) -> !zf; beq skips add r6,#1 — only set flags increment the count; mov r0,r6;
+    pop — returns the tally; sole callee is TestEventFlag'
+  refs:
+  - bn6f/asm/asm37_1.s:749
+  - 0x081418F0 sub_81418F0
+  - 0x0802F168 TestEventFlag
+  reproduce: python3 tools/asmcat.py 0x081420C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r7 = byte_8142120; r0 (index) is shifted left by 2 to index u32 entries; loop
+    reads u16 count at +2 and u16 base at +0, calling TestEventFlag(base+i), tallying set flags into r6,
+    returned in r0. However it also clobbers the flag id (r0) and r4-r7; summary said ''flags clobbered''
+    which is fine but naming: get prefix fits a pure query. Proposed name ''countSetFlagsInGroup'' violates
+    naming rules (two capitalized runs after prefix); use ''getSetFlagCount'' or similar with valid lowerCamel
+    prefix.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Caller sub_81418F0 is undocumented, so the meaning of each group index and which gameplay system consumes
+  the count (beastsp route) is unknown; the table layout at byte_8142120 should be dumped to confirm entry
+  size
+- 'The code matches: r7 = byte_8142120; r0 (index) is shifted left by 2 to index u32 entries; loop reads
+  u16 count at +2 and u16 base at +0, calling TestEventFlag(base+i), tallying set flags into r6, returned
+  in r0. However it also clobbers the flag id (r0) and r4-r7; summary said ''flags clobbered'' which is
+  fine but naming: get prefix fits a pure query. Proposed name ''countSetFlagsInGroup'' violates naming
+  rules (two capitalized runs after prefix); use ''getSetFlagCount'' or similar with valid lowerCamel
+  prefix.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81420C8 -> getSetFlagCount
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81420C8

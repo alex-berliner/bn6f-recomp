@@ -1,0 +1,62 @@
+name: ai_setVersionedAttack
+address: '0x0810A6C0'
+kind: function
+status: probable
+summary: Reads the entity version byte to index parameter tables and starts attack id 0xB via object_setAttack0,
+  clearing oAIState_ScriptId.
+interface: (r4 = AI entity data, r6 = AI state, r7 = attack vars) -> r0 = 0 via object_setAttack0; sets
+  AttackDuration, AttackBoost2, Damage, ExtraDamage=10, ScratchVar, AiAttackParam, ScriptId=0
+details: Reads the entity's version byte (oAIData_Version_16) and uses it to index three byte tables (0x810A5BC
+  duration, 0x810A5B6 boost2, 0x810A5B0 damage) plus two word tables (0x810A580, 0x810A598) indexed version*4,
+  storing the results into the oAIAttackVars fields. ExtraDamage is hard-coded to 10. It then calls object_setAttack0
+  with attack id 0xB and clears oAIState_ScriptId to 0, handing control to the attack routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r4,#oAIData_Version_16] then three byte-table lookups stored to AttackDuration/AttackBoost2/Damage;
+    lsl r1,r1,#2 with word tables 0x810A580/0x810A598 stored to ScratchVar/AiAttackParam; mov r0,#0xa
+    strh to oAIAttackVars_ExtraDamage — fixed sub-damage value; mov r0,#0xb; bl object_setAttack0 — launches
+    attack 11 with the loaded params; strb r0(=0),[r6,#oAIState_ScriptId] — resets the AI script slot
+    after queuing the attack
+  refs:
+  - bn6f/asm/asm31.s:174847
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810A6C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it indexes version-byte tables (0x810A5BC, 0x810A5B6, 0x810A5B0,
+    0x810A580, 0x810A598) into AI attack vars, hard-codes ExtraDamage=10, calls object_setAttack0 with
+    id 0xB, and clears ScriptId. However, the proposal''s scratch fields don''t match assembly: it stores
+    into oAIAttackVars_ScratchVar and oAIAttackVars_AiAttackParam, and writes the attack id into r0 (not
+    object_setAttack0''s return). More importantly, the function name should follow the codebase''s snake/underscore
+    convention seen in calls (e.g., ai_setVersionedAttack in similar BN6 routines) rather than the awkward
+    ''ai_initVersionAttackParams'' which doesn''t reflect that it kicks off attack 0xB.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What attack id 0xB actually is and which boss uses it (no callers captured, so which AI script jumps
+  here is unknown)
+- Meaning of the two word-table entries stored to ScratchVar/AiAttackParam (likely attack-specific pointers
+  or params, unverified)
+- 'The code matches the proposal: it indexes version-byte tables (0x810A5BC, 0x810A5B6, 0x810A5B0, 0x810A580,
+  0x810A598) into AI attack vars, hard-codes ExtraDamage=10, calls object_setAttack0 with id 0xB, and
+  clears ScriptId. However, the proposal''s scratch fields don''t match assembly: it stores into oAIAttackVars_ScratchVar
+  and oAIAttackVars_AiAttackParam, and writes the attack id into r0 (not object_setAttack0''s return).
+  More importantly, the function name should follow the codebase''s snake/underscore convention seen in
+  calls (e.g., ai_setVersionedAttack in similar BN6 routines) rather than the awkward ''ai_initVersionAttackParams''
+  which doesn''t reflect that it kicks off attack 0xB.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810A6C0 -> ai_setVersionedAttack
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A6C0

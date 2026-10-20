@@ -1,0 +1,55 @@
+name: battle_applyHitModifierFlags
+address: '0x0801AF0E'
+kind: function
+status: probable
+summary: Converts a battle object's hit-modifier byte (bits 0 and 1) into sticky flags2 bits (0x4 and
+  0x2), skipping the bit-0 write when the object's collision flags word has any of bits 0x220000 set.
+interface: (r0 = unused; r7 = battle object) -> r0 = clobbered; sets bits in the object's collision flags2
+details: Reads the object's oCollisionData_HitModifierFinal byte from the object in r7 and fetches its
+  first collision flag word via object_getFlag. If neither of the bits 0x20000/0x200000 (armor/flinch-immunity
+  style flags) is set, and hit-modifier bit 0 is set, it sets flags2 bit 0x4 via object_setFlag2 — the
+  0x220000 guard makes that bit skipped for objects that can't flinch. Independently, if hit-modifier
+  bit 1 is set it always sets flags2 bit 0x2. So it converts a computed 'how I was hit' modifier into
+  sticky per-hit status flags on the object's collision data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r4,[r7,#oCollisionData_HitModifierFinal] then bl object_getFlag reads the object's modifier
+    and flags; tst r0,r1 with dword_801AF40=0x220000 guards the flags2=0x4 write, matching a flinch-immunity/armor
+    check; tst r4,#1 / mov r0,#4 and tst r4,#2 / mov r0,#2 map modifier bits 0-1 to object_setFlag2 bits
+    0x4/0x2; executed on recorded battle routes (battlesweep) and operates purely on battle-object collision
+    data
+  refs:
+  - bn6f/asm/asm00_2.s:24597
+  - 0x0801A166 object_getFlag
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x0801AF0E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The bit logic described is accurate: tst/0x220000 guard, bit0->set 0x4, bit1->set 0x2 (lines with
+    `tst r4, #1`/`mov r0,#4` and `tst r4,#2`/`mov r0,#2`). However r7 isn''t established as the battle
+    object here - it''s a caller-provided frame/base, so ''r7 = battle object'' is wrong in the interface.
+    The name is acceptable but `battle_applyHitModifierFlags` is cleaner.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of flags2 bits 0x2 and 0x4 (e.g. hit vs flinch) and of flag bits 0x20000/0x200000
+- which callers invoke this and at what point of the hit resolution pipeline
+- 'The bit logic described is accurate: tst/0x220000 guard, bit0->set 0x4, bit1->set 0x2 (lines with `tst
+  r4, #1`/`mov r0,#4` and `tst r4,#2`/`mov r0,#2`). However r7 isn''t established as the battle object
+  here - it''s a caller-provided frame/base, so ''r7 = battle object'' is wrong in the interface. The
+  name is acceptable but `battle_applyHitModifierFlags` is cleaner.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801AF0E -> battle_applyHitModifierFlags
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801AF0E

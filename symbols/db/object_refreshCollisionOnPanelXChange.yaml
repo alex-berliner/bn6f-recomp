@@ -1,0 +1,57 @@
+name: object_refreshCollisionOnPanelXChange
+address: '0x080D9638'
+kind: function
+status: probable
+summary: If a battle object's PanelX differs from the cached value at offset 0x6A, stores the new X there
+  and calls object_setCollisionRegion(r0=1) to re-anchor its collision region to the new panel.
+interface: (r0 = ignored/overwritten, r5 = battle object) -> r0 = collision data pointer from object_setCollisionRegion;
+  flags from cmp r0, r2
+details: Reads the object's current PanelX (oBattleObject_PanelX) and compares it against a cached copy
+  at offset 0x6A of the battle object. If they match, it returns immediately without touching anything.
+  Otherwise it writes the new panel X into 0x6A, sets r0 = 1 (region index/argument for object_setCollisionRegion,
+  with r1 still holding 0x6A from the ldr), and calls object_setCollisionRegion so the object's collision
+  data follows the object onto its new panel. Offset 0x6A thus serves as the last-synced panel X for collision
+  purposes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r2,[r5,#0x6a] / cmp r0,r2 / beq ...: early-exit when
+    cached X equals current PanelX; strb r0,[r5,r1] with r1=0x6a: caches the new panel X at offset 0x6A;
+    mov r0,#1; bl object_setCollisionRegion: only action taken on change is updating the collision region;
+    sole caller sub_80D95B0 and route ''battlesweep'' fit a per-frame/per-move collision upkeep helper'
+  refs:
+  - bn6f/asm/asm31.s:71899
+  - 0x080D95B0 sub_80D95B0
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D9638
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s general shape is correct: it caches PanelX at +0x6A, refreshes via object_setCollisionRegion
+    when it changes. However, the interface description is wrong - the proposal claims r0=ignored/overwritten
+    and flags from cmp r0,r2, but the cmp is r0,r2 where r0 is the new PanelX and r2 is the cached value;
+    also r1 is #0x6a not [r5,#0x6a]. The name is also slightly off since ''sync'' is reasonable but ''ToPanelX''
+    is redundant with the cached field.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the constant 1 passed to object_setCollisionRegion (region index vs. region type)
+- which caller branch in sub_80D95B0 invokes this (movement handler?) to confirm it runs after a panel
+  change
+- 'The summary''s general shape is correct: it caches PanelX at +0x6A, refreshes via object_setCollisionRegion
+  when it changes. However, the interface description is wrong - the proposal claims r0=ignored/overwritten
+  and flags from cmp r0,r2, but the cmp is r0,r2 where r0 is the new PanelX and r2 is the cached value;
+  also r1 is #0x6a not [r5,#0x6a]. The name is also slightly off since ''sync'' is reasonable but ''ToPanelX''
+  is redundant with the cached field.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9638 -> object_refreshCollisionOnPanelXChange
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9638

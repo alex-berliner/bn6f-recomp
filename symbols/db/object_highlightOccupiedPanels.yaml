@@ -1,0 +1,60 @@
+name: object_highlightOccupiedPanels
+address: '0x08108DF0'
+kind: function
+status: probable
+summary: For i in 0..2, reads byte at r7+0x34+i; if its low 3 bits are nonzero, calls object_highlightPanel(byte,
+  byte>>4) to highlight that occupied panel.
+interface: (r7 = object/struct base, panel entries at +0x34..+0x36) -> calls object_highlightPanel(r0=byte,
+  r1=byte>>4); no return value used
+details: 'Iterates r4 = 0..2 over three consecutive bytes at r7+0x34. For each byte, bit 0 (low 3 bits
+  masked via lsl/lsr 0x1d) gates the call: if nonzero, object_highlightPanel is called with r0 = the whole
+  byte and r1 = the byte''s high nibble (field/format of the highlight). Per the callee''s summary, this
+  sets the panel data flag byte at offset 1 to 1, marking the panel highlighted. Objects with multi-panel
+  footprints store one such flag byte per occupied panel here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,0x34+r4] with r4 = 0..2 reads three per-panel flag bytes at fixed offsets +0x34..+0x36;
+    lsl/lsr r0,#0x1d masks low 3 bits and tst/beq skips the call when clear, so the byte is a flag, not
+    an index; lsr r1,r0,#4 passes the high nibble as the second argument to object_highlightPanel; callee
+    object_highlightPanel is documented as 'marks the panel an object stands on as highlighted (panel
+    data flag byte offset 1 = 1)'
+  refs:
+  - bn6f/asm/asm31.s:171799
+  - 0x0810831C sub_810831C
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x08108DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop bound is `cmp r4, #2 / ble`, so r4 iterates 0..2 (three entries) and reads bytes at r7+0x34,
+    r7+0x35, r7+0x36 — correct. However, `lsl r0, r0, #0x1d; lsr r0, r0, #0x1d` extracts the low 3 bits
+    (mask 0x7), not just bit 0. So the gate is whether the low 3 bits are nonzero, and r1 is the high
+    nibble (0..15) passed to the callee. The summary''s ''bit 0 (low 3 bits masked)'' is correct, but
+    the one-line ''whose flag bytes are set'' is loose; better to say it calls highlightPanel for each
+    panel index whose low-3-bit occupancy flag is nonzero.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the low-3-bit mask (is any nonzero bit sufficient or is only bit 0 valid?)
+- What the high nibble passed in r1 selects in object_highlightPanel (highlight color/type?)
+- Which caller sub_810831C is and what object type owns the +0x34 panel list
+- 'The loop bound is `cmp r4, #2 / ble`, so r4 iterates 0..2 (three entries) and reads bytes at r7+0x34,
+  r7+0x35, r7+0x36 — correct. However, `lsl r0, r0, #0x1d; lsr r0, r0, #0x1d` extracts the low 3 bits
+  (mask 0x7), not just bit 0. So the gate is whether the low 3 bits are nonzero, and r1 is the high nibble
+  (0..15) passed to the callee. The summary''s ''bit 0 (low 3 bits masked)'' is correct, but the one-line
+  ''whose flag bytes are set'' is loose; better to say it calls highlightPanel for each panel index whose
+  low-3-bit occupancy flag is nonzero.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8108DF0 -> object_highlightOccupiedPanels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108DF0

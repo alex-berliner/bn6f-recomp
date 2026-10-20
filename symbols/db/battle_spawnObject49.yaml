@@ -1,0 +1,66 @@
+name: battle_spawnObject49
+address: '0x080CD488'
+kind: function
+status: probable
+summary: Spawns a battle object of ID 0x49 via object_spawnType3; on success, copies the four caller's
+  arguments into the new object at offsets +0x12, +0x13, +0x16, +0x2c and +0x64, and if the +0x64 value
+  is non-NULL, writes 1 through that pointer to set a flag/counter.
+interface: '(args in r0-r3 and on stack: params for object 0x49, last arg = pointer to a byte flag/counter)
+  -> r0 = spawned object pointer, or 0 if spawn failed; flags set by spawn result'
+details: 'This is a thin parameterized spawn wrapper: it calls object_spawnType3 with object ID 0x49 and
+  the caller-supplied argument set, then, when the spawn succeeded, writes the arguments into the freshly
+  allocated battle object: bytes at +0x12 and +0x13, a halfword at +0x16, a word at +0x2c, and a word
+  at +0x64. If the value stored at +0x64 is non-NULL, it writes 1 to the first byte of the struct it points
+  at (likely initializing a counter or active flag). On spawn failure it returns without touching anything.
+  The saved-register prologue/epilogue in the listing looks like a mis-decoded push of the high registers,
+  so the exact argument mapping beyond the field writes is approximate.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnType3 with mov r0,#0x49 immediately before: this is a spawn of battle object
+    0x49; strb r1,[r0,#0x12] / strb r2,[r0,#0x13] / strh r3,[r0,#0x16] / str r6,[r0,#0x2c] / str r7,[r0,#0x64]:
+    arguments copied into the new object''s parameter fields; tst r7,r7 / beq + mov r1,#1; strb r1,[r7]:
+    pointer-arg first byte set to 1 when the +0x64 value is non-NULL; branch back on the spawn''s zero
+    flag skips all stores: writes only happen for a successful spawn; Called from sub_80CD160/sub_80CD4AC/sub_80E52B0/sub_80EE1AC
+    on battlesweep, beastsp and chips routes, consistent with a shared battle-effect/object spawn helper'
+  refs:
+  - bn6f/asm/asm31.s:46143
+  - 0x080CD160 sub_80CD160
+  - 0x080CD4AC sub_80CD4AC
+  - 0x080E52B0 sub_80E52B0
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CD488
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function does match the summary''s behavior: it calls object_spawnType3 with ID 0x49 and copies
+    caller args into offsets +0x12, +0x13, +0x16, +0x2c, +0x64, then writes 1 through the +0x64 pointer.
+    However, r0 is the spawn result in r0, not r5 (mov r0,r5 just moves r5''s saved caller arg into r0
+    for comparison before the pop restores r0). The name ''battle_spawnObject49'' is fine, but a more
+    accurate interface note is needed.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What battle object ID 0x49 actually is (an effect? an enemy?), which the callers' object initializers
+  would reveal
+- Meaning of the parameter fields +0x12, +0x13, +0x16, +0x2c, +0x64 in the battle object layout
+- Whether the pointer arg's byte write at [r7]=1 is a counter, an enable flag, or a linked-list head init
+- 'The function does match the summary''s behavior: it calls object_spawnType3 with ID 0x49 and copies
+  caller args into offsets +0x12, +0x13, +0x16, +0x2c, +0x64, then writes 1 through the +0x64 pointer.
+  However, r0 is the spawn result in r0, not r5 (mov r0,r5 just moves r5''s saved caller arg into r0 for
+  comparison before the pop restores r0). The name ''battle_spawnObject49'' is fine, but a more accurate
+  interface note is needed.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD488 -> battle_spawnObject49
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD488

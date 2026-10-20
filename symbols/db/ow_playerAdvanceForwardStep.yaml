@@ -1,0 +1,62 @@
+name: ow_playerAdvanceForwardStep
+address: '0x0809D9A0'
+kind: function
+status: probable
+summary: 'Overworld player ''advance forward'' step: if the player is on a 0x4C..0x4F trigger tile, add
+  stored X/Y deltas to the player''s position; otherwise clear EVENT_1717_PLAYER_ADVANCE_FORWARD and reset
+  the player''s action/jumptable state.'
+interface: (r5 = OW player object, r0 unused) -> r0 = trigger id or 0; touches X/Y and state fields
+details: Runs checkCoordinateTrigger_8031a7a on the object's coords at r5+0x1C and keeps the trigger id
+  in r0. If the id is 0x4C..0x4F (four adjacent trigger/tile values, presumably 'can advance forward'),
+  it adds r5+0x38 to the player's X and r5+0x3C to the Y — i.e. per-step movement deltas stored on the
+  object — and returns without changing state. Otherwise it clears EVENT_1717_PLAYER_ADVANCE_FORWARD and
+  zeroes the jumptable index (r5+0x09), ActionSubState, and r5+0x0B, ending the forward-walk action. The
+  trailing off_809D9DC -> byte_809D07C points at an animation/state table used elsewhere. Note the object
+  pointer arrives in r5, not r0, so callers must set it up specially.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl checkCoordinateTrigger_8031a7a with r0=r5+0x1C, then cmp 0x4C/0x4F range check selects between
+    move and reset; advance branch: ldr [r5,#0x38]/add to [r5,#X] and [r5,#0x3C]/add to [r5,#Y] — applies
+    velocity deltas; else branch: movflag EVENT_1717_PLAYER_ADVANCE_FORWARD + ClearEventFlagFromImmediate
+    cancels the walk event; strb #0 to JumptableIndex_09, ActionSubState and Unk_0b resets the player''s
+    action state; field names oOWPlayerObject_* show this is the overworld player object''s state machine
+    step'
+  refs:
+  - bn6f/asm/ow_player.s:1129
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08031A7A checkCoordinateTrigger_8031a7a
+  reproduce: python3 tools/asmcat.py 0x0809D9A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function does call checkCoordinateTrigger_8031a7a with the player''s coordinate struct at r5+0x1C,
+    branches on trigger id 0x4C..0x4F, applies X/Y deltas from r5+0x38/0x3C on match, or clears EVENT_1717_PLAYER_ADVANCE_FORWARD
+    and zeros the jumptable index, ActionSubState, and r5+0x0B. These behaviors match the proposal. However,
+    the trailing data at off_809D9D8/off_809D9DC belongs to a separate table and is not part of this function,
+    so mentioning it as belonging to sub_809D9A0 is misleading.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+- maps
+open_questions:
+- No caller is captured, so what sets Unk_38/Unk_3c (deltas per step vs per frame) and what trigger ids
+  0x4C-0x4F mean on the map is unconfirmed
+- Whether byte_809D07C is the walk animation table for this state is inferred from off_809D9DC only
+- The function does call checkCoordinateTrigger_8031a7a with the player's coordinate struct at r5+0x1C,
+  branches on trigger id 0x4C..0x4F, applies X/Y deltas from r5+0x38/0x3C on match, or clears EVENT_1717_PLAYER_ADVANCE_FORWARD
+  and zeros the jumptable index, ActionSubState, and r5+0x0B. These behaviors match the proposal. However,
+  the trailing data at off_809D9D8/off_809D9DC belongs to a separate table and is not part of this function,
+  so mentioning it as belonging to sub_809D9A0 is misleading.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809D9A0 -> ow_playerAdvanceForwardStep
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D9A0

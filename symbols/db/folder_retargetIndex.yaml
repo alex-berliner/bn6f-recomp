@@ -1,0 +1,55 @@
+name: folder_retargetIndex
+address: '0x08135038'
+kind: function
+status: probable
+summary: When a halfword at editor state+0x1C equals one of two indices involved in a chip move, it is
+  rewritten to the other index, otherwise left unchanged.
+interface: (r0 = ignored, r1 = scratch, r2 = value A, r3 = value B, r5 = editor state struct) -> halfword
+  at [r5+0x1C] set to the opposite of A/B if it matched one of them; r0 clobbered, flags clobbered
+details: Reads the halfword at state+0x1C and compares it against r2 and r3. If it equals r2 it stores
+  r3; if it equals r3 it stores r2; any other value is left untouched. It is a value-replacement (toggle
+  between two indices), not a swap of two fields. Note the function never sets r5 itself and doesn't save
+  it, so the caller must have r5 pointing at the folder-editor state whose +0x1C field (likely a cursor/selected-slot
+  index) tracks one of the entries being moved or swapped by folder_moveChipEntry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r1,[r5,#0x1c]; cmp r1,r2 / cmp r1,r3 with strh of the other value implements an A<->B value
+    replacement; bne locret path shows values other than r2/r3 are left unmodified; sole caller folder_moveChipEntry
+    moves/swaps 0x20-byte chip entries, matching an index fixup on the affected slots
+  refs:
+  - bn6f/asm/asm36.s:10373
+  - 0x08134CF0 folder_moveChipEntry
+  reproduce: python3 tools/asmcat.py 0x08135038
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior: r4 starts as 0, becomes 1 after the first cmp with r2, so
+    when the r1==r2 branch is taken (r4 still 0), it stores r3; when r1==r3 (r4=1), it stores r2. So the
+    summary is accurate. However the prefix should be ''folder'' (already) but the name ''folder_fixupIndexAfterSwap''
+    is fine, though a slightly tighter name reflecting that it retargets only a tracked index would be
+    better. The summary is correct; only the name could be tightened.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the halfword at state+0x1C (selected slot, cursor, or highlight index) not confirmed
+  from the snippet
+- why r5 is passed implicitly rather than in r0 (caller sets it before the call)
+- 'The code matches the proposed behavior: r4 starts as 0, becomes 1 after the first cmp with r2, so when
+  the r1==r2 branch is taken (r4 still 0), it stores r3; when r1==r3 (r4=1), it stores r2. So the summary
+  is accurate. However the prefix should be ''folder'' (already) but the name ''folder_fixupIndexAfterSwap''
+  is fine, though a slightly tighter name reflecting that it retargets only a tracked index would be better.
+  The summary is correct; only the name could be tightened.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8135038 -> folder_retargetIndex
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135038

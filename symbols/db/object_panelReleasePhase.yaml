@@ -1,0 +1,60 @@
+name: object_panelReleasePhase
+address: '0x080D1106'
+kind: function
+status: probable
+summary: 'Battle-object phase stub: on phase 0 it stores phase 4, sets animation 2, releases the object''s
+  reserved panel via object_removePanelReserve, and sets Timer=12; thereafter it ticks Timer down and,
+  on underflow, sets CurAction=0xC and clears CurPhaseAndPhaseInitialized.'
+interface: (r5 = battle object pointer, no args) -> r0 = clobbered; updates oBattleObject_CurPhase, CurAnim,
+  PanelX/Y args, Timer, CurAction, CurPhaseAndPhaseInitialized
+details: On entry with CurPhase==0 it stores phase 4, sets CurAnim to 2, passes PanelX/PanelY to object_removePanelReserve
+  to clear the panel reservation this object held, and loads Timer with 12. On subsequent calls it decrements
+  Timer and returns while it is still >=0. Once the timer underflows it writes CurAction = 0xC (the object's
+  next behavior) and zeroes CurPhaseAndPhaseInitialized so the phase machine restarts cleanly. It touches
+  only the standard battle-object struct fields and the panel-reserve bookkeeping; no other state or globals
+  are touched. The 12-frame delay with a vanish-type animation suggests the object hides or leaves its
+  tile before action 0xC takes over.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r1,[r5,#oBattleObject_CurPhase] / mov r0,#2 strb CurAnim: switches to phase 4 with anim
+    2 (sub_80D1106 phase-0 branch); ldrb PanelX/PanelY + bl object_removePanelReserve: releases the panel
+    this object reserved; mov r0,#0xc strh Timer: arms a 12-frame countdown; sub Timer / bge: simple frame-wait
+    loop until timer expires; mov r0,#0xc strb CurAction + strh 0 CurPhaseAndPhaseInitialized: hands control
+    back to action 0xC with cleared phase state'
+  refs:
+  - bn6f/asm/asm31.s:54179
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080D1106
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal well: on CurPhase==0 it stores CurPhase=4, CurAnim=2, calls object_removePanelReserve(PanelX,PanelY),
+    sets Timer=0xC, then decrements Timer; when it goes negative (>=0 branch) it sets CurAction=0xC and
+    zeroes CurPhaseAndPhaseInitialized. The proposal''s details are accurate, but the function does not
+    play ''a short animation'' itself—it merely sets CurAnim; whether this is a vanish animation cannot
+    be confirmed from this code alone, so ''vanish'' in the name is speculative.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No caller or AI table entry is known, so which object uses this handler and what CurAction 0xC does
+  afterward are unknown
+- The exact meaning of anim 2 (vanish vs. another pose) would need the object's animation table
+- 'The code matches the proposal well: on CurPhase==0 it stores CurPhase=4, CurAnim=2, calls object_removePanelReserve(PanelX,PanelY),
+  sets Timer=0xC, then decrements Timer; when it goes negative (>=0 branch) it sets CurAction=0xC and
+  zeroes CurPhaseAndPhaseInitialized. The proposal''s details are accurate, but the function does not
+  play ''a short animation'' itself—it merely sets CurAnim; whether this is a vanish animation cannot
+  be confirmed from this code alone, so ''vanish'' in the name is speculative.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D1106 -> object_panelReleasePhase
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1106

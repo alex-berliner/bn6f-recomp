@@ -1,0 +1,61 @@
+name: ai_updateTargetInFrontFlag
+address: '0x08113B7A'
+kind: function
+status: probable
+summary: When the AI has a valid attack target, stores 1 at [r5+0x67] if the target is in front of the
+  reference X (r0) along its front direction, else 0; leaves the flag untouched if no target.
+interface: (r0 = reference X/position to compare against, r5 = AI/entity struct) -> stores 1 at [r5+0x67]
+  if target is in front, 0 if behind; no return value
+details: Reads the target object pointer from the AI attack-vars struct (r7 offset TargetObjectPtr); if
+  null or target field 0x24 (halfword) is 0, leaves [r5+0x67] untouched and returns. Otherwise it subtracts
+  the target's byte at +0x12 (X position) from r0, multiplies by object_getFrontDirection() (+1/-1 alliance-facing
+  multiplier) to convert the raw difference into signed front/back space, clamps to 0 or 1 (1 = positive,
+  i.e. target ahead), and stores that byte at r5+0x67. r0 and r1 are saved/restored around the call, so
+  the caller's inputs survive. The untouched case means 'no target' keeps the previous flag value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r2,[r7,#oAIAttackVars_TargetObjectPtr] + tst/beq: uses the named AI attack-vars target
+    pointer, bails when absent; ldrh r3,[r2,#0x24]; cmp 0; beq: skips when target object field 0x24 is
+    zero; ldrb r2,[r2,#0x12]; sub r0,r0,r2: compares r0 against target''s position byte at +0x12; bl object_getFrontDirection;
+    mul r0,r1: known callee supplies +1/-1 facing multiplier, making difference signed in facing space;
+    cmp r0,#0; mov r0,#0/1; strb r0,[r5,#0x67]: writes a boolean in-front flag to AI struct +0x67'
+  refs:
+  - bn6f/asm/asm32.s:11655
+  - 0x08113B20 sub_8113B20
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08113B7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does what the summary says: it reads TargetObjectPtr, checks its 0x24 field, computes (r0
+    - target_x) * frontDirection, stores 1 if >0 else 0 at r5+0x67, and bails leaving the flag untouched
+    if target is null/0x24==0. The summary''s wording ''stores a flag telling whether the target lies
+    in front'' is accurate. Minor quibble: target X is at +0x12 (byte), and the proposal is correct overall.
+    Name ''ai_setTargetInFrontFlag'' is fine, though ''ai_updateTargetInFrontFlag'' better reflects that
+    the flag is only refreshed (not overwritten) when a valid target exists.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the r0 input (column/X of attacker?) and of target field 0x24 (HP vs width) — needs
+  the caller sub_8113B20's context
+- what entity field +0x12 is in the battle object layout
+- 'The code does what the summary says: it reads TargetObjectPtr, checks its 0x24 field, computes (r0
+  - target_x) * frontDirection, stores 1 if >0 else 0 at r5+0x67, and bails leaving the flag untouched
+  if target is null/0x24==0. The summary''s wording ''stores a flag telling whether the target lies in
+  front'' is accurate. Minor quibble: target X is at +0x12 (byte), and the proposal is correct overall.
+  Name ''ai_setTargetInFrontFlag'' is fine, though ''ai_updateTargetInFrontFlag'' better reflects that
+  the flag is only refreshed (not overwritten) when a valid target exists.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8113B7A -> ai_updateTargetInFrontFlag
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113B7A

@@ -1,0 +1,65 @@
+name: battle_introAnimPhaseHandler
+address: '0x080E5546'
+kind: function
+status: probable
+summary: 'Battle-object intro phase: on first tick resyncs pixel coords from panels and starts anim 0xA;
+  when anim 0xA reaches its last frame (bit 0x80 from sprite_getFrameParameters), switches to anim 8,
+  writes 1 to RelatedObject1Ptr->ExtraVars+8, sets CurAction=8, and clears CurPhaseAndPhaseInitialized
+  to restart the phase.'
+interface: (r0 = battle object (r5, oBattleObject)) -> r0 = destroyed by calls; updates oBattleObject_CurPhase,
+  CurAnim, CurAction, RelatedObject1Ptr->ExtraVars+8
+details: 'Reads oBattleObject_CurPhase of the object in r5. Phase 0: sets CurPhase=1, calls object_setCoordinatesFromPanels
+  to sync pixel X/Y with the object''s grid position, and sets CurAnim=0xA (an intro/approach animation).
+  On later ticks it calls sprite_getFrameParameters and tests bit 0x80 of the returned attribute byte,
+  which marks the final frame; when it fires it sets CurAnim=8, writes 1 to RelatedObject1Ptr->ExtraVars+8
+  (signalling a linked object that the animation finished), sets its own CurAction=8, and clears CurPhaseAndPhaseInitialized
+  to restart the phase logic.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase-0 branch: ldrb [r5,#oBattleObject_CurPhase]; cmp #0; sets phase=1, calls object_setCoordinatesFromPanels,
+    sets CurAnim=0xA; every-frame branch calls sprite_getFrameParameters and tst r0,#0x80 gates the completion
+    path (final-frame attribute bit); completion path writes CurAnim=8, CurAction=8, and RelatedObject1Ptr->ExtraVars+8=1
+    before resetting CurPhaseAndPhaseInitialized; called from recorded battlesweep/beastsp battle routes
+    with no named callers yet'
+  refs:
+  - bn6f/asm/asm31.s:97763
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080E5546
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: phase 0 sets CurPhase=1, calls object_setCoordinatesFromPanels, sets CurAnim=0xA;
+    on the final-frame bit (0x80) of sprite_getFrameParameters, it sets CurAnim=8, writes 1 to RelatedObject1Ptr->ExtraVars+8,
+    sets CurAction=8, and clears CurPhaseAndPhaseInitialized. However the proposal wrongly states CurPhase
+    is the field being cleared; the asm clears CurPhaseAndPhaseInitialized (strh to that offset). Also
+    the proposal''s interface says r0=r5, which is the usual call convention but not a meaningful interface
+    note; the ''related object'' flag uses ExtraVars+8 as a word write. The name is okay but could be
+    more specific.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what animation 0xA and action 8 mean for this specific object (needs the animation table and action
+  enum)
+- which object uses this handler and what the related object does with ExtraVars+8=1
+- 'The behavior matches: phase 0 sets CurPhase=1, calls object_setCoordinatesFromPanels, sets CurAnim=0xA;
+  on the final-frame bit (0x80) of sprite_getFrameParameters, it sets CurAnim=8, writes 1 to RelatedObject1Ptr->ExtraVars+8,
+  sets CurAction=8, and clears CurPhaseAndPhaseInitialized. However the proposal wrongly states CurPhase
+  is the field being cleared; the asm clears CurPhaseAndPhaseInitialized (strh to that offset). Also the
+  proposal''s interface says r0=r5, which is the usual call convention but not a meaningful interface
+  note; the ''related object'' flag uses ExtraVars+8 as a word write. The name is okay but could be more
+  specific.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5546 -> battle_introAnimPhaseHandler
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5546

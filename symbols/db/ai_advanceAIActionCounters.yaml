@@ -1,0 +1,70 @@
+name: ai_advanceAIActionCounters
+address: '0x08101AD4'
+kind: function
+status: probable
+summary: Per-turn enemy AI tick that increments TurnCounter (with RNG double-step) until it reaches 3
+  then resets and toggles Unk_0c; on the active turn calls sub_810222C to test panels and drives AttackCounter
+  and StepCounter with RNG double-steps, resetting at 2 and toggling Unk_0f/Unk_0e, with Unk_0d toggled
+  unconditionally at the end.
+interface: (r5 = battle object, r6 = AI state struct) -> r0 = next-state value; updates oAIState_TurnCounter/AttackCounter/StepCounter
+  and Unk_0c..0f
+details: 'Runs once per AI turn: TurnCounter increments until it reaches 3, then resets and toggles Unk_0c,
+  so behaviors alternate over a 4-turn cycle with a ~50% RNG chance (GetPositiveSignedRNG, lsr #6/bcc)
+  of skipping a turn. On the active turn it calls sub_810222C twice with r0=0, r1=0, the object''s battle
+  pointer, and panel-list tables byte_8101DBC / byte_8101DC3 — apparently testing whether a target stands
+  on certain panels. If the first check passes, AttackCounter is incremented (again with a ~50% RNG double-increment)
+  until it hits 2, then resets and toggles Unk_0f; if the second passes, the same pattern drives StepCounter
+  and toggles Unk_0e. Each branch tail-jumps through one of several entries of sub_8101CC0, selecting
+  the follow-up action. The toggled Unk_0c..0f flags look like phase/parity selectors so consecutive turns
+  alternate between attack and movement behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'TurnCounter compared to #3, reset and Unk_0c eor #1 toggle form a 4-turn cycle; GetPositiveSignedRNG
+    + lsr #6 / lsr #4 followed by bcc gives ~50% chance of extra counter increments; sub_810222C called
+    with r0=0, r1=0, [r5+oBattleObject_AIDataPtr]->oAIData_BattleObjectPtr and tables byte_8101DBC / byte_8101DC3
+    gates the two counter paths; AttackCounter and StepCounter increment until >=1 then reset to 0, each
+    leading to a distinct Unk_0e/Unk_0f toggle; all exits tail-branch to sub_8101CC0 entry points (8101D64..8101D9A),
+    consistent with dispatching the next AI action'
+  refs:
+  - bn6f/asm/asm31.s:156811
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08101D64 sub_8101CC0
+  - 0x08101D6C sub_8101CC0
+  reproduce: python3 tools/asmcat.py 0x08101AD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s description of the TurnCounter logic is correct (cmp #3 / bge resets and toggles
+    Unk_0c), and the AttackCounter/StepCounter branches with sub_810222C panel checks match the asm at
+    loc_8101B0C and loc_8101B32. However, the summary claims it ''counts turns'' and toggles Unk_0c..0f,
+    but actually Unk_0c is toggled when TurnCounter reaches 3, while Unk_0d/0e/0f are toggled independently
+    in loc_8101B66/0 loc_8101B74/0 loc_8101B82 — Unk_0c is not part of the per-branch parity cycle. Also
+    the RNG shifts are lsr #6 (TurnCounter) and lsr #4 (Attack/StepCounter), not ''~50%'' for both. A
+    cleaner name reflecting the advance/reset/toggle of multiple counters is preferable.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_810222C actually tests (panel occupancy of the player vs the byte_8101DBC/byte_8101DC3 lists?)
+- what the Unk_0c..0f flags select downstream in sub_8101CC0 and its successors
+- which enemy/virus uses this AI script
+- 'The proposal''s description of the TurnCounter logic is correct (cmp #3 / bge resets and toggles Unk_0c),
+  and the AttackCounter/StepCounter branches with sub_810222C panel checks match the asm at loc_8101B0C
+  and loc_8101B32. However, the summary claims it ''counts turns'' and toggles Unk_0c..0f, but actually
+  Unk_0c is toggled when TurnCounter reaches 3, while Unk_0d/0e/0f are toggled independently in loc_8101B66/0
+  loc_8101B74/0 loc_8101B82 — Unk_0c is not part of the per-branch parity cycle. Also the RNG shifts are
+  lsr #6 (TurnCounter) and lsr #4 (Attack/StepCounter), not ''~50%'' for both. A cleaner name reflecting
+  the advance/reset/toggle of multiple counters is preferable.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101AD4 -> ai_advanceAIActionCounters
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101AD4

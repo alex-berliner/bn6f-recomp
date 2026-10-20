@@ -1,0 +1,57 @@
+name: navicust_showDialogStore8
+address: '0x08136EF8'
+kind: function
+status: probable
+summary: Calls sub_81375D8, runs RunTextScriptNaviCustDialog with script index 0, then stores the byte
+  8 at the caller-provided [r5]; returns nothing meaningful.
+interface: () -> r0 clobbered; reads r5 = pointer to a state/step object, writes byte 8 to [r5]
+details: 'The routine first calls sub_81375D8 (purpose unknown, likely per-step setup/cleanup for this
+  state machine), then invokes RunTextScriptNaviCustDialog with r0 = 0, i.e. dialog/script index 0 of
+  the NaviCust text set. Afterwards it stores the literal 8 as a byte at [r5], which looks like advancing
+  a step/state field in a structure the caller set up in r5 (r5 is callee-saved, so the caller must have
+  loaded it). The function itself returns nothing meaningful in r0. Its whole behavior is: prepare, show
+  the fixed NaviCust dialog, set state 8.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_81375D8 before the dialog call suggests a per-state setup step; mov r0,#0; bl RunTextScriptNaviCustDialog
+    runs NaviCust text script 0; mov r0,#8; strb r0,[r5] writes constant 8 as a state/step byte into the
+    caller-provided object; no other reads or writes: the only state change is the byte 8 store; reached
+    in recorded beastsp routes, consistent with NaviCust-related UI flow'
+  refs:
+  - bn6f/asm/asm36.s:14399
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  - 0x081375D8 sub_81375D8
+  reproduce: python3 tools/asmcat.py 0x08136EF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm at sub_8136EF8 does exactly what the proposal describes (bl sub_81375D8, mov r0,#0; bl RunTextScriptNaviCustDialog,
+    mov r0,#8; strb r0,[r5], pop {pc}), and r5 is indeed not initialized in this function so it must come
+    from the caller. However, calling it an ''advance state'' or ''stage 8'' overinterprets the byte write
+    — the code merely stores 8 to a caller-provided [r5] without evidence this is a state field. No callers
+    were captured, so the semantics of [r5] are not grounded.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what sub_81375D8 does (setup vs. guard for this step)
+- the layout of the r5 structure and the meaning of state value 8
+- which caller sets r5 and what the other state values in that field mean
+- The asm at sub_8136EF8 does exactly what the proposal describes (bl sub_81375D8, mov r0,#0; bl RunTextScriptNaviCustDialog,
+  mov r0,#8; strb r0,[r5], pop {pc}), and r5 is indeed not initialized in this function so it must come
+  from the caller. However, calling it an 'advance state' or 'stage 8' overinterprets the byte write —
+  the code merely stores 8 to a caller-provided [r5] without evidence this is a state field. No callers
+  were captured, so the semantics of [r5] are not grounded.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136EF8 -> navicust_showDialogStore8
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136EF8

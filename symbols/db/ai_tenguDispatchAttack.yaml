@@ -1,0 +1,54 @@
+name: ai_tenguDispatchAttack
+address: '0x080F93C2'
+kind: function
+status: probable
+summary: 'TenguMan attack dispatcher: tail-calls one of five handler routines selected by the HitElement
+  byte in the AI attack-vars struct.'
+interface: (r7 = AI attack vars struct) -> calls handler table[HitElement]; r0 passed through as first
+  argument to handler
+details: Loads the HitElement byte from the AI attack-vars struct at r7 (offset oAIAttackVars_HitElement),
+  uses it to index a 5-entry table at off_80F93D4, then tail-invokes the selected Thumb handler with `mov
+  lr, pc; bx r1`, which preserves the caller's r7 frame and returns here before popping {r7,pc}. The callee
+  receives r7 unchanged and whatever r0 the caller had set. All five targets are Thumb (addresses stored
+  +1). It is purely a jump-table dispatcher with no state of its own.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes the 5-entry handler table by
+    element; off_80F93D4 holds five +1 Thumb addresses (sub_80F93E8..sub_80F9518), one per element value;
+    mov lr,pc; bx r1 is the classic Thumb far-call idiom, so control returns to pop {r7,pc}; only known
+    caller ai_tenguInitAttack (TenguMan attack init) sets up the attack vars before this dispatch
+  refs:
+  - bn6f/asm/asm31.s:139136
+  - 0x080F9168 ai_tenguInitAttack
+  reproduce: python3 tools/asmcat.py 0x080F93C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatcher pattern and table at off_80F93D4 with five Thumb entries match the proposal''s structure.
+    However, the name ''ai_tenguDispatchElementAttack'' embeds ''Element'' which isn''t verifiable from
+    the code—we don''t know those sub_ functions are element-specific; only the parent ai_tenguInitAttack
+    confirms Tengu AI context. A safer name is ai_tenguDispatchAttack.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- the five handler bodies (sub_80F93E8, sub_80F945C, sub_80F94A2, sub_80F94D8, sub_80F9518) are unexamined,
+  so the exact per-element attack behaviors are unconfirmed
+- whether r0 carries a meaningful argument into the handlers is unverified
+- The dispatcher pattern and table at off_80F93D4 with five Thumb entries match the proposal's structure.
+  However, the name 'ai_tenguDispatchElementAttack' embeds 'Element' which isn't verifiable from the code—we
+  don't know those sub_ functions are element-specific; only the parent ai_tenguInitAttack confirms Tengu
+  AI context. A safer name is ai_tenguDispatchAttack.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F93C2 -> ai_tenguDispatchAttack
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F93C2

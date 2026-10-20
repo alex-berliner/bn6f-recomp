@@ -1,0 +1,68 @@
+name: battle_randFilteredPanelXY
+address: '0x081123EC'
+kind: function
+status: probable
+summary: 'Picks a random field panel matching required-mask 0x800000 (excluding the acting object''s panel)
+  and returns its (x,y) coordinates: r0 = x (low 3 bits of sampled byte), r1 = y (high nibble); r0 = 0
+  if no panel is found.'
+interface: (r0 = object ptr, r1 = panel-list buffer) -> r0 = x coord (low 3 bits of sampled byte), r1
+  = y coord (byte>>4); r0 = 0 if no matching panel
+details: 'Calls object_getPanelsExceptCurrentFiltered with required-mask 0x800000 and forbidden-mask 0
+  to fill a caller buffer with matching panels; if the count is nonzero it calls sub_8112426, else it
+  calls sub_8112466, and if that also fails it returns 0. The surviving value in r4 is a count: GetPositiveSignedRNG
+  feeds SWI 6 (BIOS Div) with r1=count, and the remainder (rand % count) indexes a byte from the collected
+  list, so one random panel entry is selected. The selected byte is split into nibbles: r1 = byte>>4 (y)
+  and r0 = low 3 bits (x, masked with lsl #0x1d/lsr #0x1d), i.e. a packed panel coordinate. Both candidate
+  helpers (sub_8112426, sub_8112466) appear to be alternate ways to produce a valid count/entry when the
+  simple filter fails. Runs in recorded battlesweep and beastsp routes, suggesting a battle-time effect
+  or AI that targets a random tile of a specific panel type.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_81123EC: ldr r2, =0x800000 + bl object_getPanelsExceptCurrentFiltered — panel collection
+    with a single required attribute bit; sub_81123EC: bl sub_8112426 / bl sub_8112466 with beq exits
+    — two fallback paths yielding a count, else return 0; sub_81123EC: bl GetPositiveSignedRNG; mov r1,r4;
+    svc 6 — BIOS Div computes rand % count; sub_81123EC: add r0,sp,#0x10; ldrb r0,[r0,r1]; lsr r1,r0,#4;
+    lsl/lsr low-3-bit mask — random entry decoded as packed (y<<4)|x coordinate nibbles; Callee object_getPanelsExceptCurrentFiltered
+    known to collect panels matching required/forbidden masks into a caller list, returning the entry
+    count'
+  refs:
+  - bn6f/asm/asm32.s:8838
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x08112426 sub_8112426
+  reproduce: python3 tools/asmcat.py 0x081123EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mask 0x800000 and the calls/flow match, but `lsr r1, r0, #4` followed by `lsl r0, r0, #0x1d;
+    lsr r0, r0, #0x1d` masks with 0x7, so r0 is x in 0..7 (not ''low 3 bits of sampled byte'' which would
+    just be 0x7); and both r0 and r1 are returned as coordinates. Also the buffer list passed to object_getPanelsExceptCurrentFiltered
+    is at sp+0, while the sampled byte is loaded from sp+0x10 — different buffers, so the RNG indexes
+    into sp+0x10, not the collected list. The name is fine.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What the 0x800000 panel attribute bit denotes (panel type or state)
+- What sub_8112426 and sub_8112466 check/fall back on, and why one entry is read from sp+0x10 rather than
+  the list base
+- Which caller/battle effect consumes the returned x/y nibbles and whether it also uses r1
+- 'The mask 0x800000 and the calls/flow match, but `lsr r1, r0, #4` followed by `lsl r0, r0, #0x1d; lsr
+  r0, r0, #0x1d` masks with 0x7, so r0 is x in 0..7 (not ''low 3 bits of sampled byte'' which would just
+  be 0x7); and both r0 and r1 are returned as coordinates. Also the buffer list passed to object_getPanelsExceptCurrentFiltered
+  is at sp+0, while the sampled byte is loaded from sp+0x10 — different buffers, so the RNG indexes into
+  sp+0x10, not the collected list. The name is fine.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81123EC -> battle_randFilteredPanelXY
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81123EC

@@ -1,0 +1,58 @@
+name: ai_colonelPanelAttackParams
+address: '0x08101570'
+kind: function
+status: probable
+summary: Tail-calls sub_800FE28 with the address of the 4-byte table at byte_8101580 ({0x1E,0x18,0x10,0x0C}),
+  as part of Colonel's panel-attack setup following ai_initColonelPanelAttack.
+interface: () -> r0 = pointer to byte_8101580 passed to sub_800FE28; no other registers used, flags not
+  meaningful
+details: 'A tiny thunk: it overwrites r0 with the address of a 4-byte constant table {0x1E,0x18,0x10,0x0C}
+  and tail-ish calls sub_800FE28 with it. The table is indexed by nothing here, so sub_800FE28 (or its
+  caller chain) presumably selects one of the four values by the difficulty tier that ai_initColonelPanelAttack
+  set up. Given the caller context (Colonel AI attack with a panel-choose callback and difficulty-tier
+  state), the values most plausibly tune that attack per difficulty — e.g. a timer, panel count, or step
+  delay — but the semantics live in sub_800FE28, which is undocumented here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'body is only ldr r0,=byte_8101580; bl sub_800FE28; pop {pc} — r0 is the sole input, the table
+    is the only payload; byte_8101580 = 1E 18 10 0C: four descending values fitting a 4-tier difficulty
+    lookup; only caller is ai_initColonelPanelAttack at 0x081016FE, which sets difficulty-tier state and
+    a panel-choose callback before starting attack 0xD; sub_800FE28 is the sole callee and receives the
+    table pointer, so the table''s meaning is defined by that routine'
+  refs:
+  - bn6f/asm/asm31.s:155980
+  - 0x081016FE ai_initColonelPanelAttack
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08101570
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms a tiny thunk that loads the address of the 4-value table at byte_8101580 (0x1E,0x18,0x10,0x0C)
+    into r0 and tail-calls sub_800FE28, matching the proposal''s facts. However, calling this ''PanelAttackTimers''
+    assumes the table contents are timers, which the code does not prove; the semantics live in sub_800FE28,
+    which is not shown. The ai_ prefix and the caller relationship to ai_initColonelPanelAttack are correct.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_800FE28 does with the table (timer, panel count, threshold?)
+- whether the four bytes are indexed by difficulty tier or by some other state set up by the caller
+- whether sub_800FE28 is a generic helper reused by other AI attacks (other call sites would confirm the
+  parameter format)
+- The code confirms a tiny thunk that loads the address of the 4-value table at byte_8101580 (0x1E,0x18,0x10,0x0C)
+  into r0 and tail-calls sub_800FE28, matching the proposal's facts. However, calling this 'PanelAttackTimers'
+  assumes the table contents are timers, which the code does not prove; the semantics live in sub_800FE28,
+  which is not shown. The ai_ prefix and the caller relationship to ai_initColonelPanelAttack are correct.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101570 -> ai_colonelPanelAttackParams
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101570

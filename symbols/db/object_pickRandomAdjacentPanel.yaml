@@ -1,0 +1,66 @@
+name: object_pickRandomAdjacentPanel
+address: '0x080F811A'
+kind: function
+status: probable
+summary: Picks a random panel adjacent to a battle object's current panel that matches a required/forbidden
+  panel-flag mask, preferring neighbors not in the row stored at object+0x13; returns 0 in r0 if no neighbors
+  match.
+interface: (r0 = battle object ptr (r5 preserved input too), r2 = panel flag mask to require, r3 = panel
+  flag mask to forbid) -> r0 = chosen panel x (low 3 bits, 0 if none), r1 = chosen panel y (high nibble
+  of the packed byte)
+details: 'Iterates the four cardinal offsets in the table at 0x80F81B8 ((0,+1),(0,-1),(-1,0),(+1,0)) added
+  to the object''s PanelX/PanelY, calling object_checkPanelParameters on each neighbor with the caller''s
+  flag masks. Each hit is packed as (y<<4)|x into one of two on-stack buffers: sp+0xC when the neighbor''s
+  y differs from byte [obj+0x13] (preferred), sp+0x10 when it matches (fallback). If any preferred hits
+  exist it picks one with GetPositiveSignedRNG divided by the count (SWI 6 Div remainder), else falls
+  back to the same-row buffer, else returns r0=0 (with r1 left stale). The chosen byte is unpacked to
+  x = value & 7 in r0 and y = value >> 4 in r1. Note the returned x is truncated to 3 bits, so this only
+  works for x <= 7.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80F812A: ldrsb signed dx/dy pairs from byte_80F81B8 added to oBattleObject_PanelX/PanelY
+    each of 4 iterations; bl object_checkPanelParameters with (x+dx, y+dy, [sp+4], [sp+8]) gates which
+    neighbors are collected; cmp r1, [r2,#0x13] splits matches into preferred (sp+0xC, count r6) vs same-row
+    (sp+0x10, count r7) buffers, stored as strb (y<<4)|x; bl GetPositiveSignedRNG; svc 6 (Div) uses remainder
+    r1 to index the non-empty buffer, then lsr #4 / lsl 0x1d unpack y and x; byte_80F81B8: 0,1, 0,-1,
+    -1,0, 1,0 — exactly the four cardinal neighbor offsets'
+  refs:
+  - bn6f/asm/asm31.s:136802
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080F811A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics (iterating 4 offsets from 0x80F81B8, preferred/fallback packing, SVC 6
+    modulo, unpacking y>>4 and x&7) match the asm exactly. However, `ai_` prefix is unwarranted — no callers
+    are known and the routine takes a generic object ptr with panel flag masks, so `object_` is the correct
+    category. The `r5 preserved` claim is plausible (r5 is never written) but the signature inputs are
+    r0/r2/r3, not r5.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- No callers are known, so the meaning of object field 0x13 (the row treated as lower priority) is unconfirmed
+  — likely the object's own PanelY or a row to avoid stepping into
+- The identity of the caller AI/attack script that uses this (routes suggest a boss move such as battlesweep)
+  and what the panel-flag masks passed in r2/r3 typically are
+- The proposal's mechanics (iterating 4 offsets from 0x80F81B8, preferred/fallback packing, SVC 6 modulo,
+  unpacking y>>4 and x&7) match the asm exactly. However, `ai_` prefix is unwarranted — no callers are
+  known and the routine takes a generic object ptr with panel flag masks, so `object_` is the correct
+  category. The `r5 preserved` claim is plausible (r5 is never written) but the signature inputs are r0/r2/r3,
+  not r5.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F811A -> object_pickRandomAdjacentPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F811A

@@ -1,0 +1,66 @@
+name: ai_highlightAttackAreaPanels
+address: '0x0810DED2'
+kind: function
+status: probable
+summary: AI helper that highlights up to 4 battle panels per attack by reading a (dx,dy) pattern from
+  a 2D table at off_810DF98 (indexed by object bytes +0x78/+0x79), adding nibbles of AttackBoost2 to dx/dy,
+  and mirroring offsets by side via object_getFrontDirection before calling highlightPanelIfSomeCondition_8109660.
+interface: (r5 = battle object, r7 = AI vars struct) -> r0 = highlight result of last panel; flags from
+  loop compare
+details: Reads two index bytes from the battle object at +0x78 and +0x79 and uses them to pick a list
+  of (dx,dy) byte pairs from the nested table at off_810DF98. For each of the 4 entries it adds the top
+  nibble of [r7+oAIAttackVars_AttackBoost2] to dx and the low 3 bits to dy, so boosts shift the highlighted
+  area. It queries object_getFrontDirection for the object's side, then calls highlightPanelIfSomeCondition_8109660
+  with the adjusted y in r0, x in r1, and r3 = Alliance xor DirectionFlip, so the offsets are mirrored
+  by facing side; the highlight helper clamps to the 6x3 grid. The dx,dy pair is kept on the stack across
+  the direction call and restored for the highlight call. Runs during battlesweep routes, i.e. inside
+  AI attack setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#0x78]/[r5,#0x79] + ldr r2,[r2,r0]; ldr r2,[r2,r1]: 2D table lookup of the offset
+    list; loop cmp r3,#4 / blt: exactly 4 (dx,dy) byte pairs processed per call; r1 += [r2+r4]; r0 +=
+    [r2+r4+1] with nibble split of [r7+oAIAttackVars_AttackBoost2]: boosts shift the area; eor r3 (Alliance,DirectionFlip)
+    passed with the pair to highlightPanelIfSomeCondition_8109660, whose summary matches panel highlighting
+    on the battle grid; called only from sub_810DE3C during battlesweep, alongside object_getFrontDirection,
+    consistent with AI attack area display'
+  refs:
+  - bn6f/asm/asm32.s:676
+  - 0x0810DE3C sub_810DE3C
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x0810DED2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it indexes into off_810DF98 via two bytes at +0x78/+0x79, splits the AttackBoost2
+    nibble (top nibble -> dx, low 3 bits -> dy), then calls object_getFrontDirection to mirror by facing
+    side before highlightPanelIfSomeCondition_8109660. However the name ''ai_highlightAttackAreaPanels''
+    is decent but the summary''s ''4 panels'' is fine; the better issue is naming consistency — the function
+    doesn''t have ''high'' in it, and a tighter name like ai_highlightAttackPatternPanels fits the (dx,dy)
+    pattern from a table. A more precise prefix following rules would be ai_ since it''s an AI battle
+    helper.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- meaning of the two index bytes at +0x78/+0x79 (attack pattern id vs coordinates)
+- what sub_810DE3C does before this call and which table entries map to which attack
+- exact argument order of highlightPanelIfSomeCondition_8109660 (y,x assumed from register flow)
+- 'The code matches: it indexes into off_810DF98 via two bytes at +0x78/+0x79, splits the AttackBoost2
+  nibble (top nibble -> dx, low 3 bits -> dy), then calls object_getFrontDirection to mirror by facing
+  side before highlightPanelIfSomeCondition_8109660. However the name ''ai_highlightAttackAreaPanels''
+  is decent but the summary''s ''4 panels'' is fine; the better issue is naming consistency — the function
+  doesn''t have ''high'' in it, and a tighter name like ai_highlightAttackPatternPanels fits the (dx,dy)
+  pattern from a table. A more precise prefix following rules would be ai_ since it''s an AI battle helper.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810DED2 -> ai_highlightAttackAreaPanels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DED2

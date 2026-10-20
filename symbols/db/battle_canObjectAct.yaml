@@ -1,0 +1,65 @@
+name: battle_canObjectAct
+address: '0x080C14EC'
+kind: function
+status: probable
+summary: 'Returns 1 (r0) when the entity referenced by r5 may act this frame: game not paused, related
+  object alive (HP>0) and not flagged inactive (ObjectFlags1 & 0x80110c00 == 0), and no time-stop; otherwise
+  0.'
+interface: (r5 = battle entity context, preserved) -> r0 = 1 if object may act this frame, else 0; flags
+  clobbered by calls
+details: Loads the entity's RelatedObject1Ptr from [r5+oBattleObject_RelatedObject1Ptr] and fails if that
+  object's HP is 0. It also reads the related object's CollisionDataPtr and tests ObjectFlags1 against
+  the constant mask 0x80110c00 (bits 10,11,16,20,31), failing if any bit is set — presumably flags for
+  disabled/removed states. It then checks the global battle_isPaused and battle_isTimeStop states. Only
+  if all four checks pass does it return 1; otherwise 0. r5 is not set up inside, so callers must point
+  it at the acting entity's context before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isPaused / bne fail: paused battle blocks the positive result; ldrh r0,[r3,#oBattleObject_HP];
+    cmp #0; beq fail: dead related object blocks it; ldr r1,=0x80110c00; tst r0,r1; bne fail: ObjectFlags1
+    mask gates the result; bl battle_isTimeStop / bne fail: time-stop freezes it too; three callers at
+    0x80C12A6/0x1320/0x138E all reuse it as a gate before per-entity logic'
+  refs:
+  - bn6f/asm/asm31.s:20348
+  - 0x080C12A6 sub_80C12A6
+  - 0x080C1320 sub_80C1320
+  - 0x080C138E sub_80C138E
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080C14EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s checks: battle_isPaused, RelatedObject1Ptr HP != 0, CollisionDataPtr->ObjectFlags1
+    & 0x80110c00, and battle_isTimeStop — only returning r4=1 when all pass. However r5 is the input (preserved
+    by push/pop of r4 only), so ''preserved'' in the interface is fine, but the summary is accurate. The
+    proposed name ''battle_canObjectAct'' fits the naming rules (battle prefix, descriptive). A slightly
+    more idiomatic name aligning with the project''s ''Can'' style would be ''battle_canObjectAct''. No
+    real change needed — but the description ''returns 1 when conditions let the current object act''
+    is good; minor: it should note it returns the precomputed r4 (0 or 1), not just ''else 0''.; run wf
+    investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the ObjectFlags1 bits in mask 0x80110c00
+- what the three callers do after a 1 result (action update vs. AI step) — their summaries are unknown
+- 'The code matches the proposal''s checks: battle_isPaused, RelatedObject1Ptr HP != 0, CollisionDataPtr->ObjectFlags1
+  & 0x80110c00, and battle_isTimeStop — only returning r4=1 when all pass. However r5 is the input (preserved
+  by push/pop of r4 only), so ''preserved'' in the interface is fine, but the summary is accurate. The
+  proposed name ''battle_canObjectAct'' fits the naming rules (battle prefix, descriptive). A slightly
+  more idiomatic name aligning with the project''s ''Can'' style would be ''battle_canObjectAct''. No
+  real change needed — but the description ''returns 1 when conditions let the current object act'' is
+  good; minor: it should note it returns the precomputed r4 (0 or 1), not just ''else 0''.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C14EC -> battle_canObjectAct
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C14EC

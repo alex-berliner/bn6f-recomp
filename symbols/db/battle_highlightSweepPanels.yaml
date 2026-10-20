@@ -1,0 +1,63 @@
+name: battle_highlightSweepPanels
+address: '0x080C9360'
+kind: function
+status: probable
+summary: Highlights the two panels offset from a battle object's panel along one of four direction pairs
+  chosen by the object's alliance and an r0 id, used by sweep/special attacks.
+interface: (r0 = direction/shape id 0-1, r5 = battle object) -> r0 = preserved-ish (object_highlightPanel
+  result); no meaningful return
+details: 'Reads the object''s Alliance field (offset oBattleObject_Alliance) and uses it, times 4, plus
+  r0 to index byte_80C93C4, yielding one of four offset-pair groups in byte_80C93B0. Each group holds
+  two signed (dx,dy) pairs: horizontal (±1,0), diagonal (±1,±1), vertical (0,±1), anti-diagonal (±1,∓1).
+  For each pair it adds the offsets to the object''s PanelX/PanelY, calls object_isValidPanel to check
+  the 6x3 grid, and if valid calls object_highlightPanel to set the panel''s highlight flag. The alliance-to-group
+  mapping lets the same code mirror direction for player-side vs enemy-side objects. r4/r6/r7 are pushed
+  but r7 is never used; r4 holds the pair-table pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#oBattleObject_Alliance]; ldr off_80C93C0 indexes byte_80C93C4[alliance*4 + r0]
+    to pick an offset group; byte_80C93B0 holds four groups of two signed (dx,dy) pairs: (-1,0),(1,0)
+    / (-1,-1),(1,1) / (0,-1),(0,1) / (1,-1),(-1,1); ldrb r2,[r5,#oBattleObject_PanelX]/PanelY then add
+    r0,r0,r2 computes target panel from the object''s position; bl object_isValidPanel followed by bl
+    object_highlightPanel marks each in-bounds target panel; recorded routes battlesweep and beastsp match
+    a sweeping beast-out attack that strikes neighboring panels'
+  refs:
+  - bn6f/asm/asm31.s:37373
+  - 0x080C9238 sub_80C9238
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080C9360
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary overstates ''direction pair selected by object''s alliance and an id in r0''. The r0
+    id selects one of 4 group indices (0-3) from byte_80C93C4, and the alliance*4 base shifts the selection.
+    The groups at byte_80C93B0 are: (FF,00)(01,00)=horizontal, (FF,FF)(01,01)=diagonal, (00,FF)(00,01)=vertical,
+    (01,FF)(FF,01)=anti-diagonal — matching the proposal. Callee names and the caller''s battlesweep/beastsp
+    usage support sweep/special attack panel highlighting.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which exact attack/hook in sub_80C9238 invokes this and what r0 means semantically (attack variant vs
+  facing)
+- Whether the highlighted panels are the damage targets of the sweep or just a visual telegraph
+- 'The summary overstates ''direction pair selected by object''s alliance and an id in r0''. The r0 id
+  selects one of 4 group indices (0-3) from byte_80C93C4, and the alliance*4 base shifts the selection.
+  The groups at byte_80C93B0 are: (FF,00)(01,00)=horizontal, (FF,FF)(01,01)=diagonal, (00,FF)(00,01)=vertical,
+  (01,FF)(FF,01)=anti-diagonal — matching the proposal. Callee names and the caller''s battlesweep/beastsp
+  usage support sweep/special attack panel highlighting.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9360 -> battle_highlightSweepPanels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9360

@@ -346,12 +346,12 @@ Next sub_803A8E2(void) {
 /* handleExitSubmenu_803AA24: Exit-submenu handler.
  * - inputs:  r2, r5, lr
  * - outputs: r5, r10
- * If sub_803C068(0x10, 0x30) returns non-zero (success), clears [r5+0x13],
+ * If chatbox_stackPop(0x10, 0x30) returns non-zero (success), clears [r5+0x13],
  * plays the exit-submenu sound, then runs sub_803A84E. */
 Next handleExitSubmenu_803AA24(void) {
     R0 = 0x10;
     R1 = 0x30;
-    GUEST_CALL(sub_803C068);
+    GUEST_CALL(chatbox_stackPop);
     if (!ZERO_FLAG()) {
         ST8(R5 + 0x13, 0);
         R0 = SOUND_EXIT_SUBMENU;

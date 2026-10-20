@@ -1,0 +1,62 @@
+name: battle_initAIChipQueueSlot
+address: '0x0808FF30'
+kind: function
+status: probable
+summary: Battle-side wrapper that initializes the AI chip-queue slot (0x58 bytes in EWRAM at 0x02011860)
+  via the AI-chip-queue helper, with r0/r1/r2=0 selecting slot 0 and returning 0.
+interface: () -> r0 = 0; no flags meaningful
+details: 'The routine is a thin battle-initialization wrapper: it first branches to the 0x080468BA entry
+  of the AI-chip-queue helper (which shares its code with the 0x080468C6 entry point, only 12 bytes apart),
+  then calls battleObject_initAIChipQueueSlot_80468C6 with r0=r1=r2=0, which per the known summary initializes
+  the 0x58-byte AI chip-queue slot in EWRAM at 0x02011860 for actor slot 0. It always returns 0 in r0,
+  suggesting it is used as a success-returning init/callback. Its execution on the beastsp route is consistent
+  with running during battle start when AI actor state is (re)initialized.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_initAIChipQueueSlot_80468C6 with r0=r1=r2=0 matches the callee''s known role
+    of initializing the 0x58-byte AI chip-queue slot at 0x02011860 for a given actor index (0 here); the
+    two bl targets 0x080468BA and 0x080468C6 are 12 bytes apart, so the first call enters the same helper
+    at an earlier entry point before the slot init; mov r0, #0 before pop {pc} shows it always returns
+    0, typical of an init/callback returning success; executed on the beastsp recorded route, consistent
+    with battle startup where AI queue state is cleared'
+  refs:
+  - bn6f/asm/asm25.s:954
+  - 0x080468C6 battleObject_initAIChipQueueSlot_80468C6
+  - 0x080468BA sub_80468BA
+  reproduce: python3 tools/asmcat.py 0x0808FF30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code indeed initializes the AI chip-queue slot with zeroed parameters and returns 0, matching
+    the proposal. However, calling it ''battle_resetAIChipQueueSlot0'' is misleading: it resets the slot
+    via the init helper (not a reset), and the slot index is passed in r0 (r0=#0 here, but the function
+    itself is parameterized). A better name like ''init_battleAIChipQueueSlot'' or ''battle_initAIChipQueueSlot_808FF30''
+    reflects that this is a parameterized init wrapper. The summary also overclaims ''slot 0'' when slot
+    index is just the current argument (0 in this caller).; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the 0x080468BA entry point of the helper does before falling into the slot initializer
+- which caller invokes this (none captured), i.e. whether it is a battle-mode init callback and for which
+  actor/mode
+- why actor slot 0 specifically is zeroed here and whether other slots are initialized elsewhere
+- 'The code indeed initializes the AI chip-queue slot with zeroed parameters and returns 0, matching the
+  proposal. However, calling it ''battle_resetAIChipQueueSlot0'' is misleading: it resets the slot via
+  the init helper (not a reset), and the slot index is passed in r0 (r0=#0 here, but the function itself
+  is parameterized). A better name like ''init_battleAIChipQueueSlot'' or ''battle_initAIChipQueueSlot_808FF30''
+  reflects that this is a parameterized init wrapper. The summary also overclaims ''slot 0'' when slot
+  index is just the current argument (0 in this caller).'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FF30 -> battle_initAIChipQueueSlot
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FF30

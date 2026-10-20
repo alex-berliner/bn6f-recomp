@@ -1,0 +1,58 @@
+name: ai_snakearmDispatchTick
+address: '0x0811055C'
+kind: function
+status: probable
+summary: Loads the object's AI state ID, uses it to index a one-entry function table at off_8110570, and
+  tail-calls the selected Thumb handler (battle_aiSnakeArmAttack_tick) via mov lr,pc/bx r1.
+interface: (r6 = object struct) -> r0 = state handler return value; calls table entry via mov lr,pc/bx
+details: Loads the object's state ID from [r6, oAIState_ScriptId], uses it to index the function-pointer
+  table at off_8110570, and calls the selected handler with r0 = state ID. The table currently contains
+  only one entry, battle_aiSnakeArmAttack_tick_8110574, so with the observed single-entry table all state
+  IDs fall out of range unless the table is longer in the actual build. r4 and r6 are preserved across
+  the call; the handler is expected to return via lr. This is a per-frame state-machine tick dispatcher
+  for an AI-controlled battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes the pointer table by the object's state
+    ID (asm lines 2-4); mov lr, pc; bx r1 tail-dispatches to the handler at battle_aiSnakeArmAttack_tick_8110574;
+    table off_8110570's sole visible entry is battle_aiSnakeArmAttack_tick_8110574+1, tying this to the
+    snake-arm AI; executed on recorded battlesweep and beastsp routes, consistent with battle AI tick
+    code
+  refs:
+  - bn6f/asm/asm32.s:5225
+  reproduce: python3 tools/asmcat.py 0x0811055C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does index off_8110570 by the AI state byte and call the entry via mov lr,pc/bx r1, matching
+    the dispatch idea. However, the proposal says r0 carries the state ID into the callee, but r0 is only
+    set before the table load via ldrb and is then overwritten by ldr r1,[r1,r0]; the callee actually
+    sees r1=table-entry+1 (Thumb bit set), not the state ID. Also, the table is provably length 1 in this
+    build, so the per-frame snake-arm tick role is plausible but not certain, and callers are recorded
+    as none known.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- full length of the state table at off_8110570 and the other state handlers
+- offset/meaning of oAIState_ScriptId in the object struct
+- what arguments (if any) beyond r6 the handlers expect
+- The code does index off_8110570 by the AI state byte and call the entry via mov lr,pc/bx r1, matching
+  the dispatch idea. However, the proposal says r0 carries the state ID into the callee, but r0 is only
+  set before the table load via ldrb and is then overwritten by ldr r1,[r1,r0]; the callee actually sees
+  r1=table-entry+1 (Thumb bit set), not the state ID. Also, the table is provably length 1 in this build,
+  so the per-frame snake-arm tick role is plausible but not certain, and callers are recorded as none
+  known.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811055C -> ai_snakearmDispatchTick
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811055C

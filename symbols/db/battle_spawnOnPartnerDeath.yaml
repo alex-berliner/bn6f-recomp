@@ -1,0 +1,64 @@
+name: battle_spawnOnPartnerDeath
+address: '0x080BC494'
+kind: function
+status: probable
+summary: If the object's linked partner (RelatedObject1Ptr) has HP 0, spawn a cross-linked battle object
+  via battle_spawnLinkedObject_80E1A6A and set Timer=0x20, CurAction=0xC; otherwise leave it alone.
+interface: (r5 = battle object) -> r0 = 0 if the partner was dead and the spawn/state change happened,
+  otherwise r0 = partner HP (nonzero); no flags meaningful
+details: Loads oBattleObject_RelatedObject1Ptr and tests its oBattleObject_HP; if it is nonzero the function
+  returns immediately (r0 still holds that HP). When the partner's HP is 0, it calls battle_spawnLinkedObject_80E1A6A
+  with r4 = 0x10000 and r7 = AIDataPtr+0x74, so the spawned type-0x11 object is cross-linked with this
+  object and gets a pointer into the AI data at offset 0x74 for tracking. It then writes Timer = 0x20
+  and CurAction = 0xC on the parent object at r5, and returns 0. The 0x10000 constant and the AI-data
+  offset are the only opaque values; the spawned object's identity depends on battle_spawnLinkedObject_80E1A6A.
+  Called from sub_80BC284/sub_80BC29C in recorded battle routes, consistent with an enemy AI routine gated
+  on partner death.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r0,#oBattleObject_HP]; cmp r0,#0; bne locret — only acts when the related object's
+    HP is 0 (80BC496-80BC49C); bl battle_spawnLinkedObject_80E1A6A with r7=[r5,#oBattleObject_AIDataPtr]+0x74,
+    r4=0x10000 — spawns a linked object tracked via AI data (80BC4A4); strh 0x20,[r5,#oBattleObject_Timer];
+    strb 0xC,[r5,#oBattleObject_CurAction] — puts this object into a new timed action state (80BC4AA-80BC4AE);
+    callers sub_80BC284/sub_80BC29C run in battle routes, matching an AI-state helper; callee's known
+    summary confirms type-0x11 spawn cross-linked to parent + optional pointer slot
+  refs:
+  - bn6f/asm/asm31.s:9170
+  - 0x080BC284 sub_80BC284
+  - 0x080BC29C sub_80BC29C
+  - 0x080E1A6A battle_spawnLinkedObject_80E1A6A
+  reproduce: python3 tools/asmcat.py 0x080BC494
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_80BC494 checks r5->RelatedObject1Ptr->HP and on zero HP calls battle_spawnLinkedObject_80E1A6A
+    with r4=0x10000 and r7=AIDataPtr+0x74, then sets Timer=0x20 and CurAction=0xC and returns 0; otherwise
+    it returns the nonzero HP in r0. The name ''spawnOnPartnerDeath'' fits, but the proposed return-value
+    description is wrong: the function doesn''t return HP when nonzero (HP is read into r0, then bne pops
+    out so r0 is whatever was loaded). ''battle_spawnOnPartnerDeath'' is still accurate; just tighten
+    the summary.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what object type 0x10000 selects in battle_spawnLinkedObject_80E1A6A and what lives at AIDataPtr+0x74
+- what CurAction 0xC does in this enemy's action table and what the callers sub_80BC284/sub_80BC29C do
+  with the return value
+- 'The code at sub_80BC494 checks r5->RelatedObject1Ptr->HP and on zero HP calls battle_spawnLinkedObject_80E1A6A
+  with r4=0x10000 and r7=AIDataPtr+0x74, then sets Timer=0x20 and CurAction=0xC and returns 0; otherwise
+  it returns the nonzero HP in r0. The name ''spawnOnPartnerDeath'' fits, but the proposed return-value
+  description is wrong: the function doesn''t return HP when nonzero (HP is read into r0, then bne pops
+  out so r0 is whatever was loaded). ''battle_spawnOnPartnerDeath'' is still accurate; just tighten the
+  summary.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC494 -> battle_spawnOnPartnerDeath
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC494

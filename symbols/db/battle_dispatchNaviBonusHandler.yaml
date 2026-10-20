@@ -1,0 +1,58 @@
+name: battle_dispatchNaviBonusHandler
+address: '0x0801177A'
+kind: function
+status: probable
+summary: Tail-calls a handler from a jump table indexed by NaviBonusIndex, operating on the object's AttackVars;
+  does not modify state itself.
+interface: (r5 = battle object) -> calls table[object->AIData->NaviBonusIndex] with r0..r3 preserved;
+  returns to caller's caller
+details: 'Reads the object''s AIData pointer (oBattleObject_AIDataPtr), points r7 at the AttackVars area
+  (oAIData_AttackVars), then loads the handler pointer from table off_80117D4 at NaviBonusIndex*4 and
+  performs a computed BL via ''mov lr,pc; bx r1''. The NaviBonusIndex therefore acts as a selector into
+  a set of per-variant handlers that operate on the attack vars. It is a pure dispatcher: no state is
+  modified here besides lr. Called from the player AI routine 0x080F0354 during battle execution.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIData_NaviBonusIndex]; lsl r0,r0,#2; ldr r1,[r1,r0] — index*4 jump-table lookup;
+    mov lr,pc; bx r1 — computed long call, so table entries are full routines, not data; r7 = AIData+oAIData_AttackVars
+    set up before the call, implying handlers consume attack variables; sole caller 0x080F0354 playerAI_sub_80F0354
+    places it in the player AI action path
+  refs:
+  - bn6f/asm/asm00_2.s:6080
+  - 0x080F0354 playerAI_sub_80F0354
+  reproduce: python3 tools/asmcat.py 0x0801177A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does read AIData, load handler from a jump table at NaviBonusIndex*4, and tail-call via
+    ''mov lr,pc; bx r1'', so the dispatch behavior matches. However, the proposal cites table off_80117D4
+    while the asm loads r1 from off_80117D0 (the ldr uses off_80117D0, which =off_80117D4 per the comment,
+    but the name off_80117D4 is misleading). More importantly, the summary says ''returns to caller''s
+    caller'' but the trailing ''pop {r6,r7,pc}'' epilogue is dead code after the bx r1 tail-call, so behavior
+    is a pure tail-call returning to caller, not caller''s caller. Name is otherwise reasonable.; run
+    wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What the table entries at off_80117D4 actually do (attack behaviors per NaviBonusIndex) is unknown without
+  examining those handlers
+- Exact meaning of NaviBonusIndex values (which navi/attack variant each maps to)
+- The code does read AIData, load handler from a jump table at NaviBonusIndex*4, and tail-call via 'mov
+  lr,pc; bx r1', so the dispatch behavior matches. However, the proposal cites table off_80117D4 while
+  the asm loads r1 from off_80117D0 (the ldr uses off_80117D0, which =off_80117D4 per the comment, but
+  the name off_80117D4 is misleading). More importantly, the summary says 'returns to caller's caller'
+  but the trailing 'pop {r6,r7,pc}' epilogue is dead code after the bx r1 tail-call, so behavior is a
+  pure tail-call returning to caller, not caller's caller. Name is otherwise reasonable.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801177A -> battle_dispatchNaviBonusHandler
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801177A

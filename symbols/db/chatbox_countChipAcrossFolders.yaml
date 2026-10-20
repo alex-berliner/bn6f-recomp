@@ -1,0 +1,59 @@
+name: chatbox_countChipAcrossFolders
+address: '0x08021C02'
+kind: function
+status: probable
+summary: Scans the chip-folder table over a count of folder entries from unk_20018EC, returning how many
+  matching id+code slots the player also holds in the pack, used by chatbox chip-script conditions.
+interface: (r0 = chip id, r1 = code letter value) -> r0 = number of matching slots found; flags set by
+  final compare/pop
+details: Reads a count from toolkit S2001c04 byte 5 and iterates that many entries of the byte list at
+  unk_20018EC, using each byte's high nibble as a folder index (x0x3C stride) into the chip-folder table
+  at oToolkit_S_Chip_2002178_Ptr. For each of the 30 halfword slots (0x3C bytes per folder) it masks 0x1FF
+  for the chip id and shifts >>9 for the code, comparing both against r0/r1. On a match it calls pack_hasChipOfCode_8006EA4
+  with the same id/code and only increments the tally if the player also holds that chip in the pack.
+  Returns the total count in r0. The low nibble of each list byte is ignored.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop over unk_20018EC bytes, lsr #4 gives folder index multiplied by 0x3C into the folder table
+    (loc_8021C16); ldrh with 0x1FF mask and lsr #9 extracts chip id and code, compared to args r0/r1 (loc_8021C28);
+    bl pack_hasChipOfCode_8006EA4 gates the increment, so pack ownership is required; caller chatbox_evaluateChipScript_8041818
+    fits a chip-condition count in a chatbox chip script; result r5 accumulated per matching slot and
+    returned in r0'
+  refs:
+  - bn6f/asm/asm02.s:271
+  - 0x08041818 chatbox_evaluateChipScript_8041818
+  - 0x08006EA4 pack_hasChipOfCode_8006EA4
+  reproduce: python3 tools/asmcat.py 0x08021C02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The body matches the proposal: byte 5 of S2001c04 is the loop count, the unk_20018EC bytes'' high
+    nibble indexes folders of 0x3C halfword slots in oToolkit_S_Chip_2002178_Ptr, and the 0x1FF/>>9 split
+    extracts chip id and code letter, calling pack_hasChipOfCode_8006EA4 before tallying. However, the
+    sole caller chatbox_evaluateChipScript_8041818 indicates a chatbox-script context, and the function
+    returns the count as a script condition value, so ''chatbox'' is the right prefix. The summary is
+    essentially correct.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of each unk_20018EC byte (why high nibble, what low nibble holds)
+- which folders these indices select (regular, tag, gate/extra folders)
+- why S2001c04 byte 5 supplies the loop count
+- 'The body matches the proposal: byte 5 of S2001c04 is the loop count, the unk_20018EC bytes'' high nibble
+  indexes folders of 0x3C halfword slots in oToolkit_S_Chip_2002178_Ptr, and the 0x1FF/>>9 split extracts
+  chip id and code letter, calling pack_hasChipOfCode_8006EA4 before tallying. However, the sole caller
+  chatbox_evaluateChipScript_8041818 indicates a chatbox-script context, and the function returns the
+  count as a script condition value, so ''chatbox'' is the right prefix. The summary is essentially correct.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8021C02 -> chatbox_countChipAcrossFolders
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8021C02

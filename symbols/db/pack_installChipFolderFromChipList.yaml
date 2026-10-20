@@ -1,0 +1,77 @@
+name: pack_installChipFolderFromChipList
+address: '0x081206F8'
+kind: function
+status: probable
+summary: Iterates 30 0x20-byte chip records and writes one 30-entry u16 folder slot (each entry = (code<<9)|id)
+  into toolkit->S_Chip at slot r1, granting each non-zero chip to the spare pack via pack_addChipByIdSetLibraryFlag.
+interface: (r0 = source list of 30 chip records, 0x20 bytes each, chip word at +0x1C; r1 = destination
+  folder slot index in S_Chip) -> no return value; clobbers r0-r4, r7, r10 saved
+details: 'r7 is computed as toolkit->S_Chip (0x2002178 ptr) + r1*0x3C, and the loop writes 30 consecutive
+  halfwords there (30*2 = 0x3C = one slot), stepping r4 by 0x20 over 30 source records (end computed as
+  r0 + 30*0x20). Each source record''s word at +0x1C is split: bits 7-15 form the chip id, bits 0-6 a
+  code/sub-field; if the id is nonzero the function stores (bits0-6 << 9) | id into the folder slot and
+  calls pack_addChipByIdSetLibraryFlag(id, bits0-6, 1) so the player actually owns the chip and its library
+  event flag is set. The folder write is additionally gated on byte [r5+2] == 0; r5 is never set in this
+  routine, so it must arrive set from the caller (petNavi_perFrameUpdate_81339BC), likely a once-only/''already
+  installed'' flag since the caller is a per-frame update. The bit layout matches a packed folder entry
+  (id in low bits, code shifted up), suggesting this installs a preset/extra folder from a template or
+  Navi-state chip list.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7,[r10,#oToolkit_S_Chip_2002178_Ptr]; mul r1,#0x3C -> destination is one 0x3C-byte (30
+    u16) folder slot selected by arg r1; loop bound r0 = r4 + 0x1E*0x20 with stride 0x20: exactly 30 source
+    records, chip word read from [r4,#0x1C]; r0 = halfword bits 7-15 (chip id), r1 = bits 0-6; strh stores
+    (r1<<9)|r0, the packed folder-entry format; bl pack_addChipByIdSetLibraryFlag_8021B2A with id and
+    r2=1 for every nonzero entry: grants the chip and sets its library flag; ldrb r2,[r5,#2]; tst; bne
+    skips only the folder write — a caller-supplied gate (r5 not initialized here), consistent with a
+    per-frame caller needing a once-only guard'
+  refs:
+  - bn6f/asm/asm32.s:37525
+  - 0x081339BC petNavi_perFrameUpdate_81339BC
+  - 0x08021B2A pack_addChipByIdSetLibraryFlag_8021B2A
+  reproduce: python3 tools/asmcat.py 0x081206F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The basic structure (loop over 30 0x20-byte source records writing 30 halfwords into a 0x3C-byte
+    slot, calling pack_addChipByIdSetLibraryFlag) matches the asm at loc_8120712 and the call to 0x08021B2A.
+    However the bit decomposition is inverted: `ldr r1,[r4,#0x1c]; lsl r1,#0x10; lsr r0,r1,#0x17; lsl
+    r1,r1,#9; lsr r1,r1,#0x19` makes r0 the high bits (effectively the code) and r1 the low bits (chip
+    id), and the store is `(r1<<9)|r0` so code is in the high 9 bits and id low, opposite of what the
+    proposal states. Also the gate reads `[r5+2]` (r5 is uninitialized/leftover), not a value the routine
+    itself computes.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- What the 0x20-byte source records contain besides the chip word at +0x1C (fields 0x00-0x1B unread here)
+- What [r5+2] is in the caller and why the folder write but not the pack-add is gated on it
+- Which folder slot index the caller passes (current folder vs. extra/preset folder) and the full layout
+  of the S_Chip struct at 0x2002178
+- Why a per-frame PET/Navi update triggers chip granting — whether this runs only during a specific fade/event
+- 'The basic structure (loop over 30 0x20-byte source records writing 30 halfwords into a 0x3C-byte slot,
+  calling pack_addChipByIdSetLibraryFlag) matches the asm at loc_8120712 and the call to 0x08021B2A. However
+  the bit decomposition is inverted: `ldr r1,[r4,#0x1c]; lsl r1,#0x10; lsr r0,r1,#0x17; lsl r1,r1,#9;
+  lsr r1,r1,#0x19` makes r0 the high bits (effectively the code) and r1 the low bits (chip id), and the
+  store is `(r1<<9)|r0` so code is in the high 9 bits and id low, opposite of what the proposal states.
+  Also the gate reads `[r5+2]` (r5 is uninitialized/leftover), not a value the routine itself computes.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81206F8 -> pack_installChipFolderFromChipList
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81206F8

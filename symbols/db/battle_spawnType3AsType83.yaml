@@ -1,0 +1,66 @@
+name: battle_spawnType3AsType83
+address: '0x080D59E2'
+kind: function
+status: probable
+summary: Wrapper that spawns a battle object of subtype 0x83, links it to a source object, copies its
+  alliance/flip, and sets flag 0x10.
+interface: (r0 = panelX, r1 = panelY, r2 = element/attr byte, r5 = related source battle object, r6 =
+  value for damage-counter field) -> r0 = new object ptr (NULL on failure); Z set from NULL test
+details: The wrapper stashes the caller's r0-r2 and r5 with 'push {r0-r2,r5}' so they survive the call,
+  then invokes object_spawnType3 with r0 = 0x83 (the callee's type argument; r1-r4 pass through untouched).
+  On return the new object pointer arrives in r5; 'mov r0, r5' both copies it to r0 and (Thumb MOV reg
+  sets flags) feeds the following 'beq' NULL check, so failure exits with r0 = 0. On success it stores
+  the preserved args into oBattleObject_PanelX/PanelY/oBattleObject_Element, stores r5 into oBattleObject_RelatedObject1Ptr
+  (so the new object references the source object) and r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler.
+  It copies the source object's oBattleObject_AllianceAndDirectionFlip halfword to the new object, then
+  ORs 0x10 into oObjectHeader_Flags. The odd 'push r0-r2 / pop r1-r3' shift is just argument preservation,
+  not a different convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'push {r0-r2,r5} / pop {r1-r3,r5} preserves the caller''s first three args and source-object
+    pointer across the spawn call; mov r0,#0x83 before bl object_spawnType3 selects object type 0x83;
+    mov r0,r5 followed by beq: Thumb MOV-reg sets flags, so r5 holds the new object ptr and NULL means
+    spawn failure; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element and str r5/r6 to RelatedObject1Ptr
+    / DamageAndStaminaDamageCounterDisabler fill the new object from caller state; ldrh/strh of oBattleObject_AllianceAndDirectionFlip
+    from r5 plus orr 0x10 on oObjectHeader_Flags clones the source''s alliance/flip and tags the new object'
+  refs:
+  - bn6f/asm/asm31.s:63948
+  - 0x080FB540 sub_80FB540
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D59E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the push/pop preservation, the spawn of type 0x83 via object_spawnType3,
+    the storage of args into PanelX/PanelY/Element, the RelatedObject1Ptr link to the source, the AllianceAndDirectionFlip
+    copy, and the OR 0x10 into oObjectHeader_Flags. However, the proposed name ''battle_spawnType83LinkedObject''
+    is inaccurate: it spawns a type 0x83 but the core spawn call is object_spawnType3, not type 83; the
+    type 0x83 is a subtype passed through. A more accurate name reflecting it wraps type-3 to create type
+    0x83 linked objects is better.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What behavior object type 0x83 has (its initializer/AI) — that would name the spawned effect
+- What caller sub_80FB540 is and which value it passes in r6 (likely a damage or counter value)
+- Meaning of flag 0x10 in oObjectHeader_Flags and the exact semantics of the DamageAndStaminaDamageCounterDisabler
+  field
+- 'The proposal correctly describes the push/pop preservation, the spawn of type 0x83 via object_spawnType3,
+  the storage of args into PanelX/PanelY/Element, the RelatedObject1Ptr link to the source, the AllianceAndDirectionFlip
+  copy, and the OR 0x10 into oObjectHeader_Flags. However, the proposed name ''battle_spawnType83LinkedObject''
+  is inaccurate: it spawns a type 0x83 but the core spawn call is object_spawnType3, not type 83; the
+  type 0x83 is a subtype passed through. A more accurate name reflecting it wraps type-3 to create type
+  0x83 linked objects is better.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D59E2 -> battle_spawnType3AsType83
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D59E2

@@ -1,0 +1,63 @@
+name: object_releaseReservedPanelsAround
+address: '0x08102CC4'
+kind: function
+status: probable
+summary: Loops over an 8-entry signed (dx,dy) table to call object_removePanelReserve on each of the 8
+  tiles surrounding an object's tile (x at r5+0x12, y at r5+0x13) in a battle.
+interface: (r5 = battle object whose tile coords are at +0x12 (x) and +0x13 (y)) -> r0 = result of last
+  object_removePanelReserve; clobbers r0-r4, r7
+details: 'Loops 8 times over the offset table byte_8102CE8, which holds eight (dx,dy) signed byte pairs
+  covering the 3x3 neighborhood minus the center: (-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1).
+  Each iteration reads the object''s tile x from r5+0x12 and y from r5+0x13, adds the current dx/dy (sign-extended
+  via ldrsb), and calls object_removePanelReserve with the resulting coordinates. r7 walks the table two
+  bytes per iteration. This clears the reserved flag and reserver pointer of every panel adjacent to the
+  object, e.g. when a panel-occupying object is removed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop bound 'cmp r4,#8; blt' iterates exactly over the 8 pairs in byte_8102CE8; byte_8102CE8
+    values {FF,00,01}x{FF,00,01} minus (0,0) form the 8-neighborhood ring, added to r5+0x12/+0x13 tile
+    coords; each iteration tails into object_removePanelReserve(r0=x+dx, r1=y+dy), which clears a panel's
+    reserver and reserved flag; r5 is never reloaded in the loop, so 0x12/0x13 are the object's own tile
+    x/y read fresh each iteration
+  refs:
+  - bn6f/asm/asm31.s:159012
+  - 0x08102C38 sub_8102C38
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08102CC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it loops 8 times over byte_8102CE8 signed offset pairs and calls object_removePanelReserve
+    on each (x+dx, y+dy). However, the offsets cover all 8 surrounding tiles, and there is no argument
+    taken for the object — r5 is read directly, which means the caller already loaded r5 with the object.
+    The name is fine but the interface description is wrong: r5 is not documented as an input here since
+    it''s not set up inside sub_8102CC4; the caller sets it. The summary also says ''reservations on the
+    8 tiles'' but the offsets listed incorrectly include the center semantics — byte_8102CE8 bytes are
+    FF,FF, 00,FF, 01,FF, FF,00, 01,00, FF,01, 00,01, 01,01, which are exactly the 8 neighbors. Name and
+    summary are otherwise correct.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact battle object structure and field semantics at +0x12/+0x13
+- which caller scenario (sub_8102C38) triggers it — likely object despawn/panel restore, not confirmed
+- 'The code matches: it loops 8 times over byte_8102CE8 signed offset pairs and calls object_removePanelReserve
+  on each (x+dx, y+dy). However, the offsets cover all 8 surrounding tiles, and there is no argument taken
+  for the object — r5 is read directly, which means the caller already loaded r5 with the object. The
+  name is fine but the interface description is wrong: r5 is not documented as an input here since it''s
+  not set up inside sub_8102CC4; the caller sets it. The summary also says ''reservations on the 8 tiles''
+  but the offsets listed incorrectly include the center semantics — byte_8102CE8 bytes are FF,FF, 00,FF,
+  01,FF, FF,00, 01,00, FF,01, 00,01, 01,01, which are exactly the 8 neighbors. Name and summary are otherwise
+  correct.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102CC4 -> object_releaseReservedPanelsAround
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102CC4

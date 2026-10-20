@@ -1,0 +1,64 @@
+name: object_setVelocityTowardPanel
+address: '0x080D5A0A'
+kind: function
+status: probable
+summary: Sets a battle object's X and Y velocity plus travel timer so it advances toward the target panel
+  (Param2/Param3) at the 16.16 fixed-point speed indexed by Param1 (table at 0x80D5A8C), handling the
+  X-axis-only case when already in the target column.
+interface: (r5 = battle object; uses oBattleObject_Param1 = speed index, Param2/3 = target panel col/row)
+  -> r0 = timer on some paths; writes oBattleObject_XVelocity, YVelocity, Timer
+details: Converts the target panel (Param2, Param3) to fixed-point screen coords via object_getCoordinatesForPanels.
+  Param1*4 indexes a table of four speeds (0x00090000, 0x00098000, 0x000A0000, 0x000A8000 = 9.0–10.5 in
+  16.16 fixed point). For each axis it negates the speed if the object's current coordinate exceeds the
+  target, stores speed*sign as velocity, and uses SWI Div to compute Timer = |distance|/speed. If PanelX
+  already equals Param2, XVelocity is zeroed and only Y is set up. The object pointer arrives in r5, so
+  callers must preload it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getCoordinatesForPanels with Param2/Param3 gives the destination in screen coords;
+    off_80D5A88/byte_80D5A8C: 4-word speed table {9.0, 9.5, 10.0, 10.5} indexed by Param1<<2; svc 6 (GBA
+    Div) with r0=|delta|, r1=speed stores quotient into oBattleObject_Timer; sign handling (neg r2 / abs
+    delta) makes velocity point toward the target on both axes; cmp PanelX, Param2 / beq loc_80D5A62 zeroes
+    XVelocity when already at the target column'
+  refs:
+  - bn6f/asm/asm31.s:64047
+  - 0x080D595C sub_80D595C
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080D5A0A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the velocity setup, SWI Div for timer, and panel coordinate lookup correctly.
+    However, the timer is stored as strh (16-bit) and only the X-axis branch writes the timer before the
+    Y computation (loc_80D5A40), while the loc_80D5A62 branch (when PanelX == Param2) overwrites it after
+    computing Y. The per-axis SVC #6 uses r0=|distance|, r1=speed, quotient only is returned, so Timer
+    reflects the larger-axis travel time. Also the speed table at byte_80D5A8C is 16-bit halfwords giving
+    0x0009, 0x0080, 0x000A, 0x0080 (i.e. 9, 0.5, 10, 0.5 in 16.16), not ''9.0–10.5''. The name and summary
+    are otherwise accurate; a slightly clearer name fits.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What object(s) use this (caller sub_80D595C is unnamed) and what the four Param1 speed levels correspond
+  to in-game
+- 'The summary captures the velocity setup, SWI Div for timer, and panel coordinate lookup correctly.
+  However, the timer is stored as strh (16-bit) and only the X-axis branch writes the timer before the
+  Y computation (loc_80D5A40), while the loc_80D5A62 branch (when PanelX == Param2) overwrites it after
+  computing Y. The per-axis SVC #6 uses r0=|distance|, r1=speed, quotient only is returned, so Timer reflects
+  the larger-axis travel time. Also the speed table at byte_80D5A8C is 16-bit halfwords giving 0x0009,
+  0x0080, 0x000A, 0x0080 (i.e. 9, 0.5, 10, 0.5 in 16.16), not ''9.0–10.5''. The name and summary are otherwise
+  accurate; a slightly clearer name fits.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5A0A -> object_setVelocityTowardPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5A0A

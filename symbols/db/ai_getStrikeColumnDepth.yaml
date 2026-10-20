@@ -1,0 +1,63 @@
+name: ai_getStrikeColumnDepth
+address: '0x080F9AE8'
+kind: function
+status: probable
+summary: Scans the acting side's columns from the front inward for the first column with at least one
+  usable panel and returns a clamped 0..3 column-depth offset (from the side's front edge) used by ai_spawnStrikePanelPattern
+  to pick the strike's coordinate pattern.
+interface: (r5 = battle object) -> r0 = depth 0..3 (columns from the front edge to the first filtered-valid
+  column, clamped >=0)
+details: 'Gets the side''s facing direction (+1 player / -1 enemy) via object_getFrontDirection, then
+  starts a column scan at column 1 (alliance 0) or column 6 (alliance 1). For each column it calls object_getPanelsInColumnFiltered,
+  which per-alliance receives threshold words from byte_80F9B3C (alliance 0: 0x20/0, alliance 1: 0/0x20)
+  and writes valid panel IDs to a stack buffer; if the column yields 0 panels it steps one column deeper
+  (toward own back row) while the index stays in 1..5. Once a non-empty column is found it computes (4
+  - col) for alliance 0 or (3 - col) * -1 for alliance 1, i.e. the panel depth of that column from the
+  side''s front edge, and clamps negatives to 0. The value thus encodes which of the 8 strike coordinate
+  patterns fits the currently open panel area.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection; start col = 1 if Alliance==0 else 6; loop steps col by that direction;
+    bl object_getPanelsInColumnFiltered with per-alliance table byte_80F9B3C words (0x20/0 vs 0/0x20)
+    and stack buffer at r7=sp; loop continues while it returns 0; final r0 = (4 or 3 - col) * frontDirection,
+    clamped to 0 — a front-relative depth 0..3; caller ai_spawnStrikePanelPattern 'spawns strike on 3
+    panels of one of 8 coordinate patterns', matching a pattern-row selector return
+  refs:
+  - bn6f/asm/asm31.s:140065
+  - 0x080F9A18 ai_spawnStrikePanelPattern
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080F9AE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match the code: scans from column 1/6 inward, calls object_getPanelsInColumnFiltered,
+    and computes the depth offset. However, the proposed name is misleading—it returns a clamped depth
+    index (0..3), not a ''row'' count, and the scanning is by column. The output is used by ai_spawnStrikePanelPattern
+    to pick among 8 strike coordinate patterns, but the value is a column-depth offset, not a row depth.;
+    run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the two table words (0x20/0) passed to object_getPanelsInColumnFiltered (min panel
+  count vs filter flag)
+- r1 is not set before object_getPanelsInColumnFiltered — whether it must hold the object pointer from
+  the caller, and how the stack buffer is actually received (r7 vs stack), needs the callee's own signature
+- Whether the returned depth indexes rows or selects among the 8 patterns directly in ai_spawnStrikePanelPattern
+- 'The summary and behavior match the code: scans from column 1/6 inward, calls object_getPanelsInColumnFiltered,
+  and computes the depth offset. However, the proposed name is misleading—it returns a clamped depth index
+  (0..3), not a ''row'' count, and the scanning is by column. The output is used by ai_spawnStrikePanelPattern
+  to pick among 8 strike coordinate patterns, but the value is a column-depth offset, not a row depth.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9AE8 -> ai_getStrikeColumnDepth
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9AE8

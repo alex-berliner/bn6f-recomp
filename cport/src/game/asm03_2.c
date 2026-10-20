@@ -64,10 +64,10 @@ static inline call_ZeroFillByEightWords_result call_ZeroFillByEightWords(u32 r0,
 }
 
 typedef struct { u32 r0, r2, r3, r4, r5, r6, r8, r9, r10, r12; } call_sub_80461D0_result;
-/* register form: generated wrapper: sub_80461D0 has no typed C interface yet */
+/* register form: generated wrapper: sprite_blitTileEntryToBitBuffer has no typed C interface yet */
 static inline call_sub_80461D0_result call_sub_80461D0(u32 r1) {
     R1 = r1;
-    GUEST_CALL(sub_80461D0);
+    GUEST_CALL(sprite_blitTileEntryToBitBuffer);
     return (call_sub_80461D0_result){ R0, R2, R3, R4, R5, R6, R8, R9, R10, R12 };
 }
 
@@ -85,7 +85,7 @@ static inline call_sub_8046290_result call_sub_8046290(u32 r0) {
  * until a handler clears the continue flag. A finalizer processes the result.
  */
 
-/* register form: jump-table handlers and sub_80461D0 read/write R4-R7 through the
+/* register form: jump-table handlers and sprite_blitTileEntryToBitBuffer read/write R4-R7 through the
  * register file; there is no typed interface that carries these per-call. */
 static void parse_stream(u32 stream_ptr, u32 toolkit, u32 src, u32 saved_r3,
                          u32 entry_r4, u32 entry_r5, u32 entry_r6, u32 entry_r7) {

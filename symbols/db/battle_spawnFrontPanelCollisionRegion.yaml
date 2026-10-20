@@ -1,0 +1,61 @@
+name: battle_spawnFrontPanelCollisionRegion
+address: '0x080D5684'
+kind: function
+status: probable
+summary: If enabled, spawns a 1-panel collision region on the panel offset ahead of the parent battle
+  object and sets its lifetime timer from the command struct.
+interface: (r0 = param struct {u8 fwdPanelOffset, u8 lifetime, u8 enabled, u8 pad, u32 unused}, r5 = parent
+  battle object) -> r0 = spawned region object or 0; r4/r6/r7 clobbered
+details: 'Reads a small command struct: if byte 2 is zero it does nothing (enable flag). Otherwise it
+  computes the target panel X as object_getFrontDirection(parent) * byte[0] + parent''s PanelX, using
+  the parent''s PanelY as Y, and calls object_spawnCollisionRegion with the parent''s Element as element,
+  0x100000 (one panel) as the size argument, and the struct pointer pushed as the stack argument. If spawning
+  succeeds it stores struct byte[1] into the new object''s oBattleObject_Timer, acting as its lifetime
+  in frames. The trailing byte tables (byte_80D56D0 etc.) are sibling command structs for other variants
+  of this handler family. This is a per-frame battle-object step used by attacks that place a hitbox/effect
+  on the panel ahead of the user.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_getFrontDirection() * [r0] + oBattleObject_PanelX computes the facing-adjacent panel;
+    calls object_spawnCollisionRegion with element from oBattleObject_Element and size 0x10<<16 (one panel);
+    strh r1,[r0,#oBattleObject_Timer] sets the new region's timer to struct byte 1 (lifetime); cmp [r7,#2],#0
+    / beq skips everything, so byte 2 is an enable flag; recorded route 'battlesweep' plus battle-object
+    field offsets show it runs during battle object updates
+  refs:
+  - bn6f/asm/asm31.s:63511
+  - 0x080D5634 sub_80D5634
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D5684
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it reads byte[0] as panel offset, byte[2] as enable, uses object_getFrontDirection
+    and object_spawnCollisionRegion, and stores byte[1] into oBattleObject_Timer. However, byte[3] is
+    used as part of the struct only implicitly (push {r7} uses r7 as the struct pointer), and the Timer
+    is stored as a halfword (strh), not a byte. The name is fine but ''Hitbox'' is an assumption; this
+    is a generic collision region spawn, used in battlesweep context.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the stack argument (param struct pointer) consumed by object_spawnCollisionRegion
+- which chip/action invokes the caller sub_80D5634, to name the attack family
+- 'The code matches: it reads byte[0] as panel offset, byte[2] as enable, uses object_getFrontDirection
+  and object_spawnCollisionRegion, and stores byte[1] into oBattleObject_Timer. However, byte[3] is used
+  as part of the struct only implicitly (push {r7} uses r7 as the struct pointer), and the Timer is stored
+  as a halfword (strh), not a byte. The name is fine but ''Hitbox'' is an assumption; this is a generic
+  collision region spawn, used in battlesweep context.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5684 -> battle_spawnFrontPanelCollisionRegion
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5684

@@ -1,0 +1,67 @@
+name: battle_timedHitCheckUpdate
+address: '0x080D0168'
+kind: function
+status: probable
+summary: Battle-object phase that counts down 20 frames after init; at Timer=15, if Param2==0 it calls
+  sub_80D020E and sets Param3=1 when ExtraVars[+0x12] matches this object's PanelX; at Timer=10, if Param2==0
+  it plays SFX 0x180; at Timer=0 it transitions to CUR_STATE_DESTROY.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurPhase=4 and Timer=0x14 on phase 0, Param3=1
+  on hit, CUR_STATE_DESTROY when timer expires
+details: 'Standard battle-object update running off r5: on CurPhase 0 it initializes phase to 4 and Timer
+  to 20 (0x14). Each frame it decrements oBattleObject_Timer. At Timer==0xF it calls sub_80D020E (still
+  unknown, presumably advances the attack or updates its graphics/state), then loads a pointer from oBattleObject_ExtraVars+4
+  and compares byte 0x12 of that structure with this object''s oBattleObject_PanelX; if equal it sets
+  oBattleObject_Param3=1, likely marking that the attack reached/connected with its target panel. At Timer==0xA
+  it plays sound effect 0x180 (mov 0x81 + add 0xFF). When the timer reaches 0 it writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object is removed. All branches are
+  guarded by oBattleObject_Param2 (nonzero skips both the check and the sound).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; strb #4 phase; strh #0x14 timer — phase-0 init block;
+    sub r0,#1 on oBattleObject_Timer with cmp against 0xF/0xA/0 — scripted countdown events; ldr r0,[r5,#oBattleObject_ExtraVars+4];
+    ldrb r0,[r0,#0x12]; cmp with oBattleObject_PanelX; strb 1 to Param3 — hit/target-panel check; mov
+    r0,#0x81; add r0,#0xFF; bl PlaySoundEffect — sound 0x180 fired at Timer==0xA; mov r0,#CUR_STATE_DESTROY;
+    str [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — self-destruct at Timer==0'
+  refs:
+  - bn6f/asm/asm31.s:52121
+  - 0x080005CC PlaySoundEffect
+  - 0x080D020E sub_80D020E
+  reproduce: python3 tools/asmcat.py 0x080D0168
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The countdown values (0x14 init, checks at 0xF, 0xA, and 0) and the destroy-on-expiry behavior match
+    the proposal. However, the guard is oBattleObject_Param2 (the proposal conflates this with the hit/sound
+    branches, which is correct), and the hit check loads the byte at ExtraVars+0x12 and compares to PanelX
+    — not ''target panel'' as proposed, it''s just the own object''s panel X, so ''timedHitCheckUpdate''
+    is reasonable but the summary overstates it. The sound is 0x180 (mov 0x81 + add 0xff), which matches.
+    Name and summary are close; minor wording fix.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80D020E does (probably the attack's movement/damage step) and what structure oBattleObject_ExtraVars+4
+  points to — likely the target object whose byte 0x12 is its panel X
+- Which chip/attack object this is; the recorded routes (battlesweep, beastsp) suggest a sweep-type attack
+  but no direct caller was captured
+- Meaning of the Param2 guard and Param3 flag for the parent attack routine
+- The countdown values (0x14 init, checks at 0xF, 0xA, and 0) and the destroy-on-expiry behavior match
+  the proposal. However, the guard is oBattleObject_Param2 (the proposal conflates this with the hit/sound
+  branches, which is correct), and the hit check loads the byte at ExtraVars+0x12 and compares to PanelX
+  — not 'target panel' as proposed, it's just the own object's panel X, so 'timedHitCheckUpdate' is reasonable
+  but the summary overstates it. The sound is 0x180 (mov 0x81 + add 0xff), which matches. Name and summary
+  are close; minor wording fix.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0168 -> battle_timedHitCheckUpdate
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0168

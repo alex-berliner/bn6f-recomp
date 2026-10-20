@@ -1,0 +1,54 @@
+name: battleTutorial_getMessageId
+address: '0x080299FA'
+kind: function
+status: probable
+summary: 'Returns the chatbox message id for the current battle-tutorial step: 0x25 for step 0xA, 0x24
+  for other steps, or 0 if +0x17 latch is set or step is 0xB.'
+interface: (r5 = tutorial state struct; r0 input unused) -> r0 = message id 0x24/0x25, or 0 if none pending;
+  flags clobbered by cmp/tst
+details: 'Treats r5 as the battle-tutorial state record. It switches on the step byte at +0x07: step 0xA
+  selects message 0x25 (beast-out-specific, given the beastsp route), any other step selects 0x24. The
+  byte at +0x17 is a latch: nonzero means the step''s message was already shown, so the routine returns
+  0 and the caller stops re-playing it. No other memory is touched; it is purely a read-and-decide helper
+  invoked per-frame from the tutorial custMenu handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp [r5,#7] with 0xA/0xB branches pick 0x25 vs 0x24, i.e. a step-dependent message id; tst [r5,#0x17]
+    gates both branches, returning 0 once the flag is set; caller custMenu_80298F4 'polls the tutorial
+    state's check routine and, if it yields a message, plays it through the chatbox'; returns via pop
+    {pc} with only r0 written, matching a lightweight predicate called per frame
+  refs:
+  - bn6f/asm/asm03_0.s:7688
+  - 0x080298F4 custMenu_80298F4
+  reproduce: python3 tools/asmcat.py 0x080299FA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: it returns 0x24 for non-0xA/0xB steps and 0x25 for step 0xA, returning
+    0 if +0x17 latch is set or for step 0xB. However, step 0xB is not ''any other step'' but a distinct
+    case returning 0, which the summary glosses over. The function is more of a tutorial step dispatcher
+    than a simple checker, so the name could be improved.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of step values 0xA/0xB in the tutorial state machine
+- what sets the +0x17 flag (likely chatbox completion in the caller's other paths)
+- 'The summary is accurate: it returns 0x24 for non-0xA/0xB steps and 0x25 for step 0xA, returning 0 if
+  +0x17 latch is set or for step 0xB. However, step 0xB is not ''any other step'' but a distinct case
+  returning 0, which the summary glosses over. The function is more of a tutorial step dispatcher than
+  a simple checker, so the name could be improved.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80299FA -> battleTutorial_getMessageId
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80299FA

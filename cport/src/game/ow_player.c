@@ -387,9 +387,9 @@ static void event_flag_set_now(u32 page, u32 index) {
     GUEST_CALL(SetEventFlagFromImmediate);
 }
 
-/* register form: calls sub_809DE60 outside this file (leaf handler, no typed C interface yet) */
+/* register form: calls ow_initSlipRunDirs outside this file (leaf handler, no typed C interface yet) */
 static void run_sliprun_transition(void) {
-    GUEST_CALL(sub_809DE60);
+    GUEST_CALL(ow_initSlipRunDirs);
 }
 
 /* register form: equivalent of "ldr r1,[r5,#o..]; ldr r2,=0xC00000; tst r2,r1" —

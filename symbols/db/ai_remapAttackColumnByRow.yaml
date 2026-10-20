@@ -1,0 +1,61 @@
+name: ai_remapAttackColumnByRow
+address: '0x0810BD5E'
+kind: function
+status: probable
+summary: Remaps the byte at battleObject+0x62 by indexing a three-entry word table with (PanelY-1)*4 and
+  writing the resulting byte back, used right before selecting enemy attack 10.
+interface: (r5 = battle object; no register args) -> r0 = new value stored to battleObject+0x62; flags
+  clobbered, r4-r7 preserved
+details: 'Takes the byte at battleObject+0x62, subtracts 1 from the object''s PanelY, and uses (PanelY-1)
+  to pick one of three byte-array rows at off_810BD7C (row1 = {1,2,3}, rows 0 and 2 = {1}); the old 0x62
+  value indexes into that row and the fetched byte is written back to +0x62. So field 0x62 acts as both
+  column index into the row table and the field being replaced. The rows look like per-row lane/column
+  tables: the middle row maps indices 0-2 to 1-3 (identity-like) while the outer rows only ever yield
+  1, suggesting row-dependent behavior for the attack the caller starts. Caller ai_startAttack invokes
+  this right before selecting attack 10 from version-dependent duration/damage tables, so this is part
+  of setting up that attack''s targeting/geometry. No other state is touched and there are no calls.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x62] ... strb r0,[r5,#0x62]: field 0x62 is read as index and overwritten with
+    the result; ldrb r1,[r5,#oBattleObject_PanelY]; sub r1,#1; ldr r2,[r2,r1]: PanelY-1 selects one of
+    three row pointers at off_810BD7C; ldrb r0,[r2,r0]: old 0x62 value is the column index into the selected
+    byte row; row data dword_810BD8C=0x30201 (bytes 01 02 03) vs 0x1 for outer rows: mapping differs per
+    panel row; caller 0x0810BCBC ai_startAttack loads attack 10 parameters, so this tweak precedes that
+    attack'
+  refs:
+  - bn6f/asm/asm31.s:177638
+  - 0x0810BCBC ai_startAttack
+  reproduce: python3 tools/asmcat.py 0x0810BD5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s mechanics are correct: it reads [r5+0x62], uses (PanelY-1)*4 to index off_810BD7C,
+    treats the byte as an index into the table word, and writes the byte back. However, the proposal says
+    ''subtract 1 from PanelY'' which is wrong — PanelY is decremented before use. Also, the lookup is
+    a dword table of three words, and the fetched byte is the low byte of the indexed word. The name and
+    summary should reflect that it''s remapping the byte at +0x62 using PanelY-1 as a row selector into
+    a word table.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of battleObject+0x62 (attack column? lane counter?) not shown by any known caller code
+- why rows 0 and 2 only have one entry - is index 0x62 guaranteed 0 there, or can it read past the row?
+- which enemy/attack 'attack 10' is, to give the field a game-accurate name
+- 'The summary''s mechanics are correct: it reads [r5+0x62], uses (PanelY-1)*4 to index off_810BD7C, treats
+  the byte as an index into the table word, and writes the byte back. However, the proposal says ''subtract
+  1 from PanelY'' which is wrong — PanelY is decremented before use. Also, the lookup is a dword table
+  of three words, and the fetched byte is the low byte of the indexed word. The name and summary should
+  reflect that it''s remapping the byte at +0x62 using PanelY-1 as a row selector into a word table.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810BD5E -> ai_remapAttackColumnByRow
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BD5E

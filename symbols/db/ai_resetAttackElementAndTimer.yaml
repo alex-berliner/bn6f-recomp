@@ -1,0 +1,54 @@
+name: ai_resetAttackElementAndTimer
+address: '0x0810E6D2'
+kind: function
+status: probable
+summary: Copies AttackDuration into StepTimer and resets HitElement (to 0x14) and AttackElement (to 0)
+  on the struct at r7.
+interface: (r0-r3 unused; r7 must point to an oAIAttackVars struct) -> r0 = 0; no meaningful flags
+details: Copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer (the per-step countdown), writes
+  0x14 (20) to oAIAttackVars_HitElement, and stores 0 in oAIAttackVars_AttackElement. It touches only
+  the AI attack-vars structure at r7 and does not call anything. Since element 0 likely means 'no element',
+  this appears to set up a neutral/elementless attack phase whose timing is taken from the configured
+  attack duration. The r4-r6 push/pop are vestigial.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_AttackDuration]; strh r0,[r7,#oAIAttackVars_StepTimer] seeds the
+    step timer from the duration; mov r0,#0x14; strb r0,[r7,#oAIAttackVars_HitElement] sets hit element
+    20; mov r0,#0; strb r0,[r7,#oAIAttackVars_AttackElement] clears the attack element; route note: runs
+    during battlesweep, consistent with an AI-controlled enemy attack routine'
+  refs:
+  - bn6f/asm/asm32.s:1632
+  reproduce: python3 tools/asmcat.py 0x0810E6D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code copies AttackDuration into StepTimer, sets HitElement to 0x14 and AttackElement to 0, matching
+    the described behavior. However, calling it ''ai_initAttackVars'' is misleading: it doesn''t initialize
+    the whole struct, only a few fields related to element/timer, and r7-based addressing doesn''t imply
+    an oAIAttackVars pointer is guaranteed — it just reads/writes those offsets from whatever r7 points
+    to. A more accurate name reflecting the partial setup (step timer from attack element''s duration,
+    plus element fields) would be better.; run wf investigate investigate-20261018-212108; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so the AI attack state machine that invokes this and the meaning of HitElement=0x14
+  vs AttackElement=0 (element IDs, 'no element' sentinel) are unconfirmed
+- 'The code copies AttackDuration into StepTimer, sets HitElement to 0x14 and AttackElement to 0, matching
+  the described behavior. However, calling it ''ai_initAttackVars'' is misleading: it doesn''t initialize
+  the whole struct, only a few fields related to element/timer, and r7-based addressing doesn''t imply
+  an oAIAttackVars pointer is guaranteed — it just reads/writes those offsets from whatever r7 points
+  to. A more accurate name reflecting the partial setup (step timer from attack element''s duration, plus
+  element fields) would be better.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810E6D2 -> ai_resetAttackElementAndTimer
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E6D2

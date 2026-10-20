@@ -1,0 +1,64 @@
+name: ai_diveManWaveAttackStep
+address: '0x080FE3EC'
+kind: function
+status: probable
+summary: 'Per-frame update for DiveMan''s wave attack: on entry spawns the wave, sets anim 5 and a 0x12
+  counter, and arms a 0x1D-frame StepTimer; each subsequent frame it decrements StepTimer, fires a camera
+  shake (mag 2, dur 0x1E) at 0xA, and writes 0xC into HitElement when the timer expires (or the initial
+  spawn fails) to hand control back to the AI attack state machine.'
+interface: (r0 ignored; r5 = battle object, r7 = oAIAttackVars state) -> r0 = oAIAttackVars_HitElement
+  set to 0xC when the step finishes or spawn fails; no meaningful return otherwise
+details: 'State machine keyed on oAIAttackVars_AttackElement: on entry (element 0) it sets element 4 (Aqua)
+  and calls ai_diveManWaveAttackSpawn; if spawning succeeded it sets the object''s animation to 5, gives
+  a 0x12-frame counter via object_setCounterTime, and loads StepTimer with 0x1D. Each subsequent frame
+  it decrements StepTimer: when it reaches 0xA it triggers a camera shake (magnitude 2, duration 0x1E)
+  — roughly when the wave reaches the far side — and when it reaches 0 (or if the spawn failed immediately)
+  it writes 0xC into oAIAttackVars_HitElement, handing control back to the AI attack state machine. Uses
+  the shared oAIAttackVars fields AttackElement, StepTimer, HitElement and the battle object''s CurAnim.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls ai_diveManWaveAttackSpawn only when oAIAttackVars_AttackElement == 0, then sets CurAnim
+    5 and StepTimer 0x1D (asm near 80FE3EC); decrements oAIAttackVars_StepTimer and at value 0xA calls
+    camera_initShakeEffect_80302a8(2, 0x1E); writes 0xC to oAIAttackVars_HitElement on spawn failure (beq
+    loc_80FE41E) or when StepTimer <= 0; element field forced to 4 before spawning, matching an Aqua-element
+    DiveMan attack
+  refs:
+  - bn6f/asm/asm31.s:149497
+  - 0x080FE6C8 ai_diveManWaveAttackSpawn
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x080FE3EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches the proposal: spawn once, set anim 5 and counter 0x12, StepTimer=0x1D, decrement
+    each call, shake at 0xA (mag 2, dur 0x1E), and write 0xC to HitElement on finish or spawn-fail. However
+    r0 is not ignored — it returns the post-decrement StepTimer (r0 is left holding the decremented value
+    at loc_80FE410). Also HitElement is set via strh (halfword), not strb; the field type matters but
+    the proposal wording ''HitElement'' is fine, only the store width is off.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of element constant 4 and HitElement value 0xC in the AI state machine (inferred from
+  DiveMan's Aqua element and step-advance convention)
+- whether the camera shake timing corresponds to the wave crossing a specific row
+- 'The flow matches the proposal: spawn once, set anim 5 and counter 0x12, StepTimer=0x1D, decrement each
+  call, shake at 0xA (mag 2, dur 0x1E), and write 0xC to HitElement on finish or spawn-fail. However r0
+  is not ignored — it returns the post-decrement StepTimer (r0 is left holding the decremented value at
+  loc_80FE410). Also HitElement is set via strh (halfword), not strb; the field type matters but the proposal
+  wording ''HitElement'' is fine, only the store width is off.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FE3EC -> ai_diveManWaveAttackStep
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE3EC

@@ -1,0 +1,68 @@
+name: battle_enemyAiThink
+address: '0x080FADF0'
+kind: function
+status: probable
+summary: 'Per-turn AI decision routine for a battle enemy: on the first turn it runs an opening action
+  (sub_80FAFA0); otherwise it picks an attack threshold of 7 normally or 5 when HP is at or below half,
+  and when AttackCounter reaches the threshold it resets and attacks via sub_80FAFB4, otherwise it increments
+  AttackCounter and takes a movement action (sub_80FAFF2 or sub_80FB028) gated by StepCounter and a GetPositiveSignedRNG
+  & 0xF roll.'
+interface: (r5 = battle object, r6 = AI state; no args) -> r0 = whatever the chosen action callee returns;
+  calls GetPositiveSignedRNG
+details: 'Reads oAIState_TurnCounter in r6: if it is 0 (first turn) it increments it and calls sub_80FAFA0,
+  likely an opening/spawn behavior. Otherwise it resets TurnCounter and picks a threshold of 7 attacks,
+  lowered to 5 when the object''s HP is at or below half of MaxHP (oBattleObject_MaxHP/oBattleObject_HP
+  in r5). If oAIState_AttackCounter has reached the threshold it resets it and calls sub_80FAFB4 (attack
+  action); otherwise it increments AttackCounter and takes a movement action: if oAIState_StepCounter
+  >= 1 it resets it and calls sub_80FB028, else it rolls GetPositiveSignedRNG & 0xF and increments StepCounter
+  on rolls <12 (about 75%), then calls sub_80FAFF2. The two movement callees likely differ in movement
+  type/panel target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oAIState_TurnCounter] cmp r0,#1 / blt calls sub_80FAFA0 only on first turn (loc_80FAE48);
+    lsr of oBattleObject_MaxHP by 1 compared against oBattleObject_HP selects threshold 5 vs 7 (loc_80FAE0A);
+    AttackCounter >= threshold branch resets it and calls sub_80FAFB4, the presumed attack (loc_80FAE3E);
+    GetPositiveSignedRNG result AND 0xF, bge #0xC gates incrementing StepCounter before sub_80FAFF2 (80FAE1C-80FAE2E);
+    StepCounter >= 1 branch resets it and calls sub_80FB028, an alternate movement action (loc_80FAE34)'
+  refs:
+  - bn6f/asm/asm31.s:142600
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080FAFA0 sub_80FAFA0
+  - 0x080FAFB4 sub_80FAFB4
+  reproduce: python3 tools/asmcat.py 0x080FADF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate: it correctly identifies the first-turn branch calling sub_80FAFA0
+    (loc_80FAE48), the threshold logic with HP-based reduction from 7 to 5 (lines with mov r3,#7 / mov
+    r3,#5), the AttackCounter reset+sub_80FAFB4 attack branch (loc_80FAE3E), and the StepCounter/movement
+    branch calling sub_80FAFF2 or sub_80FB028 (loc_80FAE34). However, the TurnCounter branch is taken
+    when TurnCounter < 1 (first turn), not exactly 0, and it is reset to 0 on subsequent turns before
+    threshold checks (loc_80FAE48 vs the `mov r0,#0`/`strb` after the blt). The summary''s wording is
+    acceptable but could be tighter.; run wf investigate investigate-20261018-212108; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- Which enemy/boss this AI belongs to (no callers known; identity would come from the object's AI table)
+- Whether sub_80FAFA0 (first turn), sub_80FAFB4 (attack), sub_80FAFF2 and sub_80FB028 (movement) are exactly
+  move/attack actions — their bodies were not shown
+- 'The proposal is mostly accurate: it correctly identifies the first-turn branch calling sub_80FAFA0
+  (loc_80FAE48), the threshold logic with HP-based reduction from 7 to 5 (lines with mov r3,#7 / mov r3,#5),
+  the AttackCounter reset+sub_80FAFB4 attack branch (loc_80FAE3E), and the StepCounter/movement branch
+  calling sub_80FAFF2 or sub_80FB028 (loc_80FAE34). However, the TurnCounter branch is taken when TurnCounter
+  < 1 (first turn), not exactly 0, and it is reset to 0 on subsequent turns before threshold checks (loc_80FAE48
+  vs the `mov r0,#0`/`strb` after the blt). The summary''s wording is acceptable but could be tighter.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FADF0 -> battle_enemyAiThink
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FADF0

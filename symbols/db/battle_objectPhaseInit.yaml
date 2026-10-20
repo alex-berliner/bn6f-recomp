@@ -1,0 +1,59 @@
+name: battle_objectPhaseInit
+address: '0x080E38EE'
+kind: function
+status: probable
+summary: 'Battle object phase initializer: on the first call of a new phase (PhaseInitialized==1), sets
+  CurAnim=1 and CurAction=8, then clears the combined phase/initialized halfword to 0.'
+interface: (r5 = battle object pointer; r0 scratch) -> void; no return value, flags not meaningful
+details: This reads the object's PhaseInitialized byte at oBattleObject_PhaseInitialized and only acts
+  when it equals 1, i.e. on the first invocation of a new phase. In that case it stores 1 into oBattleObject_CurAnim
+  (selecting an animation) and 8 into oBattleObject_CurAction (selecting an action), then zeroes the halfword
+  oBattleObject_CurPhaseAndPhaseInitialized, which clears both the current phase counter and the initialized
+  flag so the init block does not run again on subsequent calls. On later calls within the same phase
+  it does nothing and just returns. It is a self-contained leaf function using no arguments in r0-r3,
+  relying on r5 as the object pointer, which matches the calling convention of battle object AI/phase
+  handlers. Which specific object or enemy uses it as its handler is not visible from the function itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; cmp r0,#1; bne exit — one-shot init guarded by
+    the phase-initialized flag; strb r0(1),[r5,#oBattleObject_CurAnim] — sets the object's current animation
+    id to 1; strb r0(8),[r5,#oBattleObject_CurAction] — sets the object's current action id to 8; strh
+    r0(0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized] — clears both phase and initialized fields in
+    one halfword store; pop {pc} with no callee calls and r5 as sole data pointer — leaf handler obeying
+    the object-pointer-in-r5 handler convention
+  refs:
+  - bn6f/asm/asm31.s:93849
+  reproduce: python3 tools/asmcat.py 0x080E38EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it checks PhaseInitialized==1, then sets CurAnim=1, CurAction=8, and clears CurPhaseAndPhaseInitialized.
+    However, the proposed name ''battle_objectInitStandAnimAction'' is too specific; the name should describe
+    the role (phase init), not assume ''Stand''. A cleaner name like ''battle_objectPhaseInit'' fits the
+    pattern of phase handlers and the available prefix list.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which battle object(s) register this as their phase/AI handler, and what animation 1 and action 8 mean
+  for that object's sprite/action tables
+- Whether action 8 is a shared generic action id or object-specific
+- 'The code matches: it checks PhaseInitialized==1, then sets CurAnim=1, CurAction=8, and clears CurPhaseAndPhaseInitialized.
+  However, the proposed name ''battle_objectInitStandAnimAction'' is too specific; the name should describe
+  the role (phase init), not assume ''Stand''. A cleaner name like ''battle_objectPhaseInit'' fits the
+  pattern of phase handlers and the available prefix list.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E38EE -> battle_objectPhaseInit
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E38EE

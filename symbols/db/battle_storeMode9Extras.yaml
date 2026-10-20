@@ -1,0 +1,61 @@
+name: battle_storeMode9Extras
+address: '0x080F22F8'
+kind: function
+status: probable
+summary: If the current battle mode is 9, calls two helper routines and stores their return values into
+  the battle object's ExtraVars at offsets +0x10 and +0x18; otherwise does nothing.
+interface: (r5 = battle object) -> void; r0 = battle mode clobbered, results of callees in r0
+details: The function queries GetBattleMode and, only if the current battle mode equals 9, calls sub_80DFD74
+  and sub_80C02A6, storing each result into the battle object held in r5 at oBattleObject_ExtraVars+0x10
+  and +0x18 respectively. If the mode is anything else it does nothing. r4, r6, r7 are pushed/popped but
+  unused, suggesting the register allocation was inherited from a larger original routine. The data blobs
+  right after (off_2010A08/off_2010B08 with ids 0xA/0xB and byte tables) are not referenced by this function
+  and likely belong to adjacent code. The purpose of mode 9 and what the two callees return are not visible
+  here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetBattleMode; cmp r0, #9; bne locret — body runs only for battle mode 9; str r0, [r5,#oBattleObject_ExtraVars+0x10]
+    after bl sub_80DFD74 — first callee result saved to extra vars; str r0, [r5,#oBattleObject_ExtraVars+0x18]
+    after bl sub_80C02A6 — second callee result saved to extra vars; off_80F2310/off_80F2320 data follow
+    locret with no branch targets into them — dead data for neighbouring functions, not this one'
+  refs:
+  - bn6f/asm/asm31.s:125182
+  - 0x0802D234 GetBattleMode
+  - 0x080C02A6 sub_80C02A6
+  - 0x080DFD74 sub_80DFD74
+  reproduce: python3 tools/asmcat.py 0x080F22F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The conditional mode==9 check, r5 battle object stores at ExtraVars+0x10/+0x18, and the ''data blobs
+    not referenced'' note all match. However, the proposed name ''battle_setupMode9ExtraVars'' reads verb-first
+    like a do-everything setup, but the function conditionally stores only when mode==9; a tighter name
+    like ''battle_storeMode9Extras'' fits. Also, while off_2010A08/off_2010B08 follow in the same thumb_func_end
+    chunk, the assembly does not clearly prove they''re unrelated — they sit immediately after and share
+    the function''s alignment region, so ''likely belong to adjacent code'' is an assumption.; run wf
+    investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What battle mode 9 is (a named mode enum from GetBattleMode's known callers would settle the game meaning)
+- What sub_80DFD74 and sub_80C02A6 return and which extra-var slots +0x10/+0x18 mean
+- Who calls this function — no caller is known, so its trigger context is unconfirmed
+- The conditional mode==9 check, r5 battle object stores at ExtraVars+0x10/+0x18, and the 'data blobs
+  not referenced' note all match. However, the proposed name 'battle_setupMode9ExtraVars' reads verb-first
+  like a do-everything setup, but the function conditionally stores only when mode==9; a tighter name
+  like 'battle_storeMode9Extras' fits. Also, while off_2010A08/off_2010B08 follow in the same thumb_func_end
+  chunk, the assembly does not clearly prove they're unrelated — they sit immediately after and share
+  the function's alignment region, so 'likely belong to adjacent code' is an assumption.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F22F8 -> battle_storeMode9Extras
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F22F8

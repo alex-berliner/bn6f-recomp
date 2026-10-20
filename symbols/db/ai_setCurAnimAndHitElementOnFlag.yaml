@@ -1,0 +1,59 @@
+name: ai_setCurAnimAndHitElementOnFlag
+address: '0x08111BB2'
+kind: function
+status: probable
+summary: On flagged frame (bit 0x80 of sprite frame attribute), sets oBattleObject_CurAnim=5 and oAIAttackVars_HitElement=0xC;
+  otherwise a no-op.
+interface: (r5 = battle object (oBattleObject), r7 = AI attack vars struct) -> void; reads frame attribute
+  via sprite_getFrameParameters, writes oBattleObject_CurAnim and oAIAttackVars_HitElement
+details: Calls sprite_getFrameParameters, which returns the current frame's attribute byte in r0, and
+  tests bit 0x80 — a per-frame flag in the sprite frame table. If the flag is clear the function does
+  nothing; if set it stores animation 5 into the battle object's CurAnim field and 0xC into oAIAttackVars_HitElement.
+  This makes the attack's hitbox/element only become active on flagged frames, and element 0xC (with animation
+  5) looks like a sword/slash-type hit. Runs on recorded AI routes (battlesweep, beastsp), so it is part
+  of an enemy AI's attack animation handling. The animation and element are hardcoded, so this is specific
+  to one enemy attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_getFrameParameters then tst r0,#0x80 — reads per-frame attribute byte and tests its
+    top bit; strb r0(=5),[r5,#oBattleObject_CurAnim] — switches the object to animation 5 only when the
+    flag is set; strh r0(=0xC),[r7,#oAIAttackVars_HitElement] — sets the attack's hit element alongside
+    the anim switch; beq locret skips both stores when the flag is clear — pure conditional side effect,
+    no return value; runs on recorded routes battlesweep/beastsp — it is live enemy AI attack code
+  refs:
+  - bn6f/asm/asm32.s:7861
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x08111BB2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — the asm matches: it calls sprite_getFrameParameters, tests bit 0x80 of the returned attribute, and
+    on set writes 5 to #oBattleObject_CurAnim and 0xC to #oAIAttackVars_HitElement via strb/strh. However
+    ''HitElement'' is a strh (halfword), suggesting a wider field than the summary implies, and ''setHitElementOnFrameFlag''
+    doesn''t convey that CurAnim is also set. A clearer name is ''ai_setCurAnimAndHitElementOnFlag'' or
+    simply describe the dual write.; run wf investigate investigate-20261018-203615; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which enemy/attack this belongs to (no callers identified); element id 0xC and animation 5 are inferred
+  as a slash-type hit but not confirmed
+- Exact semantics of the 0x80 attribute flag in the sprite frame table
+- 'the asm matches: it calls sprite_getFrameParameters, tests bit 0x80 of the returned attribute, and
+  on set writes 5 to #oBattleObject_CurAnim and 0xC to #oAIAttackVars_HitElement via strb/strh. However
+  ''HitElement'' is a strh (halfword), suggesting a wider field than the summary implies, and ''setHitElementOnFrameFlag''
+  doesn''t convey that CurAnim is also set. A clearer name is ''ai_setCurAnimAndHitElementOnFlag'' or
+  simply describe the dual write.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8111BB2 -> ai_setCurAnimAndHitElementOnFlag
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111BB2

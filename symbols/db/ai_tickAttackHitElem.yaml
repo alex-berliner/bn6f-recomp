@@ -1,0 +1,60 @@
+name: ai_tickAttackHitElem
+address: '0x080F222C'
+kind: function
+status: probable
+summary: 'Per-frame AI attack state tick: while obj+0x74 flag is set, decrements obj+0x75, sets anim 0x1D
+  and spawns effect 0x5E at the object, writing 0x8 to aiVars HitElement; once clear, decrements obj+0x76
+  timer, clamps to 0 on expiry, then writes 0x14 to HitElement.'
+interface: (r5 = battle object ptr, r7 = AI attack vars struct) -> r0 clobbered; writes [obj+0x75] byte,
+  [obj+0x76] halfword, [obj+CurAnim] byte, [aiVars+HitElement] halfword
+details: This is a state-machine tick for an AI-driven attack on a type-1 battle object. If the byte flag
+  at obj+0x74 is nonzero it decrements and stores it into the counter byte at obj+0x75, sets the object's
+  current animation to 0x1D, spawns effect 0x5E at the object's current X/Y/Z via the type-4 effect-object
+  spawner, and writes element/value 8 into HitElement of the AI attack vars at r7. Once the flag is cleared,
+  it instead decrements the halfword timer at obj+0x76, clamping it to 0 when it would go negative, and
+  when that timer expires writes 0x14 into HitElement, apparently arming the next phase of the attack.
+  It reads/writes no other state and always returns via a shared epilogue, so it is safe to call every
+  frame from an AI attack script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst on ldrb [r5,#0x74] selects the two phases, storing the decremented value to [r5,#0x75];
+    active phase sets [r5,#oBattleObject_CurAnim]=0x1D and calls spawn_t1_0x0_EffectObject with r4=0x5E
+    and the object's X/Y/Z; both phases write through r7 into oAIAttackVars_HitElement (8 while active,
+    0x14 when the +0x76 timer expires); timer at [r5,#0x76] is a halfword decremented and clamped at 0,
+    a typical windup/cooldown counter; executed from recorded battle-sweep routes with the object/AI attack
+    var structs, fitting a boss/enemy attack handler
+  refs:
+  - bn6f/asm/asm31.s:125059
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080F222C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The two-phase behavior (active anim+effect+element=8 vs cooldown clamp+element=0x14) and the r7-as-aiVars
+    usage match the code, and the spawned-effect-type 0x5E is carried in r4 to spawn_t1_0x0_EffectObject
+    as the proposal says. However, the name ''attackHitElemTick'' mixes a noun phrase; a clearer lowerCamel
+    verb-form like ai_tickAttackHitElem fits the ''ai'' prefix and the state-machine nature better.; run
+    wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which code sets/clears the phase flag at obj+0x74 and the initial value of the +0x76 timer
+- what attack uses this (element/attack-id meanings of 8 and 0x14 in HitElement)
+- what effect 0x5E looks like in game
+- The two-phase behavior (active anim+effect+element=8 vs cooldown clamp+element=0x14) and the r7-as-aiVars
+  usage match the code, and the spawned-effect-type 0x5E is carried in r4 to spawn_t1_0x0_EffectObject
+  as the proposal says. However, the name 'attackHitElemTick' mixes a noun phrase; a clearer lowerCamel
+  verb-form like ai_tickAttackHitElem fits the 'ai' prefix and the state-machine nature better.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F222C -> ai_tickAttackHitElem
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F222C

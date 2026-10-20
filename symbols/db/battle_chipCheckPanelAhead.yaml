@@ -1,0 +1,67 @@
+name: battle_chipCheckPanelAhead
+address: '0x080E30E0'
+kind: function
+status: probable
+summary: 'Chip phase handler: on first pass, checks the front panel for flag 0x10 (and absence of 0x0F880080);
+  if valid, calls sub_80CD2B4 with object context, then sets Timer=0x1E and PhaseInitialized=4. After
+  30 frames, sets CurAction=0xC and resets the phase field to 0.'
+interface: (r5 = battle object) -> void; sets oBattleObject_Timer=0x1E and PhaseInitialized=4 on first
+  run, then CurAction=0xC and phase 0 when the timer lapses
+details: A per-phase routine for a battle object (r5 = object struct). On the first pass (PhaseInitialized
+  == 0) it gets the object's facing multiplier via object_getFrontDirection, computes the neighboring
+  panel x = PanelX + direction, and calls object_checkPanelParameters with y = PanelY, set-mask 0x10 and
+  clear-mask 0x0F880080, i.e. the panel must have flag 0x10 and none of the masked flags. If the check
+  passes, it calls sub_80CD2B4 passing the object (r5), AllianceAndDirectionFlip (r2), 0 (r3), Params
+  (r4) and DamageAndStaminaDamageCounterDisabler (r6) — likely applying an effect or damage on that panel,
+  but that callee is unnamed. Either way it loads the timer with 30 frames and marks the phase initialized
+  (4); on subsequent frames it counts the timer down, and on expiry sets CurAction = 0xC and resets the
+  phase field to 0, handing control back to the object's state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_getFrontDirection + add r0, r1 (PanelX) computes the panel one tile in the object's facing
+    (0x80E30E4-0x80E30EC); object_checkPanelParameters called with masks 0x10 / 0x0F880080, result branched
+    on to gate the sub_80CD2B4 call (0x80E30F0-0x80E310A); sub_80CD2B4 receives the object's alliance,
+    params and damage fields, so the panel check gates an in-battle effect (0x80E30FA); timer = 0x1E then
+    decrement loop with transition to CurAction = 0xC / phase 0 is a standard phase-wait pattern (0x80E310E-0x80E3122)
+  refs:
+  - bn6f/asm/asm31.s:92593
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CD2B4 sub_80CD2B4
+  reproduce: python3 tools/asmcat.py 0x080E30E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: it checks the front panel via object_checkPanelParameters,
+    calls sub_80CD2B4, loads Timer=0x1E, sets PhaseInitialized=4, then on expiry sets CurAction=0xC and
+    clears CurPhaseAndPhaseInitialized (the ''phase field to 0'' wording in the proposal is accurate enough).
+    However, the proposal''s name implies a ''phase'' routine that checks a panel; this is a chip-specific
+    handler (called from chips route), so a ''battle_'' or ''chip_'' prefix is more appropriate, and the
+    action 0xC handoff is characteristic of chip behavior.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- chips
+open_questions:
+- Purpose of sub_80CD2B4 (the effect applied when the panel check passes) is unknown
+- Which battle object / chip / enemy uses this phase is unknown since no caller is recorded
+- Exact meaning of panel flags 0x10 (required) and the bits of 0x0F880080 (forbidden) in the panel-attribute
+  field
+- 'The code matches the proposal''s behavior: it checks the front panel via object_checkPanelParameters,
+  calls sub_80CD2B4, loads Timer=0x1E, sets PhaseInitialized=4, then on expiry sets CurAction=0xC and
+  clears CurPhaseAndPhaseInitialized (the ''phase field to 0'' wording in the proposal is accurate enough).
+  However, the proposal''s name implies a ''phase'' routine that checks a panel; this is a chip-specific
+  handler (called from chips route), so a ''battle_'' or ''chip_'' prefix is more appropriate, and the
+  action 0xC handoff is characteristic of chip behavior.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E30E0 -> battle_chipCheckPanelAhead
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E30E0

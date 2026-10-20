@@ -1,0 +1,72 @@
+name: e_recountChipCopies
+address: '0x08134EA8'
+kind: function
+status: probable
+summary: After a folder/pack editor move, tallies how many 0x20-byte chip entries in word_202A020 share
+  each chip ID and packs each entry's running tally into the upper half of its +0x14 field.
+interface: (r0 = number of 0x20-byte entries in the list at word_202A020) -> r0 = number of entries whose
+  ID halfword was nonzero; flags clobbered
+details: 'Zero-fills a 0x78-byte scratch table at unk_20343E0 (30 slots of {u16 id, u16 count}). First
+  pass walks the list word_202A020..+r0*0x20 in 0x20-byte strides: for each entry with a nonzero halfword
+  at +0 (chip ID) it finds the matching table slot and increments its count, or appends a new {id,1} slot
+  (no capacity check, so >30 unique IDs would overrun the 0x78 buffer). Second pass rewalks the list:
+  for each entry whose halfword at +0x14 is nonzero, it looks that value up in the table and stores count<<16
+  | original halfword as a word at +0x14, i.e. the aggregate copy count lands in the upper half of the
+  +0x14 field. Returns the number of entries that had a nonzero ID in pass 1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'r5 = r0*0x20 + word_202A020 bounds a 0x20-stride entry walk; caller folder_moveChipEntry passes
+    a chip-list size after moving/swapping entries; loc_8134ED2/EE0/EEC: searches/appends (id,count) pairs
+    in the freshly zero-filled 0x78-byte unk_20343E0 buffer, incrementing count at +2 on a match; loc_8134F16:
+    ORs the found count<<16 with the entry''s halfword at +0x14 and stores the word back, embedding the
+    tally in that field; Only callee ZeroFillByEightWords(unk_20343E0, 0x78) clears the aggregate table
+    on every call; sub_8134ADC also calls it, consistent with a recount needed whenever the chip list
+    contents change'
+  refs:
+  - bn6f/asm/asm36.s:10125
+  - 0x08134CF0 folder_moveChipEntry
+  - 0x08134ADC sub_8134ADC
+  - 0x08000900 ZeroFillByEightWords
+  reproduce: python3 tools/asmcat.py 0x08134EA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: zero-fills 0x78 bytes at unk_20343E0, pass 1 walks 0x20-byte entries
+    at word_202A020 and tallies nonzero +0 IDs into {u16 id, u16 count} slots (no capacity check, strh+strb
+    seen at loc_8134EEC), pass 2 rewrites +0x14 as count<<16 | original low halfword (loc_8134F16), returns
+    the count of nonzero-ID entries via [sp]. The caller folder_moveChipEntry fits a folder-editor recount
+    after a move. However, the proposed name ''folder_recountChipCopies'' reads awkwardly; ''folder''
+    is not in the allowed prefix list, so use ''e'' (editor) prefix.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Exact meaning of the halfword at entry+0x14 (why the count is keyed off it rather than the ID at +0)
+  and which list word_202A020 is (folder vs pack)
+- Whether >30 distinct chip IDs in one call is impossible or an overflow quirk
+- 'The code matches the proposal: zero-fills 0x78 bytes at unk_20343E0, pass 1 walks 0x20-byte entries
+  at word_202A020 and tallies nonzero +0 IDs into {u16 id, u16 count} slots (no capacity check, strh+strb
+  seen at loc_8134EEC), pass 2 rewrites +0x14 as count<<16 | original low halfword (loc_8134F16), returns
+  the count of nonzero-ID entries via [sp]. The caller folder_moveChipEntry fits a folder-editor recount
+  after a move. However, the proposed name ''folder_recountChipCopies'' reads awkwardly; ''folder'' is
+  not in the allowed prefix list, so use ''e'' (editor) prefix.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8134EA8 -> e_recountChipCopies
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8134EA8

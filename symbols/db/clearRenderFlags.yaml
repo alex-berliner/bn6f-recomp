@@ -1,0 +1,55 @@
+name: clearRenderFlags
+address: '0x0804C42C'
+kind: function
+status: probable
+summary: Clears bits 0x4800 in the halfword at offset 0 of the toolkit RenderInfo pointer and writes it
+  back, with no other observable side effects.
+interface: () -> nothing; writes back to [toolkit->renderInfoPtr]
+details: Reads the toolkit from r10, dereferences its RenderInfo pointer (offset 0), loads the 16-bit
+  flag word at offset 0, clears every bit matching 0x4800 with BIC, and stores the halfword back. It takes
+  no arguments and returns nothing; the only effect is that flag update. The constant 0x4800 looks like
+  a pair of enable bits (e.g. an OBJ-related enable and a mode/blank bit) in whatever display-state mirror
+  RenderInfo keeps at offset 0, so this is a small 'hide/disable rendering' helper. Without seeing callers
+  or the RenderInfo layout, the in-game meaning of those two bits is not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r4,#oToolkit_RenderInfoPtr] then ldrh/strh on [r1] — operates on RenderInfo+0 halfword;
+    bic r0,r2 with dword_804C4AC=0x4800 — exactly two flag bits cleared, nothing else touched; recorded
+    route 'beastsp' calls it with no visible argument setup — a parameterless disable/enable toggle; 8
+    instructions, no branches or callees — pure flag update
+  refs:
+  - bn6f/asm/asm03_2.s:10432
+  reproduce: python3 tools/asmcat.py 0x0804C42C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code does push/pop, loads the render info pointer via r10+oToolkit_RenderInfoPtr, reads the
+    halfword at offset 0, clears bits in 0x4800 with BIC, and writes it back — so the summary''s description
+    of the operation is accurate. However, the function is not called by any recorded route, and the proposal''s
+    speculation (''hide/disable rendering'') overreaches; a neutral name like ''clearRenderFlags'' better
+    fits the naming rules and avoids asserting a display effect unconfirmed by callers.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- semantics of bits 0x0800 and 0x4000 in RenderInfo+0 (which sprites/BGs they gate)
+- which callers invoke it and in what game state (beast-out transition?)
+- whether a sibling function sets these bits (the enable counterpart)
+- The code does push/pop, loads the render info pointer via r10+oToolkit_RenderInfoPtr, reads the halfword
+  at offset 0, clears bits in 0x4800 with BIC, and writes it back — so the summary's description of the
+  operation is accurate. However, the function is not called by any recorded route, and the proposal's
+  speculation ('hide/disable rendering') overreaches; a neutral name like 'clearRenderFlags' better fits
+  the naming rules and avoids asserting a display effect unconfirmed by callers.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804C42C -> clearRenderFlags
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C42C

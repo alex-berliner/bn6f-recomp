@@ -1,0 +1,75 @@
+name: ai_chargedPanelAttack
+address: '0x080FF1A2'
+kind: function
+status: probable
+summary: 'AI attack routine: on first call sets AttackElement=4, fetches a target panel via sub_80FF6E0,
+  sets anim 0xb/0xff, calls sub_80FF668 and plays sound 0xbf, and primes StepTimer/ChargeCycles to TimerOrCycles+12;
+  each subsequent tick, fires sub_80FF7A4 at ChargeCycles-AttackBoost2 and sub_80FF7B0 at ChargeCycles-TimerOrCycles,
+  then when timer hits 0 increments AttackStepIndex, resetting AttackElement if SubStepIndex not yet reached;
+  sets HitElement=0x10 when the step completes or no target exists.'
+interface: (no args; r5 = battle object, r7 = oAIAttackVars) -> r0 = next attack step index or nothing;
+  HitElement set to 0x10 if no target found
+details: If oAIAttackVars_AttackElement is 0, it is set to 4 (one element type), the target panel is fetched
+  via sub_80FF6E0, the battle object's animation is set to 0xb (0xff mirrored into CurAnimCopy), sound
+  0xbf plays, and StepTimer/ChargeCycles are primed to TimerOrCycles+12. While the timer counts down,
+  hitting ChargeCycles-AttackBoost2 calls sub_80FF7A4(x,y) and hitting ChargeCycles-TimerOrCycles calls
+  sub_80FF7B0(x,y), both given the stored target panel X/Y (likely ground-telegraph/impact effects). When
+  the timer reaches 0, AttackStepIndex is incremented; if it has not reached SubStepIndex, AttackElement
+  is reset to 0 so the charge repeats, otherwise the step loop ends. If the initial target lookup failed
+  (r0==0), HitElement is set to 0x10 and no charge occurs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc at 80FF1A2: sets AttackElement=4, anim 0xb, PlaySoundEffect(0xbf), primes StepTimer/ChargeCycles
+    — a charge-up attack start; 80FF206/80FF210: calls sub_80FF7A4/sub_80FF7B0 with saved TargetPanelX/Y
+    at two timer thresholds — telegraph/effect at the target panel; timer-zero branch: increments AttackStepIndex
+    and resets AttackElement=0 until it reaches SubStepIndex — looping attack steps; no-target path (beq
+    loc_80FF21A after sub_80FF6E0): sets HitElement=0x10, aborting the attack; fields used are all in
+    the oAIAttackVars AI-attack struct; element/anim/timer semantics match the project''s battle-object
+    field names'
+  refs:
+  - bn6f/asm/asm31.s:151518
+  - 0x080005CC PlaySoundEffect
+  - 0x080FF668 sub_80FF668
+  - 0x080FF6E0 sub_80FF6E0
+  reproduce: python3 tools/asmcat.py 0x080FF1A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s summary and structure match the asm well: init sets AttackElement=4, calls sub_80FF6E0
+    for a panel, anim 0xb, sound 0xbf, primes StepTimer/ChargeCycles to TimerOrCycles+12. The timer countdown
+    fires sub_80FF7A4 at ChargeCycles-AttackBoost2 and sub_80FF7B0 at ChargeCycles-TimerOrCycles, then
+    increments AttackStepIndex and loops while resetting AttackElement. However the interface claim that
+    HitElement=0x10 is set when the initial target lookup fails is wrong: in the code, loc_80FF21A sets
+    HitElement=0x10 and is also the fall-through after AttackStepIndex>=SubStepIndex (end-of-step), not
+    the no-target branch — the beq at loc_80FF1B0 jumps there for r0==0 but the same address is used as
+    the step-end terminator, so HitElement is also written on normal step completion.; run wf investigate
+    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80FF6E0, sub_80FF7A4 and sub_80FF7B0 do exactly (target selection vs. telegraph vs. damage
+  effect)
+- Which enemy/virus or boss uses this routine and what element id 4 maps to in this build
+- No captured caller in the snapshots, so the dispatch context (per-frame AI attack handler?) is unconfirmed
+- 'The proposal''s summary and structure match the asm well: init sets AttackElement=4, calls sub_80FF6E0
+  for a panel, anim 0xb, sound 0xbf, primes StepTimer/ChargeCycles to TimerOrCycles+12. The timer countdown
+  fires sub_80FF7A4 at ChargeCycles-AttackBoost2 and sub_80FF7B0 at ChargeCycles-TimerOrCycles, then increments
+  AttackStepIndex and loops while resetting AttackElement. However the interface claim that HitElement=0x10
+  is set when the initial target lookup fails is wrong: in the code, loc_80FF21A sets HitElement=0x10
+  and is also the fall-through after AttackStepIndex>=SubStepIndex (end-of-step), not the no-target branch
+  — the beq at loc_80FF1B0 jumps there for r0==0 but the same address is used as the step-end terminator,
+  so HitElement is also written on normal step completion.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FF1A2 -> ai_chargedPanelAttack
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF1A2

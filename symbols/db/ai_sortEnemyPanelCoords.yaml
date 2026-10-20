@@ -1,0 +1,68 @@
+name: ai_sortEnemyPanelCoords
+address: '0x080E5174'
+kind: function
+status: probable
+summary: Collects opposing-side enemies via two object_getEnemyByNameRange calls (IDs 0..0xAE and 0x100..0x1C3);
+  if two are found, picks the lower-HP one (RNG-tied) for the third slot, and if fewer are found duplicates
+  the first slot, then packs PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66 and bubble-sorts them
+  ascending via sub_80E5208.
+interface: (r0 = owner battle object, passed in r5 by caller) -> no return; writes 3 packed panel-coord
+  bytes to [r5+0x64..0x66], clobbers r4/r6/r7
+details: Builds a 4-pointer array on stack via two object_getEnemyByNameRange calls with the owner's alliance
+  XOR 1 (opposing side) and ID ranges 0..0xAE and 0x100..0x1C3, appending the second batch after the first's
+  returned count. With exactly two hits it compares oBattleObject_HP and keeps the weaker one, using GetPositiveSignedRNG
+  bit 2 to break ties; with fewer it copies the first hit into the empty slots. It then packs each of
+  the first three slots' oBattleObject_PanelX | PanelY<<4 into one byte at r5+0x64 and runs a 3-element
+  ascending pairwise sort through sub_80E5208. Behavior when zero enemies are found looks unsafe (uninitialized/NULL
+  slots would be dereferenced), so callers presumably guarantee at least one opposing enemy.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two object_getEnemyByNameRange calls with r3=[r5+Alliance]^1 and ranges (0,0xAE)/(0x100,0x1C3),
+    second appended at sp+count*4; HP compare of the two hits plus 'bl GetPositiveSignedRNG; and r0,#4;
+    ldr r0,[r7,r0]' selects lower-HP enemy on tie; loop 'ldrb [r2,#oBattleObject_PanelX] / PanelY<<4 /
+    orr / strb [r4,r3]' writes 3 bytes at r5+0x64; nested loop calling sub_80E5208 on adjacent bytes is
+    a 3-element ascending sort of those packed coords; caller sub_80E50E4 runs on the recorded beastsp
+    route and supplies r5 as the acting battle object
+  refs:
+  - bn6f/asm/asm31.s:97194
+  - 0x080E50E4 sub_80E50E4
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800EBD4 object_getEnemyByNameRange
+  - 0x080E5208 sub_80E5208
+  reproduce: python3 tools/asmcat.py 0x080E5174
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: two getEnemyByNameRange calls (0..0xAE and 0x100..0x1C3) with opposing
+    alliance, packing PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66, and bubble-sorting via sub_80E5208
+    (loc_80E51E8/1EC). However ''substituting/duplicating'' conflates two cases: exactly 2 found picks
+    the lower-HP enemy (with RNG tiebreak using bit 2, not bit 1) for slot 2, while 0 or 1 found duplicates
+    slot 0 into the remaining slots (loc_80E51C6). The function is called from sub_80E50E4 and behaves
+    like AI logic selecting target panels, so an ai_ prefix is reasonable.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what consumes the 3 sorted bytes at r5+0x64 (which boss/AI behavior, exact field meaning)
+- what object_getEnemyByNameRange leaves in unfilled buffer slots (NULL vs sentinel), i.e. whether <2-enemy
+  cases are reachable
+- what sub_80E5208's comparison/swap convention is, to confirm sort order
+- 'The summary is mostly correct: two getEnemyByNameRange calls (0..0xAE and 0x100..0x1C3) with opposing
+  alliance, packing PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66, and bubble-sorting via sub_80E5208
+  (loc_80E51E8/1EC). However ''substituting/duplicating'' conflates two cases: exactly 2 found picks the
+  lower-HP enemy (with RNG tiebreak using bit 2, not bit 1) for slot 2, while 0 or 1 found duplicates
+  slot 0 into the remaining slots (loc_80E51C6). The function is called from sub_80E50E4 and behaves like
+  AI logic selecting target panels, so an ai_ prefix is reasonable.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5174 -> ai_sortEnemyPanelCoords
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5174

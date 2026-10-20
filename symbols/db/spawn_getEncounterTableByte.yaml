@@ -1,0 +1,59 @@
+name: spawn_getEncounterTableByte
+address: '0x0808FF00'
+kind: function
+status: probable
+summary: Looks up a per-map byte from a 4-entry table using MapNumber (or constant 3 if MapGroup==0x85),
+  stores it at struct offset 0xA and also at 0xB unless story flag EVENT_BFB is set; returns the byte.
+interface: (r0 = toolkit (via r10), r5 = target struct) -> r0 = looked-up byte; writes r5+0xA always and
+  r5+0xB only if EVENT_BFB clear
+details: 'Reads the GameState''s MapGroup; if MapGroup == 0x85 it substitutes the constant 3, otherwise
+  uses MapNumber as the index. Indexes the 4-byte table dword_808FF2C (bytes 01 01 01 02) with that value
+  and stores the result at struct offset 0xA. Then it tests story flag EVENT_BFB: if the flag is NOT set,
+  it stores the same byte again at offset 0xB, giving the struct two copies before that event and one
+  after. Returns the byte in r0. The struct at r5 (likely a spawner/spawn-config record) is prepared by
+  the sole caller sub_808FED8; only the count semantics of fields 0xA/0xB remain inferred.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r1, #0x85 / mov r1, #3 else ldrb MapNumber — map identity drives the lookup; ldrb r4, [r0,r1]
+    off dword_808FF2C (=0x2020201, bytes 1,1,1,2) — small per-map value table; strb r4,[r5,#0xa] and conditional
+    strb r4,[r5,#0xb] gated on TestEventFlagFromImmediate(EVENT_BFB); called from sub_808FED8 and executed
+    in the beastsp recorded route — map/scenario-dependent setup'
+  refs:
+  - bn6f/asm/asm25.s:923
+  - 0x0808FED8 sub_808FED8
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0808FF00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The interface, table lookup, MapGroup==0x85 → 3 substitution, dual store at 0xA/0xB gated on EVENT_BFB,
+    and r0 return of the byte all match the code exactly. However, the function pulls a GameState pointer
+    from a toolkit, so a more descriptive name reflecting the per-map pick (e.g., spawn_getEncounterParam)
+    would be clearer than the generic ''getPerMapCountForMap'', and the summary should call it a per-map
+    byte (not specifically a ''count'') since the table values and semantics are inferred.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What the r5 struct fields 0xA/0xB mean (counts? variant id?) — the caller sub_808FED8's use of the struct
+  would confirm
+- What EVENT_BFB represents and why the second field is only written before it
+- What map group 0x85 is and why it maps to constant index 3
+- The interface, table lookup, MapGroup==0x85 → 3 substitution, dual store at 0xA/0xB gated on EVENT_BFB,
+  and r0 return of the byte all match the code exactly. However, the function pulls a GameState pointer
+  from a toolkit, so a more descriptive name reflecting the per-map pick (e.g., spawn_getEncounterParam)
+  would be clearer than the generic 'getPerMapCountForMap', and the summary should call it a per-map byte
+  (not specifically a 'count') since the table values and semantics are inferred.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FF00 -> spawn_getEncounterTableByte
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FF00

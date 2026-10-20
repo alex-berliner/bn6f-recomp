@@ -1,0 +1,88 @@
+name: sprite_transformPieceOffsets
+address: '0x03006594'
+kind: function
+status: probable
+summary: Computes the OAM draw offsets for one sprite piece, applying optional flip-sign plus per-size
+  anchoring (0x100 path) or an affine rotation/scaling using word_200A6F0 (0x300 path), returning (r0=x,
+  r1=y) and updating r6 with the affine index (or 0x02000000 when r7==1).
+interface: (r2 = piece struct ptr, r5 = object struct ptr, r6 = piece flags, r7 = flip/variant flag) ->
+  r0, r1 = transformed piece offsets; r6/r7 preserved (r6 gets 0x02000000 set and rotation index+0x10
+  when r7==1).
+details: 'Early-returns the plain path when r6 has no 0x300 bits: it reads signed offsets at r2+1/r2+2
+  and, if object flag r5+0x13 has bit 0x10/0x20, negates each and adds a per-size anchor correction from
+  byte_300670C/byte_3006718 (indexed by size bits of r2+4 times 4 plus low bits of r2+3; values -4/-8/-16/-32
+  per column). With bit 0x300 set, it instead applies an affine transform: r5+0x13 & 0x3E >> 1 selects
+  a 12-byte entry in the IWRAM table word_200A6F0 whose +8 byte (angle, &0xFF<<1) indexes math_sinTable/math_cosTable,
+  and +9/+0xA are x/y scale multipliers; the piece offsets are recentered via byte_30066F4/byte_3006700,
+  rotated (x'' = dx*scale*cos + dy*scale*sin, y'' = dx*scale*(-cos) + dy*scale*sin, each >>12), and re-anchored.
+  If r7==1 the rotation slot index is bumped by 0x10 (mirrored set) and flag 0x02000000 is ORed into r6.
+  Both results are pushed and popped into r0/r1 (r1 from the r2+1 axis, r0 from the r2+2 axis). Called
+  only by sprite_queueFramePieces, consistent with preparing each animation-frame piece''s OAM position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'caller sprite_queueFramePieces ''Queue the visible pieces of a sprite''s current animation
+    frame as OAM entries'' shows this supplies per-piece offsets; negation of ldrsb [r2,#1]/[r2,#2] under
+    r5+0x13 bits 0x10/0x20 is horizontal/vertical flip handling; sin/cos table multiplies and asr #3...
+    asr #0xc rounding implement a fixed-point affine rotation; word_200A6F0 entry +8 angle, +9/+0xA scale
+    multipliers show a per-object rotation/scale state table; anchor tables byte_30066F4..byte_3006718
+    hold -4/-8/-16/-32 values indexed by piece size, recentering pieces around a pivot'
+  refs:
+  - bn6f/asm/asm38.s:1490
+  - 0x03006440 sprite_queueFramePieces
+  reproduce: python3 tools/asmcat.py 0x03006594
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: r6 & 0x300 branch reads offsets, optionally negates per r5+0x13 bits
+    0x10/0x20, adds per-size/per-sub anchors from byte_300670C/byte_3006718, while the affine branch uses
+    r5+0x13 & 0x3E >>1 indexing word_200A6F0, recenters via byte_30066F4/byte_3006700, applies cos/sin
+    scaling with shift >>12, and re-anchors. The flip path correctly ORs 0x02000000 and bumps the rotation
+    slot by 0x10 when r7==1. However the name ''sprite_transformPieceOffsets'' is fine but the summary''s
+    axis assignment is inverted: r0 comes from r2+1 (x) and r1 from r2+2 (y), matching OAM convention,
+    not ''r1 from r2+1, r0 from r2+2'' as written.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact meaning of r6's 0x300 bits and of the 0x02000000 flag ORed when r7==1 (likely OAM attribute bits
+  set by the caller)
+- whether word_200A6F0 +8 is an absolute angle or an accumulated spin, and what writes that table
+- 'The code matches the summary: r6 & 0x300 branch reads offsets, optionally negates per r5+0x13 bits
+  0x10/0x20, adds per-size/per-sub anchors from byte_300670C/byte_3006718, while the affine branch uses
+  r5+0x13 & 0x3E >>1 indexing word_200A6F0, recenters via byte_30066F4/byte_3006700, applies cos/sin scaling
+  with shift >>12, and re-anchors. The flip path correctly ORs 0x02000000 and bumps the rotation slot
+  by 0x10 when r7==1. However the name ''sprite_transformPieceOffsets'' is fine but the summary''s axis
+  assignment is inverted: r0 comes from r2+1 (x) and r1 from r2+2 (y), matching OAM convention, not ''r1
+  from r2+1, r0 from r2+2'' as written.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3006594 -> sprite_transformPieceOffsets
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006594

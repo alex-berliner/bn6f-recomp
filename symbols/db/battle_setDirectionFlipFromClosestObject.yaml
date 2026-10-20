@@ -1,0 +1,67 @@
+name: battle_setDirectionFlipFromClosestObject
+address: '0x081161B0'
+kind: function
+status: probable
+summary: Finds the closest enemy BattleObject to a given panel, then sets the caller object's DirectionFlip
+  flag based on the sign of (caller.x - enemy.x) scaled by the caller's horizontal facing step, also considering
+  dy.
+interface: (r0 = panel x, r1 = panel y [stack-passed], r5 = BattleObject*) -> r0 = DirectionFlip value
+  written to [r5+oBattleObject_DirectionFlip]; clobbers r0-r3
+details: 'Saves the caller''s panel coords on the stack, XORs r5''s alliance with 1 and calls battleObject_findClosestEnemyBattleObject
+  to get the nearest object on the opposite side, reading its panel coords from offsets 0x12 (x) and 0x13
+  (y). It computes dx = caller.x - enemy.x and dy = caller.y - enemy.y, then normalizes dx by multiplying
+  with the ±1 step from object_getEnemyDirection (based on alliance). The stored flip flag is simply (normalized
+  dx >= 1) ? 1 : 0; the branch tree checks dy as well, but every path yields the same result, so the dy
+  comparisons are redundant. DirectionFlip is written as a byte 0 or 1 on the r5 object; no other fields
+  are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: push {r0,r1} before bl passes panel coords by stack to battleObject_findClosestEnemyBattleObject_80103F8;
+    ldrb r2,[r0,#0x12]/r3,[r0,#0x13] read the found object's panel x/y; ldrb r0,[r5,#oBattleObject_Alliance];
+    eor r0,#1 selects the closest object of the flipped alliance relative to r5; sub/sub deltas then mul
+    r0 by object_getEnemyDirection's ±1 result sign-normalizes dx by side; all branches end in strb 0/1
+    to [r5,#oBattleObject_DirectionFlip], chosen solely by cmp r0,#1 (dx >= 1); sole caller sub_8115FCE
+    is itself undocumented; function runs on recorded battlesweep routes
+  refs:
+  - bn6f/asm/asm32.s:16131
+  - 0x08115FCE sub_8115FCE
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x081161B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function logic, callees, and DirectionFlip write at strb r0,[r5,#oBattleObject_DirectionFlip]
+    match the proposal. However, the proposal''s claim that ''every path yields the same result, so the
+    dy comparisons are redundant'' is wrong: when r1 != 0 (dy branch), the result depends on both dx and
+    dy comparisons (lines at loc_81161EA through loc_8116208), producing 0 or 1 differently from the r1==0
+    path. Also, the interface has r0/r1 panel coords pushed on stack (stack-passed), not register-passed
+    for r1; and dx*step sign matters, not just >=1.; run wf investigate investigate-20261018-200615; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of DirectionFlip (1 = facing left or right?) needs a consumer of the field to confirm
+- Whether findClosestEnemyBattleObject matches or excludes the passed alliance (eor could mean 'nearest
+  ally' instead of 'nearest enemy')
+- What panel coords sub_8115FCE passes (its own position vs a target panel) — reading sub_8115FCE would
+  clarify
+- 'The function logic, callees, and DirectionFlip write at strb r0,[r5,#oBattleObject_DirectionFlip] match
+  the proposal. However, the proposal''s claim that ''every path yields the same result, so the dy comparisons
+  are redundant'' is wrong: when r1 != 0 (dy branch), the result depends on both dx and dy comparisons
+  (lines at loc_81161EA through loc_8116208), producing 0 or 1 differently from the r1==0 path. Also,
+  the interface has r0/r1 panel coords pushed on stack (stack-passed), not register-passed for r1; and
+  dx*step sign matters, not just >=1.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81161B0 -> battle_setDirectionFlipFromClosestObject
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81161B0

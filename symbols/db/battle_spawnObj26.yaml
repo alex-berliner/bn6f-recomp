@@ -1,0 +1,64 @@
+name: battle_spawnObj26
+address: '0x080BFF00'
+kind: function
+status: probable
+summary: Spawns a type-0x26 battle object at panel (r0,r1) linked to a related object (r2), copies AllianceAndDirectionFlip
+  from the acting object in r5 into it, zeroes a counter, and ORs 0x14 into oObjectHeader_Flags.
+interface: (r0 = panelX, r1 = panelY, r2 = related object ptr, r3,r4 = passthrough to type initializer;
+  r5 = acting BattleObject, implicit) -> r0 = new BattleObject or null; Z flag from spawn indicates failure
+  (beq taken)
+details: Saves its args with push {r0-r2,r5}, sets r0=0x26 and calls object_spawnType1, which returns
+  the new object in r5; r0-r2 are reloaded via pop {r1-r3,r5} into r1-r3 while r3,r4 pass straight through
+  to the type-specific initialiser. On success it stores arg0/arg1 into oBattleObject_PanelX/PanelY and
+  arg2 into oBattleObject_RelatedObject1Ptr, zeroes oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and copies AllianceAndDirectionFlip from the object in the caller's r5 into the spawn — implying an
+  r5=acting-object convention (likely the battle-script interpreter calling this as a native helper).
+  Finally it sets oObjectHeader_Flags bits 0x04|0x10 on the new object and returns its pointer in r0.
+  The beq after the pop relies on flags left by object_spawnType1 to skip all initialisation when the
+  spawn failed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x26 + bl object_spawnType1 with result in r5 (mov r0,r5) — spawns battle object type
+    0x26; strb r1,[r0,#PanelX] / strb r2,[r0,#PanelY] after pop {r1-r3,r5} — popped args are panel coordinates;
+    str r3,[r0,#RelatedObject1Ptr] and str r1(=0),[DamageAndStaminaDamageCounterDisabler] — links related
+    object, resets damage counter field; ldrh r3,[r5,#AllianceAndDirectionFlip] / strh into the new object
+    after pop restored the caller''s r5 — alliance inherited from the acting object; ldrb/orr #0x14/strb
+    on oObjectHeader_Flags sets flag bits 0x4|0x10 on the spawn'
+  refs:
+  - bn6f/asm/asm31.s:17120
+  - 0x080E8F00 sub_80E8F00
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BFF00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate but the name ''battle_spawnObj26InheritAlliance'' overstates ''inheritAlliance''
+    since only the AllianceAndDirectionFlip byte is copied, and the oObjectHeader_Flags OR with 0x14 (bits
+    0x04 and 0x10) is also a notable effect not captured. The interface description is correct, including
+    the r5=acting-object convention implied by the ldrh from [r5, ...AllianceAndDirectionFlip] into r0
+    (the spawn) after pop.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What battle entity object type 0x26 actually is (needs the type-1 spawn table / its type-specific initialiser)
+- Meaning of oObjectHeader_Flags bits 0x04 and 0x10
+- Confirmation that r5 is supplied by the battle-script interpreter rather than an ordinary caller — sub_80E8F00's
+  context would show this
+- The summary is accurate but the name 'battle_spawnObj26InheritAlliance' overstates 'inheritAlliance'
+  since only the AllianceAndDirectionFlip byte is copied, and the oObjectHeader_Flags OR with 0x14 (bits
+  0x04 and 0x10) is also a notable effect not captured. The interface description is correct, including
+  the r5=acting-object convention implied by the ldrh from [r5, ...AllianceAndDirectionFlip] into r0 (the
+  spawn) after pop.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFF00 -> battle_spawnObj26
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFF00

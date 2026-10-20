@@ -1,0 +1,63 @@
+name: battle_aiLoadAttackParamPair
+address: '0x080FFAF8'
+kind: function
+status: probable
+summary: Loads a packed attack parameter word (low byte and bits 16-23 from two per-AI-version tables)
+  into [battleObject->AIDataPtr + oAIAttackVars_Damage] for the attack id passed in r0.
+interface: (r0 = attack/table index) -> r0 = packed value stored; writes word to [battleObject->AIDataPtr+0xA0]
+  (oAIAttackVars_Damage)
+details: Takes an index in r0, multiplies it by 8, and reads a table entry from byte_80FFB54 via battle_aiGetVersionedTableEntry_800FE12
+  (which selects among per-AI-version copies of the table, r2=8 as the entry stride/scale). It then repeats
+  the same indexed read from a second table byte_80FFB6C, shifts that byte left by 16, and ORs it with
+  the first result. The packed word — first byte in bits 0-7, second byte in bits 16-23 — is stored to
+  [r5->AIDataPtr + 0xA0] (oAIAttackVars_Damage), so the upper byte lands in the halfword at +0xA2, a second
+  AI attack variable. This supplies the damage (and likely a second parameter such as element/effect)
+  for the attack branch the caller selected via RNG rolls.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: two mul-by-8 indexed reads from byte_80FFB54 and byte_80FFB6C through battle_aiGetVersionedTableEntry_800FE12;
+    asm: ''lsl r0, #0x10 / orr r6'' packs the second byte into the upper halfword of the result; asm:
+    ''str r6, [r3,#oAIAttackVars_Damage]'' with r3 = [r5,#oBattleObject_AIDataPtr]+0xA0 stores into AI
+    attack vars; caller sub_80FF904 (JudgeMan AI step) gates an attack branch with GetPositiveSignedRNG
+    & 0xF < 0xE before calling this; callee summary confirms AI-version-indexed table reads with a multiplier-scaled
+    entry for AI version 4'
+  refs:
+  - bn6f/asm/asm31.s:152457
+  - 0x080FF904 sub_80FF904
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080FFAF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it reads two versioned table entries (byte_80FFB54 and byte_80FFB6C)
+    scaled by r0*8, shifts the second left by 16, ORs with the first, and stores the packed word at r5->AIDataPtr+oAIAttackVars_Damage
+    (0xA0). However, the function takes an attack index in r0 and loads per-attack AI parameters, so a
+    more accurate prefix is ''battle'' and the name should not claim to know it''s JudgeMan-specific (the
+    caller is JudgeMan, but the function itself is generic AI table lookup).; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the byte stored at AI vars +0xA2 (second table byte_80FFB6C)
+- whether both tables are per-battle-version copies and what the version-4 scaling means numerically
+- full set of indices the caller can pass (which JudgeMan attacks map to which entries)
+- 'The code matches the proposal: it reads two versioned table entries (byte_80FFB54 and byte_80FFB6C)
+  scaled by r0*8, shifts the second left by 16, ORs with the first, and stores the packed word at r5->AIDataPtr+oAIAttackVars_Damage
+  (0xA0). However, the function takes an attack index in r0 and loads per-attack AI parameters, so a more
+  accurate prefix is ''battle'' and the name should not claim to know it''s JudgeMan-specific (the caller
+  is JudgeMan, but the function itself is generic AI table lookup).'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FFAF8 -> battle_aiLoadAttackParamPair
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFAF8

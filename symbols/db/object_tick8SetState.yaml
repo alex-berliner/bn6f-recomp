@@ -1,0 +1,54 @@
+name: object_tick8SetState
+address: '0x080A9E48'
+kind: function
+status: probable
+summary: 'Object step: increments a u16 at +0x24; when it reaches 8, wraps it to 0 and stores 0xC into
+  the u8 at +9.'
+interface: (r5 = object struct) -> r0 clobbered; [r5+0x24] (u16) incremented, wraps 0..7; [r5+9] (u8)
+  = 0xC on wrap
+details: Takes the object in r5 (not r0), so it is likely dispatched from an object update switch rather
+  than called with arguments. Each call increments the halfword counter at +0x24; once the post-increment
+  value reaches 8 it writes 0 back and stores 12 into the byte at +9, which is most plausibly a state/action/animation
+  selector for the object. No other fields are touched and there are no calls or branches besides the
+  early return, so the whole effect is this counter-plus-state transition. The 8-frame period (~8/60 s)
+  suggests a short timed step, e.g. a pause or flash before changing behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on [r5,#0x24] with add #1 and cmp #8: per-call frame counter wrapping at 8; strb
+    #0xC to [r5,#9] only on the wrap branch: state-like byte set when the count expires; no bl and only
+    one locret: pure field manipulation on the r5 object; r5 base with no argument registers matches long-running
+    object step handlers dispatched with the object in r5'
+  refs:
+  - bn6f/asm/asm29.s:9882
+  reproduce: python3 tools/asmcat.py 0x080A9E48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the body: r5 is implicit, +0x24 halfword increments and wraps to 0 when ≥8, then
+    +9 byte is set to 0xC. The proposed name `object_tick8FramesSetStateC` is accurate but carries a placeholder-style
+    appended ''C'' and is overly long; a tighter camelCase name suffices. Since there are no known callers/callees,
+    we cannot confirm beyond the body, but the summary itself fits the asm.; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- no callers captured, so which object type owns this struct and what field +9 and +0x24 mean is unknown
+- need the dispatch table or a sibling step function to confirm +9 is a state/action id rather than e.g.
+  a sprite animation slot
+- 'The code matches the body: r5 is implicit, +0x24 halfword increments and wraps to 0 when ≥8, then +9
+  byte is set to 0xC. The proposed name `object_tick8FramesSetStateC` is accurate but carries a placeholder-style
+  appended ''C'' and is overly long; a tighter camelCase name suffices. Since there are no known callers/callees,
+  we cannot confirm beyond the body, but the summary itself fits the asm.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A9E48 -> object_tick8SetState
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9E48

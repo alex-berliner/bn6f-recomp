@@ -1,0 +1,66 @@
+name: ai_pickAttackValue
+address: '0x08107EB0'
+kind: function
+status: probable
+summary: AI helper that selects one of {0xD,0x10} from a table based on the acting object's HP vs half
+  max HP, then adds 0x10 if the object's collision flag word has bits 0xA000 set, returning the result
+  to the attack-state caller.
+interface: (uses r5 = battle object) -> r0 = selected value (0xD/0x10, +0x10 if flag 0xA000 set); no flags
+  meaningful
+details: Compares the object's HP against half its max HP (oBattleObject_MaxHP >> 1) and sets a selector
+  r2 to 4 when HP is at or below half, 0 otherwise. It then calls sub_800FE28 with r0 = byte_8107EE0 +
+  r2 and r1 = the raw HP value, which returns one of the table's byte values {0x10, 0x10, 0xD, 0xD, 0x10,
+  0x10, 0xD, 0xD} into r4. It then reads the object's collision flag word via object_getFlag and tests
+  bits 0xA000 (0x8000|0x2000); if set, 0x10 is added to the result. The caller ai_attackRandomFreePanel
+  (attack setup entering state 9) consumes this value, consistent with it being a panel id or row/side
+  offset for the attack; the +0x10 likely selects the mirrored/other side of the field. The exact meaning
+  of the two byte values and of flag bits 0xA000 is not pinned down from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_MaxHP]; lsr r0,#1; cmp with oBattleObject_HP sets r2=4 when weakened
+    (asm lines 3-7); ldr r0,off_8107EDC; add r0,r0,r2; bl sub_800FE28 selects from byte_8107EE0 = {0x10,0x10,0xD,0xD,0x10,0x10,0xD,0xD};
+    bl object_getFlag; tst r0,#0xA000; beq skip; add r4,#0x10 — flag-conditioned +16 adjustment; sole
+    caller 0x08107FF4 in ai_attackRandomFreePanel, an attack-setup routine entering attack state 9
+  refs:
+  - bn6f/asm/asm31.s:169709
+  - 0x08107FF4 ai_attackRandomFreePanel
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08107EB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: HP-vs-half comparison sets r2 to 0 or 4, sub_800FE28
+    is called with the byte_8107EE0 table entry, and 0x10 is added if object_getFlag & 0xA000. However
+    the proposed name ''ai_getAttackPanelId'' overclaims: the value is not necessarily a panel id, just
+    a base + optional 0x10 mirror, and ''attack'' is inferred only from the caller. A more neutral name
+    like ''ai_selectAttackSide'' or ''ai_pickAttackValue'' fits better given the function itself only
+    returns a small value with a side/mirror offset.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What sub_800FE28 does with (table pointer, HP) — likely a weighted/random pick between the two byte
+  values
+- Whether the returned 0xD/0x10 (+0x10) is a panel id, row offset, or animation id, and the field's panel
+  indexing scheme
+- Which object property flag bits 0x8000/0x2000 represent (e.g. flying, side, or panel state)
+- 'The code matches the proposal''s mechanics: HP-vs-half comparison sets r2 to 0 or 4, sub_800FE28 is
+  called with the byte_8107EE0 table entry, and 0x10 is added if object_getFlag & 0xA000. However the
+  proposed name ''ai_getAttackPanelId'' overclaims: the value is not necessarily a panel id, just a base
+  + optional 0x10 mirror, and ''attack'' is inferred only from the caller. A more neutral name like ''ai_selectAttackSide''
+  or ''ai_pickAttackValue'' fits better given the function itself only returns a small value with a side/mirror
+  offset.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107EB0 -> ai_pickAttackValue
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107EB0

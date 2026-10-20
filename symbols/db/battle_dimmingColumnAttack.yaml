@@ -1,0 +1,70 @@
+name: battle_dimmingColumnAttack
+address: '0x080C6E90'
+kind: function
+status: probable
+summary: Battle-object state that on first frame derives the target column from Param3 via sub_80C6F08,
+  sets a cross-shaped warning via battle_highlightCrossPanels at Param4, and every 30 frames spawns a
+  dimming collision lane toward that column via battle_spawnDimmingCollisionPath, destroying itself when
+  the Timer expires.
+interface: (r5 = battle object; no args) -> updates oBattleObject fields in place; no return value, sets
+  state to CUR_STATE_DESTROY when finished
+details: On phase 0 (oBattleObject_CurPhase == 0) it advances the phase to 4, derives the target column
+  in oBattleObject_Param4 from oBattleObject_Param3 via sub_80C6F08, loads the duration into oBattleObject_Timer
+  from oBattleObject_Param2, seeds Timer2 with 1, and calls sub_80C6FC8 with Timer and Param4 (likely
+  registering the attack timing/layout). Every frame it draws the cross-shaped warning area at column
+  Param4 via battle_highlightCrossPanels and decrements Timer; when Timer reaches 0 the object is destroyed.
+  While Timer2 counts down, each time it hits 0 it resets Timer2 to 0x1E (30 frames) and calls battle_spawnDimmingCollisionPath
+  with Param4, spawning a lane of dimming panels up to 4 panels toward the target column plus a two-tile-tall
+  column there — i.e., the actual damaging hit region repeats on a 30-frame cycle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase-0 block: ''strb r1,[r5,#oBattleObject_CurPhase]'' sets phase 4, ''bl sub_80C6F08'' with
+    Param3 stores result to Param4 (target column); ''bl battle_highlightCrossPanels'' called every frame
+    with Param4 — telegraph cross area at the object''s/target column; Timer2 reset to 0x1E then ''bl
+    battle_spawnDimmingCollisionPath'' with Param4 — hit regions respawn on a 30-frame cycle; ''ble loc_80C6EDA''
+    on Timer expiring leads to ''mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]'';
+    callees'' known summaries (cross panel highlight, dimming collision path) match a telegraph-then-repeated-hit
+    attack pattern'
+  refs:
+  - bn6f/asm/asm31.s:32316
+  - 0x080C7030 battle_highlightCrossPanels
+  - 0x080C6F50 battle_spawnDimmingCollisionPath
+  - 0x080C6F08 sub_80C6F08
+  reproduce: python3 tools/asmcat.py 0x080C6E90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics (phase 0 init advancing to phase 4, deriving Param4 via
+    sub_80C6F08, calling sub_80C6FC8, cross-panel highlight, 30-frame Timer2 cycle with battle_spawnDimmingCollisionPath,
+    destroy on Timer expiry). One concrete error: Timer is stored with strh (16-bit), not loaded as a
+    byte, and Timer2 is seeded to 1 not ''0x01'' meaningfully — fine. The summary''s ''telegraphed repeated
+    column attack'' is accurate, but the proposed name `battle_stateDimmingColumnAttack` is fine though
+    slightly verbose; a tighter name fits the documented prefix convention better.; run wf investigate
+    investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which boss/attack this handler belongs to (build-snapshot routes battlesweep/beastsp suggest a boss,
+  but the caller chain is unknown)
+- Exact meaning of sub_80C6F08's conversion of Param3 to Param4 (target selection logic) and of sub_80C6FC8's
+  setup call
+- 'The code matches the proposal''s mechanics (phase 0 init advancing to phase 4, deriving Param4 via
+  sub_80C6F08, calling sub_80C6FC8, cross-panel highlight, 30-frame Timer2 cycle with battle_spawnDimmingCollisionPath,
+  destroy on Timer expiry). One concrete error: Timer is stored with strh (16-bit), not loaded as a byte,
+  and Timer2 is seeded to 1 not ''0x01'' meaningfully — fine. The summary''s ''telegraphed repeated column
+  attack'' is accurate, but the proposed name `battle_stateDimmingColumnAttack` is fine though slightly
+  verbose; a tighter name fits the documented prefix convention better.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6E90 -> battle_dimmingColumnAttack
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6E90

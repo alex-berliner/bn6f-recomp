@@ -1,0 +1,64 @@
+name: ai_tickAttackElementTimer
+address: '0x080F7C3A'
+kind: function
+status: probable
+summary: 'AI per-tick handler for an element-typed attack: on first call arms AttackElement (default 4)
+  and copies AttackDuration into StepTimer, then each tick decrements StepTimer and on expiry clears CurAnim
+  and calls object_exitAttackState.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = destroyed; sets oAIAttackVars_AttackElement,
+  StepTimer, oBattleObject_CurAnim
+details: On the first invocation (AttackElement == 0) it writes element 4 into oAIAttackVars_AttackElement
+  and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer, arming the countdown. On later
+  invocations it decrements StepTimer and simply returns while it is still positive. When the timer reaches
+  zero it sets the object's oBattleObject_CurAnim to 0 and calls object_exitAttackState, ending the attack.
+  The element-4 default written on first entry suggests this handler serves a generic/fallback attack
+  kind (or converts an unspecified element to a fixed one) whose length is configured elsewhere via AttackDuration.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] + tst/bne: element==0 branch stores 4 and copies AttackDuration
+    into StepTimer (loc_80F7C4C vs arm path); ldrh StepTimer; sub #1; strh; bgt: classic countdown kept
+    in the AI attack-variables struct; strb #0,[r5,#oBattleObject_CurAnim] before object_exitAttackState:
+    resets animation when timing out; bl object_exitAttackState (0x08011714): hands the object back to
+    its normal non-attack state'
+  refs:
+  - bn6f/asm/asm31.s:136108
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F7C3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the code exactly: first call arms element 4 and copies AttackDuration
+    into StepTimer, later calls decrement StepTimer and only call object_exitAttackState (with CurAnim=0)
+    when it hits zero or below. However, the proposed name uses ''tick'' which is reasonable but ambiguous;
+    the routine is specifically the AI step/duration timer for an attack element, so ''ai_tickAttackElementTimer''
+    is fine, though a name like ''ai_runAttackElementTimer'' is slightly more standard for an AI tick
+    handler. The summary overstates ''normal'' state — returning to normal is an assumption; the code
+    simply exits the attack state and zeroes the cur anim index.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What attack kind element 4 denotes (which AI attack state table maps element 4 to this handler), and
+  how AttackDuration gets set beforehand
+- 'The proposal''s mechanics match the code exactly: first call arms element 4 and copies AttackDuration
+  into StepTimer, later calls decrement StepTimer and only call object_exitAttackState (with CurAnim=0)
+  when it hits zero or below. However, the proposed name uses ''tick'' which is reasonable but ambiguous;
+  the routine is specifically the AI step/duration timer for an attack element, so ''ai_tickAttackElementTimer''
+  is fine, though a name like ''ai_runAttackElementTimer'' is slightly more standard for an AI tick handler.
+  The summary overstates ''normal'' state — returning to normal is an assumption; the code simply exits
+  the attack state and zeroes the cur anim index.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7C3A -> ai_tickAttackElementTimer
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7C3A

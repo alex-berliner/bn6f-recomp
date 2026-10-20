@@ -1,0 +1,60 @@
+name: copyBgTilesFromTable
+address: '0x08119AA0'
+kind: function
+status: probable
+summary: Copies a column of background tiles (up to 10) from a static halfword table at hword_811992C
+  into a starting (j,i) background position, one tile per iteration, terminating early if the i extent
+  is exhausted.
+interface: (r0 = starting background j index, r1 = ?) -> void; calls CopyBackgroundTiles(j, i, tile_block=0/1?,
+  tile_ids from table, j_size, i_size=2)
+details: Loops 10 times (counter r4 from 0 to 9), each iteration calling CopyBackgroundTiles with a destination
+  index that increments in lockstep with the source pointer, which walks the table at hword_811992C four
+  bytes per step, i.e. two u16 tile entries per call (j_size/i_size = 2). The push/pop of r0-r4 around
+  the call keeps the loop state intact across CopyBackgroundTiles. The table is a static array of 20 halfwords
+  near the function, so this whole routine is a fixed 'blit this predefined 10x2 tile strip' helper. Which
+  background/layer and which screen uses it is not visible from the function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3, =hword_811992C + add r3,#4: source advances 4 bytes (2 halfwords) per iteration; cmp
+    r4,#0xa / blt: exactly 10 iterations of the CopyBackgroundTiles call; only callee is CopyBackgroundTiles
+    (tile-blit), matching a background-tile loader; tile ids come from a static table, not a parameter,
+    so it is a fixed predefined strip'
+  refs:
+  - bn6f/asm/asm32.s:23742
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x08119AA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The loop runs while r4 < 0xa (10 iterations), but r2 (i) is decremented each iteration via ''sub
+    r2, #1 / bgt loc_8119ABA'', meaning the function returns early if the requested i extent runs short,
+    behaving like a bounded blit. The destination index j increments by 1 per call and the source pointer
+    walks by 4 bytes, giving one u16 tile id per call, not ''tile-pair'' — ''mov r5, #2'' is the i_size=2,
+    j_size=1 (r4=1). The name should reflect copying bg tiles from a static table.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- 'no known callers: which screen/route calls this and with what r0/r1 (destination background indices)
+  is unknown'
+- the exact meaning of each CopyBackgroundTiles argument in this call (tile block index vs sizes) needs
+  CopyBackgroundTiles' own analysis to confirm
+- what screen the table at hword_811992C depicts
+- 'The loop runs while r4 < 0xa (10 iterations), but r2 (i) is decremented each iteration via ''sub r2,
+  #1 / bgt loc_8119ABA'', meaning the function returns early if the requested i extent runs short, behaving
+  like a bounded blit. The destination index j increments by 1 per call and the source pointer walks by
+  4 bytes, giving one u16 tile id per call, not ''tile-pair'' — ''mov r5, #2'' is the i_size=2, j_size=1
+  (r4=1). The name should reflect copying bg tiles from a static table.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8119AA0 -> copyBgTilesFromTable
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8119AA0

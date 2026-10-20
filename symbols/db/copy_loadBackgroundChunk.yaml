@@ -1,0 +1,61 @@
+name: copy_loadBackgroundChunk
+address: '0x08136B58'
+kind: function
+status: probable
+summary: Loads one 32-wide background chunk into BG tile block 3 at vertical slot selected by [r5+0xF],
+  with the source tile_ids chosen by r0 indexing into off_8136B90.
+interface: (r0 = chunk index selecting tile_ids from table off_8136B90) -> r0 = destroyed; uses global
+  r5 state, field [r5+0xF] selects row via table dword_8136B9C
+details: Reads the byte at [r5+0xF] and uses it as an index into dword_8136B9C to get the destination
+  row j; the r0 argument indexes off_8136B90 to pick a tile_ids array. It then calls CopyBackgroundTiles(j,
+  0, 3, tileIds, 0x20, 3), i.e. copies a chunk of tiles into tile block 3 (32 tiles wide, 3 tall per the
+  j/i size args). r4 is set to 0x20 but never passed, a leftover. The r5 global and the two lookup tables
+  suggest a scrolling/segmented background where each call renders one segment of a selected background
+  variant.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0xf]; ldrb r1,[r1,r0] with r1=dword_8136B9C: destination row comes from a per-state
+    byte table; ldr r3,[r3,r7] with r7=r0*4 off off_8136B90: source tile_ids table indexed by the argument;
+    bl CopyBackgroundTiles with (j, 0, 3, tileIds, 0x20, 3): writes a 32x3-tile chunk into BG block 3;
+    callers sub_813686C and sub_813691C (beastsp routes) both run on the beastsp recorded route, consistent
+    with a beast/SP background renderer'
+  refs:
+  - bn6f/asm/asm36.s:13975
+  - 0x0813686C sub_813686C
+  - 0x0813691C sub_813691C
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x08136B58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name/summary is essentially correct: it reads [r5+0xF] as an index into dword_8136B9C
+    to pick the destination row j, and r0 indexes off_8136B90 to pick a tile_ids array. However, r0 is
+    used as an index into off_8136B90 (the chunk selector), not ''destroyed'' — the claim that r0 is destroyed
+    is wrong since lsl r7,r0,#2 preserves it conceptually. The prefix ''beastsp'' is too narrow since
+    the function isn''t background-specific to beastsp; it dispatches via tables with multiple chunk variants.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the 0x20 and 3 size arguments (which is row width vs column count) needs CopyBackgroundTiles'
+  parameter order confirmed
+- What structure r5 points to and what field 0xF selects (background variant vs scroll offset) would be
+  clear from sub_813686C/sub_813691C
+- 'The proposed name/summary is essentially correct: it reads [r5+0xF] as an index into dword_8136B9C
+  to pick the destination row j, and r0 indexes off_8136B90 to pick a tile_ids array. However, r0 is used
+  as an index into off_8136B90 (the chunk selector), not ''destroyed'' — the claim that r0 is destroyed
+  is wrong since lsl r7,r0,#2 preserves it conceptually. The prefix ''beastsp'' is too narrow since the
+  function isn''t background-specific to beastsp; it dispatches via tables with multiple chunk variants.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136B58 -> copy_loadBackgroundChunk
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136B58

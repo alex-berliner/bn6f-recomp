@@ -1,0 +1,61 @@
+name: ai_setAttackVarsDamagePair
+address: '0x080F3C2C'
+kind: function
+status: probable
+summary: Loads a version-dependent damage halfword and a constant companion halfword from AI parameter
+  tables, packs them into one word, and stores it into the AI attack-vars damage field for the chosen
+  attack.
+interface: (r0 = attack/entry index) -> stores packed pair (damage halfword | secondary halfword) to [battle->AIDataPtr+0xA0+oAIAttackVars_Damage];
+  r0 clobbered, flags clobbered
+details: Takes an attack index in r0, scales it by 8 to step through per-attack table entries (each 8
+  bytes = one halfword per AI version). It fetches the halfword matching the battle's AI version from
+  byte_80F3C68 (values 0x28/0x50/0x6E/0x6E), then again from byte_80F3C8C (constant 0xA), combines the
+  two halfwords into one word with the second shifted into the upper half, and stores it at oBattleObject_AIDataPtr+0xA0
+  (the oAIAttackVars_Damage slot). The pointer pools off_80F3C5C/off_80F3C80 list three tables each (damage
+  values 0x28/0x50/0x6E and 0x50/0xA0/0xDC tiers), but this routine always uses the first — the other
+  tables are presumably selected by sibling variants or patched pointers. The constant 10 in the second
+  table suggests the packed upper half is a count/extent (e.g. hits or range) rather than damage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_aiGetVersionedTableEntry_800FE12 twice with tables byte_80F3C68/byte_80F3C8C selects
+    a halfword by the battle's AI version; orr r6 after lsl r0,#0x10 packs two fetched halfwords into
+    one word; str r6,[r3,#oAIAttackVars_Damage] with r3=[r5+oBattleObject_AIDataPtr]+0xA0 writes the AI
+    attack-vars damage slot; only caller ai_selectAttackBranch 'programs the AI attack-vars block for
+    the chosen move', matching r0 being a move index; table contents 0x28/0x50/0x6E and 0x50/0xA0/0xDC
+    scale like damage tiers per AI version, second table constant 0xA
+  refs:
+  - bn6f/asm/asm31.s:128022
+  - 0x080F3A24 ai_selectAttackBranch
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F3C2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the described behavior: two versioned halfword lookups (r0*8 + table) via battle_aiGetVersionedTableEntry_800FE12,
+    ORed into a packed word written to oAIAttackVars_Damage. The name is reasonable, but ''damage'' in
+    the summary is too narrow since the second table is constant 0xA (likely a count/hits/range field,
+    not damage), and the function name should reflect it sets a pair of attack-vars fields.; run wf investigate
+    investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the upper (constant 0xA) halfword stored with the damage
+- how the alternate tables byte_80F3C70/78 and byte_80F3C94/9C get selected — likely sibling routines
+  or a patched pointer not seen here
+- 'The code matches the described behavior: two versioned halfword lookups (r0*8 + table) via battle_aiGetVersionedTableEntry_800FE12,
+  ORed into a packed word written to oAIAttackVars_Damage. The name is reasonable, but ''damage'' in the
+  summary is too narrow since the second table is constant 0xA (likely a count/hits/range field, not damage),
+  and the function name should reflect it sets a pair of attack-vars fields.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F3C2C -> ai_setAttackVarsDamagePair
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3C2C

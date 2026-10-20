@@ -1,0 +1,87 @@
+name: t1_dispatchJumpTable
+address: '0x03005CDA'
+kind: function
+status: probable
+summary: 'Tail-dispatches via shared state index: calls eStruct200BC30_getJumpOffset00 to fetch an index
+  from field 00 of the struct at 0x200BC30, then tail-calls iJumpTable3005D10[index] so the handler returns
+  directly to this function''s caller.'
+interface: (r0 = don't care/ignored on entry) -> control transferred to handler at iJumpTable3005D10[index],
+  whose return value passes through and whose return goes to this function's caller; flags clobbered
+details: 'It calls eStruct200BC30_getJumpOffset00_pushpop to obtain an index/offset from field 00 of the
+  struct at 0x200BC30, copies that value to r1, loads the pointer iJumpTable3005D10 into r0, and fetches
+  the handler address with ldr r0,[r0,r1] (so the value from field 00 must already be a byte offset, i.e.
+  index*4). It then calls that handler with lr set so the handler returns into the pop sequence: pop {r0};
+  mov lr, r0 restores the original caller''s return address, making this a tail-dispatch (the handler
+  effectively replaces this function on the call stack). No argument setup is visible beyond r0 = table
+  pointer at the moment of the call, so handlers likely receive the table pointer or ignore r0. The struct
+  and jump table are shared with other code (the dedicated getJumpOffset00 helper and pushpop wrapper
+  exist), suggesting a common state-machine/selector pattern used across battle, menu, and story routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, off_3005D20 (=eStruct200BC30_getJumpOffset00_pushpop+1) followed by mov lr,pc; bx r0
+    invokes the known field-00 index getter; mov r1,r0 then ldr r0, jt_81D620C (=iJumpTable3005D10) and
+    ldr r0,[r0,r1] indexes the jump table by the value returned; second mov lr,pc; bx r0 calls the selected
+    handler, and pop {r0}; mov lr,r0 rewrites lr to the original caller's return, i.e. a tail-call dispatch;
+    callee name eStruct200BC30_getJumpOffset00_pushpop per project data ties the index to field 00 of
+    struct 0x200BC30; executed on nearly every recorded route (battle, menus, story, maps) yet has no
+    known direct caller, consistent with a shared dispatcher reached from many places
+  refs:
+  - bn6f/asm/asm38.s:140
+  - 0x0803EA68 eStruct200BC30_getJumpOffset00_pushpop
+  - 0x03005CF0 sub_3005CF0
+  reproduce: python3 tools/asmcat.py 0x03005CDA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic is correct: the wrapper at 0x03005CE4 returns an index into iJumpTable3005D10,
+    ldr r0,[r0,r1] fetches the handler, bx with mov lr, pc makes it a tail-call, and pop {r0}/mov lr,
+    r0 restores the original caller''s LR. However, the first call is bx to eStruct200BC30_getJumpOffset00_pushpop+1
+    (the +1 skips Thumb''s push {lr}), and only that function touches the struct; sub_3005CDA itself just
+    indexes the table. The proposed name overemphasizes ''dispatchJumpTable00'' while the function''s
+    essence is a tail-call via a shared state-machine index; also ''eStruct200BC30'' is the callee, not
+    this function.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- what the struct at 0x200BC30 represents (its owner and field 00 semantics) and who writes the index
+- the contents of iJumpTable3005D10 and what the dispatched handlers do
+- which functions actually call sub_3005CDA directly, and what arguments (if any) handlers expect in r0
+- what sub_3005CF0 (the other callee) contributes, if it is reachable from this path
+- 'The dispatch logic is correct: the wrapper at 0x03005CE4 returns an index into iJumpTable3005D10, ldr
+  r0,[r0,r1] fetches the handler, bx with mov lr, pc makes it a tail-call, and pop {r0}/mov lr, r0 restores
+  the original caller''s LR. However, the first call is bx to eStruct200BC30_getJumpOffset00_pushpop+1
+  (the +1 skips Thumb''s push {lr}), and only that function touches the struct; sub_3005CDA itself just
+  indexes the table. The proposed name overemphasizes ''dispatchJumpTable00'' while the function''s essence
+  is a tail-call via a shared state-machine index; also ''eStruct200BC30'' is the callee, not this function.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3005CDA -> t1_dispatchJumpTable
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005CDA

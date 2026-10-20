@@ -1,0 +1,59 @@
+name: ai_getSweepTargetCol
+address: '0x0810BD94'
+kind: function
+status: probable
+summary: Returns the target panel column for the current battlesweep attack step on the enemy's row, looking
+  up obj[0x62] (step) within the per-row table selected by PanelY-1.
+interface: (r5 = battle object; r0-in unused) -> r0 = target panel column byte from table[PanelY-1][obj[0x62]];
+  r1/r2 clobbered
+details: 'Reads a step/column index from battle object field 0x62 and PanelY from oBattleObject_PanelY.
+  Indexes off_810BDAC with (PanelY-1)*4 to get one of three row pointers (810BDB8/BDBC/BDC0), then returns
+  the byte at row[step]. The rows overlap in memory to form a 3-row grid of values 0-2, giving the column
+  hit at each sweep step for the row being attacked. PanelY is treated as 1-based (sub #1), matching the
+  battle field''s three rows. No flags or other state are touched; it''s a pure lookup.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller ai_startAttack selects attack 10 (battlesweep) and this is called within that routine,
+    so the lookup feeds attack targeting; sub r1,#1 / lsl r1,#2 / ldr r2,[r2,r1] selects one of exactly
+    3 row pointers by PanelY-1; ldrb r0,[r2,r0] indexes the chosen row by the byte at [r5+0x62] and returns
+    it; row data (01 02 00 / 00 01 02 / 00 01 ...) is a per-row sequence of small column values, consistent
+    with sweeping panel targets; function is a leaf that only reads battle object fields, matching a helper
+    for the AI attack step logic
+  refs:
+  - bn6f/asm/asm31.s:177667
+  - 0x0810BCBC ai_startAttack
+  reproduce: python3 tools/asmcat.py 0x0810BD94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: r0 is obj[0x62] (column/step), r1 is PanelY-1, r2 = off_810BDA8 + ((PanelY-1)<<2)
+    picks one of three row pointers 810BDB8/BC/C0, then returns the byte at row[r0]. However, the data
+    is 0x201/0x1020100/0x100, a 3-row grid of bytes 0-2, so summary''s ''0-2 values'' is fine but indexing
+    should clarify r5 holds the target, not the attacker, and ''obj[0x62]'' is a sweep-step counter the
+    caller ai_startAttack sets up. The name ai_getSweepTargetX is acceptable; a slightly more precise
+    prefix avoids the unknown X.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of field 0x62 (step counter vs. column counter) would be confirmed by the full ai_startAttack
+  body
+- whether the returned value is a panel X offset or an absolute column index needs caller context
+- 'The code matches: r0 is obj[0x62] (column/step), r1 is PanelY-1, r2 = off_810BDA8 + ((PanelY-1)<<2)
+  picks one of three row pointers 810BDB8/BC/C0, then returns the byte at row[r0]. However, the data is
+  0x201/0x1020100/0x100, a 3-row grid of bytes 0-2, so summary''s ''0-2 values'' is fine but indexing
+  should clarify r5 holds the target, not the attacker, and ''obj[0x62]'' is a sweep-step counter the
+  caller ai_startAttack sets up. The name ai_getSweepTargetX is acceptable; a slightly more precise prefix
+  avoids the unknown X.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810BD94 -> ai_getSweepTargetCol
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BD94

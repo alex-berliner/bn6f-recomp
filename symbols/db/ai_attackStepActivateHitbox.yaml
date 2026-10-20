@@ -1,0 +1,65 @@
+name: ai_attackStepActivateHitbox
+address: '0x080F21FC'
+kind: function
+status: probable
+summary: AI attack step that decrements its timer, clears bit 1 of the object header flags on odd timer
+  values, and when the current sprite frame's attribute has bit 0x80 set, enables collision region 1,
+  resets the timer, and stamps element 0x14 into the attack's hit element field.
+interface: (r0 = ignored by caller context, r5 = object header, r7 = AI attack vars block) -> r0 clobbered;
+  no meaningful return
+details: Decrements oAIAttackVars_StepTimer and stores it back; when the decremented value has bit 1 set
+  it clears bit 1 of oObjectHeader_Flags (on even ticks the flag stays). It then reads the current animation
+  frame's parameters via sprite_getFrameParameters and tests attribute bit 0x80; when that bit is set
+  it stores collision region index 1 via object_setCollisionRegion, resets oAIAttackVars_StepTimer to
+  0, and writes 0x14 (20) into oAIAttackVars_HitElement as the hit's element/damage property. Runs as
+  one step inside the recorded battle AI sweep (r5/r7 point at the standard object header and per-attack
+  variable structs used by the battle object system).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on r7+#oAIAttackVars_StepTimer with tst #2 drives the periodic flag clear of oObjectHeader_Flags
+    bit 1; bl sprite_getFrameParameters followed by tst r0,#0x80 gates the hitbox activation on the frame''s
+    attribute byte; bl object_setCollisionRegion with r0=1 stores region index 1 into the object''s collision
+    data right after that test; writes 0x14 to r7+#oAIAttackVars_HitElement and resets StepTimer to 0,
+    ending the step; called only from the recorded ''battlesweep'' route with no known static callers,
+    matching a script-driven AI attack step'
+  refs:
+  - bn6f/asm/asm31.s:125031
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080F21FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''alternating ticks'' framing is wrong: the timer is decremented each call, and bit
+    1 of oObjectHeader_Flags is cleared only when that decrement left bit 1 set (i.e. when the timer is
+    odd, not on even ticks as stated). The collision-region index written to r0 is literally 1 (line `mov
+    r0, #1`), and the element written is 0x14 (20) — those details match. The name `ai_attackStepSetHitbox`
+    is reasonable, though the function sets the hitbox and element only once when the frame attribute
+    signals active, so a clearer name might be `ai_attackStepActivateHitbox`.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of oObjectHeader_Flags bit 1 (visibility vs no-collision vs invulnerable)
+- which attack/AI script table invokes this step, to identify the boss/move
+- semantics of attribute bit 0x80 in the sprite frame parameters (active/hitbox frame?) and of HitElement
+  value 0x14
+- 'The summary''s ''alternating ticks'' framing is wrong: the timer is decremented each call, and bit
+  1 of oObjectHeader_Flags is cleared only when that decrement left bit 1 set (i.e. when the timer is
+  odd, not on even ticks as stated). The collision-region index written to r0 is literally 1 (line `mov
+  r0, #1`), and the element written is 0x14 (20) — those details match. The name `ai_attackStepSetHitbox`
+  is reasonable, though the function sets the hitbox and element only once when the frame attribute signals
+  active, so a clearer name might be `ai_attackStepActivateHitbox`.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F21FC -> ai_attackStepActivateHitbox
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F21FC

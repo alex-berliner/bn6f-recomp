@@ -1,0 +1,69 @@
+name: battle_spawnType37Object
+address: '0x080C8C4C'
+kind: function
+status: probable
+summary: Spawns a type-0x25 battle object via object_spawnType3 with the caller's r1-r4, then if successful,
+  copies PanelX, PanelY, Element, and Damage from the caller-supplied args, copies AllianceAndDirectionFlip
+  from the caller's r5 object pointer, and sets header flag 0x10.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3/r4 = passed through to spawner, r5 = owner object,
+  r6 = damage value) -> r0 = new object pointer; Z from spawn success gates the field writes
+details: 'Saves the caller''s r0-r2, replaces r0 with object type 0x25 (37) and calls object_spawnType3,
+  passing the caller''s r1-r4 through as the remaining spawn arguments. If the spawn succeeded (Z flag
+  from the callee''s null check), it initializes the new object: PanelX = caller arg0, PanelY = caller
+  arg1, Element = caller arg2, DamageAndStaminaDamageCounterDisabler = caller r6, and copies AllianceAndDirectionFlip
+  from the object in r5 (the spawner/owner). It then ORs 0x10 into oObjectHeader_Flags of the new object.
+  The `mov r0,r5` before the pop implies the callee leaves the new object pointer in r5 as well as r0;
+  otherwise the field writes would target the caller''s r5 object, which would make the self-copy of Alliance
+  meaningless. Field layout matches spawnType3''s arguments, so the spawned type is a panel-positioned,
+  element-carrying attack-style object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x25 + bl object_spawnType3: spawns battle object type 0x25; pop {r1-r3,r5} then strb
+    r1/r2/r3 to PanelX/PanelY/Element: caller args 0-2 become the new object''s position and element;
+    str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]: caller''s r6 supplies the damage
+    field; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh to new object: alliance/flip inherited
+    from the owner object; orr r2,#0x10 into oObjectHeader_Flags: spawned object gets flag 0x10 after
+    initialization'
+  refs:
+  - bn6f/asm/asm31.s:36371
+  - 0x080F382C sub_80F382C
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C8C4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms it pushes r0-r2 and r5, calls object_spawnType3 with r0=0x25, then restores r1-r3
+    and r5 from stack and (after mov r0,r5) writes PanelX/PanelY/Element/Damage from r1-r3/r6 and copies
+    AllianceAndDirectionFlip from the r5-saved value. Since r5 is restored from the stack, the mov r0,r5
+    loads that saved r5 (the caller''s r5), not the spawner return; r0 is overwritten with the spawner
+    return only conceptually if r5 held it, but here r5 is just a scratch slot. So ''AllianceAndDirectionFlip
+    is copied from the object in r5 (owner)'' is likely wrong — it''s copied from whatever r5 was on entry.
+    The rest (type 0x25 spawn, header flag 0x10, damage field) matches.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What battle object type 0x25 actually is in game terms (needs type-0x25 initializer or more callers)
+- Meaning of oObjectHeader_Flags bit 0x10
+- Whether object_spawnType3 really leaves the new pointer in r5, explaining the mov r0,r5
+- What caller sub_80F382C is and which game entity triggers this spawn
+- The code confirms it pushes r0-r2 and r5, calls object_spawnType3 with r0=0x25, then restores r1-r3
+  and r5 from stack and (after mov r0,r5) writes PanelX/PanelY/Element/Damage from r1-r3/r6 and copies
+  AllianceAndDirectionFlip from the r5-saved value. Since r5 is restored from the stack, the mov r0,r5
+  loads that saved r5 (the caller's r5), not the spawner return; r0 is overwritten with the spawner return
+  only conceptually if r5 held it, but here r5 is just a scratch slot. So 'AllianceAndDirectionFlip is
+  copied from the object in r5 (owner)' is likely wrong — it's copied from whatever r5 was on entry. The
+  rest (type 0x25 spawn, header flag 0x10, damage field) matches.
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8C4C -> battle_spawnType37Object
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8C4C

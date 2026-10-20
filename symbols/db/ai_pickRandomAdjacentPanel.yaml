@@ -1,0 +1,63 @@
+name: ai_pickRandomAdjacentPanel
+address: '0x080FAA04'
+kind: function
+status: probable
+summary: Iterates the 8 neighbor offsets at 0x80FAA9C around r5's panel, filters via object_checkPanelParameters
+  using r2/r3 masks, and returns a random matching panel's (x,y), preferring panels whose y equals r0's
+  field 0x13; returns 0 in r0 if none match.
+interface: (r0 = reference object (field 0x13 = y row filter), r1 = unused, r2/r3 = panel flag masks for
+  object_checkPanelParameters, r5 = object whose panel coords at 0x12/0x13 are the center) -> r0 = panel
+  x, r1 = panel y; r0 = 0 if no matching panel
+details: 'Iterates over byte_80FAA9C, a table of 8 signed (dx,dy) pairs covering all neighbors of a panel.
+  For each neighbor it computes absolute coords from r5''s fields 0x12 (x) and 0x13 (y) and calls object_checkPanelParameters
+  with the caller''s masks; matches are packed as a byte (y<<4 | x) into two stacks on the actual stack:
+  one for panels whose y equals r0''s field 0x13, one for the rest. If the preferred (same-row) list is
+  non-empty it picks a random index via GetPositiveSignedRNG and SWI 6 Div used as modulo, else falls
+  back to the other list, and returns the decoded x (byte & 7) in r0 and y (byte >> 4) in r1; returns
+  0 when nothing matched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'byte_80FAA9C holds 8 signed (dx,dy) pairs: (-1,0),(0,-1),(1,0),(0,1),(-1,1),(-1,-1),(1,1),(1,-1)
+    — all 8 neighbors; loop adds each pair to [r5,#0x12]/[r5,#0x13] and calls object_checkPanelParameters
+    with r2/r3 masks; matched panels stored as (dy<<4)|dx into sp+0x10 or sp+0x18 depending on cmp r1,[sp,#8]
+    (= r0 field 0x13); GetPositiveSignedRNG then SWI 6 (Div) with r1=count is a random index modulo list
+    size; return decodes lsr #4 for y and lsl 0x1D/lsr 0x1D (&7) for x; both lists empty returns 0'
+  refs:
+  - bn6f/asm/asm31.s:141951
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080FAA04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s summary says ''preferring panels in the same row as a second object'' but it''s
+    the same row as the reference object in r0, not a ''second object''. The rest is accurate: the function
+    uses byte_80FAA9C as 8 neighbor offsets, object_checkPanelParameters for the mask check, two lists
+    at sp+0x10 / sp+0x18, GetPositiveSignedRNG + SWI 6 div to pick, then decodes via lsl r0 #0x1d / lsr
+    r0 #0x1d to extract x (lines loc_80FAA6C / loc_80FAA80).; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- no known caller, so the exact AI/user context and the meaning of r0's field 0x13 filter (same row as
+  player? as a target?) are unconfirmed
+- r1 input is never read, which is odd and may indicate a fourth argument that is dead code
+- 'The proposal''s summary says ''preferring panels in the same row as a second object'' but it''s the
+  same row as the reference object in r0, not a ''second object''. The rest is accurate: the function
+  uses byte_80FAA9C as 8 neighbor offsets, object_checkPanelParameters for the mask check, two lists at
+  sp+0x10 / sp+0x18, GetPositiveSignedRNG + SWI 6 div to pick, then decodes via lsl r0 #0x1d / lsr r0
+  #0x1d to extract x (lines loc_80FAA6C / loc_80FAA80).'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FAA04 -> ai_pickRandomAdjacentPanel
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FAA04

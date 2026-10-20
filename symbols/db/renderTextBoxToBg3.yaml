@@ -1,0 +1,60 @@
+name: renderTextBoxToBg3
+address: '0x08136BA0'
+kind: function
+status: probable
+summary: Renders a text-graphics string into VRAM tiles at 0x600B800 and copies the resulting 10x6 tile
+  block onto BG3 at map position (0xD, 0x12).
+interface: (r0 = text index/param passed to renderTextGfx) -> void
+details: The function forwards its argument (r0, moved to r1) to renderTextGfx_8045F8C along with the
+  text base eTextScript201D280, scratch buffer byte_201B200, a VRAM target of 0x600B800, size 0xA, palette/bank
+  3, and font table dword_86A5D60, so the string's glyphs are drawn as 4bpp tiles into 0x600B800. It then
+  calls CopyBackgroundTiles with j=0x12, i=0x13, tile block 3, tile-id list byte_813565C, and extent 10x6,
+  copying the freshly rendered tile region into the BG3 tilemap at that map position. The tile-id list
+  byte_813565C sits just before this function, suggesting the two are part of one text-display unit. No
+  return value is produced and registers r4-r7 are only scratch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl renderTextGfx_8045F8C with r0=eTextScript201D280, r3=0x600B800, r6=dword_86A5D60 — text glyphs
+    rendered to VRAM; bl CopyBackgroundTiles with tile_ids=byte_813565C, j_size=0xA, i_size=6, block 3
+    at (0x12,0x13) — blits rendered tiles to BG3 tilemap; caller sub_8136A0C runs on the recorded beastsp
+    route, so this draws a text message during that scene
+  refs:
+  - bn6f/asm/asm36.s:14020
+  - 0x08136A0C sub_8136A0C
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x08136BA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s described behavior: it calls renderTextGfx_8045F8C with the documented
+    arguments (text base, scratch buffer, 0x600B800 VRAM target, size 0xA, bank 3, dword_86A5D60), then
+    CopyBackgroundTiles with j=0x12, i=0xD, tile block 3, byte_813565C, and extents 10x6. The proposed
+    name ''renderTextGfxToBg3'' is reasonable but the function renders a multi-line text block onto BG3,
+    so a clearer name reflecting the 10x6 box being drawn is preferable.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the string selected by eTextScript201D280 with the r0 index says (would pin down the exact on-screen
+  message)
+- which scene in beastsp displays this BG3 text and what byte_201B200 scratch is for
+- the layout of the renderTextGfx parameter block (sizes 0xA/3, font table) to confirm parameter meanings
+- 'The code matches the proposal''s described behavior: it calls renderTextGfx_8045F8C with the documented
+  arguments (text base, scratch buffer, 0x600B800 VRAM target, size 0xA, bank 3, dword_86A5D60), then
+  CopyBackgroundTiles with j=0x12, i=0xD, tile block 3, byte_813565C, and extents 10x6. The proposed name
+  ''renderTextGfxToBg3'' is reasonable but the function renders a multi-line text block onto BG3, so a
+  clearer name reflecting the 10x6 box being drawn is preferable.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136BA0 -> renderTextBoxToBg3
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136BA0

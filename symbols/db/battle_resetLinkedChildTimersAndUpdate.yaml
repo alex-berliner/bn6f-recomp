@@ -1,0 +1,61 @@
+name: battle_resetLinkedChildTimersAndUpdate
+address: '0x08110518'
+kind: function
+status: probable
+summary: Phase-0 reset wrapper that zeros the object's own ExtraVars+8 counter, resets the timers of up
+  to two linked child battle objects (ExtraVars+0xc, +4) to 8 and nulls those pointers, then always tail-calls
+  battle_objectUpdateDispatchPhase.
+interface: (r0 unused; r5 = battle object pointer) -> tail-calls battle_objectUpdateDispatchPhase; no
+  meaningful return of its own
+details: Reads oBattleObject_CurPhase from the object in r5; when it is 0 it stores 0 into the object's
+  own ExtraVars+8 (its wait/counter field) and then, for each of the pointers at ExtraVars+0xc and ExtraVars+4,
+  if non-null calls battle_ResetObjectTimerTo8 on that linked object (writing 8 to its +8 timer) and nulls
+  the pointer, making the reset one-shot per stored link. It then tail-calls the standard phase dispatch
+  so the object's current-phase handler still runs every frame. ExtraVars+4 and +0xc thus look like references
+  to companion/child battle objects (e.g. spawned parts) whose wait timers must be re-armed when this
+  object restarts its phase cycle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne — reset block only on phase 0; str r0,[r5,#oBattleObject_ExtraVars+8]
+    — clears own counter field; ldr r0,[r5,#oBattleObject_ExtraVars+0xc]; cmp #0; beq; bl battle_ResetObjectTimerTo8
+    — null-checked linked object whose timer is reset; same pattern for ExtraVars+4, then both pointers
+    stored back as 0 — one-shot clearing; tail bl battle_objectUpdateDispatchPhase_80165C2 — this is a
+    per-frame update handler'
+  refs:
+  - bn6f/asm/asm32.s:5131
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  reproduce: python3 tools/asmcat.py 0x08110518
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: on CurPhase==0 it clears ExtraVars+8, then nulls and resets +0xc and +4 pointers
+    to 8. However, the proposed name ''battle_updateResetLinkedObjectTimers'' oversells the function —
+    it doesn''t just reset linked timers; it also zeroes its own counter and is unconditionally tail-called
+    as the object''s phase dispatcher wrapper. A name reflecting the wrapper/reset nature is more accurate.
+    The summary''s ''before running the normal phase dispatcher'' is correct since the dispatcher is always
+    called.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No known callers, so the identity of the linked objects stored at ExtraVars+4/+0xc (child parts? other
+  entities?) and which game object uses this handler is unknown
+- 'The code matches: on CurPhase==0 it clears ExtraVars+8, then nulls and resets +0xc and +4 pointers
+  to 8. However, the proposed name ''battle_updateResetLinkedObjectTimers'' oversells the function — it
+  doesn''t just reset linked timers; it also zeroes its own counter and is unconditionally tail-called
+  as the object''s phase dispatcher wrapper. A name reflecting the wrapper/reset nature is more accurate.
+  The summary''s ''before running the normal phase dispatcher'' is correct since the dispatcher is always
+  called.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8110518 -> battle_resetLinkedChildTimersAndUpdate
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110518

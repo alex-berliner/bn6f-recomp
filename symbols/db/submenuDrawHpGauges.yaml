@@ -1,0 +1,82 @@
+name: submenuDrawHpGauges
+address: '0x0801E4F4'
+kind: function
+status: probable
+summary: Helper that copies up to four 2-wide vertical HP/meter tile bars (heights from a 0xFF-terminated
+  u16 table at r5+0x28) into background tile block 3, then sets bit 0x2000 in eStruct2035280+0x44 via
+  flagSetBits_eStruct2035280.
+interface: (r0-r3 ignored; r5 = pointer to struct whose +0x28 holds a 0xFF-terminated halfword table of
+  bar heights) -> r0 = updated flag word from flagSetBits; sets bit 0x2000 in eStruct2035280+0x44
+details: 'Reads successive halfwords at r5+0x28 (r4 stepping 0,2,4,6); 0xFF ends the routine, 0 skips
+  an entry. Each value is a bar height: the tile-fill count is clamped to 9 and the geometry byte to 8.
+  A run of tile IDs is built on the stack from base 0xD1D6: bottom cap tiles 0xD1D6/0xD1D7, fill tiles
+  0xD1D8/0xD1D9 (two columns of a 2-wide bar); for a full-height bar (>=9) the caps are omitted and the
+  buffer is just 9x 0xD1D8 then 9x 0xD1D9. CopyBackgroundTiles is called with j = 0x1D - min(byte,8) (top
+  row, bottom row 29), i = 0/2/4/6 (column), tile block 3, tile_ids = the stack buffer, and j_size = min(byte,8)+1
+  pushed as the 5th argument (only one word is pushed, so the callee''s i_size is presumably fixed at
+  2). Finally flagSetBits_eStruct2035280 sets bit 0x2000 (1<<13) in eStruct2035280+0x44. The caller-supplied
+  r5 struct and the meaning of the flag bit are unknown since no caller was captured.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '801E4FE-801E50C: loop over halfwords at [r7] (r7 = r5+0x28+2*k), 0xFF terminator, 0 = skip;
+    801E508-801E536: height clamped to 9; stack run built from 0xD1D6/0xD1D7 caps and 0xD1D8/0xD1D9 fills,
+    caps skipped when height >= 9; 801E542-801E554: CopyBackgroundTiles(j = 0x1D - min(byte,8), i = 0/2/4/6,
+    block 3, sp tile buffer, j_size = min(byte,8)+1); 801E568: tail call pattern bl flagSetBits_eStruct2035280_801BEB8
+    with r0 = 1<<13'
+  refs:
+  - bn6f/asm/asm00_2.s:32238
+  - 0x0801BEB8 flagSetBits_eStruct2035280_801BEB8
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0801E4F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The core geometry — looping up to 4 entries from a halfword table at r5+0x28, 0xFF end-of-list,
+    0 skip, height clamped to 9, CopyBackgroundTiles with tile block 3 and base 0xD1D6, and flagSetBits
+    of 0x2000 in eStruct2035280+0x44 — matches the proposal exactly. However ''drawBgGaugeBars'' is not
+    ideal: it''s a background tile primitive helper, not a high-level drawer; also note i_size is passed
+    as r5=#2 only for the clamped path (loc_801E554 uses r4+1 as j_size after capping at 8), and the full-height
+    path omits caps and uses 9+9 fill tiles, so ''Bars'' is fine but a ''battle''/''submenu'' context
+    prefix is preferable.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- which struct r5 points to and which game feature owns the height table at +0x28 (no callers captured)
+- what flag bit 0x2000 in eStruct2035280+0x44 marks (redraw request vs state)
+- whether CopyBackgroundTiles really takes a 6th i_size argument or it is fixed inside the callee
+- 'The core geometry — looping up to 4 entries from a halfword table at r5+0x28, 0xFF end-of-list, 0 skip,
+  height clamped to 9, CopyBackgroundTiles with tile block 3 and base 0xD1D6, and flagSetBits of 0x2000
+  in eStruct2035280+0x44 — matches the proposal exactly. However ''drawBgGaugeBars'' is not ideal: it''s
+  a background tile primitive helper, not a high-level drawer; also note i_size is passed as r5=#2 only
+  for the clamped path (loc_801E554 uses r4+1 as j_size after capping at 8), and the full-height path
+  omits caps and uses 9+9 fill tiles, so ''Bars'' is fine but a ''battle''/''submenu'' context prefix
+  is preferable.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801E4F4 -> submenuDrawHpGauges
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E4F4

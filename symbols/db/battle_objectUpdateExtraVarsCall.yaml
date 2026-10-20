@@ -1,0 +1,61 @@
+name: battle_objectUpdateExtraVarsCall
+address: '0x0810B338'
+kind: function
+status: probable
+summary: Battle object update wrapper that, while the object is in phase 0 and its ExtraVars field is
+  nonzero, calls sub_80C46B0 once, then tail-calls battle_objectUpdateDispatchPhase_80165C2 for the standard
+  per-phase dispatch.
+interface: (r5 = battle object pointer) -> r0 = result of battle_objectUpdateDispatchPhase_80165C2; flags
+  from callees
+details: Reads oBattleObject_CurPhase from the object at r5; while the object is still in phase 0 and
+  its oBattleObject_ExtraVars field is nonzero, it calls sub_80C46B0 (an unknown routine, presumably tied
+  to that extra var) before updating. It then tail-calls the standard per-frame dispatcher battle_objectUpdateDispatchPhase_80165C2,
+  which runs the flagged-object handler and jumps to the current-phase handler from its 2-entry table.
+  This is a thin custom object 'update' entry whose only added behavior over plain dispatch is the conditional
+  extra call in phase 0. The extra call is not gated by a latch visible here, so sub_80C46B0 (or the ExtraVars
+  check inside/around it) is presumed to handle its own once-only semantics or to be idempotent.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0 gates the extra call to phase 0; ldr r0,[r5,#oBattleObject_ExtraVars];
+    cmp r0,#0; beq skip gates the call on a nonzero ExtraVars field; bl sub_80C46B0 is the only unique
+    behavior before dispatch; tail call bl battle_objectUpdateDispatchPhase_80165C2 matches the standard
+    object update pattern; 12-instruction shape matches other custom object update wrappers around the
+    dispatcher
+  refs:
+  - bn6f/asm/asm31.s:176365
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  - 0x080C46B0 sub_80C46B0
+  reproduce: python3 tools/asmcat.py 0x0810B338
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary well: it checks phase 0, gates sub_80C46B0 on ExtraVars, then tail-calls
+    the dispatcher. However, the name ''battle_objectUpdateExtraPhase0Call'' implies the extra call is
+    phase-0 only, but the code only checks phase once; the ExtraVars-nonzero gate is the actual condition.
+    A more accurate name emphasizes the ExtraVars-gated extra call rather than phase 0. No callers are
+    known, so the role is speculative but the prefix battle_objectUpdate is fine.; run wf investigate
+    investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_80C46B0 — its body would show what the phase-0 extra call actually does
+- Which battle object(s) use this update handler and what oBattleObject_ExtraVars holds for them
+- Whether sub_80C46B0 is meant to run every phase-0 frame or clears/latches ExtraVars itself
+- 'The code matches the summary well: it checks phase 0, gates sub_80C46B0 on ExtraVars, then tail-calls
+  the dispatcher. However, the name ''battle_objectUpdateExtraPhase0Call'' implies the extra call is phase-0
+  only, but the code only checks phase once; the ExtraVars-nonzero gate is the actual condition. A more
+  accurate name emphasizes the ExtraVars-gated extra call rather than phase 0. No callers are known, so
+  the role is speculative but the prefix battle_objectUpdate is fine.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810B338 -> battle_objectUpdateExtraVarsCall
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B338

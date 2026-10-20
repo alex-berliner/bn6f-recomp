@@ -1,0 +1,60 @@
+name: battle_swoopAcrossFieldUpdate
+address: '0x080CEBBE'
+kind: function
+status: probable
+summary: Per-frame battle-object action handler that launches an enemy on a 20-frame diagonal flight across
+  the field by displacing it to its side's edge and applying fixed X/Z velocities, then hands control
+  back to action 8.
+interface: (r0 = ? discarded; r5 = battle object) -> void; sets oBattleObject fields only
+details: Runs on r5, a battle object. On phase 0 it sets CurPhase=4 and CurAnim=0x1f, teleports the object
+  to X = getFrontDirection()*0x260000 (its own side's edge) with Z=0x540000, gives it XVelocity = dir*0x60000
+  and ZVelocity = 0x60000, and sets Timer=0x14. On later frames it integrates X/Y by the velocities, calls
+  object_setPanelsFromCoordinates to keep PanelX/PanelY in sync with world position, and decrements Timer;
+  when it hits zero it sets CurAction=8 and clears CurPhaseAndPhaseInitialized, handing control back to
+  the normal action dispatch. Fixed-point coordinates suggest a flying/swooping enemy maneuver rather
+  than a grounded move.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch: strb #4, CurPhase; strb #0x1f, CurAnim; both object_getFrontDirection calls
+    scale position/velocity by alliance direction; velocity integration + object_setPanelsFromCoordinates
+    in the phase!=0 branch; Timer counts down from 0x14; on expiry strb #8, CurAction and zero CurPhaseAndPhaseInitialized
+    end the move; callee object_getFrontDirection returns the +1/-1 facing multiplier used to mirror X
+    placement'
+  refs:
+  - bn6f/asm/asm31.s:49231
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080CEBBE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: phase 0 sets CurPhase=4, CurAnim=0x1f, teleports X by frontDir*0x260000,
+    sets Z=0x540000, XVelocity=dir*0x60000, ZVelocity=0x60000, Timer=0x14. The loc_80CEBF4 branch integrates
+    X and Z (not Y) by velocities, calls object_setPanelsFromCoordinates, decrements Timer, and on expiry
+    sets CurAction=8 and clears CurPhaseAndPhaseInitialized. Only nit: it integrates Z, not Y, so ''integrates
+    X/Y'' is wrong. The name and summary are otherwise accurate.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/action table invokes this handler (no caller known), so the attack identity and CurAction=8
+  meaning are unconfirmed
+- what animation 0x1f looks like and whether Z=0x540000 is an airborne height
+- 'The code matches the proposal: phase 0 sets CurPhase=4, CurAnim=0x1f, teleports X by frontDir*0x260000,
+  sets Z=0x540000, XVelocity=dir*0x60000, ZVelocity=0x60000, Timer=0x14. The loc_80CEBF4 branch integrates
+  X and Z (not Y) by velocities, calls object_setPanelsFromCoordinates, decrements Timer, and on expiry
+  sets CurAction=8 and clears CurPhaseAndPhaseInitialized. Only nit: it integrates Z, not Y, so ''integrates
+  X/Y'' is wrong. The name and summary are otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CEBBE -> battle_swoopAcrossFieldUpdate
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEBBE

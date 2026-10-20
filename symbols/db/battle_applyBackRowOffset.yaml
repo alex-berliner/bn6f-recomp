@@ -1,0 +1,60 @@
+name: battle_applyBackRowOffset
+address: '0x080C409C'
+kind: function
+status: probable
+summary: Recomputes the battle object's PanelX/PanelY from world coords, then adds (3 - PanelY) * 1.5
+  to both Y and Z (bigger push for smaller/back PanelY) and ticks the Y16 and Z16 16-bit counters.
+interface: (r5 = battle object; r0 passed through to callee) -> updates oBattleObject_PanelX/PanelY, Y,
+  Z, Y16, Z16; no meaningful return
+details: Calls object_setPanelsFromCoordinates to recompute the object's PanelX/PanelY from its world
+  X/Y/Z. It then computes (3 - oBattleObject_PanelY) * 0x180000 (0x180000 = 1.5 in fixed point) and adds
+  that value to both oBattleObject_Y and oBattleObject_Z, so the offset applied grows for smaller (back)
+  PanelY values. Independently it increments the halfword fields oBattleObject_Y16 and oBattleObject_Z16
+  by 1 each call, which look like per-frame counters. Note r5 is used without being set in this function,
+  so the object pointer must arrive in a preserved/global register convention shared with the callee.
+  The equal adjustment of Y and Z keeps their difference constant while shifting both.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setPanelsFromCoordinates immediately on entry ties the routine to battle-object panel
+    re-derivation; ldrb r0,[r5,#oBattleObject_PanelY]; sub r0,r1,r0; mul by dword_80C40D0=0x180000 gives
+    (3-PanelY)*1.5; the product is added to both oBattleObject_Y and oBattleObject_Z (str to both fields);
+    Y16 and Z16 are each loaded, incremented by 1, and stored back — per-frame counters; constant table
+    0x10000/0x80110C00/0x180000/0x2110 shows fixed-point math around the 1.5 multiplier
+  refs:
+  - bn6f/asm/asm31.s:26354
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080C409C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: PanelY is recomputed via object_setPanelsFromCoordinates, (3 - PanelY)*0x180000
+    is added to both Y and Z, and Y16/Z16 are incremented by 1. The constant 0x180000 is at dword_80C40D0,
+    confirming the fixed-point 1.5 multiplier. However the name ''battle_applyRowHoverOffset'' is misleading,
+    since the offset grows with smaller (back-row) PanelY values applied to Y/Z, not a per-row hover offset,
+    and Y16/Z16 are just counters. A better name captures the back-row push.; run wf investigate investigate-20261018-203615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- no known caller, so the object type and purpose (hovering enemy? carried/lifted object?) are unconfirmed
+- the meaning of Y16/Z16 (frame counters vs. fractional coordinates) is unclear
+- why Y and Z receive the identical offset, and what coordinate convention makes (3-PanelY) the correct
+  row distance, needs a caller or structure layout to confirm
+- 'The code matches the proposal: PanelY is recomputed via object_setPanelsFromCoordinates, (3 - PanelY)*0x180000
+  is added to both Y and Z, and Y16/Z16 are incremented by 1. The constant 0x180000 is at dword_80C40D0,
+  confirming the fixed-point 1.5 multiplier. However the name ''battle_applyRowHoverOffset'' is misleading,
+  since the offset grows with smaller (back-row) PanelY values applied to Y/Z, not a per-row hover offset,
+  and Y16/Z16 are just counters. A better name captures the back-row push.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C409C -> battle_applyBackRowOffset
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C409C

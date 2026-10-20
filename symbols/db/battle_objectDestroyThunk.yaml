@@ -1,0 +1,54 @@
+name: battle_objectDestroyThunk
+address: '0x080CB1DA'
+kind: function
+status: probable
+summary: Destructor thunk that tail-calls object_genericDestroy to tear down a battle object; used as
+  a class-specific destructor entry point (e.g., vtable slot or callback).
+interface: (r0 = battle object pointer) -> r0 = destroyed object pointer (passed through); flags from
+  object_genericDestroy
+details: 'A four-instruction wrapper: it saves lr, tail-calls object_genericDestroy, and returns. object_genericDestroy
+  releases the object''s reserved panel tiles, collision data, and memory, so this function exists only
+  as a class-specific destructor entry point, likely stored in a vtable or passed as a callback. Since
+  no callers are captured in the snippet, the specific object type that owns this destructor is unknown;
+  the wrapper adds no logic of its own. Executed on recorded battlesweep and beastsp routes, consistent
+  with battle-object cleanup during a battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_80CB1DA body is only 'push {lr}; bl object_genericDestroy; pop {pc}'; callee 0x08016C8A
+    object_genericDestroy is documented as the generic battle-object destructor freeing panel tiles, collision
+    data, and memory; recorded routes battlesweep and beastsp are battle-mode scripts, matching battle-object
+    destruction
+  refs:
+  - bn6f/asm/asm31.s:41515
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080CB1DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080CB1DA is simply `push {lr}; bl object_genericDestroy; pop {pc}`, which matches
+    the proposed destructor thunk description. However, the name ''destroyThunk'' is less descriptive
+    than following the documented naming convention; a better name would reflect it''s a battle object
+    destructor thunk. The summary is otherwise accurate.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which object class or vtable references this destructor, i.e. which callers pass it as a callback
+- The code at 0x080CB1DA is simply `push {lr}; bl object_genericDestroy; pop {pc}`, which matches the
+  proposed destructor thunk description. However, the name 'destroyThunk' is less descriptive than following
+  the documented naming convention; a better name would reflect it's a battle object destructor thunk.
+  The summary is otherwise accurate.
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB1DA -> battle_objectDestroyThunk
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB1DA

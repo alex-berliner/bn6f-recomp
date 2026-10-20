@@ -1,0 +1,65 @@
+name: battle_objUpdateDeceleratingFlight
+address: '0x080BC2C8'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object in flight: advances its X position by XVelocity each frame
+  while XVelocity is linearly reduced by YVelocity until a timer at +0x68 expires, then transitions it
+  to a landing state (CurAnim 3, CurAction 4, phase 0) and signals the paired RelatedObject1Ptr via its
+  ExtraVars.'
+interface: (r5 = battle object ptr, also passed as r0 to callees) -> r0 = object ptr; updates X, XVelocity,
+  timer at +0x68, CurAnim, CurAction, phase, and RelatedObject1Ptr fields; no return value
+details: Decrements the object's word/halfword timer at offset 0x68; while nonzero it integrates oBattleObject_X
+  += oBattleObject_XVelocity and subtracts oBattleObject_YVelocity from XVelocity each frame, so horizontal
+  speed decays at a constant rate. When the timer reaches 0 it calls sub_80BC424 (state-change helper),
+  zeroes RelatedObject1Ptr's ExtraVars[0], sets its ExtraVars+0xC to 1 (likely a signal flag to the paired
+  object), and sets the object to CurAnim 3, CurAction 4, phase 0 — a landing/stopped state. It then calls
+  object_setPanelsFromCoordinates to recompute PanelX/PanelY from world X/Y/Z and sub_80BC468 for follow-up
+  (likely collision or sprite handling). The exact identity of the entity (projectile vs. enemy) is not
+  determinable from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: ldrh/strh at +0x68 with cmp #0 / beq — countdown timer gating movement; asm: X += XVelocity
+    then XVelocity -= YVelocity each frame — linearly decelerating horizontal motion; asm at loc_80BC2E8:
+    sets RelatedObject1Ptr ExtraVars[0]=0, ExtraVars+0xC=1, CurAnim=3, CurAction=4 — state transition
+    on timer expiry; callee object_setPanelsFromCoordinates known summary: recomputes PanelX/PanelY from
+    world X/Y/Z; route ''battlesweep'' execution confirms battle-phase context'
+  refs:
+  - bn6f/asm/asm31.s:8910
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080BC424 sub_80BC424
+  - 0x080BC468 sub_80BC468
+  reproduce: python3 tools/asmcat.py 0x080BC2C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The integration line `add r0, r0, r1` uses XVelocity (r0) + X (r1) and stores back to X, so X advances
+    by XVelocity (not XVelocity subtracted by YVelocity). The decay line `sub r0, r0, r1` uses XVelocity
+    - YVelocity, meaning YVelocity is subtracted from XVelocity each frame (so XVelocity decays at rate
+    YVelocity, not ''constant rate'' as summary says). Function still fits a decelerating flight update
+    with landing transition, but the summary should reflect that X increases by XVelocity and XVelocity
+    decreases by YVelocity.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Which entity uses this update (projectile, hopping enemy, etc.) — no callers known to identify it
+- What sub_80BC424 and sub_80BC468 do, to confirm the landing/collision interpretation
+- Meaning of the timer field at +0x68 and the related object's ExtraVars+0xC flag
+- The integration line `add r0, r0, r1` uses XVelocity (r0) + X (r1) and stores back to X, so X advances
+  by XVelocity (not XVelocity subtracted by YVelocity). The decay line `sub r0, r0, r1` uses XVelocity
+  - YVelocity, meaning YVelocity is subtracted from XVelocity each frame (so XVelocity decays at rate
+  YVelocity, not 'constant rate' as summary says). Function still fits a decelerating flight update with
+  landing transition, but the summary should reflect that X increases by XVelocity and XVelocity decreases
+  by YVelocity.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC2C8 -> battle_objUpdateDeceleratingFlight
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC2C8

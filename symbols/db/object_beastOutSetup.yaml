@@ -1,0 +1,65 @@
+name: object_beastOutSetup
+address: '0x0813686C'
+kind: function
+status: probable
+summary: 'Battle-side setup for the Beast Out transformation: initializes object state, spawns the associated
+  eStruct effects from byte_8136828, and programs the toolkit''s Unk200f3a0 / RenderInfo / Unk2009740
+  fields before calling sub_8136B58(0).'
+interface: (no args used; object in r5, toolkit in r10) -> void; no return value
+details: Resets the object's state fields ([r5+3]=0, [r5+0x12]=8, [r5+0x1c]=0xA), then spawns a table-driven
+  batch of eStruct effect records from byte_8136828 via battle_spawnEStructRecordsFromTable_80465A0. It
+  writes 0x27, 0x37, 0x3f to bytes 9-0xB of the Unk200f3a0 struct, and indexes byte_81368C8 with the object's
+  byte at r5+0xF (x4 stride) to load a halfword (0xF6/0xFC, likely a scroll/layer offset) into RenderInfo+0x18
+  with +0x1A zeroed. Finally it writes 0x48, 0x37, 0xC, 0x10 into the struct at Unk2009740 (offsets 0-3)
+  and calls sub_8136B58(0). The recorded route is 'beastsp', consistent with beast-out/spawn setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_spawnEStructRecordsFromTable_80465A0 with table byte_8136828 spawns a batch of effect
+    records; byte_81368C8 indexed by [r5,#0xf]<<2 into RenderInfo+0x18 suggests per-form/per-state rendering
+    offset; writes to three distinct toolkit structs (Unk200f3a0, RenderInfo, Unk2009740) then sub_8136B58(0)
+    — a one-shot state transition; recorded route 'beastsp' (beast spawn) matches a transformation setup
+    routine
+  refs:
+  - bn6f/asm/asm36.s:13613
+  - 0x08136218 sub_8136218
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  - 0x08136B58 sub_8136B58
+  reproduce: python3 tools/asmcat.py 0x0813686C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate about state resets, table-driven eStruct spawn, and the various toolkit
+    writes (including the 0x48/0x37/0xC/0x10 into Unk2009740 and the byte_81368C8 lookup into RenderInfo+0x18).
+    However, the render info lookup uses `[r5+0xF]` as an index, not a stride of itself; the lsl r1,r1,#2
+    scales that index, and stores a halfword at offset 0x18 with offset 0x1A zeroed — the proposal''s
+    description is fine but the name is too specific. Since the function ends by calling sub_8136B58(0)
+    and clearly configures an object''s beast-out visual state, a more standard name like `object_beastOutSetup`
+    fits the object''s prefix convention better.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Contents of byte_8136828 (the eStruct spawn table) and of sub_8136B58/its caller sub_8136218 are unknown;
+  they would confirm whether this is beast-out activation vs. another beast-related effect
+- Meaning of the 0x27/0x37/0x3f bytes in Unk200f3a0 and the 0x48/0x37/0xC/0x10 writes to Unk2009740 is
+  not established
+- The summary is accurate about state resets, table-driven eStruct spawn, and the various toolkit writes
+  (including the 0x48/0x37/0xC/0x10 into Unk2009740 and the byte_81368C8 lookup into RenderInfo+0x18).
+  However, the render info lookup uses `[r5+0xF]` as an index, not a stride of itself; the lsl r1,r1,#2
+  scales that index, and stores a halfword at offset 0x18 with offset 0x1A zeroed — the proposal's description
+  is fine but the name is too specific. Since the function ends by calling sub_8136B58(0) and clearly
+  configures an object's beast-out visual state, a more standard name like `object_beastOutSetup` fits
+  the object's prefix convention better.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813686C -> object_beastOutSetup
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813686C

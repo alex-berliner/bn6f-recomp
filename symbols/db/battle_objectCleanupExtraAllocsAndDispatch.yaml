@@ -1,0 +1,58 @@
+name: battle_objectCleanupExtraAllocsAndDispatch
+address: '0x08112A1E'
+kind: function
+status: probable
+summary: Battle object handler that, on phase 0, frees up to three non-null pointers in the object's extra
+  vars via sub_80D1EE8, then tail-calls battle_objectUpdateDispatchPhase_80165C2 to continue per-frame
+  phase dispatch.
+interface: (r5 = battle object ptr, lr) -> void; runs battle_objectUpdateDispatchPhase_80165C2 as tail
+  work
+details: This is one of the object update-handler routines (object in r5). It reads oBattleObject_CurPhase;
+  when the phase is 0, it checks oBattleObject_ExtraVars+8, +0xC and +0x10 and calls sub_80D1EE8 on each
+  one that is nonzero — three separate pointer slots, each guarded independently. The guarded-free pattern
+  suggests these are dynamically allocated resources (sprites/effects/heap blocks) attached to the object
+  that must be released before phase-0 processing continues. Unconditionally, it then calls battle_objectUpdateDispatchPhase_80165C2,
+  the standard per-frame phase dispatcher, so the routine is a wrapper handler adding cleanup to normal
+  phase dispatch. The exact resource type freed depends on sub_80D1EE8, which is unexamined.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_8112A44 — cleanup only on phase 0;
+    three ldr [r5,#oBattleObject_ExtraVars+8/0xC/0x10] + nonzero check + bl sub_80D1EE8 — guarded release
+    of three attached pointers; bl battle_objectUpdateDispatchPhase_80165C2 — tail work is the standard
+    object phase dispatcher, so r5 is a battle object; recorded route 'beastsp' executes it — it is live
+    game code on a battle-object path
+  refs:
+  - bn6f/asm/asm32.s:9567
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  - 0x080D1EE8 sub_80D1EE8
+  reproduce: python3 tools/asmcat.py 0x08112A1E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The phase-0 cleanup of three slots and the unconditional tail-dispatch to battle_objectUpdateDispatchPhase_80165C2
+    match the proposal exactly (lines 0x08112A24–0x08112A42). However the proposed name''s ''Update''
+    is misleading: the routine does no per-frame update itself—it only frees resources on phase 0 and
+    otherwise just forwards to the dispatcher. A name reflecting the cleanup/dispatch role fits better.;
+    run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_80D1EE8 does (free/dealloc vs. something else) and what type the three pointers are
+- Which battle object species installs this handler and what its phase 0 does after dispatch
+- 'The phase-0 cleanup of three slots and the unconditional tail-dispatch to battle_objectUpdateDispatchPhase_80165C2
+  match the proposal exactly (lines 0x08112A24–0x08112A42). However the proposed name''s ''Update'' is
+  misleading: the routine does no per-frame update itself—it only frees resources on phase 0 and otherwise
+  just forwards to the dispatcher. A name reflecting the cleanup/dispatch role fits better.'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112A1E -> battle_objectCleanupExtraAllocsAndDispatch
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112A1E

@@ -1,0 +1,59 @@
+name: battle_spawnThunderboltsOnQueuedPanels
+address: '0x080C7BCC'
+kind: function
+status: probable
+summary: Sums the Param3-length byte table at obj+0x74 into an offset, then iterates DamageAndStaminaDamageCounterDisabler
+  times over obj+0x60+offset, spawning one thunderbolt object per queued nibble-encoded panel coordinate.
+interface: (r5 = battle object, set by caller; no register args) -> spawns spawnThunderboltObject_80C7D50
+  per entry; returns void
+details: r5 points to a battle object. It reads oBattleObject_Param3 as a count and sums the first Param3
+  bytes of the byte table at obj+0x74 into r7, giving an offset into the queue area at obj+0x60. It then
+  iterates DamageAndStaminaDamageCounterDisabler times (count reused here as the number of queued targets),
+  reading one byte per iteration from obj+0x60+r7+r4 and splitting it into high nibble (r1, likely panel
+  x) and low nibble (r0, likely panel y), passing them with oBattleObject_Element and the damage field
+  to spawnThunderboltObject_80C7D50. The function never saves or loads r5, so it is almost certainly a
+  secondary entry point branched into from sub_80C7A20, which sets r5 beforehand.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sums Param3 bytes at obj+0x74 into an offset (loc_80C7BDC loop); loop bound taken from oBattleObject_DamageAndStaminaDamageCounterDisabler
+    at loc_80C7BF2; each byte split via lsr #4 / lsl 0x1d+lsr into two nibbles before the spawn call;
+    spawnThunderboltObject_80C7D50 called with (low nibble, high nibble, element, damage) from obj fields;
+    r5 used without being pushed, indicating entry from the adjacent caller sub_80C7A20 which loads it'
+  refs:
+  - bn6f/asm/asm31.s:34147
+  - 0x080C7A20 sub_80C7A20
+  - 0x080C7D50 spawnThunderboltObject_80C7D50
+  reproduce: python3 tools/asmcat.py 0x080C7BCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match the code: it sums the first Param3 bytes at obj+0x74 into r7 (sum
+    loop at loc_80C7BDC), then iterates r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler times
+    (loaded at ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]) reading bytes from obj+0x60+r7,
+    splitting nibbles and calling spawnThunderboltObject_80C7D50. However, the loop count is DamageAndStaminaDamageCounterDisabler,
+    not Param3 as the proposal claims. A name reflecting ''queued panel'' targets is reasonable; ''battle_spawnThunderboltsOnQueuedPanels''
+    fits.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the obj+0x74 table and why its prefix sum indexes into the obj+0x60 queue
+- which nibble is x vs y in spawnThunderboltObject_80C7D50 (would need its body to confirm)
+- 'The summary and behavior match the code: it sums the first Param3 bytes at obj+0x74 into r7 (sum loop
+  at loc_80C7BDC), then iterates r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler times (loaded
+  at ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]) reading bytes from obj+0x60+r7,
+  splitting nibbles and calling spawnThunderboltObject_80C7D50. However, the loop count is DamageAndStaminaDamageCounterDisabler,
+  not Param3 as the proposal claims. A name reflecting ''queued panel'' targets is reasonable; ''battle_spawnThunderboltsOnQueuedPanels''
+  fits.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7BCC -> battle_spawnThunderboltsOnQueuedPanels
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7BCC

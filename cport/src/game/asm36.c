@@ -1520,11 +1520,11 @@ static void sub_8120740_call(u32 value) {
     GUEST_CALL(pack_reAddChipsFromFolders);
 }
 
-/* register form: calls sub_81206F8 outside this file, which has no typed C interface yet */
+/* register form: calls pack_installChipFolderFromChipList outside this file, which has no typed C interface yet */
 static void sub_81206F8_call(u32 addr, u32 value) {
     R0 = addr;
     R1 = value;
-    GUEST_CALL(sub_81206F8);
+    GUEST_CALL(pack_installChipFolderFromChipList);
 }
 
 /* register form: calls SetCurPETNaviStatsByte outside this file, which has no typed C interface yet */

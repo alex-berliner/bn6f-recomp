@@ -1,0 +1,64 @@
+name: ai_attackObjectTimerUpdate
+address: '0x080ECEBC'
+kind: function
+status: probable
+summary: 'AI attack-state tick: initializes StepTimer=0xF on phase 0, then on phase 1 increments a per-frame
+  counter on the spawned attack object while the sprite''s frame-attribute bit 0x80 is set, advancing
+  to phase 2. Each call also decrements StepTimer; once negative it clears the temp attack-object pointers
+  and calls object_exitAttackState.'
+interface: (r5 = battle object, r7 = object's oAIAttackVars) -> void; no return value
+details: 'Uses oAIAttackVars_AttackElement as a phase variable: phase 0 sets StepTimer=0xF and enters
+  phase 1; phase 1 calls sprite_getFrameParameters and, while the current frame''s attribute has bit 0x80
+  set, increments field 0x10 of the attack object in oAIData_TempAttackObjectPtr and moves to phase 2.
+  Independently, every call decrements oAIAttackVars_StepTimer; once it goes negative it clears oBattleObject_RelatedObject1Ptr
+  and oAIData_TempAttackObjectPtr (dropping the spawned attack object reference) and calls object_exitAttackState
+  to return the enemy to its normal state. The field 0x10 counter on the attack object looks like a per-frame
+  tick while the attack sprite is in its active frames.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] + cmp #1/#2 implement a 3-phase state machine keyed
+    on the attack vars; phase 0 stores StepTimer=#0xF and AttackElement=#1, an init-once setup; bl sprite_getFrameParameters
+    then tst r0,#0x80 gates the increment of [TempAttackObjectPtr+0x10]; StepTimer underflow clears RelatedObject1Ptr
+    and AIData_TempAttackObjectPtr then bl object_exitAttackState'
+  refs:
+  - bn6f/asm/asm31.s:113805
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080ECEBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate against the asm: phases 0->1 initialize StepTimer=0xF, phase 1 increments
+    TempAttackObjectPtr+0x10 while frame attribute bit 0x80 is set and advances to phase 2 (lines at loc_80ECED2),
+    and the trailing block decrements StepTimer and on negative clears RelatedObject1Ptr/TempAttackObjectPtr
+    and calls object_exitAttackState. The name is fine as ai_attackObjectTimerUpdate. The minor issue
+    is the summary implies phase 0 ''enters phase 1'', which is accurate, but the ''counting frames flagged
+    by the animation'' phrasing is slightly off — it counts only while bit 0x80 is set, then unconditionally
+    moves to phase 2; minor wording tweak worth a revise.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- which specific enemy attack this is (beastsp route suggests a beast-out attack) and what attack-object
+  field 0x10 counts (hits, active frames, or animation repeats)
+- why bit 0x80 of the frame attribute is the trigger (likely an 'active/damage' frame flag in sprite_getFrameParameters)
+- 'The summary is mostly accurate against the asm: phases 0->1 initialize StepTimer=0xF, phase 1 increments
+  TempAttackObjectPtr+0x10 while frame attribute bit 0x80 is set and advances to phase 2 (lines at loc_80ECED2),
+  and the trailing block decrements StepTimer and on negative clears RelatedObject1Ptr/TempAttackObjectPtr
+  and calls object_exitAttackState. The name is fine as ai_attackObjectTimerUpdate. The minor issue is
+  the summary implies phase 0 ''enters phase 1'', which is accurate, but the ''counting frames flagged
+  by the animation'' phrasing is slightly off — it counts only while bit 0x80 is set, then unconditionally
+  moves to phase 2; minor wording tweak worth a revise.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ECEBC -> ai_attackObjectTimerUpdate
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECEBC

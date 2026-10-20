@@ -1,0 +1,65 @@
+name: battleTutorialCheckCustomScreen
+address: '0x0802996E'
+kind: function
+status: probable
+summary: 'Per-frame check routine for battle tutorial phase 0xA (custom-screen step): returns 0xB/0xC
+  prompts by sub-counter, returns 0 when sorted +0x48/+0x49 pair equals {0,2}, otherwise returns 0x17
+  nag.'
+interface: (r0 unused; r5 = tutorial-state struct) -> r0 = message id (0xB, 0xC or 0x17 to display, 0
+  = step complete/no message); flags clobbered.
+details: 'This is one of the per-state check routines the first battle tutorial''s custMenu handler (custMenu_80298F4)
+  polls each frame. It only acts when the struct''s phase byte at +7 equals 0xA, otherwise returning 0.
+  Within phase 0xA it reads a sub-counter at +8: 0 yields message 0xC, and values below 2 yield 0xB or
+  0x17 depending on byte +0x48 (0 or 2 vs anything else). At counter >= 2 it loads the two bytes at +0x48
+  and +0x49, swaps them so r0<=r1, and treats the sorted pair {0,2} as success (returns 0, no message),
+  while any other pair returns 0x17 — presumably a corrective nag. The +0x48/+0x49 bytes look like two
+  tracked selections or cursor positions on the custom screen, and 0xB/0xC/0x17 are chatbox message ids
+  for the tutorial prompts.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0, #0xa / bne loc_80299B2: routine is specific to tutorial state 0xA, returning 0 otherwise;
+    ldrb r0,[r5,#8] with branches returning 0xC (==0), 0xB (byte +0x48 is 0 or 2) or 0x17 — message-id
+    style small constants; ldrb r0,[r3] / ldrb r1,[r3,#1] then swap so r0<=r1, success iff pair is {0,2}
+    else 0x17 — a two-slot condition check; caller custMenu_80298F4 is documented as polling the tutorial
+    state''s check routine and playing the result through the chatbox'
+  refs:
+  - bn6f/asm/asm03_0.s:7602
+  - 0x080298F4 custMenu_80298F4
+  reproduce: python3 tools/asmcat.py 0x0802996E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The role fits (phase-0xA battle-tutorial check routine producing a message id or 0), and the sort-pair-{0,2}
+    completion logic matches the swap at lines 0x802999A–0x80299A4. However the proposal conflates bytes
+    at +8 and +0x49: counter==0 returns 0xC, and counter<2 with +0x48==0 or ==2 returns 0xB; counter>=2
+    then re-reads +0x48/+0x49 independently of +8. Also the claim that values below 2 yield 0xB ''or''
+    0x17 is wrong — below 2 only yields 0xB or 0xC, and 0x17 only appears at counter>=2 in the nag branch.
+    Better name: battleTutorialCheckCustomScreen.; run wf investigate investigate-20261018-212108; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- menus2
+open_questions:
+- Exact meaning of the bytes at struct +0x48/+0x49 (selected slots? cursor positions?) and what tutorial
+  actions messages 0xB/0xC/0x17 correspond to — the chatbox message texts and the code that writes +0x48/+0x49
+  would confirm
+- 'The role fits (phase-0xA battle-tutorial check routine producing a message id or 0), and the sort-pair-{0,2}
+  completion logic matches the swap at lines 0x802999A–0x80299A4. However the proposal conflates bytes
+  at +8 and +0x49: counter==0 returns 0xC, and counter<2 with +0x48==0 or ==2 returns 0xB; counter>=2
+  then re-reads +0x48/+0x49 independently of +8. Also the claim that values below 2 yield 0xB ''or'' 0x17
+  is wrong — below 2 only yields 0xB or 0xC, and 0x17 only appears at counter>=2 in the nag branch. Better
+  name: battleTutorialCheckCustomScreen.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802996E -> battleTutorialCheckCustomScreen
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802996E

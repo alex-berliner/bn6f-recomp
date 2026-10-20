@@ -1,0 +1,65 @@
+name: battle_initAiDifficulty
+address: '0x080F3B24'
+kind: function
+status: probable
+summary: Reads the enemy AI difficulty tier via battle_getAiDifficultyTier, calls sub_80F3CA4 with r0=0,
+  then writes 3 bytes of AI initialization data into the battle work at offsets 0x60 and 0x64 via sub_80C7544.
+interface: (r5 = battle/ai work pointer set by caller) -> r0 = destroyed; writes 3 bytes starting at r5+0x60
+  via sub_80C7544
+details: The function first calls battle_getAiDifficultyTier_800FE36, so it operates on enemy AI data
+  and its difficulty byte. It then calls sub_80F3CA4 with r0=0, keeping the result in r6, and computes
+  r0=r5+0x60, r7=r5+0x64, r2=3 before calling sub_80C7544, which by its arguments looks like a small copy/fill
+  of 3 bytes into the work struct around offsets 0x60-0x67. r5 is not set or saved inside the function,
+  so it must be an implied input from the caller (likely the battle work pointer). r6 and r7 appear to
+  be additional inputs consumed by sub_80C7544/sub_80F3CA4 rather than dead values. This fits an early
+  battle-init step that copies the AI difficulty tier and related state into the AI section of the battle
+  work area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 — first action is reading the enemy AI difficulty tier;
+    mov r0,#0x60; add r0,r0,r5 / mov r7,#0x64; add r7,r7,r5 — writes target fields of a struct at +0x60/+0x64;
+    mov r2,#3 before bl sub_80C7544 — a 3-byte copy/fill into that struct region; r5 is neither saved
+    nor initialized here, so the caller must supply the battle/AI work pointer
+  refs:
+  - bn6f/asm/asm31.s:128034
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080C7544 sub_80C7544
+  - 0x080F3CA4 sub_80F3CA4
+  reproduce: python3 tools/asmcat.py 0x080F3B24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s direction is right: it reads AI difficulty, calls sub_80F3CA4, then calls sub_80C7544
+    with r2=3 and what appear to be output pointers at r5+0x60 and r5+0x64. However, the interface claim
+    that r0 is destroyed is trivially true of any Thumb call and adds no information, and saying r5 is
+    ''implied input'' is misleading — the push only saves r4/r6/r7, so r5 is indeed a preserved register,
+    consistent with being a work pointer from the caller. The name is fine but the summary should focus
+    on what is observable: the function stores a difficulty tier plus a sub_80F3CA4 result into the battle
+    AI work at offsets 0x60-0x64.; run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No callers are recorded, so r5's identity (battle work vs AI struct) is unconfirmed
+- What sub_80F3CA4(0) returns and why its result (r6) matters to sub_80C7544
+- What sub_80C7544 actually copies/fills and the exact field layout at r5+0x60..0x67
+- Whether the stored tier affects AI behavior selection or only debugging displays
+- 'The summary''s direction is right: it reads AI difficulty, calls sub_80F3CA4, then calls sub_80C7544
+  with r2=3 and what appear to be output pointers at r5+0x60 and r5+0x64. However, the interface claim
+  that r0 is destroyed is trivially true of any Thumb call and adds no information, and saying r5 is ''implied
+  input'' is misleading — the push only saves r4/r6/r7, so r5 is indeed a preserved register, consistent
+  with being a work pointer from the caller. The name is fine but the summary should focus on what is
+  observable: the function stores a difficulty tier plus a sub_80F3CA4 result into the battle AI work
+  at offsets 0x60-0x64.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F3B24 -> battle_initAiDifficulty
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3B24

@@ -1,0 +1,65 @@
+name: ai_spawnAttackOnFacingTile
+address: '0x081036A6'
+kind: function
+status: probable
+summary: 'AI attack step: on first entry set AttackElement=4, anim=9, SFX 0xCF, run sub_80C47EC and arm
+  StepTimer=5; on later entries wait for StepTimer to expire, then spawn the attack via sub_80CF778 on
+  the enemy-facing column (PanelX + enemyDirection, PanelY) and record HitElement=0x14.'
+interface: (r0-r6 = attack context; r5 = battle object, r7 = oAIAttackVars) -> r0 = clobbered; sets HitElement
+  = 0x14 on fire
+details: 'Uses the oAIAttackVars scratch block of an enemy AI attack script: AttackElement, StepTimer,
+  InitFlag, AiDifficultyTier, ScratchVar, HitElement. First entry (AttackElement == 0) is the wind-up:
+  element is set to 4, the object''s animation to 9, sound 0xCF plays, sub_80C47EC runs, and StepTimer
+  is loaded with 5. Later entries decrement StepTimer until it hits 0, then compute the target tile as
+  PanelX + facing step (object_getEnemyDirection: +1 toward player side, -1 from it) with PanelY, and
+  call sub_80CF778 with the tile coords (r0/r1), InitFlag (r2), 0 (r3/r6), difficulty tier (r4) and the
+  ScratchVar value (passed via r7 swap). Finally HitElement is set to 0x14 (20), marking which element
+  the resulting hit uses.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oAIAttackVars_AttackElement branches init (set element 4, anim 9, sfx 0xCF, StepTimer=5)
+    vs. firing path; firing path decrements StepTimer and proceeds only when it reaches 0 (sub r0,#1;
+    bgt); bl object_getEnemyDirection added to oBattleObject_PanelX gives the target tile in front of
+    the enemy; bl sub_80CF778 receives tile X/Y, InitFlag, AiDifficultyTier and ScratchVar, then HitElement
+    is written 0x14
+  refs:
+  - bn6f/asm/asm31.s:160371
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080C47EC sub_80C47EC
+  reproduce: python3 tools/asmcat.py 0x081036A6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and flow are essentially correct: the wind-up sets AttackElement=4, anim=9, plays 0xCF,
+    runs sub_80C47EC, sets StepTimer=5; the spawn step waits, computes target tile with PanelX+object_getEnemyDirection,
+    calls sub_80CF778, and sets HitElement=0x14. The proposal correctly captures the code. Minor nit:
+    ''on fire'' in the interface comment is wrong since HitElement=0x14 is just written but not asserted
+    to mean fire; better to say it''s the hit element the spawned attack uses. Also calling it ''attackStepSpawnTargetTile''
+    is fine but ''ai_spawnTargetTileAfterWindup'' is more descriptive.; run wf investigate investigate-20261018-200615;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80CF778 spawns (projectile vs. panel effect) and what InitFlag/ScratchVar mean
+- which enemy/attack script this step belongs to — no callers identified, so the owning attack table is
+  unknown
+- 'The name and flow are essentially correct: the wind-up sets AttackElement=4, anim=9, plays 0xCF, runs
+  sub_80C47EC, sets StepTimer=5; the spawn step waits, computes target tile with PanelX+object_getEnemyDirection,
+  calls sub_80CF778, and sets HitElement=0x14. The proposal correctly captures the code. Minor nit: ''on
+  fire'' in the interface comment is wrong since HitElement=0x14 is just written but not asserted to mean
+  fire; better to say it''s the hit element the spawned attack uses. Also calling it ''attackStepSpawnTargetTile''
+  is fine but ''ai_spawnTargetTileAfterWindup'' is more descriptive.'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81036A6 -> ai_spawnAttackOnFacingTile
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81036A6

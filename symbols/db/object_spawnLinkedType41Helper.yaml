@@ -1,0 +1,73 @@
+name: object_spawnLinkedType41Helper
+address: '0x080E532C'
+kind: function
+status: probable
+summary: Spawns battle object type 0x41 as a helper owned by r5 (the caller), unless sub_80E543C returns
+  zero and r1<1, in which case it bails with r0=0; on success copies r5's Alliance into the new object,
+  back-links r5 via oBattleObject_RelatedObject1Ptr, clears oObjectHeader_Flags bit 0x10, and calls sub_80E541A(r0=new,
+  r2=1).
+interface: (r5 = source battle object; r1-r3 = leftover spawn params for object_spawnType4) -> r0 = new
+  object pointer, or 0 if spawn skipped/failed; flags clobbered
+details: Reads oBattleObject_Alliance from r5 and calls sub_80E543C; if it returns nonzero in r0 and a
+  count in r1 is >= 1, the function bails with r0=0, so it refuses to spawn when that condition (likely
+  an existing helper of this kind) is met. Otherwise it calls object_spawnType4 with type 0x41, preserving
+  r5. On success it copies the source's Alliance into the new object, stores r5 in the new object's oBattleObject_RelatedObject1Ptr,
+  clears flag bit 0x10 in the new object's oObjectHeader_Flags, and calls sub_80E541A with the new object
+  in r0 and r2=1 (an initializer call whose r0 is restored by push/pop so the new pointer is the return
+  value). The alliance copy and RelatedObject1Ptr link show it is a companion object owned by the source;
+  the 0x10 flag clear likely un-hides or enables it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance] + bl sub_80E543C then cmp r1,#1 / bge: skips spawn when
+    the check reports an existing instance; mov r0,#0x41; bl object_spawnType4: spawns battle object type
+    0x41; strb r1,[r0,#oBattleObject_Alliance] / str r5,[r0,#oBattleObject_RelatedObject1Ptr]: new object
+    inherits alliance and links back to source; bic r3,#0x10 on oObjectHeader_Flags of the new object,
+    then bl sub_80E541A with r2=1: post-spawn setup; push {r0}/pop {r0} around sub_80E541A keeps the new
+    object pointer as return value; early exit returns 0'
+  refs:
+  - bn6f/asm/asm31.s:97455
+  - 0x080FB30E sub_80FB30E
+  - 0x08105B84 sub_8105B84
+  - 0x0810D150 sub_810D150
+  - 0x080033AC object_spawnType4
+  - 0x080E541A sub_80E541A
+  - 0x080E543C sub_80E543C
+  reproduce: python3 tools/asmcat.py 0x080E532C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct: it spawns type 0x41, copies alliance, back-links r5 into oBattleObject_RelatedObject1Ptr,
+    clears flag 0x10, and calls sub_80E541A with r2=1. However, the bail condition is inverted in the
+    proposal: `beq loc_80E5340` skips the bail when sub_80E543C returns nonzero AND r1>=1, meaning the
+    function actually spawns when one already exists (or skips when none does) - the proposal claims the
+    opposite. Also `object_spawnType4` takes type 4 from params but is called with r0=0x41 as the type
+    byte here, not a generic type-4 spawn. The name is acceptable but ''object_spawnLinkedType65Helper''
+    references 0x65 which is wrong (type is 0x41).; run wf investigate investigate-20261018-203615; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game entity object type 0x41 is (its initializer/behavior is unknown), and what sub_80E543C's r0
+  flag and r1 count actually test — its body would confirm the 'only one at a time' interpretation
+- What sub_80E541A initializes with r2=1, and what flag bit 0x10 means on battle objects
+- 'The summary is mostly correct: it spawns type 0x41, copies alliance, back-links r5 into oBattleObject_RelatedObject1Ptr,
+  clears flag 0x10, and calls sub_80E541A with r2=1. However, the bail condition is inverted in the proposal:
+  `beq loc_80E5340` skips the bail when sub_80E543C returns nonzero AND r1>=1, meaning the function actually
+  spawns when one already exists (or skips when none does) - the proposal claims the opposite. Also `object_spawnType4`
+  takes type 4 from params but is called with r0=0x41 as the type byte here, not a generic type-4 spawn.
+  The name is acceptable but ''object_spawnLinkedType65Helper'' references 0x65 which is wrong (type is
+  0x41).'
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 58027fff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E532C -> object_spawnLinkedType41Helper
+  where: bn6f f9d9fc39
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E532C
