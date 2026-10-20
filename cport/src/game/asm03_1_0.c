@@ -2167,6 +2167,48 @@ Next loadGameProgressFromGameProgressBuffer_8035354(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── storeGameProgressToGameProgressBuffer_8035364 ── */
+/* Saved-register pass-through: the original pushes r4-r7 and pops them back,
+ * so every one of them leaves the function exactly as it entered. */
+typedef struct {
+    u32 r4, r5, r6, r7;
+} SavedRegs_storeGameProgressToGameProgressBuffer_8035364;
+
+/* Copy the game's current progress byte into gameProgressBuffer[slot] and
+ * then reset the live progress value to 0xFF ("nothing to save").
+ *   slot     - r0: byte offset selecting the entry in the progress buffer
+ *   toolkit  - r10: global toolkit pointer (holds the game-state pointer) */
+static SavedRegs_storeGameProgressToGameProgressBuffer_8035364 store_game_progress(u32 slot, u32 toolkit, u32 r4, u32 r5, u32 r6, u32 r7) {
+    SavedRegs_storeGameProgressToGameProgressBuffer_8035364 out;
+    out.r4 = r4;
+    out.r5 = r5;
+    out.r6 = r6;
+    out.r7 = r7;
+
+    u32 bufferEntry = A_gameProgressBuffer_20010f0 + slot;
+    u32 gameState   = LD32(toolkit + oToolkit_GameStatePtr);
+
+    /* Archive the current progress byte ... */
+    ST8(bufferEntry, LD8(gameState + oGameState_GameProgress));
+    /* ... and clear the live value so it is not archived twice. */
+    ST8(gameState + oGameState_GameProgress, 0xFF);
+
+    return out;
+}
+
+/* storeGameProgressToGameProgressBuffer_8035364
+ *   inputs:  r0 = buffer slot, r10 = toolkit pointer
+ *   outputs: r4-r7 unchanged (the original saves/restores them)
+ *   clobbers (unused by callers): nz c v r0 */
+Next storeGameProgressToGameProgressBuffer_8035364(void) {
+    SavedRegs_storeGameProgressToGameProgressBuffer_8035364 out = store_game_progress(R0, R10, R4, R5, R6, R7);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_803537C ── */
 /* Table of (map_group, event_flag) pairs used to auto-fire EVENT_28 when the player
  * enters a matching map. Terminated by an entry with map_group == 0. */
@@ -2252,6 +2294,38 @@ static void gate_load_death_gfx_anims(void) {
 
 Next battle_loadDeathAnims_8035424(void) {
     gate_load_death_gfx_anims();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8035450 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r8, r9, r10, r11, r12; bool c, v; } call_SpawnObjectsFromList_result;
+/* register form: generated wrapper: SpawnObjectsFromList has no typed C interface yet */
+static inline call_SpawnObjectsFromList_result call_SpawnObjectsFromList(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(SpawnObjectsFromList);
+    return (call_SpawnObjectsFromList_result){ R1, R2, R3, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Battle-setup object spawner: r0 selects an entry of the pointer table at
+ * off_8035464, and the SpawnObjectsFromList descriptor it points to is spawned
+ * with r5 forwarded as its argument.
+ *
+ * Everything the caller sees afterwards is exactly what the original leaves
+ * behind: the spawner's outputs (r1-r3, r8-r12, c/v) are left in the guest
+ * registers by the generated wrapper's call, and r4-r7 plus the entry value of
+ * r5 pass through unchanged, just as the original's push/pop of r4-r7 does. */
+
+static void spawn_selected_object_list(u32 list_index, u32 spawn_arg) {
+    /* Pick the descriptor for this index out of the table and spawn it. */
+    u32 descriptor = LD32(A_off_8035464 + (list_index << 2));
+    call_SpawnObjectsFromList(descriptor, spawn_arg);
+}
+
+/* sub_8035450(r0 = list index, r5 = spawn argument) -> r2 r3 r5 r7 r8 r9 r10 r11 r12 */
+Next sub_8035450(void) {
+    spawn_selected_object_list(R0, R5);
     RETURN_TO_CALLER();
 }
 

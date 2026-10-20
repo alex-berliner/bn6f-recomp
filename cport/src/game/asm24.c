@@ -8,6 +8,69 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── sub_808CBA0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r6; } call_SpawnOverworldMapObject_result_sub_808CBA0;
+/* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
+static inline call_SpawnOverworldMapObject_result_sub_808CBA0 call_SpawnOverworldMapObject_sub_808CBA0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(SpawnOverworldMapObject);
+    return (call_SpawnOverworldMapObject_result_sub_808CBA0){ R2, R3, R6 };
+}
+
+/* sub_808CBA0: spawn the initial batch of overworld map objects.
+ *
+ * The number of objects depends on where the player is:
+ *   - map group 0x85: 12 objects
+ *   - any other map with a nonzero MapNumber: 9 objects
+ *   - otherwise: 7 objects
+ * Each one is spawned as SpawnOverworldMapObject(0x10, 0, 0, 0, index) for
+ * index = 0 .. count-1.
+ *
+ * Register notes: the original brackets the whole routine with
+ * push/pop {r4-r7}, so r4-r7 reach the caller exactly as they arrived,
+ * even though SpawnOverworldMapObject loads r4 and clobbers r5/r6.
+ * The last callee call leaves r2 (and r3, a clobber) behind for the caller. */
+static void spawn_overworld_map_objects(u32 toolkit) {
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+
+    u32 count;
+    if (LD8(gameState + oGameState_MapGroup) == 0x85) {
+        count = 12;
+    } else if (LD8(gameState + oGameState_MapNumber) != 0) {
+        count = 9;
+    } else {
+        count = 7;
+    }
+
+    /* register form: SpawnOverworldMapObject clobbers r5/r6 and its wrapper
+     * loads r4, but this function must hand r4-r7 back to its caller
+     * unchanged, so they have to be saved and restored around the calls
+     * (the original does this with push/pop {r4-r7} / push/pop {r5}). */
+    u32 savedR4 = R4;
+    u32 savedR5 = R5;
+    u32 savedR6 = R6;
+
+    for (u32 index = 0; index < count; index++) {
+        call_SpawnOverworldMapObject_sub_808CBA0(0x10, 0, 0, 0, index);
+    }
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+}
+
+/* sub_808CBA0(r10 = toolkit) -> r2 (left by the last SpawnOverworldMapObject
+ * call); r4-r7 end exactly as they arrived, so the adapter leaves them alone. */
+Next sub_808CBA0(void) {
+    spawn_overworld_map_objects(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_checkPlayerActorStoryFlag_808CC10 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battle_checkPlayerActorStoryFlag_808CC10;
@@ -286,6 +349,50 @@ Next ai_testMapGroupEventFlag(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_808CF50 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ai_getAIModeForMapGroup_808D084 has no typed C interface yet */
+static inline u32 call_ai_getAIModeForMapGroup_808D084_sub_808CF50(void) {
+    GUEST_CALL(ai_getAIModeForMapGroup_808D084);
+    return R0;
+}
+
+typedef struct { bool z, n; } call_TestEventFlag_result_sub_808CF50;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_sub_808CF50 call_TestEventFlag_sub_808CF50(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_sub_808CF50){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline void call_SetEventFlag_sub_808CF50(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* Per-map-group AI bookkeeping: look up the story event flag that goes with the
+ * current AI mode; if that flag is not set yet, set its partner flag.
+ * (byte_808CF7C holds the "test" flag IDs, byte_808CF84 the matching "set"
+ * flag IDs, both indexed by AI mode as u16 entries.) */
+static void sync_ai_mode_flags(void) {
+    u32 modeOffset = call_ai_getAIModeForMapGroup_808D084_sub_808CF50() * 2u;   /* byte offset into the u16 tables */
+
+    /* TestEventFlag leaves Z set when the flag is clear, so only then set it. */
+    if (!call_TestEventFlag_sub_808CF50(LD16(A_byte_808CF7C + modeOffset)).z)
+        return;
+
+    call_SetEventFlag_sub_808CF50(LD16(A_byte_808CF84 + modeOffset));
+}
+
+/* sub_808CF50() -> r7 (r7 comes back exactly as it entered: the original's
+ * pop {r4-r7,pc} restores it from the stack) */
+Next sub_808CF50(void) {
+    sync_ai_mode_flags();
+    R7 = R7;    /* unchanged output: restored to its entry value */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_chatbox_setCursorTextFromEventFlag_808CF8C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C;
@@ -462,5 +569,82 @@ static u32 get_ai_mode_for_map_group(u32 toolkit) {
 /* ai_getAIModeForMapGroup_808D084(r10 = toolkit) -> r0 */
 Next ai_getAIModeForMapGroup_808D084(void) {
     R0 = get_ai_mode_for_map_group(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808D108 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r5, r6, r7; } call_sub_8142CB0_result;
+/* register form: generated wrapper: sub_8142CB0 has no typed C interface yet */
+static inline call_sub_8142CB0_result call_sub_8142CB0(void) {
+    GUEST_CALL(sub_8142CB0);
+    return (call_sub_8142CB0_result){ R0, R5, R6, R7 };
+}
+
+typedef struct { u32 r5, r6, r7; } call_ow_stampMapTileTemplate_result;
+/* register form: generated wrapper: ow_stampMapTileTemplate has no typed C interface yet */
+static inline call_ow_stampMapTileTemplate_result call_ow_stampMapTileTemplate(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ow_stampMapTileTemplate);
+    return (call_ow_stampMapTileTemplate_result){ R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r7, r9, r12; } call_sub_8142D4C_result;
+/* register form: generated wrapper: ow_redrawMapTilemapsCb has no typed C interface yet */
+static inline call_sub_8142D4C_result call_sub_8142D4C(void) {
+    GUEST_CALL(ow_redrawMapTilemapsCb);
+    return (call_sub_8142D4C_result){ R2, R7, R9, R12 };
+}
+
+/* Overworld map tile setup (0x0808D108).
+ *
+ * Fetches the current tile template description, stamps it onto the map with
+ * template index 0, then refreshes the derived map state. All of the callers'
+ * outputs (r2, r5, r9, r12) are values the callees leave behind: r5 comes from
+ * ow_stampMapTileTemplate (the last writer before ow_redrawMapTilemapsCb, which preserves
+ * it), and r2/r9/r12 come from ow_redrawMapTilemapsCb itself. */
+static void ow_setup_map_tiles(void) {
+    u32 tile_template = call_sub_8142CB0().r0;
+
+    call_ow_stampMapTileTemplate(tile_template, 0);
+    call_sub_8142D4C();
+}
+
+Next sub_808D108(void) {
+    ow_setup_map_tiles();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808D25C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r12; bool c, v; } call_sub_8048F88_result;
+/* register form: generated wrapper: sub_8048F88 has no typed C interface yet */
+static inline call_sub_8048F88_result call_sub_8048F88(void) {
+    GUEST_CALL(sub_8048F88);
+    return (call_sub_8048F88_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_808D25C — run the game-state unpacker sub_8048F88, then finish with 0.
+ *
+ * This function is pure glue: it tail-calls the unpacker (which reads r10 and
+ * leaves r1..r9, r12, c, v behind — those are exactly the values its callers
+ * observe) and then executes "mov r0, #0", whose only lasting effect is the
+ * N/Z flags (N clear, Z set). r0 itself is a clobber, so only the flags and
+ * the pass-through registers matter. */
+
+/* Run the unpacker and report the final result value (always 0, matching the
+ * original's "mov r0, #0"). The registers sub_8048F88 leaves behind stay in
+ * the guest register file; nothing here needs to forward them. */
+static u32 sub_808D25C_run_unpacker(void) {
+    call_sub_8048F88_result regs = call_sub_8048F88();
+    (void)regs; /* r2..r12 already hold the unpacker's results in the guest state */
+    return 0;
+}
+
+Next sub_808D25C(void) {
+    u32 result = sub_808D25C_run_unpacker();
+    R0 = result;
+    SET_FLAGS_NZ(result);
     RETURN_TO_CALLER();
 }

@@ -65,6 +65,219 @@ Next battle_beastJumpLockOn_8026554(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8026622 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8026450_result;
+/* register form: generated wrapper: sub_8026450 has no typed C interface yet */
+static inline call_sub_8026450_result call_sub_8026450(u32 r0, u32 r1, u32 r2, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(sub_8026450);
+    return (call_sub_8026450_result){ R0, R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* Result of the panel probe: the (r0, r1) pair the routine leaves behind. */
+typedef struct { u32 r0; u32 r1; } PanelProbe;
+
+/*
+ * Walk the signed-byte offset table at byte_8026730, probing one candidate
+ * panel per entry with sub_8026450. The first probe tests the object's own
+ * panel X on row `row`, using table byte_802673A when the object already
+ * stands on that row and byte_802673C otherwise. Each later entry gives a
+ * Y offset from `row` and is probed at X = probeX with byte_802673C.
+ * Stop at the first nonzero probe result, or at the table's 0x7F terminator.
+ */
+static PanelProbe probe_panel_chain(u32 object, u32 probeX, u32 row) {
+    u32 table = (LD8(object + oBattleObject_PanelY) == row)
+                    ? A_byte_802673A : A_byte_802673C;
+    u32 x = LD8(object + oBattleObject_PanelX);
+    u32 y = row;
+    u32 entry = A_byte_8026730;
+
+    for (;;) {
+        call_sub_8026450_result hit =
+            call_sub_8026450(x, y, table, object, probeX, row);
+        if (hit.r0 != 0)
+            return (PanelProbe){ hit.r0, hit.r1 };
+
+        s32 yOffset = LDS8(entry);
+        if (yOffset == 0x7F)
+            return (PanelProbe){ 0, 0x7F };
+
+        entry += 1;
+        y = (u32)(yOffset + row);
+        x = probeX;
+        table = A_byte_802673C;
+    }
+}
+
+/* sub_8026622(r5 = object, r6 = probeX, r7 = row) -> r0 r1 (r5 unchanged) */
+Next sub_8026622(void) {
+    u32 object = R5;
+    PanelProbe result = probe_panel_chain(object, R6, R7);
+    R0 = result.r0;
+    R1 = result.r1;
+    R5 = object;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802665A ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_battle_checkFacingOffsets_result_sub_802665A;
+/* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
+static inline call_battle_checkFacingOffsets_result_sub_802665A call_battle_checkFacingOffsets_sub_802665A(u32 r0, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_checkFacingOffsets);
+    return (call_battle_checkFacingOffsets_result_sub_802665A){ R0, R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_80265FE_result;
+/* register form: generated wrapper: sub_80265FE has no typed C interface yet */
+static inline call_sub_80265FE_result call_sub_80265FE(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sub_80265FE);
+    return (call_sub_80265FE_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_802665A: run the facing-offset check for the current actor against the
+ * table at byte_802675A, then post-process the result with sub_80265FE.
+ * The caller's r4-r7 are the battle-context registers both callees expect;
+ * r0/r1/r5 coming back from sub_80265FE are the results callers use. */
+
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r5;
+} FacingCheckResult;
+
+static FacingCheckResult sub_802665A_body(u32 r4, u32 r5, u32 r6, u32 r7) {
+    /* Point r0 at the facing-offset table and run the shared check, which
+     * reads the actor state carried in r4-r7. */
+    call_battle_checkFacingOffsets_result_sub_802665A facing =
+        call_battle_checkFacingOffsets_sub_802665A(A_byte_802675A, r4, r5, r6, r7);
+
+    /* Feed the interesting outputs (r0, r1, r5) into the follow-up step. */
+    call_sub_80265FE_result result =
+        call_sub_80265FE(facing.r0, facing.r1, facing.r5);
+
+    FacingCheckResult out;
+    out.r0 = result.r0;
+    out.r1 = result.r1;
+    out.r5 = result.r5;
+    return out;
+}
+
+/* sub_802665A() -> r0 r1 r5 (r2/r3 and the flags are scratch for callers) */
+Next sub_802665A(void) {
+    FacingCheckResult result = sub_802665A_body(R4, R5, R6, R7);
+    R0 = result.r0;
+    R1 = result.r1;
+    R5 = result.r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8026672 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_checkFacingOffsets_result_sub_8026672;
+/* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
+static inline call_battle_checkFacingOffsets_result_sub_8026672 call_battle_checkFacingOffsets_sub_8026672(u32 r0, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_checkFacingOffsets);
+    return (call_battle_checkFacingOffsets_result_sub_8026672){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8026672: run battle_checkFacingOffsets against the facing-offset table
+ * baked into the code at byte_802676E. The caller's context in r4-r7 is
+ * passed straight through; the callee's r0/r1 come back as this function's
+ * result, and r5 is simply whatever the callee left behind. */
+static call_battle_checkFacingOffsets_result_sub_8026672 check_facing_offsets_table(u32 r4, u32 r5, u32 r6, u32 r7) {
+    return call_battle_checkFacingOffsets_sub_8026672(A_byte_802676E, r4, r5, r6, r7);
+}
+
+Next sub_8026672(void) {
+    call_battle_checkFacingOffsets_result_sub_8026672 res = check_facing_offsets_table(R4, R5, R6, R7);
+    R0 = res.r0;
+    R1 = res.r1;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8026694 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_checkFacingOffsets_result_sub_8026694;
+/* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
+static inline call_battle_checkFacingOffsets_result_sub_8026694 call_battle_checkFacingOffsets_sub_8026694(u32 r0, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_checkFacingOffsets);
+    return (call_battle_checkFacingOffsets_result_sub_8026694){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8026694: run battle_checkFacingOffsets on a fixed parameter block.
+ *
+ * The only work here is loading the address byte_8026791 into r0 and tail-calling
+ * battle_checkFacingOffsets with r4-r7 passed straight through. That callee produces
+ * this function's outputs (r0, r1, r5) and leaves r4/r6/r7 as it received them,
+ * so the wrapper's registers are already the final answer: nothing needs to be
+ * copied through the typed function or the adapter.
+ */
+static void sub_8026694_body(u32 r4, u32 r5, u32 r6, u32 r7)
+{
+    call_battle_checkFacingOffsets_sub_8026694(A_byte_8026791, r4, r5, r6, r7);
+}
+
+Next sub_8026694(void) {
+    sub_8026694_body(R4, R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80266DE ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_checkFacingOffsets_result_sub_80266DE;
+/* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
+static inline call_battle_checkFacingOffsets_result_sub_80266DE call_battle_checkFacingOffsets_sub_80266DE(u32 r0, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_checkFacingOffsets);
+    return (call_battle_checkFacingOffsets_result_sub_80266DE){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80266DE: run battle_checkFacingOffsets against the fixed table at
+ * byte_80267AB, passing the caller's r4-r7 straight through to it. The
+ * useful results are the r0/r1 pair (and r5) that battle_checkFacingOffsets
+ * leaves behind; flags are not part of this function's contract. */
+static call_battle_checkFacingOffsets_result_sub_80266DE check_facing_default_table(u32 r4, u32 r5, u32 r6, u32 r7) {
+    return call_battle_checkFacingOffsets_sub_80266DE(A_byte_80267AB, r4, r5, r6, r7);
+}
+
+/* sub_80266DE() -> r0 r1 r5 (r4/r6/r7 preserved, nz/c/v/r2/r3 clobbered) */
+Next sub_80266DE(void) {
+    call_battle_checkFacingOffsets_result_sub_80266DE res = check_facing_default_table(R4, R5, R6, R7);
+    R0 = res.r0;
+    R1 = res.r1;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── camera_isObjectInFrontOfCamera_80269D0 ── */
 /* camera_isObjectInFrontOfCamera_80269D0: ask battle_GetObjectByteAt14_800A9E2 for a status value and reduce it to a boolean:
  * r0 = 1 if any of bits 0/2 (mask 5) is set, otherwise r0 = 0.
@@ -1298,6 +1511,247 @@ Next battleObject_chipSelectAnimTick_802770C(void) {
     R4 = out.r4;
     R5 = out.r5;
     R6 = out.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027738 ── */
+/* sub_8027738: initialize some object state at r5.
+ * Writes: [r5+0x40] = 0 (u32), [r5+0x17] = 1 (u8), [r5+0xf] = 1 (u8), [r5+2] = 4 (u16).
+ * No register outputs; the original also leaves r0 = 4, but callers ignore it. */
+static void init_object_state(u32 obj) {
+    ST32(obj + 0x40, 0);
+    ST8(obj + 0x17, 1);
+    ST8(obj + 0xF, 1);
+    ST16(obj + 2, 4);
+}
+
+Next sub_8027738(void) {
+    init_object_state(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802774C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r5; } call_SetScreenFade_result_sub_802774C;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_sub_802774C call_SetScreenFade_sub_802774C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_sub_802774C){ R3, R5 };
+}
+
+typedef struct { u32 r2; } call_sub_80302B6_result;
+/* register form: generated wrapper: cameraSetShake has no typed C interface yet */
+static inline call_sub_80302B6_result call_sub_80302B6(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(cameraSetShake);
+    return (call_sub_80302B6_result){ R2 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_sub_802774C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_802774C call_PlaySoundEffect_sub_802774C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_802774C){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Play the screen-fade + sound sequence that opens a transition, then mark
+ * the work object (r5) with state 8. Field 0x40 is cleared first, the fade
+ * is set up (SetScreenFade), a helper kicks off the transition, and three
+ * sound effects play in order. r2 flows from cameraSetShake through the three
+ * PlaySoundEffect calls (each leaves the next r2 behind); the registers the
+ * original merely leaves behind (r2-r6, r10) come straight from the last
+ * wrapper call, so nothing needs to be written back by hand. */
+static void start_screen_fade_transition(u32 work) {
+    ST32(work + 0x40, 0);                /* clear work+0x40 */
+
+    call_SetScreenFade_sub_802774C(0x64, 8);         /* fade setup: 100 / 8 */
+
+    u32 r2 = call_sub_80302B6(1, 0x28).r2;
+    r2 = call_PlaySoundEffect_sub_802774C(0x193, r2).r2;              /* 0x94 + 0xFF */
+    r2 = call_PlaySoundEffect_sub_802774C(SOUND_MENU_SELECT, r2).r2;
+    call_PlaySoundEffect_sub_802774C(0xBC, r2);
+
+    ST16(work + 2, 8);                   /* work state = 8 */
+}
+
+/* sub_802774C(r5 = work object, r10 = context for cameraSetShake)
+ * -> leaves r2 r3 r4 r5 r6 r10 as the callees left them. */
+Next sub_802774C(void) {
+    start_screen_fade_transition(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802777C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r3; } call_IsScreenFadeActive_result;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result){ R0, R1, R3 };
+}
+
+/* Advance the fade-hold counter stored at [obj+0x40].  Once it has counted up
+ * to 50 and no screen fade is currently running, write 0xC into the halfword
+ * state field at [obj+2].  While the counter is still below 50, or while a
+ * fade is active, nothing else happens this tick.
+ *
+ * r3 is untouched by this code itself; on the path that calls
+ * IsScreenFadeActive it is simply whatever that callee leaves behind, so the
+ * wrapper call takes care of it and nothing is passed through here. */
+static void tick_fade_hold_counter(u32 obj) {
+    u32 count = LD32(obj + 0x40) + 1;
+    ST32(obj + 0x40, count);
+
+    if ((s32)count >= 0x32 && call_IsScreenFadeActive().r0 == 0)
+        ST16(obj + 2, 0xC);
+}
+
+/* sub_802777C(r5 = object work area) */
+Next sub_802777C(void) {
+    tick_fade_hold_counter(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027796 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_battle_getActorEmotion_802A564_result_sub_8027796;
+/* register form: generated wrapper: battle_getActorEmotion_802A564 has no typed C interface yet */
+static inline call_battle_getActorEmotion_802A564_result_sub_8027796 call_battle_getActorEmotion_802A564_sub_8027796(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_getActorEmotion_802A564);
+    return (call_battle_getActorEmotion_802A564_result_sub_8027796){ R0, R2, R3, R4, R5, R6 };
+}
+
+typedef struct { u32 r5, r7; } call_e_loadHudBattleFormByte_result;
+/* register form: generated wrapper: e_loadHudBattleFormByte has no typed C interface yet */
+static inline call_e_loadHudBattleFormByte_result call_e_loadHudBattleFormByte(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(e_loadHudBattleFormByte);
+    return (call_e_loadHudBattleFormByte_result){ R5, R7 };
+}
+
+typedef struct { u32 r0; } call_getLocOfActiveChips_8027E1C_result_sub_8027796;
+/* register form: generated wrapper: getLocOfActiveChips_8027E1C has no typed C interface yet */
+static inline call_getLocOfActiveChips_8027E1C_result_sub_8027796 call_getLocOfActiveChips_8027E1C_sub_8027796(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return (call_getLocOfActiveChips_8027E1C_result_sub_8027796){ R0 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sprite_CopyObjTilesToVramSlot_80281D4_result;
+/* register form: generated wrapper: sprite_CopyObjTilesToVramSlot_80281D4 has no typed C interface yet */
+static inline call_sprite_CopyObjTilesToVramSlot_80281D4_result call_sprite_CopyObjTilesToVramSlot_80281D4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sprite_CopyObjTilesToVramSlot_80281D4);
+    return (call_sprite_CopyObjTilesToVramSlot_80281D4_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r5, r6; } call_sub_802A034_result;
+/* register form: generated wrapper: sub_802A034 has no typed C interface yet */
+static inline call_sub_802A034_result call_sub_802A034(void) {
+    GUEST_CALL(sub_802A034);
+    return (call_sub_802A034_result){ R0, R5, R6 };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_customScreen_ExitSequence_8028E32_result;
+/* register form: generated wrapper: customScreen_ExitSequence_8028E32 has no typed C interface yet */
+static inline call_customScreen_ExitSequence_8028E32_result call_customScreen_ExitSequence_8028E32(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(customScreen_ExitSequence_8028E32);
+    return (call_customScreen_ExitSequence_8028E32_result){ R2, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2, r3, r5; bool c, v; } call_SetScreenFade_result_sub_8027796;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_sub_8027796 call_SetScreenFade_sub_8027796(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_sub_8027796){ R1, R2, R3, R5, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Exit sequence for the chip custom screen: rotate the chip-id list, release
+ * the freed chip's sprite tiles, mark the new slot as taken and start leaving
+ * the screen.
+ *
+ * The original pushes r4/r6 and pops them at the end, so their entry values
+ * must be handed back unchanged; the adapter therefore passes them through.
+ * Every other output register (r2, r3, r5, r8-r12) is left behind by the
+ * callees themselves, so nothing needs to be computed for them here. */
+struct ExitRegs { u32 r4; u32 r6; };
+
+static struct ExitRegs custom_screen_exit(u32 battleObj, u32 r4in, u32 r6in) {
+    /* Pick the HUD form byte: 0xC when the actor's emotion is 1, else 0. */
+    u32 form = 0;
+    if (call_battle_getActorEmotion_802A564_sub_8027796(battleObj).r0 == 1)
+        form = 0xC;
+    call_e_loadHudBattleFormByte(form);
+
+    /* Rotate the chip-id list at battleObj+0x48 down one slot; its length
+     * lives at [battleObj+8]. The byte falling off the end is kept aside and
+     * written into the slot that opens up at the front. */
+    u32 count = LD8(battleObj + 8) - 1;
+    u32 slot = battleObj + 0x48 + count;
+    u32 overflow = LD8(slot);
+
+    while (count != 0) {
+        slot--;
+        u32 chipId = LD8(slot);
+        ST8(slot + 1, chipId);
+
+        /* Re-upload this chip's sprite tiles into its VRAM slot; the tile
+         * number is the low 9 bits of the chip header halfword. */
+        u32 chip = call_getLocOfActiveChips_8027E1C_sub_8027796(chipId).r0;
+        u32 tileNum = (LD16(LD32(chip + 8)) << 23) >> 23;
+        call_sprite_CopyObjTilesToVramSlot_80281D4(tileNum, count);
+        count--;
+    }
+
+    /* The vacated first slot receives the byte pushed off the end. */
+    ST8(battleObj + 0x48, overflow);
+
+    /* Free slot 0's sprite, then mark chip slot 0xB as taken (state 2). */
+    u32 sprite = call_sub_802A034().r0;
+    call_sprite_CopyObjTilesToVramSlot_80281D4(sprite, 0);
+
+    u32 slotB = call_getLocOfActiveChips_8027E1C_sub_8027796(0xB).r0;
+    ST8(slotB + 7, 2);
+
+    /* Run the custom-screen exit sequence and start the fade-out. */
+    call_customScreen_ExitSequence_8028E32(battleObj);
+    call_SetScreenFade_sub_8027796(0x60, 8);
+
+    /* HUD state 0x10 = currently leaving the custom screen. */
+    ST16(battleObj + 2, 0x10);
+
+    struct ExitRegs kept = { r4in, r6in };
+    return kept;
+}
+
+/* sub_8027796(r5 = battle object, r10 = ...) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
+Next sub_8027796(void) {
+    struct ExitRegs kept = custom_screen_exit(R5, R4, R6);
+    R4 = kept.r4;
+    R6 = kept.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8027A84 ── */
+/* Reset the battle-actor's [r5+0x40] counter to 0 and its [r5+2] halfword field to 4. */
+static void reset_actor_fields(u32 actor) {
+    ST32(actor + 0x40, 0);
+    ST16(actor + 2, 4);
+}
+
+/* sub_8027A84(r5 = actor) -> nothing */
+Next sub_8027A84(void) {
+    reset_actor_fields(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2662,6 +3116,35 @@ Next loadConstArgsAndPairTable_80288D0(void) {
     SET_FLAGS_CMP(0x70, 2);
     R1 = 0x70 - 2;
     R6 = A_byte_80288E4;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8028904 ── */
+/* sub_8028904: returns a fixed set-up for a text/message box:
+ *   r0 = 0x5B and r1 = 0x87 (box coordinates: x=91, y=135),
+ *   r6 = address of the byte table at byte_8028918 (entry data used by the caller).
+ * The constants are the tail of "mov r0,#0x58; add r0,#3" / "mov r1,#0x88; sub r1,#1". */
+
+typedef struct {
+    u32 box_x;
+    u32 box_y;
+    u32 entry_table;
+} TextBoxSetup;
+
+static TextBoxSetup get_textbox_setup(void) {
+    TextBoxSetup setup;
+    setup.box_x = 0x58 + 3;          /* 0x5B */
+    setup.box_y = 0x88 - 1;          /* 0x87 */
+    setup.entry_table = A_byte_8028918;
+    return setup;
+}
+
+/* sub_8028904(lr = return address) -> r0, r1, r6 */
+Next sub_8028904(void) {
+    TextBoxSetup setup = get_textbox_setup();
+    R0 = setup.box_x;
+    R1 = setup.box_y;
+    R6 = setup.entry_table;
     RETURN_TO_CALLER();
 }
 

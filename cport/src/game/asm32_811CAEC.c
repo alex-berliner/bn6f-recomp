@@ -363,6 +363,68 @@ Next battle_rosterIconSetShade(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sprite_playAltAnimationOnce ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline void call_sprite_setUnk0x2c_sprite_playAltAnimationOnce(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sprite_playAltAnimationOnce(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sprite_playAltAnimationOnce;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sprite_playAltAnimationOnce call_sprite_loadAnimationData_sprite_playAltAnimationOnce(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sprite_playAltAnimationOnce){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sprite_playAltAnimationOnce(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* Play the object's alternate animation exactly once.
+ *
+ * The byte at sprite+0x09 counts how many times the alternate animation has
+ * been started; once it is positive (already running), do nothing. Otherwise
+ * bump the counter and kick off the alternate animation: set the "one-shot"
+ * animation state, select animation slot 1, load its graphics data, and clear
+ * the shadow. Returns the (possibly updated by loadAnimationData) sprite
+ * pointer, which the callers expect back in r5. */
+static u32 play_alt_animation_once(u32 sprite) {
+    u32 started = LD8(sprite + 9);
+
+    if ((s32)started > 0)
+        return sprite;                      /* alternate animation already in progress */
+
+    ST8(sprite + 9, started + 1);           /* mark it as started */
+
+    call_sprite_setUnk0x2c_sprite_playAltAnimationOnce(1, sprite);      /* enable one-shot animation mode */
+    call_sprite_setAnimation_sprite_playAltAnimationOnce(1, sprite);    /* select the alternate animation slot */
+
+    call_sprite_loadAnimationData_result_sprite_playAltAnimationOnce res = call_sprite_loadAnimationData_sprite_playAltAnimationOnce(sprite);
+    sprite = res.r5;                        /* loadAnimationData may update r5 */
+
+    call_sprite_noShadow_sprite_playAltAnimationOnce(sprite);           /* this animation has no shadow sprite */
+    return sprite;
+}
+
+/* sprite_playAltAnimationOnce(r5 = sprite) -> r5 */
+Next sprite_playAltAnimationOnce(void) {
+    R5 = play_alt_animation_once(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── TestPETMenuDataFlag ── */
 /* TestPETMenuDataFlag(r0 = flag mask):
  * Tests the PET menu flags byte (eFlags200DF25) against the mask in r0 and

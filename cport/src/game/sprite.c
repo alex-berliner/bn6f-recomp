@@ -602,6 +602,36 @@ Next sprite_getFrameParameters(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8002E04 ── */
+/* sub_8002E04: read an attribute byte from one of an object's sub-entries.
+ *
+ * r5 points at an object; the high nibble of its byte at +2 selects one of
+ * up to 16 sub-entries (16 bytes each, i.e. (byte & 0xF0) + r5). The entry's
+ * byte at +3 is tested for bit 3 (a "hidden/disabled" style attribute).
+ * Returns that masked value in r0 and the entry address in r3; the NZ flags
+ * reflect the masked value, as the original's ANDS does.
+ */
+typedef struct {
+    u32 attr_bit;   /* r0: entry byte & 0x08, source of the NZ flags */
+    u32 entry_addr; /* r3: address of the selected sub-entry */
+} SubEntryAttr;
+
+static SubEntryAttr read_sub_entry_attr(u32 obj) {
+    SubEntryAttr res;
+    u32 entry = obj + (LD8(obj + 2) & 0xF0);
+    res.entry_addr = entry;
+    res.attr_bit = LD8(entry + 3) & 8;
+    return res;
+}
+
+/* sub_8002E04(r5 = object pointer) -> nz from (entry byte & 8), r3 = entry address */
+Next sub_8002E04(void) {
+    SubEntryAttr res = read_sub_entry_attr(R5);
+    R3 = res.entry_addr;
+    SET_FLAGS_NZ(res.attr_bit);
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_hasShadow ── */
 /* Object struct offsets used here (from the disassembly; the shared header
  * doesn't export them, so define them locally):

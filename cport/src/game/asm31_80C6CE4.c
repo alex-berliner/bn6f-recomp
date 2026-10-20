@@ -74,6 +74,99 @@ Next battle_objectDispatchPanelChange_80C6CFC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── spawnThunderboltObject_80C7D50 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_object_spawnType3_result_spawnThunderboltObject_80C7D50;
+/* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
+static inline call_object_spawnType3_result_spawnThunderboltObject_80C7D50 call_object_spawnType3_spawnThunderboltObject_80C7D50(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType3);
+    return (call_object_spawnType3_result_spawnThunderboltObject_80C7D50){ R4, R5, R6, R7 };
+}
+
+/* Thunderbolt spawner (080C7D50).
+ *
+ * Entry registers: r0/r1 = panel x/y, r2 = element, r3/r4 = forwarded to the
+ * spawner, r5 = object whose alliance the new object inherits, r6 = damage.
+ * object_spawnType3 spawns object type 0x1C and returns the new object in r5
+ * (0 if the pool was full). When it succeeded, the caller's position/element/
+ * damage are written into the new object, its alliance halfword is copied from
+ * the source object and header flag 0x10 is set.
+ *
+ * Exit registers: r0 = new object pointer, r1 = entry r0, r2 = entry r1,
+ * r3 = entry r2 (the saved r0-r2 come back shifted one slot through
+ * push {r0-r2,r5} / pop {r1-r3,r5}; the stores then reuse r1-r3 as scratch,
+ * so on the success path they end as 0x10, the ORR result and the alliance
+ * value). r5 is restored to the entry value. Flags: "mov r0, r5" is
+ * Thumb ADDS r0, r5, #0, so N/Z come from the pointer and C/V are cleared;
+ * on success the final ORRS only rewrites N/Z, leaving C/V at 0.
+ * r4/r6/r7 pass unchanged through the callee, which the wrapper call already
+ * reproduces, so the adapter leaves them alone. */
+#define THUNDERBOLT_TYPE   0x1C   /* object type handed to object_spawnType3 */
+#define OBJHDR_FLAG_0x10   0x10   /* header flag set on the spawned object */
+
+typedef struct {
+    u32 object;     /* r0: new object pointer, 0 if the spawn failed */
+    u32 exit_r1;
+    u32 exit_r2;
+    u32 exit_r3;
+    u32 exit_r5;    /* the caller's r5, restored by the pop */
+    u32 flags_val;  /* value the exit N/Z describe (C/V are always clear) */
+} thunderbolt_spawn_result;
+
+static thunderbolt_spawn_result spawn_thunderbolt_object(u32 panel_x, u32 panel_y,
+        u32 element, u32 spawn_arg3, u32 spawn_arg4,
+        u32 source_object, u32 damage)
+{
+    call_object_spawnType3_result_spawnThunderboltObject_80C7D50 spawned = call_object_spawnType3_spawnThunderboltObject_80C7D50(
+        THUNDERBOLT_TYPE, panel_y, element, spawn_arg3, spawn_arg4);
+    u32 object = spawned.r5;
+
+    thunderbolt_spawn_result out;
+    out.object = object;
+    out.exit_r1 = panel_x;      /* pop {r1-r3,r5}: saved caller r0-r2 come */
+    out.exit_r2 = panel_y;      /* back shifted into r1-r3 */
+    out.exit_r3 = element;
+    out.exit_r5 = source_object;
+    out.flags_val = object;     /* ADDS object, #0: N/Z from it, C/V cleared */
+
+    if (object == 0)
+        return out;             /* spawn failed: register shuffling only */
+
+    ST8(object + oBattleObject_PanelX, panel_x);
+    ST8(object + oBattleObject_PanelY, panel_y);
+    ST8(object + oBattleObject_Element, element);
+    ST32(object + oBattleObject_DamageAndStaminaDamageCounterDisabler, damage);
+
+    u32 alliance = LD16(source_object + oBattleObject_AllianceAndDirectionFlip);
+    ST16(object + oBattleObject_AllianceAndDirectionFlip, alliance);
+
+    u32 flags = LD8(object + oObjectHeader_Flags) | OBJHDR_FLAG_0x10;
+    ST8(object + oObjectHeader_Flags, flags);
+
+    out.exit_r1 = OBJHDR_FLAG_0x10;  /* mov r1, #0x10 */
+    out.exit_r2 = flags;             /* orr r2, r1 result */
+    out.exit_r3 = alliance;          /* ldrh scratch */
+    out.flags_val = flags;           /* ORRS re-set N/Z; C/V stay clear */
+    return out;
+}
+
+Next spawnThunderboltObject_80C7D50(void) {
+    thunderbolt_spawn_result res =
+        spawn_thunderbolt_object(R0, R1, R2, R3, R4, R5, R6);
+    R0 = res.object;
+    R1 = res.exit_r1;
+    R2 = res.exit_r2;
+    R3 = res.exit_r3;
+    R5 = res.exit_r5;
+    SET_FLAGS_ADD(res.flags_val, 0);  /* ADDS val, #0: N/Z from val, C/V = 0 */
+    RETURN_TO_CALLER();
+}
+
 /* ── t3_0x1f_80C8098 ── */
 /* t3_0x1f_80C8098 -- battle object task dispatcher.
  *
@@ -1080,6 +1173,120 @@ Next sub_80C9184(void) {
 
     R5 = source;
     SET_FLAGS_NZ(newObj);           /* from "mov r0, r5" (adds), tested by the branch */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C92F4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_isValidPanel_result_sub_80C92F4;
+/* register form: generated wrapper: object_isValidPanel has no typed C interface yet */
+static inline call_object_isValidPanel_result_sub_80C92F4 call_object_isValidPanel_sub_80C92F4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_isValidPanel);
+    return (call_object_isValidPanel_result_sub_80C92F4){ R0 };
+}
+
+/* register form: generated wrapper: object_highlightPanel has no typed C interface yet */
+static inline void call_object_highlightPanel_sub_80C92F4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_highlightPanel);
+}
+
+typedef struct { u32 r0, r2, r3, r5, r7; } call_object_spawnCollisionRegion_result_sub_80C92F4;
+/* register form: generated wrapper: object_spawnCollisionRegion has no typed C interface yet */
+static inline call_object_spawnCollisionRegion_result_sub_80C92F4 call_object_spawnCollisionRegion_sub_80C92F4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_spawnCollisionRegion);
+    return (call_object_spawnCollisionRegion_result_sub_80C92F4){ R0, R2, R3, R5, R7 };
+}
+
+/* Subroutine at 0x080C92F4.
+ *
+ * Uses the caller's object id (r0) to pick one entry out of a per-alliance
+ * table; each entry holds two signed (dx,dy) panel offsets.  For each of the
+ * two offsets:
+ *   - compute the world panel next to the battle object (r5),
+ *   - if it is a valid panel, highlight it and spawn a collision region
+ *     carrying the object's element, damage data and the timer from r1,
+ *     then store the timer into the spawned object.
+ *
+ * Register quirks of the original:
+ *   - it saves r4/r6/r7 on entry, but the "save the timer" slot at
+ *     [sp,#4] lands exactly on the saved r4, so r4 comes back as the
+ *     timer argument (r1), NOT as the r4 the caller passed in;
+ *   - r6 and r7 are restored normally (r6 additionally survives the
+ *     spawn call via its own push/pop pair);
+ *   - r2 ends up as the second spawn's r2, or the last checked panel x
+ *     when that panel was invalid;
+ *   - r5 is left untouched.
+ */
+typedef struct {
+    u32 r2;
+    u32 r4;
+    u32 r6;
+    u32 r7;
+} panel_attack_result;
+
+static panel_attack_result panel_attack(u32 object_id, u32 timer,
+                                        u32 battle_obj,
+                                        u32 r6_in, u32 r7_in) {
+    /* byte_80C93C4[alliance*4 + object_id] selects a 4-byte (dx0,dy0,dx1,dy1)
+     * entry in the signed offset table at byte_80C93B0. */
+    u32 alliance  = LD8(battle_obj + oBattleObject_Alliance);
+    u32 pair_slot = LD8(A_byte_80C93C4 + alliance * 4 + object_id);
+    u32 pair_base = A_byte_80C93B0 + pair_slot * 4;
+
+    u32 r2_out = 0;
+
+    for (s32 i = 0; i <= 1; i++) {
+        s32 dx = LDS8(pair_base + i * 2);
+        s32 dy = LDS8(pair_base + i * 2 + 1);
+
+        u32 panel_x = LD8(battle_obj + oBattleObject_PanelX);
+        u32 panel_y = LD8(battle_obj + oBattleObject_PanelY);
+        u32 world_x = (u32)(dx + (s32)panel_x);
+        u32 world_y = (u32)(dy + (s32)panel_y);
+
+        r2_out = panel_x;   /* r2 still holds the panel x if the check fails */
+
+        if (call_object_isValidPanel_sub_80C92F4(world_x, world_y).r0 == 0)
+            continue;
+
+        call_object_highlightPanel_sub_80C92F4(world_x, world_y);
+
+        u32 element = LD8(battle_obj + oBattleObject_Element);
+        u32 damage  = LD32(battle_obj + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+
+        call_object_spawnCollisionRegion_result_sub_80C92F4 region =
+            call_object_spawnCollisionRegion_sub_80C92F4(world_x, world_y, element, 0,
+                                             0x4050201, battle_obj, damage, 3);
+        ST16(region.r0 + oBattleObject_Timer, timer);
+        r2_out = region.r2;
+    }
+
+    /* The pop restores r4 from the slot the timer was stored over. */
+    panel_attack_result out = { r2_out, timer, r6_in, r7_in };
+    return out;
+}
+
+/* sub_80C92F4(r0 = object id, r1 = timer, r5 = battle object)
+ * -> r2, r4 (= timer), r5, r6, r7 (r6/r7 unchanged). */
+Next sub_80C92F4(void) {
+    panel_attack_result res = panel_attack(R0, R1, R5, R6, R7);
+    R2 = res.r2;
+    R4 = res.r4;
+    R5 = R5;            /* untouched by the original */
+    R6 = res.r6;
+    R7 = res.r7;
     RETURN_TO_CALLER();
 }
 
@@ -2931,6 +3138,22 @@ static u32 spawn_collision_for_object(u32 obj) {
 Next battle_spawnCollisionForObject_80CB0AE(void) {
     u32 region = spawn_collision_for_object(R5);
     SET_FLAGS_NZ(region);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80CBAF2 ── */
+/* Zero the halfword counter at offset 0x24 of the object pointed to by r0.
+ * The function exists only for this store; r5 is pushed/popped and so comes
+ * out unchanged, which the callers rely on (it is listed as an output that
+ * is passed straight through). */
+static u32 clear_object_counter_24(u32 object, u32 r5_in) {
+    ST16(object + 0x24, 0);
+    return r5_in;
+}
+
+/* sub_80CBAF2(r0 = object address) -> r5 (unchanged incoming value) */
+Next sub_80CBAF2(void) {
+    R5 = clear_object_counter_24(R0, R5);
     RETURN_TO_CALLER();
 }
 

@@ -241,6 +241,34 @@ Next object_setAnimation(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_800F2F0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_sub_800F2FC_result;
+/* register form: generated wrapper: sub_800F2FC has no typed C interface yet */
+static inline call_sub_800F2FC_result call_sub_800F2FC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_800F2FC);
+    return (call_sub_800F2FC_result){ R2, R3, R4, R5, R6, R7 };
+}
+
+/* sub_800F2F0 is a thin trampoline: from the battle object whose AI is running
+ * (r5), fetch battleObject->aiData->battleObject and tail-call sub_800F2FC
+ * with that object in r0, r5 passed through untouched. Callers only read what
+ * sub_800F2FC leaves behind in r3/r4/r5, so nothing needs to be copied here. */
+static void follow_ai_battle_object(u32 selfObject)
+{
+    u32 aiData      = LD32(selfObject + oBattleObject_AIDataPtr);
+    u32 battleObject = LD32(aiData + oAIData_BattleObjectPtr);
+
+    call_sub_800F2FC(battleObject, selfObject);
+}
+
+Next sub_800F2F0(void) {
+    follow_ai_battle_object(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_SetObjectAIDataField78_800F318 ── */
 /* battle_SetObjectAIDataField78_800F318(r0 = value, r5 = battle object):
  * Store r0 into the object's AI data at offset oAIData_BattleObjectPtr, if it has any. */
@@ -1519,6 +1547,76 @@ Next nullsub_42(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8010FD8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_battle_spawnObject56LinkedToOwner_80C44A8_result;
+/* register form: generated wrapper: battle_spawnObject56LinkedToOwner_80C44A8 has no typed C interface yet */
+static inline call_battle_spawnObject56LinkedToOwner_80C44A8_result call_battle_spawnObject56LinkedToOwner_80C44A8(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(battle_spawnObject56LinkedToOwner_80C44A8);
+    return (call_battle_spawnObject56LinkedToOwner_80C44A8_result){ R0, R1, R2, R3, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Results of spawning the two companion objects: the registers the original
+ * leaves behind in r0/r3/r5/r6/r7 after the second spawn, plus r4 carried
+ * through unchanged (the original pushes/pops it around everything). */
+typedef struct {
+    u32 r0;
+    u32 r3;
+    u32 r4;
+    u32 r5;
+    u32 r6;
+    u32 r7;
+} SpawnPairResult;
+
+/* Spawn the two helper objects attached to a battle object and record their
+ * pointers in the owner's fields: the type-0x14/slot-6 object goes into
+ * RelatedObject2Ptr, the type-0x28/slot-7 object into ExtraVars. Both spawns
+ * pack the parent id (tag) into bits 16-23 of the layout word r4. Whatever
+ * the first spawn returns in r1/r3/r5 is fed into the second call, exactly
+ * as the original's registers carry over. */
+static SpawnPairResult spawn_paired_objects(u32 arg1, u32 tag, u32 arg3, u32 r4, u32 owner) {
+    /* Kind 0x14, slot 6 -> owner->RelatedObject2Ptr. */
+    call_battle_spawnObject56LinkedToOwner_80C44A8_result related =
+        call_battle_spawnObject56LinkedToOwner_80C44A8(
+            arg1, 0x14000000u, arg3,
+            0x14000000u + (tag << 16) + 6, owner);
+    ST32(related.r5 + oBattleObject_RelatedObject2Ptr, related.r0);
+
+    /* Kind 0x28, slot 7 -> owner->ExtraVars. */
+    call_battle_spawnObject56LinkedToOwner_80C44A8_result extra =
+        call_battle_spawnObject56LinkedToOwner_80C44A8(
+            related.r1, 0x28000000u, related.r3,
+            0x28000000u + (tag << 16) + 7, related.r5);
+    ST32(extra.r5 + oBattleObject_ExtraVars, extra.r0);
+
+    SpawnPairResult out;
+    out.r0 = extra.r0;
+    out.r3 = extra.r3;
+    out.r4 = r4; /* preserved across both spawns by the original */
+    out.r5 = extra.r5;
+    out.r6 = extra.r6;
+    out.r7 = extra.r7;
+    return out;
+}
+
+/* sub_8010FD8(r1 = spawn arg, r2 = parent tag, r3 = spawn arg, r5 = owner)
+ * -> r0 = ExtraVars pointer; r3/r4/r5/r6/r7 left as the original leaves them. */
+Next sub_8010FD8(void) {
+    SpawnPairResult res = spawn_paired_objects(R1, R2, R3, R4, R5);
+    R0 = res.r0;
+    R3 = res.r3;
+    R4 = res.r4;
+    R5 = res.r5;
+    R6 = res.r6;
+    R7 = res.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_getObjectNameID_8011020 ── */
 /* battle_getObjectNameID_8011020: forward the battle object's NameID (in R5) to battle_callActorActionHandler_801102A. */
 Next battle_getObjectNameID_8011020(void) {
@@ -1550,6 +1648,70 @@ Next battle_object_detachRelatedObject2_80111B8(void) {
         SET_FLAGS_NZ(R0);
     }
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80111DC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_sub_80C4204_result;
+/* register form: generated wrapper: battle_setActionPhase8 has no typed C interface yet */
+static inline call_sub_80C4204_result call_sub_80C4204(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_setActionPhase8);
+    return (call_sub_80C4204_result){ R1 };
+}
+
+/* Release the battle object's "related object 2": run its cleanup routine
+ * (battle_setActionPhase8) and clear the pointer, but only if one is actually linked.
+ * The pointer lives at oBattleObject_RelatedObject2Ptr in the battle object
+ * that the caller passes in r5. */
+static void clear_related_object(u32 battleObject)
+{
+    u32 related = LD32(battleObject + oBattleObject_RelatedObject2Ptr);
+
+    if (related != 0) {
+        /* battle_setActionPhase8 returns its result in r1; running it through the
+         * wrapper leaves that value in R1 exactly as the original does. */
+        (void)call_sub_80C4204(related);
+        ST32(battleObject + oBattleObject_RelatedObject2Ptr, 0);
+    }
+}
+
+/* sub_80111DC(r5 = battle object) -> r1 (left by battle_setActionPhase8 on the call path,
+ * untouched otherwise); flags and r0 are clobbered and unused by callers. */
+Next sub_80111DC(void)
+{
+    clear_related_object(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8011200 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_sub_80C44C8_result;
+/* register form: generated wrapper: battle_objectSetStateActionPhase8 has no typed C interface yet */
+static inline call_sub_80C44C8_result call_sub_80C44C8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_objectSetStateActionPhase8);
+    return (call_sub_80C44C8_result){ R1 };
+}
+
+/* Release the battle object's RelatedObject2 (its current linked partner).
+ * If the pointer is set, run the partner's cleanup through battle_objectSetStateActionPhase8 and
+ * clear the pointer; otherwise leave everything alone.
+ * Returns r1 as battle_objectSetStateActionPhase8 left it (the caller's r1 when nothing was released). */
+static u32 release_related_object_sub_8011200(u32 r1_in, u32 object) {
+    u32 related = LD32(object + oBattleObject_RelatedObject2Ptr);
+    if (related == 0)
+        return r1_in;
+
+    u32 r1_out = call_sub_80C44C8(related).r1;
+    ST32(object + oBattleObject_RelatedObject2Ptr, 0);
+    return r1_out;
+}
+
+/* sub_8011200(r5 = battle object, r1 = passthrough) -> r1 */
+Next sub_8011200(void) {
+    R1 = release_related_object_sub_8011200(R1, R5);
     RETURN_TO_CALLER();
 }
 
@@ -1615,6 +1777,137 @@ static void dispatch_mode(u32 mode) {
 
 Next sub_8011268(void) {
     dispatch_mode(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8011312 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_8011344_result;
+/* register form: generated wrapper: battle_spawnObj56StoreRelatedObject2 has no typed C interface yet */
+static inline call_sub_8011344_result call_sub_8011344(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(battle_spawnObj56StoreRelatedObject2);
+    return (call_sub_8011344_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8011312 is a pure trampoline: it loads the constant 0x105 into r0 and
+ * tail-calls battle_spawnObj56StoreRelatedObject2, passing r1, r2, r3 and r5 through untouched.
+ * Every output of this routine (r0-r7, the N/Z/C/V flags and lr) is whatever
+ * battle_spawnObj56StoreRelatedObject2 leaves behind, so nothing needs to be passed back explicitly. */
+static void tail_call_sub_8011344(u32 r1, u32 r2, u32 r3, u32 r5)
+{
+    call_sub_8011344(0x105, r1, r2, r3, r5);
+}
+
+/* sub_8011312(r1, r2, r3, r5) -> r0-r7, nz, c, v, lr (all from battle_spawnObj56StoreRelatedObject2) */
+Next sub_8011312(void)
+{
+    tail_call_sub_8011344(R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8011330 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_spawnObj56StoreRelatedObject2_result;
+/* register form: generated wrapper: battle_spawnObj56StoreRelatedObject2 has no typed C interface yet */
+static inline call_battle_spawnObj56StoreRelatedObject2_result call_battle_spawnObj56StoreRelatedObject2(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(battle_spawnObj56StoreRelatedObject2);
+    return (call_battle_spawnObj56StoreRelatedObject2_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8011330: spawn a "related object" via battle_spawnObj56StoreRelatedObject2,
+ * passing 0x10E as the first argument (an object/behavior id) and forwarding the
+ * caller's r1, r2, r3 and r5 arguments unchanged. The spawned object's registers
+ * (r0-r7) are whatever the callee leaves behind; this stub only supplies r0. */
+static void spawn_related_object_fwd(u32 arg1, u32 arg2, u32 arg3, u32 arg5) {
+    call_battle_spawnObj56StoreRelatedObject2(0x10E, arg1, arg2, arg3, arg5);
+}
+
+/* sub_8011330(r1, r2, r3, r5) -> r4-r7 from the callee */
+Next sub_8011330(void) {
+    spawn_related_object_fwd(R1, R2, R3, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8011384 ── */
+/* Battle-object "detach related object" dispatch: the type index in r0 selects one
+ * of the handlers in the table at off_8011398 (27 entries), which is then called
+ * with the caller's context still in place (notably r5, the object). */
+
+/* register form: the handler is entered through a runtime address (mov lr, pc / bx r0)
+ * and leaves its results in r4-r12, which no typed wrapper exposes; those registers
+ * must reach this function's caller exactly as the handler left them, which cannot
+ * be expressed as a typed return value. */
+static void enter_detach_handler(u32 handler) {
+    R0 = handler;          /* the original enters the handler with r0 = handler address */
+    R1 = A_off_8011398;    /* ...and r1 = the dispatch table base */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Dispatch on the object type. There is no bounds check: entries past the end of
+ * the table read whatever bytes follow it, exactly as the original does. */
+static void detach_related_object_dispatch(u32 type_index) {
+    u32 handler = LD32(A_off_8011398 + (type_index << 2));
+    enter_detach_handler(handler);
+}
+
+/* sub_8011384(r0 = type index, r5 = object): calls the selected handler and
+ * propagates whatever it leaves in r4-r12 back to the caller. */
+Next sub_8011384(void) {
+    detach_related_object_dispatch(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801140E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_battle_setObjectStateActionPhase8_result;
+/* register form: generated wrapper: battle_setObjectStateActionPhase8 has no typed C interface yet */
+static inline call_battle_setObjectStateActionPhase8_result call_battle_setObjectStateActionPhase8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_setObjectStateActionPhase8);
+    return (call_battle_setObjectStateActionPhase8_result){ R1 };
+}
+
+/* Clearing a battle object's "related object" link:
+ * if the object points at a related object, run that object's action-phase-8
+ * step, then drop the link (RelatedObject2Ptr = NULL). */
+
+/* What the original leaves behind: r1 (the callee's result, or the caller's
+ * value untouched when there was no related object) and the Z/C/V state of
+ * the pointer compare (C set, V clear, since the compare is against 0). */
+typedef struct {
+    u32 related;   /* value that was read from RelatedObject2Ptr */
+    u32 r1;        /* r1 as the original leaves it */
+} release_link_result;
+
+static release_link_result release_related_object_sub_801140E(u32 self, u32 r1) {
+    release_link_result res;
+    u32 related = LD32(self + oBattleObject_RelatedObject2Ptr);
+
+    if (related != 0) {
+        r1 = call_battle_setObjectStateActionPhase8(related).r1;
+        ST32(self + oBattleObject_RelatedObject2Ptr, 0);
+    }
+
+    res.related = related;
+    res.r1 = r1;
+    return res;
+}
+
+/* sub_801140E(r5 = battle object) -> r1, flags C/V from the pointer compare */
+Next sub_801140E(void) {
+    release_link_result res = release_related_object_sub_801140E(R5, R1);
+    R1 = res.r1;
+    SET_FLAGS_CMP(res.related, 0);
     RETURN_TO_CALLER();
 }
 
@@ -1785,6 +2078,42 @@ static u32 clear_attack_vars(u32 vars) {
 Next ai_clearAttackVars(void) {
     R0 = clear_attack_vars(R7);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── spoutcrossBPwrAtk_init_8011C5E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; bool c, v; } call_battle_beastPwrAtk_addScaledBase_8012642_result;
+/* register form: generated wrapper: battle_beastPwrAtk_addScaledBase_8012642 has no typed C interface yet */
+static inline call_battle_beastPwrAtk_addScaledBase_8012642_result call_battle_beastPwrAtk_addScaledBase_8012642(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_beastPwrAtk_addScaledBase_8012642);
+    return (call_battle_beastPwrAtk_addScaledBase_8012642_result){ R0, R1, R2, R3, R4, R5, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initializes the AI state for the SpoutCross beast-power attack:
+ * computes the attack's damage via battle_beastPwrAtk_addScaledBase
+ * (base 20, power modifier 10, caller's power level in r5), stores it
+ * with the remaining attack parameters into the r7 attack-vars block,
+ * and returns the attack id 0x25. r5 passes through the damage helper,
+ * which leaves it as the updated power level for the caller. */
+static void spoutcrossBPwrAtk_init(u32 vars, u32 powerLevel) {
+    call_battle_beastPwrAtk_addScaledBase_8012642_result scaled =
+        call_battle_beastPwrAtk_addScaledBase_8012642(0x14, 0xA, powerLevel);
+
+    ST16(vars + oAIAttackVars_Damage, scaled.r0);
+    ST16(vars + oAIAttackVars_AttackBoost, 0);
+    ST16(vars + oAIAttackVars_ExtraDamage, 0x94);
+    ST8(vars + oAIAttackVars_AiDifficultyTier, 2);
+    ST32(vars + oAIAttackVars_AttackBoost2, 0xD);
+    ST8(vars + oAIAttackVars_InitFlag, 2);
+}
+
+Next spoutcrossBPwrAtk_init_8011C5E(void) {
+    spoutcrossBPwrAtk_init(R7, R5);
+    R0 = 0x25;
     RETURN_TO_CALLER();
 }
 

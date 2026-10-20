@@ -79,6 +79,37 @@ Next deliverCutsceneMail_8098BE8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8098CCC ── */
+/* Select one entry of the table at off_8098C28 (0x14-byte records) using the
+ * index byte in the work area, copy its fixed fields into the work area, and
+ * if the record names a partner character, write that id plus the 0xFF
+ * terminator into the partner state block (state+0x3C).
+ * Always ends with r0 = 0 and Z set; r2 keeps the partner state pointer. */
+static u32 load_cross_entry(u32 work, u32 state) {
+    u32 entry = A_off_8098C28 + 0x14 * (u32)LD8(work + 4);
+    ST32(work + 0x34, entry);
+
+    ST8(work + 5, LD8(entry + 0x13));
+    ST8(work + 6, LD8(entry + 0x10));
+    ST8(work + 7, LD8(entry + 0x11));
+
+    u32 partner = LD32(state + 0x3C);
+    u8 partner_id = LD8(entry + 0x12);
+    if (partner_id != 0xFF) {
+        ST8(partner + 0x16, partner_id);
+        ST8(partner + 0x17, 0xFF);
+    }
+    return partner;
+}
+
+/* sub_8098CCC(r5 = work area, r10 = state block) -> nz, r2, r0 = 0 */
+Next sub_8098CCC(void) {
+    R2 = load_cross_entry(R5, R10);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8098E24 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool c, v; } call_SetEventFlag_result_sub_8098E24;
@@ -289,6 +320,41 @@ done:
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809ADA8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_pet_returnToPetMenu_result;
+/* register form: generated wrapper: pet_returnToPetMenu has no typed C interface yet */
+static inline call_pet_returnToPetMenu_result call_pet_returnToPetMenu(u32 r4, u32 r5, u32 r6, u32 r7, u32 r9, u32 r11, u32 r12) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(pet_returnToPetMenu);
+    return (call_pet_returnToPetMenu_result){ R2, R3, R8, R9, R10, R11, R12 };
+}
+
+/* Forward everything to pet_returnToPetMenu and then report failure/success
+ * as 0 in r0, like the original ("bl pet_returnToPetMenu; mov r0, #0").
+ * pet_returnToPetMenu's own register results (r2, r3, r8-r12) are already in
+ * the guest registers after the wrapper call, and r4-r7 are preserved, so
+ * only r0 and the flags need to be produced here. */
+static u32 return_to_pet_menu(u32 r4, u32 r5, u32 r6, u32 r7, u32 r9, u32 r11, u32 r12) {
+    (void)call_pet_returnToPetMenu(r4, r5, r6, r7, r9, r11, r12);
+    return 0;
+}
+
+/* sub_809ADA8: leave the current screen and return to the PET menu.
+ * inputs: r4 r5 r6 r7 r9 r10 r11 r12 (r10 is kept as on entry by the wrapper)
+ * outputs: nz from the returned 0; r2 r3 r8-r12 come from pet_returnToPetMenu. */
+Next sub_809ADA8(void) {
+    R0 = return_to_pet_menu(R4, R5, R6, R7, R9, R11, R12);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_809AF7C ── */
 /* sub_809AF7C: Prepare the overworld player for the CopyBot tutorial cutscene.
  *
@@ -431,6 +497,43 @@ Next ow_periodicObjectSpawner(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809C7FC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result;
+/* register form: generated wrapper: owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188 has no typed C interface yet */
+static inline call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188);
+    return (call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result){ R3 };
+}
+
+/* Per-frame player coordinate update (an overworld object callback).
+ * r5 holds the player object; the word at obj+0x70 points at its coordinate
+ * block, whose three words (offsets +0, +4, +8) are pushed through the shared
+ * helper that copies them to the "next" coords, writes them back and then
+ * applies them again through its own indirection.
+ *
+ * Everything the original leaves behind for its callers is already in place
+ * after the helper call: r2/r3 are the helper's leftovers and r4-r7 are
+ * untouched (the original's push/pop around the call restores them anyway),
+ * so only the flags need to be set here (mov r0,#0 at the end clears N and
+ * sets Z; r0 itself is a clobber and callers never read it). */
+static void ow_run_player_coord_update(u32 player) {
+    u32 coords = LD32(player + 0x70);
+    call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188(
+        LD32(coords + 0),
+        LD32(coords + 4),
+        LD32(coords + 8));
+}
+
+Next sub_809C7FC(void) {
+    ow_run_player_coord_update(R5);
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── owPlayer_setFixedAnimationFromLookup ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool c, v; } call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result;
@@ -481,6 +584,45 @@ Next owPlayer_setFixedAnimationFromLookup(void) {
     R5 = out.r5;
     R7 = out.r7;
     SET_FLAGS_NZ(0);   /* mov r0, #0: Z set, N clear */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809C830 ── */
+/* sub_809C830 -- copy one lookup byte into the work object.
+ *
+ * The state block pointed to by [r5+0x70] holds two selector bytes:
+ *   byte 0xC picks one of the four words in the table at off_809C850,
+ *   byte 0xD indexes into the word that was picked.
+ * The byte read that way is stored at [r5+5].
+ *
+ * Register contract: r5 in (work object); r2 left holding the selected
+ * table word and r3 the state pointer for the caller; r4-r7 restored;
+ * flags end as "mov r0,#0" leaves them (Z set, N clear); r0/r1 scratch.
+ */
+struct Sub809C830Result {
+    u32 r2;   /* selected table word */
+    u32 r3;   /* state pointer loaded from [r5+0x70] */
+};
+
+static struct Sub809C830Result lookup_work_byte(u32 obj) {
+    struct Sub809C830Result out;
+
+    u32 state = LD32(obj + 0x70);
+    u32 table_word = LD32(A_off_809C850 + (LD8(state + 0xC) << 2));
+    u32 index = LD8(state + 0xD);
+
+    ST8(obj + 5, LD8(table_word + index));
+
+    out.r2 = table_word;
+    out.r3 = state;
+    return out;
+}
+
+Next sub_809C830(void) {
+    struct Sub809C830Result out = lookup_work_byte(R5);
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_NZ(0);
     RETURN_TO_CALLER();
 }
 
@@ -538,6 +680,32 @@ Next ow_applyCutsceneDirOffset(void) {
     R2 = res.y;
     R3 = res.z;
     R5 = res.actor;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809C940 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool c, v; } call_ClearEventFlag_result_sub_809C940;
+/* register form: generated wrapper: ClearEventFlag has no typed C interface yet */
+static inline call_ClearEventFlag_result_sub_809C940 call_ClearEventFlag_sub_809C940(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ClearEventFlag);
+    return (call_ClearEventFlag_result_sub_809C940){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Clear every event flag in the cutscene state's entry flag bitfield.
+ * Takes and returns r5, which the original preserves; r10 is read by
+ * ClearEventFlag and stays as on entry. */
+static u32 clear_cutscene_entry_flags(u32 r5) {
+    u32 cutsceneState = LD32(A_eCutsceneState + 0x70);
+    u32 entryFlagBitfield = LD32(cutsceneState + 0x14);
+
+    call_ClearEventFlag_sub_809C940((u16)entryFlagBitfield);
+    return r5;
+}
+
+Next sub_809C940(void) {
+    R5 = clear_cutscene_entry_flags(R5);
     RETURN_TO_CALLER();
 }
 

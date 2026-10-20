@@ -261,6 +261,17 @@ Next entity_getActionIndex_8029ADA(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8029B16 ── */
+/* sub_8029B16: stub that just returns 0 in r0. */
+static u32 sub_8029B16_body(void) {
+    return 0;
+}
+
+Next sub_8029B16(void) {
+    R0 = sub_8029B16_body();
+    RETURN_TO_CALLER();
+}
+
 /* ── battleTutorial_first_checkTextStep_8029B1C ── */
 /*
  * First-battle tutorial chatbox trigger (r5 = tutorial work struct):
@@ -602,6 +613,21 @@ Next sub_802A00C(void) {
 
     R0 = match;
     SET_FLAGS_ADD(R0, 0); /* N/Z from result, C = 0, V = 0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802A034 ── */
+/* sub_802A034 is a trivial constant getter: it saves every register, loads the
+ * fixed value 0x13F into r0, restores everything, and returns. Net effect:
+ * r0 = 0x13F, every other register (including r5/r6, which callers treat as
+ * outputs) is left exactly as it was on entry. */
+static u32 get_0x13F(void) {
+    return 0x13F;
+}
+
+/* sub_802A034() -> r0 = 0x13F, all other registers preserved */
+Next sub_802A034(void) {
+    R0 = get_0x13F();
     RETURN_TO_CALLER();
 }
 
@@ -1030,6 +1056,43 @@ Next battle_getActorEmotion_802A564(void) {
     else
         GUEST_CALL(sub_8015B5C);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_802A57E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; } call_battle_getActorEmotion_802A564_result_sub_802A57E;
+/* register form: generated wrapper: battle_getActorEmotion_802A564 has no typed C interface yet */
+static inline call_battle_getActorEmotion_802A564_result_sub_802A57E call_battle_getActorEmotion_802A564_sub_802A57E(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_getActorEmotion_802A564);
+    return (call_battle_getActorEmotion_802A564_result_sub_802A57E){ R0, R1, R2, R3, R4, R5, R6 };
+}
+
+/* Check whether the actor's battle emotion allows some action.
+ *
+ * Calls battle_getActorEmotion_802A564 (r5 = actor) and decides from the
+ * emotion id in r0 and a secondary value in r1:
+ *   - emotion 5                                  -> 0
+ *   - emotion 1 with byte_20349B0 clear          -> 0
+ *   - otherwise, 1 iff r1 < 0xB (signed), else 0
+ * Returns the 0/1 result in r0; r3-r6 are left exactly as the callee left
+ * them (the wrapper call already put them there). */
+static u32 check_emotion_ok(u32 actor) {
+    call_battle_getActorEmotion_802A564_result_sub_802A57E em = call_battle_getActorEmotion_802A564_sub_802A57E(actor);
+
+    if (em.r0 == 5)
+        return 0;
+    if (em.r0 == 1 && LD8(A_byte_20349B0) == 0)
+        return 0;
+
+    /* Emotion 1 with the flag set, or any emotion other than 0/5:
+     * allowed only while the counter in r1 is still below 0xB. */
+    return (s32)em.r1 < 0xB ? 1u : 0u;
+}
+
+Next sub_802A57E(void) {
+    R0 = check_emotion_ok(R5);
     RETURN_TO_CALLER();
 }
 

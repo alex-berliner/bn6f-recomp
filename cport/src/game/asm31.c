@@ -223,6 +223,21 @@ Next battleObject_stepSprite_80B86C4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80B87A6 ── */
+/* Store the value 8 at offset +8 of the object pointed to by r0 (an ID/state
+ * field reset), leaving the stored value in r1 and the N/Z flags from it. */
+static u32 set_field_to_8(u32 object) {
+    ST32(object + 8, 8);
+    return 8;
+}
+
+/* sub_80B87A6(r0 = object) -> r1 = 8, nz from the stored value */
+Next sub_80B87A6(void) {
+    R1 = set_field_to_8(R0);
+    SET_FLAGS_NZ(R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_copyCoordsFromRelatedObject_80B8800 ── */
 /* Copy the three position/coordinate words (offset 0x34) from the related
  * battle object into this one. r5 = pointer to this battle object. */
@@ -456,6 +471,20 @@ static u32 battle_initObjectDefaultSprite_impl(u32 obj) {
 /* battle_initObjectDefaultSprite: (r5 = battle object) -> r5 */
 Next battle_initObjectDefaultSprite(void) {
     R5 = battle_initObjectDefaultSprite_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80B8A0A ── */
+/* Reset a battle object's state-action phase to 8 (marks the phase initialized),
+ * unless the object pointer is null. */
+static void reset_battle_object_phase_sub_80B8A0A(u32 object) {
+    if (object != 0)
+        ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 8);
+}
+
+/* sub_80B8A0A(r0 = battle object pointer) -> nothing */
+Next sub_80B8A0A(void) {
+    reset_battle_object_phase_sub_80B8A0A(R0);
     RETURN_TO_CALLER();
 }
 
@@ -808,6 +837,43 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
        the final ORRS only sets N/Z, so C stays 0 from that ADDS. */
     cpu.c = res.c_flag;
     cpu.v = 0;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80B8E58 ── */
+/* Clear a battle object's state-action phase counter, marking the current
+ * phase as not yet initialized. Does nothing if the object pointer is NULL.
+ *
+ * Register behaviour of the original:
+ *   - object == NULL: only "tst r0, r0" runs, so r1 is left unchanged and the
+ *     flags come from r0 (which is 0 here, since the branch was taken).
+ *   - object != NULL: r1 = 8, the value is stored, and the flags come from
+ *     "mov r1, #8" (i.e. from the value 8).
+ * The flag-source value is returned alongside r1 so the adapter can set the
+ * flags without branching. */
+typedef struct {
+    u32 r1;        /* value the original leaves in r1 */
+    u32 flag_val;  /* value whose N/Z the original's last flag-setting op produced */
+} PhaseResetResult;
+
+static PhaseResetResult reset_battle_object_phase_sub_80B8E58(u32 obj, u32 r1_in) {
+    PhaseResetResult result;
+    if (obj == 0) {
+        result.r1 = r1_in;   /* r1 untouched on the skip path */
+        result.flag_val = 0; /* tst r0, r0 with r0 == 0 */
+    } else {
+        ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 8);
+        result.r1 = 8;
+        result.flag_val = 8; /* mov r1, #8 */
+    }
+    return result;
+}
+
+/* sub_80B8E58(r0 = battle object) -> nz, r1 */
+Next sub_80B8E58(void) {
+    PhaseResetResult result = reset_battle_object_phase_sub_80B8E58(R0, R1);
+    R1 = result.r1;
+    SET_FLAGS_NZ(result.flag_val);
     RETURN_TO_CALLER();
 }
 
@@ -2810,6 +2876,18 @@ Next object_setFlag(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80C46C6 ── */
+/* Mark a battle object's 13th extra var as 1 (likely a "has acted"/reset flag). */
+static void set_object_extra_flag(u32 object) {
+    ST32(object + oBattleObject_ExtraVars + 0xC, 1);
+}
+
+/* sub_80C46C6(r0 = battle object) */
+Next sub_80C46C6(void) {
+    set_object_extra_flag(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_getDamageElementOrPalette_80C46CC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_getPalette has no typed C interface yet */
@@ -3862,6 +3940,72 @@ Next battleObject_beastOutUpdate_80C5654(void) {
     beast_out_result res = beast_out_update(R4, R5, R7, R8);
     R5 = res.r5;
     R8 = res.r8;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80C579E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r5, r6, r7; } call_object_spawnType3_result_sub_80C579E;
+/* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
+static inline call_object_spawnType3_result_sub_80C579E call_object_spawnType3_sub_80C579E(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType3);
+    return (call_object_spawnType3_result_sub_80C579E){ R1, R2, R3, R5, R6, R7 };
+}
+
+/* Result of spawning and initializing the object: the values the caller reads
+ * back in r1/r2, plus the caller's own r5 passed through untouched. */
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 r5;
+} SpawnType5Result;
+
+/* Spawn a type-5 battle object (object_spawnType3 with kind 5 and the four
+ * caller-supplied spawn parameters) and, if one actually appeared, initialize
+ * it from the source object:
+ *   - copy the source's alliance/direction-flip halfword,
+ *   - set its element to 4,
+ *   - store the damage/stamina-counter value and the related-object link.
+ * When the spawn fails (null object pointer), the initialization is skipped
+ * and r1 keeps whatever the spawner left in it; r2 always comes from the
+ * spawner. */
+static SpawnType5Result spawn_type5_from_object(u32 param1, u32 param2, u32 param3, u32 param4,
+                                                u32 sourceObject, u32 damage, u32 relatedObject)
+{
+    SpawnType5Result result;
+
+    call_object_spawnType3_result_sub_80C579E spawned =
+        call_object_spawnType3_sub_80C579E(5, param1, param2, param3, param4);
+
+    u32 object = spawned.r5;
+    if (object != 0) {
+        ST16(object + oBattleObject_AllianceAndDirectionFlip,
+             LD16(sourceObject + oBattleObject_AllianceAndDirectionFlip));
+        ST8(object + oBattleObject_Element, 4);
+        ST32(object + oBattleObject_DamageAndStaminaDamageCounterDisabler, damage);
+        ST32(object + oBattleObject_RelatedObject1Ptr, relatedObject);
+        result.r1 = 4;
+    } else {
+        result.r1 = spawned.r1;
+    }
+
+    result.r2 = spawned.r2;
+    result.r5 = sourceObject;
+    return result;
+}
+
+/* sub_80C579E(r1..r4 = spawn parameters, r5 = source object,
+ *             r6 = damage value, r7 = related object) -> r1 r2 r5 */
+Next sub_80C579E(void) {
+    SpawnType5Result result = spawn_type5_from_object(R1, R2, R3, R4, R5, R6, R7);
+    R1 = result.r1;
+    R2 = result.r2;
+    R5 = result.r5;
     RETURN_TO_CALLER();
 }
 

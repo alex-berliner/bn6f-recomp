@@ -217,6 +217,120 @@ Next busStation_runBusMoveSequence_controller_808F900(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_808FA38 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; } call_ReadOWPlayerObjectCoords_result;
+/* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
+static inline call_ReadOWPlayerObjectCoords_result call_ReadOWPlayerObjectCoords(void) {
+    GUEST_CALL(ReadOWPlayerObjectCoords);
+    return (call_ReadOWPlayerObjectCoords_result){ R0, R1 };
+}
+
+/* register form: generated wrapper: battle_calcAngleOctant_800118A has no typed C interface yet */
+static inline u32 call_battle_calcAngleOctant_800118A(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(battle_calcAngleOctant_800118A);
+    return R0;
+}
+
+typedef struct { bool c, v; } call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_sub_808FA38;
+/* register form: generated wrapper: owPlayer_setS200ace0_fixedAnimationSelect_809e13c has no typed C interface yet */
+static inline call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_sub_808FA38 call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_sub_808FA38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(owPlayer_setS200ace0_fixedAnimationSelect_809e13c);
+    return (call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_sub_808FA38){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * sub_808FA38 -- turn the overworld player to face the map's target position.
+ *
+ * Reads the player's current coordinates, computes the angle octant from the
+ * player toward the target position stored in the player object (+0x12/+0x14),
+ * and if the player is not already walking in that direction, switches the
+ * fixed walk animation (byte at +0x11) to the one the ROM table byte_808FA74
+ * picks for that octant: { 0xB, 0xB, 0x9, 0xF, 0xD, 0x0, 0x0, 0x0 }.
+ *
+ * Octant 0 means no turn is needed. r4/r5 leave exactly as they entered.
+ */
+
+/* Angle octant (1..7) -> walk animation id (ROM table at byte_808FA74). */
+#define OW_WALK_ANIM_TABLE A_byte_808FA74
+
+/* Offsets within the overworld player object (base 0x2000310). */
+#define OWPLAYERAnim      (A_byte_2000321   - 0x2000310)
+#define OWPLAYERTargetX   (A_word_2000322   - 0x2000310)
+#define OWPLAYERTargetY   (A_dword_2000324  - 0x2000310)
+
+static void player_turn_toward_target(void) {
+    u32 player = LD32(A_off_808F5D4);   /* overworld player object pointer */
+
+    call_ReadOWPlayerObjectCoords_result coords = call_ReadOWPlayerObjectCoords();
+
+    /* Target position minus player coordinates, scaled to 16.16 fixed point. */
+    u32 dx = ((u32)LD16(player + OWPLAYERTargetX) << 16) - coords.r0;
+    u32 dy = ((u32)LD16(player + OWPLAYERTargetY) << 16) - coords.r1;
+
+    u32 octant = call_battle_calcAngleOctant_800118A(dx, dy);
+    if (octant == 0)
+        return;                         /* already facing the target */
+
+    u32 anim = LD8(OW_WALK_ANIM_TABLE + octant);
+    if (anim == LD8(player + OWPLAYERAnim))
+        return;                         /* already playing that animation */
+
+    call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_sub_808FA38(anim);
+    ST8(player + OWPLAYERAnim, anim);
+}
+
+Next sub_808FA38(void) {
+    player_turn_toward_target();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808FA7C ── */
+/*
+ * sub_808FA7C is a pure thunk: it pushes r4-r7 and the return address, sets
+ * r0 = 0 and branches to the routine at 0x0808FA90. The pushed frame is not
+ * this function's own — the tail callee ends with pop {r4-r7,pc}, so it
+ * restores the caller's r4-r7 and returns straight to sub_808FA7C's caller.
+ * That is why r4-r7 appear as "outputs" although nothing here computes them:
+ * they come back unchanged from the callee's pop. The frame therefore has to
+ * be written to the real guest stack, exactly as the original push does.
+ */
+
+/* Branch target of "b loc_808FA90" (0x0808FA90). */
+#define TAIL_TARGET_808FA90 0x0808FA90u
+
+/* register form: the r4-r7/return-address frame must be written to the real
+ * guest stack because the tail callee pops it with pop {r4-r7,pc}, and the
+ * transfer happens through the guest code address 0x0808FA90, for which no
+ * wrapper is generated. */
+static void tail_call_loc_808FA90(void) {
+    /* push {r4-r7,lr} */
+    SP -= 20;
+    ST32(SP, R4);
+    ST32(SP + 4, R5);
+    ST32(SP + 8, R6);
+    ST32(SP + 12, R7);
+    ST32(SP + 16, LR);
+
+    /* mov r0, #0 — the single argument of the tail call */
+    R0 = 0;
+
+    /* b loc_808FA90. The callee's pop {r4-r7,pc} loads the saved return
+     * address into PC, so control goes straight back to sub_808FA7C's caller
+     * with r4-r7 restored — it never comes back here, exactly as in the
+     * original. */
+    GUEST_CALL_ADDR(TAIL_TARGET_808FA90);
+}
+
+/* sub_808FA7C(r4, r5, r6, r7, r10, lr) -> r4 r5 r6 r7 (restored by the callee) */
+Next sub_808FA7C(void) {
+    tail_call_loc_808FA90();
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_startBeastOutHit ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: GetOWPlayerFacingDirection has no typed C interface yet */
@@ -265,6 +379,75 @@ static u32 start_beast_out_hit(u32 soundArg2, u32 savedR5) {
 Next ow_startBeastOutHit(void) {
     R5 = start_beast_out_hit(R2, R5);
     SET_FLAGS_NZ(0);          /* movs r0, #0 before the return */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808FD64 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: req_setFourParams has no typed C interface yet */
+static inline void call_req_setFourParams(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(req_setFourParams);
+}
+
+/* Per-map parameter table: three 8-byte entries of four halfwords each, read from
+ * byte_808FD98. The selected entry's halfwords are passed to req_setFourParams in
+ * the high halves of r0-r3 (the "lsl #16" packing the original uses). */
+#define MAP_PARAM_TABLE   A_byte_808FD98
+#define MAP_PARAM_STRIDE  8
+#define UNDERGROUND_MAP_GROUP 0x85   /* map group 0x85 always uses entry 3 */
+#define UNDERGROUND_MAP_INDEX 3
+
+/* Load the four halfwords for the current map and hand them to req_setFourParams.
+ * r2/r3 afterwards are whatever req_setFourParams leaves there (they are this
+ * function's outputs, produced by the callee itself). */
+static void request_map_params(u32 toolkit)
+{
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+
+    u32 index;
+    if (LD8(gameState + oGameState_MapGroup) == UNDERGROUND_MAP_GROUP)
+        index = UNDERGROUND_MAP_INDEX;
+    else
+        index = LD8(gameState + oGameState_MapNumber);
+
+    u32 entry = MAP_PARAM_TABLE + index * MAP_PARAM_STRIDE;
+    call_req_setFourParams(LD16(entry)     << 16,
+                           LD16(entry + 2) << 16,
+                           LD16(entry + 4) << 16,
+                           LD16(entry + 6) << 16);
+}
+
+/* sub_808FD64(r10 = toolkit) -> r2 r3 left by req_setFourParams */
+Next sub_808FD64(void) {
+    request_map_params(R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808FE64 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_ZeroFillByWord_result_sub_808FE64;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result_sub_808FE64 call_ZeroFillByWord_sub_808FE64(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result_sub_808FE64){ R2 };
+}
+
+/* Clear the 0x80-byte work area whose address is stored at dword_808FDBC. */
+static void clear_work_area(void) {
+    u32 area = LD32(A_dword_808FDBC);   /* off_808FDB8 + 4 */
+    call_ZeroFillByWord_sub_808FE64(area, 0x80);
+}
+
+/* sub_808FE64: zero the work area and return 0 in r0 (clobbered, not an output).
+ * inputs: lr; outputs: none; clobbers: nz c v r0 r1 lr; preserved: r2 r3 */
+Next sub_808FE64(void) {
+    clear_work_area();
     RETURN_TO_CALLER();
 }
 
@@ -409,5 +592,239 @@ static u32 battleObject_togglePlayerAllyLockout(u32 object) {
  * The object pointer is passed through unchanged; only the flag byte is written. */
 Next battleObject_togglePlayerAllyLockout_808FF44(void) {
     R5 = battleObject_togglePlayerAllyLockout(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── spawnSevenOverworldMapObjects ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r6; } call_SpawnOverworldMapObject_result_spawnSevenOverworldMapObjects;
+/* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
+static inline call_SpawnOverworldMapObject_result_spawnSevenOverworldMapObjects call_SpawnOverworldMapObject_spawnSevenOverworldMapObjects(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(SpawnOverworldMapObject);
+    return (call_SpawnOverworldMapObject_result_spawnSevenOverworldMapObjects){ R2, R3, R4, R6 };
+}
+
+/* Spawn seven overworld map objects of type 0x1C, all at position (0, 0, 0).
+ *
+ * The loop counter lives in guest r4, which is also the fifth argument to
+ * SpawnOverworldMapObject; whatever that call leaves in r4 is what the
+ * original's "add r4, #1" increments, so the next count is taken from the
+ * call's r4 result. SpawnOverworldMapObject trashes r5, which is why the
+ * original wraps every call in push/pop {r5}, and the whole routine saves
+ * r4 (and its return address) with push {r4,lr}. Both saves go through the
+ * guest stack so the caller's r4/r5 survive and the memory writes match. */
+static u32 spawn_seven_overworld_map_objects(void) {
+    /* register form: guest r4/r5 must keep their caller's values across
+     * call_SpawnOverworldMapObject_spawnSevenOverworldMapObjects, whose callee leaves its own r4/r5 behind;
+     * the original keeps them on the guest stack (push {r4,lr}, push {r5}),
+     * so the saves and restores have to touch the guest registers/SP directly. */
+    SP -= 8;
+    ST32(SP, R4);
+    ST32(SP + 4, LR);
+
+    u32 lastSpawnR2 = 0;
+    u32 count = 0;
+
+    do {
+        SP -= 4;
+        ST32(SP, R5);
+
+        call_SpawnOverworldMapObject_result_spawnSevenOverworldMapObjects spawn =
+            call_SpawnOverworldMapObject_spawnSevenOverworldMapObjects(0x1C, 0, 0, 0, count);
+
+        R5 = LD32(SP);              /* pop {r5} */
+        SP += 4;
+
+        lastSpawnR2 = spawn.r2;
+        count = spawn.r4 + 1;       /* add r4, #1 on the r4 the callee left */
+    } while ((s32)count < 7);       /* cmp r4, #7; blt */
+
+    R4 = LD32(SP);                  /* pop {r4} (the return address is not
+                                     * needed: lr is a clobber and the
+                                     * framework returns to the caller
+                                     * itself) */
+    SP += 8;
+
+    return lastSpawnR2;
+}
+
+/* spawnSevenOverworldMapObjects: inputs lr, outputs r2; r4/r5/r6 preserved. */
+Next spawnSevenOverworldMapObjects(void) {
+    R2 = spawn_seven_overworld_map_objects();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808FF8C ── */
+/* sub_808FF8C: test whether the value at [r5+0x20] (the caller's object pointer, field 0x20)
+ * is zero. Returns nonzero (Z clear) when the field is 0, zero (Z set) otherwise. */
+static bool field_is_zero(u32 object_ptr) {
+    return LD32(object_ptr + 0x20) == 0;
+}
+
+/* sub_808FF8C(r5 = object pointer) -> nz */
+Next sub_808FF8C(void) {
+    bool empty = field_is_zero(R5);
+    SET_FLAGS_NZ(empty);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808FFC0 ── */
+/* Map-entry lookup: pick one of four per-area tables based on the current map
+ * group (map group 0x85 always uses the last slot), index it by the byte at
+ * [r5,#0xE] (entries are 8 bytes), and return the entry's two halfwords
+ * (already shifted so the caller can sign-extend with ASR #16) and two bytes.
+ * Inputs:  r5 = object whose +0xE field selects the entry, r10 = toolkit
+ * Outputs: r0 = entry+0 (halfword<<16), r1 = entry+2 (halfword<<16),
+ *          r2 = entry+4 (byte), r3 = entry+6 (byte) */
+
+typedef struct {
+    u32 half0;   /* entry+0, halfword shifted left 16 */
+    u32 half1;   /* entry+2, halfword shifted left 16 */
+    u32 byte0;   /* entry+4 */
+    u32 byte1;   /* entry+6 */
+} MapEntryValues;
+
+static MapEntryValues read_map_entry(u32 objPtr, u32 toolkit)
+{
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 index;
+
+    if (LD8(gameState + oGameState_MapGroup) == 0x85)
+        index = 3;                          /* fixed table slot for this map group */
+    else
+        index = LD8(gameState + 5);         /* otherwise the game state byte selects the table */
+
+    u32 entry = LD32(A_off_808FFF4 + index * 4);
+    entry += LD8(objPtr + 0xE) * 8;         /* entries are 8 bytes apart */
+
+    MapEntryValues v;
+    v.half0 = LD16(entry) << 16;
+    v.half1 = LD16(entry + 2) << 16;
+    v.byte0 = LD8(entry + 4);
+    v.byte1 = LD8(entry + 6);
+    return v;
+}
+
+Next sub_808FFC0(void) {
+    MapEntryValues v = read_map_entry(R5, R10);
+    R0 = v.half0;
+    R1 = v.half1;
+    R2 = v.byte0;
+    R3 = v.byte1;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_809003C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool z, n, c, v; } call_TestEventFlagFromImmediate_result_sub_809003C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_809003C call_TestEventFlagFromImmediate_sub_809003C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_809003C){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: gameState_setUnk09_8001172 has no typed C interface yet */
+static inline void call_gameState_setUnk09_8001172(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(gameState_setUnk09_8001172);
+}
+
+typedef struct { u32 r3; } call_reqBBS_setFlag_e17b0f7_8140A00_result;
+/* register form: generated wrapper: reqBBS_setFlag_e17b0f7_8140A00 has no typed C interface yet */
+static inline call_reqBBS_setFlag_e17b0f7_8140A00_result call_reqBBS_setFlag_e17b0f7_8140A00(void) {
+    GUEST_CALL(reqBBS_setFlag_e17b0f7_8140A00);
+    return (call_reqBBS_setFlag_e17b0f7_8140A00_result){ R3 };
+}
+
+/* The "play sound effect" helper at loc_809E306 lives inside another function,
+ * so the tool provides neither a typed wrapper nor an A_ label macro for it.
+ * Call it through its code address instead (THUMB destination, bit 0 set). */
+#define LOC_809E306_ADDR 0x0809E307u
+
+/* bl loc_809E306 with the sound id in r0. */
+static void play_sound_loc_809E306(u32 sound_id) {
+    R0 = sound_id;
+    /* register form: bl through a code address (local label, no wrapper) */
+    GUEST_CALL_ADDR(LOC_809E306_ADDR);
+}
+
+/* BBS request hook: once the BE4 story event flag is set, play the mailbox
+ * sound, put the game state into substate 3 and raise the BBS request flag.
+ * r3 ends up holding reqBBS_setFlag's result via its wrapper (or stays as on
+ * entry when the event flag is still clear); r4 is never touched. */
+static void bbs_request_scene(void) {
+    /* EVENT_BE4 = 0xBE4: bank 0x0B, flag 0xE4. TestEventFlagFromImmediate
+     * leaves Z set when the flag is clear. */
+    if (call_TestEventFlagFromImmediate_sub_809003C(0xB, 0xE4).z)
+        return;
+
+    play_sound_loc_809E306(4);                 /* play sound effect 4 */
+    call_gameState_setUnk09_8001172(3);        /* game state substate = 3 */
+    call_reqBBS_setFlag_e17b0f7_8140A00();     /* mark BBS request e17b0f7 */
+}
+
+/* sub_809003C: inputs r10 lr; outputs r3 (from the callee) and r4 (unchanged).
+ * Flags are clobbered only, so nothing has to be set explicitly here. */
+Next sub_809003C(void) {
+    bbs_request_scene();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80902DC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool z, n; } call_TestEventFlag_result_sub_80902DC;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_sub_80902DC call_TestEventFlag_sub_80902DC(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_sub_80902DC){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Flag-ID lookup table for the current map: one u16 flag id per map number,
+ * indexed after doubling (each entry is a halfword). */
+#define MAP_FLAG_TABLE A_byte_8090300
+/* Map group 0x85 ignores the map number and always uses table entry 3. */
+#define SPECIAL_MAP_GROUP 0x85
+#define SPECIAL_MAP_ENTRY 3
+
+typedef struct {
+    u32 r4;        /* passthrough: the original pops r4-r7 untouched */
+    u32 r5;
+    bool flag_set; /* TestEventFlag result: Z clear when the flag is set */
+} MapFlagResult;
+
+/* Test the event flag selected for the map the player is currently on.
+ * Returns the r4/r5 the original leaves unchanged plus the flag test result. */
+static MapFlagResult check_current_map_event_flag(u32 toolkit, u32 r4, u32 r5) {
+    MapFlagResult out;
+    out.r4 = r4;
+    out.r5 = r5;
+
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 group = LD8(game_state + oGameState_MapGroup);
+    u32 entry = (group == SPECIAL_MAP_GROUP)
+        ? SPECIAL_MAP_ENTRY
+        : LD8(game_state + oGameState_MapNumber);
+
+    u16 flag_id = LD16(MAP_FLAG_TABLE + entry * 2);
+    out.flag_set = !call_TestEventFlag_sub_80902DC(flag_id).z; /* Z clear when the flag is set */
+    return out;
+}
+
+/* sub_80902DC() -> nz r1 r3 (from TestEventFlag), r4/r5 pass through unchanged */
+Next sub_80902DC(void) {
+    MapFlagResult res = check_current_map_event_flag(R10, R4, R5);
+    R4 = res.r4;
+    R5 = res.r5;
+    /* TestEventFlag tested a single low bit of the flag byte, so its N flag is
+     * clear and Z reflects the bit; expressing the result as 0/1 reproduces both. */
+    SET_FLAGS_NZ(res.flag_set);
     RETURN_TO_CALLER();
 }

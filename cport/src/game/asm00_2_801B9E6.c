@@ -1110,6 +1110,28 @@ Next battle_drawChipCountsOAMWithRetvalZero_801C078(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801C1D0 ── */
+/* Snap a value toward a target by 1/8 of the remaining distance (plus 2),
+ * and record "state 2, counter 10" in the object at r4.
+ * Returns the adjusted value, clamped so it never passes the target. */
+static u32 step_toward_target(u32 value, u32 target, u32 work) {
+    ST8(work + 8, 2);   /* state = 2 */
+    ST8(work + 9, 10);  /* timer = 10 */
+
+    s32 diff = (s32)((u32)target - value);
+    u32 result = value + (u32)((diff >> 3) + 2);
+
+    if ((s32)result > (s32)target)
+        result = target;
+    return result;
+}
+
+/* sub_801C1D0(r0 = value, r1 = target, r4 = work object) -> r0 */
+Next sub_801C1D0(void) {
+    R0 = step_toward_target(R0, R1, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── easeValueTowardTarget_801C1EA ── */
 /* easeValueTowardTarget_801C1EA(r0 = value, r1 = target, r4 = state object):
  * Marks the object as active (bytes at +8/+9 set to 1), then nudges the
@@ -2892,6 +2914,43 @@ Next battle_loadModeGfx_801E10E(void) {
     cpu.c = 0; /* the shift pushes a zero bit out into the carry */
 
     GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801E144 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2; bool z, n; } call_flagSetBits_eStruct2035280_801BEB8_result;
+/* register form: generated wrapper: flagSetBits_eStruct2035280_801BEB8 has no typed C interface yet */
+static inline call_flagSetBits_eStruct2035280_801BEB8_result call_flagSetBits_eStruct2035280_801BEB8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);
+    return (call_flagSetBits_eStruct2035280_801BEB8_result){ R1, R2, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* sub_801E144: turn on flag bit group 0x200 (bit 9) in the battle-state flag set
+ * (flagSetBits_eStruct2035280_801BEB8) and return immediately.
+ *
+ * Register contract notes:
+ *   - r0 is set to 0x200 before the call and the callee preserves it, so it is
+ *     still 0x200 on return; the adapter sets it just like the original's
+ *     "mov r0,#1; lsl r0,#9" does.
+ *   - r1/r2 (and the N/Z flags) are whatever the callee leaves behind; the
+ *     wrapper's call already puts them in the guest registers, so nothing is
+ *     passed through or written back here.
+ *   - lr is left by the callee's own bl return-address bookkeeping, likewise
+ *     already in place.
+ */
+
+/* Bit group handed to flagSetBits_eStruct2035280_801BEB8: 1 << 9. */
+#define SUB_801E144_FLAG_BITS 0x200u
+
+static void set_battle_flag_bits_200(void) {
+    call_flagSetBits_eStruct2035280_801BEB8(SUB_801E144_FLAG_BITS);
+}
+
+Next sub_801E144(void) {
+    R0 = SUB_801E144_FLAG_BITS;
+    set_battle_flag_bits_200();
     RETURN_TO_CALLER();
 }
 

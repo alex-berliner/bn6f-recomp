@@ -1766,6 +1766,173 @@ Next sub_801486C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8014D70 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; } call_SetAIDataUnk0x48Flag_result;
+/* register form: generated wrapper: SetAIDataUnk0x48Flag has no typed C interface yet */
+static inline call_SetAIDataUnk0x48Flag_result call_SetAIDataUnk0x48Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(SetAIDataUnk0x48Flag);
+    return (call_SetAIDataUnk0x48Flag_result){ R1, R3 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_sub_8014D70;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_8014D70 call_PlaySoundEffect_sub_8014D70(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_8014D70){ R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result call_spawn_t1_0x0_EffectObject(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result){ R0, R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: setIndexedTableByte has no typed C interface yet */
+static inline void call_setIndexedTableByte(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(setIndexedTableByte);
+}
+
+typedef struct { u32 r0, r3; } call_battle_ai_getActorInfo_801595E_result;
+/* register form: generated wrapper: battle_ai_getActorInfo_801595E has no typed C interface yet */
+static inline call_battle_ai_getActorInfo_801595E_result call_battle_ai_getActorInfo_801595E(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_ai_getActorInfo_801595E);
+    return (call_battle_ai_getActorInfo_801595E_result){ R0, R3 };
+}
+
+typedef struct { u32 r2; } call_cameraSetShake_result;
+/* register form: generated wrapper: cameraSetShake has no typed C interface yet */
+static inline call_cameraSetShake_result call_cameraSetShake(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(cameraSetShake);
+    return (call_cameraSetShake_result){ R2 };
+}
+
+/* sub_8014D70 -- AI attack-step handler for one battle actor.
+ *
+ * r7 points at the actor's AI attack variables, r5 at its battle object,
+ * r2 is an untouched argument the first sound call needs.
+ *
+ * While AttackElement is clear, StepTimer counts down once per call; when
+ * that decrement underflows, the attack fires: an AI-data flag is set, a
+ * charge-up sound plays, an effect object is spawned from the battle
+ * object's state, the attacker is lifted by 0xC00000, the alliance's table
+ * slot is marked used, the attack cry plays and the camera shakes.  The
+ * timer then reloads to 54 and AttackElement is set to 4, and the shared
+ * tail decrements the reloaded timer once more.  Whenever a tail decrement
+ * underflows, HitElement is set to 8 (the hit lands next).
+ *
+ * Both decrements compare the zero-extended 32-bit subtraction result (the
+ * 16-bit field is loaded into a full register), so a timer value of
+ * 0x8000..0xFFFF still counts as non-negative.
+ *
+ * On exit r5/r10 hold whatever the callees left behind (they are the
+ * function's outputs); r4/r6 are preserved exactly as the original's
+ * push {r4,r6} / pop {r4,r6} does.
+ */
+
+/* Shared tail: one more decrement of the step timer; underflow (negative
+ * 32-bit result) arms the hit by writing 8 to HitElement. */
+static void countdown_step_timer(u32 ai_vars) {
+    u32 dec = LD16(ai_vars + oAIAttackVars_StepTimer) - 1;
+    ST16(ai_vars + oAIAttackVars_StepTimer, dec);
+    if ((s32)dec < 0)
+        ST16(ai_vars + oAIAttackVars_HitElement, 8);
+}
+
+/* The attack itself: flag, charge-up sound, effect object spawn, lift,
+ * table marking, attack cry and camera shake.  Returns without touching
+ * the AI variables when the effect object could not be spawned; the caller
+ * reloads the timer and marks the element either way, as the original's
+ * shared loc_8014DDE does. */
+static void fire_attack_step(u32 battle_obj, u32 sound_r2) {
+    call_SetAIDataUnk0x48Flag(0x80000, battle_obj);
+    call_PlaySoundEffect_sub_8014D70(0xF7, sound_r2);
+
+    /* Spawn parameters: three consecutive words at +0x34 of the battle
+     * object, plus a type word carrying the owner's alliance in bits 8-15. */
+    u32 type = 0x2E | ((u32)LD8(battle_obj + oBattleObject_Alliance) << 8);
+    call_spawn_t1_0x0_EffectObject_result effect =
+        call_spawn_t1_0x0_EffectObject(LD32(battle_obj + 0x34),
+                                       LD32(battle_obj + 0x38),
+                                       LD32(battle_obj + 0x3C),
+                                       type);
+
+    u32 obj = effect.r0;
+    if (obj == 0)
+        return;                          /* spawn pool exhausted */
+
+    /* Initialise the spawned effect object: 54-frame timer, flag bit 2. */
+    ST16(obj + oBattleObject_Timer, 0x36);
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 4);
+
+    /* Lift the attacker by 0xC00000 (one tile up in fixed point). */
+    ST32(battle_obj + oBattleObject_Y,
+         LD32(battle_obj + oBattleObject_Y) + 0xC00000);
+
+    /* Mark this alliance's slot in the indexed table as used. */
+    call_setIndexedTableByte(LD8(battle_obj + oBattleObject_Alliance), 2, 1);
+
+    /* Attack cry: actor identity 0xB uses sound 0x1CC, everyone else 0x1CD. */
+    call_battle_ai_getActorInfo_801595E_result actor =
+        call_battle_ai_getActorInfo_801595E(
+            LD8(battle_obj + oBattleObject_Alliance));
+    call_PlaySoundEffect_sub_8014D70(actor.r0 == 0xB ? 0x1CC : 0x1CD, 1);
+
+    /* Impact feedback: strength 2 for 60 frames. */
+    call_cameraSetShake(2, 0x3C);
+}
+
+static void ai_attack_step(u32 battle_obj, u32 ai_vars, u32 sound_r2) {
+    /* register form: the original pushes r4/r6 and pops them on the way out,
+     * because PlaySoundEffect and the effect-object spawner clobber both;
+     * no wrapper returns them, so they must be saved and restored here. */
+    u32 saved_r4 = R4;
+    u32 saved_r6 = R6;
+
+    if (LD8(ai_vars + oAIAttackVars_AttackElement) != 0) {
+        /* Attack already fired: only the tail decrement runs. */
+        countdown_step_timer(ai_vars);
+    } else {
+        u32 dec = LD16(ai_vars + oAIAttackVars_StepTimer) - 1;
+        ST16(ai_vars + oAIAttackVars_StepTimer, dec);
+        if ((s32)dec < 0) {
+            /* Timer ran out: perform the attack, then reload the timer to
+             * 54 and mark the attack element as fired (4). */
+            fire_attack_step(battle_obj, sound_r2);
+            ST16(ai_vars + oAIAttackVars_StepTimer, 0x36);
+            ST8(ai_vars + oAIAttackVars_AttackElement, 4);
+            countdown_step_timer(ai_vars);
+        }
+        /* else: still counting down, nothing else happens this call. */
+    }
+
+    R4 = saved_r4; /* register form: original pop {r4,r6}, see note above */
+    R6 = saved_r6;
+}
+
+/* sub_8014D70(r2 = sound-call argument, r5 = battle object, r7 = AI attack
+ * vars, r10 = passed through to cameraSetShake) -> r5, r10 (left in place
+ * by the callees; the adapter writes nothing). */
+Next sub_8014D70(void) {
+    ai_attack_step(R5, R7, R2);
+    RETURN_TO_CALLER();
+}
+
 /* ── object_aiAttackVarsExitState_8014F04 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_ClearAIDataUnk0x48Flag_result;
@@ -1861,6 +2028,55 @@ Next sub_8015940(void) {
     R5 = saved_r5;
 
     ST32(record + 8, R0);       /* byte_203CED8 - byte_203CED0 */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8015952 ── */
+/* Record three bytes of request state at byte_203CED0 (offsets 0, 1 and 3; the
+ * byte at offset 2 is left untouched). */
+static void store_request_bytes(u32 value0, u32 value1, u32 value2) {
+    ST8(A_byte_203CED0, value0);
+    ST8(A_byte_203CED0 + 1, value1);
+    ST8(A_byte_203CED0 + 3, value2);
+}
+
+/* sub_8015952(r0, r1, r2 = bytes to store) -> nothing */
+Next sub_8015952(void) {
+    store_request_bytes(R0, R1, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_801596E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; } call_SetAIData_Unk_44_Flag_result;
+/* register form: generated wrapper: SetAIData_Unk_44_Flag has no typed C interface yet */
+static inline call_SetAIData_Unk_44_Flag_result call_SetAIData_Unk_44_Flag(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(SetAIData_Unk_44_Flag);
+    return (call_SetAIData_Unk_44_Flag_result){ R1, R3 };
+}
+
+/* If the AI object pointer in r0 is non-null, clear flag bit 0x4000 in its
+ * data by calling SetAIData_Unk_44_Flag(0x4000, object); otherwise do nothing.
+ *
+ * The original saves r5, uses it to hold the object pointer for the call,
+ * then pops it back, so callers see their own r5 unchanged afterwards.
+ * The generated wrapper sets guest r5 to the object argument for the call
+ * and the callee preserves it, so the adapter must restore r5 to its entry
+ * value to match the original's pop. r3 is only ever whatever the callee
+ * leaves behind, which the wrapper's call already puts in place. */
+static u32 clear_ai_flag(u32 object, u32 saved_r5) {
+    if (object != 0)
+        call_SetAIData_Unk_44_Flag(0x4000, object);
+    return saved_r5;
+}
+
+/* sub_801596E(r0 = AI object pointer) -> r3, r5 preserved */
+Next sub_801596E(void) {
+    u32 object = R0;
+    u32 saved_r5 = R5;
+    R5 = clear_ai_flag(object, saved_r5);
     RETURN_TO_CALLER();
 }
 
@@ -2047,6 +2263,39 @@ Next battle_setObjectTextId_8015B22(void) {
  * can tail-call the lookup without managing LR themselves. */
 Next callPossiblyGetBattleEmotion_8015B54(void) {
     GUEST_CALL(possiblyGetBattleEmotion_8015B64);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8015B5C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; } call_sub_8015BA8_result;
+/* register form: generated wrapper: battle_getPlayerEmotionPriority has no typed C interface yet */
+static inline call_sub_8015BA8_result call_sub_8015BA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_getPlayerEmotionPriority);
+    return (call_sub_8015BA8_result){ R0, R1, R2, R3, R4, R5, R6 };
+}
+
+/* sub_8015B5C is nothing but a tail call: it forwards r0 (r10 is untouched)
+ * to battle_getPlayerEmotionPriority and lets its results stand as its own. The wrapper call
+ * already leaves r4-r6 holding the callee's outputs, so only r0-r3 need
+ * to be written here. */
+
+/* Forwarding body: run battle_getPlayerEmotionPriority with the incoming argument. */
+static call_sub_8015BA8_result sub_8015B5C_forward(u32 arg)
+{
+    return call_sub_8015BA8(arg);
+}
+
+/* sub_8015B5C(r0 = argument, r10 = context) -> r0-r6 from battle_getPlayerEmotionPriority */
+Next sub_8015B5C(void)
+{
+    call_sub_8015BA8_result res = sub_8015B5C_forward(R0);
+
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
     RETURN_TO_CALLER();
 }
 
@@ -2997,6 +3246,29 @@ Next object_genericDestroy(void) {
     GUEST_CALL(object_freeCollisionData);
 
     GUEST_CALL(object_freeMemory);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8016C9C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result call_object_freeMemory(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8016C9C is a bare tail call: the caller passes the battle object to release
+ * in r5, and this routine just forwards it to object_freeMemory. Everything the
+ * callers see afterwards (r0-r3, r5, the flags) is exactly what the callee leaves
+ * behind, so nothing needs to be copied or recomputed here. */
+static void free_battle_object(u32 object) {
+    call_object_freeMemory(object);
+}
+
+Next sub_8016C9C(void) {
+    free_battle_object(R5);
     RETURN_TO_CALLER();
 }
 

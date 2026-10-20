@@ -261,6 +261,39 @@ Next clearDword_203CA70Record_80084C0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8008A7C ── */
+/* Battle state dispatcher: reads the battle state byte and jumps to the
+ * matching per-state step function, which returns straight back to our
+ * caller (the dispatcher itself is just a trampoline). */
+enum { BATTLE_STATE_TABLE = A_off_8008A90 };
+
+/* register form: indirect call through the handler table entry
+ * (mov lr, pc; bx rN). At handler entry the original leaves r0 = state
+ * byte, r1 = handler address, and r3/r7/r10 untouched for the handler. */
+static u32 call_battle_state_handler_sub_8008A7C(u32 handler, u32 state, u32 r3, u32 r7, u32 r10) {
+    R0 = state;
+    R1 = handler;
+    R3 = r3;
+    R7 = r7;
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* r5 points at the battle state object; byte 2 selects the step handler. */
+static void battle_state_dispatch(u32 state_ptr, u32 r3, u32 r7, u32 r10) {
+    u32 state = LD8(state_ptr + 2);
+    u32 handler = LD32(BATTLE_STATE_TABLE + state);
+    call_battle_state_handler_sub_8008A7C(handler, state, r3, r7, r10);
+}
+
+/* sub_8008A7C: trampoline into the battle state step handlers.
+ * r2..r12 on exit are whatever the chosen handler left behind. */
+Next sub_8008A7C(void) {
+    battle_state_dispatch(R5, R3, R7, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_battleEndDelayStep ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; } call_eStruct200A008_setUnk02_result;
@@ -303,6 +336,30 @@ static void battle_battleEndDelayStep_impl(u32 battleObj, u32 toolkit) {
 
 Next battle_battleEndDelayStep(void) {
     battle_battleEndDelayStep_impl(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8008D40 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_ZeroFillByWord_result_sub_8008D40;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result_sub_8008D40 call_ZeroFillByWord_sub_8008D40(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result_sub_8008D40){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Clear the 12-byte work area at 0x203CA70 (three words) with ZeroFillByWord.
+ * ZeroFillByWord leaves r0-r3 and the NZCV flags behind as its own outputs;
+ * the wrapper call preserves them, so nothing else needs to be written. */
+static void clear_work_area_203CA70(void) {
+    call_ZeroFillByWord_sub_8008D40(A_dword_203CA70, 0xC);
+}
+
+/* sub_8008D40() -> r0 r1 r2 r3 nz c v (all left by ZeroFillByWord) */
+Next sub_8008D40(void) {
+    clear_work_area_203CA70();
     RETURN_TO_CALLER();
 }
 
@@ -671,6 +728,111 @@ Next battle_waitLinkSync_8009478(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8009552 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_chatbox_runScript_result;
+/* register form: generated wrapper: chatbox_runScript has no typed C interface yet */
+static inline call_chatbox_runScript_result call_chatbox_runScript(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(chatbox_runScript);
+    return (call_chatbox_runScript_result){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result call_chatbox_mask_eFlags2009F38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: GetBattleEffects has no typed C interface yet */
+static inline u32 call_GetBattleEffects(void) {
+    GUEST_CALL(GetBattleEffects);
+    return R0;
+}
+
+/* Result registers (r2-r6) that callers of sub_8009552 observe after it runs.
+ * On the paths that do not run the script the original leaves these exactly
+ * as they were on entry, so they are passed in and handed back unchanged. */
+typedef struct {
+    u32 r2, r3, r4, r5, r6;
+} DadTutStepResult;
+
+/* Advance the dad's Cybeast tutorial one step:
+ *  - first pass (SubPhaseInitFlag clear): start the tutorial textbox script
+ *    (script 0x20 once the battle phase is past 1, otherwise 0x10) and mark
+ *    the step as started (SubPhaseInitFlag = 4);
+ *  - afterwards: wait until the 0x80 textbox flag clears, then store the next
+ *    tutorial index (0x10, or 0x14 when battle effect bit 1 is unset) and
+ *    clear the state/phase word.
+ * r5 is the battle state pointer; r10 the toolkit (read only). r3/r4/r6 are
+ * untouched pass-throughs except when the script runner leaves new values. */
+static DadTutStepResult dad_cybeast_tutorial_step(u32 in_r2, u32 in_r3, u32 in_r4,
+                                                  u32 battleState, u32 in_r6,
+                                                  u32 toolkit)
+{
+    DadTutStepResult out;
+
+    if (LD8(battleState + oBattleState_SubPhaseInitFlag) == 0) {
+        /* First pass: run the intro script for the current battle phase. */
+        u32 curState = LD32(toolkit + oToolkit_BattleStatePtr);
+        u32 phase = LD8(curState + oBattleState_BattlePhase);
+        u32 script = (phase > 1) ? 0x20 : 0x10;
+
+        call_chatbox_runScript_result run =
+            call_chatbox_runScript(A_TextScriptDadCybeastTut, script);
+
+        /* The store after the call uses r5 as the script runner leaves it. */
+        u32 state = run.r5;
+        ST8(state + oBattleState_SubPhaseInitFlag, 4);
+
+        out.r2 = run.r2;
+        out.r3 = run.r3;
+        out.r4 = run.r4;
+        out.r5 = run.r5;
+        out.r6 = run.r6;
+        return out;
+    }
+
+    /* Script already started: if the 0x80 textbox flag is still set, wait. */
+    call_chatbox_mask_eFlags2009F38_result mask =
+        call_chatbox_mask_eFlags2009F38(0x80);
+    if (!mask.z) {
+        out.r2 = in_r2;
+        out.r3 = in_r3;
+        out.r4 = in_r4;
+        out.r5 = battleState;
+        out.r6 = in_r6;
+        return out;
+    }
+
+    /* Textbox closed: pick the next index from the battle effects and move on. */
+    u32 effects = call_GetBattleEffects();
+    u32 index = (effects & 2) ? 0x10 : 0x14;
+    ST8(battleState + oBattleState_Index_01, index);
+    ST16(battleState + oBattleState_StatePhaseAndInitFlag, 0);
+
+    out.r2 = index;
+    out.r3 = in_r3;
+    out.r4 = in_r4;
+    out.r5 = battleState;
+    out.r6 = in_r6;
+    return out;
+}
+
+/* sub_8009552(r5 = battle state, r10 = toolkit) -> r2 r3 r4 r5 r6 */
+Next sub_8009552(void) {
+    DadTutStepResult out = dad_cybeast_tutorial_step(R2, R3, R4, R5, R6, R10);
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchByIndex_80099A4 ── */
 /* Battle phase dispatch. The battle state's Index_01 field holds the byte
  * offset (already 4 * phase number) of the phase handler's address in the
@@ -757,6 +919,42 @@ Next battle_pauseIntroResumeStateStep(void) {
     call_battle_eStruct2035280_postEvent_801E0A0_result res = pause_intro_resume();
     R2 = res.r2, R3 = res.r3, R5 = res.r5, R8 = res.r8,
     R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8009A88 ── */
+/* Battle main-loop state dispatcher (0x08009A88).
+ *
+ * Reads the battle state's phase byte and jumps to the matching step handler
+ * through a table of three Thumb entry points:
+ *   phase 0 -> battleState4EventWaitOrSkip
+ *   phase 1 -> battle_stateCrossNetBattleIntroStep
+ *   phase 2 -> battle_stateWait10FramesThenGotoPhaseC
+ * The handler is called with r0 = phase byte and r1 = its own address; the
+ * phase table is indexed with the raw byte (no <<2), so phases are stored as
+ * word offsets. Whatever the handler leaves in r2-r12 is passed straight
+ * through to our caller. */
+
+/* register form: the handler address comes from the phase table, not a known
+ * function, so this call must go through GUEST_CALL_ADDR. It receives
+ * r0 = phase, r1 = handler address and leaves the handler's register results
+ * (r2-r12) in place for our caller. */
+static u32 call_battle_state_handler_sub_8009A88(u32 handler, u32 phase) {
+    R0 = phase;
+    R1 = handler;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* Dispatch the battle state's current phase to its step handler. */
+static void battle_state_dispatch_step(u32 battle_state) {
+    u32 phase = LD8(battle_state + oBattleState_StatePhase);
+    u32 handler = LD32(A_off_8009A9C + phase);
+    call_battle_state_handler_sub_8009A88(handler, phase);
+}
+
+Next sub_8009A88(void) {
+    battle_state_dispatch_step(R5);
     RETURN_TO_CALLER();
 }
 

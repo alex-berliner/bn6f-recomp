@@ -1331,6 +1331,203 @@ Next pickBBSMsgForMapGroup_80A5764(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A58E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sub_80A5954 has no typed C interface yet */
+static inline void call_sub_80A5954(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_80A5954);
+}
+
+typedef struct { u32 r4, r5; } call_sub_80A596C_result;
+/* register form: generated wrapper: owPlayer_setDirectionAnimThunk has no typed C interface yet */
+static inline call_sub_80A596C_result call_sub_80A596C(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(owPlayer_setDirectionAnimThunk);
+    return (call_sub_80A596C_result){ R4, R5 };
+}
+
+typedef struct { u32 r0, r4; } call_sub_80A59B8_result;
+/* register form: generated wrapper: sub_80A59B8 has no typed C interface yet */
+static inline call_sub_80A59B8_result call_sub_80A59B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A59B8);
+    return (call_sub_80A59B8_result){ R0, R4 };
+}
+
+/*
+ * sub_80A58E0 - battle setup prologue shared with the routine that follows.
+ *
+ * It saves r4-r7 and its return address on the stack (the shared continuation
+ * at loc_80A58FA pops that same frame when it finishes), then runs three
+ * initialisation steps:
+ *   1. sub_80A5954 with the incoming r5/r6,
+ *   2. owPlayer_setDirectionAnimThunk with its counter argument r4 cleared to 0,
+ *   3. sub_80A59B8 with the r5 value step 2 produced.
+ * Finally it copies the step 3 result into r2 and branches into the shared
+ * body at loc_80A58FA, which produces the outgoing r0/r5/r6/r8-r12 and
+ * returns straight to sub_80A58E0's caller through the saved lr.
+ */
+
+/* Address of the shared continuation body (the disassembly's loc_80A58FA;
+ * given directly as a constant because that label has no A_ macro here). */
+#define LOC_80A58FA 0x080A58FAu
+
+/* Branch into the shared continuation at loc_80A58FA.
+ * register form: the continuation is only ever entered by a bare branch in
+ * the original, so it has to be invoked through its code address; it reads
+ * the result pair r0/r2 and the counters r4/r5, and it pops the frame the
+ * setup pushed in order to return to sub_80A58E0's caller. */
+static u32 enter_shared_body(u32 result, u32 counter, u32 value5) {
+    R0 = result;
+    R2 = result;
+    R4 = counter;
+    R5 = value5;
+    GUEST_CALL_ADDR(LOC_80A58FA);
+    return R0;
+}
+
+/* register form: the pushed r4-r7/lr frame has to sit on the guest stack,
+ * because the shared body at loc_80A58FA pops it to return to the caller. */
+static u32 run_setup_and_enter(u32 r4, u32 r5, u32 r6, u32 r7, u32 return_addr) {
+    /* push {r4-r7,lr} - kept for the shared body's epilogue. */
+    SP -= 20;
+    ST32(SP, r4);
+    ST32(SP + 4, r5);
+    ST32(SP + 8, r6);
+    ST32(SP + 12, r7);
+    ST32(SP + 16, return_addr);
+
+    /* Step 1 works on r5/r6 as passed in. */
+    call_sub_80A5954(r5, r6);
+
+    /* Step 2 starts with its counter argument r4 cleared to 0; it updates
+     * r4/r5, and step 3 continues from the r5 it leaves behind. */
+    call_sub_80A596C_result step2 = call_sub_80A596C(0, r5);
+
+    /* Step 3 yields the value the shared body receives in r0 (the original
+     * copies it to r2 with "mov r2, r0"); its r4 is live at the branch. */
+    call_sub_80A59B8_result step3 = call_sub_80A59B8(step2.r5);
+
+    return enter_shared_body(step3.r0, step3.r4, step2.r5);
+}
+
+Next sub_80A58E0(void) {
+    R0 = run_setup_and_enter(R4, R5, R6, R7, LR);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A6E70 ── */
+/* Read the 32-bit word at [r5 + r6], add r0 to it, and store the sum back.
+ * Returns the old value (the original leaves it in r1); the C and V flags
+ * come from the ADDS. */
+static u32 add_to_word(u32 base, u32 offset, u32 addend) {
+    u32 old = LD32(base + offset);
+    ST32(base + offset, old + addend);
+    return old;
+}
+
+/* sub_80A6E70(r0 = addend, r5 = base, r6 = offset) -> r1 = old value, flags C/V */
+Next sub_80A6E70(void) {
+    u32 addend = R0;
+    u32 old = add_to_word(R5, R6, addend);
+    R1 = old;
+    SET_FLAGS_ADD(addend, old);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A77A8 ── */
+/* Jump table at off_80A77BC, indexed by the type byte stored at object+08.
+ * Each entry is a routine called with r0 = its own table address and
+ * r1 = the type byte (exactly what the original's `mov lr, pc; bx r0`
+ * leaves in the registers). */
+static void call_table_handler(u32 handler, u32 selection) { /* register form: calls through a guest code address (noted by the tool) */
+    R0 = handler;
+    R1 = selection;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Dispatch the per-type routine for the object in r5. The routine's results
+ * are whatever it leaves in r2-r5 and r8-r12; since the call goes through
+ * the real register file, those pass straight through to the caller. */
+static void sub_80A77A8_dispatch(u32 object) {
+    u32 selection = LD8(object + 8);
+    u32 handler = LD32(A_off_80A77BC + selection);
+    call_table_handler(handler, selection);
+}
+
+/* sub_80A77A8(r5 = object) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 from the callee */
+Next sub_80A77A8(void) {
+    sub_80A77A8_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A77FC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_sprite_getFrameParameters_result_sub_80A77FC;
+/* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
+static inline call_sprite_getFrameParameters_result_sub_80A77FC call_sprite_getFrameParameters_sub_80A77FC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_getFrameParameters);
+    return (call_sprite_getFrameParameters_result_sub_80A77FC){ R0 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_sprite_update_result_sub_80A77FC;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_80A77FC call_sprite_update_sub_80A77FC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_80A77FC){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Advance one sprite's animation: query its frame parameters and, when the
+ * "frame finished" bit is set, poke the event byte at sprite+8, then run the
+ * sprite's per-frame update.
+ *
+ * Register contract (from the callers):
+ *   inputs:  r5 (sprite work area)
+ *   outputs: r2 r3 r4 r5 as left by sprite_update
+ *   clobbers (unused by callers): nz c v r0 r1 lr
+ *   preserved: r4 r5 */
+
+typedef struct {
+    u32 r2;
+    u32 r3;
+    u32 r4;
+    u32 r5;
+} SpriteTickRegs;
+
+static SpriteTickTicks_helper_unused; /* (placeholder removed below) */
+
+static SpriteTickRegs sub_80A77FC_typed(u32 sprite)
+{
+    /* Bit 7 of the frame parameters marks the end of the animation cycle. */
+    u32 params = call_sprite_getFrameParameters_sub_80A77FC(sprite).r0;
+    if (params & 0x80)
+        ST8(sprite + 8, 8);
+
+    call_sprite_update_result_sub_80A77FC upd = call_sprite_update_sub_80A77FC(sprite);
+
+    SpriteTickRegs out;
+    out.r2 = upd.r2;
+    out.r3 = upd.r3;
+    out.r4 = upd.r4;
+    out.r5 = upd.r5;
+    return out;
+}
+
+Next sub_80A77FC(void)
+{
+    SpriteTickRegs out = sub_80A77FC_typed(R5);
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_startFacingStep ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
@@ -1417,6 +1614,95 @@ Next object_startFacingStep(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A7B9E ── */
+/* Store one byte into memory at [r6]: a simple setter for an object field. */
+static void store_byte_at(u32 address, u32 value) {
+    ST8(address, value);
+}
+
+/* sub_80A7B9E(r0 = value, r6 = destination address) -> returns to caller */
+Next sub_80A7B9E(void) {
+    store_byte_at(R6, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A7BA2 ── */
+/* Byte-size "add to memory" helper: the byte at addr is loaded, addend is
+ * added to it (full 32-bit ADDS, so C/V reflect that addition), and the low
+ * byte is written back. Returns the full sum, which the original leaves in r1. */
+static u32 add_to_byte(u32 addr, u32 addend) {
+    u32 sum = (u32)LD8(addr) + addend;
+    ST8(addr, sum);
+    return sum;
+}
+
+/* sub_80A7BA2(r0 = addend, r6 = address of the byte) -> r1 = sum, flags from ADDS */
+Next sub_80A7BA2(void) {
+    u32 sum = add_to_byte(R6, R0);
+    R1 = sum;
+    /* ADDS r1, r1, r0: recompute the operands from the exact sum so the
+     * adapter can set C/V exactly as the original add did. */
+    SET_FLAGS_ADD(sum - R0, R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A7F14 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result_sub_80A7F14;
+/* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
+static inline call_sprite_getFrameParameters_result_sub_80A7F14 call_sprite_getFrameParameters_sub_80A7F14(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_getFrameParameters);
+    return (call_sprite_getFrameParameters_result_sub_80A7F14){ R0, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Check a sprite's frame parameters and mark the sprite (r5) with the
+ * "palette 8" byte at offset 9 when the frame's high flag bit is set. */
+static void mark_sprite_palette_flag(u32 sprite) {
+    u32 params = call_sprite_getFrameParameters_sub_80A7F14(sprite).r0;
+
+    if (params & 0x80)
+        ST8(sprite + 9, 8);
+}
+
+/* sub_80A7F14(r5 = sprite object) -> nothing */
+Next sub_80A7F14(void) {
+    mark_sprite_palette_flag(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A8020 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result call_sprite_setPalette_sub_80A8020(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80A8020 -- apply the sprite palette matching a work struct's current form.
+ *
+ * r7 points to a struct whose byte at +2 holds a form index.  That index is
+ * looked up in the byte table at off_80A8034 to get a palette number, which
+ * sprite_setPalette applies to the sprite data described by r5.
+ * Both r5 and r7 are outputs but the original leaves them unchanged
+ * (it merely saves/restores them around the call).
+ */
+static u32 apply_form_palette(u32 sprite, u32 work) {
+    u32 formIndex = LD8(work + 2);                       /* ldrb r0, [r7,#2]   */
+    u32 palette   = LD8(A_off_80A8034 + formIndex);      /* ldrb r0, [r1,r0]   */
+    call_sprite_setPalette_sub_80A8020(palette, sprite);             /* bl sprite_setPalette (r0 = palette, r5 = sprite) */
+    return sprite;                                       /* r5 passes through unchanged */
+}
+
+/* sub_80A8020(r5 = sprite, r7 = work struct) -> r5 r7 unchanged */
+Next sub_80A8020(void) {
+    R5 = apply_form_palette(R5, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchCustomJumptableByIndex_80A8208 ── */
 /* Custom jumptable dispatch for a battle object (0x080A8208).
  *
@@ -1445,6 +1731,30 @@ static void dispatch_object_handler(u32 object) {
 
 Next battle_dispatchCustomJumptableByIndex_80A8208(void) {
     dispatch_object_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A82A4 ── */
+/* Compute a data address for the current map area.
+ * The area index is map group 0x85's special entry 3, or the map number for
+ * every other group. It selects one of four base addresses from the table at
+ * off_80A82CC; the result is that base plus 8 times the byte at [r5,#4]. */
+static u32 sub_80A82A4_typed(u32 obj_ptr, u32 toolkit_ptr) {
+    u32 game_state = LD32(toolkit_ptr + oToolkit_GameStatePtr);
+
+    u32 area_index;
+    if (LD8(game_state + oGameState_MapGroup) == 0x85)
+        area_index = 3;
+    else
+        area_index = LD8(game_state + oGameState_MapNumber);
+
+    u32 base = LD32(A_off_80A82CC + area_index * 4);
+    return base + LD8(obj_ptr + 4) * 8;
+}
+
+/* sub_80A82A4(r5 = object pointer, r10 = toolkit pointer) -> r0 */
+Next sub_80A82A4(void) {
+    R0 = sub_80A82A4_typed(R5, R10);
     RETURN_TO_CALLER();
 }
 
@@ -1626,6 +1936,29 @@ Next getRandomFadeLevel(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A856C ── */
+/* Decrement the 32-bit counter at [r5+0x14] by 4<<16, store the raw result back,
+ * and return the value clamped at 0 so N/Z reflect the clamped counter
+ * (r0 itself is a clobber; only the flags are observed by callers). */
+static u32 sub_80A856C_decrement(u32 obj) {
+    u32 counter_addr = obj + 0x14;
+    s32 counter = (s32)LD32(counter_addr);
+
+    counter -= 4 << 16;
+    ST32(counter_addr, (u32)counter);
+
+    if (counter > 0)
+        return (u32)counter;
+    return 0;
+}
+
+/* sub_80A856C(r5 = object, lr = return address) -> flags nz */
+Next sub_80A856C(void) {
+    R0 = sub_80A856C_decrement(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── npc_playerProximityEventTrigger ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool z, n, c, v; } call_TestEventFlagFromImmediate_result_npc_playerProximityEventTrigger;
@@ -1733,6 +2066,51 @@ static void sync_screen_pos_to_camera(u32 src, u32 dst) {
 /* npc_syncScreenPosToCamera(r5 = source object, r6 = destination) -> nothing */
 Next npc_syncScreenPosToCamera(void) {
     sync_screen_pos_to_camera(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A8728 ── */
+/* sub_80A8728 -- per-type handler dispatch for a battle object.
+ *
+ * r5 points to an object whose byte at +8 is a type index.  The handler for
+ * that type is read from the jump table at off_80A873C and called as an
+ * ordinary subroutine ("mov lr, pc; bx r0"): the handler gets the table
+ * entry in r0, the type byte in r1, the object still in r5, and r10
+ * untouched.  Whatever the handler leaves in r2, r3 and r8-r12 flows
+ * straight through to this function's caller, exactly as in the original;
+ * r4-r7 are saved and restored around the call by the push/pop pair.
+ */
+
+/* Call the selected handler through its table address.
+ * register form: the handler's live register state exists only in the guest
+ * register file, so the original's push/pop {r4-r7} around the call has to
+ * be reproduced by writing those guest registers directly. */
+static void call_type_handler(u32 handler, u32 type, u32 r10)
+{
+    u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;   /* push {r4-r7} */
+
+    R0 = handler;                  /* the table entry stays in r0 for the callee */
+    R1 = type;                     /* ... and the type byte in r1 */
+    R10 = r10;
+    GUEST_CALL_ADDR(handler);      /* mov lr, pc; bx r0 */
+
+    R4 = r4;                       /* pop {r4-r7}: whatever the handler did */
+    R5 = r5;                       /* to them is not visible to the caller */
+    R6 = r6;
+    R7 = r7;
+}
+
+/* Look up the handler for obj's type and run it. */
+static void dispatch_object_type(u32 obj, u32 r10)
+{
+    u32 type = LD8(obj + 8);
+    u32 handler = LD32(A_off_80A873C + type);
+    call_type_handler(handler, type, r10);
+}
+
+/* sub_80A8728() */
+Next sub_80A8728(void) {
+    dispatch_object_type(R5, R10);
     RETURN_TO_CALLER();
 }
 
@@ -2092,6 +2470,367 @@ Next owMapObject_weatherTornado_setPriority_80A91F4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A92B8 ── */
+/* Weather-comparison state machine dispatcher (0x080A92B8).
+ *
+ * r5 holds a battle object; the byte at offset +8 selects the current weather
+ * state and indexes the handler table off_80A92CC:
+ *   0: sprite_initBeastSp   1: sub_80A931C
+ *   2: sub_80A9360          3: sub_80A93D0
+ * Before the call, r6 is loaded with the address of the shared state block
+ * eWeatherCompState, and r10 is passed through to the handler untouched. */
+
+/* register form: the handler is chosen at run time from the jump table
+ * off_80A92CC, and it expects the object in r5, the shared state block
+ * address in r6 and r10 passed through — none of which typed parameters
+ * can express. r0 keeps the raw table entry exactly as the original's
+ * `mov lr, pc; bx r0` leaves it. */
+static void weather_dispatch_handler(u32 object, u32 r10_value) {
+    u32 state = LD8(object + 8);
+    u32 handler = LD32(A_off_80A92CC + state);
+
+    R0 = handler;             /* table entry (Thumb address), as in the original */
+    R1 = state;               /* the state byte the dispatch was based on */
+    R5 = object;              /* object work area, also visible to the handler */
+    R6 = A_eWeatherCompState; /* shared weather state block */
+    R10 = r10_value;          /* passed through to every handler */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Typed body: everything the callers observe (r2-r5, r8-r12) is whatever the
+ * chosen handler leaves behind, so there is nothing to compute or return. */
+static void sub_80A92B8_body(u32 object, u32 r10_value) {
+    weather_dispatch_handler(object, r10_value);
+}
+
+/* sub_80A92B8(r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 */
+Next sub_80A92B8(void) {
+    sub_80A92B8_body(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_initBeastSp ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result call_sprite_load_sprite_initBeastSp(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_sprite_initBeastSp(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_sprite_initBeastSp;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_sprite_initBeastSp call_sprite_loadAnimationData_sprite_initBeastSp(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_sprite_initBeastSp){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_sprite_initBeastSp(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r1, r2; } call_sprite_setPriority_8002E14_result_sprite_initBeastSp;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sprite_initBeastSp call_sprite_setPriority_8002E14_sprite_initBeastSp(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sprite_initBeastSp){ R1, R2 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_sprite_initBeastSp(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_sub_80A931C_result;
+/* register form: generated wrapper: sub_80A931C has no typed C interface yet */
+static inline call_sub_80A931C_result call_sub_80A931C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A931C);
+    return (call_sub_80A931C_result){ R2, R3, R8, R9, R10, R11, R12 };
+}
+
+/* Initialise the Beast Out sprite state (r5) for its owning object (r6).
+ *
+ * Everything this function leaves behind for its caller (r2/r3/r8-r12) comes
+ * from the final call to sub_80A931C, whose wrapper leaves those registers in
+ * place; r10 passes straight through to that helper unchanged. r4-r7 are
+ * saved and restored by the original's push/pop, so they end up exactly as
+ * they entered and need no handling here. */
+static void init_beast_out_sprite(u32 sprite, u32 owner) {
+    /* Sprite kind: Beast Out. */
+    ST8(sprite, 3);
+
+    /* Load the Beast Out graphics (128x28 tiles, 0x6C-byte stride). */
+    call_sprite_load_sprite_initBeastSp(0x80, 0x1C, 0x6C, sprite);
+
+    /* Animation, animation data and shadow removal all come from the sprite. */
+    call_sprite_setAnimation_sprite_initBeastSp(LD8(sprite + 4), sprite);
+    call_sprite_loadAnimationData_sprite_initBeastSp(sprite);
+    call_sprite_noShadow_sprite_initBeastSp(sprite);
+
+    /* Priority from the sprite state, palette from the owning object. */
+    call_sprite_setPriority_8002E14_sprite_initBeastSp(LD8(sprite + 5), sprite);
+    call_sprite_setPalette_sprite_initBeastSp(LD8(owner + 0x1C), sprite);
+
+    /* Reset the animation counters and set the frame delay. */
+    ST8(sprite + 6, 0);
+    ST8(sprite + 7, 0);
+    ST32(sprite + 0x24, 0);
+    ST8(sprite + 8, 4);
+
+    /* Beast Out specific finish-up; its register results belong to our caller. */
+    call_sub_80A931C(sprite);
+}
+
+/* sprite_initBeastSp(r5 = sprite state, r6 = owning object, r10 = context)
+ * -> r2 r3 r4 r5 r8 r9 r10 r11 r12 (all left by sub_80A931C, except r4/r5
+ * which the original restores to their entry values) */
+Next sprite_initBeastSp(void) {
+    init_beast_out_sprite(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A931C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_TestEventFlagFromImmediate_result_sub_80A931C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_80A931C call_TestEventFlagFromImmediate_sub_80A931C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_80A931C){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3; } call_sprite_setPriority_8002E14_result_sub_80A931C;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_sub_80A931C call_sprite_setPriority_8002E14_sub_80A931C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_sub_80A931C){ R1, R2, R3 };
+}
+
+typedef struct { u32 r1, r2, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_sub_80A931C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_80A931C call_PlaySoundEffect_sub_80A931C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_80A931C){ R1, R2, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_80A9360_result;
+/* register form: generated wrapper: sub_80A9360 has no typed C interface yet */
+static inline call_sub_80A9360_result call_sub_80A9360(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A9360);
+    return (call_sub_80A9360_result){ R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r5; } call_sub_80A93D0_result;
+/* register form: generated wrapper: sub_80A93D0 has no typed C interface yet */
+static inline call_sub_80A93D0_result call_sub_80A93D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A93D0);
+    return (call_sub_80A93D0_result){ R5 };
+}
+
+/* register form: generated wrapper: sub_80A93D8 has no typed C interface yet */
+static inline void call_sub_80A93D8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A93D8);
+}
+
+/* register form: generated wrapper: sub_80A93E8 has no typed C interface yet */
+static inline void call_sub_80A93E8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A93E8);
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_sub_80A931C;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_80A931C call_sprite_update_sub_80A931C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_80A931C){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Per-frame update for the boss actor (r5 = object, r10 = toolkit context).
+ *
+ * Three mutually exclusive cases, chosen by story flags:
+ *   - EVENT_BE6 set: the "hit" reaction — lift the sprite's priority,
+ *     store state 8, play the hit sound and run the hit sub-step.
+ *   - EVENT_BE4 set: store state 12 and run that sub-step instead.
+ *   - neither: run the two idle sub-steps.
+ * sprite_update runs afterwards on every path.
+ *
+ * The original pushes r4-r7 on entry and pops them on the way out, so those
+ * four registers must end with their entry values even though the callees
+ * trash the live copies; the entry values are returned to the adapter so it
+ * can put them back. */
+typedef struct {
+    u32 r4; /* entry r4, to restore before returning */
+    u32 r5; /* entry r5, to restore before returning */
+    u32 r6; /* entry r6, to restore before returning */
+    u32 r7; /* entry r7, to restore before returning */
+} SavedRegs_sub_80A931C;
+
+static SavedRegs_sub_80A931C sub_80A931C_body(u32 obj, u32 context, u32 r4, u32 r6, u32 r7) {
+    SavedRegs_sub_80A931C saved;
+
+    saved.r4 = r4;
+    saved.r5 = obj;
+    saved.r6 = r6;
+    saved.r7 = r7;
+
+    /* TestEventFlagFromImmediate: Z clear when the flag is set. */
+    if (!call_TestEventFlagFromImmediate_sub_80A931C(0xB, 0xE6).z) {        /* EVENT_BE6 */
+        /* Hit reaction: priority 3, state 8, hit sound, hit sub-step. */
+        call_sprite_setPriority_8002E14_result_sub_80A931C prio =
+            call_sprite_setPriority_8002E14_sub_80A931C(3, obj);
+        ST8(obj + 8, 8);
+        /* r2 is whatever sprite_setPriority left behind, as in the original. */
+        call_PlaySoundEffect_sub_80A931C(SOUND_HIT_6B, prio.r2);
+        call_sub_80A9360(obj);
+    } else if (!call_TestEventFlagFromImmediate_sub_80A931C(0xB, 0xE4).z) { /* EVENT_BE4 */
+        ST8(obj + 8, 0xC);
+        call_sub_80A93D0(obj);
+    } else {
+        call_sub_80A93D8(obj);
+        call_sub_80A93E8(obj);
+    }
+
+    call_sprite_update_sub_80A931C(obj);
+    return saved;
+}
+
+/* sub_80A931C(r5 = object, r10 = context) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
+ * (r2/r3 and r8-r12 are whatever the callees leave behind; r4-r7 are
+ * restored to their entry values, as the original's pop does). */
+Next sub_80A931C(void) {
+    SavedRegs_sub_80A931C saved = sub_80A931C_body(R5, R10, R4, R6, R7);
+    R4 = saved.r4;
+    R5 = saved.r5;
+    R6 = saved.r6;
+    R7 = saved.r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A93D0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_FreeOverworldMapObject_result_sub_80A93D0;
+/* register form: generated wrapper: FreeOverworldMapObject has no typed C interface yet */
+static inline call_FreeOverworldMapObject_result_sub_80A93D0 call_FreeOverworldMapObject_sub_80A93D0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(FreeOverworldMapObject);
+    return (call_FreeOverworldMapObject_result_sub_80A93D0){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * sub_80A93D0 is a pure trampoline: it forwards the map-object handle in r5
+ * straight to FreeOverworldMapObject and lets everything the callee leaves
+ * behind (r0-r3, r5, the N/Z/C/V flags and lr) reach its caller unchanged.
+ * The original does this with push {lr} / bl / pop {pc}, i.e. a tail call.
+ */
+
+/* Perform the forwarded call and hand back everything FreeOverworldMapObject
+ * left in the registers and flags. */
+static call_FreeOverworldMapObject_result_sub_80A93D0 free_overworld_map_object_via(u32 mapObject)
+{
+    return call_FreeOverworldMapObject_sub_80A93D0(mapObject);
+}
+
+/* sub_80A93D0(r5 = map object) -> r0 r1 r2 r3 r5, nz c v */
+Next sub_80A93D0(void) {
+    call_FreeOverworldMapObject_result_sub_80A93D0 res = free_overworld_map_object_via(R5);
+
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    R5 = res.r5;
+    /* nz/c/v and lr are already exactly as FreeOverworldMapObject left them,
+     * so there is nothing more to set before returning. */
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A93D8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline void call_sprite_setUnk0x2c_sub_80A93D8(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* Reset some sprite field to 0xE000000 for the object whose state is in r5.
+ * (sprite_setUnk0x2c takes the value in r0 and the object pointer in r5.) */
+static void reset_sprite_unk2c(u32 object_state) {
+    call_sprite_setUnk0x2c_sub_80A93D8(0xE000000, object_state);
+}
+
+/* sub_80A93D8(r5 = object state) -> - */
+Next sub_80A93D8(void) {
+    reset_sprite_unk2c(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9430 ── */
+/* Weather map-object dispatcher.
+ *
+ * The object at r5 keeps a small state machine number at offset 8; each state
+ * has its own handler in the jump table at off_80A9444:
+ *   0: owMapObject_mrWeatherInit_80A9458  (spawn/init)
+ *   1: object_mrWeatherStep_80A94DC       (per-frame step)
+ *   2: object_fadeSpriteToWhiteStep                        (extra state)
+ *   3: owMapObject_freeThunk              (despawn/free)
+ * The handler is invoked with r0 = its own address, r1 = the state number,
+ * r5 = the object, r6 = address of eWeatherCompState, r10 passed through.
+ * Everything the handler leaves in r2-r5/r8-r12 is this routine's output,
+ * so those registers are simply left in place after the call.
+ */
+
+/* register form: dispatches through the state jump table address; the callee
+ * leaves this routine's outputs (r2-r5, r8-r12) directly in the registers. */
+static void run_weather_handler(u32 handler, u32 state, u32 objectPtr, u32 r10In) {
+    R0 = handler;              /* handlers are entered with their own address in r0 */
+    R1 = state;
+    R5 = objectPtr;
+    R6 = A_eWeatherCompState;  /* handler argument: the weather component's state block */
+    R10 = r10In;
+    GUEST_CALL_ADDR(handler);
+}
+
+static void weather_state_dispatch(u32 objectPtr, u32 r10In) {
+    u32 state = LD8(objectPtr + 8);
+    u32 handler = LD32(A_off_80A9444 + state);
+    run_weather_handler(handler, state, objectPtr, r10In);
+}
+
+/* sub_80A9430(r5 = weather object, r10 = pass-through) */
+Next sub_80A9430(void) {
+    weather_state_dispatch(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── owMapObject_freeThunk ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_FreeOverworldMapObject_result_owMapObject_freeThunk;
@@ -2119,6 +2858,26 @@ static void free_overworld_map_object(u32 object) {
 
 Next owMapObject_freeThunk(void) {
     free_overworld_map_object(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9570 ── */
+/* sub_80A9570: returns the address of an 8-byte-per-row table for the current
+ * map, offset by the row index stored at [r5,#4].
+ *   index = (mapGroup == 0x85) ? 3 : mapNumber  ->  pick one of four tables
+ *   result = table_base + 8 * row_index
+ */
+static u32 map_table_address(u32 objPtr, u32 toolkitPtr) {
+    u32 gameState = LD32(toolkitPtr + oToolkit_GameStatePtr);
+    u32 index = (LD8(gameState + oGameState_MapGroup) == 0x85)
+                  ? 3
+                  : LD8(gameState + oGameState_MapNumber);
+    u32 tableBase = LD32(A_off_80A9598 + index * 4);
+    return tableBase + LD8(objPtr + 4) * 8;
+}
+
+Next sub_80A9570(void) {
+    R0 = map_table_address(R5, R10);
     RETURN_TO_CALLER();
 }
 
@@ -2176,6 +2935,29 @@ static void update_map_object_layer_priority(u32 object) {
  * values the callees leave behind, so the adapter writes nothing itself. */
 Next owMapObject_updateLayerPriorityForPlayerZ_80A95EC(void) {
     update_map_object_layer_priority(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9614 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline void call_SetEventFlag_sub_80A9614(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* Set the event flag selected by the player's current menu selection:
+ * r5 points to a work area whose +4 byte is the selection index, which
+ * indexes a table of flag IDs at byte_80A9648. SetEventFlag also reads r10. */
+static void set_selected_event_flag(u32 work) {
+    u32 index = (u32)LD8(work + 4) * 2;
+    u16 flag_id = LD16(A_byte_80A9648 + index);
+    call_SetEventFlag_sub_80A9614(flag_id);   /* r10 (some flag context) stays as on entry */
+}
+
+/* sub_80A9614(r5 = work area, r10 = flag context) -> - */
+Next sub_80A9614(void) {
+    set_selected_event_flag(R5);
     RETURN_TO_CALLER();
 }
 
@@ -2488,6 +3270,52 @@ Next eventFlagNpcUpdate_80A9C26(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A9D10 ── */
+/* Overworld sprite-object dispatcher. r5 points at an overworld object whose
+ * state byte (offset 8) selects one of three routines from the jump table:
+ * 0 = ow_initSpriteObject, 1 = ow_spriteObjectUpdate, 2 = sub_80A9DB8.
+ * r2 and r10 are passed through to the selected routine, which leaves its
+ * results in r2/r3/r8-r12; r4-r7 survive the call (the original pushes and
+ * pops them around the dispatch). */
+
+/* Call the routine selected by the object's state byte.
+ * register form: the target is reached through the game's jump table with
+ * mov lr, pc / bx, and r4-r7 must be restored around the callee exactly as
+ * the original's push {r4-r7} / pop {r4-r7} does; C cannot express that
+ * around an indirect guest call without touching the registers directly. */
+static u32 call_object_routine(u32 kind, u32 arg2, u32 arg5, u32 arg10) {
+    u32 target = LD32(A_off_80A9D24 + kind);
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    R0 = target;               /* the original jumps with the table entry in r0 */
+    R1 = kind;
+    R2 = arg2;
+    R5 = arg5;
+    R10 = arg10;
+    GUEST_CALL_ADDR(target);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    return R0;
+}
+
+/* Run the routine for one overworld sprite object (arg5 = object pointer). */
+static void run_object_routine(u32 arg2, u32 arg5, u32 arg10) {
+    u32 kind = LD8(arg5 + 8);
+    call_object_routine(kind, arg2, arg5, arg10);
+}
+
+/* sub_80A9D10(r2, r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
+ * The selected routine's register results are already in the guest registers
+ * after the dispatch call, and r4/r5 come back unchanged, so the adapter has
+ * nothing to write. */
+Next sub_80A9D10(void) {
+    run_object_routine(R2, R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_spriteObjectUpdate ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result;
@@ -2623,6 +3451,63 @@ Next object_timerStateTick(void) {
     u32 r10_out = timer_state_tick(obj, R10);
     R5 = obj;
     R10 = r10_out;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9EB6 ── */
+/* Marks the cutscene state as active: writes 1 to the byte at
+ * eCutsceneState+8 (byte_2011C58). Touches nothing else. */
+static void mark_cutscene_state_active(void) {
+    ST8(A_eCutsceneState + 8, 1);
+}
+
+/* sub_80A9EB6: sets eCutsceneState+8 to 1 (cutscene running).
+ * r4-r7 and r5 (listed as an output) are preserved untouched. */
+Next sub_80A9EB6(void) {
+    mark_cutscene_state_active();
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80A9F30 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_sprite_getFrameParameters_result_sub_80A9F30;
+/* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
+static inline call_sprite_getFrameParameters_result_sub_80A9F30 call_sprite_getFrameParameters_sub_80A9F30(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_getFrameParameters);
+    return (call_sprite_getFrameParameters_result_sub_80A9F30){ R0 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_sub_80A9F30;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_sub_80A9F30 call_sprite_update_sub_80A9F30(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_sub_80A9F30){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Per-frame sprite work for the object whose pointer is in r5:
+ *  - sprite_getFrameParameters reports the current animation frame's parameters;
+ *    when bit 0x80 is set, the game writes 8 into the object's flag byte at +8.
+ *  - sprite_update then advances the sprite animator.
+ * r2/r3 (and the condition flags) are simply whatever sprite_update leaves
+ * behind; the wrapper call already places them in the register file.
+ * r8's exit value is the value it had on entry -- the original saves it around
+ * the calls and restores it afterwards -- so it is passed through unchanged. */
+static u32 sprite_frame_tick(u32 obj, u32 r8_entry) {
+    u32 frame_params = call_sprite_getFrameParameters_sub_80A9F30(obj).r0;
+
+    if ((frame_params & 0x80) != 0)
+        ST8(obj + 8, 8);              /* mark the object for this frame */
+
+    call_sprite_update_sub_80A9F30(obj);
+    return r8_entry;                  /* r8 restored to its entry value */
+}
+
+/* sub_80A9F30(r5 = object pointer) -> r2 r3 from sprite_update, r8 unchanged */
+Next sub_80A9F30(void) {
+    u32 r8_out = sprite_frame_tick(R5, R8);
+    R8 = r8_out;
     RETURN_TO_CALLER();
 }
 
@@ -2947,6 +3832,32 @@ Next isEventFlag212Set_80AA764(void) {
 
     R0 = result;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA778 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool z, n; } call_TestEventFlagFromImmediate_result_sub_80AA778;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_80AA778 call_TestEventFlagFromImmediate_sub_80AA778(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_80AA778){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Returns 1 if event flag EVENT_213 is set, else 0.
+ * (movflag EVENT_213 encodes the flag as bank 2, index 0x13 for
+ * TestEventFlagFromImmediate; Z is clear when the flag is set.) */
+static u32 check_event_213(void) {
+    if (!call_TestEventFlagFromImmediate_sub_80AA778(2, 0x13).z)
+        return 1;                       /* flag set */
+    return 0;                           /* flag clear */
+}
+
+/* sub_80AA778() -> r0 = EVENT_213 state; r4 is preserved (pushed/popped). */
+Next sub_80AA778(void) {
+    R0 = check_event_213();
     RETURN_TO_CALLER();
 }
 

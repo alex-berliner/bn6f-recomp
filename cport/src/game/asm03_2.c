@@ -590,6 +590,64 @@ Next initWorkArea5Entries_80467D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80468E0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_makeUnscalable_result_sub_80468E0;
+/* register form: generated wrapper: sprite_makeUnscalable has no typed C interface yet */
+static inline call_sprite_makeUnscalable_result_sub_80468E0 call_sprite_makeUnscalable_sub_80468E0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_makeUnscalable);
+    return (call_sprite_makeUnscalable_result_sub_80468E0){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Clear the byte at the given sprite pointer (some "scalable" flag/state byte)
+ * and then let sprite_makeUnscalable do its work on the same object.
+ * Everything the caller sees afterwards — r0-r3, the NZCV flags and lr — is
+ * exactly what sprite_makeUnscalable leaves behind; r4-r7 are untouched. */
+static void clear_byte_and_make_unscalable(u32 ptr)
+{
+    ST8(ptr, 0);
+    call_sprite_makeUnscalable_sub_80468E0(ptr);
+}
+
+/* sub_80468E0(r5 = sprite pointer) -> r0 r1 r2 r3 nz c v (from sprite_makeUnscalable) */
+Next sub_80468E0(void)
+{
+    clear_byte_and_make_unscalable(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80468EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_makeUnscalable_result_sub_80468EC;
+/* register form: generated wrapper: sprite_makeUnscalable has no typed C interface yet */
+static inline call_sprite_makeUnscalable_result_sub_80468EC call_sprite_makeUnscalable_sub_80468EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_makeUnscalable);
+    return (call_sprite_makeUnscalable_result_sub_80468EC){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_80468EC: clear the flag byte of one battle entry and mark its sprite
+ * unscalable. r0 = entry index; entries are 0x58 bytes apart starting at
+ * byte_2011860. The entry pointer is built in r5 and passed to
+ * sprite_makeUnscalable in r5; r1/r2/r3 (and c/v) after the call are whatever
+ * that callee leaves behind. Because the original pushes/pops r4-r7 around
+ * the body, r5 ends the call with its entry-time value even though the
+ * pointer is formed in it, so it is passed in and returned unchanged. */
+static u32 clear_entry_and_make_unscalable(u32 index, u32 saved_r5) {
+    u32 entry = A_byte_2011860 + index * 0x58;
+
+    ST8(entry, 0);                        /* mov r0,#0; strb r0,[r5] */
+    call_sprite_makeUnscalable_sub_80468EC(entry);    /* bl sprite_makeUnscalable (r5 = entry) */
+    return saved_r5;                      /* pop {r4-r7} restores r5 */
+}
+
+/* sub_80468EC(r0 = entry index) -> r1 r2 r3 from sprite_makeUnscalable; r5 unchanged */
+Next sub_80468EC(void) {
+    R5 = clear_entry_and_make_unscalable(R0, R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_initRequestWorkArea_8046CC8 ── */
 /* reqBBS_initRequestWorkArea_8046CC8(r0 = BBS request slot index, r10 = toolkit):
  * Prepares the BBS request work area for the selected request:
@@ -2110,6 +2168,36 @@ Next shop_copyItemTableToShopData_8048C98(void) {
 
     R2 = bytesLeft;
     R3 = lastLoaded;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8048F88 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r8, r9, r12; bool z, n, c, v; } call_shop_addItemStockEntry_result;
+/* register form: generated wrapper: shop_addItemStockEntry has no typed C interface yet */
+static inline call_shop_addItemStockEntry_result call_shop_addItemStockEntry(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(shop_addItemStockEntry);
+    return (call_shop_addItemStockEntry_result){ R0, R1, R2, R3, R8, R9, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_8048F88 — shop stock setup: register one stock entry for the item
+ * described by the table at byte_8048BE4 (entry kind 4), then return.
+ *
+ * Everything the caller observes — r0-r3, r8, r9, r12 and the NZCV flags —
+ * is exactly what shop_addItemStockEntry leaves behind, and the wrapper's
+ * guest execution already put those values in place, so nothing is written
+ * back here. lr likewise keeps whatever shop_addItemStockEntry's own bls
+ * left in it (the original's pop {pc} does not touch lr), so it must NOT be
+ * overwritten with this function's own bl return address. r4-r7 are pushed
+ * and popped untouched by the original and are preserved the same way. */
+static void add_stock_entry_kind4(void) {
+    call_shop_addItemStockEntry(4u /* entry kind */, A_byte_8048BE4 /* item table */);
+}
+
+Next sub_8048F88(void) {
+    add_stock_entry_kind4();
     RETURN_TO_CALLER();
 }
 
@@ -3791,6 +3879,72 @@ Next battle_dispatchJumpByActorSlotAndAction_804C404(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_804C43C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result call_QueueEightWordAlignedGFXTransfer(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result){ R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r8, r9; } call_battle_render_setBlurAndAnimUpdate_804C478_result;
+/* register form: generated wrapper: battle_render_setBlurAndAnimUpdate_804C478 has no typed C interface yet */
+static inline call_battle_render_setBlurAndAnimUpdate_804C478_result call_battle_render_setBlurAndAnimUpdate_804C478(u32 r5, u32 r7) {
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(battle_render_setBlurAndAnimUpdate_804C478);
+    return (call_battle_render_setBlurAndAnimUpdate_804C478_result){ R2, R8, R9 };
+}
+
+/* Battle "blur" (afterimage) effect setup, used when a blur/ghost state starts.
+ *
+ * Original register behavior:
+ *   - pushes r4-r7 and pops them at the end, so those registers are preserved;
+ *   - r2/r8/r9 on exit are simply whatever battle_render_setBlurAndAnimUpdate
+ *     left behind (its own outputs), which callers read after this returns.
+ */
+
+/* Does all of the work; r10 (toolkit pointer) is the only input the original
+ * actually reads -- r5/r7 are only pushed/popped, never used before being
+ * overwritten by the GFX queuer's results. */
+static call_battle_render_setBlurAndAnimUpdate_804C478_result setup_battle_blur(u32 toolkit)
+{
+    /* Queue an 8-word-aligned tile transfer: the effect's GFX at byte_86A1480
+     * is sent to VRAM at 0x600CB00, 0x4C0 bytes. The queuer leaves the affected
+     * object pointer in r5 (and r7) behind, which the rest of the code uses. */
+    call_QueueEightWordAlignedGFXTransfer_result gfx =
+        call_QueueEightWordAlignedGFXTransfer(A_byte_86A1480, 0x600CB00, 0x4C0);
+
+    /* Reset the render info fade counter to its initial value. */
+    u32 renderInfo = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(renderInfo + 0xA, 0x1F82);
+
+    /* Reset the blur state block: blend amount 0x3F, frame timer 0x17. */
+    u32 blurState = LD32(toolkit + oToolkit_Unk200f3a0_Ptr);
+    ST8(blurState + 9, 0x3F);
+    ST8(blurState + 0xA, 0x17);
+
+    /* Mark the object the GFX queuer returned as being in blur state 4. */
+    ST8(gfx.r5 + 0x10, 4);
+
+    /* Run the blur/animation update on that same object (r10 still holds the
+     * toolkit pointer, unchanged since entry). */
+    return call_battle_render_setBlurAndAnimUpdate_804C478(gfx.r5, gfx.r7);
+}
+
+/* sub_804C43C(r5, r7, r10 = toolkit, lr) -> r2 r8 r9 (left by the anim update) */
+Next sub_804C43C(void) {
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;  /* push {r4-r7} */
+    call_battle_render_setBlurAndAnimUpdate_804C478_result res = setup_battle_blur(R10);
+    R4 = savedR4, R5 = savedR5, R6 = savedR6, R7 = savedR7;      /* pop {r4-r7} */
+    R2 = res.r2, R8 = res.r8, R9 = res.r9;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_render_setBlurAndAnimUpdate_804C478 ── */
 /* Bit in the render-info control word that enables the blur/animation
  * redraw path for this frame (dword_804C4AC = 0x4800). */
@@ -3858,6 +4012,36 @@ static void battle_render_setBlurAndAnimUpdate(u32 blur_obj, u32 sprite, u32 too
 Next battle_render_setBlurAndAnimUpdate_804C478(void)
 {
     battle_render_setBlurAndAnimUpdate(R5, R7, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C700 ── */
+/* Battle-start step dispatcher: the battle object at r5 carries a step counter
+ * at offset 0x10, and this routine jumps to the matching handler from the
+ * table at off_804C714 (battle_setupBackgroundGfx for step 0,
+ * battleObject_initBattleFieldTilesAndSfxTimer_804C770 for step 1),
+ * passing it the step number in r1 and its own table entry in r0.
+ * Everything the callers see afterwards (r2, r8-r12) is left by the handler. */
+
+/* register form: the handler must run with live guest registers — r0/r1 are
+ * its incoming arguments, and its writes to r2/r8-r12 are the caller-visible
+ * results of sub_804C700, so they must land in the real registers. */
+static u32 call_step_handler(u32 handler, u32 step) {
+    R0 = handler;
+    R1 = step;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* r5 = battle object pointer; dispatch on its step byte. */
+static void battle_step_dispatch(u32 battleObj) {
+    u32 step = LD8(battleObj + 0x10);
+    u32 handler = LD32(A_off_804C714 + step);
+    call_step_handler(handler, step);
+}
+
+Next sub_804C700(void) {
+    battle_step_dispatch(R5);
     RETURN_TO_CALLER();
 }
 
@@ -3930,5 +4114,120 @@ Next battle_setupBackgroundGfx(void) {
     R10 = out.r10;
     R11 = out.r11;
     R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C7C4 ── */
+/* sub_804C7C4 is an empty routine: it pushes {r4-r7,lr} and immediately pops
+ * the same values back, so it changes nothing and simply returns to its
+ * caller. It exists in the ROM only as a placeholder that other code can
+ * call; all registers (including the analysed "output" r5) pass through
+ * unchanged. */
+
+static u32 sub_804C7C4_body(u32 r5) {
+    /* Nothing happens; r5 is returned exactly as it arrived. */
+    return r5;
+}
+
+/* sub_804C7C4() -> r5 (unchanged) */
+Next sub_804C7C4(void) {
+    R5 = sub_804C7C4_body(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C818 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r7; } call_GetRNG_result;
+/* register form: generated wrapper: GetRNG has no typed C interface yet */
+static inline call_GetRNG_result call_GetRNG(void) {
+    GUEST_CALL(GetRNG);
+    return (call_GetRNG_result){ R0, R2, R3, R7 };
+}
+
+typedef struct { u32 r10; } call_PlaySoundEffect_result_sub_804C818;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_sub_804C818 call_PlaySoundEffect_sub_804C818(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_sub_804C818){ R10 };
+}
+
+/* Countdown tick for an object's action delay at [obj+0x14]. While the timer
+ * is still positive after decrementing, store it and stop. Once it expires,
+ * roll a fresh delay of 300..555 frames (GetRNG & 0xFF, plus 0x12C) and, if
+ * the sound table entry selected by this object's type byte at [obj+0xE] is
+ * non-zero, play that sound effect.
+ *
+ * Returns the r10 value the original leaves: entry r10 untouched, or the r10
+ * PlaySoundEffect produces when it runs. Note that r2 passed to
+ * PlaySoundEffect is whatever GetRNG left there, not the value on entry. */
+static u32 timer_tick(u32 obj, u32 r10_in) {
+    s32 timer = (s32)LD32(obj + 0x14) - 1;
+    if (timer >= 0) {
+        ST32(obj + 0x14, (u32)timer);
+        return r10_in;
+    }
+
+    /* Delay expired: pick a new wait time and maybe play the object's sound. */
+    call_GetRNG_result rng = call_GetRNG();
+    ST32(obj + 0x14, (rng.r0 & 0xFF) + 0x12C);
+
+    u32 sound_id = LD16(A_byte_804C858 + LD8(obj + 0xE));
+    if (sound_id != 0)
+        return call_PlaySoundEffect_sub_804C818(sound_id, rng.r2).r10;
+
+    return r10_in;
+}
+
+/* sub_804C818(r5 = object) -> r10 */
+Next sub_804C818(void) {
+    R10 = timer_tick(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804C844 ── */
+/* Sets the field at [r5+0x14] to 0x10; r5 passes through unchanged.
+ * (The data words following the routine are tables used by other code.) */
+static u32 sub_804C844_impl(u32 obj) {
+    ST32(obj + 0x14, 0x10);
+    return obj;
+}
+
+Next sub_804C844(void) {
+    R5 = sub_804C844_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804CC6E ── */
+/* Writes 0x0C and 0x10 into bytes 2 and 3 of the struct pointed to by the
+ * toolkit's Unk2009740 pointer (some two-byte state/counters). Nothing else
+ * happens; r5 is passed through because callers expect it preserved. */
+static u32 set_unk2009740_state_bytes(u32 saved_r5, u32 toolkit_reg) {
+    u32 ptr = LD32(toolkit_reg + oToolkit_Unk2009740_Ptr);
+    ST8(ptr + 2, 0x0C);
+    ST8(ptr + 3, 0x10);
+    return saved_r5;
+}
+
+/* sub_804CC6E(r10 = toolkit register, lr = return) -> r5 unchanged */
+Next sub_804CC6E(void) {
+    R5 = set_unk2009740_state_bytes(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_804CC7E ── */
+/* Store 8 and 0x10 into bytes +2 and +3 of the toolkit's 2009740 object. */
+static void set_mode_bytes(u32 toolkit_base, u32 *out) {
+    u32 obj = LD32(toolkit_base + oToolkit_Unk2009740_Ptr);
+
+    ST8(obj + 2, 8);
+    ST8(obj + 3, 0x10);
+    (void)out;
+}
+
+/* sub_804CC7E(r10 = toolkit, lr = return address) -> r5 unchanged */
+Next sub_804CC7E(void) {
+    set_mode_bytes(R10, &R5);
     RETURN_TO_CALLER();
 }
