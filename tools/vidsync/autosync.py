@@ -1230,6 +1230,7 @@ def try_hp(D):
         if not enemies_alive(): log(f'  hp: no enemy left at {W}: our battle is over'); return None
         hp, mx = (int.from_bytes(b.e.read(a + o, 2), 'little') for o in (0x24, 0x26))
         if not (mx and hp): continue
+        if hp > mx: log(f'  hp: MegaMan {hp}/{mx} at {W} (held by a kill)'); return None
         # no hit within the frames the box is judged over (else the box shows the hit, not the write)
         set_emu_pokes(); ks = path_keys(); p0 = b.press_gf
         for g in range(W, W + HP_STEPS): b.e.step(ks[g - p0][0])
@@ -1299,6 +1300,9 @@ def try_split(D):
                if m[i] > hi and np.mean(m[i:i + 100]) > max(1.25, 1.8 * b0)), None)
     if st is None or st > D - 150 or any(a <= st < z for a, z, _ in STRICT): return None
     val = round(max(1.0, 1.4 * b0), 2)
+    # (not back past the last write: a kill's hold and its deletion are two writes, and going back between them
+    # dropped the deletion, run10e 1147823: MegaMan and the virus held at 9999 HP)
+    if st - 60 <= max([p[0] for p in b.pokes] + [0]): return None
     w = state_at(st - 60)
     if w is None: return None
     STRICT.append((st - 40, st + 400, val))
