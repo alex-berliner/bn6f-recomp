@@ -1399,8 +1399,9 @@ def try_kill(D, side=1):
     # navi battle has black frames of its own before its end (run9y 1083189, Colonel's attacks; the end ~1085629)
     if KILL_END and KILL_END[0] > D:
         ge = KILL_END.pop(0)
-        if Lb is not None: cands = [(ge - Lb, ge, f'black {Lb} frames after (asked for)')]
-        elif L is not None: cands = [(ge - L, ge, f'result screen {L} frames after (asked for)')]
+        # (both, black first: which one the learning finds can change with the run's state, run10j 1249150)
+        cands = ([(ge - Lb, ge, f'black {Lb} frames after (asked for)')] if Lb is not None else []) + \
+                ([(ge - L, ge, f'result screen {L} frames after (asked for)')] if L is not None else [])
         log(f'  {"kill" if side else "die"}: the end asked for at {ge}: ' + ', '.join(h for _, _, h in cands))
         return kill_try(D, back, foes, vD, side, tmpl, cands)
     # the first 150 frames after the deletion ("YOU WIN" / "ENEMY DELETED", the fade) laid along the video: for
