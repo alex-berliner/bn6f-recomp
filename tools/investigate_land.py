@@ -1516,6 +1516,8 @@ def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
             why = "the function already has a symbols/db entry"
         elif row.new == row.old:
             why = "the new name is the old placeholder"
+        elif os.path.exists(os.path.join(ROOT, "bn6f", "asm", f"{row.old}.s")):
+            why = "its name is also an asm include file: the rename would rewrite the include path, not the file"
         elif row.new in syms or row.new in names or row.new in seen_new:
             why = f"the name {row.new} is already taken"
         elif (problem := style_problem(row.new, allowed)) is not None:
