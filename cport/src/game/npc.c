@@ -575,6 +575,77 @@ Next NPCCommand_jump_if_flag_clear(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_set_event_flag ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_ReadNPCScriptHalfword_result_NPCCommand_set_event_flag;
+/* register form: generated wrapper: ReadNPCScriptHalfword has no typed C interface yet */
+static inline call_ReadNPCScriptHalfword_result_NPCCommand_set_event_flag call_ReadNPCScriptHalfword_NPCCommand_set_event_flag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ReadNPCScriptHalfword);
+    return (call_ReadNPCScriptHalfword_result_NPCCommand_set_event_flag){ R0 };
+}
+
+typedef struct { u32 r0, r1, r3; } call_SetEventFlag_result;
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline call_SetEventFlag_result call_SetEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+    return (call_SetEventFlag_result){ R0, R1, R3 };
+}
+
+/* NPCCommand_set_event_flag (0x0809EDEE):
+ * Script command "set event flag". The NPC script pointer (r6) points at the
+ * opcode byte; the next halfword is the flag id. Read it, set the flag, and
+ * advance the script pointer past opcode + halfword (3 bytes). */
+
+static u32 set_event_flag_from_script(u32 script_ptr) {
+    u32 flag_id = call_ReadNPCScriptHalfword_NPCCommand_set_event_flag(script_ptr + 1).r0;
+
+    call_SetEventFlag(flag_id);
+
+    return script_ptr + 3;
+}
+
+Next NPCCommand_set_event_flag(void) {
+    R6 = set_event_flag_from_script(R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_clear_event_flag ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_ReadNPCScriptHalfword_result_NPCCommand_clear_event_flag;
+/* register form: generated wrapper: ReadNPCScriptHalfword has no typed C interface yet */
+static inline call_ReadNPCScriptHalfword_result_NPCCommand_clear_event_flag call_ReadNPCScriptHalfword_NPCCommand_clear_event_flag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ReadNPCScriptHalfword);
+    return (call_ReadNPCScriptHalfword_result_NPCCommand_clear_event_flag){ R0 };
+}
+
+typedef struct { u32 r0, r1, r3; } call_ClearEventFlag_result;
+/* register form: generated wrapper: ClearEventFlag has no typed C interface yet */
+static inline call_ClearEventFlag_result call_ClearEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ClearEventFlag);
+    return (call_ClearEventFlag_result){ R0, R1, R3 };
+}
+
+/* NPCCommand_clear_event_flag: read the 16-bit flag bitfield that follows the
+ * opcode in the NPC script (at r6+1), clear every flag named in it, and
+ * advance the script pointer past the opcode and the bitfield (r6 += 3). */
+static u32 clear_event_flag_advance(u32 script_ptr) {
+    u16 flag_bits = (u16)call_ReadNPCScriptHalfword_NPCCommand_clear_event_flag(script_ptr + 1).r0;
+    call_ClearEventFlag(flag_bits);
+    return script_ptr + 3;
+}
+
+/* inputs: r6 (script pointer), r10 (flag context for ClearEventFlag), lr
+ * outputs: r6 (advanced past "clear event flag" command) */
+Next NPCCommand_clear_event_flag(void) {
+    R6 = clear_event_flag_advance(R6);
+    SET_FLAGS_NZ(R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_set_active_and_invisible ── */
 /* NPCCommand_set_active_and_invisible(r5 = object header, r6 = script pointer):
  * Marks the object active (flags byte = 1, the OBJECT_FLAG_ACTIVE bit) and
@@ -1018,6 +1089,41 @@ static u32 remove_npc_shadow(u32 obj_addr, u32 cursor) {
 Next NPCCommand_remove_shadow(void) {
     R6 = remove_npc_shadow(R5, R6);
     SET_FLAGS_NZ(R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_set_sprite_to_cur_pet_navi ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result_NPCCommand_set_sprite_to_cur_pet_navi;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_NPCCommand_set_sprite_to_cur_pet_navi call_GetCurPETNavi_NPCCommand_set_sprite_to_cur_pet_navi(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_NPCCommand_set_sprite_to_cur_pet_navi){ R0, R3 };
+}
+
+/* Give an overworld NPC the sprite of the player's current pet Navi:
+ * look up which Navi is in the PET, translate it to an NPC sprite id,
+ * store the sprite and its category (0x18 = NPC sprite set), clear the
+ * shadow flag so a fresh shadow gets attached, and bump the command counter. */
+static u32 set_npc_sprite_to_cur_pet_navi(u32 npc, u32 counter) {
+    u32 navi = call_GetCurPETNavi_NPCCommand_set_sprite_to_cur_pet_navi().r0;   /* r3 result unused; r10 read by the callee */
+
+    u32 sprite = LD8(A_PETNaviToNPCSpriteTable + navi);
+    ST16(npc + oOverworldNPCObject_NPCSprite, sprite);
+    ST32(npc + oOverworldNPCObject_NPCSpriteCategory, 0x18);
+
+    /* detach any existing shadow from the NPC */
+    u32 flags = LD32(npc + oOverworldNPCObject_UnkFlags_60);
+    flags &= ~OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x80;
+    ST32(npc + oOverworldNPCObject_UnkFlags_60, flags);
+
+    return counter + 1;
+}
+
+/* NPCCommand_set_sprite_to_cur_pet_navi(r5 = NPC object, r6 = command counter) -> r6 */
+Next NPCCommand_set_sprite_to_cur_pet_navi(void) {
+    R6 = set_npc_sprite_to_cur_pet_navi(R5, R6);
+    SET_FLAGS_ADD(R6, 1);   /* original: adds r6, #1 */
     RETURN_TO_CALLER();
 }
 
@@ -1580,6 +1686,21 @@ Next NPCCommand_wait_cutscene_var(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── NPCCommand_clear_unk_flags_60_flag_0x200 ── */
+/* Set the 0x200 bit of an overworld NPC's UnkFlags_60 and bump the command
+ * counter (r6) by one. Returns the incremented counter. */
+static u32 npc_command_set_unk_flag_0x200(u32 npc, u32 counter) {
+    u32 flags = LD32(npc + oOverworldNPCObject_UnkFlags_60);
+    ST32(npc + oOverworldNPCObject_UnkFlags_60, flags | OW_NPC_UNK_FLAGS_60_0x200);
+    return counter + 1;
+}
+
+/* NPCCommand_clear_unk_flags_60_flag_0x200(r5 = NPC object, r6 = counter) -> r6 */
+Next NPCCommand_clear_unk_flags_60_flag_0x200(void) {
+    R6 = npc_command_set_unk_flag_0x200(R5, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── NPCCommand_wait_mystery_data_taken ── */
 /* NPCCommand_wait_mystery_data_taken (0x0809F338):
  * NPC script command handler for "wait until the mystery data has been taken".
@@ -1659,6 +1780,32 @@ Next NPCCommand_set_text_script_index_and_ptr_to_decomp_buffer(void) {
     R1 = oOverworldNPCObject_TextScriptPtr;
     R3 = A_byte_202FA04;
 
+    RETURN_TO_CALLER();
+}
+
+/* ── NPCCommand_jump_alt ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; } call_ReadNPCScriptWord_result;
+/* register form: generated wrapper: ReadNPCScriptWord has no typed C interface yet */
+static inline call_ReadNPCScriptWord_result call_ReadNPCScriptWord(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ReadNPCScriptWord);
+    return (call_ReadNPCScriptWord_result){ R0, R1, R2, R3 };
+}
+
+/* NPCCommand_jump_alt -- NPC script "jump alt" command.
+ * The NPC script pointer lives in r6 on entry. The command reads a word from
+ * the script at pointer+5 (its jump argument) and that word becomes the new
+ * script position in r6. ReadNPCScriptWord leaves its extra results behind in
+ * r1-r3; r2 is one of this routine's outputs and stays exactly as the callee
+ * set it, so the adapter does not need to write it. */
+static u32 npc_command_jump_alt_read_target(u32 script_ptr) {
+    call_ReadNPCScriptWord_result word = call_ReadNPCScriptWord(script_ptr + 5);
+    return word.r0;
+}
+
+Next NPCCommand_jump_alt(void) {
+    R6 = npc_command_jump_alt_read_target(R6);
     RETURN_TO_CALLER();
 }
 

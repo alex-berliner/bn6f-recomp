@@ -2934,6 +2934,248 @@ Next battle_spawnCollisionForObject_80CB0AE(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_rollingCannonPhaseDispatch ── */
+/* Rolling-cannon battle object: phase dispatcher (0x080CC23E).
+ *
+ * Reads the battle object's current phase (r5 = object pointer), looks up
+ * that phase's handler in the table at off_80CC250, and calls it with
+ * r0 = phase, r1 = handler address, and the dispatcher's r2/r5/r10 passed
+ * through unchanged. The `mov lr, pc / bx r1 / pop {pc}` sequence makes the
+ * handler return straight back to this dispatcher's caller, so whatever the
+ * handler leaves in r1/r5/r8-r12 *is* this function's result and never has
+ * to be moved. */
+
+/* register form: dispatches through a jump-table code address (the
+ * `mov lr, pc; bx r1` pattern). The handler's register state — including the
+ * dispatcher's output registers r1/r5/r8-r12 — must stay in the guest
+ * register file, so the call is made directly on the guest registers and
+ * nothing is returned. */
+static void guest_call_phase_handler(u32 phase, u32 handler, u32 arg2, u32 obj, u32 arg10) {
+    R0 = phase;      /* current phase, as the original passes it */
+    R1 = handler;    /* handler address is still live in r1 at entry */
+    R2 = arg2;
+    R5 = obj;
+    R10 = arg10;
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Call the handler for the battle object's current phase. */
+static void rolling_cannon_phase_dispatch(u32 obj, u32 arg2, u32 arg10) {
+    u32 phase   = LD8(obj + oBattleObject_CurPhase);
+    u32 handler = LD32(A_off_80CC250 + phase);
+    guest_call_phase_handler(phase, handler, arg2, obj, arg10);
+}
+
+/* battleObject_rollingCannonPhaseDispatch(r2, r5 = obj, r10) -> r1 r5 r8-r12 */
+Next battleObject_rollingCannonPhaseDispatch(void) {
+    rolling_cannon_phase_dispatch(R5, R2, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initFromPanelSpriteAndCollision_80CC4EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_sprite_load_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_loadAnimationData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_sprite_loadAnimationData_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R4, R5 };
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_update_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_sprite_update_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R1, R2, R4, R5 };
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_sprite_setPalette_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_object_getFlip_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r0, r4; } call_object_createCollisionData_result;
+/* register form: generated wrapper: object_createCollisionData has no typed C interface yet */
+static inline call_object_createCollisionData_result call_object_createCollisionData(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_createCollisionData);
+    return (call_object_createCollisionData_result){ R0, R4 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result call_object_freeMemory_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r4, r6, r7; } call_object_setupCollisionData_result;
+/* register form: generated wrapper: object_setupCollisionData has no typed C interface yet */
+static inline call_object_setupCollisionData_result call_object_setupCollisionData(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_setupCollisionData);
+    return (call_object_setupCollisionData_result){ R1, R2, R4, R6, R7 };
+}
+
+typedef struct { u32 r3; } call_object_setCollisionHitEffect_result;
+/* register form: generated wrapper: object_setCollisionHitEffect has no typed C interface yet */
+static inline call_object_setCollisionHitEffect_result call_object_setCollisionHitEffect(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionHitEffect);
+    return (call_object_setCollisionHitEffect_result){ R3 };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r8; bool c, v; } call_object_presentCollisionData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC;
+/* register form: generated wrapper: object_presentCollisionData has no typed C interface yet */
+static inline call_object_presentCollisionData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC call_object_presentCollisionData_battleObject_initFromPanelSpriteAndCollision_80CC4EC(u32 r1, u32 r5, u32 r8) {
+    R1 = r1;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(object_presentCollisionData);
+    return (call_object_presentCollisionData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC){ R0, R2, R3, R4, R5, R6, R7, R8, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Stand a freshly created battle object up on its panel: position it, load
+ * the shared panel sprite, restart its animation and attach a collision box.
+ * If the collision box cannot be allocated, the object is released again.
+ *
+ * Register notes: callers observe r0-r3/r5/r8 and the condition flags after
+ * this function.  On the normal path those are exactly what the last callee
+ * (object_presentCollisionData) left behind, plus r1 = 4 from the final
+ * "mov"; on the out-of-memory path they are what object_freeMemory left.
+ * So the typed function only reports r1 and the operand the adapter needs
+ * for SET_FLAGS_NZ; C/V and every other register stay as the wrappers left
+ * them. */
+struct battle_object_init_result {
+    u32 r1Value;     /* value the original leaves in r1 */
+    u32 flagOperand; /* value the adapter feeds to SET_FLAGS_NZ */
+};
+
+static struct battle_object_init_result init_battle_object_from_panel_sprite(u32 object, u32 arg8) {
+    struct battle_object_init_result out;
+
+    /* Put the object on its panel: clear its Z height, then step one panel
+     * forward in both Z and Y. */
+    call_object_setCoordinatesFromPanels_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object);
+    ST32(object + oBattleObject_Z, 0);
+    ST32(object + oBattleObject_Z, LD32(object + oBattleObject_Z) + 1);
+    ST32(object + oBattleObject_Y, LD32(object + oBattleObject_Y) + 1);
+
+    /* Load the standing sprite (bank 0x80, index 0x10, size 0x29) and hide
+     * its automatically drawn shadow. */
+    call_sprite_load_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC load = call_sprite_load_battleObject_initFromPanelSpriteAndCollision_80CC4EC(0x80, 0x10, 0x29, object);
+    object = load.r5;
+    call_sprite_noShadow_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object);
+
+    /* Mark the object header as owning a loaded sprite (bit 1) and restart
+     * its animation from frame 0. */
+    ST8(object + oObjectHeader_Flags, LD8(object + oObjectHeader_Flags) | 2);
+    ST8(object + oBattleObject_CurAnim, 0);
+    ST8(object + oBattleObject_CurAnimCopy, 0);
+    call_sprite_setAnimation_battleObject_initFromPanelSpriteAndCollision_80CC4EC(0, object);
+
+    /* Pull in the animation frames, run one sprite update, select palette 0
+     * and copy the panel's horizontal flip onto the sprite. */
+    call_sprite_loadAnimationData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC anim = call_sprite_loadAnimationData_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object);
+    object = anim.r5;
+    call_sprite_update_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC update = call_sprite_update_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object);
+    object = update.r5;
+    call_sprite_setPalette_battleObject_initFromPanelSpriteAndCollision_80CC4EC(0, object);
+    call_sprite_setFlip_battleObject_initFromPanelSpriteAndCollision_80CC4EC(call_object_getFlip_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object).r0, object);
+
+    /* Allocate the collision data; a null pointer means allocation failed. */
+    u32 collision = call_object_createCollisionData(object).r0;
+    if (collision == 0) {
+        /* Out of memory: nothing else to do, release the object again.
+         * r0-r3/r5 and all four flags are exactly what object_freeMemory
+         * leaves behind. */
+        call_object_freeMemory_result freed = call_object_freeMemory_battleObject_initFromPanelSpriteAndCollision_80CC4EC(object);
+        out.r1Value = freed.r1;
+        /* Pack freeMemory's N and Z into an operand for SET_FLAGS_NZ
+         * (C and V are still the ones freeMemory left in place). */
+        out.flagOperand = (freed.n ? 0x80000000u : 0u) | (freed.z ? 0u : 1u);
+        return out;
+    }
+
+    /* Fill in the collision box (extent 0x29, shape 0, type 0), give it the
+     * standard white-flash hit effect and hand it to the battle engine. */
+    call_object_setupCollisionData_result setup =
+        call_object_setupCollisionData(collision, 0x29, 0, 0, object);
+    call_object_setCollisionHitEffect(0xFF, object);
+    call_object_presentCollisionData_result_battleObject_initFromPanelSpriteAndCollision_80CC4EC present =
+        call_object_presentCollisionData_battleObject_initFromPanelSpriteAndCollision_80CC4EC(setup.r1, object, arg8);
+
+    /* The object is fully live now: record state phase 4.  The original's
+     * final "mov r1, #4" also clears N and Z. */
+    ST32(present.r5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 4);
+    out.r1Value = 4;
+    out.flagOperand = 4;
+    return out;
+}
+
+Next battleObject_initFromPanelSpriteAndCollision_80CC4EC(void) {
+    struct battle_object_init_result out = init_battle_object_from_panel_sprite(R5, R8);
+    R1 = out.r1Value;
+    SET_FLAGS_NZ(out.flagOperand);
+    RETURN_TO_CALLER();
+}
+
 /* ── t3_0x44_80CC944 ── */
 /* Battle object state dispatcher (task type 3 handler).
  *
@@ -3398,6 +3640,183 @@ Next sub_80CE224(void) {
     }
 
     R5 = owner;
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_initializeFromStateUpdate_80D028C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battleObject_initializeFromStateUpdate_80D028C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initializeFromStateUpdate_80D028C;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battleObject_initializeFromStateUpdate_80D028C call_sprite_load_battleObject_initializeFromStateUpdate_80D028C(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battleObject_initializeFromStateUpdate_80D028C){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_initializeFromStateUpdate_80D028C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initializeFromStateUpdate_80D028C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initializeFromStateUpdate_80D028C;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initializeFromStateUpdate_80D028C call_sprite_loadAnimationData_battleObject_initializeFromStateUpdate_80D028C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initializeFromStateUpdate_80D028C){ R1, R2, R4, R5 };
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battleObject_initializeFromStateUpdate_80D028C;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battleObject_initializeFromStateUpdate_80D028C call_sprite_setPalette_battleObject_initializeFromStateUpdate_80D028C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battleObject_initializeFromStateUpdate_80D028C){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battleObject_initializeFromStateUpdate_80D028C;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battleObject_initializeFromStateUpdate_80D028C call_object_getFlip_battleObject_initializeFromStateUpdate_80D028C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battleObject_initializeFromStateUpdate_80D028C){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battleObject_initializeFromStateUpdate_80D028C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_object_reservePanel_result_battleObject_initializeFromStateUpdate_80D028C;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result_battleObject_initializeFromStateUpdate_80D028C call_object_reservePanel_battleObject_initializeFromStateUpdate_80D028C(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result_battleObject_initializeFromStateUpdate_80D028C){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Bring a battle object up from its stored state: place it on the ground,
+ * load its sprite resources, set its current animation, apply palette and
+ * flip from its facing, re-reserve the panel it stands on, and switch it to
+ * the "update" state. Returns the object pointer unchanged (the original
+ * leaves r5 alone). */
+static u32 battleObject_initializeFromStateUpdate(u32 obj) {
+    call_object_setCoordinatesFromPanels_battleObject_initializeFromStateUpdate_80D028C(obj);
+
+    ST32(obj + oBattleObject_Z, 0);
+
+    call_sprite_load_battleObject_initializeFromStateUpdate_80D028C(0x80, 8, 0xE, obj);
+    call_sprite_noShadow_battleObject_initializeFromStateUpdate_80D028C(obj);
+
+    /* Set the header flag bit 1 (mark the sprite as loaded, in the game's terms) */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Select animation 0x3E and load its frame data */
+    ST8(obj + oBattleObject_CurAnim, 0x3E);
+    ST8(obj + oBattleObject_CurAnimCopy, 0x3E);
+    call_sprite_setAnimation_battleObject_initializeFromStateUpdate_80D028C(0x3E, obj);
+    call_sprite_loadAnimationData_battleObject_initializeFromStateUpdate_80D028C(obj);
+
+    call_sprite_setPalette_battleObject_initializeFromStateUpdate_80D028C(0, obj);
+    call_sprite_setFlip_battleObject_initializeFromStateUpdate_80D028C(call_object_getFlip_battleObject_initializeFromStateUpdate_80D028C(obj).r0, obj);
+
+    call_object_reservePanel_battleObject_initializeFromStateUpdate_80D028C(LD8(obj + oBattleObject_PanelX),
+                             LD8(obj + oBattleObject_PanelY), obj);
+
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+    return obj;
+}
+
+/* battleObject_initializeFromStateUpdate_80D028C(r5 = object) -> r5 */
+Next battleObject_initializeFromStateUpdate_80D028C(void) {
+    R5 = battleObject_initializeFromStateUpdate(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_dispatchCurPhaseByJumpTable_80D4570 ── */
+/* Battle object phase dispatcher.
+ *
+ * Each battle object carries a "current phase" counter. This trampoline reads
+ * it from the object at r5 and jumps through a small table next to the code
+ * (off_80D4584) to that phase's tick handler:
+ *   phase entry 0 -> battleObject_phaseTickToNext_80D458C
+ *   phase entry 4 -> sub_80D45AE
+ * The table is indexed by the raw phase byte (the original uses it directly
+ * as a byte offset, so phases step in units of 4), and the handler is entered
+ * with r0 = phase and r1 = the table entry it was dispatched through, exactly
+ * as the original leaves the registers before its `bx r1`.
+ *
+ * Everything the handler leaves behind (r1, r5, r8-r12, flags) is this
+ * function's output state: the guest call below produces it directly.
+ */
+
+/* register form: the dispatch target comes from the object's phase table at
+ * run time, so the call must go through the guest code address, and the
+ * handler's register side effects (r1, r5, r8-r12) are this function's
+ * outputs and must stay in the guest register state. */
+static void dispatch_cur_phase_by_table(u32 objectPtr) {
+    u32 phase  = LD8(objectPtr + oBattleObject_CurPhase);
+    u32 target = LD32(A_off_80D4584 + phase);   /* handler address for this phase */
+
+    R0 = phase;                                 /* handler sees the phase... */
+    R1 = target;                                /* ...and its table entry, as original */
+    GUEST_CALL_ADDR(target);
+}
+
+/* battleObject_dispatchCurPhaseByJumpTable_80D4570(r5 = battle object) */
+Next battleObject_dispatchCurPhaseByJumpTable_80D4570(void) {
+    dispatch_cur_phase_by_table(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_phaseTickToNext_80D458C ── */
+/* Advance one object's phase timer by a tick.
+ *
+ * The first time this runs for an object (PhaseInitialized clear) the timer is
+ * seeded from the object's Param2. Every call then decrements the timer; while
+ * it stays positive nothing else happens. When it hits zero (or below), the
+ * timer restarts at 8 and the object moves to phase 4, which also clears the
+ * initialized byte again so the next cycle re-seeds from Param2. */
+static void phase_tick_to_next(u32 self) {
+    if (LD8(self + oBattleObject_PhaseInitialized) == 0) {
+        ST8(self + oBattleObject_PhaseInitialized, 1);
+        ST16(self + oBattleObject_Timer, LD8(self + oBattleObject_Param2));
+    }
+
+    s32 timer = (s32)LD16(self + oBattleObject_Timer) - 1;
+    ST16(self + oBattleObject_Timer, timer);
+    if (timer > 0)
+        return;
+
+    ST16(self + oBattleObject_Timer, 8);
+    ST16(self + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+}
+
+/* r5 = object, no register outputs (flags and r0 are clobbered only) */
+Next battleObject_phaseTickToNext_80D458C(void) {
+    phase_tick_to_next(R5);
     RETURN_TO_CALLER();
 }
 

@@ -1077,6 +1077,21 @@ Next owPlayer_disableWallCollision_809e254(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ClearOWPlayerLayerIndexOverride ── */
+/* Clear the overworld player's layer-index override so it renders with its
+ * default layer again. Returns the overworld player object pointer (r3). */
+static u32 clear_ow_player_layer_index_override(u32 toolkit) {
+    u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 player = LD32(game_state + oGameState_OverworldPlayerObjectPtr);
+    ST8(player + oOWPlayerObject_LayerIndexOverride, 0);
+    return player;
+}
+
+Next ClearOWPlayerLayerIndexOverride(void) {
+    R3 = clear_ow_player_layer_index_override(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetOWPlayerFacingDirection ── */
 /* SetOWPlayerFacingDirection(r0 = direction):
  * Store the given facing direction into the overworld player object.

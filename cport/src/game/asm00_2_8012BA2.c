@@ -518,6 +518,19 @@ Next GetBattleNaviStatsAddr(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetBattleNaviStats2034A60Addr ── */
+/* Address of the NaviStats record with the given index in the battle table.
+ * Returns eBattleNaviStats2034A60 + index * sizeof(record). */
+static u32 battle_navi_stats_addr(u32 index) {
+    return A_eBattleNaviStats2034A60 + index * oNaviStats_Size;
+}
+
+/* GetBattleNaviStats2034A60Addr(r0 = record index) -> r0 (address of that record) */
+Next GetBattleNaviStats2034A60Addr(void) {
+    R0 = battle_navi_stats_addr(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── SetBattleNaviStatsByte ── */
 /* SetBattleNaviStatsByte(r0 = alliance flag, r1 = NaviStats field offset,
  *                        r2 = byte value):
@@ -546,6 +559,32 @@ Next GetBattleNaviStatsByte(void) {
     GUEST_CALL(GetBattleNaviStatsAddr); /* (alliance: bool) -> * NaviStats */
 
     R0 = LD8(R0 + offset);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetBattleNaviStatsSignedByte ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_GetBattleNaviStatsAddr_result;
+/* register form: generated wrapper: GetBattleNaviStatsAddr has no typed C interface yet */
+static inline call_GetBattleNaviStatsAddr_result call_GetBattleNaviStatsAddr(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(GetBattleNaviStatsAddr);
+    return (call_GetBattleNaviStatsAddr_result){ R0 };
+}
+
+/* Read one signed byte from a NaviStats record.
+ * r0 selects which alliance record GetBattleNaviStatsAddr returns,
+ * r1 is the byte offset within that record. The value is sign-extended.
+ * The original borrows r6 only as scratch and restores it with the pop,
+ * so r6 ends the call exactly as it began. */
+static s32 get_navi_stats_s8(u32 alliance, u32 offset) {
+    u32 stats = call_GetBattleNaviStatsAddr(alliance).r0;
+    return LDS8(stats + offset);
+}
+
+/* GetBattleNaviStatsSignedByte(r0 = alliance, r1 = offset) -> r0 */
+Next GetBattleNaviStatsSignedByte(void) {
+    R0 = (u32)get_navi_stats_s8(R0, R1);
     RETURN_TO_CALLER();
 }
 
@@ -596,6 +635,24 @@ Next GetNaviStatsByte(void) {
     u32 stats = LD32(R10 + oToolkit_NaviStatsPtr) + record * oNaviStats_Size;
     R3 = stats;
     R0 = LD8(stats + R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── GetNaviStatsHword ── */
+/* Read a halfword from one of the two Navi stats records.
+ * r0 selects the record (0 or anything nonzero -> 1), r1 is the byte offset
+ * of the field within oNaviStats, r10 is the toolkit whose NaviStatsPtr
+ * points at the base of the records. Returns the halfword at [base + selector*size + r1]. */
+static u32 get_navi_stats_hword(u32 record, u32 field_offset, u32 toolkit) {
+    if (record != 0)
+        record = 1;                       /* any nonzero selector means the second record */
+
+    u32 base = LD32(toolkit + oToolkit_NaviStatsPtr);
+    return LD16(base + record * oNaviStats_Size + field_offset);
+}
+
+Next GetNaviStatsHword(void) {
+    R0 = get_navi_stats_hword(R0, R1, R10);
     RETURN_TO_CALLER();
 }
 
@@ -1421,6 +1478,24 @@ Next battle_clearAIDataField4c_8014424(void) {
     R1 = 0;
     ST32(aiData + oAIData_AIScriptCounter, 0);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_clearCounterHitChainFlag ── */
+/* Clear the counter-hit chain flag of an AI battle object.
+ * Loads the object's AIData pointer (which the original leaves behind in r3),
+ * then writes 0xFFFF to its CounterHitChainFlag field.
+ *
+ * ai_clear_counter_hit_chain_flag(r5 = battle object) -> r3 = AIData pointer */
+static u32 ai_clear_counter_hit_chain_flag(u32 battle_object) {
+    u32 ai_data = LD32(battle_object + oBattleObject_AIDataPtr);
+    ST16(ai_data + oAIData_CounterHitChainFlag, 0xFFFF);
+    return ai_data;
+}
+
+/* ai_clearCounterHitChainFlag(r5 = battle object) -> r3 = AIData pointer */
+Next ai_clearCounterHitChainFlag(void) {
+    R3 = ai_clear_counter_hit_chain_flag(R5);
     RETURN_TO_CALLER();
 }
 

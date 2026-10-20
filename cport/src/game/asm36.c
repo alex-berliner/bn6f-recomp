@@ -3050,6 +3050,57 @@ Next battle_refreshPETNaviStats_8136C24(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── RunTextScriptNaviCustDialog ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_chatbox_runScript_result;
+/* register form: generated wrapper: chatbox_runScript has no typed C interface yet */
+static inline call_chatbox_runScript_result call_chatbox_runScript(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(chatbox_runScript);
+    return (call_chatbox_runScript_result){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* RunTextScriptNaviCustDialog (0x081376A8):
+ * Runs the fixed NaviCust dialog script in the chatbox. The archive pointer is
+ * the constant TextScriptNaviCustDialog; r0 on entry is the script index, and
+ * r10 is the chatbox context, which chatbox_runScript consumes untouched.
+ * Callers read back the r2/r4/r5/r6/r7 that chatbox_runScript leaves behind. */
+
+typedef struct {
+    u32 r2;
+    u32 r4;
+    u32 r5;
+    u32 r6;
+    u32 r7;
+} NaviCustDialogResult;
+
+/* Load the NaviCust dialog archive and hand it to the chatbox script runner,
+ * returning the callee's live r2/r4/r5/r6/r7 to the caller. */
+static NaviCustDialogResult run_navicust_dialog(u32 script_idx) {
+    call_chatbox_runScript_result res =
+        call_chatbox_runScript(A_TextScriptNaviCustDialog, script_idx);
+
+    NaviCustDialogResult out;
+    out.r2 = res.r2;
+    out.r4 = res.r4;
+    out.r5 = res.r5;
+    out.r6 = res.r6;
+    out.r7 = res.r7;
+    return out;
+}
+
+/* r0 = script index, r10 = chatbox context -> r2 r4 r5 r6 r7 from chatbox_runScript */
+Next RunTextScriptNaviCustDialog(void) {
+    NaviCustDialogResult out = run_navicust_dialog(R0);
+    R2 = out.r2;
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    R7 = out.r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── setUnkFieldOfChipCodeInChipPack_81376b8 ── */
 /* setUnkFieldOfChipCodeInChipPack_81376b8(r0 = chip pack entry base, r1 = chip index):
  * Copies the current count kept at byte_20065B4 into the halfword field at

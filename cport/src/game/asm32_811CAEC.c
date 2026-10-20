@@ -204,6 +204,129 @@ Next battleObject_getUnk_0cPtr_811CC68(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_initNaviRosterEntry_811DF40 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battleObject_initNaviRosterEntry_811DF40(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battleObject_initNaviRosterEntry_811DF40;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battleObject_initNaviRosterEntry_811DF40 call_sprite_loadAnimationData_battleObject_initNaviRosterEntry_811DF40(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battleObject_initNaviRosterEntry_811DF40){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battleObject_initNaviRosterEntry_811DF40(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r2; } call_sprite_setSubEntryPaletteBank_800304A_result;
+/* register form: generated wrapper: sprite_setSubEntryPaletteBank_800304A has no typed C interface yet */
+static inline call_sprite_setSubEntryPaletteBank_800304A_result call_sprite_setSubEntryPaletteBank_800304A(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubEntryPaletteBank_800304A);
+    return (call_sprite_setSubEntryPaletteBank_800304A_result){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_battleObject_initNaviRosterEntry_811DF40(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: generated wrapper: sprite_setSubRecordFieldA_8003060 has no typed C interface yet */
+static inline void call_sprite_setSubRecordFieldA_8003060(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setSubRecordFieldA_8003060);
+}
+
+/* register form: generated wrapper: slotList_storeHalfwordAndClearField_800306C has no typed C interface yet */
+static inline void call_slotList_storeHalfwordAndClearField_800306C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(slotList_storeHalfwordAndClearField_800306C);
+}
+
+typedef struct { u32 r2; } call_sprite_setPriority_8002E14_result;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result call_sprite_setPriority_8002E14(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setCoordinates has no typed C interface yet */
+static inline void call_sprite_setCoordinates(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sprite_setCoordinates);
+}
+
+typedef struct { u32 r2, r3, r5; } call_sub_811DF94_result;
+/* register form: generated wrapper: sub_811DF94 has no typed C interface yet */
+static inline call_sub_811DF94_result call_sub_811DF94(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sub_811DF94);
+    return (call_sub_811DF94_result){ R2, R3, R5 };
+}
+
+/* battleObject_initNaviRosterEntry_811DF40 — set up one navi battle object.
+ * r5 points at the battle object being initialized, r1 is forwarded to the
+ * shared sprite helper at loc_8002774, and r6 selects the roster entry that
+ * the final sub_811DF94 step fills in. The r2/r3/r5 triple that
+ * sub_811DF94 leaves behind is this function's result. */
+
+/* Helper for the one call without a generated wrapper: the shared sprite
+ * setup routine at loc_8002774, called here as (0x3B, r1). */
+/* register form: direct bl into the game's sprite helper at 0x8002774 */
+static void call_spriteHelper_8002774(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(loc_8002774);
+}
+
+static call_sub_811DF94_result battleObject_initNaviRosterEntry_body(u32 param1, u32 obj, u32 owner)
+{
+    ST8(obj, 0x23);                                   /* object kind: navi */
+
+    call_spriteHelper_8002774(0x3B, param1);          /* attach sprite sheet 0x3B */
+    call_sprite_setAnimation_battleObject_initNaviRosterEntry_811DF40(0, obj);                 /* animation 0 */
+    call_sprite_loadAnimationData_battleObject_initNaviRosterEntry_811DF40(obj);
+    call_sprite_noShadow_battleObject_initNaviRosterEntry_811DF40(obj);
+    call_sprite_setSubEntryPaletteBank_800304A(0xB, obj);  /* palette bank 11 */
+    call_sprite_setPalette_battleObject_initNaviRosterEntry_811DF40(0, obj);                   /* palette 0 */
+    call_sprite_setSubRecordFieldA_8003060(0, obj);
+    call_slotList_storeHalfwordAndClearField_800306C(0x270, obj);  /* max value 624 */
+    call_sprite_setPriority_8002E14(1, obj);          /* priority 1 */
+    call_sprite_setCoordinates(0xD2, 0xA, obj);       /* x = 210, y = 10 */
+
+    ST8(obj + 9, 0);                                  /* clear flag byte at +9 */
+    ST8(obj + 8, 4);                                  /* state byte at +8 = 4 */
+
+    return call_sub_811DF94(obj, owner);
+}
+
+Next battleObject_initNaviRosterEntry_811DF40(void) {
+    call_sub_811DF94_result res = battleObject_initNaviRosterEntry_body(R1, R5, R6);
+    R2 = res.r2;
+    R3 = res.r3;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── TestPETMenuDataFlag ── */
 /* TestPETMenuDataFlag(r0 = flag mask):
  * Tests the PET menu flags byte (eFlags200DF25) against the mask in r0 and

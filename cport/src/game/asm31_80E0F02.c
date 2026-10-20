@@ -94,6 +94,75 @@ Next battle_setExtraAnimState_80E0F2E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2; } call_battle_networkInvert_result;
+/* register form: generated wrapper: battle_networkInvert has no typed C interface yet */
+static inline call_battle_networkInvert_result call_battle_networkInvert(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_networkInvert);
+    return (call_battle_networkInvert_result){ R0, R1, R2 };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E call_PlaySoundEffect_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E){ R4, R5, R6, R7, R10 };
+}
+
+/* battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+ *
+ * Plays the buster charge sound for a BattleObject that is charging its shot.
+ *
+ * r5 points to the BattleObject. Its related object's AI data names which
+ * button is held: button 2 skips the alliance check entirely; any other value
+ * runs the check through battle_networkInvert and stays silent for the
+ * opposing side. Then, depending on the charge phase (ExtraVars+0x14) and the
+ * charge tick counter (ExtraVars+0x18), one of two sounds is played:
+ *   phase 1, counter 0 -> SOUND_BUSTER_CHARGE
+ *   phase 2, counter 1 -> SOUND_UNK_72
+ * Otherwise nothing is played. r4/r5/r10 and the flags end as the caller
+ * expects (flags are listed as clobbers, so no particular values).
+ */
+static void play_charge_sounds(u32 object)
+{
+    u32 related = LD32(object + oBattleObject_RelatedObject1Ptr);
+    u32 aiData = LD32(related + oBattleObject_AIDataPtr);
+    u32 pwrAtkButton = LD8(aiData + oAIData_PwrAtkButton);
+
+    /* r2 at the PlaySoundEffect call: the AI data pointer, or whatever
+     * battle_networkInvert left there when the alliance check ran. */
+    u32 soundArg2 = aiData;
+
+    if (pwrAtkButton != 2) {
+        call_battle_networkInvert_result invert =
+            call_battle_networkInvert(LD8(related + oBattleObject_Alliance));
+        if (invert.r0 != 0)
+            return;                     /* wrong alliance: stay silent */
+        soundArg2 = invert.r2;
+    }
+
+    u32 chargePhase = LD32(object + oBattleObject_ExtraVars + 0x14);
+    if (chargePhase == 1) {
+        if (LD32(object + oBattleObject_ExtraVars + 0x18) == 0)
+            call_PlaySoundEffect_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E(SOUND_BUSTER_CHARGE, soundArg2);
+    } else if (chargePhase == 2) {
+        if (LD32(object + oBattleObject_ExtraVars + 0x18) == 1)
+            call_PlaySoundEffect_battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E(SOUND_UNK_72, soundArg2);
+    }
+}
+
+/* inputs: r5 = BattleObject*, r10, lr
+ * outputs: r4 r5 r10 (all left unchanged; the flags are clobbered freely) */
+Next battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E(void)
+{
+    play_charge_sounds(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80E1332 ── */
 /* sub_80E1332: pure tail call into battle_spawnLinkedObjType2d.
  *
@@ -107,6 +176,99 @@ Next sub_80E1332(void) {
     GUEST_CALL(battle_spawnLinkedObjType2d);
 
     LR = return_addr;
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_getTargetObjectPos ── */
+/* ai_getTargetObjectPos: read the target object's x/y position bytes through
+ * the battle object's AI data block. r5 = battle object -> returns r0 = byte
+ * 0x12, r1 = byte 0x13 of its target object. */
+
+/* r5 = battle object; returns target position as (x, y) */
+static void get_target_object_pos(u32 battleObject, u32 *outX, u32 *outY) {
+    u32 aiData = LD32(battleObject + oBattleObject_AIDataPtr);
+    u32 target = LD32(aiData + oAIData_TargetObjectPtr);
+    *outX = LD8(target + 0x12);
+    *outY = LD8(target + 0x13);
+}
+
+/* ai_getTargetObjectPos(r5 = battle object) -> r0 = x, r1 = y */
+Next ai_getTargetObjectPos(void) {
+    u32 x, y;
+    get_target_object_pos(R5, &x, &y);
+    R0 = x;
+    R1 = y;
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_computeMoveTargetPanel_80E16CC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battle_aiIterateOverBattleObjectsByRow_80E1704 has no typed C interface yet */
+static inline u32 call_battle_aiIterateOverBattleObjectsByRow_80E1704(u32 r4, u32 r6, u32 r7) {
+    R4 = r4;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_aiIterateOverBattleObjectsByRow_80E1704);
+    return R0;
+}
+
+/* Packed panel specifier built by the helper below and handed to the row
+ * iterator in r4: low byte / high byte encode the two halves of the move
+ * target depending on the direction being computed. */
+typedef struct {
+    u32 iterateResult; /* return value of battle_aiIterateOverBattleObjectsByRow_80E1704 */
+    u32 r4Out;         /* the original pops r4 back unchanged, so callers see their own r4 */
+} MoveTargetResult;
+
+/* Work out which panel an object should move to and start the iteration over
+ * the battle objects on that row.
+ *   mode   (r0): requested side; 2 means "stay on the object's own panel"
+ *   object (r1): battle object whose panel/side fields are read
+ *   arg2   (r2): passed straight through to the iterator as its third argument
+ *   r4In       : incoming r4, returned untouched (the original saves and
+ *                pops it around the computation) */
+static MoveTargetResult compute_move_target_panel(u32 mode, u32 object, u32 arg2, u32 r4In) {
+    u32 target;
+
+    if (mode == 2) {
+        /* Stay on the object's panel: pack panel X into both bytes. */
+        u32 panelX = LD8(object + oBattleObject_PanelX);
+        target = panelX | (panelX << 8);
+    } else {
+        /* Compare the requested side against the object's alliance, XORed
+         * with its direction flip (a mirrored sprite fights for the other
+         * side). */
+        u32 side = LD8(object + oBattleObject_Alliance)
+                 ^ LD8(object + oBattleObject_DirectionFlip);
+
+        if ((mode ^ side) == 0) {
+            /* Requested side matches the object's effective side:
+             * one panel ahead, row selector 6. */
+            target = (LD8(object + oBattleObject_PanelX) + 1) | (6u << 8);
+        } else {
+            /* Opposite side: one panel behind, row selector 1. */
+            target = ((LD8(object + oBattleObject_PanelX) - 1) << 8) | 1u;
+        }
+    }
+
+    MoveTargetResult out;
+    out.iterateResult = call_battle_aiIterateOverBattleObjectsByRow_80E1704(target, object, arg2);
+    out.r4Out = r4In;
+    return out;
+}
+
+/* inputs: r0 mode, r1 object, r2 arg2 -> outputs: r0 (iterator result), r4
+ * (pass-through). The original pushes r4/r6/r7 at entry and pops them at the
+ * end, so r6 and r7 must also reach the caller exactly as they arrived; the
+ * wrapper call leaves them holding the iterator's arguments, hence the
+ * explicit restore here. */
+Next battleObject_computeMoveTargetPanel_80E16CC(void) {
+    u32 r6In = R6, r7In = R7;
+    MoveTargetResult res = compute_move_target_panel(R0, R1, R2, R4);
+    R0 = res.iterateResult;
+    R4 = res.r4Out;
+    R6 = r6In;
+    R7 = r7In;
     RETURN_TO_CALLER();
 }
 

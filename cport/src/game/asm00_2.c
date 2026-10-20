@@ -254,6 +254,28 @@ Next battle_SetObjectAIDataField78_800F318(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_decrementChipHeldAndClearChip_800F322 ── */
+/* Decrement a battle object's held-chip count. When the count drops to zero
+ * (it was 1), also clear the selected chip slot to 0xFFFF, the game's
+ * "no chip held" marker. Objects with no chip held are left untouched. */
+static void decrement_chip_held_and_clear_chip(u32 object) {
+    u32 chips_held = LD8(object + oBattleObject_ChipsHeld);
+
+    if (chips_held == 0)
+        return;
+
+    chips_held--;
+    ST8(object + oBattleObject_ChipsHeld, chips_held);
+
+    if (chips_held == 0)
+        ST16(object + oBattleObject_Chip, chips_held - 1); /* 0xFFFF */
+}
+
+Next battleObject_decrementChipHeldAndClearChip_800F322(void) {
+    decrement_chip_held_and_clear_chip(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── getBattleObjectPalette_800F334 ── */
 /* getBattleObjectPalette_800F334(r5 = battle object) -> r0 = palette index.
  *
@@ -1587,6 +1609,138 @@ Next BasicBattleObjectInitialize(void) {
     ST16(object + oBattleObject_AllianceAndDirectionFlip, R1);
 
     ST32(object + oBattleObject_RelatedObject1Ptr, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_clearAttackVars ── */
+/* Reset the AI opponent's per-battle attack variables to zero and report
+ * success. The return value 0x33 is the AI module's "done" status; the
+ * original's final MOV sets the N/Z flags from it. */
+
+/* sub_08011ADA(r7 = AI attack vars block) -> r0 = 0x33, NZ from r0 */
+static u32 clear_attack_vars(u32 vars) {
+    ST8(vars + oAIAttackVars_InitFlag, 0);
+    ST8(vars + oAIAttackVars_AiDifficultyTier, 0);
+    ST8(vars + oAIAttackVars_ChargeReadyFlag, 0);
+    ST8(vars + oAIAttackVars_ChipUseDelay, 0);
+    ST16(vars + oAIAttackVars_AttackBoost, 0);
+    ST16(vars + oAIAttackVars_ExtraDamage, 0);
+    ST16(vars + oAIAttackVars_Damage, 0);
+    ST32(vars + oAIAttackVars_AttackBoost2, 0);
+    return 0x33;
+}
+
+Next ai_clearAttackVars(void) {
+    R0 = clear_attack_vars(R7);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_initBeastPwrAttackVars ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; bool c, v; } call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_initBeastPwrAttackVars;
+/* register form: generated wrapper: battle_beastPwrAtk_addScaledBase_8012642 has no typed C interface yet */
+static inline call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_initBeastPwrAttackVars call_battle_beastPwrAtk_addScaledBase_8012642_ai_initBeastPwrAttackVars(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_beastPwrAtk_addScaledBase_8012642);
+    return (call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_initBeastPwrAttackVars){ R0, R1, R2, R3, R4, R5, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Beast Out power attack: reset the AI's per-attack state and compute the
+ * attack's base damage. r7 points to the AIAttackVars block; r5 is the
+ * battle context the damage-scaling helper reads. Returns 0x4A in r0
+ * (the next state/step the caller dispatches on); r5 passes through
+ * untouched. */
+static u32 init_beast_pwr_attack_vars(u32 attack_vars, u32 context) {
+    /* Clear the persistent attack state. */
+    ST8(attack_vars + oAIAttackVars_ChargeReadyFlag, 0);
+    ST8(attack_vars + oAIAttackVars_ChipUseDelay, 0);
+    ST16(attack_vars + oAIAttackVars_AttackBoost, 0);
+
+    /* Fixed extra damage for this attack. */
+    ST16(attack_vars + oAIAttackVars_ExtraDamage, 0x9E);
+
+    /* Base damage: 40 scaled by 20 via the shared Beast Power helper. */
+    u32 damage = call_battle_beastPwrAtk_addScaledBase_8012642_ai_initBeastPwrAttackVars(0x28, 0x14, context).r0;
+    ST16(attack_vars + oAIAttackVars_Damage, damage);
+
+    return 0x4A;
+}
+
+/* ai_initBeastPwrAttackVars(r5 = battle context, r7 = AIAttackVars ptr, r10) -> r0 */
+Next ai_initBeastPwrAttackVars(void) {
+    R0 = init_beast_pwr_attack_vars(R7, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_beastSpAtkInit ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; bool c, v; } call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_beastSpAtkInit;
+/* register form: generated wrapper: battle_beastPwrAtk_addScaledBase_8012642 has no typed C interface yet */
+static inline call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_beastSpAtkInit call_battle_beastPwrAtk_addScaledBase_8012642_ai_beastSpAtkInit(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_beastPwrAtk_addScaledBase_8012642);
+    return (call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_beastSpAtkInit){ R0, R1, R2, R3, R4, R5, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Result of the typed init: the next AI-script opcode (r0) plus the r5 value
+ * handed back by the damage helper (the original leaves r5 as the callee set it). */
+typedef struct {
+    u32 nextOpcode;
+    u32 r5;
+} BeastSpAtkInitResult;
+
+/* Initialise the Beast-Out special-attack state of the AI whose attack vars
+ * live at aiVars (r7): clear the charge/delay bookkeeping, seed the extra
+ * damage, compute the base damage from the AI's power (r5, the helper also
+ * reads r10 itself), and mark the attack as initialised. */
+static BeastSpAtkInitResult beast_sp_atk_init(u32 aiVars, u32 basePower) {
+    ST8(aiVars + oAIAttackVars_ChargeReadyFlag, 0);
+    ST8(aiVars + oAIAttackVars_ChipUseDelay, 0);
+    ST16(aiVars + oAIAttackVars_AttackBoost, 0);
+    ST16(aiVars + oAIAttackVars_ExtraDamage, 0x9E);
+
+    call_battle_beastPwrAtk_addScaledBase_8012642_result_ai_beastSpAtkInit scaled =
+        call_battle_beastPwrAtk_addScaledBase_8012642_ai_beastSpAtkInit(0x32, 0xA, basePower);
+    ST16(aiVars + oAIAttackVars_Damage, scaled.r0);
+
+    ST8(aiVars + oAIAttackVars_InitFlag, 0);
+    ST16(aiVars + oAIAttackVars_ChargeCycles, 2);
+
+    BeastSpAtkInitResult out = { .nextOpcode = 0x52, .r5 = scaled.r5 };
+    return out;
+}
+
+/* ai_beastSpAtkInit(r5 = base power, r7 = AI attack vars, r10 read by the helper)
+ * -> r0 = next script opcode (0x52), r5 = value left by the damage helper */
+Next ai_beastSpAtkInit(void) {
+    BeastSpAtkInitResult out = beast_sp_atk_init(R7, R5);
+    R0 = out.nextOpcode;
+    R5 = out.r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── ai_setupAttackVars ── */
+/* Initialize the AI's attack parameters for an incoming attack:
+ * base damage 10, extra damage 0x8A, init flag 4, attack boost 6, timer 6.
+ * Returns 9 in r0 (the original ends with `mov r0, #9`). */
+static u32 ai_setup_attack_vars(u32 attack_vars) {
+    ST16(attack_vars + oAIAttackVars_Damage, 0xA);
+    ST16(attack_vars + oAIAttackVars_ExtraDamage, 0x8A);
+    ST8(attack_vars + oAIAttackVars_InitFlag, 4);
+    ST8(attack_vars + oAIAttackVars_AttackBoost2, 6);
+    ST8(attack_vars + oAIAttackVars_TimerOrCycles, 6);
+    return 9;
+}
+
+/* ai_setupAttackVars(r7 = attack vars struct) -> r0 */
+Next ai_setupAttackVars(void) {
+    R0 = ai_setup_attack_vars(R7);
+    SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }
 

@@ -2233,6 +2233,23 @@ Next BGScrollCB_BG3UpScroll(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── BGScrollCB_BG3FastLeftScroll ── */
+/* BG3 fast left-scroll callback: advance the shared BG scroll counter by 8 and
+ * feed the top 16 bits of it into RenderInfo.Unk_18 for the BG3 layer. */
+static void bg3_fast_left_scroll(u32 toolkit) {
+    u32 counter = LD32(A_eBGScrollCBCounters + oBGScrollCBCounters_Counter0);
+    counter -= 8;
+    ST32(A_eBGScrollCBCounters + oBGScrollCBCounters_Counter0, counter);
+
+    u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render_info + oRenderInfo_BG2ScrollX, counter >> 4);
+}
+
+Next BGScrollCB_BG3FastLeftScroll(void) {
+    bg3_fast_left_scroll(R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_39 ── */
 /* nullsub_39 does nothing and just returns to the caller. */
 static void nullsub_39_impl(void) {

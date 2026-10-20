@@ -1166,6 +1166,84 @@ Next chatbox_resetTextStateIfHidden_80273EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_chipSelectAnimTick_802770C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battleObject_chipSelectAnimTick_8029C08_result;
+/* register form: generated wrapper: battleObject_chipSelectAnimTick_8029C08 has no typed C interface yet */
+static inline call_battleObject_chipSelectAnimTick_8029C08_result call_battleObject_chipSelectAnimTick_8029C08(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
+    return (call_battleObject_chipSelectAnimTick_8029C08_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battleObject_chipSelectAnimTick_802770C -- one tick of the chip-select
+ * animation for a battle object.
+ *
+ * The object's current animation step lives in the byte at self+2.  That byte
+ * is a byte offset into the handler table at off_8027724, and the tick starts
+ * by calling the selected handler through it (mov lr, pc / bx r1 in the
+ * original), with r0 = step and r1 still holding the target address.  After
+ * the handler returns, battleObject_chipSelectAnimTick_8029C08 runs on the
+ * (possibly updated) object pointer.
+ *
+ * Register flow, matching the original:
+ *   - r8-r12 are only ever written by the state handler; 8029C08 preserves
+ *     them, so they stay in the guest register file and never pass through C.
+ *   - the final r2-r6 come from 8029C08, so they are returned to the adapter
+ *     explicitly.  r0, r1, r7 and the flags are clobbers callers ignore.
+ */
+
+struct ChipSelectTickResult {
+    u32 r2;
+    u32 r3;
+    u32 r4;
+    u32 r5;
+    u32 r6;
+};
+
+/* register form: the step handler is reached through a jump-table address
+ * (mov lr, pc; bx r1), and the handler's r5 (object pointer) has to be read
+ * back out of the guest register file after the call, since the handler may
+ * update it.  Its other results are left in the guest registers on purpose:
+ * r8-r12 must survive into this function's callers, and r10 is consumed
+ * directly from there by the 8029C08 wrapper. */
+static u32 run_chip_select_state_handler(u32 handler, u32 step) {
+    R0 = step;          /* original calls the handler with r0 = step byte */
+    R1 = handler;       /* ...and r1 still holding the branch target */
+    GUEST_CALL_ADDR(handler);
+    return R5;
+}
+
+static struct ChipSelectTickResult chip_select_anim_tick(u32 self) {
+    u32 step = LD8(self + 2);
+    u32 handler = LD32(A_off_8027724 + step);
+
+    self = run_chip_select_state_handler(handler, step);
+
+    call_battleObject_chipSelectAnimTick_8029C08_result tick =
+        call_battleObject_chipSelectAnimTick_8029C08(self);
+
+    struct ChipSelectTickResult out;
+    out.r2 = tick.r2;
+    out.r3 = tick.r3;
+    out.r4 = tick.r4;
+    out.r5 = tick.r5;
+    out.r6 = tick.r6;
+    return out;
+}
+
+/* battleObject_chipSelectAnimTick_802770C(r5 = self, r10) -> r2 r3 r4 r5 r6
+ * (r8-r12 pass through from the state handler) */
+Next battleObject_chipSelectAnimTick_802770C(void) {
+    struct ChipSelectTickResult out = chip_select_anim_tick(R5);
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8027CCC ── */
 /* unk_2035000 is a grid of u16 entries (tile indices); one row of the grid
  * is 30 bytes, i.e. 15 entries. */

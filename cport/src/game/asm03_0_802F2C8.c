@@ -431,6 +431,26 @@ Next camera_writeUnk03_14_80301b2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── GetCameraXYZ ── */
+/* Read the current camera position into r0/r1/r2 (X/Y/Z).
+ * r10 holds the toolkit base; the camera pointer lives at oToolkit_CameraPtr. */
+static void get_camera_xyz(u32 toolkit, u32 *out_x, u32 *out_y, u32 *out_z) {
+    u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+    *out_x = LD32(camera + oCamera_X);
+    *out_y = LD32(camera + oCamera_Y);
+    *out_z = LD32(camera + oCamera_Z);
+}
+
+/* GetCameraXYZ(inputs: r10, lr; outputs: r0 r1 r2; clobbers: r3) */
+Next GetCameraXYZ(void) {
+    u32 x, y, z;
+    get_camera_xyz(R10, &x, &y, &z);
+    R0 = x;
+    R1 = y;
+    R2 = z;
+    RETURN_TO_CALLER();
+}
+
 /* ── SetCameraXYZ ── */
 /* SetCameraXYZ(r0 = x, r1 = y, r2 = z, r10 = toolkit):
  * write the camera position to the camera object held by the toolkit. */

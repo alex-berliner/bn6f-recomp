@@ -665,6 +665,86 @@ Next MapScriptCutsceneCmd_set_event_flag_range(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_clear_event_flag_range ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_MapScriptCutsceneCmd_clear_event_flag_range;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_MapScriptCutsceneCmd_clear_event_flag_range call_ReadMapScriptByte_MapScriptCutsceneCmd_clear_event_flag_range(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_MapScriptCutsceneCmd_clear_event_flag_range){ R4, R7 };
+}
+
+typedef struct { u32 r4, r6, r7; } call_ReadMapScriptHalfword_result;
+/* register form: generated wrapper: ReadMapScriptHalfword has no typed C interface yet */
+static inline call_ReadMapScriptHalfword_result call_ReadMapScriptHalfword(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptHalfword);
+    return (call_ReadMapScriptHalfword_result){ R4, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5; } call_ClearEventFlagRange_result;
+/* register form: generated wrapper: ClearEventFlagRange has no typed C interface yet */
+static inline call_ClearEventFlagRange_result call_ClearEventFlagRange(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(ClearEventFlagRange);
+    return (call_ClearEventFlagRange_result){ R1, R2, R3, R4, R5 };
+}
+
+/* Map script cutscene command: "clear a range of event flags".
+ * Layout of the command in the script stream: one byte giving how many flags
+ * to clear, followed by a halfword giving the first flag index. Afterwards
+ * the script cursor (r7) is advanced by 6 bytes total (1 + 2 + 3 for the
+ * trailing skip done here via the +4). The command returns "keep going" (1),
+ * and callers branch on the flags left by the final `mov r0, #1` (Thumb
+ * format-3 MOV sets N/Z), i.e. always N=0, Z=0.
+ *
+ * r2 and r5 are outputs only because the original leaves ClearEventFlagRange's
+ * values in them; they are passed through untouched. */
+
+typedef struct {
+    u32 cursor;  /* r7: updated script position */
+    u32 r2;      /* leftover register state from ClearEventFlagRange */
+    u32 r5;      /* leftover register state from ClearEventFlagRange */
+} ClearFlagRangeCmdResult;
+
+static ClearFlagRangeCmdResult clear_event_flag_range(u32 cursor /* r7 */) {
+    ClearFlagRangeCmdResult out;
+
+    /* Read the number of flags to clear (byte operand, reader mode 1). */
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_clear_event_flag_range count_read = call_ReadMapScriptByte_MapScriptCutsceneCmd_clear_event_flag_range(1, cursor);
+    u32 count = count_read.r4;
+    cursor = count_read.r7;
+
+    /* Read the first flag index to clear (halfword operand, reader mode 2). */
+    call_ReadMapScriptHalfword_result start_read = call_ReadMapScriptHalfword(2, cursor);
+    u32 start_flag = start_read.r4;
+    cursor = start_read.r7;
+
+    /* Clear flags start_flag .. start_flag + count - 1 (uses r10 context). */
+    call_ClearEventFlagRange_result cleared = call_ClearEventFlagRange(start_flag, count);
+
+    out.cursor = cursor + 4;
+    out.r2 = cleared.r2;
+    out.r5 = cleared.r5;
+    return out;
+}
+
+/* MapScriptCutsceneCmd_clear_event_flag_range(r7 = script cursor, r10 = script context)
+ *   -> nz, r2, r5, r7 */
+Next MapScriptCutsceneCmd_clear_event_flag_range(void) {
+    ClearFlagRangeCmdResult res = clear_event_flag_range(R7);
+
+    R7 = res.cursor;
+    R2 = res.r2;
+    R5 = res.r5;
+    SET_FLAGS_NZ(1);  /* from `mov r0, #1`: result 1, so N=0 Z=0 */
+    RETURN_TO_CALLER();
+}
+
 /* ── MapScriptCutsceneCmd_write_byte ── */
 /* MapScriptCutsceneCmd_write_byte(r7 = script cursor, lr = return address):
  *   Read a 16-bit word from the script into r4 (the destination address),
@@ -1633,6 +1713,89 @@ Next CutsceneCameraCmd_wait(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCameraCmd_auto_scroll_to_player ── */
+/* register form: calls CutsceneCamera_GetAutoScrollDeltaForCoord outside this file, which has no typed C interface yet */
+static u32 auto_scroll_delta_for_coord(u32 distance) {
+    R3 = distance;
+    GUEST_CALL(CutsceneCamera_GetAutoScrollDeltaForCoord);
+    return R3;
+}
+
+/* Everything the cutscene dispatcher observes after this command runs. */
+typedef struct {
+    u32 counter;          /* r1: caller's counter, +1 once the camera has arrived */
+    u32 differing_coord;  /* r2: player coordinate that still differs, 0 when done */
+    u32 camera_z;         /* r3: camera Z after the scroll step */
+    u32 camera;           /* r6: camera object */
+    u32 player;           /* r7: overworld player object */
+    u32 flag_cmp_a;       /* exit flags come from CMP(flag_cmp_a, flag_cmp_b) */
+    u32 flag_cmp_b;
+} AutoScrollResult;
+
+/* Advance the camera one auto-scroll step toward the overworld player on all
+ * three axes, then check whether the camera now sits exactly on the player.
+ * While it does not, the command stays active; once it has arrived, clear the
+ * command's wait fields and bump the caller's counter. */
+static AutoScrollResult run_auto_scroll_to_player(u32 counter, u32 cmd_state, u32 toolkit)
+{
+    static const u32 camera_offset[3] = { oCamera_X, oCamera_Y, oCamera_Z };
+    static const u32 player_offset[3] = { oOWPlayerObject_X, oOWPlayerObject_Y, oOWPlayerObject_Z };
+
+    AutoScrollResult out;
+    u32 camera = LD32(toolkit + oToolkit_CameraPtr);
+    u32 player = LD32(LD32(toolkit + oToolkit_GameStatePtr) + oGameState_OverworldPlayerObjectPtr);
+    u32 cam_coord[3], player_coord[3];
+    int axis;
+
+    for (axis = 0; axis < 3; axis++) {
+        u32 coord = LD32(camera + camera_offset[axis]);
+        u32 target = LD32(player + player_offset[axis]);
+        coord += auto_scroll_delta_for_coord(target - coord);
+        ST32(camera + camera_offset[axis], coord);
+        cam_coord[axis] = coord;
+        player_coord[axis] = target;
+    }
+
+    out.camera = camera;
+    out.player = player;
+    out.camera_z = cam_coord[2];
+
+    for (axis = 0; axis < 3; axis++) {
+        if (cam_coord[axis] != player_coord[axis])
+            break;
+    }
+
+    if (axis == 3) {
+        /* Camera has arrived: end the wait and advance the script counter.
+         * CMP(0, ~counter) reproduces the exact nz/c/v of the original's
+         * ADDS counter,#1 (0 - ~n == n + 1, with matching carry/overflow). */
+        ST8(cmd_state + 6, 0);
+        ST16(cmd_state + 4, 0);
+        out.counter = counter + 1;
+        out.differing_coord = 0;
+        out.flag_cmp_a = 0;
+        out.flag_cmp_b = ~counter;
+    } else {
+        /* Still scrolling: the original exits right after comparing the first
+         * differing axis, so its flags are that axis' camera-vs-player CMP. */
+        out.counter = counter;
+        out.differing_coord = player_coord[axis];
+        out.flag_cmp_a = cam_coord[axis];
+        out.flag_cmp_b = player_coord[axis];
+    }
+    return out;
+}
+
+/* CutsceneCameraCmd_auto_scroll_to_player(r1 = counter, r5 = command state, r10 = toolkit)
+ * Always answers r0 = 1; r1/r2/r3/r6/r7 carry the dispatcher's live state
+ * onward, and the flags are whatever the final compare left behind. */
+Next CutsceneCameraCmd_auto_scroll_to_player(void) {
+    AutoScrollResult out = run_auto_scroll_to_player(R1, R5, R10);
+    R0 = 1, R1 = out.counter, R2 = out.differing_coord, R3 = out.camera_z, R6 = out.camera, R7 = out.player;
+    SET_FLAGS_CMP(out.flag_cmp_a, out.flag_cmp_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCamera_GetAutoScrollDeltaForCoord ── */
 /* CutsceneCamera_GetAutoScrollDeltaForCoord(r3 = signed coordinate delta):
  * Computes the per-frame auto-scroll step for one axis of the camera.
@@ -2154,6 +2317,56 @@ Next CutsceneCmd_spawn_cutscene_process(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── CutsceneCmd_kill_cutscene_process ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_CutsceneCmd_kill_cutscene_process;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_CutsceneCmd_kill_cutscene_process call_ReadMapScriptByte_CutsceneCmd_kill_cutscene_process(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_CutsceneCmd_kill_cutscene_process){ R4, R7 };
+}
+
+/* Map-script cutscene command "kill cutscene process": reads one operand byte
+ * from the cutscene script (the index of the cutscene process slot to kill),
+ * then points that slot at DummyCutsceneScript — a script that ends at once,
+ * so the process stops running. Afterwards the script position moves past the
+ * operand byte. */
+typedef struct {
+    u32 slot_index;  /* process slot whose script was replaced      -> r4 */
+    u32 script_pos;  /* script position after the operand byte      -> r7 */
+    u32 result;      /* constant 1 the original leaves in r0; the NZ flags describe it */
+} KillCutsceneResult;
+
+static KillCutsceneResult kill_cutscene_process(u32 process_table, u32 script_pos) {
+    KillCutsceneResult res;
+
+    /* Fetch the operand byte: ReadMapScriptByte reports the byte in r4 and
+     * the position after it in r7 (it leaves r0/r5/r7 alone for this call;
+     * the 1 is the fixed selector the original always passes in r6). */
+    call_ReadMapScriptByte_result_CutsceneCmd_kill_cutscene_process operand =
+        call_ReadMapScriptByte_CutsceneCmd_kill_cutscene_process(1, script_pos);
+
+    /* Point the selected process slot at the dummy (immediately-ending) script. */
+    ST32(process_table + operand.r4, A_DummyCutsceneScript);
+
+    res.slot_index = operand.r4;
+    res.script_pos = operand.r7 + 2;
+    res.result = 1;
+    return res;
+}
+
+/* CutsceneCmd_kill_cutscene_process(r5 = process table, r7 = script position)
+ * -> nz, r4 = slot index, r7 = advanced script position */
+Next CutsceneCmd_kill_cutscene_process(void) {
+    KillCutsceneResult res = kill_cutscene_process(R5, R7);
+    R4 = res.slot_index;
+    R7 = res.script_pos;
+    SET_FLAGS_NZ(res.result);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_set_cutscene_skip_script ── */
 /* CutsceneCmd_set_cutscene_skip_script: cutscene VM command that arms the
  * "skip cutscene" behavior. It reads the 32-bit operand following the command
@@ -2257,6 +2470,70 @@ Next MapScriptCutsceneCmd_jump_if_battle_result_equals(void) {
 
     R0 = 1;
     SET_FLAGS_NZ(R0);                           /* mov r0, #1 */
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_jump_if_current_navi_not_equal ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal call_ReadMapScriptByte_MapScriptCutsceneCmd_jump_if_current_navi_not_equal(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal){ R4, R7 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal call_GetCurPETNavi_MapScriptCutsceneCmd_jump_if_current_navi_not_equal(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal){ R0, R3 };
+}
+
+typedef struct { u32 r4, r6; } call_ReadMapScriptWord_result;
+/* register form: generated wrapper: ReadMapScriptWord has no typed C interface yet */
+static inline call_ReadMapScriptWord_result call_ReadMapScriptWord(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptWord);
+    return (call_ReadMapScriptWord_result){ R4, R6 };
+}
+
+/* Cutscene script command "jump_if_current_navi_not_equal".
+ *
+ * The script cursor (r7) points at two operands: a navi id byte followed by a
+ * 4-byte jump target. If the id differs from the navi currently installed in
+ * the PET, execution jumps to the target (the cursor becomes the target
+ * address); otherwise the cursor skips past both operands and play continues.
+ * Returns the new script cursor position; both paths leave Z/N from the
+ * constant 1 the original loads at the end. */
+static u32 jump_if_current_navi_not_equal(u32 pos) {
+    /* Read the navi id operand (1-byte script read); the callee also reports
+     * the cursor position it leaves behind. */
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_jump_if_current_navi_not_equal id = call_ReadMapScriptByte_MapScriptCutsceneCmd_jump_if_current_navi_not_equal(1, pos);
+    u32 wantedNavi = id.r4;
+    u32 afterId    = id.r7;
+
+    /* Which navi is installed in the PET right now? */
+    u32 currentNavi = call_GetCurPETNavi_MapScriptCutsceneCmd_jump_if_current_navi_not_equal().r0;
+
+    if (currentNavi != wantedNavi) {
+        /* Different navi: take the branch, i.e. continue at the word target. */
+        call_ReadMapScriptWord_result target = call_ReadMapScriptWord(2, afterId);
+        return target.r4;
+    }
+
+    /* Same navi: fall through past the id byte and the jump target. */
+    return afterId + 6;
+}
+
+/* MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+ * inputs: r7 = script cursor, r10 (for GetCurPETNavi), lr
+ * outputs: r7 = new script cursor, nz (set from the constant 1) */
+Next MapScriptCutsceneCmd_jump_if_current_navi_not_equal(void) {
+    R7 = jump_if_current_navi_not_equal(R7);
+    SET_FLAGS_NZ(1);
     RETURN_TO_CALLER();
 }
 
@@ -3566,6 +3843,37 @@ Next CutsceneCmd_start_fixed_battle(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── MapScriptCutsceneCmd_run_eStruct200a6a0_callback ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_run_eStruct200a6a0_Callback_8002484_result;
+/* register form: generated wrapper: run_eStruct200a6a0_Callback_8002484 has no typed C interface yet */
+static inline call_run_eStruct200a6a0_Callback_8002484_result call_run_eStruct200a6a0_Callback_8002484(void) {
+    GUEST_CALL(run_eStruct200a6a0_Callback_8002484);
+    return (call_run_eStruct200a6a0_Callback_8002484_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* Map-script command "run cutscene callback": invoke the cutscene callback
+ * (which leaves its own results in r1..r12 and keeps r10 as it was), then
+ * advance the map-script program counter in r7 past this command. The status
+ * in r0 is always 1 ("keep running"); the flags the callers see come from
+ * that movs r0, #1, i.e. always not-zero/not-negative. The r7 value on entry
+ * is dead: the callback writes r7 itself, and only its result is incremented. */
+static u32 run_cutscene_cmd(u32 *script_counter) {
+    call_run_eStruct200a6a0_Callback_8002484_result res =
+        call_run_eStruct200a6a0_Callback_8002484();
+    *script_counter = res.r7 + 1;
+    return 1;
+}
+
+/* MapScriptCutsceneCmd_run_eStruct200a6a0_callback -> nz r2..r5, r7..r12 */
+Next MapScriptCutsceneCmd_run_eStruct200a6a0_callback(void) {
+    u32 script_counter;
+    u32 status = run_cutscene_cmd(&script_counter);
+    R7 = script_counter;
+    SET_FLAGS_NZ(status);
+    RETURN_TO_CALLER();
+}
+
 /* ── CutsceneCmd_do_camera_shake ── */
 /* CutsceneCmd_do_camera_shake: 0803822A-08038246 THUMB
  * Reads two bytes from the current map script: the shake magnitude and
@@ -3605,6 +3913,147 @@ Next CutsceneCmd_do_camera_shake(void) {
     R0 = 1;
 
     LR = saved_lr;
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_init_scenario_effect ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_scenario_effect;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_scenario_effect call_ReadMapScriptByte_MapScriptCutsceneCmd_init_scenario_effect(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_scenario_effect){ R4, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_initScenarioEffect_8003914_result;
+/* register form: generated wrapper: initScenarioEffect_8003914 has no typed C interface yet */
+static inline call_initScenarioEffect_8003914_result call_initScenarioEffect_8003914(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(initScenarioEffect_8003914);
+    return (call_initScenarioEffect_8003914_result){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* MapScriptCutsceneCmd_init_scenario_effect: run one "init scenario effect"
+ * map-script cutscene command. The command consists of a single byte giving
+ * the effect id; read it from the script (with flag 1, as the other cutscene
+ * handlers do), pass it to the scenario-effect initializer, and advance the
+ * script pointer in r7 past the 2-byte command. Returns the advanced pointer. */
+static u32 init_scenario_effect_cmd(u32 script_pos /* r7 on entry */)
+{
+    /* Read the effect id byte; ReadMapScriptByte also leaves its (possibly
+     * updated) r7 in the guest registers for the callee below to inherit. */
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_scenario_effect byte = call_ReadMapScriptByte_MapScriptCutsceneCmd_init_scenario_effect(1, script_pos);
+
+    /* Initialize the scenario effect. It inherits the script pointer in r7
+     * and leaves r2/r3/r4/r5/r7 behind in the guest registers; r2, r3 and r5
+     * pass through unchanged, as in the original. */
+    call_initScenarioEffect_8003914_result effect = call_initScenarioEffect_8003914(byte.r4);
+
+    /* add r7, #2: skip past this command in the script. */
+    return effect.r7 + 2;
+}
+
+/* MapScriptCutsceneCmd_init_scenario_effect (0x0803827A)
+ * inputs: r7; outputs: nz r2 r3 r4 r5 r7.
+ * r2/r3/r4/r5 are left exactly as the callees leave them, so the adapter
+ * only writes the advanced script pointer and the flags. */
+Next MapScriptCutsceneCmd_init_scenario_effect(void)
+{
+    R7 = init_scenario_effect_cmd(R7);
+    SET_FLAGS_NZ(1);   /* final "mov r0, #1" leaves Z clear, N clear */
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_end_scenario_effect ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_endScenarioEffectMaybe_8003940_result;
+/* register form: generated wrapper: endScenarioEffectMaybe_8003940 has no typed C interface yet */
+static inline call_endScenarioEffectMaybe_8003940_result call_endScenarioEffectMaybe_8003940(u32 r2, u32 r3, u32 r4, u32 r6, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(endScenarioEffectMaybe_8003940);
+    return (call_endScenarioEffectMaybe_8003940_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* Map script command "end_scenario_effect": tears down whatever scenario
+ * effect is currently running, advances the script cursor (r7) past this
+ * one-slot command, and reports success to the interpreter (r0 = 1, so the
+ * N/Z flags end up clear). The helper keeps r2/r3/r8/r9/r11/r12 as its own
+ * working state and returns them; r4/r5/r6/r10 pass through untouched. */
+static call_endScenarioEffectMaybe_8003940_result run_end_scenario_effect(
+    u32 r2, u32 r3, u32 r4, u32 r6, u32 r8, u32 r9, u32 r11, u32 r12)
+{
+    call_endScenarioEffectMaybe_8003940_result out =
+        call_endScenarioEffectMaybe_8003940(r2, r3, r4, r6, r8, r9, r11, r12);
+
+    /* The callee leaves r7 alone; this command is one script slot long. */
+    out.r7 = out.r7 + 1;
+    return out;
+}
+
+Next MapScriptCutsceneCmd_end_scenario_effect(void) {
+    call_endScenarioEffectMaybe_8003940_result out =
+        run_end_scenario_effect(R2, R3, R4, R6, R8, R9, R11, R12);
+
+    /* r4, r5, r6 and r10 are preserved by the callee, so no write-back. */
+    R2 = out.r2, R3 = out.r3, R7 = out.r7,
+    R8 = out.r8, R9 = out.r9, R11 = out.r11, R12 = out.r12;
+
+    /* Command result: 1 ("done"), left in r0 by the original. */
+    R0 = 1;
+
+    /* movs r0, #1 sets N and Z from the constant 1. */
+    SET_FLAGS_NZ(1);
+    RETURN_TO_CALLER();
+}
+
+/* ── MapScriptCutsceneCmd_init_minigame_effect ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r7; } call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_minigame_effect;
+/* register form: generated wrapper: ReadMapScriptByte has no typed C interface yet */
+static inline call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_minigame_effect call_ReadMapScriptByte_MapScriptCutsceneCmd_init_minigame_effect(u32 r6, u32 r7) {
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(ReadMapScriptByte);
+    return (call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_minigame_effect){ R4, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_initMinigameEffect_8003a64_result;
+/* register form: generated wrapper: initMinigameEffect_8003a64 has no typed C interface yet */
+static inline call_initMinigameEffect_8003a64_result call_initMinigameEffect_8003a64(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(initMinigameEffect_8003a64);
+    return (call_initMinigameEffect_8003a64_result){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* Cutscene map-script command: read one byte operand and use it to start the
+ * associated minigame effect, then skip past the operand in the script stream.
+ * Always reports "command handled" (r0 = 1, flags from that value). */
+static u32 run_init_minigame_effect_cmd(u32 cursor) {
+    /* Read one byte with the fixed argument 1; ReadMapScriptByte also returns
+     * the advanced script cursor. */
+    call_ReadMapScriptByte_result_MapScriptCutsceneCmd_init_minigame_effect read = call_ReadMapScriptByte_MapScriptCutsceneCmd_init_minigame_effect(1, cursor);
+
+    /* Start the minigame effect for the byte that was read. Its leftover
+     * register results (r2-r5) stay as the callee leaves them. */
+    call_initMinigameEffect_8003a64(read.r4);
+
+    /* Skip the operand: one byte consumed by the read, one more here. */
+    return read.r7 + 2;
+}
+
+/* MapScriptCutsceneCmd_init_minigame_effect(r7 = script cursor) -> nz r2 r3 r4 r5 r7 */
+Next MapScriptCutsceneCmd_init_minigame_effect(void) {
+    R7 = run_init_minigame_effect_cmd(R7);
+    SET_FLAGS_NZ(1);
     RETURN_TO_CALLER();
 }
 
@@ -3700,6 +4149,50 @@ Next MapScriptCutsceneCmd_add_bbs_message_range(void) {
     R4 = (u32)result.messages_left;
     R0 = 1; /* command handled */
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── CutsceneCmd_navi_cmd_80340f6 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r7, r8, r9, r10, r11, r12; } call_endOfSection_NaviSetup_80340F6_result;
+/* register form: generated wrapper: endOfSection_NaviSetup_80340F6 has no typed C interface yet */
+static inline call_endOfSection_NaviSetup_80340F6_result call_endOfSection_NaviSetup_80340F6(u32 r4, u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(endOfSection_NaviSetup_80340F6);
+    return (call_endOfSection_NaviSetup_80340F6_result){ R2, R3, R4, R5, R7, R8, R9, R10, R11, R12 };
+}
+
+/* One "navi cmd" cutscene command: run the NaviSetup end-of-section handler on
+ * the current script state, then advance the script pointer (r7) past this
+ * command. The handler's register results (r2..r12) are passed straight
+ * through; r0 is set to 1 afterwards as the command's success result, and the
+ * flags the caller sees come from that value. */
+static call_endOfSection_NaviSetup_80340F6_result navi_cmd_step(
+    u32 r4, u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    call_endOfSection_NaviSetup_80340F6_result out =
+        call_endOfSection_NaviSetup_80340F6(r4, r5, r6, r7, r8, r9, r11, r12);
+
+    out.r7 += 1; /* advance the cutscene script pointer to the next command */
+    return out;
+}
+
+/* CutsceneCmd_navi_cmd_80340f6 -> nz, r2 r3 r4 r5 r7 r8 r9 r10 r11 r12 */
+Next CutsceneCmd_navi_cmd_80340f6(void) {
+    call_endOfSection_NaviSetup_80340F6_result out =
+        navi_cmd_step(R4, R5, R6, R7, R8, R9, R10, R11, R12);
+
+    R2 = out.r2, R3 = out.r3, R4 = out.r4, R5 = out.r5, R7 = out.r7,
+    R8 = out.r8, R9 = out.r9, R10 = out.r10, R11 = out.r11, R12 = out.r12;
+
+    SET_FLAGS_NZ(1); /* mov r0, #1 */
     RETURN_TO_CALLER();
 }
 
