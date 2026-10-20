@@ -1,0 +1,90 @@
+name: battle_aiAttackFireStep_8014D70
+address: '0x08014D70'
+kind: function
+status: confirmed
+summary: Per-actor AI attack step handler that counts a charge timer down, then on expiry fires the attack
+  (charge-up sound, effect spawn, lift, attack cry, camera shake) and arms the hit phase.
+interface: void battle_aiAttackFireStep(u32 r2 soundArg, battle_object_t *r5 obj, ai_attack_vars_t *r7
+  attackVars, u32 r10 passthrough); // outputs r5/r10 as left by callees; N/Z/C/V clobbered
+details: "r7 points at the actor's AI attack variables and r5 at its battle object; r2 is an\nuntouched\
+  \ argument the first PlaySoundEffect call needs (passed through in r2), and\nr10 is likewise carried\
+  \ through to callees (cameraSetShake).\n\nWhile oAIAttackVars_AttackElement (r7, byte) is 0, oAIAttackVars_StepTimer\
+  \ (halfword)\nis decremented once per call; nothing else happens until it underflows (negative\n32-bit\
+  \ result of the zero-extended load). On underflow the attack fires:\n  - SetAIDataUnk0x48Flag(0x80000,\
+  \ obj) sets an AI-data flag\n  - PlaySoundEffect(0xF7) charge-up sound\n  - spawn_t1_0x0_EffectObject\
+  \ is called with three consecutive words read from\n    obj+0x34/0x38/0x3C plus a type word 0x2E | (Alliance\
+  \ << 8)\n  - if the spawn succeeds (nonzero handle): the effect's oBattleObject_Timer is set\n    to\
+  \ 54 frames, flag bit 2 (0x4) is OR'd into oObjectHeader_Flags, the attacker's\n    oBattleObject_Y\
+  \ is raised by 0xC00000 (one tile, fixed point), the alliance's\n    slot in the indexed table is set\
+  \ via setIndexedTableByte(alliance, 2, 1), the\n    attack cry plays (sound 0x1CC if battle_ai_getActorInfo_801595E(alliance)\n\
+  \    returns 0xB, otherwise 0x1CD), and cameraSetShake(2, 60) shakes the camera.\n    If the spawn pool\
+  \ is exhausted, all of this is skipped.\n  - the timer reloads to 0x36 (54) and AttackElement is set\
+  \ to 4 (fired); if the\n    spawn failed the timer/element are still updated (fall-through loc_8014DDE).\n\
+  The shared tail then decrements the reloaded timer once more; whenever a tail\ndecrement underflows,\
+  \ oAIAttackVars_HitElement is set to 8 (hit lands next).\nOnce AttackElement is nonzero, only the tail\
+  \ decrement runs each call.\n\nQuirk: both decrements compare the full 32-bit subtraction result (the\
+  \ 16-bit\nfield is loaded zero-extended into a register), so timer values of 0x8000..0xFFFF\nstill count\
+  \ as non-negative. Preserves r4/r6 with push/pop because the callees\n(PlaySoundEffect, effect-object\
+  \ spawner) clobber them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8014D70
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8014D70
+
+    ./wf verify --function sub_8014D70 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    176 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8014D70
+
+    ./wf verify --function sub_8014D70 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8014D70
+
+    ./wf verify --function sub_8014D70 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08014d70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8014D70 -> battle_aiAttackFireStep_8014D70
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of SetAIDataUnk0x48Flag(0x80000, obj) (AI-data flag at 0x48)
+- what the indexed table byte written by setIndexedTableByte(alliance, 2, 1) controls
+- which attack/actor this step handler belongs to (identified only by the 0x1CC/0x1CD cry special-case
+  for actor identity 0xB)
+- meaning of the r2/r10 passthrough arguments to PlaySoundEffect/cameraSetShake
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8014D70

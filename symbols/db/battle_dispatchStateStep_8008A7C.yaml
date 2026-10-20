@@ -1,0 +1,87 @@
+name: battle_dispatchStateStep_8008A7C
+address: '0x08008A7C'
+kind: function
+status: confirmed
+summary: Battle main-loop state dispatcher — reads the battle state byte and tail-jumps to that state's
+  step handler via a 4-entry table.
+interface: void battle_dispatchStateStep(r5=battleStateObj, r3, r7, r10); // r0..r2,r4..r12/nzcv clobbered
+  per handler; lr must hold return-to-caller address
+details: 'Trampoline used by the battle main loop. r5 points at the battle state object; the byte at
+
+  [r5+2] is the current battle state index. It loads a function pointer from the state table
+
+  off_8008A90 (indexed by that byte) and calls it with mov lr,pc; bx r1, so the handler returns
+
+  straight to this function''s caller — the dispatcher leaves no trace on the return address.
+
+  States known from the table: 0 = battle_tickPreBattleInit_8008AA0, 1 = sub_8008B10,
+
+  2 = battle_waitCrossNetReadyStep, 3 = battle_battleEndDelayStep.
+
+  On handler entry: r0 = state byte, r1 = handler address, r3/r5/r7/r10 pass through unchanged,
+
+  so handlers receive the caller''s arguments plus the state object. The tail-call trick means
+
+  the handler''s r2..r12/flags results are effectively this function''s results.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8008A7C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8008A7C
+
+    ./wf verify --function sub_8008A7C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8008A7C
+
+    ./wf verify --function sub_8008A7C --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 29 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8008A7C
+
+    ./wf verify --function sub_8008A7C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08008a7c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8008A7C -> battle_dispatchStateStep_8008A7C
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- beastsp
+open_questions:
+- layout of the battle state object beyond the state byte at offset 2
+- what state 1 handler sub_8008B10 does (unnamed)
+- full range of valid state byte values (table has 4 entries; out-of-range index would read past off_8008A90)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8008A7C

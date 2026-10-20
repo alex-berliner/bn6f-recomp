@@ -1,0 +1,80 @@
+name: getAreaTableEntry_808FFC0
+address: '0x0808FFC0'
+kind: function
+status: confirmed
+summary: Looks up an 8-byte entry in a per-area data table chosen by the current map group, indexed by
+  the caller's object field at +0xE, and returns the entry's two halfwords and two bytes.
+interface: int getAreaTableEntry(u32 obj /* r5 */, u32 toolkit /* r10 */) -> r0 = entry.half0 << 16, r1
+  = entry.half1 << 16, r2 = entry.byte4, r3 = entry.byte6; clobbers N/Z/C/V
+details: 'Reads the toolkit''s game state pointer (r10 + oToolkit_GameStatePtr) and picks one of four
+  8-byte-stride tables (byte_81434E4, byte_814350C, byte_814352C, byte_8143564) via a table of pointers
+  at off_808FFF4: if the map group (oGameState_MapGroup) is 0x85 the last slot is forced (index 3), otherwise
+  the byte at gameState+5 selects the table. The table base is then offset by 8 * [r5+0xE] to select an
+  entry. The entry is unpacked as: u16 at +0 -> r0<<16, u16 at +2 -> r1<<16, byte at +4 -> r2, byte at
+  +6 -> r3. The halfwords are pre-shifted left 16 so callers can sign-extend them cheaply with ASR #16,
+  strongly suggesting they are signed 16-bit values (likely coordinates or similar). Only r4 is preserved
+  besides the return values.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_808FFC0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808FFC0
+
+    ./wf verify --function sub_808FFC0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808FFC0
+
+    ./wf verify --function sub_808FFC0 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808FFC0
+
+    ./wf verify --function sub_808FFC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808ffc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808FFC0 -> getAreaTableEntry_808FFC0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What the object pointed to by r5 is (its +0xE field indexes the entries)
+- What the four tables at byte_81434E4..byte_8143564 contain and how the returned halfwords/bytes are
+  used by callers
+- What gameState byte +5 represents (presumably an area/sub-area index) and why map group 0x85 hardwires
+  the fourth table
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_808FFC0

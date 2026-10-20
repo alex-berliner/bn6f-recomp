@@ -1,0 +1,80 @@
+name: ow_setupMapTiles_808D108
+address: '0x0808D108'
+kind: function
+status: confirmed
+summary: Fetches the current overworld tile template, stamps it onto the map with template index 0, and
+  refreshes the derived map/tilemap state.
+interface: void sub_808D108(void); // reads r10 (context/map pointer passed through to callees), trashes
+  r0-r3 and flags, r4-r9/r12 pass through from the callees and are preserved for callers
+details: 'A thin overworld-map setup routine: it first calls sub_8142CB0 to obtain the current tile template
+  description (result in r0), then calls ow_stampMapTileTemplate with that template and r1 = 0 (template
+  index 0), and finally calls sub_8142D4C (ow_redrawMapTilemapsCb in the assembly) to redraw/refresh the
+  derived map tilemap state. It does not touch any structure fields itself; everything is delegated. The
+  r10 input is never read in this function''s own code, so it is consumed by one of the callees (most
+  likely the stamp or template routine, which operate on the current map context). The listed "outputs"
+  r2/r5/r9/r12 are simply values the callees leave behind that happen to survive to callers (r5 from ow_stampMapTileTemplate,
+  r2/r9/r12 from sub_8142D4C), not deliberate return values. r4-r6 are saved/restored locally.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_808D108
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808D108
+
+    ./wf verify --function sub_808D108 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808D108
+
+    ./wf verify --function sub_808D108 --snapshots build-snapshots'
+  result: 81 compared, 0 differed, 15 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808D108
+
+    ./wf verify --function sub_808D108 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808d108 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808D108 -> ow_setupMapTiles_808D108
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- what sub_8142CB0 actually reads to produce the tile template value (likely keyed off r10 or a global
+  overworld state)
+- whether r1 = 0 is a template index, layer id, or a stamp count
+- exact role of sub_8142D4C vs ow_redrawMapTilemapsCb (the C wrapper and assembly list different callees
+  for the third call)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_808D108

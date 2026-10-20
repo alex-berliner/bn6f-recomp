@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80871C0 ── */
+/* ── npc_checkStateEventFlag_80871C0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlag_result_sub_80871C0;
 /* register form: generated wrapper: TestEventFlag has no typed C interface yet */
@@ -30,7 +30,7 @@ static void check_state_event_flag(u32 statePtr) {
     call_TestEventFlag_sub_80871C0(flagId);
 }
 
-Next sub_80871C0(void) {
+Next npc_checkStateEventFlag_80871C0(void) {
     check_state_event_flag(R5);
     RETURN_TO_CALLER();
 }

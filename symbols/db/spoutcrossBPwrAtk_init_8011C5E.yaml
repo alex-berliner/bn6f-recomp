@@ -1,0 +1,71 @@
+name: spoutcrossBPwrAtk_init_8011C5E
+address: '0x08011C5E'
+kind: function
+status: confirmed
+summary: Initializes the AI attack-vars block for the SpoutCross beast-power attack, storing its computed damage
+  and parameters and returning the attack id 0x25.
+interface: int spoutcrossBPwrAtk_init(r7 vars /*oAIAttackVars*/, r5 powerLevel, r10 unused) -> r0 attack id (0x25),
+  r5 updated power level; clobbers r1-r3, lr, flags
+details: 'Tail of a SpoutCross (Beast Out) power-attack setup handler. Calls battle_beastPwrAtk_addScaledBase_8012642
+  with base damage 0x14 (20) and power modifier 0xA (10), passing the caller''s power level in r5 through (the helper
+  both reads and updates it, and returns the scaled damage in r0). Stores the results into the r7 AI attack-vars
+  struct: Damage = scaled value (halfword), AttackBoost = 0 (halfword), ExtraDamage = 0x94 (halfword, 148), AiDifficultyTier
+  = 2 (byte), AttackBoost2 = 0xD as a full 32-bit store, and InitFlag = 2 (byte). Finally returns the constant 0x25
+  in r0, which appears to be the attack id / next-state selector consumed by the caller. r10 is listed as an input
+  by the callers but the function never touches it (probably preserved incidentally or used by sibling handlers
+  in the same dispatch table).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c spoutcrossBPwrAtk_init_8011C5E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spoutcrossBPwrAtk_init_8011C5E
+
+    ./wf verify --function spoutcrossBPwrAtk_init_8011C5E --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spoutcrossBPwrAtk_init_8011C5E
+
+    ./wf verify --function spoutcrossBPwrAtk_init_8011C5E --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spoutcrossBPwrAtk_init_8011C5E
+
+    ./wf verify --function spoutcrossBPwrAtk_init_8011C5E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011c5e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of ExtraDamage (0x94) and AttackBoost2 (0xD) fields in the oAIAttackVars struct
+- whether r0 = 0x25 is an attack id or a state-machine phase number
+- why r10 appears in the callers' contract when the function never reads it
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

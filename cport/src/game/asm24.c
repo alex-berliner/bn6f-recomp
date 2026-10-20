@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_808CBA0 ── */
+/* ── spawnOverworldMapObjects_808CBA0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3, r6; } call_SpawnOverworldMapObject_result_sub_808CBA0;
 /* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
@@ -22,7 +22,7 @@ static inline call_SpawnOverworldMapObject_result_sub_808CBA0 call_SpawnOverworl
     return (call_SpawnOverworldMapObject_result_sub_808CBA0){ R2, R3, R6 };
 }
 
-/* sub_808CBA0: spawn the initial batch of overworld map objects.
+/* spawnOverworldMapObjects_808CBA0: spawn the initial batch of overworld map objects.
  *
  * The number of objects depends on where the player is:
  *   - map group 0x85: 12 objects
@@ -64,9 +64,9 @@ static void spawn_overworld_map_objects(u32 toolkit) {
     R6 = savedR6;
 }
 
-/* sub_808CBA0(r10 = toolkit) -> r2 (left by the last SpawnOverworldMapObject
+/* spawnOverworldMapObjects_808CBA0(r10 = toolkit) -> r2 (left by the last SpawnOverworldMapObject
  * call); r4-r7 end exactly as they arrived, so the adapter leaves them alone. */
-Next sub_808CBA0(void) {
+Next spawnOverworldMapObjects_808CBA0(void) {
     spawn_overworld_map_objects(R10);
     RETURN_TO_CALLER();
 }
@@ -349,7 +349,7 @@ Next ai_testMapGroupEventFlag(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808CF50 ── */
+/* ── ai_syncModeEventFlag_808CF50 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ai_getAIModeForMapGroup_808D084 has no typed C interface yet */
 static inline u32 call_ai_getAIModeForMapGroup_808D084_sub_808CF50(void) {
@@ -385,9 +385,9 @@ static void sync_ai_mode_flags(void) {
     call_SetEventFlag_sub_808CF50(LD16(A_byte_808CF84 + modeOffset));
 }
 
-/* sub_808CF50() -> r7 (r7 comes back exactly as it entered: the original's
+/* ai_syncModeEventFlag_808CF50() -> r7 (r7 comes back exactly as it entered: the original's
  * pop {r4-r7,pc} restores it from the stack) */
-Next sub_808CF50(void) {
+Next ai_syncModeEventFlag_808CF50(void) {
     sync_ai_mode_flags();
     R7 = R7;    /* unchanged output: restored to its entry value */
     RETURN_TO_CALLER();
@@ -572,7 +572,7 @@ Next ai_getAIModeForMapGroup_808D084(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808D108 ── */
+/* ── ow_setupMapTiles_808D108 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r5, r6, r7; } call_sub_8142CB0_result;
 /* register form: generated wrapper: sub_8142CB0 has no typed C interface yet */
@@ -611,7 +611,7 @@ static void ow_setup_map_tiles(void) {
     call_sub_8142D4C();
 }
 
-Next sub_808D108(void) {
+Next ow_setupMapTiles_808D108(void) {
     ow_setup_map_tiles();
     RETURN_TO_CALLER();
 }
@@ -619,13 +619,13 @@ Next sub_808D108(void) {
 /* ── sub_808D25C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r12; bool c, v; } call_sub_8048F88_result;
-/* register form: generated wrapper: sub_8048F88 has no typed C interface yet */
+/* register form: generated wrapper: shop_addStockEntry_kind4_8048F88 has no typed C interface yet */
 static inline call_sub_8048F88_result call_sub_8048F88(void) {
-    GUEST_CALL(sub_8048F88);
+    GUEST_CALL(shop_addStockEntry_kind4_8048F88);
     return (call_sub_8048F88_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_808D25C — run the game-state unpacker sub_8048F88, then finish with 0.
+/* sub_808D25C — run the game-state unpacker shop_addStockEntry_kind4_8048F88, then finish with 0.
  *
  * This function is pure glue: it tail-calls the unpacker (which reads r10 and
  * leaves r1..r9, r12, c, v behind — those are exactly the values its callers
@@ -634,7 +634,7 @@ static inline call_sub_8048F88_result call_sub_8048F88(void) {
  * the pass-through registers matter. */
 
 /* Run the unpacker and report the final result value (always 0, matching the
- * original's "mov r0, #0"). The registers sub_8048F88 leaves behind stay in
+ * original's "mov r0, #0"). The registers shop_addStockEntry_kind4_8048F88 leaves behind stay in
  * the guest register file; nothing here needs to forward them. */
 static u32 sub_808D25C_run_unpacker(void) {
     call_sub_8048F88_result regs = call_sub_8048F88();

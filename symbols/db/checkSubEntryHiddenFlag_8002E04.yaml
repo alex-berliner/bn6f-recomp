@@ -1,0 +1,81 @@
+name: checkSubEntryHiddenFlag_8002E04
+address: '0x08002E04'
+kind: function
+status: confirmed
+summary: Selects one of up to 16 sub-entries of an object via the high nibble of byte +2 and tests that
+  sub-entry's bit 3 (hidden/disabled-style attribute), returning its address and the masked flag.
+interface: 'u32 checkSubEntryHiddenFlag(void) /* in: r5 = object ptr, lr = return addr; out: r3 = sub-entry
+  ptr, r0 = (entry[+3] & 0x08), NZ flags from r0; clobbers r0-r3, C, V */'
+details: 'Takes r5 as a pointer to some object/record structure. Reads the byte at r5+2, masks off the
+  low nibble (lsr 4 / lsl 4) to get a 16-aligned offset, and adds it to r5: so byte+2''s high nibble is
+  an index into up to 16 sub-entries that are 16 bytes apart and 16-byte aligned relative to the object
+  base (the low nibble of byte+2 is ignored/used for something else). From the selected sub-entry it reads
+  the byte at +3, ANDs it with 0x08, and returns that in r0 with the address of the sub-entry in r3. Because
+  the original uses a flagged AND (equivalent of ANDS), the NZ flags on return reflect the masked bit,
+  so callers can branch directly on the result without re-testing r0. Very short leaf routine ending in
+  mov pc, lr (no stack use, preserves nothing it clobbers beyond r0-r1/r3). The bit-3 attribute likely
+  marks a sub-entry as hidden, disabled, or "flag set" for whatever table owns these objects; the exact
+  owner of the structure is not yet identified.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/sprite.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8002E04
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8002E04
+
+    ./wf verify --function sub_8002E04 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    189 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8002E04
+
+    ./wf verify --function sub_8002E04 --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8002E04
+
+    ./wf verify --function sub_8002E04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08002e04 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/sprite.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8002E04 -> checkSubEntryHiddenFlag_8002E04
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/sprite.c
+coverage:
+- beastsp
+open_questions:
+- which subsystem owns the r5 structure (the sub-entry table layout is unidentified)
+- the meaning of bit 3 of the sub-entry byte at +3 (hidden? disabled? event flag?)
+- why callers also need the sub-entry address in r3 (probably for further field reads)
+- significance of the low nibble of byte +2, which is masked away here
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8002E04

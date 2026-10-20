@@ -1,0 +1,77 @@
+name: cutscene_setStateActive_80A9EB6
+address: '0x080A9EB6'
+kind: function
+status: confirmed
+summary: Marks the cutscene state as active by writing 1 to the flag byte at eCutsceneState+8.
+interface: void sub_80A9EB6(void) /* sets byte at eCutsceneState+8 = 1; r5 nominally "read back" but unchanged
+  */
+details: 'A one-liner cutscene helper: stores the immediate value 1 into the byte at eCutsceneState+8
+  (byte_2011C58, offset 0x8 into the eCutsceneState struct at 0x2011C50). This flag evidently means "a
+  cutscene is currently running" (or that the cutscene state machine should advance/lock input accordingly).
+  It touches nothing else, preserves r4-r7, and is a plain leaf function (push/pop with pc return). The
+  data words dword_80A9EC0 (0x2AAAA) and dword_80A9EC4 (0x16C1) sitting before the literal pool are unrelated
+  constants/pointers in the same pool area, not used by this routine. Quirk: the caller-derived contract
+  lists r5 as an output, but the function never modifies r5 (it is in the preserved set), so callers presumably
+  just have r5 live across the call rather than receiving a real return value.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A9EB6
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9EB6
+
+    ./wf verify --function sub_80A9EB6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9EB6
+
+    ./wf verify --function sub_80A9EB6 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9EB6
+
+    ./wf verify --function sub_80A9EB6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9eb6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A9EB6 -> cutscene_setStateActive_80A9EB6
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the value 1 at eCutsceneState+8 versus other values that field takes (started vs. running
+  vs. skippable)
+- which cutscene entry points call this and whether a matching "clear" writer for the same byte exists
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A9EB6

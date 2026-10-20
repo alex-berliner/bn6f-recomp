@@ -1,0 +1,90 @@
+name: getMapAreaDataTableEntry_80A82A4
+address: '0x080A82A4'
+kind: function
+status: confirmed
+summary: Returns a pointer into a per-map data table (8-byte records) for the current map area, offset
+  by the caller object's byte at +4.
+interface: u32 getMapAreaDataTableEntry_80A82A4(void *obj /*r5*/, void *toolkit /*r10*/); // returns r0
+  = base + 8*obj[4], no flags defined
+details: 'Reads the GameState pointer from the toolkit (r10 + oToolkit_GameStatePtr) and derives an
+
+  area index: if oGameState_MapGroup == 0x85 it forces index 3 (the fourth table, presumably
+
+  shared by that whole group), otherwise it uses oGameState_MapNumber. Indexes the pointer
+
+  table at off_80A82CC (entries byte_80A804C, byte_80A8084, byte_80A80CC, byte_80A8114) with
+
+  area_index*4, then adds 8 times the byte at [r5,#4] (an object-local slot/record index).
+
+  The result is an address of an 8-byte record within the selected map''s data blob, so each
+
+  map''s blob holds records indexed by the object''s field. Callers presumably consume r0 as a
+
+  pointer to the record (this function itself only builds the address). r5 (object) and r10
+
+  (toolkit) are frame-register conventions of the caller; r0-r3 and flags are clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A82A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A82A4
+
+    ./wf verify --function sub_80A82A4 --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A82A4
+
+    ./wf verify --function sub_80A82A4 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A82A4
+
+    ./wf verify --function sub_80A82A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080a82a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A82A4 -> getMapAreaDataTableEntry_80A82A4
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What the 8-byte records contain (object placement data, spawn/talk table, etc.) is not shown here; check
+  consumers and the byte_80A804C-family tables.
+- Why map group 0x85 maps all its maps to table entry 3 — confirm which area that group is and whether
+  other groups share tables via oGameState_MapNumber values > 3.
+- Semantics of the byte at [r5,#4] (record index vs. object type).
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A82A4

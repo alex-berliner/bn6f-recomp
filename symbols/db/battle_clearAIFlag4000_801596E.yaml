@@ -1,0 +1,80 @@
+name: battle_clearAIFlag4000_801596E
+address: '0x0801596E'
+kind: function
+status: confirmed
+summary: If a non-null AI object pointer is passed, clears the 0x4000 flag in its AI data; otherwise does
+  nothing.
+interface: int battle_clearAIFlag4000(AIObject* object); // r0 = object ptr; returns r3 (side effect of
+  callee), r5 preserved; flags clobbered
+details: 'Thin conditional wrapper. Saves r5, takes the AI object pointer in r0, and only if it is non-null
+  performs "mov r5, r0" followed by "ldr r0, =0x4000" and a tail call to SetAIData_Unk_44_Flag. That callee
+  receives the flag value 0x4000 in r0 and the object pointer in r5 (a different calling convention from
+  most of this code), and it operates on flag bit 0x4000 within the object''s AI data at the field the
+  callee''s name labels as Unk_44. If r0 is NULL the call is skipped entirely and the function just returns.
+  Outputs per the contract: r3 carries whatever SetAIData_Unk_44_Flag leaves there (only meaningful when
+  the non-null path runs), and r5 is preserved for callers via the push/pop. The caller-side contract
+  reads back only r3 and r5, so r0/r1/lr and the flags are scratch. Quirk: the callee takes the object
+  pointer in r5 rather than r0/r1, hence the unusual mov.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_801596E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801596E
+
+    ./wf verify --function sub_801596E --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801596E
+
+    ./wf verify --function sub_801596E --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801596E
+
+    ./wf verify --function sub_801596E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0801596e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801596E -> battle_clearAIFlag4000_801596E
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of AI data flag bit 0x4000 (what game state it toggles) is unknown until SetAIData_Unk_44_Flag
+  is documented
+- which AI subsystem/objects pass pointers here (no caller context in this snippet), so the battle_ prefix
+  is a guess at subsystem
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_801596E

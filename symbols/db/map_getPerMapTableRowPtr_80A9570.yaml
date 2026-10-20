@@ -1,0 +1,78 @@
+name: map_getPerMapTableRowPtr_80A9570
+address: '0x080A9570'
+kind: function
+status: confirmed
+summary: Returns a pointer into one of four per-map 8-byte-row data tables, selecting the row indexed
+  by a byte in the caller's object struct.
+interface: u8* map_getPerMapTableRowPtr(struct SomeObj* obj /*r5*/, struct Toolkit* toolkit /*r10*/)
+details: 'Reads the toolkit''s GameState pointer (r10+oToolkit_GameStatePtr), then computes a table selector:
+  if the state''s MapGroup byte (oGameState_MapGroup) equals 0x85 the selector is forced to 3, otherwise
+  it is the state''s MapNumber byte (oGameState_MapNumber). The selector indexes off_80A9598, a four-entry
+  list of table bases (byte_8143724, byte_814375C, byte_8143794, byte_81437CC) — one table per map. Each
+  table has 8-byte entries; the row index is the byte at [r5,#4] of the object passed in r5, multiplied
+  by 8. The result (tableBase + 8*rowIndex) is returned in r0; callers presumably use it as a pointer
+  to an 8-byte record (two words) for that row of the current map''s data. Flags NZCV are clobbered; only
+  r0 is meaningful on return.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A9570
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9570
+
+    ./wf verify --function sub_80A9570 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9570
+
+    ./wf verify --function sub_80A9570 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9570
+
+    ./wf verify --function sub_80A9570 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9570 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A9570 -> map_getPerMapTableRowPtr_80A9570
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What the 8-byte records in the four tables actually describe (map-specific parameters for the caller's
+  object)
+- Why map group 0x85 shares a single table (index 3) instead of having its own
+- What kind of structure r5 points to and what field +4 normally holds
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A9570

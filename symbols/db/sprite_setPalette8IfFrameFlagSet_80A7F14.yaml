@@ -1,0 +1,83 @@
+name: sprite_setPalette8IfFrameFlagSet_80A7F14
+address: '0x080A7F14'
+kind: function
+status: confirmed
+summary: Reads the sprite's current frame parameters and, if the frame's 0x80 flag bit is set, writes
+  8 into the sprite's palette/render byte at offset 9.
+interface: void sub_80A7F14(r5 sprite_obj); (calls sprite_getFrameParameters(sprite_obj) -> r0 frame params)
+details: 'Takes a sprite object pointer in r5 (preserved through the call). Calls
+
+  sprite_getFrameParameters with r5 as the sprite; the returned r0 holds the
+
+  frame parameter bitfield. Tests bit 0x80: if set, stores the immediate 8 as
+
+  a byte at [sprite+9]. If the bit is clear the sprite is left untouched, so
+
+  the effect is one-way (only ever sets the value to 8, never clears it back).
+
+  Offset 9 in the sprite object appears to be a palette index / render-mode
+
+  byte (the frame''s 0x80 parameter bit acts as a "use palette 8" request).
+
+  Clobbers r0-r3 and flags; preserves r4-r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A7F14
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A7F14
+
+    ./wf verify --function sub_80A7F14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    180 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A7F14
+
+    ./wf verify --function sub_80A7F14 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A7F14
+
+    ./wf verify --function sub_80A7F14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a7f14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A7F14 -> sprite_setPalette8IfFrameFlagSet_80A7F14
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the sprite object byte at offset 9 (palette index vs render/blend mode)
+- semantics of bit 0x80 in sprite_getFrameParameters' returned frame parameter word
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A7F14

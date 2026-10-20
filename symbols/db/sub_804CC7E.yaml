@@ -1,0 +1,82 @@
+name: sub_804CC7E
+address: '0x0804CC7E'
+kind: function
+status: hypothesis
+summary: Writes the constants 8 and 0x10 into byte fields +2 and +3 of the toolkit's 2009740 object, switching that
+  object into a particular mode.
+interface: 'void sub_804CC7E(void) // in: r10 = toolkit base (reads oToolkit_Unk2009740_Ptr), lr = return; no register
+  outputs (r5 declared "output" by callers but is unchanged)'
+details: 'Tiny three-instruction routine (plus prologue/epilogue) that loads the pointer stored at
+
+  toolkit+oToolkit_Unk2009740_Ptr and stores 8 at byte +2 and 0x10 at byte +3 of that object,
+
+  then returns. No other fields are read or written, and nothing else about the object is
+
+  touched, so the meaning of these bytes is unknown. The object at 2009740 in BN6 appears to be
+
+  some kind of mode/state or overlay controller; storing a small pair of constants here looks
+
+  like entering a fixed mode (e.g. 8 = state/id, 0x10 = parameter/timer step). Note the unusual
+
+  calling convention: the toolkit base is passed in r10 and the return address arrives in lr
+
+  (this is reached via a tail-style/BLX-less path), and the lifter''s caller analysis claims r5
+
+  is "returned" even though the function never modifies it, suggesting r5 is simply live across
+
+  the call. The push/pop of r4-r7 is just to align and preserve registers across the sequence.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_804CC7E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804CC7E
+
+    ./wf verify --function sub_804CC7E --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804CC7E
+
+    ./wf verify --function sub_804CC7E --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804CC7E
+
+    ./wf verify --function sub_804CC7E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804cc7e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- what the object behind oToolkit_Unk2009740_Ptr is and what fields +2/+3 control
+- why callers expect r5 as an output when it is not modified
+- which game state this triggers (needs cross-reference from all call sites)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

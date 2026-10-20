@@ -1,0 +1,72 @@
+name: sub_8026694
+address: '0x08026694'
+kind: function
+status: hypothesis
+summary: Trivial thunk that tail-calls battle_checkFacingOffsets with a fixed pointer argument (byte_8026791), passing
+  r4-r7 straight through.
+interface: void sub_8026694(r4, r5, r6, r7); // returns callee's r0, r1, r5
+details: 'The function does nothing on its own: it loads the address byte_8026791 (0x08026791, inside this same
+  code region) into r0 and tail-calls battle_checkFacingOffsets with r4-r7 forwarded unchanged. Everything the caller
+  sees as outputs (r0, r1, r5) comes from the callee; r4, r6 and r7 are preserved, nz/c/v are clobbered by the callee.
+  Since the argument is a hard-coded address, this is presumably one of several near-identical thunks that run the
+  same facing-offset check against different built-in parameter blocks or dispatch tables, and the value at 0x08026791
+  is likely data consumed by battle_checkFacingOffsets rather than a normal argument. Game-level meaning is inherited
+  entirely from the callee''s behavior (checking tile offsets in an entity''s facing direction during battle), so
+  no stronger name than the thunk description is justified until battle_checkFacingOffsets itself is understood.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_8026694
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8026694
+
+    ./wf verify --function sub_8026694 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 173 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8026694
+
+    ./wf verify --function sub_8026694 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8026694
+
+    ./wf verify --function sub_8026694 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08026694 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- what battle_checkFacingOffsets actually checks (tile collision? target lookup?) and what the data at byte_8026791/0x08026791
+  means
+- whether byte_8026791 is a byte parameter, a pointer to a table, or just code bytes being treated as an argument
+  by the callee
+- who calls this thunk and why they use it instead of calling battle_checkFacingOffsets directly
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

@@ -1,0 +1,78 @@
+name: battle_checkEmotionAllowsAction_802A57E
+address: '0x0802A57E'
+kind: function
+status: confirmed
+summary: Checks a battle actor's emotion state and a counter to decide (0/1) whether some action is currently
+  allowed.
+interface: u32 battle_checkEmotionAllowsAction_802A57E(u32 actor /* r5 */); returns 1 or 0 in r0
+details: "Takes the actor pointer/handle in r5 and calls battle_getActorEmotion_802A564, which returns\
+  \ the emotion id in r0 and a secondary value in r1 (a counter or timer of some kind). The decision logic:\n\
+  \  - emotion id 5 -> always returns 0 (action blocked).\n  - emotion id 1 and the byte at [dword_20349A0\
+  \ + 0x10] (byte_20349B0) is 0\n    -> returns 0 (blocked; the global byte_20349B0 acts as an enable\
+  \ flag\n    that must be set for emotion 1 to pass).\n  - otherwise (emotion 1 with the flag set, or\
+  \ any emotion other than 1/5)\n    -> returns 1 only if the signed value in r1 is < 0xB (11), else 0.\n\
+  So r1 looks like a countdown/cooldown: once it reaches 11 the action is no longer permitted. Only r0\
+  \ (the 0/1 verdict) is meaningful to callers; r1-r3 and flags are whatever battle_getActorEmotion_802A564\
+  \ left behind, r4-r6 are preserved by this function itself.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0_80299B6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_802A57E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802A57E
+
+    ./wf verify --function sub_802A57E --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802A57E
+
+    ./wf verify --function sub_802A57E --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 89 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802A57E
+
+    ./wf verify --function sub_802A57E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0802a57e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0_80299B6.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802A57E -> battle_checkEmotionAllowsAction_802A57E
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0_80299B6.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact identity of emotion ids 1 and 5 (likely specific faces such as worried/angry from the emotion
+  system)
+- what the counter in r1 counts (turns, frames, or uses) and where callers set it
+- meaning of the global flag byte_20349B0 that gates emotion id 1
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_802A57E

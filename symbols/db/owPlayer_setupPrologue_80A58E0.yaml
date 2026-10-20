@@ -1,0 +1,81 @@
+name: owPlayer_setupPrologue_80A58E0
+address: '0x080A58E0'
+kind: function
+status: confirmed
+summary: Setup prologue shared with the routine at loc_80A58FA - runs three init steps (counter reset,
+  overworld player direction-anim setup) then branches into the shared body, which pops this function's
+  saved frame to return to its caller.
+interface: u32 sub_80A58E0(r4 counter_in, r5 arg5, r6 arg6, r7 arg7, r10 arg10); returns result in r0,
+  with r5/r6 and r8-r12 also live on exit per the caller contract; flags clobbered (nzcv)
+details: "Pushes {r4-r7,lr} - a frame that the shared continuation at loc_80A58FA pops\nwhen it finishes,\
+  \ so this function never returns to its own lr directly.\nThen performs three initialisation steps:\n\
+  \  1. sub_80A5954 with the incoming r5/r6 unchanged,\n  2. sub_80A596C with its r4 counter argument\
+  \ cleared to 0; it updates\n     r4/r5, and step 3 continues from the r5 it leaves,\n  3. sub_80A59B8\
+  \ (reached through owPlayer_setDirectionAnimThunk in the\n     listing) with that r5, yielding the value\
+  \ the shared body receives\n     in r0 (copied to r2 with \"mov r2, r0\") and leaving r4 live.\nFinally\
+  \ branches (tail-merge, not a call) into loc_80A58FA, which reads\nthe result pair r0/r2 plus counters\
+  \ r4/r5 and returns straight to this\nfunction's caller through the saved lr. The presence of\nowPlayer_setDirectionAnimThunk\
+  \ indicates the overworld player subsystem,\nand this pair of routines is a split prologue/body: callers\
+  \ of either\nentry see one logical call.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A58E0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A58E0
+
+    ./wf verify --function sub_80A58E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A58E0
+
+    ./wf verify --function sub_80A58E0 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 93 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A58E0
+
+    ./wf verify --function sub_80A58E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a58e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A58E0 -> owPlayer_setupPrologue_80A58E0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact game meaning of the three called helpers (sub_80A5954, sub_80A596C, sub_80A59B8) and the fields
+  they touch, since none has a typed interface yet
+- what the r0/r2 value passed into the shared body selects there
+- whether the "battle setup" reading in the generated comment is right or this is purely overworld-player
+  setup, given the owPlayer thunk
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A58E0

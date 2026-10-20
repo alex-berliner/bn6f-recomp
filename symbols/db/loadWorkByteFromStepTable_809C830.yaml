@@ -1,0 +1,81 @@
+name: loadWorkByteFromStepTable_809C830
+address: '0x0809C830'
+kind: function
+status: confirmed
+summary: Looks up one byte from a fixed 4x4 step/sequence table using two selector bytes in an object's
+  state block and stores it into the work object at +0x5.
+interface: 'void sub_809C830(void); /* in: r5 = work object; out: [r5+5] = table byte, r2 = selected table
+  word, r3 = state pointer, NZ from ''mov r0,#0'' (Z set, C clobbered), r0/r1 scratch, r4-r7 preserved
+  */'
+details: 'Reads the state-block pointer from [r5+0x70]. Two bytes in that state act as indices: state+0xC
+  (0..3) selects one of four words in the table at off_809C850, and state+0xD (0..3) indexes a byte within
+  that word. The four words are 0x20100, 0x50403, 0x80706 and 0xB0A09, i.e. the byte values (00 01 02
+  00), (03 04 05 00), (06 07 08 00), (09 0A 0B 00) — a 12-step sequence arranged as four groups of 3,
+  with the 4th slot of each word always 0. The selected byte is written to [r5+5] of the work object,
+  likely a step/phase counter derived from the state''s group-and-step pair. Leaves r2 = the selected
+  table word and r3 = the state pointer live for callers; returns r0 = 0. Purely table-driven, no other
+  memory or hardware touched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_809C830
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809C830
+
+    ./wf verify --function sub_809C830 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809C830
+
+    ./wf verify --function sub_809C830 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809C830
+
+    ./wf verify --function sub_809C830 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809c830 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809C830 -> loadWorkByteFromStepTable_809C830
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm28_0.c
+coverage:
+- beastsp
+open_questions:
+- Which subsystem owns the work object (r5) and state block ([r5+0x70]); no prefix (sprite_/npc_/battle_)
+  can be confirmed from this function alone.
+- What the 12-entry sequence (values 0-11) is used for downstream — animation frames, movement waypoints,
+  or dialog/phase steps are all plausible.
+- Why the caller also consumes r2 (selected table word) and r3 (state pointer) after the call.
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_809C830

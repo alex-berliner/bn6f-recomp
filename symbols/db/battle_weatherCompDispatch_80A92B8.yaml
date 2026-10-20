@@ -1,0 +1,76 @@
+name: battle_weatherCompDispatch_80A92B8
+address: '0x080A92B8'
+kind: function
+status: confirmed
+summary: Dispatches a battle object to one of four weather-comparison state handlers based on its state
+  byte at +8.
+interface: void sub_80A92B8(r5=object, r10=passthrough); outputs r2,r3,r4,r5,r8,r9,r10,r11,r12 come from
+  the chosen handler; clobbers r0,r1,r6,r7,lr and flags
+details: 'A tiny state-machine dispatcher for the "weather comparison" battle effect (likely the Falzar/Brazilian
+  weather system that alters attack properties). r5 points to a battle object whose byte at offset +8
+  holds the current state (0..3); that byte indexes the handler table off_80A92CC and the entry is jumped
+  to via the classic ''mov lr, pc; bx r0'' tail-call, so handlers return directly to this function''s
+  caller. Before branching it loads r6 with the shared state block eWeatherCompState and passes r10 through
+  untouched. Handlers: state 0 = sprite_initBeastSp (initial/ reset state), states 1-3 = sub_80A931C/sub_80A9360/sub_80A93D0.
+  All register outputs and clobbered flags are whatever the selected handler leaves behind; the dispatcher
+  itself only sets r6, r1 (re-used by the ldrb) and r0.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A92B8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A92B8
+
+    ./wf verify --function sub_80A92B8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A92B8
+
+    ./wf verify --function sub_80A92B8 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 19 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A92B8
+
+    ./wf verify --function sub_80A92B8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a92b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A92B8 -> battle_weatherCompDispatch_80A92B8
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact in-game semantics of each weather state (states 1-3 handlers not yet analyzed)
+- what r10 carries to the handlers (likely a battle-work pointer or effect id)
+- whether sprite_initBeastSp is genuinely the state-0 handler or the table reuses it as a no-op/init
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A92B8

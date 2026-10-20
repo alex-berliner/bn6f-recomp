@@ -474,7 +474,7 @@ Next battle_initObjectDefaultSprite(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80B8A0A ── */
+/* ── battle_setObjectPhase8_80B8A0A ── */
 /* Reset a battle object's state-action phase to 8 (marks the phase initialized),
  * unless the object pointer is null. */
 static void reset_battle_object_phase_sub_80B8A0A(u32 object) {
@@ -482,8 +482,8 @@ static void reset_battle_object_phase_sub_80B8A0A(u32 object) {
         ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 8);
 }
 
-/* sub_80B8A0A(r0 = battle object pointer) -> nothing */
-Next sub_80B8A0A(void) {
+/* battle_setObjectPhase8_80B8A0A(r0 = battle object pointer) -> nothing */
+Next battle_setObjectPhase8_80B8A0A(void) {
     reset_battle_object_phase_sub_80B8A0A(R0);
     RETURN_TO_CALLER();
 }
@@ -840,7 +840,7 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80B8E58 ── */
+/* ── battle_resetObjectPhaseCounter_80B8E58 ── */
 /* Clear a battle object's state-action phase counter, marking the current
  * phase as not yet initialized. Does nothing if the object pointer is NULL.
  *
@@ -869,8 +869,8 @@ static PhaseResetResult reset_battle_object_phase_sub_80B8E58(u32 obj, u32 r1_in
     return result;
 }
 
-/* sub_80B8E58(r0 = battle object) -> nz, r1 */
-Next sub_80B8E58(void) {
+/* battle_resetObjectPhaseCounter_80B8E58(r0 = battle object) -> nz, r1 */
+Next battle_resetObjectPhaseCounter_80B8E58(void) {
     PhaseResetResult result = reset_battle_object_phase_sub_80B8E58(R0, R1);
     R1 = result.r1;
     SET_FLAGS_NZ(result.flag_val);
@@ -2876,14 +2876,14 @@ Next object_setFlag(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C46C6 ── */
+/* ── battle_setObjectExtraFlagC_80C46C6 ── */
 /* Mark a battle object's 13th extra var as 1 (likely a "has acted"/reset flag). */
 static void set_object_extra_flag(u32 object) {
     ST32(object + oBattleObject_ExtraVars + 0xC, 1);
 }
 
-/* sub_80C46C6(r0 = battle object) */
-Next sub_80C46C6(void) {
+/* battle_setObjectExtraFlagC_80C46C6(r0 = battle object) */
+Next battle_setObjectExtraFlagC_80C46C6(void) {
     set_object_extra_flag(R0);
     RETURN_TO_CALLER();
 }
@@ -3943,7 +3943,7 @@ Next battleObject_beastOutUpdate_80C5654(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C579E ── */
+/* ── battle_spawnType5ObjectFromSource_80C579E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r5, r6, r7; } call_object_spawnType3_result_sub_80C579E;
 /* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
@@ -3999,9 +3999,9 @@ static SpawnType5Result spawn_type5_from_object(u32 param1, u32 param2, u32 para
     return result;
 }
 
-/* sub_80C579E(r1..r4 = spawn parameters, r5 = source object,
+/* battle_spawnType5ObjectFromSource_80C579E(r1..r4 = spawn parameters, r5 = source object,
  *             r6 = damage value, r7 = related object) -> r1 r2 r5 */
-Next sub_80C579E(void) {
+Next battle_spawnType5ObjectFromSource_80C579E(void) {
     SpawnType5Result result = spawn_type5_from_object(R1, R2, R3, R4, R5, R6, R7);
     R1 = result.r1;
     R2 = result.r2;

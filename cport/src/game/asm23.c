@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8089792 ── */
+/* ── ai_startChatScriptAtScenarioState2_8089792 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_sub_81421D0_result;
 /* register form: generated wrapper: battle_getScenarioEffectStateField_81421D0 has no typed C interface yet */
@@ -26,7 +26,7 @@ static inline call_sub_8089CA4_result_sub_8089792 call_sub_8089CA4_sub_8089792(u
     return (call_sub_8089CA4_result_sub_8089792){ R1, R2, R3, R5, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_8089792 -- runs battle_getScenarioEffectStateField_81421D0, passes its result (+2) and its r5 to
+/* ai_startChatScriptAtScenarioState2_8089792 -- runs battle_getScenarioEffectStateField_81421D0, passes its result (+2) and its r5 to
  * ai_runChatScript, then stores the marker byte 0x14 at the address ai_runChatScript
  * leaves in r5. Returns 1 in r0; r2/r3 are simply whatever ai_runChatScript left
  * behind. r4-r7 must be preserved: battle_getScenarioEffectStateField_81421D0 clobbers them, and the
@@ -61,7 +61,7 @@ static sub_8089792_out sub_8089792_body(u32 r4, u32 r5, u32 r6, u32 r7)
 /* inputs: r5 r10 lr; outputs: r0 r2 r3; preserved: r4-r7.
  * r2/r3 are left in place by the call_sub_8089CA4_sub_8089792 wrapper, so the adapter
  * does not touch them; it only writes r0 and restores r4-r7. */
-Next sub_8089792(void) {
+Next ai_startChatScriptAtScenarioState2_8089792(void) {
     sub_8089792_out out = sub_8089792_body(R4, R5, R6, R7);
     R0 = out.r0;
     R4 = out.r4;
@@ -71,7 +71,7 @@ Next sub_8089792(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808989C ── */
+/* ── ai_chatScriptTickStoreState38_808989C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool z, n, c, v; } call_sub_8089CB4_result;
 /* register form: generated wrapper: battle_tickChipLockout_8089CB4 has no typed C interface yet */
@@ -91,7 +91,7 @@ static inline call_sub_8089CA4_result_sub_808989C call_sub_8089CA4_sub_808989C(u
 }
 
 /*
- * sub_808989C — conditional update of the object pointed to by r5.
+ * ai_chatScriptTickStoreState38_808989C — conditional update of the object pointed to by r5.
  *
  * First battle_tickChipLockout_8089CB4 tests the object (r10 carries the surrounding context).
  * If it reports "nothing to do" (Z set) the routine stops there. Otherwise
@@ -112,8 +112,8 @@ static void sub_808989C_body(u32 r5) {
     ST8(res.r5, 0x38);
 }
 
-/* sub_808989C(r5 = object ptr, r10 = context) -> r0 = 1, r2/r3 from ai_runChatScript when run */
-Next sub_808989C(void) {
+/* ai_chatScriptTickStoreState38_808989C(r5 = object ptr, r10 = context) -> r0 = 1, r2/r3 from ai_runChatScript when run */
+Next ai_chatScriptTickStoreState38_808989C(void) {
     u32 r5 = R5;
     sub_808989C_body(r5);
     R5 = r5;        /* the original's pop restores r5, which ai_runChatScript may have changed */

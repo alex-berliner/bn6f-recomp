@@ -1,0 +1,79 @@
+name: sprite_frameTickMarkState8_80A9F30
+address: '0x080A9F30'
+kind: function
+status: confirmed
+summary: Per-frame sprite tick for an object at r5 that reads the current frame's parameters, marks the
+  object's +8 state byte with 8 when frame bit 0x80 is set, then advances the sprite animator.
+interface: void sub_80A9F30(r5 = object pointer); returns r2/r3 as left by sprite_update, preserves r4-r8
+  and r5 pointer, clobbers flags (nzcv), r0, r1, lr
+details: 'Wrapper-style sprite handler: saves r4-r7 and lr plus r8 (stashed via r4), then calls sprite_getFrameParameters
+  with the object pointer in r5. The returned r0 is treated as a frame-parameters bitmask; when bit 0x80
+  is set it stores the immediate value 8 into the byte at object+0x8 (likely a state/action byte of the
+  object struct), effectively tagging the object for this frame. It then unconditionally calls sprite_update
+  on the same object to advance its animation, restores r8, and returns. The r2/r3 outputs and all condition
+  flags on exit are simply sprite_update''s leftovers, and callers per the contract read r2/r3 back —
+  so callers likely consume results of the inner sprite_update call through this wrapper. r8 is passed
+  through unchanged (explicitly saved/restored).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A9F30
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9F30
+
+    ./wf verify --function sub_80A9F30 --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9F30
+
+    ./wf verify --function sub_80A9F30 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 87 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9F30
+
+    ./wf verify --function sub_80A9F30 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9f30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A9F30 -> sprite_frameTickMarkState8_80A9F30
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of byte object+0x8 and why it is set to 8 (state id, hit/hide flag?)
+- semantics of bit 0x80 in sprite_getFrameParameters' return value (collision/despawn/loop-end marker?)
+- why callers require r2/r3 of sprite_update through this wrapper; no typed C interface exists for the
+  two callees yet
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A9F30

@@ -65,7 +65,7 @@ Next battle_beastJumpLockOn_8026554(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026622 ── */
+/* ── battle_probePanelChainRows_8026622 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8026450_result;
 /* register form: generated wrapper: sub_8026450 has no typed C interface yet */
@@ -115,8 +115,8 @@ static PanelProbe probe_panel_chain(u32 object, u32 probeX, u32 row) {
     }
 }
 
-/* sub_8026622(r5 = object, r6 = probeX, r7 = row) -> r0 r1 (r5 unchanged) */
-Next sub_8026622(void) {
+/* battle_probePanelChainRows_8026622(r5 = object, r6 = probeX, r7 = row) -> r0 r1 (r5 unchanged) */
+Next battle_probePanelChainRows_8026622(void) {
     u32 object = R5;
     PanelProbe result = probe_panel_chain(object, R6, R7);
     R0 = result.r0;
@@ -125,7 +125,7 @@ Next sub_8026622(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802665A ── */
+/* ── battle_runFacingOffsetCheck_802665A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_battle_checkFacingOffsets_result_sub_802665A;
 /* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
@@ -149,7 +149,7 @@ static inline call_sub_80265FE_result call_sub_80265FE(u32 r0, u32 r1, u32 r5) {
     return (call_sub_80265FE_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_802665A: run the facing-offset check for the current actor against the
+/* battle_runFacingOffsetCheck_802665A: run the facing-offset check for the current actor against the
  * table at byte_802675A, then post-process the result with sub_80265FE.
  * The caller's r4-r7 are the battle-context registers both callees expect;
  * r0/r1/r5 coming back from sub_80265FE are the results callers use. */
@@ -177,8 +177,8 @@ static FacingCheckResult sub_802665A_body(u32 r4, u32 r5, u32 r6, u32 r7) {
     return out;
 }
 
-/* sub_802665A() -> r0 r1 r5 (r2/r3 and the flags are scratch for callers) */
-Next sub_802665A(void) {
+/* battle_runFacingOffsetCheck_802665A() -> r0 r1 r5 (r2/r3 and the flags are scratch for callers) */
+Next battle_runFacingOffsetCheck_802665A(void) {
     FacingCheckResult result = sub_802665A_body(R4, R5, R6, R7);
     R0 = result.r0;
     R1 = result.r1;
@@ -186,7 +186,7 @@ Next sub_802665A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026672 ── */
+/* ── battle_checkFacingOffsets_table_8026672 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_checkFacingOffsets_result_sub_8026672;
 /* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
@@ -200,7 +200,7 @@ static inline call_battle_checkFacingOffsets_result_sub_8026672 call_battle_chec
     return (call_battle_checkFacingOffsets_result_sub_8026672){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_8026672: run battle_checkFacingOffsets against the facing-offset table
+/* battle_checkFacingOffsets_table_8026672: run battle_checkFacingOffsets against the facing-offset table
  * baked into the code at byte_802676E. The caller's context in r4-r7 is
  * passed straight through; the callee's r0/r1 come back as this function's
  * result, and r5 is simply whatever the callee left behind. */
@@ -208,7 +208,7 @@ static call_battle_checkFacingOffsets_result_sub_8026672 check_facing_offsets_ta
     return call_battle_checkFacingOffsets_sub_8026672(A_byte_802676E, r4, r5, r6, r7);
 }
 
-Next sub_8026672(void) {
+Next battle_checkFacingOffsets_table_8026672(void) {
     call_battle_checkFacingOffsets_result_sub_8026672 res = check_facing_offsets_table(R4, R5, R6, R7);
     R0 = res.r0;
     R1 = res.r1;
@@ -247,7 +247,7 @@ Next sub_8026694(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80266DE ── */
+/* ── battle_checkFacingOffsetsDefaultTable_80266DE ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_battle_checkFacingOffsets_result_sub_80266DE;
 /* register form: generated wrapper: battle_checkFacingOffsets has no typed C interface yet */
@@ -261,7 +261,7 @@ static inline call_battle_checkFacingOffsets_result_sub_80266DE call_battle_chec
     return (call_battle_checkFacingOffsets_result_sub_80266DE){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_80266DE: run battle_checkFacingOffsets against the fixed table at
+/* battle_checkFacingOffsetsDefaultTable_80266DE: run battle_checkFacingOffsets against the fixed table at
  * byte_80267AB, passing the caller's r4-r7 straight through to it. The
  * useful results are the r0/r1 pair (and r5) that battle_checkFacingOffsets
  * leaves behind; flags are not part of this function's contract. */
@@ -269,8 +269,8 @@ static call_battle_checkFacingOffsets_result_sub_80266DE check_facing_default_ta
     return call_battle_checkFacingOffsets_sub_80266DE(A_byte_80267AB, r4, r5, r6, r7);
 }
 
-/* sub_80266DE() -> r0 r1 r5 (r4/r6/r7 preserved, nz/c/v/r2/r3 clobbered) */
-Next sub_80266DE(void) {
+/* battle_checkFacingOffsetsDefaultTable_80266DE() -> r0 r1 r5 (r4/r6/r7 preserved, nz/c/v/r2/r3 clobbered) */
+Next battle_checkFacingOffsetsDefaultTable_80266DE(void) {
     call_battle_checkFacingOffsets_result_sub_80266DE res = check_facing_default_table(R4, R5, R6, R7);
     R0 = res.r0;
     R1 = res.r1;
@@ -1514,8 +1514,8 @@ Next battleObject_chipSelectAnimTick_802770C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8027738 ── */
-/* sub_8027738: initialize some object state at r5.
+/* ── object_setStatePhase4_8027738 ── */
+/* object_setStatePhase4_8027738: initialize some object state at r5.
  * Writes: [r5+0x40] = 0 (u32), [r5+0x17] = 1 (u8), [r5+0xf] = 1 (u8), [r5+2] = 4 (u16).
  * No register outputs; the original also leaves r0 = 4, but callers ignore it. */
 static void init_object_state(u32 obj) {
@@ -1525,12 +1525,12 @@ static void init_object_state(u32 obj) {
     ST16(obj + 2, 4);
 }
 
-Next sub_8027738(void) {
+Next object_setStatePhase4_8027738(void) {
     init_object_state(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802774C ── */
+/* ── startFadeShakeTransition_802774C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3, r5; } call_SetScreenFade_result_sub_802774C;
 /* register form: generated wrapper: SetScreenFade has no typed C interface yet */
@@ -1579,14 +1579,14 @@ static void start_screen_fade_transition(u32 work) {
     ST16(work + 2, 8);                   /* work state = 8 */
 }
 
-/* sub_802774C(r5 = work object, r10 = context for cameraSetShake)
+/* startFadeShakeTransition_802774C(r5 = work object, r10 = context for cameraSetShake)
  * -> leaves r2 r3 r4 r5 r6 r10 as the callees left them. */
-Next sub_802774C(void) {
+Next startFadeShakeTransition_802774C(void) {
     start_screen_fade_transition(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802777C ── */
+/* ── object_tickFadeHoldThenSetState12_802777C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r3; } call_IsScreenFadeActive_result;
 /* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
@@ -1611,13 +1611,13 @@ static void tick_fade_hold_counter(u32 obj) {
         ST16(obj + 2, 0xC);
 }
 
-/* sub_802777C(r5 = object work area) */
-Next sub_802777C(void) {
+/* object_tickFadeHoldThenSetState12_802777C(r5 = object work area) */
+Next object_tickFadeHoldThenSetState12_802777C(void) {
     tick_fade_hold_counter(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8027796 ── */
+/* ── battle_customScreenExitRotateChips_8027796 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_battle_getActorEmotion_802A564_result_sub_8027796;
 /* register form: generated wrapper: battle_getActorEmotion_802A564 has no typed C interface yet */
@@ -1734,8 +1734,8 @@ static struct ExitRegs custom_screen_exit(u32 battleObj, u32 r4in, u32 r6in) {
     return kept;
 }
 
-/* sub_8027796(r5 = battle object, r10 = ...) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
-Next sub_8027796(void) {
+/* battle_customScreenExitRotateChips_8027796(r5 = battle object, r10 = ...) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
+Next battle_customScreenExitRotateChips_8027796(void) {
     struct ExitRegs kept = custom_screen_exit(R5, R4, R6);
     R4 = kept.r4;
     R6 = kept.r6;
@@ -2059,9 +2059,9 @@ static bool sub_8029FB4_retbool(void) {
     return R0 != 0;
 }
 
-/* register form: calls sub_802A57E outside this file, which has no typed C interface yet */
+/* register form: calls battle_checkEmotionAllowsAction_802A57E outside this file, which has no typed C interface yet */
 static bool sub_802A57E_retbool(void) {
-    GUEST_CALL(sub_802A57E);
+    GUEST_CALL(battle_checkEmotionAllowsAction_802A57E);
     return R0 != 0;
 }
 
@@ -3119,8 +3119,8 @@ Next loadConstArgsAndPairTable_80288D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8028904 ── */
-/* sub_8028904: returns a fixed set-up for a text/message box:
+/* ── chatbox_getWindowLayout_8028904 ── */
+/* chatbox_getWindowLayout_8028904: returns a fixed set-up for a text/message box:
  *   r0 = 0x5B and r1 = 0x87 (box coordinates: x=91, y=135),
  *   r6 = address of the byte table at byte_8028918 (entry data used by the caller).
  * The constants are the tail of "mov r0,#0x58; add r0,#3" / "mov r1,#0x88; sub r1,#1". */
@@ -3139,8 +3139,8 @@ static TextBoxSetup get_textbox_setup(void) {
     return setup;
 }
 
-/* sub_8028904(lr = return address) -> r0, r1, r6 */
-Next sub_8028904(void) {
+/* chatbox_getWindowLayout_8028904(lr = return address) -> r0, r1, r6 */
+Next chatbox_getWindowLayout_8028904(void) {
     TextBoxSetup setup = get_textbox_setup();
     R0 = setup.box_x;
     R1 = setup.box_y;
@@ -3411,7 +3411,7 @@ Next updateCustomScreen_WhenUnselectingChip_8028EC8(void) {
  * slot's record.  If the record is in state 2 and its byte at +7 has not yet
  * been set to 2, this decides the byte at +7:
  *   - cleared to 0 when the battle object's byte at +8 is below 5, the helper
- *     sub_802A57E reports non-zero, and the object's byte at +0x19 is zero;
+ *     battle_checkEmotionAllowsAction_802A57E reports non-zero, and the object's byte at +0x19 is zero;
  *   - set to 1 in every other case.
  * The early-exit paths leave the record untouched.  r4-r7 are preserved and
  * r2/r3 pass through unchanged. */
@@ -3429,11 +3429,11 @@ Next battle_updateActiveChipSlotB_state_8028F48(void) {
     if ((s32)LD8(R5 + 8) >= 5) {
         flag = 1;
     } else {
-        /* sub_802A57E is queried with the object's byte at +8 in r0, as in
+        /* battle_checkEmotionAllowsAction_802A57E is queried with the object's byte at +8 in r0, as in
          * the original call site; it reports non-zero when the chip may be
          * unmarked. */
         R0 = LD8(R5 + 8);
-        GUEST_CALL(sub_802A57E);
+        GUEST_CALL(battle_checkEmotionAllowsAction_802A57E);
         u32 allowed = R0;
         flag = (allowed != 0 && LD8(R5 + 0x19) == 0) ? 0 : 1;
     }

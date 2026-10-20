@@ -1331,7 +1331,7 @@ Next pickBBSMsgForMapGroup_80A5764(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A58E0 ── */
+/* ── owPlayer_setupPrologue_80A58E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sub_80A5954 has no typed C interface yet */
 static inline void call_sub_80A5954(u32 r5, u32 r6) {
@@ -1358,7 +1358,7 @@ static inline call_sub_80A59B8_result call_sub_80A59B8(u32 r5) {
 }
 
 /*
- * sub_80A58E0 - battle setup prologue shared with the routine that follows.
+ * owPlayer_setupPrologue_80A58E0 - battle setup prologue shared with the routine that follows.
  *
  * It saves r4-r7 and its return address on the stack (the shared continuation
  * at loc_80A58FA pops that same frame when it finishes), then runs three
@@ -1368,7 +1368,7 @@ static inline call_sub_80A59B8_result call_sub_80A59B8(u32 r5) {
  *   3. sub_80A59B8 with the r5 value step 2 produced.
  * Finally it copies the step 3 result into r2 and branches into the shared
  * body at loc_80A58FA, which produces the outgoing r0/r5/r6/r8-r12 and
- * returns straight to sub_80A58E0's caller through the saved lr.
+ * returns straight to owPlayer_setupPrologue_80A58E0's caller through the saved lr.
  */
 
 /* Address of the shared continuation body (the disassembly's loc_80A58FA;
@@ -1379,7 +1379,7 @@ static inline call_sub_80A59B8_result call_sub_80A59B8(u32 r5) {
  * register form: the continuation is only ever entered by a bare branch in
  * the original, so it has to be invoked through its code address; it reads
  * the result pair r0/r2 and the counters r4/r5, and it pops the frame the
- * setup pushed in order to return to sub_80A58E0's caller. */
+ * setup pushed in order to return to owPlayer_setupPrologue_80A58E0's caller. */
 static u32 enter_shared_body(u32 result, u32 counter, u32 value5) {
     R0 = result;
     R2 = result;
@@ -1414,12 +1414,12 @@ static u32 run_setup_and_enter(u32 r4, u32 r5, u32 r6, u32 r7, u32 return_addr) 
     return enter_shared_body(step3.r0, step3.r4, step2.r5);
 }
 
-Next sub_80A58E0(void) {
+Next owPlayer_setupPrologue_80A58E0(void) {
     R0 = run_setup_and_enter(R4, R5, R6, R7, LR);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A6E70 ── */
+/* ── addToWordAt_80A6E70 ── */
 /* Read the 32-bit word at [r5 + r6], add r0 to it, and store the sum back.
  * Returns the old value (the original leaves it in r1); the C and V flags
  * come from the ADDS. */
@@ -1429,8 +1429,8 @@ static u32 add_to_word(u32 base, u32 offset, u32 addend) {
     return old;
 }
 
-/* sub_80A6E70(r0 = addend, r5 = base, r6 = offset) -> r1 = old value, flags C/V */
-Next sub_80A6E70(void) {
+/* addToWordAt_80A6E70(r0 = addend, r5 = base, r6 = offset) -> r1 = old value, flags C/V */
+Next addToWordAt_80A6E70(void) {
     u32 addend = R0;
     u32 old = add_to_word(R5, R6, addend);
     R1 = old;
@@ -1438,7 +1438,7 @@ Next sub_80A6E70(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A77A8 ── */
+/* ── ow_dispatchObjectHandler_80A77A8 ── */
 /* Jump table at off_80A77BC, indexed by the type byte stored at object+08.
  * Each entry is a routine called with r0 = its own table address and
  * r1 = the type byte (exactly what the original's `mov lr, pc; bx r0`
@@ -1458,13 +1458,13 @@ static void sub_80A77A8_dispatch(u32 object) {
     call_table_handler(handler, selection);
 }
 
-/* sub_80A77A8(r5 = object) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 from the callee */
-Next sub_80A77A8(void) {
+/* ow_dispatchObjectHandler_80A77A8(r5 = object) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 from the callee */
+Next ow_dispatchObjectHandler_80A77A8(void) {
     sub_80A77A8_dispatch(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A77FC ── */
+/* ── sprite_tickAnimationWithEndEvent_80A77FC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_sprite_getFrameParameters_result_sub_80A77FC;
 /* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
@@ -1518,7 +1518,7 @@ static SpriteTickRegs sub_80A77FC_typed(u32 sprite)
     return out;
 }
 
-Next sub_80A77FC(void)
+Next sprite_tickAnimationWithEndEvent_80A77FC(void)
 {
     SpriteTickRegs out = sub_80A77FC_typed(R5);
     R2 = out.r2;
@@ -1545,11 +1545,11 @@ static inline call_sprite_loadAnimationData_result_object_startFacingStep call_s
     return (call_sprite_loadAnimationData_result_object_startFacingStep){ R5 };
 }
 
-/* register form: generated wrapper: sub_80A7BA2 has no typed C interface yet */
+/* register form: generated wrapper: addToByteAtR6_80A7BA2 has no typed C interface yet */
 static inline void call_sub_80A7BA2(u32 r0, u32 r6) {
     R0 = r0;
     R6 = r6;
-    GUEST_CALL(sub_80A7BA2);
+    GUEST_CALL(addToByteAtR6_80A7BA2);
 }
 
 /* object_startFacingStep: 0x080A79DC
@@ -1614,19 +1614,19 @@ Next object_startFacingStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A7B9E ── */
+/* ── storeByteAt_r6_80A7B9E ── */
 /* Store one byte into memory at [r6]: a simple setter for an object field. */
 static void store_byte_at(u32 address, u32 value) {
     ST8(address, value);
 }
 
-/* sub_80A7B9E(r0 = value, r6 = destination address) -> returns to caller */
-Next sub_80A7B9E(void) {
+/* storeByteAt_r6_80A7B9E(r0 = value, r6 = destination address) -> returns to caller */
+Next storeByteAt_r6_80A7B9E(void) {
     store_byte_at(R6, R0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A7BA2 ── */
+/* ── addToByteAtR6_80A7BA2 ── */
 /* Byte-size "add to memory" helper: the byte at addr is loaded, addend is
  * added to it (full 32-bit ADDS, so C/V reflect that addition), and the low
  * byte is written back. Returns the full sum, which the original leaves in r1. */
@@ -1636,8 +1636,8 @@ static u32 add_to_byte(u32 addr, u32 addend) {
     return sum;
 }
 
-/* sub_80A7BA2(r0 = addend, r6 = address of the byte) -> r1 = sum, flags from ADDS */
-Next sub_80A7BA2(void) {
+/* addToByteAtR6_80A7BA2(r0 = addend, r6 = address of the byte) -> r1 = sum, flags from ADDS */
+Next addToByteAtR6_80A7BA2(void) {
     u32 sum = add_to_byte(R6, R0);
     R1 = sum;
     /* ADDS r1, r1, r0: recompute the operands from the exact sum so the
@@ -1646,7 +1646,7 @@ Next sub_80A7BA2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A7F14 ── */
+/* ── sprite_setPalette8IfFrameFlagSet_80A7F14 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result_sub_80A7F14;
 /* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
@@ -1665,13 +1665,13 @@ static void mark_sprite_palette_flag(u32 sprite) {
         ST8(sprite + 9, 8);
 }
 
-/* sub_80A7F14(r5 = sprite object) -> nothing */
-Next sub_80A7F14(void) {
+/* sprite_setPalette8IfFrameFlagSet_80A7F14(r5 = sprite object) -> nothing */
+Next sprite_setPalette8IfFrameFlagSet_80A7F14(void) {
     mark_sprite_palette_flag(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A8020 ── */
+/* ── sprite_applyFormPalette_80A8020 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result;
 /* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
@@ -1682,7 +1682,7 @@ static inline call_sprite_setPalette_result call_sprite_setPalette_sub_80A8020(u
     return (call_sprite_setPalette_result){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_80A8020 -- apply the sprite palette matching a work struct's current form.
+/* sprite_applyFormPalette_80A8020 -- apply the sprite palette matching a work struct's current form.
  *
  * r7 points to a struct whose byte at +2 holds a form index.  That index is
  * looked up in the byte table at off_80A8034 to get a palette number, which
@@ -1697,8 +1697,8 @@ static u32 apply_form_palette(u32 sprite, u32 work) {
     return sprite;                                       /* r5 passes through unchanged */
 }
 
-/* sub_80A8020(r5 = sprite, r7 = work struct) -> r5 r7 unchanged */
-Next sub_80A8020(void) {
+/* sprite_applyFormPalette_80A8020(r5 = sprite, r7 = work struct) -> r5 r7 unchanged */
+Next sprite_applyFormPalette_80A8020(void) {
     R5 = apply_form_palette(R5, R7);
     RETURN_TO_CALLER();
 }
@@ -1734,7 +1734,7 @@ Next battle_dispatchCustomJumptableByIndex_80A8208(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A82A4 ── */
+/* ── getMapAreaDataTableEntry_80A82A4 ── */
 /* Compute a data address for the current map area.
  * The area index is map group 0x85's special entry 3, or the map number for
  * every other group. It selects one of four base addresses from the table at
@@ -1752,8 +1752,8 @@ static u32 sub_80A82A4_typed(u32 obj_ptr, u32 toolkit_ptr) {
     return base + LD8(obj_ptr + 4) * 8;
 }
 
-/* sub_80A82A4(r5 = object pointer, r10 = toolkit pointer) -> r0 */
-Next sub_80A82A4(void) {
+/* getMapAreaDataTableEntry_80A82A4(r5 = object pointer, r10 = toolkit pointer) -> r0 */
+Next getMapAreaDataTableEntry_80A82A4(void) {
     R0 = sub_80A82A4_typed(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -1936,7 +1936,7 @@ Next getRandomFadeLevel(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A856C ── */
+/* ── obj_decrementFixedCounterBy4_80A856C ── */
 /* Decrement the 32-bit counter at [r5+0x14] by 4<<16, store the raw result back,
  * and return the value clamped at 0 so N/Z reflect the clamped counter
  * (r0 itself is a clobber; only the flags are observed by callers). */
@@ -1952,8 +1952,8 @@ static u32 sub_80A856C_decrement(u32 obj) {
     return 0;
 }
 
-/* sub_80A856C(r5 = object, lr = return address) -> flags nz */
-Next sub_80A856C(void) {
+/* obj_decrementFixedCounterBy4_80A856C(r5 = object, lr = return address) -> flags nz */
+Next obj_decrementFixedCounterBy4_80A856C(void) {
     R0 = sub_80A856C_decrement(R5);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -2069,8 +2069,8 @@ Next npc_syncScreenPosToCamera(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A8728 ── */
-/* sub_80A8728 -- per-type handler dispatch for a battle object.
+/* ── battle_dispatchObjectByType_80A8728 ── */
+/* battle_dispatchObjectByType_80A8728 -- per-type handler dispatch for a battle object.
  *
  * r5 points to an object whose byte at +8 is a type index.  The handler for
  * that type is read from the jump table at off_80A873C and called as an
@@ -2108,8 +2108,8 @@ static void dispatch_object_type(u32 obj, u32 r10)
     call_type_handler(handler, type, r10);
 }
 
-/* sub_80A8728() */
-Next sub_80A8728(void) {
+/* battle_dispatchObjectByType_80A8728() */
+Next battle_dispatchObjectByType_80A8728(void) {
     dispatch_object_type(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -2470,13 +2470,13 @@ Next owMapObject_weatherTornado_setPriority_80A91F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A92B8 ── */
+/* ── battle_weatherCompDispatch_80A92B8 ── */
 /* Weather-comparison state machine dispatcher (0x080A92B8).
  *
  * r5 holds a battle object; the byte at offset +8 selects the current weather
  * state and indexes the handler table off_80A92CC:
- *   0: sprite_initBeastSp   1: sub_80A931C
- *   2: sub_80A9360          3: sub_80A93D0
+ *   0: sprite_initBeastSp   1: boss_updateStateByStoryFlags_80A931C
+ *   2: sub_80A9360          3: freeOverworldMapObject_trampoline_80A93D0
  * Before the call, r6 is loaded with the address of the shared state block
  * eWeatherCompState, and r10 is passed through to the handler untouched. */
 
@@ -2503,8 +2503,8 @@ static void sub_80A92B8_body(u32 object, u32 r10_value) {
     weather_dispatch_handler(object, r10_value);
 }
 
-/* sub_80A92B8(r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 */
-Next sub_80A92B8(void) {
+/* battle_weatherCompDispatch_80A92B8(r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12 */
+Next battle_weatherCompDispatch_80A92B8(void) {
     sub_80A92B8_body(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -2560,17 +2560,17 @@ static inline void call_sprite_setPalette_sprite_initBeastSp(u32 r0, u32 r5) {
 }
 
 typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_sub_80A931C_result;
-/* register form: generated wrapper: sub_80A931C has no typed C interface yet */
+/* register form: generated wrapper: boss_updateStateByStoryFlags_80A931C has no typed C interface yet */
 static inline call_sub_80A931C_result call_sub_80A931C(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80A931C);
+    GUEST_CALL(boss_updateStateByStoryFlags_80A931C);
     return (call_sub_80A931C_result){ R2, R3, R8, R9, R10, R11, R12 };
 }
 
 /* Initialise the Beast Out sprite state (r5) for its owning object (r6).
  *
  * Everything this function leaves behind for its caller (r2/r3/r8-r12) comes
- * from the final call to sub_80A931C, whose wrapper leaves those registers in
+ * from the final call to boss_updateStateByStoryFlags_80A931C, whose wrapper leaves those registers in
  * place; r10 passes straight through to that helper unchanged. r4-r7 are
  * saved and restored by the original's push/pop, so they end up exactly as
  * they entered and need no handling here. */
@@ -2601,14 +2601,14 @@ static void init_beast_out_sprite(u32 sprite, u32 owner) {
 }
 
 /* sprite_initBeastSp(r5 = sprite state, r6 = owning object, r10 = context)
- * -> r2 r3 r4 r5 r8 r9 r10 r11 r12 (all left by sub_80A931C, except r4/r5
+ * -> r2 r3 r4 r5 r8 r9 r10 r11 r12 (all left by boss_updateStateByStoryFlags_80A931C, except r4/r5
  * which the original restores to their entry values) */
 Next sprite_initBeastSp(void) {
     init_beast_out_sprite(R5, R6);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A931C ── */
+/* ── boss_updateStateByStoryFlags_80A931C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; bool z, n; } call_TestEventFlagFromImmediate_result_sub_80A931C;
 /* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
@@ -2646,17 +2646,17 @@ static inline call_sub_80A9360_result call_sub_80A9360(u32 r5) {
 }
 
 typedef struct { u32 r5; } call_sub_80A93D0_result;
-/* register form: generated wrapper: sub_80A93D0 has no typed C interface yet */
+/* register form: generated wrapper: freeOverworldMapObject_trampoline_80A93D0 has no typed C interface yet */
 static inline call_sub_80A93D0_result call_sub_80A93D0(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80A93D0);
+    GUEST_CALL(freeOverworldMapObject_trampoline_80A93D0);
     return (call_sub_80A93D0_result){ R5 };
 }
 
-/* register form: generated wrapper: sub_80A93D8 has no typed C interface yet */
+/* register form: generated wrapper: sprite_setUnk2cToE000000_80A93D8 has no typed C interface yet */
 static inline void call_sub_80A93D8(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80A93D8);
+    GUEST_CALL(sprite_setUnk2cToE000000_80A93D8);
 }
 
 /* register form: generated wrapper: sub_80A93E8 has no typed C interface yet */
@@ -2722,10 +2722,10 @@ static SavedRegs_sub_80A931C sub_80A931C_body(u32 obj, u32 context, u32 r4, u32 
     return saved;
 }
 
-/* sub_80A931C(r5 = object, r10 = context) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
+/* boss_updateStateByStoryFlags_80A931C(r5 = object, r10 = context) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
  * (r2/r3 and r8-r12 are whatever the callees leave behind; r4-r7 are
  * restored to their entry values, as the original's pop does). */
-Next sub_80A931C(void) {
+Next boss_updateStateByStoryFlags_80A931C(void) {
     SavedRegs_sub_80A931C saved = sub_80A931C_body(R5, R10, R4, R6, R7);
     R4 = saved.r4;
     R5 = saved.r5;
@@ -2734,7 +2734,7 @@ Next sub_80A931C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A93D0 ── */
+/* ── freeOverworldMapObject_trampoline_80A93D0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_FreeOverworldMapObject_result_sub_80A93D0;
 /* register form: generated wrapper: FreeOverworldMapObject has no typed C interface yet */
@@ -2745,7 +2745,7 @@ static inline call_FreeOverworldMapObject_result_sub_80A93D0 call_FreeOverworldM
 }
 
 /*
- * sub_80A93D0 is a pure trampoline: it forwards the map-object handle in r5
+ * freeOverworldMapObject_trampoline_80A93D0 is a pure trampoline: it forwards the map-object handle in r5
  * straight to FreeOverworldMapObject and lets everything the callee leaves
  * behind (r0-r3, r5, the N/Z/C/V flags and lr) reach its caller unchanged.
  * The original does this with push {lr} / bl / pop {pc}, i.e. a tail call.
@@ -2758,8 +2758,8 @@ static call_FreeOverworldMapObject_result_sub_80A93D0 free_overworld_map_object_
     return call_FreeOverworldMapObject_sub_80A93D0(mapObject);
 }
 
-/* sub_80A93D0(r5 = map object) -> r0 r1 r2 r3 r5, nz c v */
-Next sub_80A93D0(void) {
+/* freeOverworldMapObject_trampoline_80A93D0(r5 = map object) -> r0 r1 r2 r3 r5, nz c v */
+Next freeOverworldMapObject_trampoline_80A93D0(void) {
     call_FreeOverworldMapObject_result_sub_80A93D0 res = free_overworld_map_object_via(R5);
 
     R0 = res.r0;
@@ -2772,7 +2772,7 @@ Next sub_80A93D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A93D8 ── */
+/* ── sprite_setUnk2cToE000000_80A93D8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
 static inline void call_sprite_setUnk0x2c_sub_80A93D8(u32 r0, u32 r5) {
@@ -2787,13 +2787,13 @@ static void reset_sprite_unk2c(u32 object_state) {
     call_sprite_setUnk0x2c_sub_80A93D8(0xE000000, object_state);
 }
 
-/* sub_80A93D8(r5 = object state) -> - */
-Next sub_80A93D8(void) {
+/* sprite_setUnk2cToE000000_80A93D8(r5 = object state) -> - */
+Next sprite_setUnk2cToE000000_80A93D8(void) {
     reset_sprite_unk2c(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9430 ── */
+/* ── weatherMapObjectStateDispatch_80A9430 ── */
 /* Weather map-object dispatcher.
  *
  * The object at r5 keeps a small state machine number at offset 8; each state
@@ -2825,8 +2825,8 @@ static void weather_state_dispatch(u32 objectPtr, u32 r10In) {
     run_weather_handler(handler, state, objectPtr, r10In);
 }
 
-/* sub_80A9430(r5 = weather object, r10 = pass-through) */
-Next sub_80A9430(void) {
+/* weatherMapObjectStateDispatch_80A9430(r5 = weather object, r10 = pass-through) */
+Next weatherMapObjectStateDispatch_80A9430(void) {
     weather_state_dispatch(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -2861,8 +2861,8 @@ Next owMapObject_freeThunk(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9570 ── */
-/* sub_80A9570: returns the address of an 8-byte-per-row table for the current
+/* ── map_getPerMapTableRowPtr_80A9570 ── */
+/* map_getPerMapTableRowPtr_80A9570: returns the address of an 8-byte-per-row table for the current
  * map, offset by the row index stored at [r5,#4].
  *   index = (mapGroup == 0x85) ? 3 : mapNumber  ->  pick one of four tables
  *   result = table_base + 8 * row_index
@@ -2876,7 +2876,7 @@ static u32 map_table_address(u32 objPtr, u32 toolkitPtr) {
     return tableBase + LD8(objPtr + 4) * 8;
 }
 
-Next sub_80A9570(void) {
+Next map_getPerMapTableRowPtr_80A9570(void) {
     R0 = map_table_address(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -2938,7 +2938,7 @@ Next owMapObject_updateLayerPriorityForPlayerZ_80A95EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9614 ── */
+/* ── setFlagFromMenuSelection_80A9614 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: SetEventFlag has no typed C interface yet */
 static inline void call_SetEventFlag_sub_80A9614(u32 r0) {
@@ -2955,8 +2955,8 @@ static void set_selected_event_flag(u32 work) {
     call_SetEventFlag_sub_80A9614(flag_id);   /* r10 (some flag context) stays as on entry */
 }
 
-/* sub_80A9614(r5 = work area, r10 = flag context) -> - */
-Next sub_80A9614(void) {
+/* setFlagFromMenuSelection_80A9614(r5 = work area, r10 = flag context) -> - */
+Next setFlagFromMenuSelection_80A9614(void) {
     set_selected_event_flag(R5);
     RETURN_TO_CALLER();
 }
@@ -3270,7 +3270,7 @@ Next eventFlagNpcUpdate_80A9C26(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9D10 ── */
+/* ── ow_dispatchSpriteObjectState_80A9D10 ── */
 /* Overworld sprite-object dispatcher. r5 points at an overworld object whose
  * state byte (offset 8) selects one of three routines from the jump table:
  * 0 = ow_initSpriteObject, 1 = ow_spriteObjectUpdate, 2 = sub_80A9DB8.
@@ -3307,11 +3307,11 @@ static void run_object_routine(u32 arg2, u32 arg5, u32 arg10) {
     call_object_routine(kind, arg2, arg5, arg10);
 }
 
-/* sub_80A9D10(r2, r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
+/* ow_dispatchSpriteObjectState_80A9D10(r2, r5 = object, r10) -> r2 r3 r4 r5 r8 r9 r10 r11 r12
  * The selected routine's register results are already in the guest registers
  * after the dispatch call, and r4/r5 come back unchanged, so the adapter has
  * nothing to write. */
-Next sub_80A9D10(void) {
+Next ow_dispatchSpriteObjectState_80A9D10(void) {
     run_object_routine(R2, R5, R10);
     RETURN_TO_CALLER();
 }
@@ -3330,7 +3330,7 @@ static inline call_sprite_update_result call_sprite_update(u32 r5) {
  *
  * r5 points at the object; the byte at object+9 selects which state handler
  * to run, looked up in the jump table at off_80A9DA4 (object_timerStateTick,
- * beastsp_updateMotion, object_tick8SetState, e_decelRiseUpdate, sub_80A9EB6). After the state
+ * beastsp_updateMotion, object_tick8SetState, e_decelRiseUpdate, cutscene_setStateActive_80A9EB6). After the state
  * handler returns, sprite_update advances the object's animation frame.
  *
  * The state handlers run on the live guest registers: whatever they leave in
@@ -3454,21 +3454,21 @@ Next object_timerStateTick(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9EB6 ── */
+/* ── cutscene_setStateActive_80A9EB6 ── */
 /* Marks the cutscene state as active: writes 1 to the byte at
  * eCutsceneState+8 (byte_2011C58). Touches nothing else. */
 static void mark_cutscene_state_active(void) {
     ST8(A_eCutsceneState + 8, 1);
 }
 
-/* sub_80A9EB6: sets eCutsceneState+8 to 1 (cutscene running).
+/* cutscene_setStateActive_80A9EB6: sets eCutsceneState+8 to 1 (cutscene running).
  * r4-r7 and r5 (listed as an output) are preserved untouched. */
-Next sub_80A9EB6(void) {
+Next cutscene_setStateActive_80A9EB6(void) {
     mark_cutscene_state_active();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A9F30 ── */
+/* ── sprite_frameTickMarkState8_80A9F30 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_sprite_getFrameParameters_result_sub_80A9F30;
 /* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
@@ -3504,8 +3504,8 @@ static u32 sprite_frame_tick(u32 obj, u32 r8_entry) {
     return r8_entry;                  /* r8 restored to its entry value */
 }
 
-/* sub_80A9F30(r5 = object pointer) -> r2 r3 from sprite_update, r8 unchanged */
-Next sub_80A9F30(void) {
+/* sprite_frameTickMarkState8_80A9F30(r5 = object pointer) -> r2 r3 from sprite_update, r8 unchanged */
+Next sprite_frameTickMarkState8_80A9F30(void) {
     u32 r8_out = sprite_frame_tick(R5, R8);
     R8 = r8_out;
     RETURN_TO_CALLER();
@@ -3835,7 +3835,7 @@ Next isEventFlag212Set_80AA764(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA778 ── */
+/* ── isEventFlag213Set_80AA778 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool z, n; } call_TestEventFlagFromImmediate_result_sub_80AA778;
 /* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
@@ -3855,8 +3855,8 @@ static u32 check_event_213(void) {
     return 0;                           /* flag clear */
 }
 
-/* sub_80AA778() -> r0 = EVENT_213 state; r4 is preserved (pushed/popped). */
-Next sub_80AA778(void) {
+/* isEventFlag213Set_80AA778() -> r0 = EVENT_213 state; r4 is preserved (pushed/popped). */
+Next isEventFlag213Set_80AA778(void) {
     R0 = check_event_213();
     RETURN_TO_CALLER();
 }

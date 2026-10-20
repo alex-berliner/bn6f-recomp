@@ -1,0 +1,78 @@
+name: ai_chatScriptTickStoreState38_808989C
+address: '0x0808989C'
+kind: function
+status: confirmed
+summary: If a battle-side check passes, runs chat-script kind 7 for the object in r5 and then writes state
+  byte 0x38 to it, always returning 1.
+interface: int sub_808989C(u32 r5 /* object ptr */, u32 r10 /* context */); returns r0 = 1; r2/r3 (and
+  r1) come through from the kind-7 chat-script call when it runs; flags clobbered
+details: 'Pushes r4-r7/lr and first calls battle_tickChipLockout_8089CB4 with the object pointer in r5
+  (r10 carries surrounding context). If that call leaves Z set (nothing to do / lockout not expired),
+  the routine skips everything and just returns. Otherwise it calls ai_runChatScript (sub_8089CA4) with
+  r0 = 7 — script kind 7 — whose results stay in r1/r2/r3 and whose possibly-updated r5 is used as the
+  store target; it then stores byte 0x38 at [r5]. 0x38 looks like a state/phase byte of the AI object
+  (a known post-script state). Both paths fall through to mov r0,#1, so the caller always sees r0 = 1;
+  the original''s pop restores its own saved r5, so r5 is preserved to the caller even though the chat-script
+  call may return an updated pointer in r5 internally.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm23.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_808989C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808989C
+
+    ./wf verify --function sub_808989C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    185 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808989C
+
+    ./wf verify --function sub_808989C --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 72 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808989C
+
+    ./wf verify --function sub_808989C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808989c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm23.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808989C -> ai_chatScriptTickStoreState38_808989C
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm23.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the 0x38 byte stored into the r5 object (state id? animation id?)
+- what script kind 7 does inside ai_runChatScript and how r1/r2/r3 results are meant to be consumed
+- precise semantics of battle_tickChipLockout_8089CB4's Z flag (which condition counts as "skip")
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_808989C

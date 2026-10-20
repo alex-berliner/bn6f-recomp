@@ -1,51 +1,67 @@
 name: sprite_playAltAnimationOnce
 address: '0x0811E000'
 kind: function
-status: probable
-summary: One-shot switch of an object's sprite to animation 1 (no shadow), guarded by a byte so it only
-  runs the first frame it's reached.
-interface: (r5 = object pointer, set by caller) -> void; no flags relevant
-details: 'Reads the object''s byte at offset 0x9 and returns immediately if it is already nonzero; otherwise
-  it writes 1 there as a ''done'' latch and performs the setup exactly once: stores 1 into sprite field
-  0x2C via sprite_setUnk0x2c, selects animation index 1 with sprite_setAnimation, loads the animation
-  data via sprite_loadAnimationData, and clears the shadow flag via sprite_noShadow. Offset 0x9 is a per-object
-  state/phase byte reused here as a once-only trigger, so the animation change is not re-applied every
-  frame. The caller (Navi roster icon per-frame update, branching on a story flag) calls this when the
-  flag condition holds, i.e. the icon swaps to an alternate pose/appearance once a story condition is
-  met.'
+status: confirmed
+summary: Starts an object's alternate (one-shot) animation exactly once, guarding with a started counter at sprite+0x09.
+interface: 'void sprite_playAltAnimationOnce(sprite* r5) // in: r5 = sprite/object struct; out: r5 = (possibly reallocated)
+  sprite pointer'
+details: "If the byte at sprite+0x09 (a \"alternate animation started\" counter) is positive, the alternate\nanimation\
+  \ is already running and the function returns immediately, only preserving r5. Otherwise\nit increments that byte,\
+  \ then performs the one-shot animation start sequence:\n  - sprite_setUnk0x2c(1) with r5 as context: sets a one-shot/alt-animation\
+  \ flag (field 0x2c area)\n  - sprite_setAnimation(1): selects the alternate animation slot (index 1)\n  - sprite_loadAnimationData():\
+  \ loads the frame/graphics data for the selected animation; this\n    call may update the sprite pointer, and\
+  \ the (possibly new) value is propagated to r5 and\n    returned to the caller\n  - sprite_noShadow(): this animation\
+  \ renders without a shadow sprite\nCallers expect the (possibly updated by loadAnimationData) sprite pointer back\
+  \ in r5.\nNo other flags or registers are meaningful on return; r4 and r5 are preserved through the body.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r3,[r5,#9]; cmp r3,#0; bgt locret — early-out latch at object+0x9 makes it run once; mov
-    r0,#1; bl sprite_setUnk0x2c and sprite_setAnimation — picks animation 1 and sets sprite field 0x2C
-    to 1; bl sprite_loadAnimationData then sprite_noShadow — loads the new anim and renders without shadow;
-    caller sub_811DF94 is the pre-battle Navi roster icon update branching on a story flag, matching a
-    conditional alternate appearance
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:31968
-  - 0x0811DF94 sub_811DF94
-  - 0x080026A4 sprite_loadAnimationData
-  - 0x08002F90 sprite_noShadow
-  - 0x08002DA4 sprite_setAnimation
-  reproduce: python3 tools/asmcat.py 0x0811E000
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sprite_playAltAnimationOnce
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_playAltAnimationOnce
+
+    ./wf verify --function sprite_playAltAnimationOnce --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 171 out
+    of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_playAltAnimationOnce
+
+    ./wf verify --function sprite_playAltAnimationOnce --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_playAltAnimationOnce
+
+    ./wf verify --function sprite_playAltAnimationOnce --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811e000 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32_811CAEC.c
 coverage:
 - beastsp
 open_questions:
-- what sprite field 0x2C = 1 means exactly (visibility/layer flag?)
-- which story flag the caller tests and what the alternate animation depicts (e.g. story-version Navi
-  icon variant)
+- exact meaning of the flag set by sprite_setUnk0x2c(1) (one-shot vs. alt-animation enable)
+- why sprite_loadAnimationData can change the sprite pointer (reallocation?) and how callers handle a new r5
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_811E000 -> sprite_playAltAnimationOnce
-  where: bn6f be30f643
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811E000
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

@@ -1,0 +1,68 @@
+name: sub_8011312
+address: '0x08011312'
+kind: function
+status: hypothesis
+summary: Trampoline that tail-calls the battle "spawn obj 56 / store related object" helper with the constant argument
+  0x105.
+interface: void sub_8011312(u32 r1, u32 r2, u32 r3, u32 r5) — pass-through call; all r0-r7 and NZCV results are
+  whatever the callee (sub_8011344) leaves behind
+details: 'Pure thunk: pushes lr, loads the immediate 0x105 into r0, then tail-calls battle_spawnObj56StoreRelatedObject2
+  (sub_8011344) with r1, r2, r3 and r5 passed through untouched; pops pc directly so no return value is set up locally.
+  The meaning of 0x105 is unknown from this site alone — plausibly an object/entity ID, a related-object kind, or
+  a table index handed to the spawner. Whatever the callee returns in r0-r7 and the flags is effectively this routine''s
+  return contract, matching the lifter''s caller analysis (callers see r4-r7 as outputs because the callee sets
+  them; r4 is genuinely preserved by this stub itself).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_8011312
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8011312
+
+    ./wf verify --function sub_8011312 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8011312
+
+    ./wf verify --function sub_8011312 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 73 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8011312
+
+    ./wf verify --function sub_8011312 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011312 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+open_questions:
+- what the constant 0x105 selects in sub_8011344 (object ID vs. related-object type vs. table index)
+- which callers use this wrapper instead of calling sub_8011344 directly, and what game entity/attack they spawn
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

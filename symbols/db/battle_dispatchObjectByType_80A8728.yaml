@@ -1,0 +1,78 @@
+name: battle_dispatchObjectByType_80A8728
+address: '0x080A8728'
+kind: function
+status: confirmed
+summary: Reads a type index from an object at r5+8 and tail-calls that type's handler from a small jump
+  table, passing the handler address, the type byte and r10 straight through.
+interface: 'void sub_80A8728(void *obj /* r5 */, u32 r10); // lr = return; outputs r2,r3,r4?? no: r2,r3,r8-r12
+  pass through from the handler, r4-r7 preserved via push/pop, flags clobbered'
+details: 'Trampoline/dispatcher for per-type object handlers. r5 points to an object structure whose byte
+  at +8 is a type index. The index selects an entry from the table at off_80A873C (three entries: overworldObject_spawnFromScenarioEffectIndex_80A8748,
+  sprite_applyFrameAttrMode8, ow_freeMapObjectThunk), and the handler is invoked as an ordinary subroutine
+  with "mov lr, pc; bx r0" so the Thumb bit in the table entry (+1) is required. Unusual calling convention:
+  the handler receives the jump-table entry itself in r0 (not the object), the type byte in r1, keeps
+  r5 as the object pointer, and r10 is passed through untouched. The push {r4-r7} before the call and
+  pop after it mean r4-r7 are preserved to this function''s caller regardless of what the handler does,
+  while r2, r3 and r8-r12 set by the handler flow straight through to sub_80A8728''s caller. Only three
+  type indices are valid; anything >= 3 reads garbage from beyond the table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A8728
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A8728
+
+    ./wf verify --function sub_80A8728 --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A8728
+
+    ./wf verify --function sub_80A8728 --snapshots build-snapshots'
+  result: 33 compared, 0 differed, 11 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A8728
+
+    ./wf verify --function sub_80A8728 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8728 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8728 -> battle_dispatchObjectByType_80A8728
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- Which structures use byte +8 as this type index, and whether indices beyond 2 can occur in practice
+- Exact role of r10 in the handlers (passed through unchanged by this dispatcher)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A8728

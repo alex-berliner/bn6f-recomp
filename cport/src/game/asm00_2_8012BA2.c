@@ -1766,7 +1766,7 @@ Next sub_801486C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8014D70 ── */
+/* ── battle_aiAttackFireStep_8014D70 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; } call_SetAIDataUnk0x48Flag_result;
 /* register form: generated wrapper: SetAIDataUnk0x48Flag has no typed C interface yet */
@@ -1822,7 +1822,7 @@ static inline call_cameraSetShake_result call_cameraSetShake(u32 r0, u32 r1) {
     return (call_cameraSetShake_result){ R2 };
 }
 
-/* sub_8014D70 -- AI attack-step handler for one battle actor.
+/* battle_aiAttackFireStep_8014D70 -- AI attack-step handler for one battle actor.
  *
  * r7 points at the actor's AI attack variables, r5 at its battle object,
  * r2 is an untouched argument the first sound call needs.
@@ -1925,10 +1925,10 @@ static void ai_attack_step(u32 battle_obj, u32 ai_vars, u32 sound_r2) {
     R6 = saved_r6;
 }
 
-/* sub_8014D70(r2 = sound-call argument, r5 = battle object, r7 = AI attack
+/* battle_aiAttackFireStep_8014D70(r2 = sound-call argument, r5 = battle object, r7 = AI attack
  * vars, r10 = passed through to cameraSetShake) -> r5, r10 (left in place
  * by the callees; the adapter writes nothing). */
-Next sub_8014D70(void) {
+Next battle_aiAttackFireStep_8014D70(void) {
     ai_attack_step(R5, R7, R2);
     RETURN_TO_CALLER();
 }
@@ -2031,7 +2031,7 @@ Next sub_8015940(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8015952 ── */
+/* ── storeRequestBytes_8015952 ── */
 /* Record three bytes of request state at byte_203CED0 (offsets 0, 1 and 3; the
  * byte at offset 2 is left untouched). */
 static void store_request_bytes(u32 value0, u32 value1, u32 value2) {
@@ -2040,13 +2040,13 @@ static void store_request_bytes(u32 value0, u32 value1, u32 value2) {
     ST8(A_byte_203CED0 + 3, value2);
 }
 
-/* sub_8015952(r0, r1, r2 = bytes to store) -> nothing */
-Next sub_8015952(void) {
+/* storeRequestBytes_8015952(r0, r1, r2 = bytes to store) -> nothing */
+Next storeRequestBytes_8015952(void) {
     store_request_bytes(R0, R1, R2);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801596E ── */
+/* ── battle_clearAIFlag4000_801596E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; } call_SetAIData_Unk_44_Flag_result;
 /* register form: generated wrapper: SetAIData_Unk_44_Flag has no typed C interface yet */
@@ -2072,8 +2072,8 @@ static u32 clear_ai_flag(u32 object, u32 saved_r5) {
     return saved_r5;
 }
 
-/* sub_801596E(r0 = AI object pointer) -> r3, r5 preserved */
-Next sub_801596E(void) {
+/* battle_clearAIFlag4000_801596E(r0 = AI object pointer) -> r3, r5 preserved */
+Next battle_clearAIFlag4000_801596E(void) {
     u32 object = R0;
     u32 saved_r5 = R5;
     R5 = clear_ai_flag(object, saved_r5);
@@ -2266,7 +2266,7 @@ Next callPossiblyGetBattleEmotion_8015B54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8015B5C ── */
+/* ── battle_getPlayerEmotionPriorityThunk_8015B5C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; } call_sub_8015BA8_result;
 /* register form: generated wrapper: battle_getPlayerEmotionPriority has no typed C interface yet */
@@ -2276,7 +2276,7 @@ static inline call_sub_8015BA8_result call_sub_8015BA8(u32 r0) {
     return (call_sub_8015BA8_result){ R0, R1, R2, R3, R4, R5, R6 };
 }
 
-/* sub_8015B5C is nothing but a tail call: it forwards r0 (r10 is untouched)
+/* battle_getPlayerEmotionPriorityThunk_8015B5C is nothing but a tail call: it forwards r0 (r10 is untouched)
  * to battle_getPlayerEmotionPriority and lets its results stand as its own. The wrapper call
  * already leaves r4-r6 holding the callee's outputs, so only r0-r3 need
  * to be written here. */
@@ -2287,8 +2287,8 @@ static call_sub_8015BA8_result sub_8015B5C_forward(u32 arg)
     return call_sub_8015BA8(arg);
 }
 
-/* sub_8015B5C(r0 = argument, r10 = context) -> r0-r6 from battle_getPlayerEmotionPriority */
-Next sub_8015B5C(void)
+/* battle_getPlayerEmotionPriorityThunk_8015B5C(r0 = argument, r10 = context) -> r0-r6 from battle_getPlayerEmotionPriority */
+Next battle_getPlayerEmotionPriorityThunk_8015B5C(void)
 {
     call_sub_8015BA8_result res = sub_8015B5C_forward(R0);
 
@@ -3249,7 +3249,7 @@ Next object_genericDestroy(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8016C9C ── */
+/* ── object_freeMemoryWrapper_8016C9C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result;
 /* register form: generated wrapper: object_freeMemory has no typed C interface yet */
@@ -3259,7 +3259,7 @@ static inline call_object_freeMemory_result call_object_freeMemory(u32 r5) {
     return (call_object_freeMemory_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_8016C9C is a bare tail call: the caller passes the battle object to release
+/* object_freeMemoryWrapper_8016C9C is a bare tail call: the caller passes the battle object to release
  * in r5, and this routine just forwards it to object_freeMemory. Everything the
  * callers see afterwards (r0-r3, r5, the flags) is exactly what the callee leaves
  * behind, so nothing needs to be copied or recomputed here. */
@@ -3267,7 +3267,7 @@ static void free_battle_object(u32 object) {
     call_object_freeMemory(object);
 }
 
-Next sub_8016C9C(void) {
+Next object_freeMemoryWrapper_8016C9C(void) {
     free_battle_object(R5);
     RETURN_TO_CALLER();
 }

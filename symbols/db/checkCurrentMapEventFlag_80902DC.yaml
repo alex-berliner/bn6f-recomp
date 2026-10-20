@@ -1,0 +1,79 @@
+name: checkCurrentMapEventFlag_80902DC
+address: '0x080902DC'
+kind: function
+status: confirmed
+summary: Tests the per-map event flag for the map the player is currently in and returns the result via
+  the Z flag.
+interface: (r10 toolkit) -> zf (Z clear when the selected event flag is set; nz, r1, r3 also reflect TestEventFlag's
+  return); preserves r4-r7
+details: 'Reads the toolkit''s GameState pointer and gets the player''s current location (oGameState_MapGroup
+  / oGameState_MapNumber). If the map group is 0x85, the map number is ignored and table entry 3 is always
+  used; otherwise the table index is the raw map number. Doubles the index and loads a u16 flag id from
+  a small lookup table at byte_8090300 whose only defined entries are 0x0BE1, 0x0BE2, 0x0BE3 and 0x0FD2
+  - so in practice only map numbers 0-3 (and the special group) are covered, anything larger reads past
+  the table. Calls TestEventFlag with that id and returns its condition flags to the caller: the flag
+  being set shows as Z clear (N stays clear since TestEventFlag tests a single low bit). r0 is clobbered,
+  r1/r3 come back from TestEventFlag. No callee-saved registers are modified despite being pushed, so
+  r4-r7 pass through untouched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80902DC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80902DC
+
+    ./wf verify --function sub_80902DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80902DC
+
+    ./wf verify --function sub_80902DC --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80902DC
+
+    ./wf verify --function sub_80902DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080902dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80902DC -> checkCurrentMapEventFlag_80902DC
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- which maps or story beats flags 0x0BE1-0x0BE3 and 0x0FD2 correspond to
+- what map group 0x85 is and why it forces table entry 3
+- intended behavior for map numbers above 3, which would read past byte_8090300
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80902DC

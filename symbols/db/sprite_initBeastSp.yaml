@@ -1,50 +1,75 @@
 name: sprite_initBeastSp
 address: '0x080A92E0'
 kind: function
-status: probable
-summary: 'Initializes the hard-coded BeastSP (Beast Out) sprite state: loads a fixed sprite resource,
-  applies animation/shadow/priority/palette settings, and resets animation counters.'
-interface: (implicit r4 = object/context, r5 = sprite state struct, r6 = object base) -> void; sprite
-  slot byte [r5]=3, animation, priority, palette and counters configured
-details: Writes 3 to byte 0 of the struct at r5 (sprite slot/flags), then calls sprite_load with hard-coded
-  arguments 0x80, 0x1c, 0x6c (sprite resource ids). It then copies the animation index from [r5+4] into
-  sprite_setAnimation, loads the animation data, disables the shadow, sets OAM priority from [r5+5], and
-  takes the palette index from [r6+0x1c] of the object. Finally it zeroes [r5+6], [r5+7] and the word
-  at [r5+0x24] (frame/animation counters and state), stores 4 at [r5+8] (current state/step), and tail-calls
-  sub_80A931C to continue the setup. Everything runs through the shared sprite helpers, which operate
-  on the object via the preserved registers rather than arguments.
+status: confirmed
+summary: Initialises the Beast Out sprite for an entity — loads its graphics, sets animation/priority/palette, resets
+  animation counters, then runs a Beast Out specific setup helper.
+interface: void sprite_initBeastSp(r5=sprite state ptr, r6=owning object ptr, r10=context passed through); leaves
+  r2/r3/r8-r12 set by sub_80A931C for the caller
+details: "Sets up a sprite state (r5) for Beast Out graphics on behalf of its owning entity (r6):\n* [r5] = 3 —\
+  \ sprite kind/id tag identifying Beast Out.\n* sprite_load(r5, 0x80, 0x1C, 0x6C): loads a 128x28 tile graphic\
+  \ with a 0x6C-byte row stride\n  (the Beast Out sheet).\n* sprite_setAnimation([r5+4]) and sprite_loadAnimationData()\
+  \ take the animation index and\n  frame data from the sprite state itself.\n* sprite_noShadow(): Beast Out draws\
+  \ with no shadow ellipse.\n* sprite_setPriority_8002E14([r5+5]) — draw priority stored in the sprite state;\n\
+  \  sprite_setPalette([r6+0x1C]) — palette index comes from the owning entity instead.\n* Resets the animation\
+  \ counters: [r5+6] = 0, [r5+7] = 0, [r5+0x24] = 0, and sets the frame\n  delay [r5+8] = 4.\n* Tail-calls sub_80A931C(sprite)\
+  \ for Beast Out specific finish-up; whatever it leaves in\n  r2/r3/r8-r12 is passed straight back to this function's\
+  \ caller (r10 passes through\n  unchanged). r4-r7 are saved/restored by the push/pop, so r5 (the sprite state\
+  \ pointer)\n  is preserved to the caller even though the lifter lists it in the outputs.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_80A92E0+6: strb 3,[r5] then sprite_load(0x80,0x1c,0x6c) with fixed resource ids; ldrb r0,[r5,#4]
-    -> sprite_setAnimation and ldrb r0,[r5,#5] -> sprite_setPriority match the known helper semantics;
-    ldrb r0,[r6,#0x1c] -> sprite_setPalette pulls palette from the object struct; zeroing [r5+6],[r5+7],[r5+0x24]
-    and setting [r5+8]=4 is standard animation-state reset before sub_80A931C; recorded route ''beastsp''
-    plus the fixed 0x80 resource points at the Beast Out SP transformation sprite'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:8350
-  - 0x080026E4 sprite_load
-  - 0x080026A4 sprite_loadAnimationData
-  - 0x08002F90 sprite_noShadow
-  reproduce: python3 tools/asmcat.py 0x080A92E0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sprite_initBeastSp
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_initBeastSp
+
+    ./wf verify --function sprite_initBeastSp --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_initBeastSp
+
+    ./wf verify --function sprite_initBeastSp --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 91 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_initBeastSp
+
+    ./wf verify --function sprite_initBeastSp --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a92e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
+related:
+- sub_80A931C
 open_questions:
-- What sub_80A931C does (likely per-frame animation/state step for this sprite)
-- Exact meaning of the sprite_load arguments 0x80/0x1c/0x6c (file id vs. animation/palette ids)
-- Which caller fills r4-r7 and how this struct is shared with other beast-out variants
+- Exact meaning of the [r5] = 3 tag ( Beast Out variant index vs. generic sprite class ) is inferred from the 128x28
+  tile load; needs cross-check against other sprite_* init functions.
+- What sub_80A931C does and why its r2/r3/r8-r12 results are handed back to this function's caller — likely a chained
+  init writing more state, unverified.
+- Significance of [r5+8] = 4 (frame delay? animation speed?) and of the zeroed fields at [r5+6], [r5+7], [r5+0x24].
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A92E0 -> sprite_initBeastSp
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A92E0
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

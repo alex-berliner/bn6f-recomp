@@ -1,0 +1,94 @@
+name: ow_player_updateCoords_809C7FC
+address: '0x0809C7FC'
+kind: function
+status: confirmed
+summary: Per-frame overworld player-object callback that pushes the player's three coordinate words through
+  the shared copy-to-next/write-back coordinate helper.
+interface: void sub_809C7FC(u32 player /*r5*/, u32 r10, u32 lr); returns r0=0 (clobber, callers ignore),
+  leaves r2-r4,r5,r7 as the callee helper's leftovers, sets flags NZ from 0; preserves r4-r7
+details: 'A tiny overworld-object wrapper. r5 is the player object; the word at
+
+  obj+0x70 is a pointer to the object''s coordinate block. It loads the
+
+  block''s three words (offsets +0, +4, +8 — presumably x, y, and a
+
+  height/layer or facing field) into r0-r2 and tail-calls
+
+  owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188,
+
+  the shared helper that copies the current coords to the "next" coords,
+
+  writes the player coords back, and re-applies them through its own
+
+  indirection. On return it sets r0=0 and returns; the mov r0,#0 also
+
+  clears N and sets Z, which is the only caller-visible effect the code
+
+  itself produces (r2-r5/r7 leftovers come from the helper). Since
+
+  push/pop {r4-r7} is only there to hold lr, r4-r7 are effectively
+
+  preserved end-to-end.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_809C7FC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809C7FC
+
+    ./wf verify --function sub_809C7FC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809C7FC
+
+    ./wf verify --function sub_809C7FC --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809C7FC
+
+    ./wf verify --function sub_809C7FC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809c7fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809C7FC -> ow_player_updateCoords_809C7FC
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm28_0.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the three coordinate-block fields (x, y, and the +8 word) is only inferred from the
+  helper's name
+- why r10 is part of the input contract (not referenced in this function's own body; possibly consumed
+  by the helper)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_809C7FC

@@ -1176,7 +1176,7 @@ Next sub_80C9184(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C92F4 ── */
+/* ── battle_spawnAdjacentPanelHits_80C92F4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_isValidPanel_result_sub_80C92F4;
 /* register form: generated wrapper: object_isValidPanel has no typed C interface yet */
@@ -1278,9 +1278,9 @@ static panel_attack_result panel_attack(u32 object_id, u32 timer,
     return out;
 }
 
-/* sub_80C92F4(r0 = object id, r1 = timer, r5 = battle object)
+/* battle_spawnAdjacentPanelHits_80C92F4(r0 = object id, r1 = timer, r5 = battle object)
  * -> r2, r4 (= timer), r5, r6, r7 (r6/r7 unchanged). */
-Next sub_80C92F4(void) {
+Next battle_spawnAdjacentPanelHits_80C92F4(void) {
     panel_attack_result res = panel_attack(R0, R1, R5, R6, R7);
     R2 = res.r2;
     R4 = res.r4;
@@ -3141,7 +3141,7 @@ Next battle_spawnCollisionForObject_80CB0AE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CBAF2 ── */
+/* ── battle_clearObjectTimer24_80CBAF2 ── */
 /* Zero the halfword counter at offset 0x24 of the object pointed to by r0.
  * The function exists only for this store; r5 is pushed/popped and so comes
  * out unchanged, which the callers rely on (it is listed as an output that
@@ -3151,8 +3151,8 @@ static u32 clear_object_counter_24(u32 object, u32 r5_in) {
     return r5_in;
 }
 
-/* sub_80CBAF2(r0 = object address) -> r5 (unchanged incoming value) */
-Next sub_80CBAF2(void) {
+/* battle_clearObjectTimer24_80CBAF2(r0 = object address) -> r5 (unchanged incoming value) */
+Next battle_clearObjectTimer24_80CBAF2(void) {
     R5 = clear_object_counter_24(R0, R5);
     RETURN_TO_CALLER();
 }

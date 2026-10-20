@@ -1,0 +1,78 @@
+name: sprite_setUnk2cToE000000_80A93D8
+address: '0x080A93D8'
+kind: function
+status: confirmed
+summary: Trivial sprite helper that writes the fixed value 0xE000000 into the sprite record's field 0x2C
+  for the object passed in r5.
+interface: void sub_80A93D8(r5 = object/sprite state pointer) -> void
+details: 'A one-call thunk: it loads the constant 0xE000000 and tail-calls sprite_setUnk0x2c, which takes
+  the value in r0 and the object state pointer in r5. The target is a sprite subsystem setter for the
+  field at offset 0x2C of the sprite record; this wrapper hardcodes that field to 0xE000000 (0xE0 in the
+  top byte, likely a packed field such as a palette/alpha/OAM-style attribute rather than a plain counter).
+  The caller''s r5 is passed straight through, so callers invoke this with the object pointer already
+  in r5 rather than r0. Flags are clobbered (nzcv) via the callee; lr is used for the call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A93D8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A93D8
+
+    ./wf verify --function sub_80A93D8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    181 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A93D8
+
+    ./wf verify --function sub_80A93D8 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A93D8
+
+    ./wf verify --function sub_80A93D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a93d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A93D8 -> sprite_setUnk2cToE000000_80A93D8
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+related:
+- sub_80A931C
+open_questions:
+- exact meaning of field 0x2C and of the packed value 0xE000000 depends on sprite_setUnk0x2c, which has
+  no typed interface yet
+- which callers use this wrapper instead of calling sprite_setUnk0x2c directly (probably a common reset
+  for one object type)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A93D8

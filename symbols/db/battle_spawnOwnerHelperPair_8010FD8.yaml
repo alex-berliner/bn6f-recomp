@@ -1,0 +1,79 @@
+name: battle_spawnOwnerHelperPair_8010FD8
+address: '0x08010FD8'
+kind: function
+status: confirmed
+summary: Spawns the two companion battle objects (kind 0x14 slot 6 and kind 0x28 slot 7) attached to a
+  battle object and stores their pointers in the owner's RelatedObject2Ptr and ExtraVars fields.
+interface: battle_spawnOwnerHelperPair_8010FD8(u32 r1 spawn_arg, u32 r2 parent_tag, u32 r3 spawn_arg,
+  u32 r5 owner) -> u32 r0 (second spawned object pointer, the value stored in owner->ExtraVars); r3/r5/r6/r7
+  left as the last spawn leaves them; r4 preserved; flags clobbered
+details: Wrapper around two calls to battle_spawnObject56LinkedToOwner_80C44A8. The caller passes a parent
+  id in r2, which the function shifts left 16 and packs into bits 16-23 of the layout word built in r4.
+  First spawn uses layout "0x14000000 + (tag << 16) + 6" (kind 0x14, slot 6) with r5 = owner; its r0 result
+  is stored at owner+oBattleObject_RelatedObject2Ptr. The second spawn reuses whatever the first left
+  in r1/r3/r5 and uses layout "0x28000000 + (tag << 16) + 7" (kind 0x28, slot 7); its r0 result is stored
+  at owner+oBattleObject_ExtraVars and returned in r0. r2 is saved on the stack so it survives the first
+  spawn's clobber, and r4 is pushed/popped so the caller's r4 passes through unchanged. The two spawned
+  objects appear to be per-owner helper/state objects (RelatedObject2Ptr / ExtraVars slots of the battle
+  object struct), so this is likely part of battle object initialization.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8010FD8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8010FD8
+
+    ./wf verify --function sub_8010FD8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8010FD8
+
+    ./wf verify --function sub_8010FD8 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 70 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8010FD8
+
+    ./wf verify --function sub_8010FD8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08010fd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8010FD8 -> battle_spawnOwnerHelperPair_8010FD8
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- meaning of the r1/r3 spawn arguments passed through to battle_spawnObject56LinkedToOwner_80C44A8
+- what the kind 0x14 and kind 0x28 helper objects do in game terms
+- whether the tag in bits 16-23 of the layout word is the parent's battle object id
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8010FD8

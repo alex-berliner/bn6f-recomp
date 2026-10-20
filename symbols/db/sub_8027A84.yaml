@@ -1,0 +1,68 @@
+name: sub_8027A84
+address: '0x08027A84'
+kind: function
+status: hypothesis
+summary: Resets a battle-actor work counter to 0 and writes 4 into its halfword field at +2, likely a phase/state
+  marker.
+interface: void sub_8027A84(void)  /* r5 = actor struct pointer; no return value, flags clobbered */
+details: 'Trivial two-store routine taking the actor/entity struct in r5 (not on the stack, so it is effectively
+  a caller-arranged "this" pointer). It stores 0 as a word at r5+0x40 — most likely a countdown/timer or repeated-action
+  counter used by the battle actor''s logic — and stores the halfword value 4 at r5+2, which in the battle entity
+  layout is typically a state/phase or step field; 4 therefore advances (or resets) the actor into a specific phase.
+  No other fields are touched and nothing is returned; callers only need r5 preserved, and nz flags plus r0 are
+  clobbered. The function immediately returns to the caller''s saved lr.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_8027A84
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027A84
+
+    ./wf verify --function sub_8027A84 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027A84
+
+    ./wf verify --function sub_8027A84 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027A84
+
+    ./wf verify --function sub_8027A84 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08027a84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the halfword at r5+2 (phase id vs. timer slot) and what state 4 selects
+- what the word counter at r5+0x40 counts (frames, hits, retries) in the caller's context
+- which actor types (player, enemies, custom cursor UI, etc.) use this routine
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

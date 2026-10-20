@@ -1,0 +1,77 @@
+name: battle_stateDispatchStep_8009A88
+address: '0x08009A88'
+kind: function
+status: confirmed
+summary: Battle main-loop state dispatcher — reads the battle state's phase byte and tail-jumps to that
+  phase's step handler via a 3-entry table.
+interface: void sub_8009A88(r5=battle state ptr, lr=return) — dispatches to handler(r0=phase, r1=handler
+  addr); handler's r2-r12 pass through to caller, NZCV and r0-r1, r7, lr clobbered
+details: "Reads byte at [r5 + oBattleState_StatePhase] (r5 = current battle state object) and uses it\n\
+  directly as a word offset into the phase table at off_8009A9C (no <<2 scaling, so phase\nvalues are\
+  \ stored pre-multiplied: 0, 4, 8):\n  phase 0 -> battleState4EventWaitOrSkip (labeled battleState4EventWaitOrSkip+1,\
+  \ Thumb)\n  phase 4 -> battle_stateCrossNetBattleIntroStep\n  phase 8 -> battle_stateWait10FramesThenGotoPhaseC\n\
+  Sets lr = pc and does bx to the handler, so the handler returns straight back to this\nfunction's caller\
+  \ (pop {pc} after the handler returns to lr... actually the handler's bx lr\nlands back here only if\
+  \ it doesn't overwrite lr — effectively a tail-call pattern; the\ntrailing pop {pc} executes on return).\
+  \ Handlers receive r0 = phase byte value, r1 = their\nown handler address. Whatever the handler leaves\
+  \ in r2-r12 is propagated unchanged to the\nouter caller, which is why the contract lists them as outputs.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8009A88
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8009A88
+
+    ./wf verify --function sub_8009A88 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    297 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8009A88
+
+    ./wf verify --function sub_8009A88 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 10 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8009A88
+
+    ./wf verify --function sub_8009A88 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08009a88 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8009A88 -> battle_stateDispatchStep_8009A88
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of the three phase handlers live at their own symbols, not here
+- whether the trailing pop {pc} is ever reached directly or the handlers always return to the outer caller
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8009A88

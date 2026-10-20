@@ -2297,7 +2297,7 @@ Next battle_loadDeathAnims_8035424(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8035450 ── */
+/* ── battle_spawnObjectListByIndex_8035450 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r8, r9, r10, r11, r12; bool c, v; } call_SpawnObjectsFromList_result;
 /* register form: generated wrapper: SpawnObjectsFromList has no typed C interface yet */
@@ -2323,8 +2323,8 @@ static void spawn_selected_object_list(u32 list_index, u32 spawn_arg) {
     call_SpawnObjectsFromList(descriptor, spawn_arg);
 }
 
-/* sub_8035450(r0 = list index, r5 = spawn argument) -> r2 r3 r5 r7 r8 r9 r10 r11 r12 */
-Next sub_8035450(void) {
+/* battle_spawnObjectListByIndex_8035450(r0 = list index, r5 = spawn argument) -> r2 r3 r5 r7 r8 r9 r10 r11 r12 */
+Next battle_spawnObjectListByIndex_8035450(void) {
     spawn_selected_object_list(R0, R5);
     RETURN_TO_CALLER();
 }

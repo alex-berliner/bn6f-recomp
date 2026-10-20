@@ -1,0 +1,75 @@
+name: sub_808D25C
+address: '0x0808D25C'
+kind: function
+status: hypothesis
+summary: Pure glue routine that runs the worker at sub_8048F88 once and then sets r0 to 0 (Z set, N clear) before
+  returning.
+interface: 'void sub_808D25C(void) // in: r10 (forwarded to the worker); out: flags N/Z from 0, r2/r3/r4/r5/r7/r8/r9/r12
+  pass through from the worker'
+details: 'The whole body is three instructions: push {lr}, bl sub_8048F88, mov r0, #0, pop {pc}. It forwards r10
+  unchanged to sub_8048F88 and does not consume any of that callee''s register outputs itself; r2-r5, r7-r9, r12
+  and the N/Z flags that callers observe come straight from the worker''s run, while c and v are clobbered. The
+  only value this wrapper adds is r0 = 0, whose lasting effect is N clear / Z set (r0 itself is listed as clobbered,
+  so callers are not expected to read the value, only the flags). Without knowing what sub_8048F88 does, the in-game
+  purpose is unknown; the shape (a one-shot call to a big worker followed by a constant return) is typical of a
+  state/step handler entry point or an initializer whose success value is always 0. No memory, struct fields, or
+  game state are touched here directly.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_808D25C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808D25C
+
+    ./wf verify --function sub_808D25C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808D25C
+
+    ./wf verify --function sub_808D25C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808D25C
+
+    ./wf verify --function sub_808D25C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808d25c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+related:
+- sub_8048F88
+open_questions:
+- what sub_8048F88 actually does (it has no typed C interface yet), which would give this wrapper its real game
+  meaning
+- 'why callers observe r2-r9/r12 and N/Z if the wrapper''s own return value is a constant 0 — confirm whether callers
+  really branch on the worker''s leftover flags or only on Z from mov r0, #0'
+- what r10 points to when entering this function (context/state struct passed through to the worker)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

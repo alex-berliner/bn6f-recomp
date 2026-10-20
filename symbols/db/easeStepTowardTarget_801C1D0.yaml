@@ -1,0 +1,78 @@
+name: easeStepTowardTarget_801C1D0
+address: '0x0801C1D0'
+kind: function
+status: confirmed
+summary: Eases a value toward a target by 1/8 of the remaining gap plus 2, clamping at the target, while
+  setting a state/counter pair in the object at r4
+interface: int easeStepTowardTarget(int value /*r0*/, int target /*r1*/, void *work /*r4*/); returns the
+  adjusted value in r0
+details: 'Writes two bytes into the caller-supplied object at r4: work+8 = 2 (likely an animation/behavior
+  state) and work+9 = 0xA = 10 (likely a frame counter or timer for that state). Then performs an easing
+  step: diff = target - value, result = value + (diff/8) + 2 (arithmetic shift, so it works for negative
+  gaps), and clamps the result to target if it would overshoot. This is a classic "ease toward destination
+  each frame" helper used for smooth movement or value interpolation (e.g. a sprite/number/scroll approaching
+  a goal) with a minimum step of 2 so it always converges. Returns the clamped result; the caller compares/handles
+  arrival at the target. r2, flags clobbered; r4 and lr preserved by convention of the call site.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_801C1D0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801C1D0
+
+    ./wf verify --function sub_801C1D0 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    177 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801C1D0
+
+    ./wf verify --function sub_801C1D0 --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 80 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801C1D0
+
+    ./wf verify --function sub_801C1D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801c1d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801C1D0 -> easeStepTowardTarget_801C1D0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which subsystem's objects use fields +8 (state) and +9 (counter); no subsystem prefix could be confirmed
+  from the snippet alone
+- Whether the caller treats reaching exactly target as a completion condition for state 2/counter 10
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_801C1D0

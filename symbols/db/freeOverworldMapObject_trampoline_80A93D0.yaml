@@ -1,0 +1,89 @@
+name: freeOverworldMapObject_trampoline_80A93D0
+address: '0x080A93D0'
+kind: function
+status: confirmed
+summary: Tail-call trampoline that frees the overworld map object whose handle is passed in r5, forwarding
+  all callee results untouched.
+interface: void sub_80A93D0(r5=mapObject) — tail call; returns whatever FreeOverworldMapObject leaves
+  in r0-r3, r5 and the n/z/c/v flags
+details: 'A pure two-instruction wrapper: push {lr} / bl FreeOverworldMapObject / pop {pc},
+
+  i.e. a thumb tail call. It forwards r5 (a map-object handle/pointer) as the sole
+
+  argument to FreeOverworldMapObject and lets that callee''s r0-r3, r5, lr and N/Z/C/V
+
+  flag state reach its own caller unchanged. No state of its own is touched and no
+
+  registers are preserved beyond what the callee does. Since the callee is
+
+  FreeOverworldMapObject, this is almost certainly a destructor/cleanup callback
+
+  (e.g. an object-descriptor or script handler slot) used where a "delete this map
+
+  object" action is needed but a function pointer, not a direct call, is required.
+
+  Callers can effectively treat it as FreeOverworldMapObject(r5).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A93D0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A93D0
+
+    ./wf verify --function sub_80A93D0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    177 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A93D0
+
+    ./wf verify --function sub_80A93D0 --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A93D0
+
+    ./wf verify --function sub_80A93D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a93d0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A93D0 -> freeOverworldMapObject_trampoline_80A93D0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+related:
+- sub_80A931C
+open_questions:
+- Exact callers/sites that install this trampoline (confirm it is used as a cleanup/destroy callback for
+  overworld map objects).
+- Whether FreeOverworldMapObject's r5 is a pointer to a map-object struct or an index/handle.
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A93D0

@@ -1,0 +1,88 @@
+name: battle_checkFacingOffsetsDefaultTable_80266DE
+address: '0x080266DE'
+kind: function
+status: confirmed
+summary: Thin battle helper that runs the facing-offset check against one fixed default table instead
+  of a caller-supplied one.
+interface: battle_checkFacingOffsetsDefaultTable(u32 r4, u32 r5, u32 r6, u32 r7) -> r0, r1, r5 (r4/r6/r7
+  preserved; nz/c/v, r2, r3 clobbered)
+details: 'Two-instruction wrapper: it loads the fixed table pointer byte_80267AB into r0 and tail-calls
+
+  battle_checkFacingOffsets. The caller''s r4-r7 are forwarded untouched, so those are the real
+
+  inputs (likely the battle entity/actor pointer and facing-related fields that
+
+  battle_checkFacingOffsets inspects). The meaningful outputs are whatever battle_checkFacingOffsets
+
+  leaves in r0/r1 and r5; this wrapper adds nothing of its own and does not touch flags itself
+
+  (it only propagates the callee''s flags by branching through pop {pc} into the tail call).
+
+  Its only distinguishing behavior versus calling battle_checkFacingOffsets directly is the hard-coded
+
+  table at byte_80267AB, so it acts as a "check facing with the default offsets" entry point for
+
+  battle code that does not carry its own offset table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80266DE
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80266DE
+
+    ./wf verify --function sub_80266DE --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    167 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80266DE
+
+    ./wf verify --function sub_80266DE --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80266DE
+
+    ./wf verify --function sub_80266DE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080266de ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80266DE -> battle_checkFacingOffsetsDefaultTable_80266DE
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the forwarded r4-r7 arguments and the returned r0/r1/r5 values depends on battle_checkFacingOffsets,
+  which has no typed interface yet
+- who calls this wrapper (vs. calling battle_checkFacingOffsets with other tables) is not established
+  from this snippet
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80266DE

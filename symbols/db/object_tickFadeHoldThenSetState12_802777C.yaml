@@ -1,0 +1,92 @@
+name: object_tickFadeHoldThenSetState12_802777C
+address: '0x0802777C'
+kind: function
+status: confirmed
+summary: 'Per-tick wait handler for an object: counts up a hold timer at obj+0x40 and, after 50 ticks
+  with no screen fade running, advances the object''s state field (obj+2) to 0xC.'
+interface: 'void sub_802777C(Object* obj /* r5 */); // in: r5 = object work area, lr = return; out: r3
+  (from IsScreenFadeActive), r4/r6 preserved; clobbers r0, r1, lr, NZCV'
+details: 'Reads the 32-bit counter at [r5+0x40], increments it, and stores it back. If the
+
+  new count is >= 0x32 (50 ticks) it calls IsScreenFadeActive(); only when that
+
+  returns r0 == 0 (no fade in progress) does it store 0xC into the halfword state
+
+  field at [r5+2], which presumably switches the object to its next state/phase in
+
+  a per-object state machine. While the counter is below 50, or while a screen
+
+  fade is active, the function does nothing besides the increment, so the state
+
+  transition waits for both a minimum hold time and the end of any fade. The
+
+  state field at +2 is the common halfword state/phase selector used by these
+
+  object update handlers; the counter at +0x40 is a per-object frame timer.
+
+  r4/r6 are pushed/popped only to satisfy the caller''s preservation contract; on
+
+  the calling path r3 comes back as whatever IsScreenFadeActive left in it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_802777C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_802777C
+
+    ./wf verify --function sub_802777C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    190 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_802777C
+
+    ./wf verify --function sub_802777C --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_802777C
+
+    ./wf verify --function sub_802777C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0802777c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_802777C -> object_tickFadeHoldThenSetState12_802777C
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- Exact object/entity type this work area belongs to (r5 struct layout beyond +2 and +0x40 is unconfirmed)
+- What state 0xC means for this object's state machine (next handler not identified from this snippet
+  alone)
+- Whether 50 ticks is a fixed scripted delay (about 0.83s at 60fps) or tuned per scene
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_802777C

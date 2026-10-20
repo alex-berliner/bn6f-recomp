@@ -1,0 +1,86 @@
+name: battle_probePanelChainRows_8026622
+address: '0x08026622'
+kind: function
+status: confirmed
+summary: Probes a battle object's panel and a fixed list of nearby rows (via a signed offset table) with
+  the panel-check routine, returning the first hit.
+interface: int battle_probePanelChainRows(void* object /*r5*/, int probeX /*r6*/, int row /*r7*/) -> (int
+  hit /*r0*/, int rowOrFlag /*r1*/); clobbers r2,r3,lr and NZCV; preserves r4-r7
+details: 'Battles-side panel search helper. Takes a battle object pointer (r5, reads oBattleObject_PanelX
+  and oBattleObject_PanelY), a candidate X (r6) and a row (r7). First probe: the object''s own PanelX
+  on `row`, using the argument table at byte_802673A when the object already stands on that row (PanelY
+  == row), otherwise the table at byte_802673C. Then it walks the signed-byte table at byte_8026730: each
+  entry is a Y offset added to `row`; every subsequent probe is at X = probeX with table byte_802673C.
+  Each candidate is tested by calling sub_8026450 (x=r0, y=r1, table=r2, object=r5, probeX=r6, row=r7).
+  On the first nonzero result it returns immediately with that routine''s (r0, r1). If no candidate hits,
+  it returns (0, 0x7F); 0x7F doubles as the table terminator and as the "nothing found" marker in r1.
+  The choice between byte_802673A and byte_802673C for the initial probe suggests the check behaves differently
+  when probing the object''s own row (probably ignoring itself or its own tile''s state). Note r5 is listed
+  as both input and output in the caller contract: the routine preserves r5 (push/pop only covers r4,lr
+  and r5 is never written), so callers see it unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8026622
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8026622
+
+    ./wf verify --function sub_8026622 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    176 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8026622
+
+    ./wf verify --function sub_8026622 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 50 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8026622
+
+    ./wf verify --function sub_8026622 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08026622 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8026622 -> battle_probePanelChainRows_8026622
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of sub_8026450's nonzero result (occupied panel? hole/broken panel? blocked tile?) — depends
+  on that routine's semantics
+- What the two probe tables byte_802673A and byte_802673C actually contain and why the first probe uses
+  a different one on the object's own row
+- Which callers use this and what they do with the returned (r0, r1) pair — the offset table at byte_8026730
+  (rows scanned relative to the target row) would identify the use case, e.g. attack targeting vs. movement
+  checks
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8026622

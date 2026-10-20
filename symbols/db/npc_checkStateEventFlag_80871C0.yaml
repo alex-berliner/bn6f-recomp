@@ -1,0 +1,78 @@
+name: npc_checkStateEventFlag_80871C0
+address: '0x080871C0'
+kind: function
+status: confirmed
+summary: Reads the caller object's current state index, looks up an event-flag id in a small table, and
+  returns whether that flag is set via the N/Z flags.
+interface: bool check(r5 objectPtr, r10 unused) — tail result is the N/Z flags left by TestEventFlag (Z
+  clear = flag set); clobbers r0, r1, r3, lr, C and V
+details: 'Takes a pointer in r5 to some object/state struct, loads the byte at r5+0xC (an index into the
+  object''s current state or step), doubles it, and indexes the u16 table at byte_80871D8 with that value
+  to get an event-flag id. It then calls TestEventFlag(flagId) and simply returns to its caller with the
+  flags TestEventFlag left behind, so the caller branches on Z/NZ to decide whether the flag is set. r10
+  is listed as an input by callers but the body never touches it — likely a callee-saved-style convention
+  artifact rather than a real parameter. The table at byte_80871D8 pairs one flag id per state value;
+  its entries are not decoded here. Typical use would be a dialogue/NPC handler that picks which text
+  or branch to run based on story progress flags tied to the NPC''s current state.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm22.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80871C0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80871C0
+
+    ./wf verify --function sub_80871C0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80871C0
+
+    ./wf verify --function sub_80871C0 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80871C0
+
+    ./wf verify --function sub_80871C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080871c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm22.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80871C0 -> npc_checkStateEventFlag_80871C0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm22.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- what struct r5 points to and which callers use it (r10's role)
+- contents of the flag-id table at byte_80871D8 and which flags the states map to
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80871C0

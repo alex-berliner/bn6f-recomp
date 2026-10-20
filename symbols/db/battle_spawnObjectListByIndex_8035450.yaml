@@ -1,0 +1,79 @@
+name: battle_spawnObjectListByIndex_8035450
+address: '0x08035450'
+kind: function
+status: confirmed
+summary: Spawns a predefined object list during battle setup, selecting the descriptor by index from a
+  fixed pointer table and forwarding the caller's r5 argument to the spawner.
+interface: void sub_8035450(u32 list_index /*r0*/, u32 spawn_arg /*r5*/) — returns r0 = 0; r2, r3, r8-r12
+  and flags nzcv are whatever SpawnObjectsFromList leaves behind; r4-r7 preserved
+details: 'Thin dispatcher over SpawnObjectsFromList. It reads a word from the pointer table at off_8035464
+  at offset list_index*4 (r0 is shifted left by 2, so r0 is an entry index, not a byte offset), passes
+  the fetched descriptor pointer in r0 and the caller''s r5 through unchanged as the spawner''s argument,
+  and tails into it via bl. After the call returns it sets r0 = 0 and returns, so the function''s own
+  return value is always 0 (success/no-error style). All other register state visible to the caller (r1-r3,
+  r8-r12, c/v) is simply whatever SpawnObjectsFromList left, since this function only touches r0-r1. r4-r7
+  are saved/restored, so r5 genuinely passes through intact. The table at off_8035464 presumably holds
+  SpawnObjectsFromList descriptors for the different battle object layouts (one entry per list_index);
+  the meaning of each index and of the r5 argument depends on the callers and the spawner.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8035450
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8035450
+
+    ./wf verify --function sub_8035450 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    296 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8035450
+
+    ./wf verify --function sub_8035450 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 1 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8035450
+
+    ./wf verify --function sub_8035450 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08035450 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8035450 -> battle_spawnObjectListByIndex_8035450
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- beastsp
+open_questions:
+- Which battle-setup contexts call this and what each list_index in off_8035464 corresponds to
+- What the r5 argument means to SpawnObjectsFromList (owner/task pointer, parameter block, etc.)
+- Whether the 0 return is ever checked by callers or is just a fixed success value
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8035450

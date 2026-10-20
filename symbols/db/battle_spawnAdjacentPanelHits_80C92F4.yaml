@@ -1,0 +1,88 @@
+name: battle_spawnAdjacentPanelHits_80C92F4
+address: '0x080C92F4'
+kind: function
+status: confirmed
+summary: Highlights up to two panels adjacent to a battle object and spawns a timed, element-carrying
+  collision region on each, hitting panels next to the actor (offsets picked from a per-alliance table
+  by object id).
+interface: "panelHitRegions(u32 object_id /*r0*/, u32 timer /*r1*/, BattleObject* obj /*r5*/,\n      \
+  \          u32 r6_in, u32 r7_in)\n-> BattleObject* r2 (last spawned region, or garbage when panels invalid),\n\
+  \   r4 (= timer due to a stack-slot quirk), r5, r6, r7 preserved;\nclobbers r0-r3, lr, flags."
+details: "Attack helper, likely for a melee/slam-style enemy or boss move. Indexes byte_80C93C4 with [alliance*4\
+  \ + object_id] (alliance from obj->oBattleObject_Alliance) to select a 4-byte entry of two signed (dx,dy)\
+  \ panel offsets in the table at byte_80C93B0. For each of the two offsets (loop runs exactly twice):\
+  \ computes obj's panel position (oBattleObject_PanelX/Y) plus the offset, checks the target with object_isValidPanel;\
+  \ if valid, calls object_highlightPanel (targeting cursor) and object_spawnCollisionRegion with:\n \
+  \ r2/r3 = target panel x/y,\n  r4 = 0x4050201 (flag/region-type constant),\n  r5 = the battle object\
+  \ pointer (owner),\n  r6 = obj->oBattleObject_DamageAndStaminaDamageCounterDisabler (damage\n      \
+  \ word, damage+stamina fields packed),\n  r7 = 0x3 (collision flags/type);\nthe spawned object's oBattleObject_Element\
+  \ comes from the caller's obj via the spawn call's use of r5. Stores the r1 timer value into spawned->oBattleObject_Timer\
+  \ (halfword), so the region expires on a caller-supplied countdown. Invalid panels are skipped (e.g.\
+  \ off-board, holes, broken panels depending on object_isValidPanel). Quirks: the stack slot at [sp,#4]\
+  \ used for the timer overlaps the saved r4 in {r4,r6,r7,lr}, so on return r4 holds the timer argument,\
+  \ not the caller's r4; callers must not rely on incoming r4 surviving. r2 on exit is either the last\
+  \ spawned region pointer or the last checked panel's x when that panel check failed. r5 is untouched;\
+  \ r6 is additionally saved around the spawn call because object_spawnCollisionRegion clobbers it."
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80C92F4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C92F4
+
+    ./wf verify --function sub_80C92F4 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    249 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C92F4
+
+    ./wf verify --function sub_80C92F4 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 75 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C92F4
+
+    ./wf verify --function sub_80C92F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c92f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C92F4 -> battle_spawnAdjacentPanelHits_80C92F4
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which attack(s) call this in practice (table at byte_80C93B0 suggests multiple actors/enemy variants
+  with different two-panel patterns).
+- Exact meaning of the 0x4050201 and 0x3 constants passed to object_spawnCollisionRegion (region type
+  vs. collision/hit flags).
+- Whether the r1 timer is frames; confirm against the region's update code.
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80C92F4

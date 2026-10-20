@@ -261,7 +261,7 @@ Next clearDword_203CA70Record_80084C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8008A7C ── */
+/* ── battle_dispatchStateStep_8008A7C ── */
 /* Battle state dispatcher: reads the battle state byte and jumps to the
  * matching per-state step function, which returns straight back to our
  * caller (the dispatcher itself is just a trampoline). */
@@ -287,9 +287,9 @@ static void battle_state_dispatch(u32 state_ptr, u32 r3, u32 r7, u32 r10) {
     call_battle_state_handler_sub_8008A7C(handler, state, r3, r7, r10);
 }
 
-/* sub_8008A7C: trampoline into the battle state step handlers.
+/* battle_dispatchStateStep_8008A7C: trampoline into the battle state step handlers.
  * r2..r12 on exit are whatever the chosen handler left behind. */
-Next sub_8008A7C(void) {
+Next battle_dispatchStateStep_8008A7C(void) {
     battle_state_dispatch(R5, R3, R7, R10);
     RETURN_TO_CALLER();
 }
@@ -339,7 +339,7 @@ Next battle_battleEndDelayStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8008D40 ── */
+/* ── clearWorkArea_8008D40 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_ZeroFillByWord_result_sub_8008D40;
 /* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
@@ -357,8 +357,8 @@ static void clear_work_area_203CA70(void) {
     call_ZeroFillByWord_sub_8008D40(A_dword_203CA70, 0xC);
 }
 
-/* sub_8008D40() -> r0 r1 r2 r3 nz c v (all left by ZeroFillByWord) */
-Next sub_8008D40(void) {
+/* clearWorkArea_8008D40() -> r0 r1 r2 r3 nz c v (all left by ZeroFillByWord) */
+Next clearWorkArea_8008D40(void) {
     clear_work_area_203CA70();
     RETURN_TO_CALLER();
 }
@@ -391,7 +391,7 @@ static void run_state_phase_handler(u32 table_offset)
     case 0x10: GUEST_CALL(battle_DispatchStatePhase_800945C); break;
     case 0x14: GUEST_CALL(battle_initFadeToBattleResult_80094DA); break;
     case 0x18: GUEST_CALL(battle_tutFullSynchroTextStep); break;
-    case 0x1C: GUEST_CALL(sub_8009552); break;
+    case 0x1C: GUEST_CALL(battle_dadCybeastTutStep_8009552); break;
     case 0x20: GUEST_CALL(sub_8009594); break;
     case 0x24: GUEST_CALL(battle_stateNaviCommErrorMsg); break;
     default: break; /* out of range: never happens, the index is always 0..9 * 4 */
@@ -728,7 +728,7 @@ Next battle_waitLinkSync_8009478(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8009552 ── */
+/* ── battle_dadCybeastTutStep_8009552 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_chatbox_runScript_result;
 /* register form: generated wrapper: chatbox_runScript has no typed C interface yet */
@@ -753,7 +753,7 @@ static inline u32 call_GetBattleEffects(void) {
     return R0;
 }
 
-/* Result registers (r2-r6) that callers of sub_8009552 observe after it runs.
+/* Result registers (r2-r6) that callers of battle_dadCybeastTutStep_8009552 observe after it runs.
  * On the paths that do not run the script the original leaves these exactly
  * as they were on entry, so they are passed in and handed back unchanged. */
 typedef struct {
@@ -822,8 +822,8 @@ static DadTutStepResult dad_cybeast_tutorial_step(u32 in_r2, u32 in_r3, u32 in_r
     return out;
 }
 
-/* sub_8009552(r5 = battle state, r10 = toolkit) -> r2 r3 r4 r5 r6 */
-Next sub_8009552(void) {
+/* battle_dadCybeastTutStep_8009552(r5 = battle state, r10 = toolkit) -> r2 r3 r4 r5 r6 */
+Next battle_dadCybeastTutStep_8009552(void) {
     DadTutStepResult out = dad_cybeast_tutorial_step(R2, R3, R4, R5, R6, R10);
     R2 = out.r2;
     R3 = out.r3;
@@ -922,7 +922,7 @@ Next battle_pauseIntroResumeStateStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8009A88 ── */
+/* ── battle_stateDispatchStep_8009A88 ── */
 /* Battle main-loop state dispatcher (0x08009A88).
  *
  * Reads the battle state's phase byte and jumps to the matching step handler
@@ -953,7 +953,7 @@ static void battle_state_dispatch_step(u32 battle_state) {
     call_battle_state_handler_sub_8009A88(handler, phase);
 }
 
-Next sub_8009A88(void) {
+Next battle_stateDispatchStep_8009A88(void) {
     battle_state_dispatch_step(R5);
     RETURN_TO_CALLER();
 }

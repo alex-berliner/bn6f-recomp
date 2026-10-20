@@ -1,0 +1,80 @@
+name: object_periodicSoundTimerTick_804C818
+address: '0x0804C818'
+kind: function
+status: confirmed
+summary: Ticks an object's countdown timer; on expiry reloads it with a random 300-555 frame delay and
+  plays the object's periodic sound effect.
+interface: void object_periodicSoundTimerTick_804C818(Object *obj /* r5 */); returns r10 pass-through
+  (or PlaySoundEffect's r10 when it fires)
+details: 'Simple repeating-delay timer for an object (r5 = object pointer). Decrements the s32 timer at
+  [obj+0x14]; while it is still >= 0 after the decrement the new value is stored and the function returns.
+  Once the timer has expired (decrement went below 0), it calls GetRNG, stores (rng & 0xFF) + 0x12C as
+  the new delay at [obj+0x14] (i.e. 300..555 frames, about 5-9.25 s), then indexes the byte_804C858 halfword
+  table with the object''s type/variant byte at [obj+0xE]; if that entry is non-zero it is passed as the
+  sound id to PlaySoundEffect (with r2 being whatever GetRNG happened to leave in r2). So this is an ambient/background
+  sound played at randomized intervals, with the sound chosen per object type via the table. Quirks: r2
+  to PlaySoundEffect is uncontrolled RNG garbage; the function returns through r10 (either the caller''s
+  r10 preserved or PlaySoundEffect''s r10 out), and clobbers flags, r0-r3 and lr while preserving r4-r7
+  and r10.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_804C818
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804C818
+
+    ./wf verify --function sub_804C818 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    189 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804C818
+
+    ./wf verify --function sub_804C818 --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804C818
+
+    ./wf verify --function sub_804C818 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804c818 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804C818 -> object_periodicSoundTimerTick_804C818
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- what object kind uses this (which callers set [obj+0xE] and [obj+0x14]); byte_804C858 table contents
+  (which sound ids per type) not yet labeled
+- whether the initial value written to [obj+0x14] by the spawner matches the same 300..555 range
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_804C818

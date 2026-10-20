@@ -1,0 +1,78 @@
+name: spawnOverworldMapObjects_808CBA0
+address: '0x0808CBA0'
+kind: function
+status: confirmed
+summary: Spawns the initial batch of overworld map objects, with the count depending on the current map
+  (12 in map group 0x85, 9 elsewhere with a nonzero MapNumber, otherwise 7).
+interface: void sub_808CBA0(r10 toolkit); takes the toolkit pointer in r10, reads GameState via oToolkit_GameStatePtr;
+  returns nothing meaningful — r2 holds whatever the last SpawnOverworldMapObject call left behind; r4-r7
+  reach the caller exactly as they arrived
+details: 'Loads the GameState pointer from the toolkit (r10 + oToolkit_GameStatePtr) and picks the object
+  count from the map id: if oGameState_MapGroup == 0x85 the count is 12, else if oGameState_MapNumber
+  != 0 the count is 9, else 7. Then loops index = 0..count-1 calling SpawnOverworldMapObject(0x10, 0,
+  0, 0, index); all objects use the same type/id argument 0x10, differentiated only by the index in r4.
+  Quirk: SpawnOverworldMapObject clobbers r5/r6 and its call path loads r4, so the routine brackets everything
+  with push/pop {r4-r7} (plus an inner push/pop {r5} around each call) to hand r4-r7 back to the caller
+  unchanged — r7 is briefly used as the loop limit but is restored on exit. The map-group 0x85 case is
+  a special map that gets 12 objects instead of the usual 7 or 9.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_808CBA0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808CBA0
+
+    ./wf verify --function sub_808CBA0 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808CBA0
+
+    ./wf verify --function sub_808CBA0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808CBA0
+
+    ./wf verify --function sub_808CBA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808cba0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808CBA0 -> spawnOverworldMapObjects_808CBA0
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- what object type 0x10 represents in the overworld map object system
+- what map group 0x85 is and why it needs 12 objects
+- whether the leftover r2 value returned to callers is meaningful or just residue
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_808CBA0

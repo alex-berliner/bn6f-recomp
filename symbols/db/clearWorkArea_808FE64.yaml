@@ -1,0 +1,74 @@
+name: clearWorkArea_808FE64
+address: '0x0808FE64'
+kind: function
+status: confirmed
+summary: Zeroes a 0x80-byte work area whose address is stored in dword_808FDBC, then returns 0.
+interface: void sub_808FE64(void) // reads lr only; sets r0=0 on return but callers ignore it
+details: 'Fetches the base pointer stored at dword_808FDBC (the slot at off_808FDB8+4, likely part of
+  a small subsystem descriptor/table holding {base, workptr} style entries), and calls ZeroFillByWord(base,
+  0x80) to clear 0x80 bytes (32 words) of work memory. Afterwards it sets r0 = 0 before returning; per
+  the register contract no caller reads r0, so this looks like a conventional "success" return rather
+  than a used output. r2/r3 are preserved (ZeroFillByWord''s contract), nzcv and r0/r1/lr are clobbered.
+  Purely a reset/clear helper for some subsystem''s scratch buffer; the caller presumably re-initializes
+  fields afterwards.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_808FE64
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808FE64
+
+    ./wf verify --function sub_808FE64 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808FE64
+
+    ./wf verify --function sub_808FE64 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808FE64
+
+    ./wf verify --function sub_808FE64 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808fe64 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808FE64 -> clearWorkArea_808FE64
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- which subsystem owns the work area pointed to by dword_808FDBC (contents never written here)
+- why the 0x80 result byte in r0 exists at all, since the register contract shows no caller reads it
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_808FE64

@@ -1,0 +1,73 @@
+name: spawnThunderboltObject_80C7D50
+address: '0x080C7D50'
+kind: function
+status: confirmed
+summary: Spawns a battle object of type 0x1C (a thunderbolt effect) on a panel and initializes its position, element,
+  damage and alliance from the caller's data.
+interface: u32 spawnThunderboltObject(u32 panelX, u32 panelY, u32 element, u32 spawnArg3, u32 spawnArg4, BattleObject*
+  sourceObject, u32 damage); returns r0 = new object pointer (0 if the object pool was full); flags NZ from the
+  pointer/flag value, C/V always clear
+details: "Adapter around object_spawnType3: saves r0-r2/r5, calls object_spawnType3 with r0 = 0x1C\n(object type)\
+  \ and the caller's r1-r4 forwarded unchanged, which returns the freshly spawned\nobject in r5 (0 when the pool\
+  \ is full). The saved caller registers come back shifted one slot\n(pop {r1-r3,r5}), so entry r0 (panel X), r1\
+  \ (panel Y) and r2 (element) land in r1-r3. On a\nsuccessful spawn the routine writes:\n  - oBattleObject_PanelX\
+  \ / oBattleObject_PanelY (bytes) from entry r0/r1\n  - oBattleObject_Element (byte) from entry r2\n  - oBattleObject_DamageAndStaminaDamageCounterDisabler\
+  \ (word) from entry r6\n  - oBattleObject_AllianceAndDirectionFlip (halfword) copied from the r5 source object,\
+  \ so the\n    thunderbolt inherits the owner's team and flip state\n  - sets bit 0x10 in the new object's oObjectHeader_Flags\n\
+  If the spawn failed it returns immediately after restoring r5, touching nothing. Exit r1-r3\nare scratch on the\
+  \ success path (0x10, the ORRed flags byte, the alliance value); r4/r6/r7\npass through the callee unchanged.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c spawnThunderboltObject_80C7D50
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawnThunderboltObject_80C7D50
+
+    ./wf verify --function spawnThunderboltObject_80C7D50 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawnThunderboltObject_80C7D50
+
+    ./wf verify --function spawnThunderboltObject_80C7D50 --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 60 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawnThunderboltObject_80C7D50
+
+    ./wf verify --function spawnThunderboltObject_80C7D50 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c7d50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact gameplay identity of object type 0x1C (named thunderbolt from the function name and damage/element fields;
+  not confirmed against a caller)
+- meaning of the two forwarded spawn arguments (r3/r4 to object_spawnType3)
+- precise effect of oObjectHeader_Flags bit 0x10
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

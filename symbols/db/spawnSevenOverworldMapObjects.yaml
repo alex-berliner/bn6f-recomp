@@ -1,44 +1,92 @@
 name: spawnSevenOverworldMapObjects
 address: '0x0808FF70'
 kind: function
-status: probable
-summary: Spawns seven overworld-map objects of type 0x1C with all-zero position/params, in a counted loop.
-interface: (no args) -> r0 = last SpawnOverworldMapObject result; clobbers r4 (loop counter)
-details: 'Simple wrapper: loops seven times (r4 = 0..6) calling SpawnOverworldMapObject with r0 = 0x1C
-  (object/spawn type) and r1, r2, r3 all zero, so each object is created with default/zero coordinates
-  and parameters. No results are checked or stored, and nothing is passed in — the sole behavior is issuing
-  these seven fixed spawn requests. The count of 7 and the fixed type 0x1C suggest a scripted scene setup
-  (e.g., placing seven copies of the same map object) rather than a generic spawner. No caller is known,
-  so what scene invokes it is not established.'
+status: confirmed
+summary: Spawns seven copies of overworld map object type 0x1C, each at position (0,0,0), returning the last spawn's
+  r2 result.
+interface: 'void spawnSevenMapObjectsType1C_808FF70(void); /* in: lr only; out: r2 = r2 result of the final SpawnOverworldMapObject
+  call; clobbers r0-r3, lr, flags; preserves r4-r6 */'
+details: 'Simple loop (count in r4, 0..6) that calls SpawnOverworldMapObject seven times with the
+
+  fixed arguments r0=0x1C (object type/ID), r1=0, r2=0, r3=0, plus the current loop count in
+
+  r4. All seven objects use the same type 0x1C and the zeroed position/params, differing only
+
+  in the r4 argument — most plausibly a slot index, instance index, or spawn ordinal passed
+
+  through to the spawner. Each iteration push/pop {r5} around the call preserves the caller''s
+
+  r5 because SpawnOverworldMapObject trashes it; the outer push {r4,lr} preserves the loop
+
+  counter and return address. Quirk: the loop increments r4 with whatever value
+
+  SpawnOverworldMapObject leaves in r4 (add r4,#1 applies to the callee''s r4), so the loop only
+
+  behaves as a plain 0-6 counter if that callee returns its r4 argument unchanged; the
+
+  register-lifted C models this exactly. The function''s own "return value" is just the r2 left
+
+  by the last SpawnOverworldMapObject call — likely an object handle/status the spawner
+
+  produces, not a computed result of this routine itself. No other state is touched here;
+
+  all the work (object allocation, positioning, insertion into the map object list) happens
+
+  inside SpawnOverworldMapObject.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: loop bound cmp r4,#7 / blt loc_808FF74 shows exactly 7 iterations; mov r0,#0x1c with r1-r3 =
-    0 before each bl SpawnOverworldMapObject fixes the spawn type and zero params; only callee is SpawnOverworldMapObject
-    at 0x080047E0; no output is consumed (r4 untouched by results); arguments are reloaded every iteration
-    (pushed/pop r5 guard only), so all 7 spawns are identical
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm25.s:994
-  - 0x080047E0 SpawnOverworldMapObject
-  reproduce: python3 tools/asmcat.py 0x0808FF70
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c spawnSevenOverworldMapObjects
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawnSevenOverworldMapObjects
+
+    ./wf verify --function spawnSevenOverworldMapObjects --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawnSevenOverworldMapObjects
+
+    ./wf verify --function spawnSevenOverworldMapObjects --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawnSevenOverworldMapObjects
+
+    ./wf verify --function spawnSevenOverworldMapObjects --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808ff70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm25.c
 coverage:
 - beastsp
 open_questions:
-- what map/scene calls this (no caller in the snapshot; only recorded route 'beastsp' reaches it)
-- what overworld object type 0x1C is and why exactly seven are needed
-- whether SpawnOverworldMapObject's r1-r3 are x/y/param slots or something else
+- what object type 0x1C actually is in the overworld map object table
+- whether the r4 argument to SpawnOverworldMapObject is a slot/index or something else, and whether that callee
+  really preserves it (the loop depends on it)
+- who calls this and what is done with the seven spawned objects afterwards; the returned r2 (last spawn's result)
+  may be ignored by callers
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_808FF70 -> spawnSevenOverworldMapObjects
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_808FF70
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

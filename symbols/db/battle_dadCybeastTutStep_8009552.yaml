@@ -1,0 +1,86 @@
+name: battle_dadCybeastTutStep_8009552
+address: '0x08009552'
+kind: function
+status: confirmed
+summary: Advances the dad's Cybeast battle tutorial, running its textbox script on entry and picking the
+  next tutorial index once the dialogue is closed.
+interface: void sub_8009552(r5=battleState, r10=toolkit); clobbers r0,r1,lr and nzcv; returns r2..r6 (mostly
+  pass-through; r2 carries the chosen index, r5 may be the value chatbox_runScript left)
+details: "Called each frame while this battle sub-phase is active, with r5 = battle state struct\nand\
+  \ r10 = toolkit (r10 is only read for oToolkit_BattleStatePtr).\nTwo-step state machine keyed on battleState+oBattleState_SubPhaseInitFlag:\n\
+  1. Init flag == 0 (first pass): reads the current battle phase from\n   toolkit->battleState->oBattleState_BattlePhase;\
+  \ if phase <= 1 it runs script 0x10,\n   otherwise script 0x20, both from the TextScriptDadCybeastTut\
+  \ archive via\n   chatbox_runScript. Then writes 4 to oBattleState_SubPhaseInitFlag and returns\n  \
+  \ (subsequent frames take the wait path). Note the init-flag store uses whatever r5\n   the script runner\
+  \ leaves, which the verified C keeps faithful.\n2. Init flag != 0: sets flag 0x80 via chatbox_mask_eFlags2009F38\
+  \ (tests/clears the\n   textbox-active bit); while it is still set, the function just returns and waits.\n\
+  \   Once the flag is clear, it calls GetBattleEffects and stores 0x10 into\n   battleState+oBattleState_Index_01\
+  \ if battle effect bit 1 (0x2) is set, else 0x14;\n   finally it zeroes the halfword at oBattleState_StatePhaseAndInitFlag\
+  \ to leave this\n   sub-phase and move the battle state machine on.\nTouches: oBattleState_SubPhaseInitFlag,\
+  \ oBattleState_BattlePhase,\noBattleState_Index_01, oBattleState_StatePhaseAndInitFlag, oToolkit_BattleStatePtr,\n\
+  the TextScriptDadCybeastTut text archive, the 0x80 textbox flag in eFlags2009F38,\nand the battle-effects\
+  \ word.\nQuirk: on the early-return paths r2-r6 are passed back exactly as entered\n(except r5 on the\
+  \ script path); the caller evidently relies on r2/r5-style\npass-through of this dispatcher's register\
+  \ state.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1_800801C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8009552
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8009552
+
+    ./wf verify --function sub_8009552 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    245 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8009552
+
+    ./wf verify --function sub_8009552 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8009552
+
+    ./wf verify --function sub_8009552 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08009552 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1_800801C.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8009552 -> battle_dadCybeastTutStep_8009552
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1_800801C.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the Index_01 values 0x10 vs 0x14 and of the battle-effects bit 0x2 (presumably which
+  Cybeast version / Falzar-vs-Gregar path the tutorial text should use next)
+- Why script 0x20 vs 0x10 depends on BattlePhase > 1 (which in-battle phases the tutorial text is split
+  across)
+- Whether the r2..r6 outputs are meaningful to callers or merely artifacts of the shared dispatcher
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8009552

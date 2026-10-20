@@ -590,7 +590,7 @@ Next initWorkArea5Entries_80467D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80468E0 ── */
+/* ── sprite_clearScaleAndMakeUnscalable_80468E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_makeUnscalable_result_sub_80468E0;
 /* register form: generated wrapper: sprite_makeUnscalable has no typed C interface yet */
@@ -610,14 +610,14 @@ static void clear_byte_and_make_unscalable(u32 ptr)
     call_sprite_makeUnscalable_sub_80468E0(ptr);
 }
 
-/* sub_80468E0(r5 = sprite pointer) -> r0 r1 r2 r3 nz c v (from sprite_makeUnscalable) */
-Next sub_80468E0(void)
+/* sprite_clearScaleAndMakeUnscalable_80468E0(r5 = sprite pointer) -> r0 r1 r2 r3 nz c v (from sprite_makeUnscalable) */
+Next sprite_clearScaleAndMakeUnscalable_80468E0(void)
 {
     clear_byte_and_make_unscalable(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80468EC ── */
+/* ── battle_clearEntryFlagAndMakeUnscalable_80468EC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_makeUnscalable_result_sub_80468EC;
 /* register form: generated wrapper: sprite_makeUnscalable has no typed C interface yet */
@@ -627,7 +627,7 @@ static inline call_sprite_makeUnscalable_result_sub_80468EC call_sprite_makeUnsc
     return (call_sprite_makeUnscalable_result_sub_80468EC){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_80468EC: clear the flag byte of one battle entry and mark its sprite
+/* battle_clearEntryFlagAndMakeUnscalable_80468EC: clear the flag byte of one battle entry and mark its sprite
  * unscalable. r0 = entry index; entries are 0x58 bytes apart starting at
  * byte_2011860. The entry pointer is built in r5 and passed to
  * sprite_makeUnscalable in r5; r1/r2/r3 (and c/v) after the call are whatever
@@ -642,8 +642,8 @@ static u32 clear_entry_and_make_unscalable(u32 index, u32 saved_r5) {
     return saved_r5;                      /* pop {r4-r7} restores r5 */
 }
 
-/* sub_80468EC(r0 = entry index) -> r1 r2 r3 from sprite_makeUnscalable; r5 unchanged */
-Next sub_80468EC(void) {
+/* battle_clearEntryFlagAndMakeUnscalable_80468EC(r0 = entry index) -> r1 r2 r3 from sprite_makeUnscalable; r5 unchanged */
+Next battle_clearEntryFlagAndMakeUnscalable_80468EC(void) {
     R5 = clear_entry_and_make_unscalable(R0, R5);
     RETURN_TO_CALLER();
 }
@@ -2171,7 +2171,7 @@ Next shop_copyItemTableToShopData_8048C98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8048F88 ── */
+/* ── shop_addStockEntry_kind4_8048F88 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r8, r9, r12; bool z, n, c, v; } call_shop_addItemStockEntry_result;
 /* register form: generated wrapper: shop_addItemStockEntry has no typed C interface yet */
@@ -2182,7 +2182,7 @@ static inline call_shop_addItemStockEntry_result call_shop_addItemStockEntry(u32
     return (call_shop_addItemStockEntry_result){ R0, R1, R2, R3, R8, R9, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_8048F88 — shop stock setup: register one stock entry for the item
+/* shop_addStockEntry_kind4_8048F88 — shop stock setup: register one stock entry for the item
  * described by the table at byte_8048BE4 (entry kind 4), then return.
  *
  * Everything the caller observes — r0-r3, r8, r9, r12 and the NZCV flags —
@@ -2196,7 +2196,7 @@ static void add_stock_entry_kind4(void) {
     call_shop_addItemStockEntry(4u /* entry kind */, A_byte_8048BE4 /* item table */);
 }
 
-Next sub_8048F88(void) {
+Next shop_addStockEntry_kind4_8048F88(void) {
     add_stock_entry_kind4();
     RETURN_TO_CALLER();
 }
@@ -3879,7 +3879,7 @@ Next battle_dispatchJumpByActorSlotAndAction_804C404(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C43C ── */
+/* ── battle_render_startBlurEffect_804C43C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;
 /* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
@@ -3936,8 +3936,8 @@ static call_battle_render_setBlurAndAnimUpdate_804C478_result setup_battle_blur(
     return call_battle_render_setBlurAndAnimUpdate_804C478(gfx.r5, gfx.r7);
 }
 
-/* sub_804C43C(r5, r7, r10 = toolkit, lr) -> r2 r8 r9 (left by the anim update) */
-Next sub_804C43C(void) {
+/* battle_render_startBlurEffect_804C43C(r5, r7, r10 = toolkit, lr) -> r2 r8 r9 (left by the anim update) */
+Next battle_render_startBlurEffect_804C43C(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;  /* push {r4-r7} */
     call_battle_render_setBlurAndAnimUpdate_804C478_result res = setup_battle_blur(R10);
     R4 = savedR4, R5 = savedR5, R6 = savedR6, R7 = savedR7;      /* pop {r4-r7} */
@@ -4015,7 +4015,7 @@ Next battle_render_setBlurAndAnimUpdate_804C478(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C700 ── */
+/* ── battle_dispatchStepHandler_804C700 ── */
 /* Battle-start step dispatcher: the battle object at r5 carries a step counter
  * at offset 0x10, and this routine jumps to the matching handler from the
  * table at off_804C714 (battle_setupBackgroundGfx for step 0,
@@ -4025,7 +4025,7 @@ Next battle_render_setBlurAndAnimUpdate_804C478(void)
 
 /* register form: the handler must run with live guest registers — r0/r1 are
  * its incoming arguments, and its writes to r2/r8-r12 are the caller-visible
- * results of sub_804C700, so they must land in the real registers. */
+ * results of battle_dispatchStepHandler_804C700, so they must land in the real registers. */
 static u32 call_step_handler(u32 handler, u32 step) {
     R0 = handler;
     R1 = step;
@@ -4040,7 +4040,7 @@ static void battle_step_dispatch(u32 battleObj) {
     call_step_handler(handler, step);
 }
 
-Next sub_804C700(void) {
+Next battle_dispatchStepHandler_804C700(void) {
     battle_step_dispatch(R5);
     RETURN_TO_CALLER();
 }
@@ -4117,8 +4117,8 @@ Next battle_setupBackgroundGfx(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C7C4 ── */
-/* sub_804C7C4 is an empty routine: it pushes {r4-r7,lr} and immediately pops
+/* ── stub_doNothing_804C7C4 ── */
+/* stub_doNothing_804C7C4 is an empty routine: it pushes {r4-r7,lr} and immediately pops
  * the same values back, so it changes nothing and simply returns to its
  * caller. It exists in the ROM only as a placeholder that other code can
  * call; all registers (including the analysed "output" r5) pass through
@@ -4129,13 +4129,13 @@ static u32 sub_804C7C4_body(u32 r5) {
     return r5;
 }
 
-/* sub_804C7C4() -> r5 (unchanged) */
-Next sub_804C7C4(void) {
+/* stub_doNothing_804C7C4() -> r5 (unchanged) */
+Next stub_doNothing_804C7C4(void) {
     R5 = sub_804C7C4_body(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C818 ── */
+/* ── object_periodicSoundTimerTick_804C818 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3, r7; } call_GetRNG_result;
 /* register form: generated wrapper: GetRNG has no typed C interface yet */
@@ -4180,8 +4180,8 @@ static u32 timer_tick(u32 obj, u32 r10_in) {
     return r10_in;
 }
 
-/* sub_804C818(r5 = object) -> r10 */
-Next sub_804C818(void) {
+/* object_periodicSoundTimerTick_804C818(r5 = object) -> r10 */
+Next object_periodicSoundTimerTick_804C818(void) {
     R10 = timer_tick(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -4199,7 +4199,7 @@ Next sub_804C844(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804CC6E ── */
+/* ── toolkit_setUnk2009740StateBytes_804CC6E ── */
 /* Writes 0x0C and 0x10 into bytes 2 and 3 of the struct pointed to by the
  * toolkit's Unk2009740 pointer (some two-byte state/counters). Nothing else
  * happens; r5 is passed through because callers expect it preserved. */
@@ -4210,8 +4210,8 @@ static u32 set_unk2009740_state_bytes(u32 saved_r5, u32 toolkit_reg) {
     return saved_r5;
 }
 
-/* sub_804CC6E(r10 = toolkit register, lr = return) -> r5 unchanged */
-Next sub_804CC6E(void) {
+/* toolkit_setUnk2009740StateBytes_804CC6E(r10 = toolkit register, lr = return) -> r5 unchanged */
+Next toolkit_setUnk2009740StateBytes_804CC6E(void) {
     R5 = set_unk2009740_state_bytes(R5, R10);
     RETURN_TO_CALLER();
 }

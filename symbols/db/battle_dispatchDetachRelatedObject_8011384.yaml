@@ -1,0 +1,93 @@
+name: battle_dispatchDetachRelatedObject_8011384
+address: '0x08011384'
+kind: function
+status: confirmed
+summary: Jumps to one of 27 per-type "detach related object" handlers selected by the type index in r0,
+  running it with the caller's register context (notably the object pointer in r5) intact.
+interface: void battle_dispatchDetachRelatedObject(u32 type_index /*r0*/, void* ctx /*r5*/); returns whatever
+  the selected handler leaves in r4-r12 (tail-bridged to the caller)
+details: 'Trampoline-style dispatcher for detaching a battle object''s related/child objects.
+
+  r0 is a type index that is shifted left by 2 and used to load a handler address from
+
+  the 27-entry table at off_8011398 (first entry battle_object_detachRelatedObject2_80111B8,
+
+  entries 1-10 sub_80113FC, entry 11 and 13-17 and 24 nullsub_43, the rest sub_801140E).
+
+  It then does the classic "mov lr, pc / bx r0" trick: the selected handler is entered
+
+  with r1 = table base and lr pointing at the following pop {pc}, so the handler runs as
+
+  if it were this function''s body and its r4-r12 results propagate straight to this
+
+  function''s caller (the register contract lists r4-r12 as outputs for exactly that
+
+  reason). r5, presumably the battle object being detached, is passed through untouched.
+
+  There is no bounds check on the type index: indices >= 27 read bytes past the table
+
+  and would jump to garbage, exactly as in the original. The thumb_func_end implies the
+
+  handlers are expected to return with a matching pop/return.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_8011384
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8011384
+
+    ./wf verify --function sub_8011384 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    286 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8011384
+
+    ./wf verify --function sub_8011384 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 12 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8011384
+
+    ./wf verify --function sub_8011384 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011384 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8011384 -> battle_dispatchDetachRelatedObject_8011384
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of each type index (which object class each of the 27 slots corresponds to) depends on
+  the callers and the handlers sub_80113FC / sub_801140E
+- whether r5 is a battle object pointer or some other shared context for all handlers
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_8011384

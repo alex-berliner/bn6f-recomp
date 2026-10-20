@@ -1,0 +1,75 @@
+name: sprite_applyFormPalette_80A8020
+address: '0x080A8020'
+kind: function
+status: confirmed
+summary: Reads a form index from a work struct and applies the matching sprite palette via sprite_setPalette.
+interface: void sub_80A8020(r5 = sprite/draw work pointer, r7 = struct with form index byte at +2); r5
+  and r7 pass through unchanged, flags and r0/r1/r3 clobbered
+details: 'Loads the byte at [r7,#2] (a form/variant index), uses it as an index into a byte table whose
+  address is read via off_80A8030 -> off_80A8034, where the table starts at unk_2010000 (EWRAM, so the
+  table contents are built at runtime rather than being ROM data). The resulting palette number is passed
+  in r0 to sprite_setPalette, with r5 (the sprite/draw object whose palette should change) preserved across
+  the call. The wrapper is a thin dispatcher: push r4-r7/lr, two ldrb lookups, bl sprite_setPalette, pop.
+  r4 and r6 are pushed only for alignment/preservation and never touched. Callers get back whatever sprite_setPalette
+  leaves in flags/r0/r1/r3; r5 and r7 are unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A8020
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A8020
+
+    ./wf verify --function sub_80A8020 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    255 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A8020
+
+    ./wf verify --function sub_80A8020 --snapshots build-snapshots'
+  result: 18 compared, 0 differed, 78 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A8020
+
+    ./wf verify --function sub_80A8020 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8020 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A8020 -> sprite_applyFormPalette_80A8020
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- what writes the form index at work+2 and what populates the table at unk_2010000
+- identity of the r5 object (sprite entity vs. palette-load work) depends on sprite_setPalette's contract
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A8020

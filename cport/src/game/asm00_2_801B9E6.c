@@ -1110,7 +1110,7 @@ Next battle_drawChipCountsOAMWithRetvalZero_801C078(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C1D0 ── */
+/* ── easeStepTowardTarget_801C1D0 ── */
 /* Snap a value toward a target by 1/8 of the remaining distance (plus 2),
  * and record "state 2, counter 10" in the object at r4.
  * Returns the adjusted value, clamped so it never passes the target. */
@@ -1126,8 +1126,8 @@ static u32 step_toward_target(u32 value, u32 target, u32 work) {
     return result;
 }
 
-/* sub_801C1D0(r0 = value, r1 = target, r4 = work object) -> r0 */
-Next sub_801C1D0(void) {
+/* easeStepTowardTarget_801C1D0(r0 = value, r1 = target, r4 = work object) -> r0 */
+Next easeStepTowardTarget_801C1D0(void) {
     R0 = step_toward_target(R0, R1, R4);
     RETURN_TO_CALLER();
 }
@@ -2917,7 +2917,7 @@ Next battle_loadModeGfx_801E10E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E144 ── */
+/* ── battle_setFlagBits200_801E144 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2; bool z, n; } call_flagSetBits_eStruct2035280_801BEB8_result;
 /* register form: generated wrapper: flagSetBits_eStruct2035280_801BEB8 has no typed C interface yet */
@@ -2927,7 +2927,7 @@ static inline call_flagSetBits_eStruct2035280_801BEB8_result call_flagSetBits_eS
     return (call_flagSetBits_eStruct2035280_801BEB8_result){ R1, R2, ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
-/* sub_801E144: turn on flag bit group 0x200 (bit 9) in the battle-state flag set
+/* battle_setFlagBits200_801E144: turn on flag bit group 0x200 (bit 9) in the battle-state flag set
  * (flagSetBits_eStruct2035280_801BEB8) and return immediately.
  *
  * Register contract notes:
@@ -2948,7 +2948,7 @@ static void set_battle_flag_bits_200(void) {
     call_flagSetBits_eStruct2035280_801BEB8(SUB_801E144_FLAG_BITS);
 }
 
-Next sub_801E144(void) {
+Next battle_setFlagBits200_801E144(void) {
     R0 = SUB_801E144_FLAG_BITS;
     set_battle_flag_bits_200();
     RETURN_TO_CALLER();

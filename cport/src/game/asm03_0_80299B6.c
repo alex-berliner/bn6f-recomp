@@ -140,9 +140,9 @@ static u32 sub_8029ADA_register_form(void) {
     return R0;
 }
 
-/* register form: calls sub_8029B16 outside this file, which has no typed C interface yet */
+/* register form: calls returnZero_8029B16 outside this file, which has no typed C interface yet */
 static u32 sub_8029B16_register_form(void) {
-    GUEST_CALL(sub_8029B16);
+    GUEST_CALL(returnZero_8029B16);
     return R0;
 }
 
@@ -261,13 +261,13 @@ Next entity_getActionIndex_8029ADA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8029B16 ── */
-/* sub_8029B16: stub that just returns 0 in r0. */
+/* ── returnZero_8029B16 ── */
+/* returnZero_8029B16: stub that just returns 0 in r0. */
 static u32 sub_8029B16_body(void) {
     return 0;
 }
 
-Next sub_8029B16(void) {
+Next returnZero_8029B16(void) {
     R0 = sub_8029B16_body();
     RETURN_TO_CALLER();
 }
@@ -1054,12 +1054,12 @@ Next battle_getActorEmotion_802A564(void) {
     if (LD8(R5 + 0x15) == 0)
         GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
     else
-        GUEST_CALL(sub_8015B5C);
+        GUEST_CALL(battle_getPlayerEmotionPriorityThunk_8015B5C);
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802A57E ── */
+/* ── battle_checkEmotionAllowsAction_802A57E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; } call_battle_getActorEmotion_802A564_result_sub_802A57E;
 /* register form: generated wrapper: battle_getActorEmotion_802A564 has no typed C interface yet */
@@ -1091,7 +1091,7 @@ static u32 check_emotion_ok(u32 actor) {
     return (s32)em.r1 < 0xB ? 1u : 0u;
 }
 
-Next sub_802A57E(void) {
+Next battle_checkEmotionAllowsAction_802A57E(void) {
     R0 = check_emotion_ok(R5);
     RETURN_TO_CALLER();
 }

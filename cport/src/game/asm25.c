@@ -18,13 +18,13 @@ static inline void call_ClearEventFlagFromImmediate(u32 r0, u32 r1) {
 }
 
 typedef struct { u32 r4, r5, r6, r7; } call_sub_808FA7C_result;
-/* register form: generated wrapper: sub_808FA7C has no typed C interface yet */
+/* register form: generated wrapper: thunk_tailLoc808FA90_r0eq0_808FA7C has no typed C interface yet */
 static inline call_sub_808FA7C_result call_sub_808FA7C(u32 r4, u32 r5, u32 r6, u32 r7) {
     R4 = r4;
     R5 = r5;
     R6 = r6;
     R7 = r7;
-    GUEST_CALL(sub_808FA7C);
+    GUEST_CALL(thunk_tailLoc808FA90_r0eq0_808FA7C);
     return (call_sub_808FA7C_result){ R4, R5, R6, R7 };
 }
 
@@ -217,7 +217,7 @@ Next busStation_runBusMoveSequence_controller_808F900(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FA38 ── */
+/* ── owPlayer_turnTowardTarget_808FA38 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; } call_ReadOWPlayerObjectCoords_result;
 /* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
@@ -243,7 +243,7 @@ static inline call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_sub_
 }
 
 /*
- * sub_808FA38 -- turn the overworld player to face the map's target position.
+ * owPlayer_turnTowardTarget_808FA38 -- turn the overworld player to face the map's target position.
  *
  * Reads the player's current coordinates, computes the angle octant from the
  * player toward the target position stored in the player object (+0x12/+0x14),
@@ -283,17 +283,17 @@ static void player_turn_toward_target(void) {
     ST8(player + OWPLAYERAnim, anim);
 }
 
-Next sub_808FA38(void) {
+Next owPlayer_turnTowardTarget_808FA38(void) {
     player_turn_toward_target();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FA7C ── */
+/* ── thunk_tailLoc808FA90_r0eq0_808FA7C ── */
 /*
- * sub_808FA7C is a pure thunk: it pushes r4-r7 and the return address, sets
+ * thunk_tailLoc808FA90_r0eq0_808FA7C is a pure thunk: it pushes r4-r7 and the return address, sets
  * r0 = 0 and branches to the routine at 0x0808FA90. The pushed frame is not
  * this function's own — the tail callee ends with pop {r4-r7,pc}, so it
- * restores the caller's r4-r7 and returns straight to sub_808FA7C's caller.
+ * restores the caller's r4-r7 and returns straight to thunk_tailLoc808FA90_r0eq0_808FA7C's caller.
  * That is why r4-r7 appear as "outputs" although nothing here computes them:
  * they come back unchanged from the callee's pop. The frame therefore has to
  * be written to the real guest stack, exactly as the original push does.
@@ -319,14 +319,14 @@ static void tail_call_loc_808FA90(void) {
     R0 = 0;
 
     /* b loc_808FA90. The callee's pop {r4-r7,pc} loads the saved return
-     * address into PC, so control goes straight back to sub_808FA7C's caller
+     * address into PC, so control goes straight back to thunk_tailLoc808FA90_r0eq0_808FA7C's caller
      * with r4-r7 restored — it never comes back here, exactly as in the
      * original. */
     GUEST_CALL_ADDR(TAIL_TARGET_808FA90);
 }
 
-/* sub_808FA7C(r4, r5, r6, r7, r10, lr) -> r4 r5 r6 r7 (restored by the callee) */
-Next sub_808FA7C(void) {
+/* thunk_tailLoc808FA90_r0eq0_808FA7C(r4, r5, r6, r7, r10, lr) -> r4 r5 r6 r7 (restored by the callee) */
+Next thunk_tailLoc808FA90_r0eq0_808FA7C(void) {
     tail_call_loc_808FA90();
     RETURN_TO_CALLER();
 }
@@ -382,7 +382,7 @@ Next ow_startBeastOutHit(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FD64 ── */
+/* ── weather_requestMapParams_808FD64 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: req_setFourParams has no typed C interface yet */
 static inline void call_req_setFourParams(u32 r0, u32 r1, u32 r2, u32 r3) {
@@ -421,13 +421,13 @@ static void request_map_params(u32 toolkit)
                            LD16(entry + 6) << 16);
 }
 
-/* sub_808FD64(r10 = toolkit) -> r2 r3 left by req_setFourParams */
-Next sub_808FD64(void) {
+/* weather_requestMapParams_808FD64(r10 = toolkit) -> r2 r3 left by req_setFourParams */
+Next weather_requestMapParams_808FD64(void) {
     request_map_params(R10);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FE64 ── */
+/* ── clearWorkArea_808FE64 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2; } call_ZeroFillByWord_result_sub_808FE64;
 /* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
@@ -444,9 +444,9 @@ static void clear_work_area(void) {
     call_ZeroFillByWord_sub_808FE64(area, 0x80);
 }
 
-/* sub_808FE64: zero the work area and return 0 in r0 (clobbered, not an output).
+/* clearWorkArea_808FE64: zero the work area and return 0 in r0 (clobbered, not an output).
  * inputs: lr; outputs: none; clobbers: nz c v r0 r1 lr; preserved: r2 r3 */
-Next sub_808FE64(void) {
+Next clearWorkArea_808FE64(void) {
     clear_work_area();
     RETURN_TO_CALLER();
 }
@@ -659,21 +659,21 @@ Next spawnSevenOverworldMapObjects(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FF8C ── */
-/* sub_808FF8C: test whether the value at [r5+0x20] (the caller's object pointer, field 0x20)
+/* ── checkObjectField20Zero_808FF8C ── */
+/* checkObjectField20Zero_808FF8C: test whether the value at [r5+0x20] (the caller's object pointer, field 0x20)
  * is zero. Returns nonzero (Z clear) when the field is 0, zero (Z set) otherwise. */
 static bool field_is_zero(u32 object_ptr) {
     return LD32(object_ptr + 0x20) == 0;
 }
 
-/* sub_808FF8C(r5 = object pointer) -> nz */
-Next sub_808FF8C(void) {
+/* checkObjectField20Zero_808FF8C(r5 = object pointer) -> nz */
+Next checkObjectField20Zero_808FF8C(void) {
     bool empty = field_is_zero(R5);
     SET_FLAGS_NZ(empty);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FFC0 ── */
+/* ── getAreaTableEntry_808FFC0 ── */
 /* Map-entry lookup: pick one of four per-area tables based on the current map
  * group (map group 0x85 always uses the last slot), index it by the byte at
  * [r5,#0xE] (entries are 8 bytes), and return the entry's two halfwords
@@ -710,7 +710,7 @@ static MapEntryValues read_map_entry(u32 objPtr, u32 toolkit)
     return v;
 }
 
-Next sub_808FFC0(void) {
+Next getAreaTableEntry_808FFC0(void) {
     MapEntryValues v = read_map_entry(R5, R10);
     R0 = v.half0;
     R1 = v.half1;
@@ -719,7 +719,7 @@ Next sub_808FFC0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809003C ── */
+/* ── bbs_requestOnEventBE4_809003C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool z, n, c, v; } call_TestEventFlagFromImmediate_result_sub_809003C;
 /* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
@@ -770,14 +770,14 @@ static void bbs_request_scene(void) {
     call_reqBBS_setFlag_e17b0f7_8140A00();     /* mark BBS request e17b0f7 */
 }
 
-/* sub_809003C: inputs r10 lr; outputs r3 (from the callee) and r4 (unchanged).
+/* bbs_requestOnEventBE4_809003C: inputs r10 lr; outputs r3 (from the callee) and r4 (unchanged).
  * Flags are clobbered only, so nothing has to be set explicitly here. */
-Next sub_809003C(void) {
+Next bbs_requestOnEventBE4_809003C(void) {
     bbs_request_scene();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80902DC ── */
+/* ── checkCurrentMapEventFlag_80902DC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool z, n; } call_TestEventFlag_result_sub_80902DC;
 /* register form: generated wrapper: TestEventFlag has no typed C interface yet */
@@ -818,8 +818,8 @@ static MapFlagResult check_current_map_event_flag(u32 toolkit, u32 r4, u32 r5) {
     return out;
 }
 
-/* sub_80902DC() -> nz r1 r3 (from TestEventFlag), r4/r5 pass through unchanged */
-Next sub_80902DC(void) {
+/* checkCurrentMapEventFlag_80902DC() -> nz r1 r3 (from TestEventFlag), r4/r5 pass through unchanged */
+Next checkCurrentMapEventFlag_80902DC(void) {
     MapFlagResult res = check_current_map_event_flag(R10, R4, R5);
     R4 = res.r4;
     R5 = res.r5;

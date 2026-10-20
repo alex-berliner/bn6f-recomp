@@ -1,0 +1,72 @@
+name: sub_804C844
+address: '0x0804C844'
+kind: function
+status: hypothesis
+summary: Sets a single field (offset 0x14) of the struct in r5 to 0x10, likely assigning a state, timer, or counter
+  on a game object.
+interface: 'u32 obj_setField14To16_804C844(u32 obj /* r5 */); // in: r5 (object/struct pointer), lr (return); out:
+  r5 unchanged; clobbers r0, NZ flags'
+details: 'The routine is two instructions: store the constant 0x10 to [r5+0x14] and return, preserving r4-r7 and
+  passing r5 back through unchanged (callers read back only r5; r0 and NZ are clobbered). Given the register contract
+  (only r5 in, only r5 out), r5 is almost certainly a pointer to a task/object work structure and offset 0x14 a
+  small field such as a state id, phase, or countdown/timeout value being initialized to 16. The bytes immediately
+  after the function (dword_804C84C = 0xFF, off_804C850 = 0x12C, off_804C854 -> byte_804C858, and the long byte_804C858/byte_804C860
+  tables of small signed 16-bit pairs like 0x01D9, 0xFEC6, 0xFDE0, plus repeated 0x01/0x40/0x80/0x08/0x06 flag-ish
+  records) are data owned by neighboring code/tables, not touched by this routine itself, though the table''s record-like
+  structure (repeating ~14-16 byte entries with signed short offsets and 0xFF-terminated attribute bytes) suggests
+  it belongs to a movement/path or hitbox-table system used alongside this setter.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c sub_804C844
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804C844
+
+    ./wf verify --function sub_804C844 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 180 out of
+    domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804C844
+
+    ./wf verify --function sub_804C844 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804C844
+
+    ./wf verify --function sub_804C844 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804c844 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- Which subsystem owns the r5 struct and what field 0x14 means (state id vs. timer vs. counter) — needs caller cross-reference.
+- Whether the trailing byte_804C858/byte_804C860 tables are referenced by this function's callers and should be
+  labeled separately.
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932

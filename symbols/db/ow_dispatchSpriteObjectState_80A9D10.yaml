@@ -1,0 +1,79 @@
+name: ow_dispatchSpriteObjectState_80A9D10
+address: '0x080A9D10'
+kind: function
+status: confirmed
+summary: Dispatcher that runs the per-state routine (init / update / sub_80A9DB8) for an overworld sprite
+  object, selected by the object's state byte.
+interface: void sub_80A9D10(r2 arg, r5 object, r10 arg); passes r2/r5/r10 through to the selected routine;
+  results come back in r2 r3 r4 r5 r8 r9 r10 r11 r12 per the callee's own contract (r4/r5 restored here);
+  clobbers r0 r1 lr and nzcv flags
+details: "r5 points at an overworld sprite object; the byte at offset 8 is a state/stage selector.\nIt\
+  \ indexes a three-entry jump table at off_80A9D24:\n  0 = ow_initSpriteObject (initialize a newly created\
+  \ sprite object)\n  1 = ow_spriteObjectUpdate (per-frame update)\n  2 = sub_80A9DB8 (third, unnamed\
+  \ state handler)\nDispatch is via mov lr, pc / bx r0 through the table (thumb targets, entries stored\
+  \ +1),\nwith push {r4-r7,lr} / pop {r4-r7,pc} wrapping the call so r4-r7 survive whatever the\ncallee\
+  \ does. r2 and r10 are forwarded untouched, r5 carries the object pointer, and the\nselected routine's\
+  \ return values simply land in the caller's registers unchanged.\nIn effect this is the object-state\
+  \ machine step for overworld sprite objects: callers\ninvoke it once per object and the object's own\
+  \ state byte decides whether it gets\ninitialized, updated, or handled by the third routine.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A9D10
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A9D10
+
+    ./wf verify --function sub_80A9D10 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A9D10
+
+    ./wf verify --function sub_80A9D10 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 24 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A9D10
+
+    ./wf verify --function sub_80A9D10 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9d10 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A9D10 -> ow_dispatchSpriteObjectState_80A9D10
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the state byte values beyond the three table entries (table has no bounds check, state
+  >= 3 would jump through garbage)
+- what sub_80A9DB8 (state 2) does in game terms
+- precise semantics of the r2 and r10 arguments handed through to the state routines
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A9D10

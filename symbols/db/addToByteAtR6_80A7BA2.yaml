@@ -1,0 +1,72 @@
+name: addToByteAtR6_80A7BA2
+address: '0x080A7BA2'
+kind: function
+status: confirmed
+summary: Tiny helper that adds r0 to the byte pointed to by r6 and writes the low byte back.
+interface: void addToByteAtR6(u32 addend /* r0 */, u8* ptr /* r6 */); /* r1 = full 32-bit sum, flags set
+  by ADDS r1,r1,r0 */
+details: 'Loads the byte at the address held in r6, adds the 32-bit addend from r0, stores the low 8 bits
+  back to [r6], and leaves the full 32-bit sum in r1 before returning. Flag semantics come from the single
+  ADDS: C and V reflect the 32-bit addition (not the 8-bit truncation), so callers could in principle
+  branch on carry/overflow of the wide add. Touches no other state; it is a pure read-modify-write on
+  caller-supplied memory, so its meaning depends entirely on which byte r6 points at in each caller.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80A7BA2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80A7BA2
+
+    ./wf verify --function sub_80A7BA2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    176 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80A7BA2
+
+    ./wf verify --function sub_80A7BA2 --snapshots build-snapshots'
+  result: 18 compared, 0 differed, 78 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80A7BA2
+
+    ./wf verify --function sub_80A7BA2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a7ba2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80A7BA2 -> addToByteAtR6_80A7BA2
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- No caller context available here, so which structure/field r6 points at (and why callers pass an addend
+  rather than doing LDRB/ADD/STRB inline) is unknown
+- Whether any caller relies on the r1 return value or the C/V flags could not be confirmed from this snippet
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80A7BA2

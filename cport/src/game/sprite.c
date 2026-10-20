@@ -602,8 +602,8 @@ Next sprite_getFrameParameters(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8002E04 ── */
-/* sub_8002E04: read an attribute byte from one of an object's sub-entries.
+/* ── checkSubEntryHiddenFlag_8002E04 ── */
+/* checkSubEntryHiddenFlag_8002E04: read an attribute byte from one of an object's sub-entries.
  *
  * r5 points at an object; the high nibble of its byte at +2 selects one of
  * up to 16 sub-entries (16 bytes each, i.e. (byte & 0xF0) + r5). The entry's
@@ -624,8 +624,8 @@ static SubEntryAttr read_sub_entry_attr(u32 obj) {
     return res;
 }
 
-/* sub_8002E04(r5 = object pointer) -> nz from (entry byte & 8), r3 = entry address */
-Next sub_8002E04(void) {
+/* checkSubEntryHiddenFlag_8002E04(r5 = object pointer) -> nz from (entry byte & 8), r3 = entry address */
+Next checkSubEntryHiddenFlag_8002E04(void) {
     SubEntryAttr res = read_sub_entry_attr(R5);
     R3 = res.entry_addr;
     SET_FLAGS_NZ(res.attr_bit);

@@ -1,0 +1,82 @@
+name: pet_exitToPetMenuReturnZero_809ADA8
+address: '0x0809ADA8'
+kind: function
+status: confirmed
+summary: A one-shot exit handler that delegates to pet_returnToPetMenu to leave the current PET screen
+  back at the PET menu, then always reports 0 in r0.
+interface: u32 sub_809ADA8(void)  // r4-r7, r9-r12 passed through to the callee; returns 0 in r0 with
+  NZ set from it
+details: 'The routine is just `push {r4-r7,lr}; bl pet_returnToPetMenu; mov r0,#0; pop {r4-r7,pc}`. It
+  preserves r4-r7 across the call and unconditionally returns 0 as its result, so callers presumably use
+  a nonzero return elsewhere to signal that some other transition happened and 0 here for the plain "went
+  back to the PET menu" case. Immediately after the function body sit two 30-byte lookup tables (byte_809ADB4)
+  of small records (kind/index/x/y byte triplets such as 2/0/0, 3/0/0x22, deltas like 0x46FF/0x64FF) and
+  several cutscene scripts used by the copybot/MegaMan transfer flow (CutsceneScriptNotification_809AE68:
+  lock player for dialogue, play the comm-error text TextScriptCommError873B9E0, fade to black, respawn
+  overworld NPC objects, center the camera via owMapObject_loadSpawnAndCenterCameraOnEntry_809AF00, PET
+  effects 4/5, sound 0x8D/0x8E, and a branch on EVENT_COPYBOT_ACTIVE); the proximity suggests this function
+  is part of that PET/transfer screen logic, acting as its "cancel/back to PET menu" path.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_809ADA8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809ADA8
+
+    ./wf verify --function sub_809ADA8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809ADA8
+
+    ./wf verify --function sub_809ADA8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809ADA8
+
+    ./wf verify --function sub_809ADA8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809ada8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809ADA8 -> pet_exitToPetMenuReturnZero_809ADA8
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm28_0.c
+coverage:
+- beastsp
+open_questions:
+- which callers invoke this and whether the 0 return is a "no result / nothing selected" convention
+- what exactly pet_returnToPetMenu does with the pass-through registers r9-r12 and why r10 is in the caller
+  contract but not forwarded by the wrapper
+- whether the adjacent tables byte_809ADB4 and the copybot cutscene scripts belong to the same screen
+  this exits from
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_809ADA8

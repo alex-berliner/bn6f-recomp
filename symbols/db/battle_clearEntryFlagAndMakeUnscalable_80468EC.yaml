@@ -1,0 +1,78 @@
+name: battle_clearEntryFlagAndMakeUnscalable_80468EC
+address: '0x080468EC'
+kind: function
+status: confirmed
+summary: Clears the flag byte of one 0x58-byte entry in the battle array at byte_2011860 and marks that
+  entry's sprite unscalable.
+interface: 'u32 sub_80468EC(u32 index); // in: r0 = entry index; out: r1/r2/r3 and c/v as left by sprite_makeUnscalable;
+  r5 preserved'
+details: 'Computes a pointer to an entry in the array at byte_2011860 (ram 0x02011860) as base + index*0x58,
+  i.e. the battle-side structures are 0x58 (88) bytes each. It stores 0 into the first byte of the entry
+  (its flag/state byte, offset 0), then passes the entry pointer in r5 to sprite_makeUnscalable, which
+  presumably reads a sprite handle or related fields from the rest of the entry and removes the sprite''s
+  scalable/enlarged rendering (the "scale" flag used for zoomed-in effects such as big/enemy-scaled battle
+  sprites). The byte clear happens before the sprite call, so sprite_makeUnscalable sees the updated entry.
+  r4-r7 are pushed and popped, so the caller''s r5 is preserved even though the pointer is built in r5;
+  only r0 and lr are consumed, r1-r3/c/v outputs are whatever the callee leaves.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_80468EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80468EC
+
+    ./wf verify --function sub_80468EC --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    186 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80468EC
+
+    ./wf verify --function sub_80468EC --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80468EC
+
+    ./wf verify --function sub_80468EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080468ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80468EC -> battle_clearEntryFlagAndMakeUnscalable_80468EC
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the flag byte at offset 0 of each 0x58-byte entry (enabled/visible flag?)
+- which subsystem owns byte_2011860 (battle entity list vs. sprite descriptor list)
+- whether sprite_makeUnscalable reads the just-cleared byte or only later fields of the entry
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_80468EC

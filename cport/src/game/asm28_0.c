@@ -79,7 +79,7 @@ Next deliverCutsceneMail_8098BE8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8098CCC ── */
+/* ── cross_loadEntryFields_8098CCC ── */
 /* Select one entry of the table at off_8098C28 (0x14-byte records) using the
  * index byte in the work area, copy its fixed fields into the work area, and
  * if the record names a partner character, write that id plus the 0xFF
@@ -102,8 +102,8 @@ static u32 load_cross_entry(u32 work, u32 state) {
     return partner;
 }
 
-/* sub_8098CCC(r5 = work area, r10 = state block) -> nz, r2, r0 = 0 */
-Next sub_8098CCC(void) {
+/* cross_loadEntryFields_8098CCC(r5 = work area, r10 = state block) -> nz, r2, r0 = 0 */
+Next cross_loadEntryFields_8098CCC(void) {
     R2 = load_cross_entry(R5, R10);
     R0 = 0;
     SET_FLAGS_NZ(R0);
@@ -320,7 +320,7 @@ done:
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809ADA8 ── */
+/* ── pet_exitToPetMenuReturnZero_809ADA8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_pet_returnToPetMenu_result;
 /* register form: generated wrapper: pet_returnToPetMenu has no typed C interface yet */
@@ -346,10 +346,10 @@ static u32 return_to_pet_menu(u32 r4, u32 r5, u32 r6, u32 r7, u32 r9, u32 r11, u
     return 0;
 }
 
-/* sub_809ADA8: leave the current screen and return to the PET menu.
+/* pet_exitToPetMenuReturnZero_809ADA8: leave the current screen and return to the PET menu.
  * inputs: r4 r5 r6 r7 r9 r10 r11 r12 (r10 is kept as on entry by the wrapper)
  * outputs: nz from the returned 0; r2 r3 r8-r12 come from pet_returnToPetMenu. */
-Next sub_809ADA8(void) {
+Next pet_exitToPetMenuReturnZero_809ADA8(void) {
     R0 = return_to_pet_menu(R4, R5, R6, R7, R9, R11, R12);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -497,7 +497,7 @@ Next ow_periodicObjectSpawner(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809C7FC ── */
+/* ── ow_player_updateCoords_809C7FC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result;
 /* register form: generated wrapper: owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188 has no typed C interface yet */
@@ -528,7 +528,7 @@ static void ow_run_player_coord_update(u32 player) {
         LD32(coords + 8));
 }
 
-Next sub_809C7FC(void) {
+Next ow_player_updateCoords_809C7FC(void) {
     ow_run_player_coord_update(R5);
     SET_FLAGS_NZ(0);
     RETURN_TO_CALLER();
@@ -587,8 +587,8 @@ Next owPlayer_setFixedAnimationFromLookup(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809C830 ── */
-/* sub_809C830 -- copy one lookup byte into the work object.
+/* ── loadWorkByteFromStepTable_809C830 ── */
+/* loadWorkByteFromStepTable_809C830 -- copy one lookup byte into the work object.
  *
  * The state block pointed to by [r5+0x70] holds two selector bytes:
  *   byte 0xC picks one of the four words in the table at off_809C850,
@@ -618,7 +618,7 @@ static struct Sub809C830Result lookup_work_byte(u32 obj) {
     return out;
 }
 
-Next sub_809C830(void) {
+Next loadWorkByteFromStepTable_809C830(void) {
     struct Sub809C830Result out = lookup_work_byte(R5);
     R2 = out.r2;
     R3 = out.r3;
@@ -683,7 +683,7 @@ Next ow_applyCutsceneDirOffset(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809C940 ── */
+/* ── cutscene_clearEntryEventFlags_809C940 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool c, v; } call_ClearEventFlag_result_sub_809C940;
 /* register form: generated wrapper: ClearEventFlag has no typed C interface yet */
@@ -704,7 +704,7 @@ static u32 clear_cutscene_entry_flags(u32 r5) {
     return r5;
 }
 
-Next sub_809C940(void) {
+Next cutscene_clearEntryEventFlags_809C940(void) {
     R5 = clear_cutscene_entry_flags(R5);
     RETURN_TO_CALLER();
 }

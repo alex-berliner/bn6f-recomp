@@ -1,0 +1,81 @@
+name: battle_render_startBlurEffect_804C43C
+address: '0x0804C43C'
+kind: function
+status: confirmed
+summary: Kicks off the battle "blur/afterimage" effect by queueing its GFX to VRAM, resetting the blend/fade
+  state, and running the first blur update.
+interface: (r5, r7, r10 = toolkit, lr) -> r2 r8 r9 set by battle_render_setBlurAndAnimUpdate_804C478;
+  clobbers r0-r3, flags, lr; preserves r4-r9
+details: 'Battle-render helper that starts the blur (afterimage/ghost) effect. Queues an 8-word-aligned
+  GFX transfer of the effect tiles at byte_86A1480 to VRAM 0x600CB00, 0x4C0 bytes, via QueueEightWordAlignedGFXTransfer.
+  The queuer leaves an object pointer in r5 (and r7) as outputs; this function''s r5/r7 inputs are actually
+  dead - they are push/pop-preserved but overwritten by the queuer''s results before use. Then it reads
+  the toolkit''s render-info pointer (oToolkit_RenderInfoPtr) and stores halfword 0x1F82 at +0xA (fade/blend
+  counter reset), and reads the toolkit''s blur-state block pointer (oToolkit_Unk200f3a0_Ptr) writing
+  0x3F to +9 (blend amount, i.e. full strength) and 0x17 (23) to +0xA (frame timer/duration). It stores
+  state value 4 at +0x10 of the object returned by the GFX queuer, and finally tail-calls battle_render_setBlurAndAnimUpdate_804C478
+  with r5 = that object and r7 = the queuer''s r7, leaving that callee''s r2/r8/r9 as its own outputs.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_804C43C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_804C43C
+
+    ./wf verify --function sub_804C43C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_804C43C
+
+    ./wf verify --function sub_804C43C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_804C43C
+
+    ./wf verify --function sub_804C43C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0804c43c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_804C43C -> battle_render_startBlurEffect_804C43C
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- 'exact meaning of the blur-state fields at +9/+0xA of the oToolkit_Unk200f3a0_Ptr block (guesses: blend
+  amount and frame timer)'
+- whether 0x1F82 written to renderInfo+0xA is a fade counter reset or a blend parameter
+- what object the GFX queuer returns in r5 (battle entity? render entry?) and what state 4 means there
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_804C43C

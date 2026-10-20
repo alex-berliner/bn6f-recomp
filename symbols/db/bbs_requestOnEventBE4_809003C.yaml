@@ -1,0 +1,83 @@
+name: bbs_requestOnEventBE4_809003C
+address: '0x0809003C'
+kind: function
+status: confirmed
+summary: Once the BE4 story-event flag is set, plays the mailbox sound, switches the game state to substate
+  3, and raises a BBS request flag; otherwise does nothing.
+interface: void sub_809003C(void)   // reads r10/lr per contract, r3 out (callee residue), r4 preserved,
+  flags clobbered
+details: 'A small hook, likely run each frame or on a scene tick. It tests the global event flag EVENT_BE4
+  (0xBE4 = bank 0x0B, bit 0xE4) via TestEventEventFlagFromImmediate and returns immediately when the flag
+  is clear. When the flag is set it performs a one-shot sequence: plays sound effect 4 through the play-sound
+  helper at 0x0809E306 (the "new mail"/mailbox jingle style id), calls gameState_setUnk09_8001172 with
+  r0=3 to move the game state into substate 3 (the state machine field the mail/BBS flow uses), and calls
+  reqBBS_setFlag_e17b0f7_8140A00 to mark BBS request e17b0f7 as pending/complete. It is not itself guarded
+  by its own latch, so the game must rely on the state change at gameState_setUnk09 or the BE4 flag only
+  becoming set here to avoid repeating the sequence. No structures are touched directly; everything goes
+  through the three callee helpers. Register contract is noisy: r10 is listed as an input but never used
+  in the body, r3 is an output only as residue from reqBBS_setFlag, and r4 is pushed/popped purely to
+  preserve it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-133908);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 97' --file leaves_farm_97.c
+    sub_809003C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_809003C
+
+    ./wf verify --function sub_809003C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-133908-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_809003C
+
+    ./wf verify --function sub_809003C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-133908-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_809003C
+
+    ./wf verify --function sub_809003C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-133908-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809003c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 54e8932
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f fd28ecf3
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_809003C -> bbs_requestOnEventBE4_809003C
+  where: bn6f 4f2b973a
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What game-state substate 3 corresponds to (presumably the BBS/board request display state) - depends
+  on gameState_setUnk09_8001172 semantics
+- Which BBS request ID e17b0f7 names in game terms
+- Whether sound effect 4 is specifically the 'new mail' jingle or a generic notification cue
+- Why r10 is listed as an input when the body never reads it (possibly a caller-side convention)
+sources:
+- tools/wf run convert-20261020-133908
+- recomp 54e8932
+previous_names:
+- sub_809003C
