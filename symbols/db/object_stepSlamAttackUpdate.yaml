@@ -1,0 +1,73 @@
+name: object_stepSlamAttackUpdate
+address: '0x080C1DC4'
+kind: function
+status: probable
+summary: 'Battle-object action: on first run, lunge to a target panel returned by sub_80C1EF4(3) (releasing
+  the old reservation, claiming the new one), start anim 0xC with sound 0xC7 and a 2-magnitude camera
+  shake lasting Timer+0x1E; on Param3==0 path, when Timer hits 0xF replay anim 0xC (CurAnimCopy=0xFF)
+  via sub_80C2000(4)/sub_80C2082(1) and play sound 0x58, then on expiry set CurAction=0x24; if no target
+  is found, set Param3=1, call sub_80C205C, and just count the timer down before the same exit.'
+interface: (r0 unused; r5 = battle object) -> void; sets Timer, PanelX/Y, FuturePanelX/Y, DirectionFlip,
+  CurAnim, CurAction, Param3, CurPhaseAndPhaseInitialized
+details: 'On first run (PhaseInitialized==0) it sets PhaseInitialized=4, Timer=0x1E, releases the object''s
+  old panel reservation, and calls sub_80C1EF4(3), which returns a destination panel (r0=X, r1=Y) and
+  facing (r2). On success it writes the new panel coords, refreshes pixel coords and sprite flip, mirrors
+  them into FuturePanelX/Y, reserves the new panel for the object, sets CurAnim=0xC, triggers sound 0xC7,
+  and starts a camera shake of magnitude 2 lasting Timer+0x1E (60 frames). While Timer counts down it
+  branches on Param3: at Timer==0xF it re-sets CurAnim=0xC, resets the anim-copy byte to 0xFF, calls sub_80C2000(4)/sub_80C2082(1),
+  and plays sound 0x58. When Timer expires it clears Param3, sets CurAction=0x24 and zeroes the phase
+  field to end the action. If sub_80C1EF4(3) fails (no free target panel), it sets Param3=1, calls sub_80C205C,
+  and simply waits out the timer before the same exit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-entry block: object_removePanelReserve then sub_80C1EF4(3) whose r0/r1/r2 are stored
+    to PanelX/PanelY/DirectionFlip, followed by object_setCoordinatesFromPanels and sprite_setFlip; success
+    path re-reserves via object_reservePanel and sets CurAnim=0xC; PlaySoundEffect(0xC7) plus camera_initShakeEffect_80302a8(2,
+    Timer+0x1E) indicates a heavy stomp/slam impact; Timer==0xF branch replays anim 0xC with sound 0x58
+    and sub_80C2000(4)/sub_80C2082(1); exit writes CurAction=0x24 and zeroes CurPhaseAndPhaseInitialized;
+    failure path (sub_80C1EF4==0) sets Param3=1 and calls sub_80C205C'
+  refs:
+  - bn6f/asm/asm31.s:21616
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080C1DC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Most details match the asm (e.g., Timer=0x1E, sub_80C1EF4(3), CurAnim=0xC, sound 0xC7, camera shake
+    mag 2, exit to CurAction=0x24). However: the proposal claims sub_80C1EF4 returns direction in r2,
+    but the asm stores r2 into DirectionFlip immediately after the call (it does return direction). On
+    the Param3==0 path the proposal says sound 0x58 is played; the asm actually does `mov r0,#0x59; add
+    r0,#0xff` which is 0x58. So the summary ''mid-anim replay triggers sound 0x58'' is correct. The branch
+    ''at Timer==0xF it ... calls sub_80C2000(4)/sub_80C2082(1)'' is correct. Main issues: it also calls
+    sub_80C2000(3)/sub_80C2082(0) at start (initial anim setup), which the proposal omits as a meaningful
+    initialization pair. Sound is correctly 0xC7; speaker says ''heavy-impact sound'' is consistent. Overall
+    largely accurate; name is fine.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which boss/enemy this action belongs to and what animation 0xC depicts
+- Exact meaning of sub_80C1EF4's argument 3 (target-selection mode) and what sub_80C2000/sub_80C2082/sub_80C205C
+  configure
+- What action 0x24 is, which would clarify the attack's full sequence
+- 'Most details match the asm (e.g., Timer=0x1E, sub_80C1EF4(3), CurAnim=0xC, sound 0xC7, camera shake
+  mag 2, exit to CurAction=0x24). However: the proposal claims sub_80C1EF4 returns direction in r2, but
+  the asm stores r2 into DirectionFlip immediately after the call (it does return direction). On the Param3==0
+  path the proposal says sound 0x58 is played; the asm actually does `mov r0,#0x59; add r0,#0xff` which
+  is 0x58. So the summary ''mid-anim replay triggers sound 0x58'' is correct. The branch ''at Timer==0xF
+  it ... calls sub_80C2000(4)/sub_80C2082(1)'' is correct. Main issues: it also calls sub_80C2000(3)/sub_80C2082(0)
+  at start (initial anim setup), which the proposal omits as a meaningful initialization pair. Sound is
+  correctly 0xC7; speaker says ''heavy-impact sound'' is consistent. Overall largely accurate; name is
+  fine.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1DC4 -> object_stepSlamAttackUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1DC4

@@ -1,0 +1,68 @@
+name: battle_naviAttackIntroStep
+address: '0x080154C8'
+kind: function
+status: probable
+summary: 'Two-phase navi-chip attack intro: flashes the actor white, loads the navi''s chip-class sprite/anim,
+  queues the summon text, logs in, then after a 10-frame timer marks the action used and signals the strike
+  phase via HitElement=0xc.'
+interface: (r5 = battle object, r7 = AI attack-vars struct) -> void; sets oAIAttackVars_AttackElement
+  to 4 (waiting phase) on entry, then to HitElement 0xc and marks the action used when the timer expires
+details: 'Runs as a two-phase state machine driven by oAIAttackVars (r7). Phase 0: forces the sprite palette
+  white, sets flag 0x14 on RelatedObject2, clears RelatedObject1 and AIData TempAttackObjectPtr, reads
+  the navi''s stats bytes 0x29/0x2c (alliance-aware) and uses them with chip_class_lookup_800FC9E to sprite_load
+  the correct navi sprite and animation, positions the object from panels, sets StepTimer=10, echoes byte
+  0x2c back with the actor info, and if the queued id is 1..0x18 sets the battle text id (navi''s summon
+  line); zeroes byte 0x2c (consumes the queued attack) via sub_8011268, resets RelatedObject2''s anim/param,
+  moves a half-tile forward (delta x 3, negated), animates the custom gauge, plays SFX 0x8d and SOUND_LOG_IN_77,
+  then sets AttackElement=4. Phase 4: decrements StepTimer; when it hits 0 calls battle_beginTurnOpenProcess_80144C0,
+  battleObject_markUsedAction_80143A6, sets PlayerNaviStats field 0x0E |= 0x80, clears invulnerable time,
+  restores the sprite palette, and sets HitElement=0xc for the attack itself.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_forceWhitePalette + later sprite_clearFinalPalette bookend the white-flash intro/outro;
+    chip_class_lookup_800FC9E after reading stats byte 0x29, then sprite_load with 0x80 — selects the
+    navi's chip-class sprite; battle_setObjectTextId_8015B22 only when stats byte 0x2c is 1..0x18 — navi
+    summon dialogue line; PlaySoundEffect(0x8d) and PlaySoundEffect(SOUND_LOG_IN_77) — the navi-chip 'log
+    in' cue; battleObject_markUsedAction_80143A6 + battle_setPlayerNaviStatsField0E_8015BEC(0x80) after
+    StepTimer expires — hands off to the actual attack
+  refs:
+  - bn6f/asm/asm00_2.s:15015
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x080154C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s two-phase state machine: it sets AttackElement=4 (0x08015586) and
+    HitElement=0xc (0x080155C2), flashes white (sprite_forceWhitePalette at 0x080154CA and sprite_clearFinalPalette
+    at 0x080155BE), reads byte 0x2c via SetBattleNaviStatsByte/GetBattleNaviStatsByte (0x080154E2, 0x0801552C/0x08015536),
+    uses chip_class_lookup_800FC9E to load sprite+anim, plays 0x8d and SOUND_LOG_IN_77 (0x08015578/0x0801557E),
+    and calls battleObject_markUsedAction_80143A6 in the wait phase (0x080155A0). Minor inaccuracies:
+    HitElement is stored with strh (halfword), the StepTimer init is 0xa (10), and the prefix ''battle''
+    is more appropriate than leaving the unnamed sub_.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of NaviStats bytes 0x29 and 0x2c (likely element/chip class and queued navi attack id)
+  and what sub_8011384/sub_8011268 do to them
+- Which state machine invokes this (no callers known); presumably an AI-attack dispatcher keyed on oAIAttackVars_AttackElement
+- 'The code matches the proposal''s two-phase state machine: it sets AttackElement=4 (0x08015586) and
+  HitElement=0xc (0x080155C2), flashes white (sprite_forceWhitePalette at 0x080154CA and sprite_clearFinalPalette
+  at 0x080155BE), reads byte 0x2c via SetBattleNaviStatsByte/GetBattleNaviStatsByte (0x080154E2, 0x0801552C/0x08015536),
+  uses chip_class_lookup_800FC9E to load sprite+anim, plays 0x8d and SOUND_LOG_IN_77 (0x08015578/0x0801557E),
+  and calls battleObject_markUsedAction_80143A6 in the wait phase (0x080155A0). Minor inaccuracies: HitElement
+  is stored with strh (halfword), the StepTimer init is 0xa (10), and the prefix ''battle'' is more appropriate
+  than leaving the unnamed sub_.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80154C8 -> battle_naviAttackIntroStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80154C8

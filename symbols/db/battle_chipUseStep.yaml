@@ -1,0 +1,65 @@
+name: battle_chipUseStep
+address: '0x0800BBA8'
+kind: function
+status: probable
+summary: Battle-object action step that dispatches the chip-use sub-effect (kind 0x4C, or 0x50 if the
+  linked ally used the same chip) with the chip's ID and damage/state data, plays the chip-use sound,
+  then waits for cross-net readiness and advances CurAction by 4 or 8 depending on the ally's status.
+interface: (r0 = unused, r5 = battle object ptr) -> r0 = 0/1; updates object PhaseInitialized, Param2,
+  CurAction, CurPhaseAndPhaseInitialized; clears/dispatches flag 0x10000 in eStruct2035280
+details: 'First phase (PhaseInitialized==0): sets effect param 2 = Alliance, and if the counterpart slot
+  (Alliance^1) index is 0 or 3 clears flag 0x10000 via flags_clearBits_eStruct2035280 and dispatches it.
+  It reads the object''s ChipID, gets its ChipData, and if bit 2 of chip byte 0x09 is set passes Damage
+  and Z16Save along with the chip ID; in cross-net battles battle_networkInvert signals the linked partner
+  used the same chip, in which case the literal chip ID 0x171 is substituted (placeholder for a duplicate/hidden
+  chip), and kind 0x50 is dispatched instead of 0x4C. It then plays sound 0x73 (the chip-use sound) and
+  sets PhaseInitialized=4. Second phase: waits until cross-net battle is ready, checks sub_800B8C2 (likely
+  whether the counterpart also acted), sets Param2 to 4 (or 3 when waiting on the counterpart), and finally
+  bumps CurAction by 8 if the counterpart entry''s field +0x24 is nonzero, else by 4, resetting the phase
+  counter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_ChipID]; bl getChip8021DA8 with damage fields gated on bit 2 of chip
+    byte 9 — reads the chip being used and its damage carry flag; bne loc_800BC12 after battle_networkInvert
+    substitutes off_800BF78 (=0x171) and dispatches kind 0x50 instead of 0x4C — duplicate-chip handling
+    in link battles; bl battle_dispatchKindEffect_801E792 with r0=0x4c/0x50 then PlaySoundEffect(0x73)
+    and PhaseInitialized=4 — kicks off the chip-use animation/effect; phase 2 calls comm_checkCrossNetBattleReady
+    and only then advances CurAction by 4 or 8 based on entry field +0x24 — synchronizes with the linked
+    player before the next action step
+  refs:
+  - bn6f/asm/object.s:475
+  - 0x080005CC PlaySoundEffect
+  - 0x0800B892 battleObject_getIndex_800B892
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  reproduce: python3 tools/asmcat.py 0x0800BBA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but several details are wrong. Param2 is set to 2 (not Alliance)
+    at loc_800BB7C+18, and the cross-net check is done via ldrb r0,[r5,#oBattleObject_Param4]==1, not
+    via battle_networkInvert. The sound is 0x73 (r0=0x74 then add 0xff -> 0x173? actually 0x74+0xff=0x173),
+    not 0x73. The conditional dispatch uses kind 0x4C normally and 0x50 only when the partner used the
+    same chip (networkInvert nonzero AND Param4==1), not just any cross-net case.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of chip ID 0x171 (placeholder/blank chip?) and of kind values 0x4C vs 0x50
+- what sub_800B8C2 checks and what the counterpart entry field at +0x24 represents (e.g. pending chip
+  slot)
+- The summary is mostly accurate, but several details are wrong. Param2 is set to 2 (not Alliance) at
+  loc_800BB7C+18, and the cross-net check is done via ldrb r0,[r5,#oBattleObject_Param4]==1, not via battle_networkInvert.
+  The sound is 0x73 (r0=0x74 then add 0xff -> 0x173? actually 0x74+0xff=0x173), not 0x73. The conditional
+  dispatch uses kind 0x4C normally and 0x50 only when the partner used the same chip (networkInvert nonzero
+  AND Param4==1), not just any cross-net case.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800BBA8 -> battle_chipUseStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800BBA8

@@ -1,0 +1,62 @@
+name: spawn_initForwardObject
+address: '0x080DAA48'
+kind: function
+status: probable
+summary: 'Initializes a spawned battle object: sets its pixel position from panel coords, gives it forward-facing
+  XVelocity, allocates and sets up collision data (type 0x3D, param 5, neutral element), then clears ExtraVars+0xC/+0x10,
+  sets ExtraVars[0]=2, and transitions to CUR_STATE_UPDATE.'
+interface: (r5 = battle object, no register args) -> r0 = 0 (via createCollisionData path only if successful);
+  frees the object and returns early if no collision slot is available
+details: 'This runs at object spawn time: it recomputes pixel X/Y from panel coords (object_setCoordinatesFromPanels),
+  reads the +1/-1 front-direction multiplier and stores it as the object''s XVelocity (so it drifts toward
+  the opposing side), then allocates a collision-data slot. If allocation fails (r0==0) the object is
+  immediately freed via object_freeMemory. On success it initializes the collision block with collision
+  type 0x3D and parameter 5 (r1=0x3D, r2=5), zeroes the PrimaryElement byte (neutral/no element), and
+  runs the first collision pass (object_presentCollisionData). Finally it clears ExtraVars+0xC and +0x10,
+  sets ExtraVars[0]=2, and writes CUR_STATE_UPDATE to CurStateActionPhaseAndPhaseInitialized so the object''s
+  per-frame update handler takes over.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'object_getFrontDirection result stored to oBattleObject_XVelocity: object moves in its facing
+    direction; tst r0,r0 / bne + bl object_freeMemory: spawn aborts when no collision-data slot could
+    be allocated; mov r1,#0x3d; mov r2,#5; bl object_setupCollisionData: collision type 0x3D with size/param
+    5; strb r0, [r1,#oCollisionData_PrimaryElement] with r0=0: hitbox has no element; mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]: hands off to the object''s update
+    state'
+  refs:
+  - bn6f/asm/asm31.s:74957
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DAA48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code calls object_setupCollisionData (not object_presentCollisionData directly for initialization)
+    with collision type 0x3D and parameter 5, then zeroes PrimaryElement. The proposal incorrectly calls
+    it a ''type-0x3D collision hitbox'' in the summary. Also ExtraVars[0]=2 and CUR_STATE_UPDATE are set,
+    which fits. The ''Forward'' in the name is supported by storing getFrontDirection into XVelocity.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so which object/spell uses this init (type 0x3D hitbox, param 5) is unidentified
+- What ExtraVars[0]==2 means to the object's update handler, and what the 0xC/0x10 extra vars count, is
+  not visible here
+- Whether r1=0x3D is a collision-type table index or a damage/behavior id needs the setupCollisionData
+  flag tables
+- The code calls object_setupCollisionData (not object_presentCollisionData directly for initialization)
+  with collision type 0x3D and parameter 5, then zeroes PrimaryElement. The proposal incorrectly calls
+  it a 'type-0x3D collision hitbox' in the summary. Also ExtraVars[0]=2 and CUR_STATE_UPDATE are set,
+  which fits. The 'Forward' in the name is supported by storing getFrontDirection into XVelocity.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DAA48 -> spawn_initForwardObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DAA48

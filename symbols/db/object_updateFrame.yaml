@@ -1,0 +1,71 @@
+name: object_updateFrame
+address: '0x080D8CF0'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: returns early (nullsub_10) if battle flag bit 0 is clear;
+  clears bit 0x02 and sets bit 0x04 of oObjectHeader_Flags, drops collision data, then if sub_80D8D7E(0)
+  >= 0 dispatches the CurAction jump table slot, object_updateSprite and object_presentCollisionData;
+  otherwise plays sound 0x6F, calls sub_80D8DEE, clears collision region, and writes CUR_STATE_DESTROY.'
+interface: (r0-r3 args unused here; r5 = pointer to the object's header/oBattleObject struct) -> r0 =
+  destroyed/updated object state via struct fields; no meaningful return value
+details: First it tests bit 0 of the battle state flags (oBattleState_Unk_32) and does nothing (nullsub_10)
+  if that bit is clear, so updates only run while that battle condition holds. It then clears bit 0x04
+  and sets bit 0x02 of oObjectHeader_Flags, calls object_removeCollisionData to drop stale per-frame collision
+  info, and, unless the battle is over, calls sub_80D8D7E(0); if that returns non-negative, it dispatches
+  oBattleObject_CurAction through a jump table (which currently holds only nullsub_97), then runs object_updateSprite
+  and object_presentCollisionData. If the battle is over or sub_80D8D7E returns negative, it plays sound
+  effect 0x6F, calls sub_80D8DEE, clears the object's collision region, and stores CUR_STATE_DESTROY into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized, i.e. the object is torn down. The r5-based struct
+  is the standard battle object header (oObjectHeader_Flags, oBattleObject_CurAction, oBattleObject_CurStateActionPhaseAndPhaseInitialized),
+  set up by the caller sub_80D8C7C.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r1 on battle_getFlags bit 0 with nullsub_10 fallback: no-op guard on a battle state
+    flag; bic/orr of 0x04/0x02 on [r5,oObjectHeader_Flags] then object_removeCollisionData: per-frame
+    state/collision refresh; ldr r1,[r1,r0] off off_80D8D54 indexed by oBattleObject_CurAction: action-handler
+    dispatch table; bl object_updateSprite / object_presentCollisionData after dispatch: normal frame
+    update path; PlaySoundEffect(0x6F) + object_clearCollisionRegion + CUR_STATE_DESTROY store: teardown
+    path when battle over or sub_80D8D7E < 0'
+  refs:
+  - bn6f/asm/asm31.s:70957
+  - 0x080D8C7C sub_80D8C7C
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A2F0 battle_getFlags
+  - 0x0800A18E battle_isBattleOver
+  reproduce: python3 tools/asmcat.py 0x080D8CF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary fit the dispatch/destroy flow and use of oObjectHeader_Flags, oBattleObject_CurAction,
+    and oBattleObject_CurStateActionPhaseAndPhaseInitialized match the code. However, the proposal incorrectly
+    states ''clears bit 0x04 and sets bit 0x02'' — the asm actually clears bit 0x02 and sets bit 0x04
+    (bic r0,#4 then orr r0,#2; bits 2 and 4 are swapped). Also ''object_removeCollisionData'' is listed
+    in callees but actually called in code (the summary says ''call object_removeCollisionData'' while
+    callees list is missing it); and the destroy path is gated only by sub_80D8D7E<0, not by battle_isBattleOver
+    condition as the prose implies.; run wf investigate investigate-20261018-223614; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80D8D7E(0) checks (its negative return triggers the destroy path) — a caller or its body would
+  show whether it is an offscreen, timer, or HP test
+- What sub_80D8DEE does during teardown (despawn helpers? child-object cleanup?)
+- 'Which object type uses this: the jump table has a single nullsub entry, so the object''s real behavior
+  is not visible here'
+- The name and summary fit the dispatch/destroy flow and use of oObjectHeader_Flags, oBattleObject_CurAction,
+  and oBattleObject_CurStateActionPhaseAndPhaseInitialized match the code. However, the proposal incorrectly
+  states 'clears bit 0x04 and sets bit 0x02' — the asm actually clears bit 0x02 and sets bit 0x04 (bic
+  r0,#4 then orr r0,#2; bits 2 and 4 are swapped). Also 'object_removeCollisionData' is listed in callees
+  but actually called in code (the summary says 'call object_removeCollisionData' while callees list is
+  missing it); and the destroy path is gated only by sub_80D8D7E<0, not by battle_isBattleOver condition
+  as the prose implies.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8CF0 -> object_updateFrame
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8CF0

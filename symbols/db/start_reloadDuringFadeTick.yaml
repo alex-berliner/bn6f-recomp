@@ -1,0 +1,68 @@
+name: start_reloadDuringFadeTick
+address: '0x0800572C'
+kind: function
+status: probable
+summary: Per-tick handler that runs the normal overworld frame pipeline (PET dispatcher, scenario effect
+  jumptable, object dispatch, sprite flush/palette, map object render, NPC draws, sprite queueing, armed
+  callback) and, once a screen fade becomes active, tears the scene down (frees all objects of types 0x21,
+  clears the 16 overworld NPC state words, resets all graphics, re-runs setup step, reinitializes fade/effect/extra-toolkit
+  state, reloads current navi's stat boosts) then writes 0x3C as the next main jumptable index.
+interface: (r0 unused; fetches GameState via oToolkit_GameStatePtr) -> r0 = 0 discarded; writes 0x3C to
+  *oToolkit_MainJumptablePtr, clears all object type 0x21, reinitializes graphics/scenario/NPC state
+details: 'Each tick it first runs the normal frame pipeline: PET menu scene dispatcher, scenario effect-state
+  jumptable, object dispatch by type, sprite flush/palette setup, overworld map object render, NPC sprite
+  draws and sprite group queueing. It then checks IsScreenFadeActive; while no fade is in progress it
+  returns immediately. Once a fade is running, it performs a full scene reload: runs the armed event callback,
+  frees all objects of type 0x21, clears the 16 NPC state words, resets all graphics state, runs the setup
+  step/clears the work area, reinitializes battle fade GFX, scenario effect state and extra toolkit pointers,
+  and reloads the current navi''s stat boosts. Finally it reads the GameState pointer and writes 0x3C
+  as the next main jumptable index, handing control to the follow-up transition state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret_800579E gates the whole teardown on an active screen fade;
+    bl FreeAllObjectsOfSpecifiedTypes with r0=0x21 followed by npc_clearOverworldNpcStateWord and resetAllGraphicsState
+    is a full scene teardown; scenario_initEffectState, zeroFill_8003AB2 and RandomizeExtraToolkitPointers
+    rebuild the game-state helper structures after the clear; strb #0x3C into *oToolkit_MainJumptablePtr
+    switches to the next main-loop state at the end of the reload; the leading block (dispatch_80339CC,
+    object_dispatchByType, sprite/owMapObject draw calls) is the standard per-frame scene render pipeline'
+  refs:
+  - bn6f/asm/asm00_1.s:5117
+  - 0x08006C22 RandomizeExtraToolkitPointers
+  - 0x080339CC dispatch_80339CC
+  - 0x080024AE event_runArmedCallback_80024AE
+  reproduce: python3 tools/asmcat.py 0x0800572C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s flow: it runs the per-frame pipeline (PET dispatcher, scenario
+    jumptable, object dispatch, sprite flush/palette, owMap render, NPC draws, sprite queueing, armed
+    callback), then checks IsScreenFadeActive; on fade active it frees objects 0x21 via FreeAllObjectsOfSpecifiedTypes
+    (not ''clear all object type 0x21'' as worded), clears NPC state, resets graphics, reinitializes scenario/effect
+    state, randomizes extra toolkit pointers, reloads navi stat boosts, and writes 0x3C to the main jumptable.
+    The name ''gameState_reloadDuringScreenFadeTick'' is reasonable but could better follow the naming
+    convention; a more conventional prefix-based name would be start_reloadDuringFadeTick or clear_fadeReloadTick.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no caller is known, so which game state / transition (map change, story event, ...) selects this routine
+  is unconfirmed
+- what main jumptable state 0x3C does afterwards (e.g. fade-in or new area load) is not shown here
+- 'The code matches the proposal''s flow: it runs the per-frame pipeline (PET dispatcher, scenario jumptable,
+  object dispatch, sprite flush/palette, owMap render, NPC draws, sprite queueing, armed callback), then
+  checks IsScreenFadeActive; on fade active it frees objects 0x21 via FreeAllObjectsOfSpecifiedTypes (not
+  ''clear all object type 0x21'' as worded), clears NPC state, resets graphics, reinitializes scenario/effect
+  state, randomizes extra toolkit pointers, reloads navi stat boosts, and writes 0x3C to the main jumptable.
+  The name ''gameState_reloadDuringScreenFadeTick'' is reasonable but could better follow the naming convention;
+  a more conventional prefix-based name would be start_reloadDuringFadeTick or clear_fadeReloadTick.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800572C -> start_reloadDuringFadeTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800572C

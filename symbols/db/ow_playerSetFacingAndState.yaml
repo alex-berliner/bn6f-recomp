@@ -1,0 +1,63 @@
+name: ow_playerSetFacingAndState
+address: '0x0809D92C'
+kind: function
+status: probable
+summary: 'Overworld player object: remap direction counter (≤3→+4) to select from an 8-entry table of
+  facing byte + two word fields, apply the facing byte to AnimationSelect/FacingDirection/Unk_11, copy
+  the two words to Unk_38/Unk_3C, set ActionSubState=4, and set Unk_5C=1.'
+interface: (r0 = scratch, r5 = oOWPlayerObject) -> r0 = 1; writes fields 0x0B, 0x0D, 0x11, 0x38, 0x3C,
+  0x5C, 0x66 of the player object; no flags meaningful
+details: 'Reads the counter at [r5+0x64]; if it is <=3 it is remapped to 4..7 (i.e. the low half of the
+  range is offset by 4), otherwise kept, and the result is stored at [r5+0x66] as the current facing/animation
+  index. That index (0..7) is used to index a table of 12-byte entries loaded via the pointer at off_809D9DC:
+  the byte at +0 becomes both AnimationSelect (0x0B) and FacingDirection (0x0D, also copied to Unk_11),
+  and the two words at +4/+8 go to object fields 0x38/0x3C. It then sets ActionSubState (0x0F?) byte 4
+  and stores 1 at [r5+0x5C], likely an animation-frames-left or busy flag. The 8-entry table with an anim
+  byte plus two words per entry looks like per-direction animation + movement/offset data, and the 0..3
+  -> 4..7 mapping suggests a second variant (e.g. running vs walking) of the same four directions.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#3 / bgt / add r0,#4 then strh to [r5,#0x66]: direction counter remapped and stored
+    as table index; lsl r1,r0,#3; lsl r0,r0,#2; add: 12-byte table stride selected by the stored index;
+    ldrb [r7] stored to both AnimationSelect and FacingDirection: entry byte is the facing animation id;
+    ldr [r7,#4]/[r7,#8] -> fields oOWPlayerObject_Unk_38/3C: per-direction word pair copied into the player
+    object; runs on recorded beastsp/maps routes and touches only oOWPlayerObject fields: overworld player
+    update code'
+  refs:
+  - bn6f/asm/ow_player.s:1065
+  reproduce: python3 tools/asmcat.py 0x0809D92C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: counter at 0x64 is remapped (≤3 → +4), stored at 0x66, used to index
+    a 12-byte table (lsl*3 + lsl*2 = *12), entries written to 0x38/0x3C/0x0B/0x0D/0x11, then ActionSubState=4
+    and 0x5C=1. However, ''applyFacingAnim'' misnames it: the table entry holds the facing byte AND movement
+    data (words at +4/+8), and substate=4 likely means idle/stand, not just facing. Also r0 is scratch
+    (not returned meaningfully); the summary saying ''r0=1'' is misleading since only the byte 1 is stored
+    to 0x5C.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+- maps
+open_questions:
+- Contents of the table at off_809D9DC (which animation ids and what the 0x38/0x3C words mean) are unknown
+- No caller captured, so what increments [r5+0x64] and when this runs (e.g. on direction change) is unconfirmed
+- Meaning of the byte written to [r5+0x5C] is unverified
+- 'The code matches the proposal: counter at 0x64 is remapped (≤3 → +4), stored at 0x66, used to index
+  a 12-byte table (lsl*3 + lsl*2 = *12), entries written to 0x38/0x3C/0x0B/0x0D/0x11, then ActionSubState=4
+  and 0x5C=1. However, ''applyFacingAnim'' misnames it: the table entry holds the facing byte AND movement
+  data (words at +4/+8), and substate=4 likely means idle/stand, not just facing. Also r0 is scratch (not
+  returned meaningfully); the summary saying ''r0=1'' is misleading since only the byte 1 is stored to
+  0x5C.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809D92C -> ow_playerSetFacingAndState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D92C

@@ -1,0 +1,63 @@
+name: ow_initCreditsOverworld
+address: '0x081387D8'
+kind: function
+status: probable
+summary: 'Prepares the engine for the credits overworld scene: zeroes GameState+0x20, runs the full overworld
+  reset chain, decompresses coord event 2 data, initializes the field camera for map group 0xD0 / map
+  0 at (0,0,0), clears effect/scenario state and event-flag ranges at 0x2DE/0x2C8, force-ends any active
+  cutscene, clears stale script positions and pending battle state for event 0x1708, then frees all type-0x25
+  objects.'
+interface: () -> r0 = FreeAllObjectsOfSpecifiedTypes result; clears GameState field at +0x20 and many
+  engine work areas
+details: Nulls the toolkit's GameState pointer, then runs the full overworld scene reset chain (resetOverworldScene,
+  graphics reset, work-area clear, copy/setup helpers). It loads coordinate event data for EVENT_2 and
+  initializes the camera for map group 0xD0 map 0 at position (0,0,0), snapping it via camera_writeUnk03_14
+  and SetCameraXYZ. It then wipes effect/scenario state, clears event-flag ranges at 0x2DE and 0x2C8,
+  force-ends any running cutscene, clears stale script positions, and clears pending battle state for
+  event 0x1708. Finally it frees all objects of type 0x25. This is a 'clean slate' entry into the credits
+  overworld (map group 0xD0), not a per-frame update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl resetOverworldScene_800260C / resetAllGraphicsState_8005F40 / runSetupStepAndClearWorkArea_8005F6C
+    — full engine scene reset sequence; camera_init_802FF4C called with r3=0xD0, r4=0 — camera initialized
+    for map group 0xD0 (credits map) at origin; bl cutscene_forceEndCurrent_8036EFE + clearCutsceneScriptPosIfMagicValue0x1
+    + clearBattleStateIfEvent1708Pending — teardown of leftover cutscene/battle state; eventflags_ClearTwoHalfwordsAt2DE
+    / ClearRangeAt2C8 — clears event-flag ranges during init; sole caller playCreditsScene_81382D0 — runs
+    only as part of the credits scene setup
+  refs:
+  - bn6f/asm/asm36.s:17829
+  - 0x081382D0 playCreditsScene_81382D0
+  - 0x080301DC SetCameraXYZ
+  - 0x0802FF4C camera_init_802FF4C
+  - 0x080301B2 camera_writeUnk03_14_80301b2
+  reproduce: python3 tools/asmcat.py 0x081387D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal''s described actions (clears GameState+0x20, runs resetOverworldScene/graphics/work
+    helpers, decompresses coord data for EVENT_2, camera_init at map group 0xD0 map 0, force-ends cutscene,
+    clears ranges at 0x2DE/0x2C8, frees type 0x25). However, camera_writeUnk03_14 is called before SetCameraXYZ
+    (opposite order claimed), and the function is a credits-scene entry helper, not the credits scene
+    itself. A better name reflecting this ''prepare/enter the credits overworld'' role is clearer.; run
+    wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Whether map group 0xD0 is specifically the credits map or a generic dummy group
+- What object type 0x25 covers (FreeAllObjectsOfSpecifiedTypes argument)
+- The assembly matches the proposal's described actions (clears GameState+0x20, runs resetOverworldScene/graphics/work
+  helpers, decompresses coord data for EVENT_2, camera_init at map group 0xD0 map 0, force-ends cutscene,
+  clears ranges at 0x2DE/0x2C8, frees type 0x25). However, camera_writeUnk03_14 is called before SetCameraXYZ
+  (opposite order claimed), and the function is a credits-scene entry helper, not the credits scene itself.
+  A better name reflecting this 'prepare/enter the credits overworld' role is clearer.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81387D8 -> ow_initCreditsOverworld
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81387D8

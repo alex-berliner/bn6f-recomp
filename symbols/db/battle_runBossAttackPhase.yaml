@@ -1,0 +1,69 @@
+name: battle_runBossAttackPhase
+address: '0x080BDFA6'
+kind: function
+status: probable
+summary: 'Per-frame handler for a boss attack phase: sets anim 5, plays sound 0xB0, temporarily rewrites
+  related-object AI identity to spawn a temp attack object, then at Timer==10 selects one of two attack
+  variants via ExtraVars byte 7, spawns an effect and an element-based dimming collision region on the
+  front panel, triggers camera shake, and spawns an extra-vars object before transitioning to phase 0x10
+  at Timer>0x32.'
+interface: (r5 = battle object) -> void; object Timer and CurPhaseAndPhaseInitialized updated
+details: On first run (PhaseInitialized clear) it sets CurAnim=5, plays sound 0xB0, saves the related
+  object's actorType/AIIndex to bytes 0x74/0x75, temporarily rewrites them to (2,0), builds a composed
+  ID from battle_getSpecialActorSlotIfAiMatches/battle_getNaviIdFromActor/sub_80EBB34 and spawns a temp
+  attack object via spawn_t1_0x5_tempAttackObject_80B8E30, then restores the saved identity. At Timer==10
+  it chooses one of two parameter sets (0x18/0x405ff01/0x19 vs 0x36/0x405ff13/0x23) depending on ExtraVars
+  byte 7, spawns an effect object at the panel in front via object_getCoordinatesForPanels, spawns an
+  object_spawnDimmingCollisionRegion using the object's Element, triggers camera_initShakeEffect, and
+  spawns battle_spawnExtraVarsObject. The phase runs until Timer passes 0x32, then writes phase 0x10.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init block: strb #5 CurAnim, PlaySoundEffect(0xB0), save/restore oAIData_ActorType+AIIndex
+    around spawn_t1_0x5_tempAttackObject_80B8E30; Timer==10 branch: object_getFrontDirection+object_getCoordinatesForPanels
+    feed spawn_t1_0x0_EffectObject, then object_spawnDimmingCollisionRegion with Element (r2); same branch
+    calls camera_initShakeEffect_80302a8 with args from the chosen constant set and battle_spawnExtraVarsObject;
+    two param sets (0x405ff01/0x11e00 vs 0x405ff13/0x12800) selected by ExtraVars+7 nonzero, indicating
+    two variants of the attack; tail: Timer counts to 0x32 then writes 0x10 to CurPhaseAndPhaseInitialized,
+    ending the phase'
+  refs:
+  - bn6f/asm/asm31.s:12842
+  - 0x080005CC PlaySoundEffect
+  - 0x080EBAE8 battle_getNaviIdFromActor
+  - 0x080EBB78 battle_getSpecialActorSlotIfAiMatches_80EBB78
+  reproduce: python3 tools/asmcat.py 0x080BDFA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal captures the major elements correctly: first-frame anim/sound setup with temporary
+    AI identity swap to call spawn_t1_0x5_tempAttackObject, the Timer==10 branch choosing between two
+    parameter sets based on ExtraVars byte 7, spawning an effect at the front panel, calling object_spawnDimmingCollisionRegion
+    with Element, camera_initShakeEffect, and battle_spawnExtraVarsObject, then ending at Timer>0x32 with
+    phase 0x10. However, the name ''battle_runDimmingElementAttackPhase'' overemphasizes one aspect (dimming);
+    the function is more generally a boss attack-phase driver that among other things spawns a dimming
+    collision region. A more neutral name fits better.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which boss/attack this is (AI index 0x12 slot 0xC target and the two parameter sets) — caller context
+  or attack table data would confirm
+- What sub_80EBB34 (an uncalled-known callee composing the attack ID) returns
+- Exact meaning of the ExtraVars byte 7 that selects the variant (e.g. beast form vs powered state)
+- 'The proposal captures the major elements correctly: first-frame anim/sound setup with temporary AI
+  identity swap to call spawn_t1_0x5_tempAttackObject, the Timer==10 branch choosing between two parameter
+  sets based on ExtraVars byte 7, spawning an effect at the front panel, calling object_spawnDimmingCollisionRegion
+  with Element, camera_initShakeEffect, and battle_spawnExtraVarsObject, then ending at Timer>0x32 with
+  phase 0x10. However, the name ''battle_runDimmingElementAttackPhase'' overemphasizes one aspect (dimming);
+  the function is more generally a boss attack-phase driver that among other things spawns a dimming collision
+  region. A more neutral name fits better.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BDFA6 -> battle_runBossAttackPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDFA6

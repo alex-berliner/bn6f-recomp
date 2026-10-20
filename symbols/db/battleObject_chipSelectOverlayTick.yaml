@@ -1,0 +1,62 @@
+name: battleObject_chipSelectOverlayTick
+address: '0x08026D06'
+kind: function
+status: probable
+summary: Per-frame state machine (states 0/1/2) for the chip-select object that opens a 15x20 tile overlay
+  in tile block 3, holds while polling joypad/L+R swap, then closes by restoring background tiles and
+  finalizing the parent state.
+interface: '(self: *S20364C0 in r5, toolkit in r10) -> void; advances self+0x02 substate (0=enter, 1=wait,
+  2=close) and writes self+0x01=4 on close; preserves r4-r5'
+details: 'A three-state machine keyed on the byte at self+0x02. On entry it writes the render-info halfword
+  at +0x18 = 0x78, sets the Navi status GFX index to 0 via battle_setNaviStatusGfx, dispatches event 0x2000
+  through dispatch_801DACC, draws a 15x20 block of tiles into tile block 3 via the call_sub_3005EBA wrapper,
+  and plays the cursor-move sound. In the wait state it polls the joypad: any pressed key, or a non-0xFF
+  result from battleObject_computePuppeteerSwitchElement (L+R element-swap check), advances to close.
+  The close state restores GFX index 0x78, copies the background tiles back from unk_2035000 with CopyBackgroundTiles,
+  runs battleObject_chipSelectAnimTick, plays the cursor sound, dispatches 0x2000 via dispatch_801DA48,
+  and finally sets the parent state byte self+0x01 to 4 and clears the substate.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: State dispatch on ldrb r0,[r5,#2] with branches for 0, 2, and default (sub_8026D06 lines 4-8);
+    Enter state writes r3+0x18=0x78, calls battle_setNaviStatusGfx(0), dispatch_801DACC(0x2000) and PlaySoundEffect(SOUND_CUR_MOVE);
+    Wait state reads oJoypad_Pressed and calls battleObject_computePuppeteerSwitchElement, closing on
+    any input or element != 0xFF; Close state calls CopyBackgroundTiles with tile_ids = unk_2035000 and
+    battleObject_chipSelectAnimTick(self), then sets [r5,#1]=4 and [r5,#2]=0; Both helper calls (setNaviStatusGfx,
+    chipSelectAnimTick) operate on the same S20364C0 self, tying this to the chip-select object
+  refs:
+  - bn6f/asm/asm03_0.s:1213
+  - 0x080005CC PlaySoundEffect
+  - 0x08029C08 battleObject_chipSelectAnimTick_8029C08
+  - 0x0802A220 battleObject_computePuppeteerSwitchElement_802A220
+  reproduce: python3 tools/asmcat.py 0x08026D06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary conflates the ''close transition'' code at loc_8026D5C with the ''finalize'' block at
+    loc_8026D9A. State 0 dispatches via dispatch_801DACC, while the close path dispatches via dispatch_801DA48
+    only conditionally on BattleStatePtr[7]==1 (lines dispatching 0x2000). CopyBackgroundTiles, battle_setNaviStatusGfx(0x78),
+    and battleObject_chipSelectAnimTick all run in the state-1→2 transition, not the loc_8026D9A block.
+    The name is acceptable.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What overlay/menu exactly this represents (the semantic meaning of the 0x2000 dispatch and the 0x78
+  GFX index is unconfirmed)
+- What unk_2035000 contains (default battle background tile map vs. a specific overlay tilemap)
+- No callers known, so the parent state machine that invokes it with self in r5 is unidentified
+- The summary conflates the 'close transition' code at loc_8026D5C with the 'finalize' block at loc_8026D9A.
+  State 0 dispatches via dispatch_801DACC, while the close path dispatches via dispatch_801DA48 only conditionally
+  on BattleStatePtr[7]==1 (lines dispatching 0x2000). CopyBackgroundTiles, battle_setNaviStatusGfx(0x78),
+  and battleObject_chipSelectAnimTick all run in the state-1→2 transition, not the loc_8026D9A block.
+  The name is acceptable.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8026D06 -> battleObject_chipSelectOverlayTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8026D06

@@ -1,0 +1,68 @@
+name: battle_initScene
+address: '0x08039A58'
+kind: function
+status: probable
+summary: 'Battle scene initialization: configures DISPCNT (0x1F40), clears render-info counters, applies
+  overlay palette 0x12, reinitializes chatbox, resets eStruct record array and spawns type-9 records from
+  byte_8039390, runs setup routines sub_803C40C/sub_803C1A8/sub_803C320/sub_803C26A, and stores 4 at [r5,#1].'
+interface: () -> void; r5 must already point to a state struct whose byte at +1 receives 4
+details: Writes DISPCNT value 0x1F40 via SetRenderInfoLCDControl, clears the toolkit render-info counters
+  (renderInfo_8001788/_80017A0), and applies overlay palette slot 0x12. It then copies data (copyData_803B2E4),
+  reinitializes chatbox state, calls sub_803BE30 with arg 2, and resets the battle overlay scene record
+  array (eStructArr2008450) before spawning type-9 records from the 0xFF-terminated table at byte_8039390.
+  Calls sub_803C40C and three sub_803Cxxx setup routines (sub_803C1A8 gets four pointers formed by adding
+  r5 to 0xF0, 0x30, 0x100, 0x90 — presumably sub-blocks of the state struct), finally storing 4 at [r5,#1]
+  as the next scene/state step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl SetRenderInfoLCDControl with dword_8039AB0=0x1F40 sets the frame's LCD control; bl battle_resetEStructRecords_8046664
+    then battle_spawnEStructRecordsFromTable_80465A0 with off_8039AB4=byte_8039390 rebuilds the battle-overlay
+    record array; mov r3/r0/r1/r2 patterns adding r5 to fixed offsets then bl sub_803C1A8 show sub-struct
+    setup relative to a scene state base; strb r0(=4), [r5,#1] at the end stores the next state/step value
+    into the caller's struct; sequence of render/chatbox/palette resets matches a screen-state init rather
+    than a per-frame tick
+  refs:
+  - bn6f/asm/asm03_1_1.s:1936
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x08039A58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed summary: it sets DISPCNT 0x1F40 via SetRenderInfoLCDControl, clears
+    render-info counters, applies overlay palette 0x12, copies data, resets chatbox, calls sub_803BE30
+    with r0=2, resets eStruct records, spawns type-9 records from byte_8039390, calls sub_803C40C, sub_803C1A8
+    (with r5+0xF0/0x30/0x100/0x90 — note r2 is 0x80<<1 = 0x100, not 0xF0 as in some patterns), sub_803C320,
+    sub_803C26A, then writes 4 to [r5,#1]. However, r5 is not set in the function itself, so the interface
+    claim ''r5 must already point to a state struct'' is an assumption from callers (none known); the
+    function itself just uses r5 without preserving/loading it. The name ''reinitSceneState'' is reasonable
+    but ''init'' is a permitted prefix and fits the ''sets state byte to 4'' pattern better as an initialization
+    step.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- identity of the state struct at r5 (whose callers pass it in) — no callers are known, so the exact scene/trigger
+  this belongs to is unknown
+- roles of copyData_803B2E4, sub_803BE30(2), sub_803C40C, sub_803C1A8/320/26A are inferred only from call
+  order
+- meaning of the state value 4 stored at [r5,#1]
+- 'The code matches the proposed summary: it sets DISPCNT 0x1F40 via SetRenderInfoLCDControl, clears render-info
+  counters, applies overlay palette 0x12, copies data, resets chatbox, calls sub_803BE30 with r0=2, resets
+  eStruct records, spawns type-9 records from byte_8039390, calls sub_803C40C, sub_803C1A8 (with r5+0xF0/0x30/0x100/0x90
+  — note r2 is 0x80<<1 = 0x100, not 0xF0 as in some patterns), sub_803C320, sub_803C26A, then writes 4
+  to [r5,#1]. However, r5 is not set in the function itself, so the interface claim ''r5 must already
+  point to a state struct'' is an assumption from callers (none known); the function itself just uses
+  r5 without preserving/loading it. The name ''reinitSceneState'' is reasonable but ''init'' is a permitted
+  prefix and fits the ''sets state byte to 4'' pattern better as an initialization step.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8039A58 -> battle_initScene
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039A58

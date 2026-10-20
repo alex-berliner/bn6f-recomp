@@ -1,0 +1,70 @@
+name: screens3_initScreen
+address: '0x0812A424'
+kind: function
+status: probable
+summary: 'Deferred screens3 screen (re)initialization: gated on the fade being active and a flag at 0x200BC50+5
+  being clear; it toggles sub_811B010 0/1, rebuilds the battle scene, draws the screens3 background tiles,
+  DMA-loads one entity''s GFX slot, sets r5+1=8, zero-fills 0x10 bytes at unk_20251A0, clears r5+0x1c/0x1e,
+  picks a function based on r5+0xe to store a byte at r5+2, spawns eStruct records from byte_8129150,
+  then calls SetScreenFade(8,0x10).'
+interface: (r5 = screen/scene state struct) -> void; returns early if flag at 0x200BC50 bit 5 is set or
+  no screen fade is active
+details: 'Runs only while a screen fade is in progress: it first calls sub_811B010 with 0 then 1 (likely
+  toggling display layers or sprite/scene visibility), then battle_initScene_8129248 to clear VRAM/GFX
+  and re-prime the render-info block, screens3_loadBackgroundTiles to write a 30x20 tilemap plus text
+  panels, and loadEntityJumpOffset00Gfx_812B530 to DMA one entity''s 0x100-byte GFX slot. It sets state
+  r5+1 = 8, zero-fills 0x40 bytes at unk_20251A0, and clears r5+0x1c/0x1e. Depending on the flag at r5+0xe
+  it calls sub_81325F4 or sub_81325E4 (variant-dependent lookup, e.g. player/version dependent value)
+  and stores the result at r5+2 with r5+3 = 0. Finally it spawns eStruct records from the 0xFF-terminated
+  table at byte_8129150 via battle_spawnEStructRecordsFromTable_80465A0 and kicks off SetScreenFade(8,
+  0x10).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_812A424+0x8: bne locret after test0x200bc50_0x5 and beq after IsScreenFadeActive — body
+    only runs during an active fade; calls battle_initScene_8129248 then screens3_loadBackgroundTiles:
+    scene rebuild plus menu-style 30x20 background setup; ldr r0, =unk_20251A0; mov r1, #0x10; bl ZeroFillByWord
+    — clears a 0x40-byte work buffer; ldrb r0,[r5,#0xe] selects sub_81325F4 vs sub_81325E4, result stored
+    to r5+2 — variant-dependent value selection; ldr r0, =byte_8129150; bl battle_spawnEStructRecordsFromTable_80465A0
+    then SetScreenFade(8, 0x10) — table-driven entity spawn then fade-out trigger'
+  refs:
+  - bn6f/asm/asm33.s:14873
+  - 0x080008E0 ZeroFillByWord
+  - 0x08129248 battle_initScene_8129248
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x0812A424
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the fade-gated behavior, the calls to sub_811B010(0)/sub_811B010(1),
+    battle_initScene, screens3_loadBackgroundTiles, loadEntityJumpOffset00Gfx, ZeroFillByWord of unk_20251A0,
+    and the eStruct spawn from byte_8129150 followed by SetScreenFade(8,0x10). The interface description
+    is also accurate: early return on test0x200bc50_0x5 != 0 or IsScreenFadeActive == 0, with r5 as the
+    screen state struct. However, the proposed name ''screens3_initScreen'' is reasonable but the ZeroFill
+    is 0x10 bytes (not 0x40), which the summary incorrectly states; the size byte is clear at ''mov r1,
+    #0x10''. Minor wording fix only.; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'Which screen/scene this is: no callers known, so the game context (which menu or mode enters this state)
+  is unverified'
+- Contents of byte_8129150 (the eStruct spawn table) and what entities it places
+- Meaning of the state byte r5+1 = 8 and the r5+2 value from sub_81325F4/sub_81325E4
+- What sub_811B010(0)/(1) toggles exactly
+- 'The summary correctly captures the fade-gated behavior, the calls to sub_811B010(0)/sub_811B010(1),
+  battle_initScene, screens3_loadBackgroundTiles, loadEntityJumpOffset00Gfx, ZeroFillByWord of unk_20251A0,
+  and the eStruct spawn from byte_8129150 followed by SetScreenFade(8,0x10). The interface description
+  is also accurate: early return on test0x200bc50_0x5 != 0 or IsScreenFadeActive == 0, with r5 as the
+  screen state struct. However, the proposed name ''screens3_initScreen'' is reasonable but the ZeroFill
+  is 0x10 bytes (not 0x40), which the summary incorrectly states; the size byte is clear at ''mov r1,
+  #0x10''. Minor wording fix only.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A424 -> screens3_initScreen
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A424

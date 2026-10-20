@@ -1,0 +1,66 @@
+name: spawn_battleObjectVariant
+address: '0x080DE430'
+kind: function
+status: probable
+summary: Spawns a per-variant battle object (sprite 0x80/4/0x10, no shadow, anim 2, palette Param1*3),
+  places it on its panel with Z16-=0x24, allocates collision data from byte_80DE4C8 and hit-effect from
+  byte_80DE4DC, calls object_presentCollisionData plus three sub_ helpers, plays sound 0xF7, sets CUR_STATE_UPDATE,
+  and tail-jumps to sub_80DE4EC.
+interface: (r5 = battle object header, oBattleObject_Param1 = variant 0-3) -> r0 = destroyed; object left
+  in CUR_STATE_UPDATE state
+details: r5 points to an already-allocated battle object; the routine loads sprite resource (0x80,4,0x10),
+  disables its shadow, sets flag bit 1 and animation 2, then picks palette Param1*3 (variants 0,3,6,9),
+  applies the object's facing flip, and places it via object_setCoordinatesFromPanels, lowering Z16 by
+  0x24 (sunk into/below the panel). It allocates collision data, failing the whole spawn (object_freeMemory)
+  if none is free, then object_setupCollisionData with size 4x5 and table byte_80DE4C8 (all entries 3)
+  and object_setCollisionHitEffect from byte_80DE4DC = hit effects 1,3,2,4 per variant. It then calls
+  three local helpers (sub_80DE67E, sub_80DE7C8, sub_80DE70C(1)), plays sound 0xF7, and stores CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized before jumping to sub_80DE4EC, the state handler.
+  The four variants differing only in palette and hit effect suggest a recolorable obstacle/attack object;
+  its exact identity is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#oBattleObject_Param1]; mul r0,r1 r0=3; bl sprite_setPalette — per-variant palettes
+    0/3/6/9; ldr r3,[r2,r1] off byte_80DE4C8 / byte_80DE4DC indexed by Param1 — variant tables for collision
+    type and hit effect 1/3/2/4; tst r0,r0 / bne ... bl object_freeMemory after object_createCollisionData
+    — aborts spawn if no collision slot; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#...]; bl sub_80DE4EC —
+    hands off to the object's per-frame update handler; bl PlaySoundEffect with r0=0xF7 after sub_80DE70C(1)
+    — spawn sound
+  refs:
+  - bn6f/asm/asm31.s:82680
+  - 0x080005CC PlaySoundEffect
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080DE430
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Most details fit: sprite load (0x80,4,0x10), shadow off, flag bit 1, anim 2, palette Param1*3, Z16-=0x24,
+    collision via tables at byte_80DE4C8 (1,3,2,4 as pack params) and byte_80DE4DC, sound 0xF7, then CUR_STATE_UPDATE
+    and tail-call to sub_80DE4EC. The failure path is object_freeMemory then POP {PC} (not object_freeMemory
+    alone), and object_presentCollisionData is called before the three sub_ helpers, not after. The name
+    prefix should be ''object'' or ''spawn''.; run wf investigate investigate-20261018-222121; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which game entity/attack this initializes — needs the spawn-table entry or caller that passes r5 and
+  sets Param1
+- What sub_80DE4EC/sub_80DE67E/sub_80DE7C8/sub_80DE70C do (the object's state machine)
+- What sprite resource (0x80,4,0x10) and sound 0xF7 correspond to
+- 'Most details fit: sprite load (0x80,4,0x10), shadow off, flag bit 1, anim 2, palette Param1*3, Z16-=0x24,
+  collision via tables at byte_80DE4C8 (1,3,2,4 as pack params) and byte_80DE4DC, sound 0xF7, then CUR_STATE_UPDATE
+  and tail-call to sub_80DE4EC. The failure path is object_freeMemory then POP {PC} (not object_freeMemory
+  alone), and object_presentCollisionData is called before the three sub_ helpers, not after. The name
+  prefix should be ''object'' or ''spawn''.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE430 -> spawn_battleObjectVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE430

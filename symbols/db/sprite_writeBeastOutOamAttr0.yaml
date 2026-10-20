@@ -1,0 +1,66 @@
+name: sprite_writeBeastOutOamAttr0
+address: '0x08136644'
+kind: function
+status: probable
+summary: For six slot IDs in unk_2022B70, reads a halfword from one of two 16-byte OAM attr0 tables (selected
+  by r0) and stores it at unk_30019E0+0xF4..0xFE; when i>=4 and ID==0, uses a fixed 'slot off' entry from
+  the same table instead.
+interface: (r0 = table set, 0 or 1) -> writes 6 halfwords to unk_30019E0 + 0xF4..0xFE; r0,r1,r2-r4,r7
+  clobbered, flags clobbered
+details: 'Loops i = 0..5, reading a byte ID from unk_2022B70[i]. A pointer table (off_81366A0) indexed
+  by r0 selects one of two 16-byte tables of halfwords (byte_81366A8 / byte_81366B8), and the ID indexes
+  that table (id*2, ldrh). For i >= 4, if the ID is 0 the code instead loads the table''s entry 7 (offset
+  0xE = 0x1E3C), a fixed "slot off" attribute. Each resulting halfword is stored at unk_30019E0 + byte_81366C8[i]*2,
+  i.e. offsets 0xF4,0xF6,...,0xFE — six consecutive halfword slots (indices 0x7A-0x7F of an attr array).
+  The values look like OAM attr0 words: y in the low byte (0xE1/0xF7 offscreen, 0x1E3C has OBJMODE bits
+  = 3 = not displayed), supporting an OAM-staging-buffer interpretation. Note the sequence loading unk_201CF80
+  + 0x100 is dead code (r1 is overwritten before use), so unk_201CF80 is not actually read.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop 0x813664E-0x813667C: reads ldrb [unk_2022B70 + i], indexes halfword table by id*2, stores
+    strh to [unk_30019E0 + byte_81366C8[i]*2]; byte_81366C8 = 0x7A..0x7F, so the six writes land at unk_30019E0
+    offsets 0xF4-0xFE as consecutive halfwords; i>=4 && id==0 path loads [table+0xE] = 0x1E3C, whose bits10-11
+    = 3 (OAM ''not displayed''), a hide/default attribute; off_81366A0 holds two 16-byte halfword tables
+    selected by r0*4, matching a two-variant (e.g. Gregar/Falzar) sprite set on the beastsp route; ldr
+    r1,=unk_201CF80 / add #0x100 at 0x8136660-0x8136664 is dead: r1 is reloaded from off_813669C before
+    any use'
+  refs:
+  - bn6f/asm/asm36.s:13347
+  - 0x0813660C sub_813660C
+  reproduce: python3 tools/asmcat.py 0x08136644
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: six loop iterations over unk_2022B70, two lookup tables via off_81366A0,
+    halfword stored at unk_30019E0+byte_81366C8[i]*2 (offsets 0xF4..0xFE), and the unk_201CF80 load is
+    indeed dead since r1 is overwritten by off_813669C two instructions later (lines 0x08136656-0x07).
+    The prefix is wrong, though: it''s called from sub_813660C in beastsp context, and it writes six attr0-style
+    halfwords for six slots in an OAM staging buffer (not just ''BeastOut'') — a neutral sprite/OAM prefix
+    is more accurate than implying a specific beast-out animation.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- the meaning of the ID bytes in unk_2022B70 (sprite kind, form, or animation slot)
+- confirmation that unk_30019E0 is an OAM attr0 staging buffer and what slots 0x7A-0x7F draw
+- what r0=0 vs r0=1 selects (the two tables' exact visual difference) and the caller sub_813660C's full
+  context
+- 'The proposal is mostly correct: six loop iterations over unk_2022B70, two lookup tables via off_81366A0,
+  halfword stored at unk_30019E0+byte_81366C8[i]*2 (offsets 0xF4..0xFE), and the unk_201CF80 load is indeed
+  dead since r1 is overwritten by off_813669C two instructions later (lines 0x08136656-0x07). The prefix
+  is wrong, though: it''s called from sub_813660C in beastsp context, and it writes six attr0-style halfwords
+  for six slots in an OAM staging buffer (not just ''BeastOut'') — a neutral sprite/OAM prefix is more
+  accurate than implying a specific beast-out animation.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136644 -> sprite_writeBeastOutOamAttr0
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136644

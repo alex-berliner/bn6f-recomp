@@ -1,0 +1,65 @@
+name: battle_spawnObjectFromParam
+address: '0x080CE270'
+kind: function
+status: probable
+summary: Constructs a battle object variant by mapping Param1 through dword_80CE2B0 into its Element,
+  initializing its sprite/collision from packed resource constants, refreshing collision/effect/palette
+  from Param2, setting flag bit 1 and CUR_STATE_UPDATE, then tail-calling sub_80CE2B4 (frees the object
+  if sprite init fails).
+interface: '(r5 = battle object; r0 = scratch) -> r0 = destroyed; on sprite-init failure frees the object
+  and returns; flags: sets object flag bit 1, state = CUR_STATE_UPDATE'
+details: Reads byte oBattleObject_Param1 and indexes dword_80CE2B0 (bytes 00,02,40,10 — the table sits
+  immediately before sub_80CE2B4), storing the looked-up byte into oBattleObject_Element. Calls battleObject_initSpriteAndCollision
+  with packed resource constants 0x1090C02 and 0x4050100; if it returns 0, calls object_freeMemory and
+  returns early. Otherwise sets the collision hit effect from the element (battle_setCollisionHitEffectFromElement),
+  refreshes collision state (object_presentCollisionData), and stores Param2 into the sprite struct's
+  palette byte via sprite_setPalette. Finally it ORs bit 1 into oObjectHeader_Flags, writes CUR_STATE_UPDATE
+  to oBattleObject_CurStateActionPhaseAndPhaseInitialized, and tail-calls sub_80CE2B4 for further setup.
+  No known callers yet.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; ldrb r0,[r1,r0]; strb r0,[r5,#oBattleObject_Element] — table-driven
+    element assignment; bl battleObject_initSpriteAndCollision_8011504 with tst/bne and object_freeMemory
+    on failure — standard spawn-or-free pattern; bl battle_setCollisionHitEffectFromElement uses the just-written
+    Element field's low nibble; ldrb r0,[r5,#oBattleObject_Param2]; bl sprite_setPalette — Param2 selects
+    the sprite palette; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl sub_80CE2B4 — hand off to update state with variant init
+  refs:
+  - bn6f/asm/asm31.s:48158
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x0801A146 battle_setCollisionHitEffectFromElement
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CE270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the flow: Param1 indexes dword_80CE2B0 (which actually contains
+    0x1040200, not 0x02,40,10) into Element, sprite/collision init via 0x1090c02 and 0x4050100, collision/effect/palette
+    setup, flags OR=2, CUR_STATE_UPDATE, and tail-call to sub_80CE2B4. The free-on-failure path is also
+    correct (tst r0,r0; bne; bl object_freeMemory; pop {pc}). However the proposed name ''battle_initElementFromParam''
+    misleads — the function''s main role is constructing/spawning a battle object variant, not merely
+    initializing its element. A better name would be battle_initVariantFromParam or battle_spawnObjectFromParam.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What object/prefab actually uses this init (no callers known), so the game-role of the 00/02/40/10 element
+  table entries is unconfirmed
+- What sub_80CE2B4 adds on top of this init
+- 'The proposal correctly describes the flow: Param1 indexes dword_80CE2B0 (which actually contains 0x1040200,
+  not 0x02,40,10) into Element, sprite/collision init via 0x1090c02 and 0x4050100, collision/effect/palette
+  setup, flags OR=2, CUR_STATE_UPDATE, and tail-call to sub_80CE2B4. The free-on-failure path is also
+  correct (tst r0,r0; bne; bl object_freeMemory; pop {pc}). However the proposed name ''battle_initElementFromParam''
+  misleads — the function''s main role is constructing/spawning a battle object variant, not merely initializing
+  its element. A better name would be battle_initVariantFromParam or battle_spawnObjectFromParam.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE270 -> battle_spawnObjectFromParam
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE270

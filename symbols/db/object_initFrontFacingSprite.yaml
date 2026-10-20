@@ -1,0 +1,60 @@
+name: object_initFrontFacingSprite
+address: '0x080D87C0'
+kind: function
+status: probable
+summary: Loads sprite (0x80/0xC/0) with animation CurAnim=Param2*2 and no shadow, marks visible (flags|=2),
+  recomputes pixel coords from panel, offsets X by frontDirection*60, clears Param4, sets state to CUR_STATE_UPDATE,
+  then tail-calls sub_80D881C.
+interface: (r0/r5 = battle object ptr) -> r0 = result of callee sub_80D881C; sets object state to CUR_STATE_UPDATE
+details: Loads sprite resource (0x80,0xC,0) and its animation data, marks it shadowless, and sets CurAnim
+  to Param2*2 (Param2 picks an animation variant) with CurAnimCopy=0xFF, then applies it via sprite_setAnimation
+  and sprite_update. It sets oObjectHeader_Flags bit 1 (value 2, likely 'active/visible'). It applies
+  the object's horizontal flip and recomputes pixel coordinates from panel coords, then offsets oBattleObject_X
+  by frontDirection * 0x3C (60 px) so it sits in front of the facing direction. Param4 is cleared to 0
+  and CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_UPDATE before tail-calling sub_80D881C.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load(0x80,0xC,0) + sprite_loadAnimationData + sprite_noShadow set up the object's visual
+    at asm start; ldrb Param2; add r0,r0,r0; strb CurAnim; mov r0,#0xFF; strb CurAnimCopy — animation
+    index = Param2*2; object_getFrontDirection()*0x3C added to oBattleObject_X — forward offset of 60
+    px; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized before bl sub_80D881C;
+    callees object_getFlip/object_setCoordinatesFromPanels confirm it is a battle-side positioned object
+  refs:
+  - bn6f/asm/asm31.s:70250
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D87C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches proposal''s claims (sprite load 0x80/0xC/0, CurAnim=Param2*2, noShadow, +0x3C front
+    offset, Param4=0, CUR_STATE_UPDATE, tail-call sub_80D881C). However, ''battle_'' prefix is unsupported
+    (callees are generic object/sprite helpers), and ''in front of its owner'' overstates - object_getFrontDirection
+    returns the object''s own facing direction based on its alliance/flip, not a relationship to another
+    owner. Use object_initFrontFacingSprite.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_80D881C does (the update-state handler) — would reveal the object's actual behavior
+- Which in-game object/chip effect uses this spawner (no callers known), so a more specific name isn't
+  justified
+- Meaning of oObjectHeader_Flags bit 1 set here
+- Meaning of sprite_load arguments (0x80,0xC,0) — resource id vs. palette/bank
+- Code matches proposal's claims (sprite load 0x80/0xC/0, CurAnim=Param2*2, noShadow, +0x3C front offset,
+  Param4=0, CUR_STATE_UPDATE, tail-call sub_80D881C). However, 'battle_' prefix is unsupported (callees
+  are generic object/sprite helpers), and 'in front of its owner' overstates - object_getFrontDirection
+  returns the object's own facing direction based on its alliance/flip, not a relationship to another
+  owner. Use object_initFrontFacingSprite.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D87C0 -> object_initFrontFacingSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D87C0

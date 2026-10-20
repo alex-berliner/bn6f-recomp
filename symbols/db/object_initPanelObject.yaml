@@ -1,0 +1,66 @@
+name: object_initPanelObject
+address: '0x080C9D24'
+kind: function
+status: probable
+summary: 'Initializes a battle object that occupies one panel: validates the panel, loads its sprite (0x80,
+  0x10, 0x1d) and animation, positions it from panel coords, allocates/configures collision data (0xC
+  x 0xD, r3=3), reserves the panel, and transitions to CUR_STATE_UPDATE.'
+interface: (r5 = battle object) -> r0 = clobbered; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: First checks that the object's current panel is a valid battlefield position via object_isCurrentPanelValid;
+  on failure it frees the object's memory and returns. Otherwise it loads sprite resource (0x80, 0x10,
+  0x1d), disables the shadow, calls an unknown setup (sub_80C9F18), sets flip/animation 0/palette 0, and
+  starts a 0x30 (48-frame) timer in oBattleObject_Timer. It then positions the object from its panel via
+  object_setCoordinatesFromPanels, allocates a collision slot, and if none is available bails out to object_freeMemory
+  as well. It configures a 0xC x 0xD collision box (r3=3), zeroes the hit effect, clears/presents collision
+  state, copies PanelX/Y into FuturePanelX/Y, and reserves the panel for itself via object_reservePanel.
+  Finally it enters CUR_STATE_UPDATE and calls sub_80C9D9E (the first update step).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq loc_80C9D6A after object_isCurrentPanelValid falls through to object_freeMemory — init-or-die
+    pattern; sprite_load #0x80,#0x10,#0x1d followed by sprite_setAnimation(0)/sprite_loadAnimationData/sprite_setPalette(0)
+    — battle object sprite bring-up; object_createCollisionData + object_setupCollisionData(0xc,0xd,3)
+    + object_presentCollisionData — battle collision setup; strb PanelX/Y -> FuturePanelX/Y then object_reservePanel
+    — claims the panel it stands on; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    then bl sub_80C9D9E — hands off to per-frame update'
+  refs:
+  - bn6f/asm/asm31.s:38924
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080C9D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely, but the proposal mentions an ''unknown setup (sub_80C9F18)''
+    and ''starts a 0x30 (48-frame) timer in oBattleObject_Timer'' — both are visible directly in the assembly.
+    The proposal also mentions ''zeroes the hit effect'' which matches object_setCollisionHitEffect. However,
+    sprite_setFlip is called without an explicit argument; the code pushes no argument, so the flip is
+    whatever the default/previous state is, not necessarily explicitly set. The name ''spawn_panelObjectInit''
+    is reasonable since this appears to spawn/init a single-panel object; ''object_initPanelObject'' or
+    ''object_spawnPanelObject'' fits the naming convention better with the ''object'' prefix.; run wf
+    investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which entity this spawns (sprite id 0x80/0x10/0x1d not mapped here)
+- What sub_80C9F18 and sub_80C9D9E do
+- Meaning of the r3=3 collision parameter and the 0x30 timer's purpose in the update state
+- The code matches the proposal closely, but the proposal mentions an 'unknown setup (sub_80C9F18)' and
+  'starts a 0x30 (48-frame) timer in oBattleObject_Timer' — both are visible directly in the assembly.
+  The proposal also mentions 'zeroes the hit effect' which matches object_setCollisionHitEffect. However,
+  sprite_setFlip is called without an explicit argument; the code pushes no argument, so the flip is whatever
+  the default/previous state is, not necessarily explicitly set. The name 'spawn_panelObjectInit' is reasonable
+  since this appears to spawn/init a single-panel object; 'object_initPanelObject' or 'object_spawnPanelObject'
+  fits the naming convention better with the 'object' prefix.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9D24 -> object_initPanelObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9D24

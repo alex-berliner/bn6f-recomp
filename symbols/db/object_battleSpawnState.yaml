@@ -1,0 +1,64 @@
+name: object_battleSpawnState
+address: '0x080DC520'
+kind: function
+status: probable
+summary: 'Per-object BN6 battle state-machine entry: spawn phase initializes sprite/animation/palette/flip
+  and transitions to update, which checks battle_isBattleOver and dispatches the action handler from off_80DC584
+  via bx lr.'
+interface: (r5 = battle object header) -> r0 = destroyed? (loc_80DC562 branch); sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_UPDATE on entry
+details: 'The entry phase fully sets up the object''s visuals: recomputes pixel coordinates from its panel
+  position, clears Z to 0, loads sprite (0x80, 8, 0x10), marks it shadowless, sets header flags bit 1
+  (likely ''initialized/active''), selects animation 0x12 (also copied to CurAnimCopy), loads its animation
+  data, sets palette 0 and applies facing flip. It then writes CUR_STATE_UPDATE into the state/phase field
+  so subsequent calls run the update phase at loc_80DC562, which is the typical BN6 object state-machine
+  pattern. The update phase returns early (destroy state) when battle_isBattleOver says the battle should
+  end; otherwise it indexes off_80DC584 by oBattleObject_CurAction — the table has exactly one entry,
+  sub_80DC588, called via bx lr trick (mov lr, pc).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry phase: bl object_setCoordinatesFromPanels, strh r0=0 to oBattleObject_Z16, then sprite_load(0x80,8,0x10)+sprite_noShadow;
+    sets oBattleObject_CurAnim/CurAnimCopy to 0x12 and calls sprite_setAnimation/sprite_loadAnimationData/sprite_setPalette(0)/object_getFlip+sprite_setFlip;
+    ends entry with mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — classic spawn-to-update transition; loc_80DC562: bl battle_isBattleOver; bne -> CUR_STATE_DESTROY,
+    else dispatch table off_80DC584 indexed by oBattleObject_CurAction (single entry sub_80DC588); called
+    callees are all battle-object sprite/object subsystem functions, confirming this is a battle entity''s
+    state routine'
+  refs:
+  - bn6f/asm/asm31.s:78542
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080DC520
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code shows a spawn-phase function that initializes a battle object''s visuals once, then transitions
+    to loc_80DC562 which per-frame checks battle_isBattleOver and dispatches the action handler from off_80DC584.
+    That description matches the proposal well. However, the proposed name ''battle_spawnSpriteObject''
+    is misleading—the function isn''t spawning an object; rather, it runs the spawned object''s spawn/init
+    state. A name like ''object_battleSpawnState'' better reflects that this is the per-object spawn state
+    routine.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- 'Which enemy/prop this is: sprite id 0x80 and animation 0x12 need a sprite table mapping, and sub_80DC588''s
+  behavior would reveal the object''s identity and action'
+- Meaning of header flags bit 1 set here (initialized vs collision-active)
+- No known callers, so how this object is spawned (which spawner passes which object header) is unconfirmed
+- The code shows a spawn-phase function that initializes a battle object's visuals once, then transitions
+  to loc_80DC562 which per-frame checks battle_isBattleOver and dispatches the action handler from off_80DC584.
+  That description matches the proposal well. However, the proposed name 'battle_spawnSpriteObject' is
+  misleading—the function isn't spawning an object; rather, it runs the spawned object's spawn/init state.
+  A name like 'object_battleSpawnState' better reflects that this is the per-object spawn state routine.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC520 -> object_battleSpawnState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC520

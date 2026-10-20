@@ -1,0 +1,63 @@
+name: battle_initBehindFacingSprite
+address: '0x080D6C04'
+kind: function
+status: probable
+summary: Battle-object initializer that offsets the object behind its facing using front-direction math,
+  loads sprite 0x80 with no shadow/animation 0/palette 0, sets the no-shadow/intangible flag bit, mirrors
+  via object_getFlip, and transitions to CUR_STATE_UPDATE.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_UPDATE
+details: Operating on the battle object in r5, it first recomputes pixel X/Y from panel coordinates, then
+  reads the +1/-1 facing multiplier via object_getFrontDirection and adds -facing*0xC00000 to oBattleObject_X,
+  so the object is displaced (12 units in fixed point) opposite to the direction it faces; oBattleObject_Z
+  is set to 0xC00000. It then loads sprite resource (0x80, 0x31, 0xC) via sprite_load and sprite_noShadow,
+  sets oObjectHeader_Flags bit 2 (likely a no-collision/intangible flag), selects animation 0 (also copied
+  to CurAnimCopy) and palette 0, and mirrors the sprite according to object_getFlip. Finally it stores
+  CUR_STATE_UPDATE into the state/phase field so the object's per-frame update takes over. No callers
+  are known, so which enemy/attack spawns this effect is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0,r0; mul with 0xC00000; add into [r5,#oBattleObject_X] then str 0xC00000 to Z: repositions
+    object behind its facing; mov r0,#0x80 / r1=0xc / r2=0x31 then bl sprite_load followed by sprite_noShadow:
+    loads a shadowless sprite resource; ldrb r0,[r5,#oObjectHeader_Flags]; orr #2; strb: sets flag bit
+    2 on the object header; cur anim/copies zeroed, sprite_setAnimation(0), sprite_loadAnimationData,
+    sprite_setPalette(0), sprite_setFlip(object_getFlip()): full sprite (re)initialization; str CUR_STATE_UPDATE
+    to the state field and pop {pc}: typical tail of a state-entry function'
+  refs:
+  - bn6f/asm/asm31.s:66663
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D6C04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s ''object behind its own facing'' framing fits: object_setCoordinatesFromPanels is
+    called, then -facing*0xC00000 is added to oBattleObject_X and oBattleObject_Z is set to 0xC00000 (offset
+    behind). Sprite 0x80, no shadow, animation 0, palette 0, flip mirroring, and CUR_STATE_UPDATE write
+    are all confirmed in the asm. Minor inaccuracies: sprite_loadAnimationData is also called (not just
+    sprite_load), and the bit set is #2 of oObjectHeader_Flags (animation 0 is also written to CurAnimCopy,
+    so that part is right).; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which caller spawns this (attack/effect id) and what sprite 0x80 depicts
+- Exact meaning of ObjectHeader_Flags bit 2
+- Coordinate fixed-point format, to confirm the 12-unit displacement and Z meaning
+- 'The summary''s ''object behind its own facing'' framing fits: object_setCoordinatesFromPanels is called,
+  then -facing*0xC00000 is added to oBattleObject_X and oBattleObject_Z is set to 0xC00000 (offset behind).
+  Sprite 0x80, no shadow, animation 0, palette 0, flip mirroring, and CUR_STATE_UPDATE write are all confirmed
+  in the asm. Minor inaccuracies: sprite_loadAnimationData is also called (not just sprite_load), and
+  the bit set is #2 of oObjectHeader_Flags (animation 0 is also written to CurAnimCopy, so that part is
+  right).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6C04 -> battle_initBehindFacingSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6C04

@@ -1,0 +1,67 @@
+name: battle_fallingImpactObjectUpdate
+address: '0x080BF5E0'
+kind: function
+status: probable
+summary: Per-frame update for a battle object flying along X/Z; on expiry it touches ground and either
+  spawns a small t1 effect (if the panel matches mask 0x0F800010) or plays sound 0xC3, camera-shakes (3,30),
+  spawns a dimming collision region, mutates the panel, and spawns a kind 0xA object with ExtraVars=0x11E00;
+  finally sets CurPhase to 8 and clears header flag 0x2.
+interface: (r5 = battle object) -> void; sets object phase to 8 and clears header flag 0x2 on expiry
+details: 'The object decrements its Timer; while nonzero it integrates XVelocity into X and ZVelocity
+  into Z and recomputes its panel and collision panels, i.e. a diagonally descending projectile. When
+  the Timer expires it zeroes Z (touches ground) and reads the panel status at its coordinates: if the
+  panel matches mask 0x0F800010 (e.g. hole/broken panel), it only spawns a small effect (anim data at
+  object+0x34, +0x10 Z offset) and finishes. Otherwise it plays sound 0xC3, triggers a camera shake (magnitude
+  3, duration 30), spawns a dimming collision region over its panel, changes the panel state (calls with
+  status 0xF and the object''s Alliance), and spawns a kind 0xA object via battle_spawnExtraVarsObject
+  with ExtraVars=3 and r4=0x11E00 (looks like damage 0x1E00=7680 fixed-point). It then advances the object''s
+  CurPhase to 8 and clears header flag 0x2.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub/strh with bne loc_80BF664 — countdown state machine;
+    loc_80BF664 adds oBattleObject_XVelocity/XVelocity_ZVelocity to X/Z and calls object_setPanelsFromCoordinates
+    — flying/descending motion; PlaySoundEffect(0xC3) + camera_initShakeEffect(3,30) on the non-hole branch
+    — heavy impact; object_getPanelParameters vs dword 0xF800010 selects the two impact branches; battle_spawnExtraVarsObject
+    with r7=3, r4=0x11E00 and phase set to 8 afterwards — impact spawns a damage object and hands control
+    to a next phase
+  refs:
+  - bn6f/asm/asm31.s:15886
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080BF5E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Most of the summary is correct (timer decrement, X/Z integration, panel recompute, ground touch
+    at 0, sound 0xC3, camera shake 3/30, spawn dimming AoE, panel state change, spawn kind 0xA with extra=3
+    and var 0x11E00, CurPhase=8, clear flag 0x2). However, the masking condition is inverted: code branches
+    to the big-impact path when (panel & 0x0F800010)==0 (no-match/normal panel), and takes the small-effect
+    spawn path when the mask matches. Also the spawn is described as ExtraVars=3 but the code passes r7=3
+    as the 6th arg (ExtraVars goes in r4=0x11E00). The damage call is unclear (the proposal guesses 0x1E00
+    fixed-point via extra vars, which fits).; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so the object kind/identity (which chip or attack creates it) is unclear
+- Exact meaning of panel-status mask 0xF800010 and of the sub_80DB48A / sub_801BD3C panel-change arguments
+  (r3=0xF, r2=5) needs those functions identified
+- 'Most of the summary is correct (timer decrement, X/Z integration, panel recompute, ground touch at
+  0, sound 0xC3, camera shake 3/30, spawn dimming AoE, panel state change, spawn kind 0xA with extra=3
+  and var 0x11E00, CurPhase=8, clear flag 0x2). However, the masking condition is inverted: code branches
+  to the big-impact path when (panel & 0x0F800010)==0 (no-match/normal panel), and takes the small-effect
+  spawn path when the mask matches. Also the spawn is described as ExtraVars=3 but the code passes r7=3
+  as the 6th arg (ExtraVars goes in r4=0x11E00). The damage call is unclear (the proposal guesses 0x1E00
+  fixed-point via extra vars, which fits).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF5E0 -> battle_fallingImpactObjectUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF5E0

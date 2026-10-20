@@ -1,0 +1,61 @@
+name: initSpriteVariant
+address: '0x0811D464'
+kind: function
+status: probable
+summary: Initializes a sprite object by indexing into two type tables (sprite id, palette, animation)
+  using [r5+5]; the [r5+4] flag toggles between two visual variants (halfword 0x100/0x200, palette bank
+  2/6, byte 0x10/0x11 at [r5+0xc]).
+interface: (r5 = object/state ptr; [r5+4] = variant flag, [r5+5] = type index) -> r0 = 0; sets up sprite
+  slot for the object
+details: 'Reads [r5+5] as an index into byte_811D4E8 (10 GUI sprite ids: five 0x8A then 0x59-0x5D) and
+  calls initGuiSprite_8002770, then sets animation (all zeros), loads animation data, disables the shadow,
+  and sets a palette from byte_811D526 (5, 0x11, 0xB, 0xF, 0x15) plus priority 2. The variant flag [r5+4]
+  selects halfword 0x100 vs 0x200 stored via slotList_storeHalfwordAndClearField_800306C, sub-entry palette
+  bank 2 vs 6, and a byte 0x10 vs 0x11 written to [r5+0xc]. Sets sub-record field A to 4 and fixed coordinates
+  (0x78, 0x80) via sprite_setCoordinates. Finally applies color shader 0x7FFF (likely the neutral/default
+  shader). The function is clearly a sprite-entity setup routine with two visual variants, but without
+  callers its specific game role is not identifiable from the code alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#5]; ldr r0,[byte_811D4E8 + r0*4]; bl initGuiSprite_8002770 — sprite id picked per
+    type index; ldrb r0,[r5,#4]; cmp r1,#1 branches select 0x100/0x200, bank 2/6, byte 0x10/0x11 — two-variant
+    setup; byte_811D526 = 5,0x11,0xB,0xF,0x15 indexed by [r5+5] and passed to sprite_setPalette; mov r0,#0x78;
+    mov r1,#0x80; bl sub_811DC00; bl sprite_setCoordinates — fixed screen-center position; dword_811D510
+    = 0x7FFF passed to sprite_setColorShader — neutral shader id
+  refs:
+  - bn6f/asm/asm32.s:31380
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811D464
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s details: variant flag at [r5+4] selects 0x100 vs 0x200 (off_811D4DC/E0),
+    palette banks 2 vs 6, and writes 0x10 vs 0x11 to [r5+0xc]. Coordinates (0x78, 0x80), sub-record field
+    A=4, color shader 0x7FFF all match. Minor: the ''r0=0'' return claim isn''t directly evidenced. The
+    name ''spawn_initSpriteVariant'' works but a simpler ''initSpriteVariant'' better fits the code''s
+    role as a sprite init.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known; identifying the entity would require seeing which code constructs the r5 object
+  and calls this routine.
+- Meaning of the 0x100/0x200 halfword stored via slotList and the 0x10/0x11 byte at [r5+0xc] is unknown
+  without the consumer of those fields.
+- 'The code matches the proposal''s details: variant flag at [r5+4] selects 0x100 vs 0x200 (off_811D4DC/E0),
+  palette banks 2 vs 6, and writes 0x10 vs 0x11 to [r5+0xc]. Coordinates (0x78, 0x80), sub-record field
+  A=4, color shader 0x7FFF all match. Minor: the ''r0=0'' return claim isn''t directly evidenced. The
+  name ''spawn_initSpriteVariant'' works but a simpler ''initSpriteVariant'' better fits the code''s role
+  as a sprite init.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D464 -> initSpriteVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D464

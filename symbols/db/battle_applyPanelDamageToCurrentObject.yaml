@@ -1,0 +1,63 @@
+name: battle_applyPanelDamageToCurrentObject
+address: '0x080115CE'
+kind: function
+status: probable
+summary: Applies summed panel collision damage to the current battle object's HP at [r5+0x24] (via object_spawnHiteffect
+  + calcFinalDamage) and returns -1 if HP depletes, 1 if the caller-supplied flag in r0 skips damage application,
+  0 if damaged with sound 85 played, and 0 if no panel damage.
+interface: (r0 = flag; nonzero suppresses the hit sound and makes the return 1; current object pointer
+  expected in r5) -> r0 = -1 if HP depleted, 1 if damaged with flag set, else 0
+details: Saves r0 (a flag) at sp+8, calls object_spawnHiteffect with 0, then calcFinalDamageAsPanelDamage1to5SumReturnFinalDamage
+  which returns the sum of the object's five per-panel damage values in r0 and the sixth in r1; the function
+  adds them into a total. It subtracts the total from the object's HP halfword at [r5+0x24]; if the result
+  is not positive it stores -1 as the return value (object destroyed). Otherwise it clears the sprite
+  final-palette nibble and, if total damage is nonzero, forces the white hit-flash palette. If the caller's
+  flag was nonzero it returns 1 without a sound; otherwise it plays sound effect 85 and returns 0. Zero
+  total damage leaves the initial return value 0 untouched. The object context (r5) and the collision/panel-damage
+  source fields are set up by the caller, not here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_spawnHiteffect (0x080115D6) spawns the hit spark before damage is applied; bl calcFinalDamage...
+    then add r0,r0,r1 forms the total damage from the six panel-damage values; ldrh r1,[r5,#0x24]; sub;
+    strh writes the new HP, and mov r0,#0; sub r0,#1 returns -1 when it drops to <=0; sprite_clearFinalPalette
+    followed by sprite_forceWhitePalette only when total damage != 0 is the standard hit-flash pattern;
+    PlaySoundEffect(85) at 0x08011608 is skipped when the saved r0 flag (sp+8) is nonzero, which also
+    switches the return to 1
+  refs:
+  - bn6f/asm/asm00_2.s:5836
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E3BE calcFinalDamageAsPanelDamage1to5SumReturnFinalDamage_r0_PanelDamage6_r1_800E3BE
+  - 0x0800EB9E object_spawnHiteffect
+  reproduce: python3 tools/asmcat.py 0x080115CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flag in r0 actually suppresses HP subtraction entirely (bne skips the sub at [r5+0x24]), not
+    just the hit sound; when flag nonzero, HP is untouched and 1 is returned without a sound. When flag
+    zero, damage is subtracted from [r5+0x24] and sound 85 is played (when total!=0). The summary''s claim
+    about ''suppresses sound'' is close but inverted vs the code path. The name fits but summary misrepresents
+    the flag.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the exact damage source (broken panel, poison, other periodic panel effects)
+  and what sets r5 are unconfirmed
+- 'The meaning of the r0 flag (nonzero: no sound, return 1) and what callers do with return values 1 vs
+  0 is unclear'
+- Which struct field r5 points to and its layout offset 0x24 (assumed HP) needs confirmation from a caller
+- The flag in r0 actually suppresses HP subtraction entirely (bne skips the sub at [r5+0x24]), not just
+  the hit sound; when flag nonzero, HP is untouched and 1 is returned without a sound. When flag zero,
+  damage is subtracted from [r5+0x24] and sound 85 is played (when total!=0). The summary's claim about
+  'suppresses sound' is close but inverted vs the code path. The name fits but summary misrepresents the
+  flag.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80115CE -> battle_applyPanelDamageToCurrentObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80115CE

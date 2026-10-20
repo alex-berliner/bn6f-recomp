@@ -1,0 +1,67 @@
+name: pet_confirmNaviSelect
+address: '0x0809CC60'
+kind: function
+status: probable
+summary: 'PET menu confirm: when the picked ID falls in one of seven 0x1E-wide navi windows, assigns that
+  navi, sets EVENT_163, plays sound 0x8D and chatbox script 0x23; otherwise, if a ''cancelable'' bit is
+  set, plays SOUND_UNSELECT and rejection script 0x20.'
+interface: '(r0..: no args read; r5 = menu/state obj, r10 = game-state ptr) -> r0 = 0 when a choice was
+  consumed, 1 when the screen should stay/wait; also writes [r5,#8] done-byte'
+details: 'Gate: if sub_809CE14 returns 0 it clears [r5,#8] and returns 0; if bit 8 of eFlags2009F38 is
+  clear it returns 1 without acting. It then takes the ID in [r5,#0x74] and scans a 7-entry table of 15-wide
+  windows (321-335, 411-425, 426-440, ... 486-500). A hit stores the matched value at [r10,#0x40]+0x30,
+  maps the window index to a navi ID (0,6,7,8,9,10,11 from byte_809CD18) into [r5,#0x78] and [r10,#0x2c]+0x4C,
+  sets EVENT_163, calls SetCurPETNavi, plays sound 0x8D and chatbox script 0x23 of archive table entry
+  4. If no window matches but bit 1 of the halfword at [r10,#4]+2 is set, it plays SOUND_UNSELECT, runs
+  rejection script 0x20 instead. Both exits reset link/SIO hardware via link_resetHardwareAndClearLinkBuffers_81440D8,
+  set [r5,#8]=1 and return 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: byte_809CCF8 holds 7 u32 range bases (0x141,0x19B,0x1AA,0x1B9,0x1C8,0x1D7,0x1E6) matched against
+    [r5,#0x74] with a +0xF upper bound; byte_809CD18 maps window index to navi IDs 0,6,7,8,9,10,11 which
+    feed both [r10,#0x2c]+0x4C and SetCurPETNavi; movflag EVENT_163 / SetEventFlagFromImmediate only on
+    the successful window match; PlaySoundEffect 0x8D + chatbox_runScript(4,0x23) on success vs SOUND_UNSELECT
+    + script 0x20 on miss; both terminal paths call link_resetHardwareAndClearLinkBuffers_81440D8 and
+    set [r5,#8] before returning
+  refs:
+  - bn6f/asm/asm28_0.s:5031
+  - 0x080005CC PlaySoundEffect
+  - 0x080010BE SetCurPETNavi
+  - 0x0802F110 SetEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0809CC60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches the proposal well: sub_809CE14 gate, [r10,#0x40]+0x30 store, byte_809CD18 navi table
+    (0,6,7,8,9,10,11), SetEventFlagFromImmediate EVENT_163, SetCurPETNavi, sound 0x8D, chatbox 0x23, and
+    reject path with SOUND_UNSELECT and script 0x20. However, the reject branch is taken only when no
+    entry matches AND bit 1 is set; the proposal implies it always rejects on bit 1 regardless, and also
+    incorrectly describes the table windows (actual base is 0x141 not 321, and the table is 7 windows
+    of 0x1E stride, not 15-wide). The link reset runs on both paths before setting done-byte, so returning
+    0 is correct. Name pet_confirmNaviSelect is fine, but the summary overstates the table shape.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what value [r5,#0x74] holds (chip ID, navi ID, menu selection) and which in-game screen owns it
+- what sub_809CE14 tests to allow the early return
+- contents of chatbox archive 4 scripts 0x23/0x20 to name the scenario
+- why the six 15-wide windows 411-500 correspond to navi IDs 6-11 (data table meaning of each navi index)
+- 'The asm matches the proposal well: sub_809CE14 gate, [r10,#0x40]+0x30 store, byte_809CD18 navi table
+  (0,6,7,8,9,10,11), SetEventFlagFromImmediate EVENT_163, SetCurPETNavi, sound 0x8D, chatbox 0x23, and
+  reject path with SOUND_UNSELECT and script 0x20. However, the reject branch is taken only when no entry
+  matches AND bit 1 is set; the proposal implies it always rejects on bit 1 regardless, and also incorrectly
+  describes the table windows (actual base is 0x141 not 321, and the table is 7 windows of 0x1E stride,
+  not 15-wide). The link reset runs on both paths before setting done-byte, so returning 0 is correct.
+  Name pet_confirmNaviSelect is fine, but the summary overstates the table shape.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809CC60 -> pet_confirmNaviSelect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CC60

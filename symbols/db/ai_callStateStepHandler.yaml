@@ -1,0 +1,56 @@
+name: ai_callStateStepHandler
+address: '0x08101360'
+kind: function
+status: probable
+summary: 'AI state-step trampoline: sets r6/r7 to aiData+0x80/0xA0 and tail-calls the handler from the
+  oAIState_ScriptId table, returning to the epilogue via mov lr,pc / bx r1.'
+interface: (r5 = battle object) -> r0 = handler return value; r6 = aiData+0x80, r7 = aiData+0xA0 during
+  handler; returns via pop
+details: Loads the object's AI data pointer, sets r6 to aiData+0x80 and r7 to aiData+0xA0 (the AI state
+  block), reads the byte oAIState_ScriptId at aiData+0x80, and uses it as an index into the jump table
+  off_810137C. It then tail-calls the selected handler with lr=pc so the handler returns straight to the
+  epilogue, meaning the handler runs with r6/r7 already pointing at the AI state fields. The table entries
+  are named per-character/per-state AI step routines (Colonel random-panel attack turn step, init attack-panel
+  select step, etc.), so this is the generic 'run one step of the current AI state' trampoline.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes off_810137C by the AI state id; mov
+    lr,pc; bx r1 calls the selected handler and returns to the pop, classic state-step dispatch; table
+    entries ai_colonelRandomPanelAttackTurnStep and battle_aiInitAttackPanelSelectStep are per-state AI
+    step handlers; r6/r7 pre-set to aiData+0x80/0xA0 give handlers direct access to the AI state fields;
+    executed on the battlesweep route, matching battle AI stepping
+  refs:
+  - bn6f/asm/asm31.s:156552
+  reproduce: python3 tools/asmcat.py 0x08101360
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code loads the AIData pointer, sets r6 to aiData+0x80 and r7 to aiData+0xA0, reads oAIState_ScriptId
+    at r6, and tail-calls (mov lr,pc; bx r1) into the selected handler — the handler runs with r6/r7 already
+    pointing at the AI state fields, matching the proposal. The name ai_callStateStepHandler is acceptable
+    but the summary''s ''jump table off_810137C'' is slightly off: the ldr uses off_8101378 which contains
+    a pointer to off_810137C, not a direct jump table. Minor polish, not a fundamental disagreement.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of each scriptId value beyond the two named handlers
+- whether r5 is always a battle enemy object or can be an ally/support object
+- 'The code loads the AIData pointer, sets r6 to aiData+0x80 and r7 to aiData+0xA0, reads oAIState_ScriptId
+  at r6, and tail-calls (mov lr,pc; bx r1) into the selected handler — the handler runs with r6/r7 already
+  pointing at the AI state fields, matching the proposal. The name ai_callStateStepHandler is acceptable
+  but the summary''s ''jump table off_810137C'' is slightly off: the ldr uses off_8101378 which contains
+  a pointer to off_810137C, not a direct jump table. Minor polish, not a fundamental disagreement.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101360 -> ai_callStateStepHandler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101360

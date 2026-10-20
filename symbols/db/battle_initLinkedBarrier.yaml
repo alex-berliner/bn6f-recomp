@@ -1,0 +1,67 @@
+name: battle_initLinkedBarrier
+address: '0x080CBB76'
+kind: function
+status: probable
+summary: Spawns/initializes a sprite-0x80 translucent panel barrier at the object's panel; Param1==0 makes
+  it a 0x13x0x14 50-HP smaller barrier linked to its parent via RelatedObject1Ptr's object header, otherwise
+  a 0xEx0xF 150-HP larger variant, both stationary and CANNOT_SLIDE.
+interface: (r0 = ? unused; r5 = battle object already allocated) -> r0 = collision slot or freed object;
+  sets object into CUR_STATE_UPDATE
+details: Loads sprite 0x80 anim 0 palette 0 with no shadow and marks the object flag bit2, then sets NameID
+  0xD4 and HP/MaxHP to 0x32 (50) when Param1==0 or 0x96 (150) otherwise. Creates collision data sized
+  0x13x0x14 (Param1==0) or 0xEx0xF, sets hit effect 0xFF, clears the collision region and runs the present-collision
+  pass. When Param1==0 it stores itself into its RelatedObject1Ptr's object-header field, implying it
+  is a summoned/linked component of a parent. It sets OBJECT_FLAGS_CANNOT_SLIDE, Timer=0xF, applies sprite
+  alpha, spawns an effect object from the 3-word params at +0x34 with count 6, plays SFX 0x112, reserves
+  its current panel (FuturePanelX/Y = PanelX/Y), and moves to the update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load(0x80,0x10,0) + sprite_setAnimation/loadAnimationData/setPalette/setFlip set up the
+    object's sprite; strh r0,[r5,#oBattleObject_HP] with 0x32 vs 0x96 branched on Param1 shows the two
+    HP variants; object_setupCollisionData with 0x13/0x14 vs 0xE/0xF sizes and object_setCollisionHitEffect(0xFF)
+    builds its hitbox; str r5,[r3,#oBattleObject_ObjectHeader] via RelatedObject1Ptr when Param1==0 links
+    it to a parent object; object_reservePanel + OBJECT_FLAGS_CANNOT_SLIDE + FuturePanelX/Y=PanelX/Y show
+    it plants on its panel and never moves
+  refs:
+  - bn6f/asm/asm31.s:42989
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CBB76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s details (sprite 0x80 anim 0 palette 0, no shadow, OR 2 to flags,
+    NameID 0xD4, HP/MaxHP 0x32 or 0x96 by Param1, collision 0x13x0x14 or 0xEx0xF, hit effect 0xFF, present-collision
+    pass, CANNOT_SLIDE flag, Timer 0xF, alpha, spawn from +0x34 with count 6, SFX 0x112, FuturePanel=Pannel,
+    CUR_STATE_UPDATE). However, Param1==0 stores into `RelatedObject1Ptr->oBattleObject_ObjectHeader`
+    (the partner/object-header field, not spawner), implying a barrier/link-style linked battler, and
+    two stat/size variants per Param1 reads more like ''two barriers'' (cust/under-sht barriers) than
+    an ''enemy variant''. The proposed name ''battle_initEnemyVariant'' overstates ''enemy''; a barrier/element/link
+    initializer fits better.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy NameID 0xD4 refers to (name table lookup) and what sprite 0x80 depicts
+- What effect ID 6 and the three words at +0x34 mean
+- No callers known — who allocates the object and what Param1 (variant flag) is set from, and what the
+  parent object is
+- The code matches the proposal's details (sprite 0x80 anim 0 palette 0, no shadow, OR 2 to flags, NameID
+  0xD4, HP/MaxHP 0x32 or 0x96 by Param1, collision 0x13x0x14 or 0xEx0xF, hit effect 0xFF, present-collision
+  pass, CANNOT_SLIDE flag, Timer 0xF, alpha, spawn from +0x34 with count 6, SFX 0x112, FuturePanel=Pannel,
+  CUR_STATE_UPDATE). However, Param1==0 stores into `RelatedObject1Ptr->oBattleObject_ObjectHeader` (the
+  partner/object-header field, not spawner), implying a barrier/link-style linked battler, and two stat/size
+  variants per Param1 reads more like 'two barriers' (cust/under-sht barriers) than an 'enemy variant'.
+  The proposed name 'battle_initEnemyVariant' overstates 'enemy'; a barrier/element/link initializer fits
+  better.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBB76 -> battle_initLinkedBarrier
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBB76

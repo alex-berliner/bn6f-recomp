@@ -1,0 +1,62 @@
+name: battle_slideObjectByXVelocity
+address: '0x080DCFF4'
+kind: function
+status: probable
+summary: Battle object step that, on first call sets CurPhase=4, plays SFX 0x1C2, and calls sub_80DD062;
+  each frame it adds XVelocity into X, recomputes panels and collision, clears collision region if off-field,
+  decrements a 16-bit Timer, and on underflow sets CurState=CUR_STATE_DESTROY.
+interface: (r0 unused, r5 = battle object pointer) -> r0 = state; updates object fields, may set CurState
+  = CUR_STATE_DESTROY
+details: On the first call (CurPhase == 0) it sets CurPhase = 4, plays sound effect 0xC2, and calls sub_80DD062
+  (likely a one-time setup). Every frame it adds oBattleObject_XVelocity into oBattleObject_X, recomputes
+  PanelX/PanelY from the new position via object_setPanelsFromCoordinates, syncs the collision record
+  with object_updateCollisionPanels, and if object_isCurrentPanelValid reports the panel is off-field
+  it clears the collision region so the object stops colliding. It then decrements oBattleObject_Timer;
+  when the timer underflows below zero it clears the collision region again and sets CurState = CUR_STATE_DESTROY,
+  ending the object. The pattern fits a short-lived sliding/thrown projectile or obstacle that crosses
+  the field and expires.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / bne: one-time init branch plays PlaySoundEffect(0xC2)
+    and sets phase 4; ldr r0,[r5,#oBattleObject_XVelocity] ... str r0,[r5,#oBattleObject_X]: position
+    advanced by velocity each frame; bl object_setPanelsFromCoordinates / object_updateCollisionPanels
+    / object_isCurrentPanelValid: keeps panel and collision data in sync with movement; ldrh r0,[r5,#oBattleObject_Timer];
+    sub r0,#1 ... bge: counts lifetime down, destroying on expiry; mov r0,#CUR_STATE_DESTROY; strb r0,[r5,#oBattleObject_CurState]:
+    terminates the object''s state machine'
+  refs:
+  - bn6f/asm/asm31.s:79995
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080DCFF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Behavior summary is accurate: first-call sets CurPhase=4 and calls sub_80DD062, then each frame
+    adds oBattleObject_XVelocity into X (not Y or Z), recomputes panels, syncs collision, clears region
+    if off-field, decrements Timer, and on underflow sets CurState=CUR_STATE_DESTROY. However, the sound
+    ID is wrong: ''mov r0,#0xc3; add r0,#0xff'' yields 0x1C2, not 0xC2. Also only X velocity is applied,
+    so the name slightly overstates generality.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so which object/attack uses this update step is unknown
+- sub_80DD062's purpose (likely per-object init like setting velocity/timer) would confirm the exact object
+  type
+- 'Behavior summary is accurate: first-call sets CurPhase=4 and calls sub_80DD062, then each frame adds
+  oBattleObject_XVelocity into X (not Y or Z), recomputes panels, syncs collision, clears region if off-field,
+  decrements Timer, and on underflow sets CurState=CUR_STATE_DESTROY. However, the sound ID is wrong:
+  ''mov r0,#0xc3; add r0,#0xff'' yields 0x1C2, not 0xC2. Also only X velocity is applied, so the name
+  slightly overstates generality.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCFF4 -> battle_slideObjectByXVelocity
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCFF4

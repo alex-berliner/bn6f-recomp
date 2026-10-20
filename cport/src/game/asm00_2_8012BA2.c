@@ -1455,7 +1455,7 @@ Next battle_tickPoisonHpLoss_8014498(void) {
 /* battle_beginTurnOpenProcess_80144C0 — begin the turn-open processing for the battle object whose
  * pointer the caller left in r5.
  *
- * sub_80144CA is a second entry point that shares the whole body below; it
+ * battle_beginTurnOpenSetup is a second entry point that shares the whole body below; it
  * enters with r7 = 1 where this entry clears r7 to 0 first.  On the shared
  * tail that flag only decides whether battleObject_initAIData_800FEEC runs, so it is kept in the
  * guest r7 register exactly as the original does. */
@@ -1502,7 +1502,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
     GUEST_CALL(object_setCollisionRegion);
     GUEST_CALL(battleObject_clearPwrAtkState_8012EA8);
 
-    /* the sub_80144CA entry (r7 = 1) skips this call */
+    /* the battle_beginTurnOpenSetup entry (r7 = 1) skips this call */
     if (R7 == 0)
         GUEST_CALL(battleObject_initAIData_800FEEC);
 

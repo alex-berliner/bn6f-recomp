@@ -1,0 +1,68 @@
+name: object_stepDying
+address: '0x080D5FA0'
+kind: function
+status: probable
+summary: 'Per-frame update for battle objects being destroyed: tears down collision, spawns the last hit
+  effect, then either destroys the object (battle over / CurAction 0xA, spawning effect 0x12) or, based
+  on an alliance/flag check, clears its region or dispatches a per-action subroutine, with time-stop falling
+  back to object_presentCollisionData.'
+interface: (r5 = battle object) -> r0 = destroyed?; sets oBattleObject_CurState to CUR_STATE_DESTROY when
+  finished
+details: 'Runs object_removeCollisionData then object_spawnCollisionEffect (the hit effect of the object''s
+  last collision). If the battle is over, or the object''s CurAction equals 0xA, it spawns effect kind
+  0x12 at the object''s X/Y, clears its collision region byte, and sets CurState to CUR_STATE_DESTROY.
+  Otherwise it renders blind-related handling, and if the object''s alliance''s word in byte_80D6018 (0x05800000
+  or 0x0A800000) matches oCollisionData_FlagsFromCollision, it clears the collision region (forgetting
+  the region while staying alive). Then, unless time-stop is active (in which case it calls object_presentCollisionData),
+  it dispatches through off_80D6004 on CurAction (entries 0-3: sub_80D6020, sub_80D6098, sub_80D60BC,
+  sub_80D6164) via a computed lr/blx call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry: death bookkeeping for
+    a battle object; loc_80D5FF6: object_clearCollisionRegion then mov r0,#CUR_STATE_DESTROY; strb into
+    oBattleObject_CurState — terminal destroy path; CurAction==0xA branch at loc_80D5FEA spawns spawn_t1_0x0_EffectObject
+    with r4=0x12 at oBattleObject_X/Y before destroying; off_80D6004 is a 4-entry dispatch table indexed
+    by oBattleObject_CurAction with computed blx, one handler per death sub-step; byte_80D6018 words tested
+    against oCollisionData_FlagsFromCollision per oBattleObject_Alliance decide whether the collision
+    region is cleared early'
+  refs:
+  - bn6f/asm/asm31.s:65024
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D5FA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code starts with removeCollisionData and spawnCollisionEffect, then either spawns effect 0x12
+    and destroys (if battle over or CurAction==0xA) or, otherwise, runs blind handling and dispatches
+    via off_80D6004. The proposal correctly captures the structure but misorders: the CurAction==0xA branch
+    leads to loc_80D5FEA (effect+destroy), not the alliance/byte_80D6018 check. The alliance check (r0=[r1+r0]
+    tst r0,r2) actually gates the sub-action dispatch when CurAction!=0xA, deciding whether to clear the
+    region or call a sub-action. So ''death sub-actions'' is misleading; this dispatches per-action subroutines
+    for non-destroy cases.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which CurState value dispatches to this handler (no caller is known) — finding the state table entry
+  would confirm the 'dying' reading
+- What the four sub-action handlers sub_80D6020/80D6098/80D60BC/80D6164 do (delay timer, animation, etc.)
+- Exact meaning of collision flag bits 0x05800000/0x0A800000 per alliance and what effect kind 0x12 is
+  (likely explosion/vanish)
+- 'The code starts with removeCollisionData and spawnCollisionEffect, then either spawns effect 0x12 and
+  destroys (if battle over or CurAction==0xA) or, otherwise, runs blind handling and dispatches via off_80D6004.
+  The proposal correctly captures the structure but misorders: the CurAction==0xA branch leads to loc_80D5FEA
+  (effect+destroy), not the alliance/byte_80D6018 check. The alliance check (r0=[r1+r0] tst r0,r2) actually
+  gates the sub-action dispatch when CurAction!=0xA, deciding whether to clear the region or call a sub-action.
+  So ''death sub-actions'' is misleading; this dispatches per-action subroutines for non-destroy cases.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5FA0 -> object_stepDying
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5FA0

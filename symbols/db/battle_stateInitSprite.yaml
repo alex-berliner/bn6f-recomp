@@ -1,0 +1,63 @@
+name: battle_stateInitSprite
+address: '0x080BBF30'
+kind: function
+status: probable
+summary: 'Battle-object state handler that (re)initializes its sprite: recomputes pixel coords from panels,
+  clears Z, sprite_load(0x80, 8, 0xA), loads animation data, sprite_hasShadow, zeroes CurAnim/CurAnimCopy,
+  sprite_setAnimation(0) + reload, sprite_setPalette(0), applies getFlip via sprite_setFlip, then stores
+  CUR_STATE_UPDATE to advance to the update phase.'
+interface: (r5 = battle object pointer, no args) -> r0 = CUR_STATE_UPDATE stored to object state; sets
+  object to update phase
+details: Uses r5 as the current battle object (set up by the state-dispatch caller). It recomputes the
+  object's pixel position from its panel coordinates, zeroes the Z (height) halfword, loads sprite r0=0x80
+  with args r1=8, r2=0xA, loads its animation data, enables the shadow, resets CurAnim and CurAnimCopy
+  to 0 via sprite_setAnimation, reloads animation data, sets palette 0, and applies the object's horizontal
+  flip from its alliance/DirectionFlip. Finally it writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  marking the phase as initialized so the object proceeds to its normal update handler. The fixed sprite
+  id 0x80 and hard-coded palette/animation suggest this is a dedicated init state for one specific enemy
+  or object kind.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'stores 0 to oBattleObject_Z16 and calls object_setCoordinatesFromPanels: places object on its
+    panel at ground level; sprite_load(0x80, 8, 0xA) then sprite_loadAnimationData and sprite_hasShadow:
+    loads a specific sprite with shadow enabled; writes 0 to oBattleObject_CurAnim/CurAnimCopy and calls
+    sprite_setAnimation(0): starts animation from frame 0; object_getFlip then sprite_setFlip: aligns
+    sprite facing with the object''s side/flip override; stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and returns: typical state-handler transition pattern'
+  refs:
+  - bn6f/asm/asm31.s:8431
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080BBF30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee list includes sprite_setPalette and sprite_setFlip (which the assembly actually calls
+    via bl after the b object_getFlip path), and the summary omits them — only mentions palette and flip
+    generically. The summary also claims the function ''enables the shadow'' and ''reloads animation data''
+    but sprite_hasShadow and the second sprite_loadAnimationData are concrete calls that should be named.
+    These are minor wording gaps; the name fits an init-state handler that advances to CUR_STATE_UPDATE.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which enemy/object uses this init state (no known caller)
+- exact meaning of sprite_load's r1=8 and r2=10 arguments
+- which state table routes to 0x080BBF30
+- The callee list includes sprite_setPalette and sprite_setFlip (which the assembly actually calls via
+  bl after the b object_getFlip path), and the summary omits them — only mentions palette and flip generically.
+  The summary also claims the function 'enables the shadow' and 'reloads animation data' but sprite_hasShadow
+  and the second sprite_loadAnimationData are concrete calls that should be named. These are minor wording
+  gaps; the name fits an init-state handler that advances to CUR_STATE_UPDATE.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BBF30 -> battle_stateInitSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBF30

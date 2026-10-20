@@ -1,0 +1,64 @@
+name: object_spawnInit
+address: '0x080D6250'
+kind: function
+status: probable
+summary: 'Spawn-initializes a battle object: places it via panel coordinates, subtracts Param3 from Y
+  and Z, loads sprite bank 0x10/resource 0x54/arg 0x80, sets flag bit 2, picks initial animation from
+  a Param2-indexed byte LUT, sets palette 0 and flip, allocates a collision slot (freeing the object on
+  failure), configures box (0x13,0x14, depth 3) with hit effect 6, refreshes collision, loads HP from
+  byte_80D6214 using Param1/Param2 into HP and MaxHP, and enters CUR_STATE_UPDATE.'
+interface: (r5 = battle object, params in Param1/2/3) -> r0 = 1 if collision slot allocated, 0 if object
+  freed; sets state to CUR_STATE_UPDATE
+details: Places the object via object_setCoordinatesFromPanels, then subtracts Param3 from both Y and
+  Z (an elevation/height offset). Loads sprite bank 0x10, resource 0x54, arg 0x80, sets flag bit 2, picks
+  the animation from the dword_80D62E4 LUT indexed by Param2, sets palette 0 and flip from object_getFlip.
+  Allocates collision data, freeing the object and aborting if no slot is free; otherwise sets collision
+  box (0x13,0x14, depth 3), hit effect 6, clears its collision region, and runs the per-frame collision
+  refresh. Finally reads a halfword HP from byte_80D6214 at Param1*2 + Param2*8 into both HP and MaxHP
+  and switches the state machine to the update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh HP LUT value into both oBattleObject_HP and oBattleObject_MaxHP indexed by Param1*2+Param2*8;
+    bne/bal around object_freeMemory after object_createCollisionData: spawn aborts when no collision
+    slot; sprite_load(0x10,0x54,0x80) plus animation/flip/palette setup right after coordinate placement;
+    object_setupCollisionData(0x13,0x14,3) and object_setCollisionHitEffect(6) configure the hitbox; mov
+    r0,#CUR_STATE_UPDATE stored into oBattleObject_CurStateActionPhaseAndPhaseInitialized ends init'
+  refs:
+  - bn6f/asm/asm31.s:65373
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D6250
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are essentially correct: place via panels, subtract Param3 from Y and Z, load
+    sprite bank 0x10/0x54/arg 0x80, set flag bit 2, pick animation from dword_80D62E4, set palette 0,
+    set flip, allocate collision (freeing object on failure), set box 0x13x0x14 depth 3, hit effect 6,
+    refresh collision, load HP from byte_80D6214[Param1*2+Param2*8] into HP/MaxHP, switch to CUR_STATE_UPDATE.
+    Minor accuracy issues: the animation index is a byte from dword_80D62E4 (a table of bytes, not words),
+    and the interface description incorrectly mentions Z when only Y and Z16 are subtracted.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/object uses sprite bank 0x10 resource 0x54 (no caller known) and what the Param1/Param2
+  variants correspond to in-game
+- Exact meaning of the collision box arguments (0x13,0x14,3) and hit effect id 6
+- 'The name and summary are essentially correct: place via panels, subtract Param3 from Y and Z, load
+  sprite bank 0x10/0x54/arg 0x80, set flag bit 2, pick animation from dword_80D62E4, set palette 0, set
+  flip, allocate collision (freeing object on failure), set box 0x13x0x14 depth 3, hit effect 6, refresh
+  collision, load HP from byte_80D6214[Param1*2+Param2*8] into HP/MaxHP, switch to CUR_STATE_UPDATE. Minor
+  accuracy issues: the animation index is a byte from dword_80D62E4 (a table of bytes, not words), and
+  the interface description incorrectly mentions Z when only Y and Z16 are subtracted.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6250 -> object_spawnInit
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6250

@@ -1,0 +1,68 @@
+name: initObjectGuiSpriteVariant
+address: '0x0811D954'
+kind: function
+status: probable
+summary: Initializes an object's GUI sprite, picking animation, palette bank, and slot from one of five
+  variants indexed by [r5+5], and sets the sprite to render at fixed screen-center (0x80,0x60) coordinates
+  with no shadow.
+interface: (r5 = object struct ptr, [r5+5] = variant index 0-4) -> r0 = 0; sets up the object's sprite
+  slot and writes size/state fields into the struct
+details: 'Marks the object active ([r5]=1) and loads GUI sprite resource 0x93 from unk_201AA00+4 via initGuiSprite_8002770.
+  The variant index at [r5+5] selects among five setups: an animation index from dword_811D9F4 (bytes
+  0x00,0x0A,0x14,0x1E — animations 0/10/20/30), a palette bank from byte_811D9F8 (1..5), a slot offset
+  from off_811D9BC (0x80..0x2A0, stride 0x80) written via slotList_storeHalfwordAndClearField, and a subrecord
+  byte from dword_811D9F0 (always 2). It then sets palette 0, priority 2, no shadow, fixed coordinates
+  0x80,0x60 (screen center), size byte 0x10 at [r5+0xC], and stores 0x80/0x60 into [r5+0x1A]/[r5+0x1E].
+  No known callers, so the owning system (menu/cursor/HUD) is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#5] with per-variant tables dword_811D9F4/byte_811D9F8/dword_811D9F0 and off_811D9BC
+    selects animation, palette bank, subrecord and slot offset; bl sprite_setAnimation / sprite_loadAnimationData
+    / sprite_noShadow / sprite_setPalette(0) / sprite_setPriority(2) / sprite_setCoordinates configure
+    the sprite slot; ldr r0,=0x93; bl initGuiSprite_8002770 on unk_201AA00+4 loads a fixed GUI sprite
+    resource; strh 0x80/0x60 into [r5+0x1A]/[r5+0x1E] then bl sprite_setCoordinates centers the sprite;
+    strb #0x10,[r5,#0xC] and strb #1,[r5] set object size and active state'
+  refs:
+  - bn6f/asm/asm32.s:31909
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811D954
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are largely correct: it initializes a GUI sprite for a menu/cursor object by
+    selecting among 5 variants via [r5+5], and the proposal''s description of variant selection, palette
+    bank 1..5, slot offsets 0x80..0x2A0, fixed coords 0x80/0x60, and size 0x10 all match the code. However,
+    the proposal says ''animation index from dword_811D9F4 (bytes 0x00,0x0A,0x14,0x1E)'' but the word
+    literal is 0x1E140A00 which yields bytes 0x00,0x0A,0x14,0x1E for variants 0..3 (fifth reuses), and
+    dword_811D9F0 is 0x02020202 not ''always 2'' for only first entry — minor but inaccurate. Also sprite_setAnimation
+    is called with r0 not r1, so [r5+0x10] is the stored animation byte, not necessarily the slot''s own
+    byte. A more accurate name emphasizing object/sprite init is warranted.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so which menu or HUD object owns these five variants is unknown
+- The meaning of the slotList halfword (0x80..0x2A0 slot offsets) and of subrecord field A (always 2)
+  is not confirmed
+- What the 0x93 GUI resource depicts
+- 'The name and summary are largely correct: it initializes a GUI sprite for a menu/cursor object by selecting
+  among 5 variants via [r5+5], and the proposal''s description of variant selection, palette bank 1..5,
+  slot offsets 0x80..0x2A0, fixed coords 0x80/0x60, and size 0x10 all match the code. However, the proposal
+  says ''animation index from dword_811D9F4 (bytes 0x00,0x0A,0x14,0x1E)'' but the word literal is 0x1E140A00
+  which yields bytes 0x00,0x0A,0x14,0x1E for variants 0..3 (fifth reuses), and dword_811D9F0 is 0x02020202
+  not ''always 2'' for only first entry — minor but inaccurate. Also sprite_setAnimation is called with
+  r0 not r1, so [r5+0x10] is the stored animation byte, not necessarily the slot''s own byte. A more accurate
+  name emphasizing object/sprite init is warranted.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D954 -> initObjectGuiSpriteVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D954

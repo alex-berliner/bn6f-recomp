@@ -1,0 +1,64 @@
+name: battle_updateDashForwardPhase
+address: '0x080B9D6E'
+kind: function
+status: probable
+summary: Battle-object action phase that teleports to a start panel based on alliance, then dashes forward
+  with per-frame acceleration for 40 frames while flashing a telegraphed target panel every 8 frames,
+  before ending the action.
+interface: (r0-r3 scratch, r5 = battle object pointer, phase-dispatched) -> void; sets CurAction=0x10
+  and clears CurPhase when the 40-frame timer expires
+details: On phase 0 it stores phase 4, sets collision region 4, animation 0x13, Z=0x10, and places the
+  object on a start panel taken from dword_80B9E34 indexed by Alliance*2 (alliance 0 -> panel (0,3), alliance
+  1 -> (7,0)); velocity is set to frontDirection*0x50000 and Timer=40. Phase 4 integrates X/Y velocities
+  each frame, recomputes panels/collision, and adds frontDirection*0xA000 to XVelocity per frame (accelerating
+  dash); when PanelX changes it re-sets collision region 4. Every 8th frame (Timer2 bit 3) it calls object_highlightPanelRegion
+  on a fixed panel from dword_80B9E3C per alliance, likely a telegraph/target flash. When Timer hits 0x1E
+  it plays sound 0x13C (0x3D+0xFF); at Timer<=0 it writes CurAction=0x10 and clears CurPhaseAndPhaseInitialized,
+  returning control to the action state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Phase-0 branch: strb #4,[CurPhase], object_setCollisionRegion(4), CurAnim=0x13, Timer=0x28
+    — standard battle-object action setup; ldrb Alliance, lsl #1, off_80B9E30 -> dword_80B9E34 (0x03070300):
+    per-alliance start panel X/Y pair; Phase-4 loop: X+=XVelocity, object_getFrontDirection()*0xA000 added
+    to XVelocity — accelerating forward movement; Timer==0x1E branch: mov r0,#0x3D; add r0,#0xFF; bl PlaySoundEffect
+    (effect 0x13C); Tail: CurAction=0x10, CurPhaseAndPhaseInitialized=0 — hands back to the battle action
+    dispatcher'
+  refs:
+  - bn6f/asm/asm31.s:3751
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080B9D6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s mechanics: phase 0 sets phase 4, anim 0x13, Z=0x10, alliance-indexed
+    start panel (0,3)/(7,0), XVelocity=frontDir*50000, Timer=40 (`strh r0, #0x28` at 0x80B9D86). Phase
+    4 integrates position, adds frontDir*0xA000 acceleration, highlights a target panel every 8 frames
+    via `Timer2&3`, plays sound 0x13C when Timer==0x1E, and on Timer<=0 writes CurAction=0x10 and clears
+    CurPhaseAndPhaseInitialized. However, the function has no callers and isn''t an ''attack'' - it just
+    dashes forward with no damage code, so ''DashAttackPhase'' overstates it.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which enemy/attack uses this action (no callers known); the second panel table (0x03060301) decodes
+  oddly for alliance 1 (Y=0x30), so panel encoding or table indexing may differ
+- What collision region index 4 means and what CurAction 0x10 represents in the dispatcher
+- 'The code matches the proposal''s mechanics: phase 0 sets phase 4, anim 0x13, Z=0x10, alliance-indexed
+  start panel (0,3)/(7,0), XVelocity=frontDir*50000, Timer=40 (`strh r0, #0x28` at 0x80B9D86). Phase 4
+  integrates position, adds frontDir*0xA000 acceleration, highlights a target panel every 8 frames via
+  `Timer2&3`, plays sound 0x13C when Timer==0x1E, and on Timer<=0 writes CurAction=0x10 and clears CurPhaseAndPhaseInitialized.
+  However, the function has no callers and isn''t an ''attack'' - it just dashes forward with no damage
+  code, so ''DashAttackPhase'' overstates it.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9D6E -> battle_updateDashForwardPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9D6E

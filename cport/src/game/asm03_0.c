@@ -197,7 +197,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * as the original's jump-table dispatch leaves the registers. */
 
 /* register form: calls the custom-menu state handlers (battle_custMenuAnimateCursorToOK_8026B04,
- * custMenuUpdateWaitSelectionState_8026CCC, scrollStrip_update_8026BF4, sub_8026D06,
+ * custMenuUpdateWaitSelectionState_8026CCC, scrollStrip_update_8026BF4, battleObject_chipSelectOverlayTick,
  * sub_8026DB0, battle_endChipSelectionBeginTurn_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, battleObject_chipSelectStateTick, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
@@ -218,7 +218,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x00: GUEST_CALL(battle_custMenuAnimateCursorToOK_8026B04); break;
     case 0x04: GUEST_CALL(custMenuUpdateWaitSelectionState_8026CCC); break;
     case 0x08: GUEST_CALL(scrollStrip_update_8026BF4); break;
-    case 0x0C: GUEST_CALL(sub_8026D06); break;
+    case 0x0C: GUEST_CALL(battleObject_chipSelectOverlayTick); break;
     case 0x10: GUEST_CALL(sub_8026DB0); break;
     case 0x14: GUEST_CALL(battle_endChipSelectionBeginTurn_8026DC4); break;
     case 0x18: GUEST_CALL(chatbox_stateMaybeFinishText_8026E4C); break;
@@ -2217,11 +2217,11 @@ static void active_kind_4_or_5(u32 rec, u8 kind) {
     GUEST_CALL(beastout_loadSelectionScreenGfx);
 }
 
-/* register form: calls sub_80285FE outside this file, which has no typed C interface yet */
+/* register form: calls battle_drawCustomChipPreview outside this file, which has no typed C interface yet */
 static void active_kind_6_or_7(u32 raw_id, u8 kind) {
     R0 = raw_id;
     R1 = kind;
-    GUEST_CALL(sub_80285FE);
+    GUEST_CALL(battle_drawCustomChipPreview);
 }
 
 /* register form: calls beastout_loadChipUseGfx outside this file, which has no typed C interface yet */

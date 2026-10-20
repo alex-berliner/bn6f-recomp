@@ -1,0 +1,66 @@
+name: battle_initSpriteFromSourceObject
+address: '0x080C3024'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s sprite from its RelatedObject1Ptr source: resolves actor type
+  to pick sprite id (navi path via NaviStats 0x2C/0x29 + chip_class_lookup, else enemy_getArmPosition),
+  loads sprite + anim, copies the source''s 0x34 position triple and recomputes PanelX/Y, sets palette
+  via battle_pickPaletteIndexForNavi, applies flip, stores unpacked actor info into ExtraVars, then sets
+  CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE.'
+interface: (r5 = battle object whose RelatedObject1Ptr is the source object; r0/r1 clobbered) -> r0 =
+  0; object's CurStateActionPhase set to CUR_STATE_UPDATE
+details: Reads the source object's NameID and unpacks (ver, actorType, aiIdx) via unpackVerActorTyAndAIIdx_800F29C.
+  For actorType 2 the sprite id comes from NaviStats bytes 0x2C/0x29 through chip_class_lookup_800FC9E
+  (navi path), otherwise from enemy_getArmPosition_800F26C, which also resolves 0xCD..0xFF arm-slot ids;
+  the id and a second word are passed to sprite_load and sprite_loadAnimationData. CurAnim is cleared,
+  CurAnimCopy set to 0xFF, and bit 1 of oObjectHeader_Flags is set. The 12 bytes at offset 0x34 of the
+  source object (position triple) are copied into the new object and object_setPanelsFromCoordinates recomputes
+  PanelX/PanelY from them. battle_pickPaletteIndexForNavi_801002C + sprite_setPalette recolor the sprite,
+  object_getFlip + sprite_setFlip apply facing, and unpacked actor info is stored into ExtraVars+0xC/+0x10
+  before sub_8010DF6 and sub_80E1352 finish setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load/sprite_loadAnimationData/sprite_hasShadow called with the id chosen from NameID
+    (loc_80C3058); position: ldmia [src+0x34] {r1-r3} then stmia [r5+0x34], followed by object_setPanelsFromCoordinates;
+    palette: battle_pickPaletteIndexForNavi_801002C then sprite_setPalette; facing: object_getFlip then
+    sprite_setFlip, matching flip semantics of the source object; terminal state write: mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]'
+  refs:
+  - bn6f/asm/asm31.s:24057
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0801002C battle_pickPaletteIndexForNavi_801002C
+  - 0x0800FC9E chip_class_lookup_800FC9E
+  reproduce: python3 tools/asmcat.py 0x080C3024
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code does load and configure a sprite from the RelatedObject1Ptr source, but several specifics
+    in the proposal are wrong. CurStateActionPhase is set via a single str to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    (CUR_STATE_UPDATE, not just CurStateActionPhase). sprite_load is called with r0=0x80 and r1/r2 from
+    the resolved ids, not (int a1, int a2, int a3) as summarized. The palette/flip/extraVars block is
+    correct, and the position copy at offset 0x34 is accurate. Overall the function name ''initEnemySpriteFromSourceObject''
+    fits the init pattern but the summary overstates detail and misnames the final store.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so it is unclear whether this is the generic enemy spawn sprite step or one specific
+  spawn path (e.g. arm/trap forms)
+- The meaning of the second word returned by unpackVerActorTyAndAIIdx stored in ExtraVars+0x10 is unknown
+- The code does load and configure a sprite from the RelatedObject1Ptr source, but several specifics in
+  the proposal are wrong. CurStateActionPhase is set via a single str to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  (CUR_STATE_UPDATE, not just CurStateActionPhase). sprite_load is called with r0=0x80 and r1/r2 from
+  the resolved ids, not (int a1, int a2, int a3) as summarized. The palette/flip/extraVars block is correct,
+  and the position copy at offset 0x34 is accurate. Overall the function name 'initEnemySpriteFromSourceObject'
+  fits the init pattern but the summary overstates detail and misnames the final store.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3024 -> battle_initSpriteFromSourceObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3024

@@ -1,0 +1,70 @@
+name: init_battlePanelObject
+address: '0x080CF810'
+kind: function
+status: probable
+summary: 'Init entry for a battle panel object: bails out via object_freeMemory if the battle is over,
+  otherwise loads sprite 0x80/0xC/0x14, picks palette 0xB or byte_80CF8A8[Element & 0xF], sets position/Z/timer,
+  flips XVelocity by front direction, builds 7x5 collision from Param1 with region 4, sets state to CUR_STATE_UPDATE,
+  and tail-calls sub_80CF8B0.'
+interface: (r5 = battle object header) -> r0 = destroyed? (1 if object freed because battle over); sets
+  object's flags/anim/palette/position/velocity/collision
+details: Early-outs by freeing the object via object_freeMemory if battle_isBattleOver says the battle
+  has ended. Otherwise sets flag bit 3 in oObjectHeader_Flags, loads sprite resource (0x80, 0xC, 0x14),
+  plays animation 0, and applies facing via object_getFlip/sprite_setFlip. Palette is 0xB unless oBattleObject_Param2
+  is nonzero, in which case it is byte_80CF8A8[oBattleObject_Element & 0xF] = {0,1,2,3,4,...}, an element-to-palette
+  lookup. Positions the object from panel coordinates (object_setCoordinatesFromPanels), sets Z = 0x10<<16
+  (16), zeroes Timer, multiplies XVelocity by the front direction (so it travels forward from the owner's
+  side), then creates collision data sized 7x5 from oBattleObject_Param1 with region 4 and runs the first
+  presentCollisionData pass. Finally writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and tail-calls sub_80CF8B0 (the state's first update).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver + bne loc_80CF89C -> bl object_freeMemory: spawn init aborted when battle
+    is over; mov r0,#0x80 / r1,#0xc / r2,#0x14 ; bl sprite_load, sprite_noShadow, anim 0: sets up the
+    object''s sprite; ldrb r0,[r5,#oBattleObject_Element] ... ldrb r0,[r7,r0] with byte_80CF8A8 = 0,1,2,3,4:
+    element-indexed palette table; bl object_setCoordinatesFromPanels; str 0x10<<16 -> oBattleObject_Z;
+    XVelocity *= object_getFrontDirection(): panel-placed, forward-moving object; object_createCollisionData
+    + object_setupCollisionData(7,5,Param1) + region 4, then CUR_STATE_UPDATE and sub_80CF8B0: collision
+    setup and state transition'
+  refs:
+  - bn6f/asm/asm31.s:51055
+  - 0x0800A18E battle_isBattleOver
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CF810
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match well: early-out frees object via object_freeMemory at loc_80CF89C
+    if battle_isBattleOver returns nonzero; sprite load (0x80,0xC,0x14), anim 0, palette 0xB or byte_80CF8A8[Element
+    & 0xF] all match. Z=0x10<<16, Timer=0, XVelocity *= frontDirection, collision 7x5 from Param1 with
+    region 4, then CUR_STATE_UPDATE and tail-call sub_80CF8B0 — all confirmed. However the function itself
+    is sub_80CF8B0''s caller/setup, so ''spawn_initPanelObject'' overstates ''spawn'' (no callers shown,
+    and it sets a state, not spawns). A name reflecting it''s the init entry that delegates to sub_80CF8B0
+    would be more accurate, but the proposal''s description is faithful.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the in-game identity of the object (which attack/field object uses sprite 0x80/0xC/0x14)
+  is unknown
+- sub_80CF8B0 (the CUR_STATE_UPDATE handler) is not shown, so the object's ongoing behavior is unknown
+- Meaning of oBattleObject_Param2 != 0 (forces palette 0xB instead of element palette) is unconfirmed
+- 'The summary and behavior match well: early-out frees object via object_freeMemory at loc_80CF89C if
+  battle_isBattleOver returns nonzero; sprite load (0x80,0xC,0x14), anim 0, palette 0xB or byte_80CF8A8[Element
+  & 0xF] all match. Z=0x10<<16, Timer=0, XVelocity *= frontDirection, collision 7x5 from Param1 with region
+  4, then CUR_STATE_UPDATE and tail-call sub_80CF8B0 — all confirmed. However the function itself is sub_80CF8B0''s
+  caller/setup, so ''spawn_initPanelObject'' overstates ''spawn'' (no callers shown, and it sets a state,
+  not spawns). A name reflecting it''s the init entry that delegates to sub_80CF8B0 would be more accurate,
+  but the proposal''s description is faithful.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF810 -> init_battlePanelObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF810

@@ -1,0 +1,69 @@
+name: battle_bombArcFlightState
+address: '0x080CAA2C'
+kind: function
+status: probable
+summary: 'Flight/landing behavior for a thrown battle object: arcs from Param3/Param4 via math_getThrowSpeeds
+  for 50 frames under gravity 0xffffd000, then on landing either destroys (if panel non-solid) or breaks/explodes
+  the panel (breaking for Param1!=2, sub_801BD3C for Param1==2), advances CurAction to 4.'
+interface: (r5 = battle object) -> void; writes X/Y/Z velocity, position, Timer, CurAction/CurPhase/destroy
+  state on the object
+details: On first invocation (PhaseInitialized clear) it computes a parabolic throw from panels Param3/Param4
+  via math_getThrowSpeeds with gravity constant 0xffffd000 (-0x3000 Z per frame), stores X/Y/Z velocities,
+  sets Timer to 0x32 (50 frames), and marks the phase initialized. Each subsequent tick decrements Timer
+  while integrating position and updating the object's panels; when the timer expires it snaps coordinates
+  to the panel and zeroes Z. If the landing panel is not solid the object just spawns an effect and sets
+  CUR_STATE_DESTROY; otherwise it sets a collision region from a small table indexed by Param1 (dword_80CAB10
+  = 0x40101), and for Param1==2 calls sub_801BD3C (panel X/Y, alliance, r2=0, r3=4) plus SOUND_HIT_BOMB_1,
+  while other Param1 values break the panel (object_breakPanel_dup2), spawn effect id 0x11, and play sound
+  0x97, finally advancing to CurAction 4 phase 0 (the explosion/burst state).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r4,#0x32 / ldr r6,=0xffffd000 / bl math_getThrowSpeeds: throw arc over 50 frames with fixed
+    gravity, classic bomb toss; Timer countdown integrates X/Y/Z velocity then object_setPanelsFromCoordinates/object_updateCollisionPanels
+    while airborne; On landing: object_breakPanel_dup2 + effect 0x11 + PlaySoundEffect(0x97) for the default
+    variant; table object_setCollisionRegion by Param1; Param1==2 branch calls sub_801BD3C then PlaySoundEffect(SOUND_HIT_BOMB_1),
+    confirming bomb identity; Non-solid landing panel spawns effect and writes CUR_STATE_DESTROY; solid
+    landing advances to CurAction=4 (explosion state)'
+  refs:
+  - bn6f/asm/asm31.s:40587
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080CAA2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The core flow (compute throw speeds, arc, land, conditional panel break/explosion, advance CurAction)
+    matches the code. However, the proposal''s description of CurAction/phase writing is wrong: at loc_80CAAD8
+    it writes CurAction=4 and zeroes CurPhaseAndPhaseInitialized (a halfword), not ''phase 0 of action
+    4'' ambiguously - and it does NOT set CUR_STATE_DESTROY on the normal landing path. Also the ''non-solid''
+    early-return does set CUR_STATE_DESTROY via the str at loc_80CA9A, contradicting the proposal''s claim
+    that only the non-solid branch destroys. The summary overstates; minor naming tweak is warranted since
+    it''s specifically about a thrown bomb object''s flight/landing logic, but ''battle_bombArcFlightState''
+    is acceptable.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_801BD3C does in the Param1==2 branch (some panel/damage helper?) and which bomb variants map
+  to Param1 0/1/2
+- Which attack or enemy AI spawns this object (no callers known), so the exact bomb identity (e.g. which
+  bomb chip) is unconfirmed
+- 'The core flow (compute throw speeds, arc, land, conditional panel break/explosion, advance CurAction)
+  matches the code. However, the proposal''s description of CurAction/phase writing is wrong: at loc_80CAAD8
+  it writes CurAction=4 and zeroes CurPhaseAndPhaseInitialized (a halfword), not ''phase 0 of action 4''
+  ambiguously - and it does NOT set CUR_STATE_DESTROY on the normal landing path. Also the ''non-solid''
+  early-return does set CUR_STATE_DESTROY via the str at loc_80CA9A, contradicting the proposal''s claim
+  that only the non-solid branch destroys. The summary overstates; minor naming tweak is warranted since
+  it''s specifically about a thrown bomb object''s flight/landing logic, but ''battle_bombArcFlightState''
+  is acceptable.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CAA2C -> battle_bombArcFlightState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CAA2C

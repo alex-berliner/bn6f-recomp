@@ -1,0 +1,68 @@
+name: battle_initNaviObjectFromStats
+address: '0x0802D9B0'
+kind: function
+status: probable
+summary: 'Initializes a navi battle object on its first entry: copies the alliance''s NaviStats record
+  into the local slot, sets AI index, name ID, HP/MaxHP, loads the chip-class sprite and anims, picks
+  palette/flip, clears status/flags/invuln, sets element weakness and HitElement=8, then finalizes the
+  spawn via begin-turn and arm-pos refresh.'
+interface: (r5 = battle object, uses its oBattleObject_Alliance) -> r0 = ?; builds the navi from the alliance's
+  NaviStats entry at 0x2034A60
+details: 'Copies the alliance''s 0x64-byte(?) NaviStats entry into the working table at 0x2034A60, then
+  reads fields back: byte 0x29 becomes the AI index and NameID = AIIndex + 0xA0; halfwords 0x40/0x42 become
+  HP and MaxHP. It looks up the chip id at offset 0x2C (with byte 0x29 as a second arg) via chip_class_lookup,
+  loads that sprite and animation, sets CurAnim=3, picks the navi palette, sets the object flip, wires
+  the name popup, clears status/flags/invulnerability, and sets HitElement=8. Ends by calling battle_beginTurnOpenProcess
+  and battleRefreshTrackedObjectArmPos, so it finishes a fresh navi object spawn/entry into battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'CopyWords from GetBattleNaviStatsAddr result (index*0x64) into eBattleNaviStats2034A60: refreshes
+    the active stats copy for this side; GetBattleNaviStatsByte(0x29) -> oAIData_AIIndex, then NameID
+    = AIIndex+0xA0: assigns AI and name from the stats record; GetBattleNaviStatsByte(0x2C)+0x29 -> chip_class_lookup
+    -> sprite_load/sprite_loadAnimationData: builds the navi''s sprite from a chip-class id stored in
+    the record; GetBattleNaviStatsHword(0x40)/ (0x42) -> oBattleObject_HP / oBattleObject_MaxHP: sets
+    the navi''s HP from the record; battle_beginTurnOpenProcess_80144C0, battle_clearObjectStatusFlagsAndTimers_801A264,
+    object_clearInvulnerableTime: final spawn/turn-start initialization of the object'
+  refs:
+  - bn6f/asm/asm03_0.s:16203
+  - 0x0800093C CopyWords
+  - 0x08013682 GetBattleNaviStatsAddr
+  - 0x080136CC GetBattleNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x0802D9B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the spawn-from-stats behavior, but it misses the HP/MaxHP halfword
+    reads at offsets 0x40/0x42 (actually present near `bl GetBattleNaviStatsHword_AllianceFromBattleObject`
+    setting HP/MaxHP), the HitElement=8 write, the `sub_8014216`/element-weakness setup, and the clearing
+    of object flags. It also incorrectly claims NameID = AIIndex + 0xA0 (asm shows add r0,#0xff then add
+    r0,#0xa1 → NameID = AIIndex + 0xA0, which is right but odd phrasing) and wrongly pins HitElement=8
+    without noting it writes to oAIAttackVars_HitElement via r7, not r5. The summary is accurate enough
+    but the name should emphasize it fully spawns/initializes a navi battle object (sprite, AI, name,
+    HP, elements).; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so whether this is a mid-battle navi spawn, a boss entry, or a full custom-navi
+  load is unconfirmed
+- Whether offset 0x2C is a chip id or a sprite/form index and what the second sprite_load argument means
+- Exact size/meaning of the 0x64-unit CopyWords transfer (bytes vs words) and the layout of the 0x2034A60
+  working table
+- The proposal correctly captures the spawn-from-stats behavior, but it misses the HP/MaxHP halfword reads
+  at offsets 0x40/0x42 (actually present near `bl GetBattleNaviStatsHword_AllianceFromBattleObject` setting
+  HP/MaxHP), the HitElement=8 write, the `sub_8014216`/element-weakness setup, and the clearing of object
+  flags. It also incorrectly claims NameID = AIIndex + 0xA0 (asm shows add r0,#0xff then add r0,#0xa1
+  → NameID = AIIndex + 0xA0, which is right but odd phrasing) and wrongly pins HitElement=8 without noting
+  it writes to oAIAttackVars_HitElement via r7, not r5. The summary is accurate enough but the name should
+  emphasize it fully spawns/initializes a navi battle object (sprite, AI, name, HP, elements).
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D9B0 -> battle_initNaviObjectFromStats
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D9B0

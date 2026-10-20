@@ -1,0 +1,68 @@
+name: init_stepCountdownAndSceneSetup
+address: '0x0809A630'
+kind: function
+status: probable
+summary: 'State-step handler on a per-object pointer in r5: while EVENT_F6 is set it counts a halfword
+  timer down at r5+0xc and updates a word at r5+0x70 by a byte at r5+0xf each tick; on expiry it re-reads
+  r5+0x70 via sub_802D15E and, if EVENT_F5 is set, performs a one-shot scene setup (writes 0x20 to r5+0x04,
+  resets and respawns the battle eStruct records from byte_8099E90, patches three table entries via r5+0x7c/r5+0x80,
+  moves three sprites to (-0x30, 0x58, 0), clears EVENT_F6) and returns 0; otherwise it calls sub_809A80C
+  on r5+0x74 and returns 1.'
+interface: (r0-r4 unused; r5 = this-object with fields 0x04, 0x0c, 0x0f, 0x70, 0x74, 0x7c, 0x80) -> r0
+  = 0 once the setup has fired, 1 while still waiting; flags clobbered by bls
+details: 'While EVENT_F6 is set it decrements the halfword at r5+0x0c and subtracts the byte at r5+0x0f
+  from the word at r5+0x70 each tick; when the halfword goes negative it re-reads a value via sub_802D15E
+  into r5+0x70. If EVENT_F5 is also set, it does the one-shot setup: writes 0x20 to r5+0x04, calls sub_809A308,
+  resets the eStructArr2008450 scene-record array, respawns records from table byte_8099E90, patches three
+  consecutive table entries (base id from r5+0x7c, values 0x80/0/0 read relative to r5+0x80), moves three
+  consecutive sprite-table entries to (-0x30, 0x58, 0), clears EVENT_F6 and returns 0. Otherwise it calls
+  sub_809A80C on r5+0x74 and returns 1. The 0/1 return pattern marks this as a step function of an update
+  state machine (the object pointer arriving in r5, not r0, suggests it is tail-called from a dispatcher).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0xc]/sub/strh + ldr [r5,#0x70]/sub r1(=0xf)/str: per-tick countdown on two struct
+    fields guarded by TestEventFlagFromImmediate(EVENT_F6); setup block calls battle_resetEStructRecords_8046664
+    then battle_spawnEStructRecordsFromTable_80465A0 with off_809A6A0=byte_8099E90: table-driven scene-record
+    respawn; setFieldsInThreeTableEntries_811980C([r5,#0x7c], [r5,r1=0x80], 0, 0) and sprite_setPositionForIdRange3_8119854(-0x30,
+    0x58, 0): one-time scene state and sprite repositioning; ClearEventFlagFromImmediate(EVENT_F6) followed
+    by mov r0,#0 vs the other branch''s mov r0,#1: one-shot completion signal; loc_809A694: ldr r0,[r5,#0x74];
+    bl sub_809A80C; return 1 — per-tick work while the event is still pending'
+  refs:
+  - bn6f/asm/asm28_0.s:1782
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x08046664 battle_resetEStructRecords_8046664
+  reproduce: python3 tools/asmcat.py 0x0809A630
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The flow and 0/1 return pattern, the r5+0x4/state-byte write of 0x20, and the callee set all match
+    the proposal. However the summary claims flags F5 and F6 together trigger the setup, while the asm
+    tests F6 first to enter countdown, then F5 only after expiry at loc_809A64E — they are not conjunctive.
+    Also r5 arriving tail-called is unverified (no `mov r5,r0` visible), though plausible. A minor name
+    tweak to init_stepCountdownAndSceneSetup better reflects the state-machine init nature (r5+0x4 = 0x20).;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the identity of the r5 object (task/scene struct) and which cutscene this is
+  cannot be confirmed
+- sub_802D15E, sub_809A308 and sub_809A80C are unnamed; their semantics would pin down the countdown source
+  and the per-tick behavior
+- Which story event EVENT_F5/EVENT_F6 correspond to, and what byte_8099E90's record table represents in-game
+- The flow and 0/1 return pattern, the r5+0x4/state-byte write of 0x20, and the callee set all match the
+  proposal. However the summary claims flags F5 and F6 together trigger the setup, while the asm tests
+  F6 first to enter countdown, then F5 only after expiry at loc_809A64E — they are not conjunctive. Also
+  r5 arriving tail-called is unverified (no `mov r5,r0` visible), though plausible. A minor name tweak
+  to init_stepCountdownAndSceneSetup better reflects the state-machine init nature (r5+0x4 = 0x20).
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A630 -> init_stepCountdownAndSceneSetup
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A630

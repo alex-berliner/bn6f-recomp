@@ -2164,7 +2164,7 @@ Next cb_8048FD4(void) {
 
     switch (offset) {
     case 0:  GUEST_CALL(sub_804900C); break;
-    case 4:  GUEST_CALL(sub_8049058); break;
+    case 4:  GUEST_CALL(battle_resetVideoAndScene); break;
     case 8:  GUEST_CALL(sub_8049080); break;
     case 12: GUEST_CALL(sub_804971C); break;
     }
@@ -2866,7 +2866,7 @@ Next sub_8049DDC(void) {
  *
  * eS200A290 holds the current phase byte. This callback indexes the jump
  * table at off_8049E18 with it and calls the matching handler
- * (chatbox_initNewScreen_8049E28 / sub_8049E5C / sub_8049E84), passing the
+ * (chatbox_initNewScreen_8049E28 / submenu_resetVideoDuringFade / sub_8049E84), passing the
  * phase byte in r1 and a pointer to the phase byte in r5. The handler also
  * sees the dispatcher's own table entry in r0, exactly as the original's
  * "ldr r0,[table,phase]; mov lr,pc; bx r0" leaves the register file.

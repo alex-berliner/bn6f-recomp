@@ -1,0 +1,72 @@
+name: battle_frontPanelAttackPhase
+address: '0x080BD6B6'
+kind: function
+status: probable
+summary: 'Two-stage attack phase handler: on entry sets CurAnim/Copy=5, spawns a t1 kind 5 temp attack
+  object, plays SFX 0xB0, sets Timer=10, and marks PhaseInitialized=4. When timer hits 5 it spawns a dimming
+  collision region (Element + DamageAndStaminaDamageCounterDisabler) on the panel in front and a t1 kind
+  0 effect at that panel''s coords shifted by (getFlip<<8)+0x27, shakes the camera (mag 1, dur 10), and
+  spawns an ExtraVars object. Timer counts down to 0, then CurPhaseAndPhaseInitialized is cleared.'
+interface: (r5 = battle object) -> void; clobbers r4/r6/r7, no return value
+details: This is a two-stage phase handler keyed off oBattleObject_PhaseInitialized. On entry it sets
+  CurAnim/CurAnimCopy to 5, spawns a temp attack object (t1 kind 5), plays SFX 0xB0, sets Timer to 10,
+  calls sub_80BDA7C(5) to pick a follow-up state, and marks the phase initialized (state 4). When the
+  timer reaches 5 it computes the panel directly in front via object_getFrontDirection plus PanelX, calls
+  object_spawnDimmingCollisionRegion with the object's Element and DamageAndStaminaDamageCounterDisabler
+  data, spawns a t1 kind 0 effect at that panel's screen coordinates flipped by object_getFlip plus 0x27
+  pixels, triggers a camera shake (magnitude 1, duration 10), and spawns an ExtraVars object (kind 0xA)
+  holding the temp attack object pointer (r7 = obj+0x68). The timer then counts down and on zero the whole
+  CurPhaseAndPhaseInitialized is reset to 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loc_80BD6E6 branches on Timer==5 only, then decrements Timer and resets CurPhaseAndPhaseInitialized
+    at 0 — classic battle phase-update structure; bl PlaySoundEffect with 0xB0 after spawn_t1_0x5_tempAttackObject
+    and anim 5 shows a telegraphed attack startup; object_getFrontDirection + PanelX/PanelY fed to object_spawnDimmingCollisionRegion
+    shows the hit lands on the panel in front of the object; object_getFlip result *0x100 + 0x27 passed
+    with object_getCoordinatesForPanels into spawn_t1_0x0_EffectObject positions a flip-aware effect at
+    the target panel; battle_spawnExtraVarsObject with r7=obj+0x68 (the temp attack object) links the
+    spawned attack to the ExtraVars object
+  refs:
+  - bn6f/asm/asm31.s:11603
+  - 0x080005CC PlaySoundEffect
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080BD6B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary names/CurAnim settings, timer=10, mid-timer=5 collision region spawn with Element &
+    DamageAndStaminaDamageCounterDisabler, effect spawn offset by getFlip<<8 +0x27, camera shake 1/10,
+    and t1 kind 5 temp attack object match the asm. However the proposed name ''battle_frontPanelAttackPhase''
+    and ''spawns an ExtraVars object holding the temp attack object pointer (r7 = obj+0x68)'' are inaccurate:
+    at loc_80BD734 r4 is reloaded from 0x80BDAF4 (constant, not the obj+0x68) right before battle_spawnExtraVarsObject,
+    and 0x80BD9F4 = 0x10a00, not r7. battle_spawnExtraVarsObject internally stores r7 (the obj+0x68 pointer
+    still in r7) and sets header flags; the previous ''kind 0xA'' name overlap with the constant is just
+    dword address load, not a stored value to the spawn.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which boss/attack this belongs to is unknown since no caller is identified; the dword tables 0x10b11
+  (temp attack object template) and 0x10a00 (ExtraVars object template) would need identification to name
+  the attack
+- sub_80BDA7C (called with 5) is not shown, so the exact follow-up state it selects is unknown
+- 'The summary names/CurAnim settings, timer=10, mid-timer=5 collision region spawn with Element & DamageAndStaminaDamageCounterDisabler,
+  effect spawn offset by getFlip<<8 +0x27, camera shake 1/10, and t1 kind 5 temp attack object match the
+  asm. However the proposed name ''battle_frontPanelAttackPhase'' and ''spawns an ExtraVars object holding
+  the temp attack object pointer (r7 = obj+0x68)'' are inaccurate: at loc_80BD734 r4 is reloaded from
+  0x80BDAF4 (constant, not the obj+0x68) right before battle_spawnExtraVarsObject, and 0x80BD9F4 = 0x10a00,
+  not r7. battle_spawnExtraVarsObject internally stores r7 (the obj+0x68 pointer still in r7) and sets
+  header flags; the previous ''kind 0xA'' name overlap with the constant is just dword address load, not
+  a stored value to the spawn.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD6B6 -> battle_frontPanelAttackPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD6B6

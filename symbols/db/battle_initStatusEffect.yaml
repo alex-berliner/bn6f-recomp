@@ -1,0 +1,67 @@
+name: battle_initStatusEffect
+address: '0x080D8FE4'
+kind: function
+status: probable
+summary: Battle object init that places the object at its panel pixel coordinates, faces it forward, copies
+  spawner params to Timer2, allocates collision data (freeing the object if none is free), configures
+  a status-effect collision with element 0x3d/slot 5/base 0x10, presents it, and advances state to UPDATE.
+interface: (r5 = battle object) -> r0 = destroyed; advances object state to CUR_STATE_UPDATE, or frees
+  the object if no collision slot is free
+details: Reads the object's PanelX/PanelY, converts them to screen-pixel coordinates via object_getCoordinatesForPanels,
+  and stores them into X/Y; then stores object_getFrontDirection's +1/-1 result into XVelocity so later
+  movement/aiming follows the object's side. It copies the low half of oBattleObject_Params into Timer2,
+  presumably the variant/element the spawner chose. It allocates a collision-data slot with object_createCollisionData
+  and, on failure, frees the whole object via object_freeMemory. On success it sets up the collision data
+  with arguments (0x3d, 5, 0), writes status-effect base value 0x10 via object_setCollisionStatusEffect1,
+  refreshes it for the current frame with object_presentCollisionData, and marks the state machine to
+  continue to the UPDATE phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb PanelX/PanelY + bl object_getCoordinatesForPanels + str to X/Y: positions the object on
+    its panel; bl object_getFrontDirection; str into XVelocity: stores facing multiplier; bl object_createCollisionData;
+    bne path vs bl object_freeMemory: aborts spawn when no collision slot is available; mov r1,#0x3d /
+    mov r2,#5 / bl object_setupCollisionData followed by mov r0,#0x10 / bl object_setCollisionStatusEffect1:
+    installs the panel status effect; mov r0,#CUR_STATE_UPDATE; str into CurStateActionPhaseAndPhaseInitialized:
+    hands control to the update phase, so this is an init/setup handler'
+  refs:
+  - bn6f/asm/asm31.s:71375
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080D8FE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and interface are accurate against the asm (panel→coords at oBattleObject_X/Y, front
+    direction stored in XVelocity, low half of Params into Timer2, object_createCollisionData then object_freeMemory
+    on failure, then object_setupCollisionData with 0x3d/5/0, object_setCollisionStatusEffect1 with 0x10,
+    object_presentCollisionData, and CUR_STATE_UPDATE). However, the proposal names the callee ''object_setupCollisionData''
+    as ''object_createCollisionData'' in the details, and ''battle_initPanelStatusEffect'' is slightly
+    misleading — this sets up a status-effect collision (e.g. poison/aura) at the object''s location,
+    not an ''initPanel'' routine; a clearer name is battle_initStatusEffect.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so which spawner creates this object and what Params/Timer2 (the 0x3d/5 collision
+  setup) specifically encode is unconfirmed
+- Which in-game status effect the base value 0x10 corresponds to (e.g. holy, grass, poison) is not derivable
+  from this function alone
+- The summary and interface are accurate against the asm (panel→coords at oBattleObject_X/Y, front direction
+  stored in XVelocity, low half of Params into Timer2, object_createCollisionData then object_freeMemory
+  on failure, then object_setupCollisionData with 0x3d/5/0, object_setCollisionStatusEffect1 with 0x10,
+  object_presentCollisionData, and CUR_STATE_UPDATE). However, the proposal names the callee 'object_setupCollisionData'
+  as 'object_createCollisionData' in the details, and 'battle_initPanelStatusEffect' is slightly misleading
+  — this sets up a status-effect collision (e.g. poison/aura) at the object's location, not an 'initPanel'
+  routine; a clearer name is battle_initStatusEffect.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8FE4 -> battle_initStatusEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8FE4

@@ -1,0 +1,65 @@
+name: battleState4EventWaitOrSkip
+address: '0x08009AA8'
+kind: function
+status: probable
+summary: 'Per-state handler for battle state 4: on first entry, if State4EventCount is nonzero arm a 10-frame
+  CountdownTimer and set SubPhaseInitFlag; on subsequent ticks decrement it and once negative latch StatePhaseAndInitFlag=4;
+  if no events are pending, write Index_01=0xC and clear StatePhaseAndInitFlag.'
+interface: (r5 = battle state struct) -> r0 = undefined; updates oBattleState_CountdownTimer, SubPhaseInitFlag,
+  StatePhaseAndInitFlag, Index_01
+details: 'This is a per-state step function dispatched with r5 pointing at the battle state struct. On
+  first entry (SubPhaseInitFlag == 0) it checks oBattleState_State4EventCount: if nonzero it arms a 10-frame
+  countdown in oBattleState_CountdownTimer and latches the init flag; otherwise it jumps state via Index_01
+  = 0xC and clears StatePhaseAndInitFlag to 0. On subsequent frames it decrements the countdown each tick,
+  and once it goes negative writes phase 4 into StatePhaseAndInitFlag. So the state lingers 10 frames
+  while state-4 events are pending, then falls into phase 4, or immediately reroutes to state 12 when
+  there is nothing to wait for.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleState_SubPhaseInitFlag] / tst/bne splits first-run init from per-frame tick;
+    ldrb r1,[r5,#oBattleState_State4EventCount]; beq 8009ACE chooses the no-event path (Index_01 = 0xC,
+    phase = 0); mov r0,#0xa; strh r0,[r5,#oBattleState_CountdownTimer] arms a 10-frame timer only when
+    events exist; tick path decrements CountdownTimer and on underflow stores 4 to StatePhaseAndInitFlag
+    (bge locret); recorded on battlesweep and beastsp routes, consistent with a late-battle/end-of-battle
+    state
+  refs:
+  - bn6f/asm/asm00_1.s:14737
+  reproduce: python3 tools/asmcat.py 0x08009AA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary describes an ''advance to phase 4'' trigger, but the actual code (at loc_8009AC0) shows
+    `ldrh r0,[r5,#oBattleState_StatePhaseAndInitFlag]` – the assigned value is the packed state-phase-and-init
+    flag, not a clean ''phase 4'' write; the `Index_01` field is a byte (strb), and writing 0xC to it
+    plus clearing the phase flag routes to state 12 as the summary correctly notes. The name is reasonable
+    but ''WaitEventsOrTimer'' is speculative; a name like `battleState4WaitOrSkip` or similar better reflects
+    the observed behavior. The interface field name `SubPhaseInitFlag` is reused inconsistently (the struct
+    defines both `oBattleState_SubPhaseInitFlag` and `oBattleState_StatePhaseAndInitFlag`).; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what states 4 and 12 (0xC) represent in the battle state machine
+- what oBattleState_State4EventCount counts (event/animation queue?) and who increments it
+- which dispatcher calls this handler and whether other state handlers share the same struct layout assumptions
+- The summary describes an 'advance to phase 4' trigger, but the actual code (at loc_8009AC0) shows `ldrh
+  r0,[r5,#oBattleState_StatePhaseAndInitFlag]` – the assigned value is the packed state-phase-and-init
+  flag, not a clean 'phase 4' write; the `Index_01` field is a byte (strb), and writing 0xC to it plus
+  clearing the phase flag routes to state 12 as the summary correctly notes. The name is reasonable but
+  'WaitEventsOrTimer' is speculative; a name like `battleState4WaitOrSkip` or similar better reflects
+  the observed behavior. The interface field name `SubPhaseInitFlag` is reused inconsistently (the struct
+  defines both `oBattleState_SubPhaseInitFlag` and `oBattleState_StatePhaseAndInitFlag`).
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009AA8 -> battleState4EventWaitOrSkip
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009AA8

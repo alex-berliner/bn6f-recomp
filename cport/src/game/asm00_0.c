@@ -129,7 +129,7 @@ Next sound_dispatchTask_8000630(void) {
 /* sound_dispatchSoundRequest_8000642(r0 = sound id, r1/r2 = parameters):
  * Dispatch a sound request. The handler routine for the given sound id is
  * looked up in the table at off_8000704 and passed, together with the shared
- * sound callback sub_814F9AC, to the dispatcher sound_8000808.
+ * sound callback battle_smashApplyState, to the dispatcher sound_8000808.
  *
  * On return: r3 = the incoming r10 (the original stashes r10 across the call
  * and hands it back in r3), r4-r7 and r10 are preserved, and c/v are whatever
@@ -149,7 +149,7 @@ Next sound_dispatchSoundRequest_8000642(void) {
 
     /* sound_8000808 receives the handler in r0, the raw parameters in r1/r2,
      * the shared callback in r3, and keeps the table pointer in r7. */
-    R3 = A_sub_814F9AC | 1;             /* Thumb entry of the callback */
+    R3 = A_battle_smashApplyState | 1;             /* Thumb entry of the callback */
     GUEST_CALL(sound_8000808);
 
     /* Hand the saved r10 back in r3 and restore everything the dispatcher
@@ -221,7 +221,7 @@ static void play_bgm(u32 song_id, u32 arg1, u32 ch_index, u32 toolkit) {
      * song_id/arg1/channel_buf, which we keep as C locals so they survive across calls. */
     call_sound_8000808(song_id,     arg1,    ch_offset, (A_m4a_SongNumStart | 1));
     call_sound_8000808(channel_buf, arg1,    ch_offset, (A_sound_mplayStop | 1));
-    call_sound_8000808(channel_buf, 0xFF,    0,         (A_sub_814F9AC | 1));
+    call_sound_8000808(channel_buf, 0xFF,    0,         (A_battle_smashApplyState | 1));
     call_sound_8000808(song_id,     0xFF,    0,         (A_sub_814E9F0 | 1));
     call_sound_8000808(channel_buf, arg1,    0,         (A_sub_814EAF0 | 1));
 }

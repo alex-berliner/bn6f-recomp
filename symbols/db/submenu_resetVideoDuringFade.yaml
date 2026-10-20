@@ -1,0 +1,59 @@
+name: submenu_resetVideoDuringFade
+address: '0x08049E5C'
+kind: function
+status: probable
+summary: During an active screen transition, fully reinitializes video (VRAM clear, BG tilemap zero, base
+  GFX reload, chatbox reset, LCD forced-blank via 0x40) and then restores the submenu snapshot to resume
+  at main jumptable 0x28.
+interface: () -> (); returns early via flags if IsScreenFadeActive reports a fade in progress
+details: 'First checks whether a screen fade is active and bails out if so. Otherwise it performs a full
+  video reset: clears all of VRAM, zero-fills the toolkit''s 0x2000-byte BG tilemap buffer, reloads the
+  fixed 0x800-byte graphics block into VRAM at 0x600D400 plus the 32-byte IWRAM block, and calls a chatbox
+  routine (likely chatbox reset). It then writes 0x40 into the render info''s DISPCNT-style control value
+  — bit 6 = forced blank, leaving the display off. Finally it calls submenu_restoreSnapshot, which reloads
+  the saved submenu state from IWRAM into sSubmenu and resumes the submenu scene at main jumptable entry
+  0x28.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq locret after IsScreenFadeActive: whole body runs only when no fade is active; zeroFillVRAM
+    + ZeroFillGFX30025c0 + copyMemory_8001850 = full video/GFX reinitialization sequence; SetRenderInfoLCDControl(0x40):
+    DISPCNT bit 6 forces the screen blank during the reset; final call submenu_restoreSnapshot reloads
+    sSubmenu from IWRAM and resumes the submenu scene (jumptable 0x28)'
+  refs:
+  - bn6f/asm/asm03_2.s:6695
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08001850 copyMemory_8001850
+  reproduce: python3 tools/asmcat.py 0x08049E5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s flow: fade check, full VRAM clear, BG tilemap zero, GFX copy, chatbox
+    reset, DISPCNT 0x40, and submenu_restoreSnapshot. However, the early-out is inverted: `beq locret_8049E7E`
+    jumps to the return when the fade is NOT active (zf set), so it actually performs the reset only when
+    a fade IS active. Also, the callee at 0x08040818 is not in the provided callee list, and the proposal
+    incorrectly assumes the reset runs when no fade is active.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller is known, so the exact trigger (hard/soft reset handler vs. returning to menu after a sub-branch)
+  is inferred only from the callee set
+- the purpose of the chatbox_8040818 call is not documented; it likely resets chatbox state but that is
+  unconfirmed
+- 'The code matches the proposal''s flow: fade check, full VRAM clear, BG tilemap zero, GFX copy, chatbox
+  reset, DISPCNT 0x40, and submenu_restoreSnapshot. However, the early-out is inverted: `beq locret_8049E7E`
+  jumps to the return when the fade is NOT active (zf set), so it actually performs the reset only when
+  a fade IS active. Also, the callee at 0x08040818 is not in the provided callee list, and the proposal
+  incorrectly assumes the reset runs when no fade is active.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049E5C -> submenu_resetVideoDuringFade
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049E5C

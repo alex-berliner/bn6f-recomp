@@ -1,0 +1,66 @@
+name: initPostBattleScene
+address: '0x08049104'
+kind: function
+status: probable
+summary: 'Scene init step run after returning from battle: configures LCD control, clears render counters,
+  applies overlay palette 0x12, resets eStruct records, reinitializes chatbox/sub-objects, redraws RNG,
+  and sets scene state byte to 4.'
+interface: (r5 = pointer to large scene/work struct, set by caller; no args used) -> r0 clobbered by calls;
+  writes byte 4 to [r5+1]; flags not meaningful
+details: Sets DISPCNT-style LCD control to 0x1F40 (BG0-3 + OBJ, 1D tile mapping) via SetRenderInfoLCDControl,
+  then clears the render-info counters (renderInfo_8001788/80017A0) so the frame's render list rebuilds
+  from scratch. Applies overlay palette slot 0x12 from the ROM table, resets the battle-overlay eStruct
+  record array (battle_resetEStructRecords_8046664, the 'returning from a battle' path), copies scene
+  data (copyData_8049AAC) and reinitializes the chatbox. Calls sub_803BE30 with 2, redraws the RNG seed,
+  then initializes four sub-objects at fixed offsets of the r5 work struct (+0xF0, +0x30, +0x100, +0x90)
+  via sub_803C1A8/803C320/803C26A. Finally stores 4 into [r5+1], the scene state-machine step byte — r5
+  itself is never loaded here, so the caller's dispatcher must already hold the work-struct pointer in
+  r5 (likely an inlined/tail-merged state handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, dword_8049154 (=0x1F40) + bl SetRenderInfoLCDControl: classic battle-mode DISPCNT restore;
+    bl battle_resetEStructRecords_8046664: only fires on the return-from-battle scene-tick path; mov r0,#0xF0/0x30/0x80<<1/0x90
+    ; add rx,rx,r5 ; bl sub_803C1A8/803C320/803C26A: inits fields of the r5 work struct; mov r0,#4 ; strb
+    r0,[r5,#1]: advances a state byte, typical of the game''s scene state machines; r5 used without ever
+    being set: function is a tail-called/inlined step of a larger state dispatcher'
+  refs:
+  - bn6f/asm/asm03_2.s:4952
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x08001788 renderInfo_8001788
+  reproduce: python3 tools/asmcat.py 0x08049104
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate (DISPCNT 0x1F40, eStruct reset, overlay palette 0x12, RNG redraw,
+    stores 4 to [r5+1], inits sub-objects). However, the proposed name ''battle_initPostBattleScene''
+    is misleading because ''battle_'' is the prefix for battle-scene routines and this function only calls
+    battle_resetEStructRecords, it is itself a generic scene init (lacks a true ''battle_'' prefix match).
+    The interface claim ''flags not meaningful'' is wrong: strb r0,[r5,#1] writes byte 4 into the scene
+    state byte, but r5 here is never set in this function (no ''mov r5,...'' before use), so r5 must be
+    a preserved caller-supplied pointer to the scene struct. Name should use the ''init'' prefix per rules.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known — which scene/state dispatcher invokes this and what the r5 work struct represents
+  (which game mode owns offsets 0x30/0x90/0xF0/0x100)
+- Purpose of copyData_8049AAC and sub_803BE30(2) unknown; sub_803C1A8/803C320/803C26A not characterized
+- 'The summary is mostly accurate (DISPCNT 0x1F40, eStruct reset, overlay palette 0x12, RNG redraw, stores
+  4 to [r5+1], inits sub-objects). However, the proposed name ''battle_initPostBattleScene'' is misleading
+  because ''battle_'' is the prefix for battle-scene routines and this function only calls battle_resetEStructRecords,
+  it is itself a generic scene init (lacks a true ''battle_'' prefix match). The interface claim ''flags
+  not meaningful'' is wrong: strb r0,[r5,#1] writes byte 4 into the scene state byte, but r5 here is never
+  set in this function (no ''mov r5,...'' before use), so r5 must be a preserved caller-supplied pointer
+  to the scene struct. Name should use the ''init'' prefix per rules.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049104 -> initPostBattleScene
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049104

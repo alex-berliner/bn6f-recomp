@@ -1,0 +1,67 @@
+name: battle_loadEnemySprite
+address: '0x0811DC88'
+kind: function
+status: probable
+summary: Loads an enemy battle sprite from a table (optional LZ77 decompress to unk_20212F8) into a free
+  eStructArr2008450 slot, then configures animation, palette, priority, no-shadow, slotList=0x80, sub-entry
+  palette bank 1, and sub-record field A; if slot already occupied, aborts.
+interface: (r0 = sprite table index, r1 = eStructArr2008450 entry index) -> r0 = 0/1 success; clobbers
+  r4,r5
+details: 'r1 indexes the fixed 0x58-byte struct array via getStructFrom2008450; on success the entry is
+  marked in-use (byte 0 = 1) and later tagged 0x23. r0<<2 selects a pointer from the table at byte_811DD94;
+  a null pointer aborts. If the pointer''s bit0 is set, LZ77 data is decompressed to unk_20212F8 and used
+  from +4, otherwise the pointer is used directly. The chosen resource is handed to initGuiSprite_8002770
+  together with a per-index byte from byte_811DD14 (values 0x6C-0x6D, 0x9D-0xA0), then the sprite is configured:
+  animation index from off_811DE18, animation data loaded, no shadow, palette from byte_811DE54, priority
+  0, slot halfword 0x80 stored via slotList, sub-entry palette bank 1, and sub-record field A from byte_811DE36
+  (mostly 3). The table''s nonzero entries reference virusBattleSprite_8244164, sprite_8253F88 and sprite_837D8E0,
+  indicating enemy/virus battle graphics.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl getStructFrom2008450 with r1, then ''strb #1'' and ''strb 0x23'' into the returned struct
+    marks the entity as initialized; ldr r0,[byte_811DD94 + r4] with tst/beq: null table entry exits,
+    bit0 selects LZ77 decompress to unk_20212F8 vs direct pointer; call chain sprite_setAnimation/loadAnimationData/noShadow/setPalette/setPriority/slotList_storeHalfwordAndClearField
+    configures a fresh battle sprite object; resource table word_8244164 (virusBattleSprite_8244164),
+    sprite_8253F88, sprite_837D8E0 show the loaded graphics are battle/enemy sprites; byte_811DD14 holds
+    sparse per-index IDs (0x6C,0x6D,0x9D-0xA0) passed to initGuiSprite_8002770 as the object/resource
+    id'
+  refs:
+  - bn6f/asm/asm32.s:32291
+  - 0x08128DF4 sub_8128DF4
+  - 0x08128E2C sub_8128E2C
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x0811DC88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function does instantiate and configure a battle sprite (initGuiSprite_8002770, sprite_setAnimation,
+    sprite_loadAnimationData, sprite_noShadow, sprite_setPalette, sprite_setPriority, slotList, sprite_setSubEntryPaletteBank,
+    sprite_setSubRecordFieldA), and LZ77 dispatch + unk_20212F8 + sub_811DE74 call are correct. However
+    the proposed summary says r0 is a return value and bytes 0x6C/0x6D/0x9D-0xA0 — byte_811DD14 holds
+    only 0x6C, 0x6D, 0x9D, 0x9E, 0x9F, 0xA0 (not a range). Also initGuiSprite_8002770 is called with (resource_ptr,
+    per_index_byte), not the other way. Name is fine, but summary should be tightened.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Purpose of sub_811DE74 (called at the end with the index) and of the 0x23 tag in the struct
+- Which callers 0x8128DF4/0x8128E2C invoke this for (which battle scenario picks indices 3,4,11,16,20,24)
+- The function does instantiate and configure a battle sprite (initGuiSprite_8002770, sprite_setAnimation,
+  sprite_loadAnimationData, sprite_noShadow, sprite_setPalette, sprite_setPriority, slotList, sprite_setSubEntryPaletteBank,
+  sprite_setSubRecordFieldA), and LZ77 dispatch + unk_20212F8 + sub_811DE74 call are correct. However
+  the proposed summary says r0 is a return value and bytes 0x6C/0x6D/0x9D-0xA0 — byte_811DD14 holds only
+  0x6C, 0x6D, 0x9D, 0x9E, 0x9F, 0xA0 (not a range). Also initGuiSprite_8002770 is called with (resource_ptr,
+  per_index_byte), not the other way. Name is fine, but summary should be tightened.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811DC88 -> battle_loadEnemySprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811DC88

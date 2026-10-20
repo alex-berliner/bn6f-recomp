@@ -1,0 +1,63 @@
+name: req_queueAddEntry
+address: '0x0813BA08'
+kind: function
+status: probable
+summary: Scans oToolkit_Unk2004190 for the first of up to 49 8-byte request slots with a zero halfword
+  flag, writes the caller's halfword tag at +0 and four byte params at +3..+6, and returns the slot index
+  (loop counter) in r0.
+interface: (r0 = halfword tag, r1-r4 = byte params) -> r0 = slot index filled (nonzero/garbage on queue
+  full); flags not meaningful
+details: 'Reads the pointer at toolkit+Unk2004190 offset and walks up to 0x31 (49) entries of 8 bytes
+  each. Each entry''s halfword at +0 acts as an occupied flag: if nonzero the entry is skipped (r7 +=
+  8). The first entry whose halfword is 0 receives r0 at +0 (strh), r1 at +3, r2 at +4, r3 at +5, and
+  r4 at +6 as bytes; bytes +2 and +7 are left untouched. On success it returns the loop counter r1, i.e.
+  the index of the slot that was filled; if the scan exhausts all 49 slots it falls through with r0 still
+  holding the last (nonzero) flag halfword, so a zero return only unambiguously means slot 0. Args are
+  spilled to the stack first since r4-r7 are used as scratch.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7,[r10,#oToolkit_Unk2004190_Ptr]: queue base comes from the toolkit global at Unk2004190;
+    ldrh r0,[r7]; tst r0,r0; bne skip: halfword at entry+0 is the occupied/free flag; add r7,#8; cmp r1,#0x31:
+    fixed stride 8, capacity 49 entries; strh r2 at +0 and strb of four stack args at +3..+6: tag plus
+    four byte payload fields, +2/+7 untouched; mov r0,r1 on the store path: returns the index of the slot
+    claimed, loop counter otherwise escapes as failure value'
+  refs:
+  - bn6f/asm/asm37_0.s:475
+  - 0x081364E8 navicust_installSelectedPart
+  reproduce: python3 tools/asmcat.py 0x0813BA08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches: walks oToolkit_Unk2004190 pointer up to 49 (0x31) entries of 8 bytes, skipping nonzero
+    halfword flags, and writes r0 (strh at +0) plus bytes r1-r4 at +3..+6. However the proposal''s interface
+    misnames the return: it actually returns the loop counter r1 (slot index) via `mov r0, r1` at 0x813BA40,
+    not ''garbage on queue full''; on full queue r0 keeps the last scanned tag halfword. Also caller navicust_installSelectedPart
+    fits a `req` purpose. Name `req_queueAddEntry` is okay but the summary''s ''four byte parameters''
+    and return semantics need tightening.; run wf investigate investigate-20261018-222121; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What the halfword tag and the four byte parameters mean depends on the consumer that walks this queue
+  (not identified among callees)
+- Whether returning the slot index vs. 0-on-failure is how callers sub_81364E8 interpret r0
+- What object the entry fields map to (offsets +2 and +7 unused suggests a larger struct shared with other
+  queue users)
+- 'Code matches: walks oToolkit_Unk2004190 pointer up to 49 (0x31) entries of 8 bytes, skipping nonzero
+  halfword flags, and writes r0 (strh at +0) plus bytes r1-r4 at +3..+6. However the proposal''s interface
+  misnames the return: it actually returns the loop counter r1 (slot index) via `mov r0, r1` at 0x813BA40,
+  not ''garbage on queue full''; on full queue r0 keeps the last scanned tag halfword. Also caller navicust_installSelectedPart
+  fits a `req` purpose. Name `req_queueAddEntry` is okay but the summary''s ''four byte parameters'' and
+  return semantics need tightening.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813BA08 -> req_queueAddEntry
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BA08

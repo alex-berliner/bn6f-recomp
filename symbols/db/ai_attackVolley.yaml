@@ -1,0 +1,66 @@
+name: ai_attackVolley
+address: '0x080FDC2A'
+kind: function
+status: probable
+summary: Enemy-AI attack step that loops calling sub_80C8514 three times (AttackBoost2<2) or six times
+  (AttackBoost2>=2), selecting r0/r1 arguments based on AttackBoost2 value and forwarding the AI's AttackBoost2<<8|AiDifficultyTier
+  in r3 and Damage on stack.
+interface: (r0/r1 unused on entry; reads AI struct at r7) -> no return value; spawns attacks via sub_80C8514(r0=shotIndex
+  or type, r1=4|0, r2=InitFlag, r3=AttackBoost2<<8|AiDifficultyTier, [sp]=Damage)
+details: Reads a per-object AI parameter block at r7 (fields Damage, AiDifficultyTier, AttackBoost2, InitFlag
+  already named oAIAttackVars_*). If AttackBoost2 < 2 it loops r6 = 1..3, passing r0 = 7 when AttackBoost2==0
+  else 0, and r1 = 1; if AttackBoost2 >= 2 it loops r6 = 1..6 with r1 = 4 when AttackBoost2==2 else 0
+  and r0 = loop counter. On each iteration it pushes r6 as a 5th (stack) argument alongside Damage, calls
+  sub_80C8514, then increments r6 — i.e. the loop counter is forwarded to the spawn helper as a parameter.
+  AttackBoost2 acts as a power-up selector that both changes the arguments and doubles the number of iterations.
+  Trailing byte table byte_80FDC8C holds (7,1)(7,2)(7,3)(0,1)... pairs, likely per-shot parameters for
+  a related routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: cmp r0,#2 / bge loc_80FDC5C splits 3-iteration loop vs 6-iteration loop on AttackBoost2;
+    asm: push {r6}; ldr r6,[r7,#oAIAttackVars_Damage]; bl sub_80C8514 forwards loop count and damage to
+    the spawn helper; asm: orr r4,r3 packs AttackBoost2<<8 | AiDifficultyTier into one argument each call;
+    asm: r0 is 7 vs 0 and r1 is 1 vs 4/0 depending on the boost fields, so variant flags are passed through;
+    caller sub_80FDA0E at 0x080FDA0E plus route ''battlesweep'' place it inside AI battle attack logic'
+  refs:
+  - bn6f/asm/asm31.s:149330
+  - 0x080FDA0E sub_80FDA0E
+  - 0x080C8514 sub_80C8514
+  reproduce: python3 tools/asmcat.py 0x080FDC2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and loop structure are correct, but the proposal misreads which register carries the loop
+    counter and which constant is selected. In both branches the code passes r0 = loop counter (r6) into
+    sub_80C8514 (see ''mov r0, r6'' at loc_80FDC66 and the constant r0 = 7 or 0 in the first branch is
+    actually the r0 passed too — wait, r0 is set to 7/0 in first branch, not r6). Re-reading: first branch
+    sets r0=7 or 0, second branch sets r0=r6. r1 is the loop counter in first branch (''mov r1, r6''),
+    and r1=4 or 0 in second branch. The proposal swaps these. Also ''sub_80C8514(r0=shotIndex...)'' is
+    inaccurate; r0 is a fixed type code in branch 1 and the loop counter in branch 2.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact behavior of sub_80C8514 (what it spawns/what r0 and r1 mean there)
+- which enemy/boss this AI block belongs to and what the AttackBoost2 value 2 corresponds to in-game
+- purpose of the trailing byte table byte_80FDC8C and who indexes it
+- 'The name and loop structure are correct, but the proposal misreads which register carries the loop
+  counter and which constant is selected. In both branches the code passes r0 = loop counter (r6) into
+  sub_80C8514 (see ''mov r0, r6'' at loc_80FDC66 and the constant r0 = 7 or 0 in the first branch is actually
+  the r0 passed too — wait, r0 is set to 7/0 in first branch, not r6). Re-reading: first branch sets r0=7
+  or 0, second branch sets r0=r6. r1 is the loop counter in first branch (''mov r1, r6''), and r1=4 or
+  0 in second branch. The proposal swaps these. Also ''sub_80C8514(r0=shotIndex...)'' is inaccurate; r0
+  is a fixed type code in branch 1 and the loop counter in branch 2.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FDC2A -> ai_attackVolley
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FDC2A

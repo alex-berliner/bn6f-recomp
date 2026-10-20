@@ -1,0 +1,57 @@
+name: ai_delayedElementStrike
+address: '0x081076CE'
+kind: function
+status: probable
+summary: 'AI charge-then-strike: on first call write element 4 to AttackElement and copy AttackDuration
+  into StepTimer; on later calls decrement StepTimer, and when it reaches 0 write 0x2C to HitElement (halfword).'
+interface: (r7 = attacking entity's oAIAttackVars) -> r0 = clobbered; sets AttackElement/StepTimer on
+  first call, HitElement on expiry
+details: 'On first invocation AttackElement is 0, so it writes element #4 into oAIAttackVars_AttackElement
+  and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer, arming a frame countdown. On later
+  calls it decrements StepTimer each frame; when it reaches 0 it writes 0x2C into oAIAttackVars_HitElement,
+  which the AI/hit pipeline presumably reads as the attack to apply. It touches no other structures and
+  returns without changing flow state, so re-entry is what drives the phases. Element 4 vs hit id 0x2C
+  suggests a charge-then-strike pattern typical of boss AI attack scripts.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits init phase from countdown phase; strb
+    r0,#4 -> AttackElement and ldrh AttackDuration -> strh StepTimer arm the timer once; sub r0,#1; strh
+    StepTimer; bgt loops the countdown frame by frame; mov r0,#0x2c; strh r0,[r7,#oAIAttackVars_HitElement]
+    fires the delayed effect on expiry; executed from recorded battlesweep routes, matching boss/anti-body
+    AI attack scripting
+  refs:
+  - bn6f/asm/asm31.s:169708
+  reproduce: python3 tools/asmcat.py 0x081076CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code agrees with the proposal overall: first call writes element 4 and arms StepTimer from AttackDuration,
+    later calls decrement StepTimer, and on expiry write 0x2C into HitElement. One concrete correction:
+    the 0x2C write uses `strh` (halfword) to HitElement, matching the model''s text; AttackElement uses
+    `strb`. The name and prefix are fine, but the summary should clarify that HitElement is written as
+    a halfword and that this is a charge-then-fire pattern.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- no caller is known, so the meaning of AttackElement 4 and HitElement 0x2C within the AI attack state
+  machine is unverified
+- which enemy/attack uses this script is unknown without the attack-script table entry referencing 0x081076CE
+- 'The code agrees with the proposal overall: first call writes element 4 and arms StepTimer from AttackDuration,
+  later calls decrement StepTimer, and on expiry write 0x2C into HitElement. One concrete correction:
+  the 0x2C write uses `strh` (halfword) to HitElement, matching the model''s text; AttackElement uses
+  `strb`. The name and prefix are fine, but the summary should clarify that HitElement is written as a
+  halfword and that this is a charge-then-fire pattern.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81076CE -> ai_delayedElementStrike
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81076CE

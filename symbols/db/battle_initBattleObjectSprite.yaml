@@ -1,0 +1,61 @@
+name: battle_initBattleObjectSprite
+address: '0x080DCB4C'
+kind: function
+status: probable
+summary: 'One-time spawn setup for a battle object: refreshes X/Y from panel coords, offsets X behind
+  its facing direction and sets Z to 0xC00000, loads sprite 0x80 without a shadow, sets the no-shadow/intangible
+  flag, resets anims/palette/flip, then hands off to CUR_STATE_UPDATE.'
+interface: (r5 = battle object) -> void; r0-r3/r4 clobbered
+details: Uses the object-pointer-in-r5 calling convention shared by battle object handlers. It reads the
+  object's front direction via object_getFrontDirection, negates it, and multiplies by 0xC00000 to shift
+  oBattleObject_X backwards relative to where the object faces, while writing 0xC00000 to oBattleObject_Z.
+  It then loads sprite resource 0x80 with arguments (0xC, 0x67) via sprite_load and marks it shadowless
+  with sprite_noShadow. Sets bit 0x2 in oObjectHeader_Flags (likely a no-collision/intangible-style flag),
+  resets CurAnim and CurAnimCopy to 0, runs sprite_setAnimation(0), sprite_loadAnimationData, sprite_setPalette(0),
+  and sprite_setFlip(object_getFlip()). Finally stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the object's per-frame update handler takes over. The 0xC00000 X/Z offset and fixed sprite id suggest
+  a fixed decorative/effect object placed behind its owner.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0,r0; mul r0,r4 with r4=0xC00000 then str to oBattleObject_X and oBattleObject_Z: repositions
+    object opposite its facing; mov r0,#0x80 with r1=0xC, r2=0x67 before sprite_load: fixed sprite resource
+    selection; bl sprite_noShadow plus orr flag bit 2 into oObjectHeader_Flags: non-interactive visual
+    object setup; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized: one-shot
+    init handing off to update state; callees are all object/sprite setup helpers (object_getFrontDirection,
+    sprite_load, sprite_setFlip), consistent with spawn-time init'
+  refs:
+  - bn6f/asm/asm31.s:79389
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080DCB4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal accurately captures the sprite init (0x80, noShadow, flag bit 2, anim 0, palette 0,
+    flip), the X/Z 0xC00000 offset via object_getFrontDirection, and the CUR_STATE_UPDATE handoff (lines
+    19-40). The function''s only role is one-time spawn setup, not ''spawning'' a new object; it mutates
+    r5''s position/sprite. A cleaner name is battle_initBattleObjectSprite. object_setCoordinatesFromPanels
+    (line 4) means X/Y are recomputed from panel coords before the offset is applied, so the description
+    should note that.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller known, so which attack/element spawns this object and what sprite 0x80 depicts is unidentified
+- Exact meaning of sprite_load's r1=0xC/r2=0x67 arguments and of the oObjectHeader_Flags bit 0x2
+- The proposal accurately captures the sprite init (0x80, noShadow, flag bit 2, anim 0, palette 0, flip),
+  the X/Z 0xC00000 offset via object_getFrontDirection, and the CUR_STATE_UPDATE handoff (lines 19-40).
+  The function's only role is one-time spawn setup, not 'spawning' a new object; it mutates r5's position/sprite.
+  A cleaner name is battle_initBattleObjectSprite. object_setCoordinatesFromPanels (line 4) means X/Y
+  are recomputed from panel coords before the offset is applied, so the description should note that.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCB4C -> battle_initBattleObjectSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCB4C

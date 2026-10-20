@@ -1,0 +1,64 @@
+name: ai_stepForwardAttackUpdate
+address: '0x08015040'
+kind: function
+status: probable
+summary: 'Per-frame handler for an AI navi''s forward-charge/dash attack: on the first frame it flashes
+  the sprite white, loads anim + sound + extra-vars spawn, updates alliance byte, and arms a custom-gauge
+  panel with chip-class delta; subsequent frames decrement a step timer and, on expiry, reopen the turn,
+  mark action used, set navi stats 0x0E, clear invuln, and store HitElement = 0xC.'
+interface: (r5 = battle object actor, r7 = AI attack vars struct) -> r0 = void; sets oAIAttackVars_AttackElement
+  = 4 when setup completes, HitElement = 0xC when the timer expires
+details: On the first call (oAIAttackVars_AttackElement == 0) it reads NaviStats byte 0x2C for the actor's
+  alliance, forces the sprite palette white, loads a sprite animation and flips/positions the object from
+  its panels, sets StepTimer = 0xA, writes byte 0x2C (with actor info from battle_ai_getActorInfo), spawns
+  an extra-vars object from dword 0x30E00, plays sound effect 0x100, and if byte 0x2C is between 1 and
+  0x18 sets an object text id; it also flags a related object (Flags |= 0x14, CurAnim/Param3 = 0) and
+  animates the custom gauge bar. It computes a forward X step via battleObject_computeAIStepForwardDeltaX(3)
+  (negated, so it moves toward the enemy) and sets AttackElement = 4 so later calls skip setup. Subsequent
+  calls just decrement StepTimer; when it reaches zero, it calls battle_beginTurnOpenProcess and battleObject_markUsedAction,
+  sets NaviStats field 0x0E = 0x80, clears invulnerability time, and stores HitElement = 0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne loc_8015100 splits first-call setup from
+    the timer countdown branch; mov r0,#0xa; strh r0,[r7,#oAIAttackVars_StepTimer] plus bl PlaySoundEffect
+    (r0 = 0x100) and bl battle_spawnExtraVarsObject with dword_8015124 = 0x30E00; mov r0,#3; bl battleObject_computeAIStepForwardDeltaX_8018856;
+    neg r1,r1 moves the actor toward the enemy; timer expiry branch calls battle_beginTurnOpenProcess_80144C0
+    and battleObject_markUsedAction_80143A6, then strh 0xc,[r7,#oAIAttackVars_HitElement]; Get/SetBattleNaviStatsByte_AllianceFromBattleObject
+    on byte 0x2c and battle_setObjectTextId_8015B22 when 1 <= byte <= 0x18
+  refs:
+  - bn6f/asm/asm00_2.s:14487
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x08015040
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is close but gets some details wrong: the Negate of the delta X is then passed into
+    battleObject_setCustomGaugeBarAnimate (it''s the custom gauge panel coord, not just an X step); battle_beginTurnOpenProcess
+    is called (no ''re-open'' wording issue but that''s fine). The name `ai_stepForwardAttackUpdate` is
+    reasonable, but the function is specifically the AI''s *dash/rush* attack handler - `battle_ai_dashAttackUpdate`
+    or `ai_rushAttackUpdate` may be more descriptive.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which navi/boss this attack belongs to (no caller or attack table entry is known)
+- What the spawned 0x30E00 object and sub_8011268 do
+- What NaviStats byte 0x2C semantically represents (a phase/charge counter?)
+- 'The summary is close but gets some details wrong: the Negate of the delta X is then passed into battleObject_setCustomGaugeBarAnimate
+  (it''s the custom gauge panel coord, not just an X step); battle_beginTurnOpenProcess is called (no
+  ''re-open'' wording issue but that''s fine). The name `ai_stepForwardAttackUpdate` is reasonable, but
+  the function is specifically the AI''s *dash/rush* attack handler - `battle_ai_dashAttackUpdate` or
+  `ai_rushAttackUpdate` may be more descriptive.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8015040 -> ai_stepForwardAttackUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015040

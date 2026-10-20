@@ -1,0 +1,56 @@
+name: e_isValueInRangeInclusive
+address: '0x0800E708'
+kind: function
+status: probable
+summary: Returns 1 if r2 is between r0 and r1 inclusive (either order), else 0.
+interface: (r0 = bound A, r1 = bound B, r2 = value) -> r0 = 1 if min(A,B) <= value <= max(A,B), else 0;
+  flags clobbered
+details: Pure three-argument predicate with no memory or callee access. It first handles the equality
+  short-circuits (value == A or value == B yields 1), then branches on whether A <= B or A > B and checks
+  the value against the lower and upper bounds, so the two bounds can be given in either order. Equivalent
+  to (A <= v && v <= B) || (B <= v && v <= A). Typical use is a coordinate-in-span test, e.g. checking
+  whether a row/column/panel index lies between two endpoints in battle logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,r2 / beq and cmp r1,r2 / beq give equality short-circuit true cases; branch on cmp r0,r1
+    bgt splits the two possible bound orders before the double cmp r2 bounds test; both bound-order branches
+    fall through to mov r3,#1 only when r2 is between the two bounds; mov r0,r3 returns the flag; no bl/loads/stores
+    in the function: it is a leaf predicate over its three arguments only; all six listed callers (0x080D1610..0x080DB75C,
+    0x080F09DC) lie in the recorded battlesweep route region, matching a shared battle-range check'
+  refs:
+  - bn6f/asm/object.s:5572
+  - 0x080D1610 sub_80D1610
+  - 0x080D2176 sub_80D2176
+  - 0x080D3B4E sub_80D3B4E
+  reproduce: python3 tools/asmcat.py 0x0800E708
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The logic matches the proposal: equality short-circuits return 1, then either-order bound check
+    returns 1, else 0. However, the proposed prefix ''battle'' is speculative since the only known context
+    is a single unspecified caller (battlesweep); the established prefix convention here uses no qualifier,
+    and ''e'' or ''get'' would be more fitting for a pure boolean predicate. The name otherwise correctly
+    describes the code.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact game meaning of the three arguments (panel coordinates, HP, timer, etc.) would need one caller's
+  context; name may deserve a more specific prefix if callers turn out to be non-battle code
+- 'The logic matches the proposal: equality short-circuits return 1, then either-order bound check returns
+  1, else 0. However, the proposed prefix ''battle'' is speculative since the only known context is a
+  single unspecified caller (battlesweep); the established prefix convention here uses no qualifier, and
+  ''e'' or ''get'' would be more fitting for a pure boolean predicate. The name otherwise correctly describes
+  the code.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800E708 -> e_isValueInRangeInclusive
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800E708

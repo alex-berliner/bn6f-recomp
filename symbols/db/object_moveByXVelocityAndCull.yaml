@@ -1,0 +1,60 @@
+name: object_moveByXVelocityAndCull
+address: '0x080D5280'
+kind: function
+status: probable
+summary: Advances a battle object's X by its X velocity, recomputes panels and updates collision tracking,
+  then despawns (sets CUR_STATE_DESTROY via sub_80D5348) if its current panel is no longer valid.
+interface: (r5 = battle object) -> r0 = 0 (state set); destroys object via state CUR_STATE_DESTROY when
+  culled
+details: Reads oBattleObject_PanelX into r4 as the pre-move column, adds oBattleObject_XVelocity to oBattleObject_X,
+  then recomputes PanelX/PanelY via object_setPanelsFromCoordinates and syncs collision via object_updateCollisionPanels.
+  If the collision data's FlagsFromCollision field is nonzero it clears the object's collision region.
+  If the current panel is valid and the column changed, it sets collision region 1 (re-entering play area
+  tracking); otherwise it clears the region, calls sub_80D5348 (likely cleanup/spawn-related), and sets
+  the object's state word to CUR_STATE_DESTROY, i.e. it despawns once it leaves the battlefield.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_XVelocity]; add r0,r0,r1; str r0,[r5,#oBattleObject_X] — moves object
+    by X velocity; beq loc_80D52B6 after object_isCurrentPanelValid + bl sub_80D5348 + mov r0,#CUR_STATE_DESTROY
+    — off-field objects are destroyed; cmp r0,r4 with saved oBattleObject_PanelX — only re-registers collision
+    region when the object actually crossed into a new column; callees object_setPanelsFromCoordinates/object_updateCollisionPanels/object_setCollisionRegion
+    — all battle-object position/collision maintenance
+  refs:
+  - bn6f/asm/asm31.s:63264
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D5280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s flow: it reads PanelX into r4, adds XVelocity to X, calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels. However, the proposal says ''destroys it if it ends up off the valid
+    field (or when collision flags set)'' — in fact destruction only happens when the panel is invalid
+    (loc_80D52B6); collision flags merely clear the region (line calling object_clearCollisionRegion).
+    Also, CurStateActionPhaseAndPhaseInitialized stores more than just ''state'' (it''s action phase +
+    init flag), so describing it as setting state is slightly loose. Name is fine but the summary needs
+    correction.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which objects use this (e.g. enemy-side flyers crossing the field) is unconfirmed
+- Purpose of callee sub_80D5348 in the destroy path is unknown
+- Meaning of collision region value 1 vs cleared region not fully established
+- 'The code matches the proposal''s flow: it reads PanelX into r4, adds XVelocity to X, calls object_setPanelsFromCoordinates
+  and object_updateCollisionPanels. However, the proposal says ''destroys it if it ends up off the valid
+  field (or when collision flags set)'' — in fact destruction only happens when the panel is invalid (loc_80D52B6);
+  collision flags merely clear the region (line calling object_clearCollisionRegion). Also, CurStateActionPhaseAndPhaseInitialized
+  stores more than just ''state'' (it''s action phase + init flag), so describing it as setting state
+  is slightly loose. Name is fine but the summary needs correction.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5280 -> object_moveByXVelocityAndCull
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5280

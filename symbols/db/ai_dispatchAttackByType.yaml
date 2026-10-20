@@ -1,0 +1,58 @@
+name: ai_dispatchAttackByType
+address: '0x0810E57C'
+kind: function
+status: probable
+summary: Dispatches the per-attack-type AI update routine via an 8-entry jump table keyed by the AI attack-variables
+  HitElement/attackType byte.
+interface: (r7 = pointer to AI attack vars struct) -> void; tail-dispatched call via computed table
+details: Reads byte oAIAttackVars_HitElement from the AI attack-variables struct in r7 and uses it as
+  an index into an 8-entry table at off_810E590, calling the selected handler with lr=pc (normal call,
+  not a tail jump, since r4-r7 are saved/restored around it). Entry 3 is ai_chargedPanelStrikeUpdate and
+  entry 7 is genericAI_exitAttackStateAffterDelay_81097B4, so the table holds per-element (or per-attack-type)
+  variants of an ongoing attack's update logic; the shared fallback is the generic exit-after-delay handler.
+  Runs during battle ('battlesweep' route). The callee receives the same context, evidently still with
+  r7 pointing at the attack vars.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — indexed dispatch on the element
+    field; table entry .word ai_chargedPanelStrikeUpdate+1 — element-specific attack update; table entry
+    .word genericAI_exitAttackStateAffterDelay_81097B4+1 — default/generic handler; mov lr,pc; bx r1 with
+    pushed r4-r7 — plain call into handler, same execution context; route: battlesweep — used while an
+    AI attack is active in battle'
+  refs:
+  - bn6f/asm/asm32.s:1466
+  reproduce: python3 tools/asmcat.py 0x0810E57C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code dispatches based on HitElement field with 8 table entries, matching the proposal''s structure.
+    However, entry 3 is `ai_chargedPanelStrikeUpdate`, a specific named function (not just a ''generic
+    per-element variant''), suggesting the dispatch is attack-type specific rather than purely element-based.
+    The proposal''s name ''ai_dispatchAttackByElement'' mischaracterizes the index as ''element'' when
+    it''s really an attack-type enum field stored at HitElement offset.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of each of the 8 indices (elements vs attack types) — needs the sub_810E5B0..sub_810E6F6
+  bodies
+- which struct r7 points to beyond the oAIAttackVars_HitElement offset, and how the caller reaches this
+  state
+- The code dispatches based on HitElement field with 8 table entries, matching the proposal's structure.
+  However, entry 3 is `ai_chargedPanelStrikeUpdate`, a specific named function (not just a 'generic per-element
+  variant'), suggesting the dispatch is attack-type specific rather than purely element-based. The proposal's
+  name 'ai_dispatchAttackByElement' mischaracterizes the index as 'element' when it's really an attack-type
+  enum field stored at HitElement offset.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810E57C -> ai_dispatchAttackByType
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E57C

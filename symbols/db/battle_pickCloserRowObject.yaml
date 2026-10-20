@@ -1,0 +1,62 @@
+name: battle_pickCloserRowObject
+address: '0x080E17AC'
+kind: function
+status: probable
+summary: Returns whichever of two battle objects is closer in panel rows to a reference object (ties broken
+  by reference row vs first object's row), returning a pointer to object A (r0) or B (r1).
+interface: (r0 = object A, r1 = object B, r2 = reference object) -> r0 = pointer to A or B, whichever
+  has the smaller |PanelY difference| to the reference; no flags guaranteed
+details: 'Loads oBattleObject_PanelY from all three objects. Computes abs(B.PanelY - ref.PanelY) and abs(A.PanelY
+  - ref.PanelY) and returns A if A''s row distance is smaller, B if larger. On an exact tie it compares
+  ref.PanelY against A.PanelY: if the reference''s row is above A''s row it returns B, otherwise A. Only
+  the row coordinate is considered — panel X is ignored, so it is purely a row-based selector, likely
+  used by the Beast Out specials (recorded on the beastsp route) to choose between two candidate targets
+  on the same column.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r6,#oBattleObject_PanelY] / ldrb r0,[r4,#oBattleObject_PanelY] then neg on negative
+    results: absolute row-difference computation (0x080E17B0-0x80E17C6); cmp r0,r3 with blt/bgt branching
+    to return r6 (param A) or r7 (param B): picks the smaller row distance (0x080E17C6-0x80E17D8); tie
+    path cmp [r4].PanelY,[r6].PanelY / blt returns B, else falls through to return A — asymmetric tie-break
+    favoring A unless the reference is in a higher row (0x080E17CC-0x80E17D8); sole operand structure
+    is oBattleObject (PanelY offsets only), matching battle-object callers; no other memory or hardware
+    access in the function'
+  refs:
+  - bn6f/asm/asm31.s:89519
+  - 0x080E175C sub_80E175C
+  reproduce: python3 tools/asmcat.py 0x080E17AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code loads oBattleObject_PanelY from r6 (A) at offset oBattleObject_PanelY, and offset 0x13
+    from r7 (B), but the proposal says both use oBattleObject_PanelY. The line `ldrb r2, [r7,#0x13]` reads
+    a different offset for B; if 0x13 == B''s PanelY, then code matches, otherwise B''s field differs.
+    Also, the tie-break uses ref.PanelY vs A.PanelY, returning A when ref >= A, which matches the proposal.
+    Offset 0x13 vs the documented PanelY offset is the discrepancy; assuming offset 0x13 is B''s PanelY,
+    the row-closer logic fits.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- The only known caller sub_80E175C is itself unnamed, so the game-level use (which Beast Out special
+  or targeting routine invokes this and with which two candidates) is unconfirmed
+- Whether callers pass enemies, allies, or generic objects, and whether the tie-break ordering matters
+  for gameplay (e.g. front-row preference), needs caller analysis
+- The code loads oBattleObject_PanelY from r6 (A) at offset oBattleObject_PanelY, and offset 0x13 from
+  r7 (B), but the proposal says both use oBattleObject_PanelY. The line `ldrb r2, [r7,#0x13]` reads a
+  different offset for B; if 0x13 == B's PanelY, then code matches, otherwise B's field differs. Also,
+  the tie-break uses ref.PanelY vs A.PanelY, returning A when ref >= A, which matches the proposal. Offset
+  0x13 vs the documented PanelY offset is the discrepancy; assuming offset 0x13 is B's PanelY, the row-closer
+  logic fits.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E17AC -> battle_pickCloserRowObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E17AC

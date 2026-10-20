@@ -1,0 +1,59 @@
+name: sprite_spawnEffect
+address: '0x0811DA94'
+kind: function
+status: probable
+summary: Initializes GUI sprite id 0x96, stores 0x23 at [r5], configures animation 0 with no shadow, palette
+  bank 6 / palette 0, priority 2, sub-record field A = 1, writes 0x320 to the slot list, plays sounds
+  0x193 and 0xF3, and positions the sprite at (0xC0, 0x64).
+interface: () -> void; r0-r3, lr clobbered (calls sprite_* helpers and PlaySoundEffect)
+details: 'The routine creates a GUI sprite via initGuiSprite_8002770 with sprite id 0x96, stores 0x23
+  into a byte at [r5] (likely the object''s state/type byte), then configures the sprite: animation 0
+  with data loaded, shadow disabled, sub-entry palette bank 6, palette 0, priority 2, and sub-record field
+  A = 1. It writes the halfword 0x320 (800) into the slot-list field selected by the resource header (possibly
+  a duration or OAM-related size) via slotList_storeHalfwordAndClearField_800306C. Two sounds are played
+  in sequence: 0x193 then 0xF3. Finally it positions the sprite at x=0xC0 (192), y=0x64 (100), roughly
+  screen center — consistent with a cutscene or battle effect rather than a character. The call pattern
+  (init + configure + sounds + fixed coordinates) matches other one-shot effect spawn routines.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'initGuiSprite_8002770 called with r0=0x96 creates the sprite resource before any configuration;
+    sequence sprite_setAnimation(0)/loadAnimationData/noShadow/setSubEntryPaletteBank(6)/setPalette(0)/setPriority(2)
+    fully configures the new sprite; two PlaySoundEffect calls (0x193 and 0xF3) indicate an accompanied
+    effect trigger; sprite_setCoordinates(0xC0, 0x64) places it at a fixed near-center screen position,
+    not a field/object position; no callers known: it is likely invoked from a script/event table rather
+    than regular code'
+  refs:
+  - bn6f/asm/asm32.s:32050
+  - 0x080005CC PlaySoundEffect
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x0811DA94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely: initGuiSprite with id 0x96, stores 0x23 at [r5], configures
+    animation/palette/priority/field A, writes 0x320 via slotList helper, plays 0x193 then 0xF3, then
+    sets coordinates (0xC0, 0x64). The name is fine but ''screenEffectSprite'' is speculative — a prefix
+    from the allowed list (e.g. ''sprite'') fits better given no call-site context confirms it''s a screen/cutscene
+    effect.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers are known, so the game context (which cutscene/battle event spawns this) is unknown
+- The meaning of the stored halfword 0x320 and of the 0x23 byte written to [r5] is unconfirmed
+- 'The code matches the proposal closely: initGuiSprite with id 0x96, stores 0x23 at [r5], configures
+  animation/palette/priority/field A, writes 0x320 via slotList helper, plays 0x193 then 0xF3, then sets
+  coordinates (0xC0, 0x64). The name is fine but ''screenEffectSprite'' is speculative — a prefix from
+  the allowed list (e.g. ''sprite'') fits better given no call-site context confirms it''s a screen/cutscene
+  effect.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811DA94 -> sprite_spawnEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811DA94

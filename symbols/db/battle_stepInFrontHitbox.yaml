@@ -1,0 +1,68 @@
+name: battle_stepInFrontHitbox
+address: '0x080DC310'
+kind: function
+status: probable
+summary: 'Per-frame update for a hitbox that rides 0x14 units in front of its owner: clears Param1, processes
+  collision (calls sub_800F884 on RelatedObject2 if sub_80DC3B2 passes, otherwise clears region), repositions
+  X16 via object_getFrontDirection, recomputes panels and sets collision region 1 on panel change, and
+  self-destructs (CUR_STATE_DESTROY, zero ExtraVars[0]) if the destination panel has flag 0x10 or is invalid.'
+interface: (r5 = battle object ptr, r0 ignored) -> r0 = destroyed-state value when self-destructing; sets
+  oBattleObject_Param1, X16, PanelX/Y, collision region, CurState
+details: Reads the object's collision data flags; if nonzero it calls an unknown check (sub_80DC3B2) and,
+  when it passes, calls sub_800F884 on RelatedObject2 (likely registering damage/contact), clears its
+  collision region, and sets Param1 = 1 as a 'connected' flag; otherwise it just clears the region. It
+  then positions the object at RelatedObject1's X16 plus 20*facing (object_getFrontDirection), so it stays
+  one panel-ish step ahead of its owner, recomputes PanelX/PanelY and updates collision panels. If PanelX
+  changed, it sets collision region 1. Finally it fetches panel parameters; if the panel has flag 0x10
+  or object_isCurrentPanelValid fails, it zeroes ExtraVars[0], clears the collision region, and sets the
+  object state to CUR_STATE_DESTROY. Uses r5 as the object pointer without loading it, so the caller must
+  have set it up.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'add r0, facing*0x14 to RelatedObject1->X16 and strh into own X16, then object_setPanelsFromCoordinates:
+    positions hitbox ahead of owner (80DC342-80DC354); cmp old/new PanelX + object_setCollisionRegion(1):
+    re-registers region when crossing into a new panel column (80DC358-80DC360); tst panelFlags, 0x10
+    / object_isCurrentPanelValid fail -> CUR_STATE_DESTROY and ExtraVars[0]=0: dies on broken/invalid
+    panels (80DC36A-80DC382); Param1=1 only on the branch that calls sub_800F884(RelatedObject2): a one-shot
+    contact/damage marker (80DC32E-80DC33A); callees object_clearCollisionRegion/object_setCollisionRegion/object_getFrontDirection
+    match a moving collision hitbox'
+  refs:
+  - bn6f/asm/asm31.s:78257
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080DC310
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s claim about ''setting Param1 = 1 as a connected flag'' contradicts the code: the
+    very first instruction stores 0 into Param1 (strb r0,[r5,#Param1]), and Param1 is only ever set to
+    1 later in the collision-success branch. The ''r0 ignored'' note is misleading since r0 is implicitly
+    used via r5 (the object ptr is passed in r5, not r0). Otherwise the summary about stepping 20 units
+    in front and clearing on bad panels matches the code (mul r0,r0,#0x14; object_setPanelsFromCoordinates;
+    tst r0,#0x10 path to CUR_STATE_DESTROY).; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- purpose of sub_80DC3B2 and sub_800F884 (the contact/damage handoff) — a caller or their bodies would
+  confirm this is an attack hitbox rather than e.g. a grab/counter zone
+- which entity spawns it (no known callers) and what RelatedObject1 vs RelatedObject2 hold in this context
+- meaning of collision-data FlagsFromCollision being nonzero on entry
+- 'The summary''s claim about ''setting Param1 = 1 as a connected flag'' contradicts the code: the very
+  first instruction stores 0 into Param1 (strb r0,[r5,#Param1]), and Param1 is only ever set to 1 later
+  in the collision-success branch. The ''r0 ignored'' note is misleading since r0 is implicitly used via
+  r5 (the object ptr is passed in r5, not r0). Otherwise the summary about stepping 20 units in front
+  and clearing on bad panels matches the code (mul r0,r0,#0x14; object_setPanelsFromCoordinates; tst r0,#0x10
+  path to CUR_STATE_DESTROY).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC310 -> battle_stepInFrontHitbox
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC310

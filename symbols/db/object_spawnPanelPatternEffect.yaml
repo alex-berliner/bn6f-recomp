@@ -1,0 +1,72 @@
+name: object_spawnPanelPatternEffect
+address: '0x080CE468'
+kind: function
+status: probable
+summary: 'Spawns effect type-0 battle objects across a pattern of panels: either a mirrored signed-offset
+  list from PanelOffsetListsPointerTable indexed by arg bits0-6 (with enemy-side mirroring via object_getAllianceDirection),
+  or the full 6x3 grid filtered by an arg-bit7-indexed panel-flag mask from byte_8019C34. No-op when arg
+  bits0-6 are zero.'
+interface: '(r0 = base panel column, r1 = base panel row, r2 = unused here, r3 = selector/effect param:
+  bit7 set = whole-grid mask mode, bits0-6 = pattern index, 0 = do nothing) -> r0 = destroyed; spawns
+  battle effect objects'
+details: r4 is converted to a +1/-1 side multiplier via object_getAllianceDirection, which later mirrors
+  horizontal offsets so enemy-side patterns face the player side. If bit7 of arg r3 is clear and bits0-6
+  nonzero, (r3&0x7F)<<2 indexes PanelOffsetListsPointerTable to a signed-byte list of (dx,dy) pairs terminated
+  by 0x7F; each pair is added to the base panel coords (dx multiplied by the side multiplier), kept only
+  if isValidPanel passes and the panel's oPanelData_Type is nonzero, then object_getCoordinatesForPanels
+  gives screen pixels and spawn_t1_0x0_EffectObject spawns an effect whose r3 carries the original r3
+  arg (kept in r8). If bit7 is set, (r3&0x7F)<<3 indexes byte_8019C34, loads two words (mask, required
+  value) and loops the full 6x3 grid (cols 6..1, rows 3..1), calling object_checkPanelParameters and spawning
+  an effect on every matching panel with r3=0. If bits0-6 of r3 are zero the function returns without
+  spawning. Args r0-r3 are stashed on the stack and repopped around every call since the callees clobber
+  them.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: lsl r3,#0x19 + bcs/beq splits bit7 (mask mode) from bits0-6 (pattern index, 0 = early return);
+    ldr r7,off_80CE528; ldrsb pairs from PanelOffsetListsPointerTable with 0x7F terminator and mul r4,r6
+    mirror offsets by alliance side; bl object_isValidPanel + ldrb r0,[r0,#oPanelData_Type]; tst/beq gates
+    spawning to valid, non-type-0 panels; loop r0=6..1, r1=3..1 with object_checkPanelParameters over
+    byte_8019C34 mask/value spawns on every matching panel; both paths end in object_getCoordinatesForPanels
+    -> spawn_t1_0x0_EffectObject, so the function only places effect objects on panels
+  refs:
+  - bn6f/asm/asm31.s:48413
+  - 0x080CE3C4 sub_80CE3C4
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080CE468
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly captures the two modes (bit7=mask mode scanning 6x3 grid; bit7 clear + nonzero
+    pattern = offset list from PanelOffsetListsPointerTable) and the alliance-direction mirroring via
+    object_getAllianceDirection. However, the claim that r3 passed to spawn carries the original r3 arg
+    is wrong: code does `mov r8, r7` to preserve r7 (the offset-list pointer) across the stashed call
+    frame, then `mov r3, r8` passes that pointer (or 0 in the mask branch). r2 (from caller) is forwarded
+    via r4 into the spawn''s third arg. Name fits the behavior.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what visual/behavior effect type 0 has (spawn_t1_0x0_EffectObject internals)
+- what the (mask,value) entries at byte_8019C34 select (likely panel-type flags such as broken/holes)
+- role of arg r2 (read into r4 in the mask path but never used) and the meaning of r3 bits passed through
+  as the effect's r3
+- which caller sub_80CE3C4 invokes it and from what battle context (attack, panel hazard, etc.)
+- 'The summary correctly captures the two modes (bit7=mask mode scanning 6x3 grid; bit7 clear + nonzero
+  pattern = offset list from PanelOffsetListsPointerTable) and the alliance-direction mirroring via object_getAllianceDirection.
+  However, the claim that r3 passed to spawn carries the original r3 arg is wrong: code does `mov r8,
+  r7` to preserve r7 (the offset-list pointer) across the stashed call frame, then `mov r3, r8` passes
+  that pointer (or 0 in the mask branch). r2 (from caller) is forwarded via r4 into the spawn''s third
+  arg. Name fits the behavior.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE468 -> object_spawnPanelPatternEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE468

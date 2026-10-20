@@ -1,0 +1,58 @@
+name: battle_setFieldHitFlag
+address: '0x081100E2'
+kind: function
+status: probable
+summary: 'Battle-object step: sets obj+0x7D to 1 when a halfword in CollisionDataPtr selected by obj+0x7E
+  is nonzero; early-returns if ExtraVars is set.'
+interface: (no args; r5 = battle object) -> void; sets byte at obj+0x7D = 1 if the tested collision halfword
+  is nonzero, r0/r1/r2 clobbered
+details: If obj+ExtraVars is nonzero the routine exits immediately. Otherwise it loads a byte at obj+0x7E,
+  multiplies by 4, and indexes the word table byte_8110108; the loaded word is used as a halfword offset
+  into [r5,#oBattleObject_CollisionDataPtr]. The first four entries are offsets 0x86, 0x8A, 0x84, 0x88
+  (a cluster of halfword fields in the collision-data struct, likely hitbox coordinates/sizes); remaining
+  entries are 0xFFFFFFFF words and a pointer to byte_8110124 (values 8,0xA,9,0xB,0xD,0xD), so 0x7E is
+  probably restricted to values 0-3. If the halfword at the selected offset is zero, nothing happens;
+  if nonzero, byte 0x7D is set to 1. No return value is produced; the effect is purely the state flag
+  at 0x7D.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst of [r5,#oBattleObject_ExtraVars] with bne exit gates the whole routine; ldrb [r5,#0x7E];
+    lsl r1,#2; ldr [r0,r1] indexes table byte_8110108 as words; result used as ldrh offset into [r5,#oBattleObject_CollisionDataPtr],
+    cmp #0, beq exit; nonzero branch only does mov r0,#0x7D; mov r1,#1; strb r1,[r5,r0]; table entries
+    0x86/0x8A/0x84/0x88 are halfword offsets into the collision struct, matching hitbox field spacing'
+  refs:
+  - bn6f/asm/asm32.s:4769
+  reproduce: python3 tools/asmcat.py 0x081100E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it checks ExtraVars, indexes byte_8110108 with obj+0x7E, reads a
+    halfword from CollisionDataPtr at that offset, and sets byte 0x7D=1 if nonzero. The table values are
+    indeed 0x86,0x8A,0x84,0x88 followed by 0xFFFFFFFF words and a pointer. A better prefix/name: ''battle_setFieldHitFlag''
+    fits better since it sets a flag based on a hitbox field being nonzero, not a generic collision check.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what the byte at obj+0x7E holds (index into hitbox fields vs. object subtype selector) and what state
+  flag 0x7D means downstream
+- why the table contains 0xFFFFFFFF words and a pointer to byte_8110124 (values 8,0xA,9,0xB,0xD,0xD) —
+  possibly a second table consumed by a sibling routine
+- no caller found, so the game-context purpose of the 0x7D flag is unconfirmed
+- 'The code matches the proposal: it checks ExtraVars, indexes byte_8110108 with obj+0x7E, reads a halfword
+  from CollisionDataPtr at that offset, and sets byte 0x7D=1 if nonzero. The table values are indeed 0x86,0x8A,0x84,0x88
+  followed by 0xFFFFFFFF words and a pointer. A better prefix/name: ''battle_setFieldHitFlag'' fits better
+  since it sets a flag based on a hitbox field being nonzero, not a generic collision check.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81100E2 -> battle_setFieldHitFlag
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81100E2

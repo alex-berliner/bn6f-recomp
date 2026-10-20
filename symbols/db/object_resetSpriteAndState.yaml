@@ -1,0 +1,58 @@
+name: object_resetSpriteAndState
+address: '0x080BB938'
+kind: function
+status: probable
+summary: Resets a battle object's panel-derived coordinates, Z, sprite/animation/palette/flip resources,
+  and switches its state to the normal update phase.
+interface: (r5 = battle object pointer) -> r0 = destroyed; object fields updated, state word set to CUR_STATE_UPDATE
+details: Uses the battle object in r5 throughout. Calls object_setCoordinatesFromPanels to sync pixel
+  X/Y with the panel grid, stores 0 to oBattleObject_Z, then sprite_load with (0x80, 8, 5) followed by
+  sprite_loadAnimationData to attach sprite resources. Enables the shadow via sprite_hasShadow, clears
+  oBattleObject_CurAnim and CurAnimCopy to 0 and applies it with sprite_setAnimation, then reloads animation
+  data. Sets palette 0, mirrors the object's facing (object_getFlip) into the sprite with sprite_setFlip,
+  and ends by writing CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0, [r5,#oBattleObject_Z] with r0=0 resets the object's Z height; sprite_load with fixed
+    args (0x80, 8, 5) plus sprite_loadAnimationData attaches a specific sprite resource set; strb r0 to
+    both oBattleObject_CurAnim and CurAnimCopy then sprite_setAnimation(0) resets animation to frame 0;
+    object_getFlip -> sprite_setFlip syncs sprite facing with the object's alliance/direction; final str
+    of CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized is a typical spawn/reset
+    state transition
+  refs:
+  - bn6f/asm/asm31.s:7613
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080BB938
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary in the proposal is accurate; the code confirms `object_setCoordinatesFromPanels`, Z
+    clear, `sprite_load(0x80,8,5)`, `sprite_loadAnimationData`, `sprite_hasShadow`, zeroing CurAnim/CurAnimCopy,
+    `sprite_setAnimation`, second `sprite_loadAnimationData`, `sprite_setPalette(0)`, `object_getFlip`
+    -> `sprite_setFlip`, and `CUR_STATE_UPDATE`. The proposed `object_revised_name` is fine and matches
+    the verb-object convention. Keeping the name identical to the proposal since no better one is evident.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so the exact trigger (spawn vs. respawn vs. state reset) is unconfirmed
+- Meaning of sprite_load's fixed arguments (0x80, 8, 5) — likely resource/group IDs — is unknown
+- Which object kind(s) use this exact sprite load parameter set
+- The summary in the proposal is accurate; the code confirms `object_setCoordinatesFromPanels`, Z clear,
+  `sprite_load(0x80,8,5)`, `sprite_loadAnimationData`, `sprite_hasShadow`, zeroing CurAnim/CurAnimCopy,
+  `sprite_setAnimation`, second `sprite_loadAnimationData`, `sprite_setPalette(0)`, `object_getFlip` ->
+  `sprite_setFlip`, and `CUR_STATE_UPDATE`. The proposed `object_revised_name` is fine and matches the
+  verb-object convention. Keeping the name identical to the proposal since no better one is evident.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB938 -> object_resetSpriteAndState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB938

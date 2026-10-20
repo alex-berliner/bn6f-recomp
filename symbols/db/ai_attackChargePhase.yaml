@@ -1,0 +1,60 @@
+name: ai_attackChargePhase
+address: '0x080F94A2'
+kind: function
+status: probable
+summary: 'AI attack charge-phase handler: on first call sets AttackElement=4, CurAnim=0x15, loads duration
+  from AttackBoost2 into StepTimer; each tick increments ChargeCycles and when bit 3 carries calls sub_80F99FC;
+  when StepTimer reaches 0 writes 0xC to HitElement.'
+interface: (r7 = object's oAIAttackVars, r5 = battle object) -> r0 clobbered; writes AttackElement, CurAnim,
+  StepTimer, ChargeCycles, HitElement
+details: 'First invocation (AttackElement == 0) performs setup: AttackElement = 4, sets the object''s
+  CurAnim to 0x15, loads the attack duration from oAIAttackVars_AttackBoost2 into StepTimer, and clears
+  ChargeCycles. Each later call increments ChargeCycles and, when bit 3 carries (every 8 frames), calls
+  sub_80F99FC, presumably a charge effect or sound. Meanwhile StepTimer counts down each frame; when it
+  hits 0 the handler stores 0xC into oAIAttackVars_HitElement, which the surrounding AI state machine
+  presumably reads to transition to the attack-hit step. Uses r7 (attack-vars base) and r5 (battle object)
+  from caller-set registers; no arguments in r0. The meaning of element constant 4 and hit element 0xC
+  depends on the element enum used by oAIAttackVars.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / bne: nonzero means attack already started, so zero
+    branch is the init path; init stores element 4, anim 0x15 to oBattleObject_CurAnim, AttackBoost2 to
+    StepTimer, 0 to ChargeCycles; lsr r0,r0,#3 / bcs ... bl sub_80F99FC: effect callback fires every 8
+    charge frames; StepTimer decrement with bgt loop and final strh #0xc to oAIAttackVars_HitElement marks
+    the attack firing; runs in recorded battlesweep route, matching a battle AI attack-state handler'
+  refs:
+  - bn6f/asm/asm31.s:139974
+  - 0x080F99FC sub_80F99FC
+  reproduce: python3 tools/asmcat.py 0x080F94A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary: it initializes AttackElement=4 and CurAnim=0x15 on first call, ticks
+    ChargeCycles and calls sub_80F99FC when bit 3 carries, decrements StepTimer, and on expiry writes
+    0xC to HitElement. However, the summary says ''HitElement'' but the asm stores with strh to oAIAttackVars_HitElement,
+    and the name should reflect this is one phase of AI attack dispatch.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- purpose of sub_80F99FC (charge sound vs. effect object spawn) not verified
+- which enemy/attack uses element 4 with hit element 0xC; no callers visible to identify the state machine
+  owner
+- exact semantics of HitElement 0xC downstream (does it trigger hit application or state change)
+- 'The code matches the summary: it initializes AttackElement=4 and CurAnim=0x15 on first call, ticks
+  ChargeCycles and calls sub_80F99FC when bit 3 carries, decrements StepTimer, and on expiry writes 0xC
+  to HitElement. However, the summary says ''HitElement'' but the asm stores with strh to oAIAttackVars_HitElement,
+  and the name should reflect this is one phase of AI attack dispatch.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F94A2 -> ai_attackChargePhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F94A2

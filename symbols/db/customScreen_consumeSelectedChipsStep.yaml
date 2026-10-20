@@ -1,0 +1,66 @@
+name: customScreen_consumeSelectedChipsStep
+address: '0x08027458'
+kind: function
+status: probable
+summary: 'Per-frame update of the battle custom screen''s confirm phase: every 25 frames pops one selected
+  chip (sound 0x196, chip-picker effect, slot redraw), tracks a 20-frame animation timer on activeChip[8].byte7,
+  and when the queue is done compacts the folder and advances state via [r5+2]=8.'
+interface: (r5 = custom-screen state object) -> void; increments [r5+0x40], updates [r5+8] remaining-chip
+  count, [r5+0x5F] used-chip count, [r5+0x44] frame timer, and sets [r5+2] = 8 when done
+details: Increments a counter at [r5+0x40] and divides it by 25 via SWI 6 (Div); only when the remainder
+  is 0 does it pop one chip, so chips are consumed on a timed cadence. It reads the queue of selected
+  chip indices at r5+0x47 indexed by the count byte [r5+8], gets the 12-byte active-chip entry via getLocOfActiveChips,
+  and clears that entry (writes 0xFFFF through its pointer at +8, clears bit0 of +4 which also zeroes
+  BattleState+0x17). The chip word read from the entry is appended to a 'used chips' list at r5+0x60+2*[r5+0x5F],
+  the remaining-count is decremented, sprite tiles (0x1FF) are copied to a VRAM slot, slot 0 of the screen
+  is redrawn, the chip-picker effect runs, and sound 0x196 plays, then a 20-frame timer at [r5+0x44] is
+  started; while that timer runs, activeChip[8].byte7 = 3 (animation flag), reverting to 0 when it expires.
+  When [r5+8] == 0 (no chips left, or the selected entry is empty), it instead compacts the battle folder
+  chip list, calls two follow-up helpers, and sets [r5+2] = 8 to move the custom screen to its next state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'SWI 6 with r1=0x19 (Div by 25) plus ''tst r1,r1; bne'' gates the pop to every 25th tick; add
+    r0,#0x47 / ldrb r0,[r5,r0] then getLocOfActiveChips indexes a chip queue stored past r5+0x47; ldrh
+    r0,[r2]; strh 0xFFFF,[r2] clears the consumed active-chip entry, and the word is stored at r5+0x60+2*[r5+0x5F]
+    with [r5+0x5F] incremented; Queue empty path: battle_compactFolderChipList_802945A, then ''mov r0,#8;
+    strh r0,[r5,#2]'' state advance; Timer path writes 3 then 0 to getLocOfActiveChips(8)+7, an anim/state
+    flag on battle object entry 8, over [r5+0x44]=0x14 frames'
+  refs:
+  - bn6f/asm/asm03_0.s:2291
+  - 0x080005CC PlaySoundEffect
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x0802945A battle_compactFolderChipList_802945A
+  reproduce: python3 tools/asmcat.py 0x08027458
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate: the function increments [r5+0x40], divides by 25 (0x19) via SWI 6, pops
+    selected chips one per 25 frames, copies 0x1FF tile, redraws, plays sound 0x196, and sets a 20-frame
+    timer at [r5+0x44]. However, [r5+0x40] is incremented every frame but only consumed every 25th, so
+    it''s a frame counter, not a ''used-chip count''. The used-chip count is actually at [r5+0x5F] (incremented
+    at the strb r1,[r5,r2] with r2=0x5f). Also [r5+2] is written with strh, not strb. The interface description
+    conflates these fields.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact identity of sub_80294E0 and sub_802A61A (called on the queue-empty path) to confirm what state
+  [r5+2]=8 transitions into
+- Semantics of activeChip entry +8 pointer and +4 bit0 / +7 flag fields, and what object entry index 8
+  represents
+- 'The summary is accurate: the function increments [r5+0x40], divides by 25 (0x19) via SWI 6, pops selected
+  chips one per 25 frames, copies 0x1FF tile, redraws, plays sound 0x196, and sets a 20-frame timer at
+  [r5+0x44]. However, [r5+0x40] is incremented every frame but only consumed every 25th, so it''s a frame
+  counter, not a ''used-chip count''. The used-chip count is actually at [r5+0x5F] (incremented at the
+  strb r1,[r5,r2] with r2=0x5f). Also [r5+2] is written with strh, not strb. The interface description
+  conflates these fields.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8027458 -> customScreen_consumeSelectedChipsStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027458

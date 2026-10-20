@@ -1,0 +1,69 @@
+name: init_eventSceneState
+address: '0x08128CD8'
+kind: function
+status: probable
+summary: 'Init for a story-event scene state: sets EVENT_197/1AD, resets VRAM/palette/BG tile buffer,
+  loads BG/text GFX, spawns scene eStructs, optionally decompresses a text script, then transitions to
+  state 4.'
+interface: (r5 = scene state struct, preserved from caller) -> void; sets r5+0x1e = event flag list handle,
+  r5+0xc/0xd = resolved state, r5+1 = 4
+details: Sets story flags EVENT_197 and EVENT_1AD, then zero-fills VRAM, the palette buffer at 0x3001960,
+  and the 0x2000-byte GFX block at 0x30025c0, and applies palette 8. Writes 0x1F40 to the toolkit render
+  info word and zeroes six halfword fields at +0x10..+0x1a. Loads two graphics blocks (0x9070 bytes to
+  VRAM 0x6008E00, 0x9060 bytes to 0x6008C00) through byte_201BB60, resets the eStruct record array and
+  spawns records from the table at byte_8128CB0. If getEventFlagList(byte_201BDB8) is non-zero it also
+  loads 0x90D4 bytes to 0x6009A80 and decompresses the text script into eTextScript201BA00 via byte_201BDB8.
+  Resolves the current state name from dword_8129180 (advanceAnimTableBy0xFF helper), stores it at r5+0xc/0xd,
+  inits r5+0xf=0 / r5+0x10=-1 (the -1 store is written twice), sets a screen fade (8, 0x10), then stores
+  state 4 at r5+1 and runs entity update handlers plus battle_updateEStructSprites. The duplicate strb
+  to r5+0x10 and duplicated off_8128D9C lookups are compiler quirks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: movflag EVENT_197/EVENT_1AD + SetEventFlagFromImmediate pair at function start ties it to story
+    progression; bl zeroFillVRAM / ZeroFill_byte_3001960 / ZeroFillGFX30025c0 / toolkit_applyOverlayPalette_80015FC
+    = full video reset for a new scene; sub_802B4D4/sub_8129104 pairs with size/VRAM constants (0x9070→0x6008E00,
+    0x9060→0x6008C00, 0x90D4→0x6009A80) are graphics loads; battle_resetEStructRecords_8046664 + battle_spawnEStructRecordsFromTable_80465A0(byte_8128CB0)
+    sets up the overlay scene's object records; sub_802B358/sub_802B438 on byte_201BDB8 with eTextScript201BA00
+    load the scene's dialogue script, then SetScreenFade(8,0x10) and r5+1 = 4 advance the scene state
+  refs:
+  - bn6f/asm/asm33.s:11711
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x080017E0 ZeroFill_byte_3001960
+  reproduce: python3 tools/asmcat.py 0x08128CD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s details match the code well (EVENT_197/1AD, zero-fills, palette 8, 0x1F40, two GFX
+    loads via byte_201BB60, eStruct reset/spawn, event flag list handle at r5+0x1e, conditional 0x90D4
+    load, anim-table resolve at r5+0xc/0xd, state 4 at r5+1, SetScreenFade 8/0x10, entity update + eStruct
+    sprites). However, this is clearly a scene/state init rather than battle-specific (no actual battle
+    code here, and the entity/eStruct calls are reused scene helpers), so the name should reflect a scene/event
+    init. A cleaner name is scene_initEventState is fine, but `init` prefix fits better given no `scene`
+    namespace exists in the prefix list; `init` is allowed. The summary is accurate. I''ll revise the
+    name only.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which overlay/scene this belongs to (byte_8128CB0 table contents and byte_201BDB8 flag list would identify
+  the location)
+- meaning of the 0x1F40 written to render info and the six zeroed halfword fields
+- exact semantics of sub_802B4D4 vs sub_8129104 (both load GFX but differ)
+- The proposal's details match the code well (EVENT_197/1AD, zero-fills, palette 8, 0x1F40, two GFX loads
+  via byte_201BB60, eStruct reset/spawn, event flag list handle at r5+0x1e, conditional 0x90D4 load, anim-table
+  resolve at r5+0xc/0xd, state 4 at r5+1, SetScreenFade 8/0x10, entity update + eStruct sprites). However,
+  this is clearly a scene/state init rather than battle-specific (no actual battle code here, and the
+  entity/eStruct calls are reused scene helpers), so the name should reflect a scene/event init. A cleaner
+  name is scene_initEventState is fine, but `init` prefix fits better given no `scene` namespace exists
+  in the prefix list; `init` is allowed. The summary is accurate. I'll revise the name only.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8128CD8 -> init_eventSceneState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128CD8

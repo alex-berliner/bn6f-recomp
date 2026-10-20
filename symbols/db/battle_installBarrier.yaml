@@ -1,0 +1,60 @@
+name: battle_installBarrier
+address: '0x0801A7CC'
+kind: function
+status: probable
+summary: 'Installs a barrier type on a battle entity: writes the type id to oCollisionData_Barrier, copies
+  BarrierIndex from byte_8020B8C, and copies HP, related value, and counter halfwords at offsets 0/2/4
+  from byte_8020B2C[r0*6] into the collision data.'
+interface: (r0 = barrier type id, r5 = battle object) -> writes oCollisionData_Barrier/BarrierIndex/BarrierHP/BarrierRelatedValue/BarrierCounterU16;
+  no return value
+details: Stores r0 as oCollisionData_Barrier on the entity's collision data (ptr at oBattleObject_CollisionDataPtr).
+  Loads oCollisionData_BarrierIndex from byte_8020B8C[r0], a per-type barrier index. Indexes byte_8020B2C
+  with r0*6 and copies the entry's byte 0 to BarrierHP, byte 2 to BarrierRelatedValue, and halfword at
+  offset 4 to BarrierCounterU16. Returns immediately via mov pc, lr with no status output.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0, [r3,#oCollisionData_Barrier] directly stores the argument as barrier type; ldrb r1,
+    [r1,r0] from byte_8020B8C fills oCollisionData_BarrierIndex per type; mul r0, #6 into byte_8020B2C
+    yields HP/related-value/counter triple stored in three fields; mov pc, lr right after last field write:
+    leaf, no other effects'
+  refs:
+  - bn6f/asm/asm00_2.s:23784
+  - 0x08013892 sub_8013892
+  - 0x080DE088 sub_80DE088
+  - 0x080E3AFC sub_80E3AFC
+  reproduce: python3 tools/asmcat.py 0x0801A7CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mostly fits: r0 is stored at oCollisionData_Barrier, byte_8020B8C[r0] is loaded into
+    BarrierIndex, and entries at byte_8020B2C[r0*6..] are placed in BarrierHP/BarrierRelatedValue/BarrierCounterU16.
+    But the detail ''copies byte 0 / byte 2 / halfword at offset 4'' is wrong: each load is a halfword
+    (ldrh) at offsets 0, 2, and 4, then stored as a byte for HP and RelatedValue and as a halfword for
+    the counter. Also, ''sets a battle entity''s barrier to the given type'' is redundant with the existing
+    field name; a more accurate name reflects installation/setup.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of BarrierHP vs BarrierRelatedValue vs BarrierCounterU16 for each barrier type (table
+  byte_8020B2C contents not analyzed)
+- Whether BarrierIndex links to a rendering/aura animation id
+- 'The summary mostly fits: r0 is stored at oCollisionData_Barrier, byte_8020B8C[r0] is loaded into BarrierIndex,
+  and entries at byte_8020B2C[r0*6..] are placed in BarrierHP/BarrierRelatedValue/BarrierCounterU16. But
+  the detail ''copies byte 0 / byte 2 / halfword at offset 4'' is wrong: each load is a halfword (ldrh)
+  at offsets 0, 2, and 4, then stored as a byte for HP and RelatedValue and as a halfword for the counter.
+  Also, ''sets a battle entity''s barrier to the given type'' is redundant with the existing field name;
+  a more accurate name reflects installation/setup.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801A7CC -> battle_installBarrier
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A7CC

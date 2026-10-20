@@ -1,0 +1,62 @@
+name: battle_objectActionUpdate
+address: '0x080CB368'
+kind: function
+status: probable
+summary: 'Per-frame mid-action update for a battle object in r5: tears down its collision data, spawns
+  the hit-effect object for its last collision, sets its state to CUR_STATE_DESTROY if the battle is over,
+  refreshes collision state via object_presentCollisionData during time-stop, or otherwise tail-calls
+  the action handler chosen via oBattleObject_CurAction.'
+interface: (r5 = battle object) -> r0 = consumed by dispatch; sets object state to CUR_STATE_DESTROY when
+  battle is over
+details: Runs each frame for an object whose collision data lives in r5 (oBattleObject fields). It first
+  tears down the object's collision data, then spawns the hit-effect object for the object's last collision.
+  If battle-over conditions are met it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  otherwise, unless time-stop is active, it loads an action jump table indexed by oBattleObject_CurAction
+  and tail-calls the handler (the table has a single entry, sub_80CB3A0). During time-stop it instead
+  calls object_presentCollisionData to keep the collision state consistent without advancing. The odd
+  calling convention (object in r5, not r0) suggests it is invoked from a shared object-update loop that
+  keeps the current object in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_removeCollisionData then bl object_spawnCollisionEffect at entry — per-frame collision
+    teardown + hit effect spawn; battle_isBattleOver path stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseIndexed
+    field; battle_isTimeStop path calls object_presentCollisionData instead of dispatching the action;
+    ldr r1,[r1,r0] with r0 = oBattleObject_CurAction and table off_80CB39C dispatches to sub_80CB3A0
+  refs:
+  - bn6f/asm/asm31.s:41894
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CB368
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and overall flow are correct: unconditional object_removeCollisionData + object_spawnCollisionEffect,
+    then battle-is-over -> write CUR_STATE_DESTROY, then time-stop check (object_presentCollisionData)
+    before tail-calling the CurAction jump table off_80CB39C. However the details claim the destroy state
+    is written to oBattleObject_CurStateAction; the str at loc_80CB392 writes to [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized].
+    A minor naming/summary tighten-up makes this accurate.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No caller is known, so whether r5 is the current object from a shared update loop and which object kinds
+  use this handler are unconfirmed
+- The action table has only one visible entry (sub_80CB3A0), so the full set of actions reaching this
+  path is unknown
+- 'The summary and overall flow are correct: unconditional object_removeCollisionData + object_spawnCollisionEffect,
+  then battle-is-over -> write CUR_STATE_DESTROY, then time-stop check (object_presentCollisionData) before
+  tail-calling the CurAction jump table off_80CB39C. However the details claim the destroy state is written
+  to oBattleObject_CurStateAction; the str at loc_80CB392 writes to [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized].
+  A minor naming/summary tighten-up makes this accurate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB368 -> battle_objectActionUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB368

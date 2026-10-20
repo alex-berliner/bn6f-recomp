@@ -1,0 +1,69 @@
+name: battle_runObjectDestroy
+address: '0x080D789C'
+kind: function
+status: probable
+summary: 'Per-frame destroy step for a battle object: clears collision region, handles ObjectFlags2 special
+  paths (sub_800F90E/sub_800F8CE/effect spawn), spawns the HP-zero explosion with sound, and when not
+  time-stopped dispatches destroy events, removes the object from the battle list, releases its reserved
+  panel, writes CUR_STATE_DESTROY and calls sub_801DD34.'
+interface: (r5 = battle object) -> void; r0-r4 clobbered
+details: 'First clears the object''s collision region (object_clearCollisionRegion). If ObjectFlags2 has
+  bit 0x8000 set, it takes a special path: bits 0x300000 decide between running sub_800F90E(0xA), sub_800F8CE
+  (which can early-return), or spawning an effect object (t1 type 0) at the object''s position fields
+  at +0x34 with parameter r4=0xC0000 (y offset 12). Otherwise, on first entry (PhaseInitialized==0) it
+  sets PhaseInitialized=4, clears object flag bit 1 in oObjectHeader_Flags, and if oBattleObject_HP is
+  zero spawns the standard explosion effect at the object position (r4=0) and plays SOUND_HIT_BOMB_1.
+  It then dispatches destroy sub-events (battle_dispatchDestroyEvents_802EF5C), removes itself from the
+  battle state object list, releases any reserved panel using FuturePanelX/Y, writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, and calls sub_801DD34. Time-stop (battle_isTimeStop)
+  gates the destroy-event dispatch path.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Calls object_clearCollisionRegion first, standard teardown start; HP==0 branch spawns t1-0 effect
+    and plays SOUND_HIT_BOMB_1 (explosion/death sound); Calls battle_dispatchDestroyEvents_802EF5C then
+    clearEntryOfBattleStateBattleObjectList_800F656; object_removePanelReserve is called with FuturePanelX/FuturePanelY
+    from the object; Writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    at the end
+  refs:
+  - bn6f/asm/asm31.s:68305
+  - 0x080D787C sub_80D787C
+  - 0x080005CC PlaySoundEffect
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D789C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary well: clears collision region, branches on ObjectFlags2 bits 0x8000/0x300000
+    (sub_800F90E/sub_800F8CE/spawn_t1 effect with y-offset 0xC0000), else standard path clearing oObjectHeader_Flags
+    bit 1, spawning explosion + SOUND_HIT_BOMB_1 at HP=0, then time-stop-gated destroy-event dispatch,
+    list removal, panel reserve release, CUR_STATE_DESTROY, and sub_801DD34. Minor discrepancy: the proposal
+    says r4=0xC0000 is the y offset passed to spawn_t1, but r4=0xC0000 is consumed as a positional adjustment
+    (`add r3, r3, r4`) before the spawn, so it''s added to the z/3rd coord rather than passed in r4. Overall
+    the summary is accurate, but a more precise name better reflects that this is the per-frame destroy
+    handler gated by time-stop.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of ObjectFlags2 bits 0x8000 and 0x300000 (some 'unkillable/special death' behavior)
+- What sub_800F90E(0xA), sub_800F8CE, and sub_801DD34 do
+- Caller sub_80D787C's role not shown
+- 'The code matches the summary well: clears collision region, branches on ObjectFlags2 bits 0x8000/0x300000
+  (sub_800F90E/sub_800F8CE/spawn_t1 effect with y-offset 0xC0000), else standard path clearing oObjectHeader_Flags
+  bit 1, spawning explosion + SOUND_HIT_BOMB_1 at HP=0, then time-stop-gated destroy-event dispatch, list
+  removal, panel reserve release, CUR_STATE_DESTROY, and sub_801DD34. Minor discrepancy: the proposal
+  says r4=0xC0000 is the y offset passed to spawn_t1, but r4=0xC0000 is consumed as a positional adjustment
+  (`add r3, r3, r4`) before the spawn, so it''s added to the z/3rd coord rather than passed in r4. Overall
+  the summary is accurate, but a more precise name better reflects that this is the per-frame destroy
+  handler gated by time-stop.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D789C -> battle_runObjectDestroy
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D789C

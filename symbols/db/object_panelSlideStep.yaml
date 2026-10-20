@@ -1,0 +1,63 @@
+name: object_panelSlideStep
+address: '0x080C5116'
+kind: function
+status: probable
+summary: Per-frame step that waits Timer, decrements it, and on underflow adds the +/-1 facing to PanelX
+  and tries to commit the move via setCoordinatesFromPanels/updateCollisionPanels; if the battle ended,
+  something hit it, or the new panel is invalid, it clears the collision region and sets CUR_STATE_DESTROY.
+interface: (r5 = battle object) -> r0 = destroyed flag from object_presentCollisionData; updates object
+  state
+details: On entry it tears down collision data and spawns a collision effect, then bails out if the battle
+  is over or oCollisionData_FlagsFromCollision is nonzero (something hit it), in which case it clears
+  the collision region and sets CUR_STATE_DESTROY. Otherwise, on first entry (PhaseInitialized==0) it
+  copies oBattleObject_Timer2 into oBattleObject_Timer as the step delay and sets PhaseInitialized=4.
+  Each frame it decrements Timer; when it reaches below zero it reads the +/-1 facing via object_getFrontDirection,
+  adds it to PanelX, validates the resulting panel with object_isValidPanel, and if valid updates coordinates
+  via object_setCoordinatesFromPanels and object_updateCollisionPanels, then clears PhaseInitialized for
+  the next delayed step. Finally it always calls object_presentCollisionData to refresh the object's collision
+  state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection ... add r0,r0,r1 strb to oBattleObject_PanelX — moves one panel
+    in facing direction (loc around 0x80C514E); ldrh r0,[Timer2] strh to Timer on PhaseInitialized==0,
+    then Timer decremented each frame until negative — delayed repeated step; bl object_isValidPanel with
+    bne to destroy path setting #CUR_STATE_DESTROY — self-destructs when sliding off the 6x3 grid; ldr
+    FlagsFromCollision tst r1 bne destroy — aborts if collision flags set; only caller sub_80C50DC and
+    callees object_presentCollisionData/object_clearCollisionRegion match a per-frame object state handler'
+  refs:
+  - bn6f/asm/asm31.s:28418
+  - 0x080C50DC sub_80C50DC
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C5116
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary misses key details: it never destroys on ''leaves the grid''—invalid panel triggers
+    CUR_STATE_DESTROY but doesn''t destroy per se; PhaseInitialized is set to 0 (not ''cleared'') to re-arm
+    the delay; the Timer sub/#1 happens *every frame* including before the first step, and the PanelX
+    is updated even before the validity check (a bug-ish detail). The name ''slideForwardStep'' is reasonable
+    but ''object_panelSlideStep'' is more specific to the panel-by-panel movement.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- exact caller sub_80C50DC context (which object type uses this step handler, e.g. a sliding enemy/attack)
+  and why collision data is removed each frame before re-updating
+- 'The summary misses key details: it never destroys on ''leaves the grid''—invalid panel triggers CUR_STATE_DESTROY
+  but doesn''t destroy per se; PhaseInitialized is set to 0 (not ''cleared'') to re-arm the delay; the
+  Timer sub/#1 happens *every frame* including before the first step, and the PanelX is updated even before
+  the validity check (a bug-ish detail). The name ''slideForwardStep'' is reasonable but ''object_panelSlideStep''
+  is more specific to the panel-by-panel movement.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C5116 -> object_panelSlideStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5116

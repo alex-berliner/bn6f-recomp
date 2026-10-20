@@ -1,0 +1,59 @@
+name: battle_initObjectInFrontOfOwner
+address: '0x080DC108'
+kind: function
+status: probable
+summary: Initializes a spawned battle object by setting flag 0x2, loading sprite 0x80 at offsets 0xC/0x64
+  with animation 4, recomputing pixel coords from panels, then shifting X by ±0x28 (40px) per object_getFrontDirection
+  so it sits in front of its owner; finally zeroes Z/ExtraVars and jumps to its update handler (sub_80DC160).
+interface: (r5 = battle object header, all state via r5) -> r0 = sub_80DC160 return; sets object flags/sprite/position/state
+details: Operating on the object in r5 (shared with the object_* callees), it first sets flag bit 0x2
+  in oObjectHeader_Flags, then loads sprite id 0x80 with args 0xC and 0x64 via sprite_load and selects
+  animation 4 into oBattleObject_CurAnim and its copy. It applies the no-shadow sprite flag and mirrors
+  the sprite via object_getFlip/sprite_setFlip so it faces like the owner. It recomputes pixel X/Y from
+  panels, then shifts X by ±0x28 (40px) multiplied by object_getFrontDirection (+1/-1), so the object
+  sits in front of its owner; it zeroes oBattleObject_Z (ground plane) and oBattleObject_ExtraVars. Finally
+  it stores CUR_STATE_UPDATE into oBattleObject_CurState and tail-calls sub_80DC160, presumably the object's
+  per-frame update/state handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/strb on [r5,#oObjectHeader_Flags] ORs in bit 0x2 before sprite setup; bl sprite_load with
+    r0=0x80, r1=0xC, r2=0x64 followed by anim 4 into oBattleObject_CurAnim and CurAnimCopy; object_getFlip
+    -> sprite_setFlip and object_getFrontDirection -> X += 0x28*dir place/mirror the sprite ahead of the
+    owner; Z and ExtraVars zeroed and oBattleObject_CurState set to CUR_STATE_UPDATE before tail-call
+    sub_80DC160; callees object_setCoordinatesFromPanels/sprite_noShadow/sprite_loadAnimationData all
+    act on the r5 object header
+  refs:
+  - bn6f/asm/asm31.s:77991
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080DC108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The sprite id 0x80 is not ''one offset ~40px'' — it''s the sprite resource ID; the ±0x28 is the
+    pixel X shift. The code also calls sprite_update between sprite_loadAnimationData and sprite_noShadow,
+    which the summary omits. The 0x2 flag set, anim 4, ±0x28 X shift via object_getFrontDirection, zero
+    Z/ExtraVars, CUR_STATE_UPDATE handoff to sub_80DC160 are all consistent with the proposal.; run wf
+    investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the in-game trigger and what object sprite id 0x80 represents are unidentified
+- sub_80DC160's behavior would confirm the resulting state machine (idle/attack/one-shot?)
+- Meaning of the 0x2 flag bit and the sprite_load arguments (0xC, 0x64) is unverified
+- The sprite id 0x80 is not 'one offset ~40px' — it's the sprite resource ID; the ±0x28 is the pixel X
+  shift. The code also calls sprite_update between sprite_loadAnimationData and sprite_noShadow, which
+  the summary omits. The 0x2 flag set, anim 4, ±0x28 X shift via object_getFrontDirection, zero Z/ExtraVars,
+  CUR_STATE_UPDATE handoff to sub_80DC160 are all consistent with the proposal.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC108 -> battle_initObjectInFrontOfOwner
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC108

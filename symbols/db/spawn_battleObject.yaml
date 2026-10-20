@@ -1,0 +1,63 @@
+name: spawn_battleObject
+address: '0x080DF0C8'
+kind: function
+status: probable
+summary: 'Spawns/init routine for a battle object at a panel position: recomputes pixel XY (Z=8), loads
+  sprite resources with no shadow, sets header flag bit 1, applies palette 4 and the object''s flip, allocates
+  collision data with extents (4,5,3) and hit-effect type 6 (freeing the object on failure), then seeds
+  its Timer from Param1 and enters CUR_STATE_UPDATE.'
+interface: (r5 = battle object ptr, fields pre-filled incl. panel coords and Param1) -> r0 = destroyed;
+  object left in CUR_STATE_UPDATE
+details: Uses r5 as the object pointer (this codebase's spawn/init convention). It recomputes pixel X/Y
+  from the object's panel coordinates, sets Z to 8, loads sprite resources (0x80, 0xC, 0x1C) with no shadow,
+  sets object flag bit 1, resets the animation to 0 and applies palette 4 with the object's flip from
+  object_getFlip. It allocates collision data (freeing the object on failure), then sets up collision
+  with extents (4, 5, 3) and hit-effect type 6 via object_setupCollisionData and object_setCollisionHitEffect,
+  refreshing it once with object_presentCollisionData. Finally it copies oBattleObject_Param1 into oBattleObject_Timer
+  (so the caller passes the object's lifetime in Param1) and writes CUR_STATE_UPDATE to the state field
+  so the object begins updating next frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then mov r0,#8; str r0,[r5,#oBattleObject_Z] positions the
+    object at its panel with fixed height; bl sprite_load with (0x80, 0xC, 0x1C) followed by sprite_noShadow/setAnimation/setPalette(4)/setFlip
+    builds the object's visual state; bl object_createCollisionData with 'bl object_freeMemory' on r0==0
+    shows failure frees the whole object slot; bl object_setupCollisionData(4,5,3) and object_setCollisionHitEffect(6)
+    configure the hitbox and hit visual; ldrb r0,[r5,#oBattleObject_Param1]; strh r0,[r5,#oBattleObject_Timer]
+    then str CUR_STATE_UPDATE to the state field ends the init
+  refs:
+  - bn6f/asm/asm31.s:84302
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080DF0C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and detail line up with the code (recompute XY, Z=8, sprite_load(0x80,0xc,0x1c), no
+    shadow, set flag bit 1, anim/palette/flip, collision setup with (4,5,3) and hit effect 6, present,
+    copy Param1 to Timer, state=CUR_STATE_UPDATE, free on alloc failure). However, the name should encode
+    the concrete hit-effect kind used (6), so ''spawn_battleObjectHitEffect'' is closer to the code''s
+    evident purpose; ''spawn_panelObject'' is too generic and ''spawn_battleObject'' is better.; run wf
+    investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which sprite (0x80/0xC/0x1C) and hit-effect type 6 correspond to — needs the caller or the sprite table
+  to identify the specific object
+- No known caller, so how Param1 (lifetime) and panel coordinates are filled in is unconfirmed
+- The summary and detail line up with the code (recompute XY, Z=8, sprite_load(0x80,0xc,0x1c), no shadow,
+  set flag bit 1, anim/palette/flip, collision setup with (4,5,3) and hit effect 6, present, copy Param1
+  to Timer, state=CUR_STATE_UPDATE, free on alloc failure). However, the name should encode the concrete
+  hit-effect kind used (6), so 'spawn_battleObjectHitEffect' is closer to the code's evident purpose;
+  'spawn_panelObject' is too generic and 'spawn_battleObject' is better.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF0C8 -> spawn_battleObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF0C8

@@ -1,0 +1,68 @@
+name: object_initScriptedFlight
+address: '0x080D9D6C'
+kind: function
+status: probable
+summary: 'Initializes a battle object (sprite 0x80/0xC, anim 5, HP 40): computes a flight angle and polar
+  velocity (mag 0x2C000) toward Param3/Param4 panel coords, then uses battle_calcTargetApproach with descriptor
+  dx=0, dy=-40, dz=0x1770 and speed 0xA0000 to fly the object in over a fixed frame count, allocates its
+  collision (setup 0x4E/0x14/0, status 0x20), and self-frees if no collision slot is available.'
+interface: (r5 = battle object header) -> void; on collision-slot allocation failure the object is freed
+  instead
+details: Sets object flag bit 1, loads sprite (0x80, 0xC, 2), sets animation 5 with CurAnimCopy=0xFF,
+  then updates and checks for a shadow. Copies Param3/Param4 into FuturePanelX/Y and converts them to
+  pixel coordinates, then computes the angle from the object's current position (fields at r5+0x34..0x37)
+  to the target via calcAngle_800117C, storing it in DirectionAngle. Uses math_getPolarVector with magnitude
+  0x2C000 to fill X/YVelocity, and battle_calcTargetApproach with the descriptor at byte_80D9E1C (dx=0,
+  dy=-40, dz=0x1770) and speed 0xA0000, storing the Z step in ZVelocity and the frame count in Timer —
+  i.e. a scripted high-arc approach from the air. Sets HP and MaxHP to 0x28 (40), allocates collision
+  data (setup 0x4E/0x14/0, status effect 0x20, clears collision region), sets CurState to CUR_STATE_UPDATE,
+  and calls sub_80D9E24. If object_createCollisionData returns zero (no slot), the object frees itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x28 / strh [HP] and [MaxHP] — hardcodes 40 HP for this object; ldr r1,=0x2C000; bl
+    math_getPolarVector; str [XVelocity]/[YVelocity] — fly-in velocity from polar conversion; ldr r6,byte_80D9E1C
+    (0,0xD8FF...,0x1770); mov r3,#0xA<<16; bl battle_calcTargetApproach; str [ZVelocity]/strh [Timer]
+    — per-frame dive step and frame count toward dz=6000, dy=-40; bl object_createCollisionData / tst
+    r0,r0 / bne ... / bl object_freeMemory — aborts spawn when no collision slot is free; mov r0,#CUR_STATE_UPDATE
+    / strb [CurState]; tail calls sub_80D9E24 — hands off to the per-frame update state
+  refs:
+  - bn6f/asm/asm31.s:73195
+  - 0x0800120E battle_calcTargetApproach
+  - 0x0800117C calcAngle_800117C
+  - 0x080011A0 math_getPolarVector
+  reproduce: python3 tools/asmcat.py 0x080D9D6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially correct: it sets flag bit 1, loads sprite 0x80/0xC with type 2, anim
+    5, computes angle via calcAngle to a target panel, uses math_getPolarVector with 0x2C000, battle_calcTargetApproach
+    with descriptor at byte_80D9E1C (dx=0, dy=-0x28=-40, dz=0x1770) and speed 0xA0000, sets HP=0x28, allocates
+    collision, and frees on failure. Object bits (0x80/0xC) and ''40'' HP don''t specifically read as
+    ''diving flyer'', and no callers or surrounding context are known to confirm a dive-in behavior —
+    the behavior is the scripted flight, but the name should reflect the generic scripted-flight init,
+    not a dive framing that the code doesn''t evidence.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which enemy/attack this object is (sprite id 0x80/0xC and anim 5 not identified)
+- Purpose of sub_80D9FC2 and sub_80D9E24 (likely collision-hit and update handlers)
+- No known caller, so the object-table entry and trigger context are unknown
+- 'The summary is essentially correct: it sets flag bit 1, loads sprite 0x80/0xC with type 2, anim 5,
+  computes angle via calcAngle to a target panel, uses math_getPolarVector with 0x2C000, battle_calcTargetApproach
+  with descriptor at byte_80D9E1C (dx=0, dy=-0x28=-40, dz=0x1770) and speed 0xA0000, sets HP=0x28, allocates
+  collision, and frees on failure. Object bits (0x80/0xC) and ''40'' HP don''t specifically read as ''diving
+  flyer'', and no callers or surrounding context are known to confirm a dive-in behavior — the behavior
+  is the scripted flight, but the name should reflect the generic scripted-flight init, not a dive framing
+  that the code doesn''t evidence.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9D6C -> object_initScriptedFlight
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9D6C

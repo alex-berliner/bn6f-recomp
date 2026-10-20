@@ -1,0 +1,64 @@
+name: object_updateAction
+address: '0x0801B610'
+kind: function
+status: probable
+summary: 'Per-frame battle object update: applies pending hit damage, manages death/invuln/idle state
+  transitions, then dispatches the CurAction handler from the function table in r0.'
+interface: (r0 = pointer to action-handler function table indexed by CurAction*4; r5 = battle object)
+  -> r0 clobbered by dispatch; returns early via sub_8018002/801813A/801823C paths
+details: 'r5 is the battle object; it reads CollisionData and AI-data pointers and first processes a pending
+  hit: flag 0x80 in CollisionData+0x80 triggers sprite_forceWhitePalette, sound 0x85 and object_subtractHP,
+  and FlagsFromCollision bit 0x800002 zeroes HP outright. If HP is 0 (and flag2 0x8000 not set, likely
+  protecting some objects) it sets flag2 bit 0 (dead). It then runs a flag cascade: flag1 bit 0x100 aborts
+  handling; flag2 bit 0 clears it, sets the invulnerable flag1 bit, and switches CurAction to 2 (hit)
+  with phase 0; flag2 0xC00 / flag1 0x30000000 route to alternate per-frame helpers sub_8018002/sub_801813A;
+  during time-stop only action 0 runs, otherwise sub_801823C. Flag2 bit 0x100 restores PendingStateAction
+  and enters CurAction 5 (idle) with phase/MoveSubState cleared. Finally it resets the color shader, hides
+  summons, and calls the handler table entry [r0 + CurAction*4] via mov lr,pc;bx r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r6,[r5,#oBattleObject_CollisionDataPtr] / ldrh r0,[r6,#0x80] gate the white-flash + PlaySoundEffect(0x85)
+    + object_subtractHP hit sequence; HP==0 path does bl object_setFlag2 with r0=1, marking the object
+    dead unless flag2 0x8000 is set; flag2 bit0 clear path sets OBJECT_FLAGS_INVULNERABLE via object_setFlag1
+    and strb #2 -> oBattleObject_CurAction; battle_isTimeStop branch only runs the CurAction==0 handler
+    during time stop, else sub_801823C; tail: ldrb CurAction, lsl #2, ldr r0,[r1,r0], mov lr,pc; bx r0
+    — a dispatch table indexed by CurAction'
+  refs:
+  - bn6f/asm/asm00_2.s:25580
+  - 0x080DB148 sub_80DB148
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A176 object_clearFlag2
+  reproduce: python3 tools/asmcat.py 0x0801B610
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name capture the dispatch and most flag handling correctly: hit processing at loc_801B638-0x656,
+    sub_8018002/801813A/801823C alternate paths at 0x801B6A4/C4/DC, and the final mov lr,pc/bx r0 dispatch
+    at 0x801B72A. However the name ''object_dispatchCurAction'' undersells the substantial pre-dispatch
+    state machine (hit/HP/dead, hit-react to action 2, idle restore), which is closer to a per-frame ''update''.
+    Suggested name object_updateAction better reflects both halves.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_8018002, sub_801813A and sub_801823C do exactly (likely move/anim update variants) and the
+  meaning of the flag bits 0xC00, 0x3000, 0x30000000
+- Which concrete handler table the sole caller sub_80DB148 passes in r0, i.e. which actions indices 0-5
+  map to
+- 'The summary and name capture the dispatch and most flag handling correctly: hit processing at loc_801B638-0x656,
+  sub_8018002/801813A/801823C alternate paths at 0x801B6A4/C4/DC, and the final mov lr,pc/bx r0 dispatch
+  at 0x801B72A. However the name ''object_dispatchCurAction'' undersells the substantial pre-dispatch
+  state machine (hit/HP/dead, hit-react to action 2, idle restore), which is closer to a per-frame ''update''.
+  Suggested name object_updateAction better reflects both halves.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801B610 -> object_updateAction
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801B610

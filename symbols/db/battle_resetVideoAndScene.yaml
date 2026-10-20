@@ -1,0 +1,57 @@
+name: battle_resetVideoAndScene
+address: '0x08049058'
+kind: function
+status: probable
+summary: After the screen fade gate passes, wipes VRAM, zero-fills the BG tile buffer at 0x30025c0, reloads
+  the 0x800-byte GFX block to VRAM 0x600D400 plus the 32-byte IWRAM block at 0x3001B40, reinitializes
+  the chatbox, sets DISPCNT-equivalent to 0x40, and calls battle_resetAndInitScene to tear down and restart
+  the battle scene.
+interface: () -> (); early-returns via ZF from IsScreenFadeActive, no return value
+details: 'If IsScreenFadeActive reports the wrong fade state (ZF set) the function just returns, otherwise
+  it performs a complete video reset: clears all VRAM, zero-fills the 0x2000-byte BG tile buffer at 0x30025c0,
+  reloads the fixed 0x800-byte GFX block into VRAM 0x600D400 plus the 32-byte IWRAM block at 0x3001B40,
+  reinitializes the chatbox, writes 0x40 (forced blank) to the render info''s LCD control, and finally
+  calls battle_resetAndInitScene, which tears down the mode and jumps the main jumptable to state 0x28
+  for a fresh battle scene. The r4-r7 pushes are vestigial (never used). The 0x40 DISPCNT keeps the screen
+  blanked while everything is rebuilt, presumably until the next fade-in.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq locret_804907A after bl IsScreenFadeActive gates the whole reset on fade state; bl zeroFillVRAM
+    + bl ZeroFillGFX30025c0 + bl copyMemory_8001850 wipe and reload all graphics; off_804907C = 0x40 passed
+    to SetRenderInfoLCDControl = forced LCD blank; bl battle_resetAndInitScene as the final action confirms
+    this restarts the battle scene from state 0x28
+  refs:
+  - bn6f/asm/asm03_2.s:4890
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x0811F758 battle_resetAndInitScene
+  reproduce: python3 tools/asmcat.py 0x08049058
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s video-reset actions (zeroFillVRAM, ZeroFillGFX30025c0, copyMemory_8001850, SetRenderInfoLCDControl
+    0x40) match the asm lines exactly, and the early-return on IsScreenFadeActive ZF matches `beq locret_804907A`.
+    The only concrete mismatch is calling the chatbox call `chatbox_8040818`: the proposal omits it from
+    the summary. The proposed name fits as a battle-scene reset helper.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known callers, so whether the ZF polarity means 'run while faded' or 'run after fade completes' is
+  inferred, not proven
+- What chatbox_8040818 (uncalled/undocumented callee) does exactly
+- 'The summary''s video-reset actions (zeroFillVRAM, ZeroFillGFX30025c0, copyMemory_8001850, SetRenderInfoLCDControl
+  0x40) match the asm lines exactly, and the early-return on IsScreenFadeActive ZF matches `beq locret_804907A`.
+  The only concrete mismatch is calling the chatbox call `chatbox_8040818`: the proposal omits it from
+  the summary. The proposed name fits as a battle-scene reset helper.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049058 -> battle_resetVideoAndScene
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049058

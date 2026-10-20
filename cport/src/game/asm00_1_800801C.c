@@ -398,7 +398,7 @@ Next task484_RunFrame_800927C(void) {
  *
  * r5 points to the battle state; the byte at offset 2 selects an entry in
  * the handler table at off_80092B4 (entries at byte offsets 0, 4 and 8):
- *   0 -> battle_runState4CountdownOrAdvance_80092C0, 4 -> battle_stateIntroEffectWait, 8 -> sub_8009314.
+ *   0 -> battle_runState4CountdownOrAdvance_80092C0, 4 -> battle_stateIntroEffectWait, 8 -> battle_phaseDelayToState8.
  *
  * The original does `ldr r1, [table, phase]; mov lr, pc; bx r1`, so the
  * handler is entered with r0 = the phase byte and r1 = its own (Thumb)
@@ -418,8 +418,8 @@ Next battle_dispatchStatePhase_80092A0(void) {
     case 0x080092F1: /* battle_stateIntroEffectWait + 1 (Thumb) */
         GUEST_CALL(battle_stateIntroEffectWait);
         break;
-    case 0x08009315: /* sub_8009314 + 1 (Thumb) */
-        GUEST_CALL(sub_8009314);
+    case 0x08009315: /* battle_phaseDelayToState8 + 1 (Thumb) */
+        GUEST_CALL(battle_phaseDelayToState8);
         break;
     default:
         /* Out-of-range phase: the original would jump to whatever word the

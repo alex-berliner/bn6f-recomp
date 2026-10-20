@@ -1,0 +1,60 @@
+name: battle_phaseDelayToState8
+address: '0x08009314'
+kind: function
+status: probable
+summary: 'Battle sub-phase: on first entry, initialize a 10-frame countdown timer; each subsequent frame
+  decrements it, and when the signed value goes negative (after 11 decrements) advance the battle to state
+  8 and clear the phase/init flags.'
+interface: (r0 = battleStatePtr (also r5)) -> r0 = clobbered; no meaningful return
+details: r5 points to the battle-state struct. If SubPhaseInitFlag is clear, it stores 10 into CountdownTimer
+  (u16) and sets SubPhaseInitFlag = 4, then returns — the init step. On later frames it decrements CountdownTimer;
+  while it stays >= 0 it returns. When the timer goes negative it writes 8 into BattleState_Index_01 and
+  zeroes StatePhaseAndInitFlag, resetting the phase word so the next state (8) runs its own init.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch stores #0xa into oBattleState_CountdownTimer and #4 into oBattleState_SubPhaseInitFlag
+    (asm lines 4-9); non-init branch does ldrh/sub/strh on oBattleState_CountdownTimer with bge early-out
+    (lines 11-13); timer expiry stores #8 into oBattleState_Index_01 and #0 into oBattleState_StatePhaseAndInitFlag
+    (lines 14-17); bare push/pop {pc} with no callees matches a simple state-machine step function; recorded
+    on battlesweep/beastsp routes, consistent with a battle-flow delay phase'
+  refs:
+  - bn6f/asm/asm00_1.s:13662
+  reproduce: python3 tools/asmcat.py 0x08009314
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal: it writes 0xa (10) to CountdownTimer and 4 to SubPhaseInitFlag on
+    init, decrements the timer each frame, and on underflow writes 8 to BattleState_Index_01 and 0 to
+    StatePhaseAndInitFlag. However, the proposed name implies the timer is checked ''while >=0'' (signed
+    bge), but CountdownTimer is u16, so the bge treats it as signed and the transition occurs when the
+    decremented value becomes negative (i.e., after 11 decrements from 10). The name ''battle_phaseDelay10ToState8''
+    is acceptable but a tighter name like ''battle_phaseDelay11ToState8'' or simply keeping the timer
+    semantics clear would be better; the summary is otherwise accurate.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what battle state 8 is (a caller/table mapping Index_01 values to handlers would confirm the transition
+  target)
+- what the stored SubPhaseInitFlag value 4 means
+- 'The code matches the proposal: it writes 0xa (10) to CountdownTimer and 4 to SubPhaseInitFlag on init,
+  decrements the timer each frame, and on underflow writes 8 to BattleState_Index_01 and 0 to StatePhaseAndInitFlag.
+  However, the proposed name implies the timer is checked ''while >=0'' (signed bge), but CountdownTimer
+  is u16, so the bge treats it as signed and the transition occurs when the decremented value becomes
+  negative (i.e., after 11 decrements from 10). The name ''battle_phaseDelay10ToState8'' is acceptable
+  but a tighter name like ''battle_phaseDelay11ToState8'' or simply keeping the timer semantics clear
+  would be better; the summary is otherwise accurate.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009314 -> battle_phaseDelayToState8
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009314

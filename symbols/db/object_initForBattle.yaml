@@ -1,0 +1,65 @@
+name: object_initForBattle
+address: '0x080C7098'
+kind: function
+status: probable
+summary: 'Initializes a battle object for its update loop: loads its sprite (no shadow), sets header flag
+  bit 0x2, resets animation (CurAnim=0, CurAnimCopy=0xff), syncs pixel position and facing from its panel,
+  plays sound effect 0xD8, sets state to CUR_STATE_UPDATE, then tail-calls sub_80C70D8.'
+interface: r5 = battle object header (no args) -> r0 = sub_80C70D8 result; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: Runs entirely on the object in r5. It loads sprite resources (resource ids 0x14/0xe, r0=0x80
+  selector), then its animation data, and flags it shadowless. It sets an object-header flag bit 0x2,
+  clears CurAnim to 0 and writes 0xff to CurAnimCopy (forcing a fresh animation frame), recomputes pixel
+  coordinates from panel grid coords, and applies the effective flip from object_getFlip via sprite_setFlip.
+  It plays sound effect 0xD8 (its spawn/appear cue), writes CUR_STATE_UPDATE into the state/action-phase
+  word so the object starts its update handler, then tail-continues into sub_80C70D8. This is the standard
+  'object just appeared in battle' init path; the specific sprite/sound pair identifies which entity it
+  belongs to, which is not yet known.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load + sprite_loadAnimationData + sprite_noShadow on r5 attach the object's graphic without
+    a shadow; CurAnim=0 / CurAnimCopy=0xff plus object_setCoordinatesFromPanels + sprite_setFlip(object_getFlip)
+    set up a fresh battle sprite pose; PlaySoundEffect(0xD8) before the state change indicates a one-shot
+    spawn/appear sound; storing CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    is the handoff into the object's update handler; no callers known yet; sub_80C70D8 is unexplored,
+    so the entity identity rests on sprite id 0x14/0xe and SE 0xD8
+  refs:
+  - bn6f/asm/asm31.s:32696
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080C7098
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely: sprite_load(0x80,0x14,0xe), sprite_loadAnimationData, sprite_noShadow,
+    sets flag bit 0x2, clears CurAnim to 0, writes 0xff to CurAnimCopy, object_setCoordinatesFromPanels,
+    object_getFlip->sprite_setFlip, PlaySoundEffect(0xd8), writes CUR_STATE_UPDATE, then tail-calls sub_80C70D8.
+    However the proposal says ''no args -> r0 = sub_80C70D8 result'', while r5 is clearly an input arg
+    (preserved across calls into offsets like oBattleObject_CurAnim), not a return; also this is a per-object
+    init, not specifically a spawn path (the 0xff CurAnimCopy just forces animation re-sync), so ''spawn''
+    is an overclaim.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which battle entity this belongs to (sprite ids 0x14/0xe and sound 0xD8 not yet matched)
+- what sub_80C70D8 does after the state switch
+- who calls this (a spawn/enemy-table entry would confirm the entity)
+- 'The code matches the proposal closely: sprite_load(0x80,0x14,0xe), sprite_loadAnimationData, sprite_noShadow,
+  sets flag bit 0x2, clears CurAnim to 0, writes 0xff to CurAnimCopy, object_setCoordinatesFromPanels,
+  object_getFlip->sprite_setFlip, PlaySoundEffect(0xd8), writes CUR_STATE_UPDATE, then tail-calls sub_80C70D8.
+  However the proposal says ''no args -> r0 = sub_80C70D8 result'', while r5 is clearly an input arg (preserved
+  across calls into offsets like oBattleObject_CurAnim), not a return; also this is a per-object init,
+  not specifically a spawn path (the 0xff CurAnimCopy just forces animation re-sync), so ''spawn'' is
+  an overclaim.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7098 -> object_initForBattle
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7098

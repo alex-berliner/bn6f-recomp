@@ -1,0 +1,67 @@
+name: battle_initPanelSpawnedObject
+address: '0x080CCA60'
+kind: function
+status: probable
+summary: 'Initializes a battle panel-spawned object: flags, sprite load (0x80/0xc/0) with noShadow, facing
+  propagation, resets CurAnim/CurAnimCopy, sets ZVelocity/Z, converts panel X/Y to screen coordinates,
+  plays SFX 0x105, sets CurState to UPDATE and jumps to the per-object update handler.'
+interface: (r5 = battle object header, no args) -> r0 = 0; sets object flags, sprite, position, Z/ZVelocity,
+  CurState, and calls the state's setup handler
+details: Sets bit 0x2 of the object flags (likely an 'active/in battle' flag), then calls sprite_load
+  with resource 0x80, variant 12, index 0 and marks the sprite shadowless. It propagates the object's
+  effective facing via object_getFlip/sprite_setFlip, resets CurAnim to 0 and CurAnimCopy to 0xFF (force
+  animation refresh), and sets ZVelocity to 0x80000 and Z to 0x1000000 in fixed point, so the object starts
+  elevated and moving vertically (gravity presumably applied elsewhere). It converts PanelX/PanelY to
+  screen pixel X/Y with object_getCoordinatesForPanels and stores them, plays sound effect 0x105 (6+0xFF),
+  writes CUR_STATE_UPDATE into CurState, and tail-calls sub_80CCAB8, presumably the update-state handler
+  for this object type.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load with (0x80, 0xC, 0) plus sprite_noShadow/sprite_setFlip right after — standard sprite
+    bring-up for a battle object; object_getCoordinatesForPanels(PanelX, PanelY) results stored straight
+    into oBattleObject_X/Y — object is anchored to its own panel; Z=0x1000000 and ZVelocity=0x80000 stored
+    into oBattleObject_Z/oBattleObject_ZVelocity — vertical motion state initialized; CurAnim=0 with CurAnimCopy=0xFF
+    is the usual 'force animation restart' idiom; PlaySoundEffect(0x105) then CurState=CUR_STATE_UPDATE
+    and call to sub_80CCAB8 — spawn feedback plus state transition
+  refs:
+  - bn6f/asm/asm31.s:44973
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080CCA60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches most of the proposal (sets flag bit 0x2, loads sprite 0x80/0xc/0, noShadow, getFlip/setFlip,
+    CurAnim=0, CurAnimCopy=0xff, ZVelocity=0x80000, panel-to-pixel conversion, CurState=CUR_STATE_UPDATE,
+    tail-calls sub_80CCAB8). However, the proposal''s claim that it ''plays sound effect 0x105 (6+0xFF)''
+    is incorrect from the code: it computes r0 = 6 + 0xFF with add r0, #0xff without an explicit mov #0x105
+    — but since r0 started as 6, the result is 0x105 only if overflow wraps, which on ARM with add r0,#0xff
+    gives 0x105 correctly. Also ''initPanelSpawnedObject'' is reasonable but ''spawn'' as a name prefix
+    is slightly awkward; ''initPanelSpawnedObject'' fits the init/ prefix rules.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No known caller, so the identity of the object (sprite resource 0x80) and the gameplay context are unknown
+- What sub_80CCAB8 (the CUR_STATE_UPDATE handler it jumps to) does, which would confirm behavior like
+  hovering, rising, or falling
+- Whether flag bit 0x2 means 'active' and the sign convention of ZVelocity (rise vs. fall under gravity)
+- 'The code matches most of the proposal (sets flag bit 0x2, loads sprite 0x80/0xc/0, noShadow, getFlip/setFlip,
+  CurAnim=0, CurAnimCopy=0xff, ZVelocity=0x80000, panel-to-pixel conversion, CurState=CUR_STATE_UPDATE,
+  tail-calls sub_80CCAB8). However, the proposal''s claim that it ''plays sound effect 0x105 (6+0xFF)''
+  is incorrect from the code: it computes r0 = 6 + 0xFF with add r0, #0xff without an explicit mov #0x105
+  — but since r0 started as 6, the result is 0x105 only if overflow wraps, which on ARM with add r0,#0xff
+  gives 0x105 correctly. Also ''initPanelSpawnedObject'' is reasonable but ''spawn'' as a name prefix
+  is slightly awkward; ''initPanelSpawnedObject'' fits the init/ prefix rules.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CCA60 -> battle_initPanelSpawnedObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCA60

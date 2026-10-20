@@ -1,0 +1,69 @@
+name: battle_beginTurnForSide
+address: '0x08014216'
+kind: function
+status: probable
+summary: 'Per-side turn-start: clears an AIData flag, zeroes 12 halfwords of the side''s hand region,
+  optionally frees the opposing player from a 6-slot table when battle-effects bit 0x8 matches, then dispatches
+  via a 12-entry jump table keyed by NaviStats byte 0x29.'
+interface: (r5 = battle object whose alliance byte selects the side) -> r0 = result of dispatched handler;
+  flags clobbered
+details: 'Called with the battle object in r5 (reads oBattleObject_Alliance from it). It first clears
+  bit 0x20 of AIData+0x48 via ClearAIDataUnk0x48Flag, then zeroes 0xC halfwords at the side''s hand slot
+  + 0x26 (the hand array at 0x20349C0, 0x50-byte strides), wiping some per-turn hand region. If GetBattleEffects
+  has bit 0x8 set, it XORs the alliance value against a battle-state byte via battle_networkInvert; when
+  they match, it finds the opposing player object (alliance^1) and frees its matching entry in a six-entry
+  slot table via releaseSlotByValue_801DC36. Finally it reads NaviStats byte 0x29 for this side, doubles-as-index
+  (lsl #2) into a 12-entry jump table at off_801426C, and dispatches to it with lr=pc — only entry 0 (sub_801429C)
+  is non-trivial, all others are nullsubs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ClearAIDataUnk0x48Flag with r0=0x20 clears a per-turn AI flag before anything else; getBattleHandAddr_8010018
+    + add #0x26 + ZeroFillByHalfword(r1=0xC) wipes 24 bytes of the side''s hand slot; GetBattleEffects
+    bit 0x8 + battle_networkInvert(alliance) + battle_findPlayer(alliance^1) + releaseSlotByValue_801DC36
+    removes a slot tied to the opposing player under that effect; NaviStats byte 0x29, lsl #2, indexed
+    table off_801426C with 12 slots dispatched via mov lr,pc; bx r0 — form/state-specific turn behavior;
+    Called from three functions at 0x802D7A0/0x802D9B0/0x802DB80, consistent with turn/round-start sequencing'
+  refs:
+  - bn6f/asm/asm00_2.s:12435
+  - 0x0802D7A0 sub_802D7A0
+  - 0x0802D9B0 sub_802D9B0
+  - 0x0802DB80 sub_802DB80
+  - 0x0802D246 GetBattleEffects
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0800A9EC battle_networkInvert
+  reproduce: python3 tools/asmcat.py 0x08014216
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s structural description (clears AIData flag, zeros hand at +0x26,
+    conditionally releases an opposing-player slot via the bit 0x8 path, then dispatches on NaviStats
+    byte 0x29). However the proposal''s detail ''lsl #2 into a 12-entry jump table ... only entry 0 (sub_801429C)
+    is non-trivial'' is wrong: the asm shows `lsl r0,r0,#2` indexing off_801426C which has 12 entries,
+    but only entries 0-2 are distinct (sub_801429C+1, nullsub_47+1, nullsub_47+1) — entries 3-11 are also
+    nullsubs, fine. The name fits the callers (sub_802D7A0/D9B0/DB80, turn-side setup) and the summary
+    is accurate.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What NaviStats byte 0x29 represents (form/IDs index) — need the meaning of the 12-entry dispatch table
+  and sub_801429C's behavior
+- What the 0x26/0xC-halfword region of the hand slot holds (likely custom-open or selected-card scratch)
+- What value releaseSlotByValue_801DC36 is searching for (r1 at that call comes from battle_findPlayer's
+  side effects and isn't set explicitly)
+- 'The code matches the proposal''s structural description (clears AIData flag, zeros hand at +0x26, conditionally
+  releases an opposing-player slot via the bit 0x8 path, then dispatches on NaviStats byte 0x29). However
+  the proposal''s detail ''lsl #2 into a 12-entry jump table ... only entry 0 (sub_801429C) is non-trivial''
+  is wrong: the asm shows `lsl r0,r0,#2` indexing off_801426C which has 12 entries, but only entries 0-2
+  are distinct (sub_801429C+1, nullsub_47+1, nullsub_47+1) — entries 3-11 are also nullsubs, fine. The
+  name fits the callers (sub_802D7A0/D9B0/DB80, turn-side setup) and the summary is accurate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014216 -> battle_beginTurnForSide
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014216

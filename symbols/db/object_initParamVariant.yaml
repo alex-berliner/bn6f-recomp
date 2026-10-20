@@ -1,0 +1,60 @@
+name: object_initParamVariant
+address: '0x080D40A8'
+kind: function
+status: probable
+summary: Initializes a battle object whose sprite, palette, HP, ExtraVars and timer are chosen by Param1
+  (sprite 0x80 layer 0xa, NameID=0xdd+Param1, 60 HP, timer 0x960, ExtraVars=byte_80D4078+4*Param1), then
+  sets up a 0x13x0x14 type-3 collision and enters CUR_STATE_UPDATE via sub_80D4144.
+interface: (r5 = battle object) -> r0 = destroyed?; sets object fields, flags, state
+details: Sets flag 0x2 on the object, loads sprite 0x80 layer 0xa, resets animation, applies flip and
+  panel-based coordinates, zeroes Z, copies PanelXY to FuturePanelXY. NameID is set to 0xdd+Param1 and
+  both HP and MaxHP come from a table (dword_80D4140, filled with 0x3C = 60 HP per variant). Timer is
+  fixed at 0x960 = 2400 frames (~40s), ExtraVars points into byte_80D4078 at offset 4*Param1 (a per-variant
+  data block whose byte 2 selects the palette). Allocates collision data (freeing the object on failure),
+  sets up a 0x13x0x14-sized collision of type 3, runs presentCollisionData once, switches CurState to
+  CUR_STATE_UPDATE, and calls sub_80D4144 (per-variant init).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0,[r5,#oBattleObject_NameID] with 0xdd+Param1 assigns the variant's name/ID; ldrb r0,[r7,r0]
+    from dword_80D4140 (0x3C repeated) sets HP and MaxHP per Param1; Timer 0x960 and ExtraVars = byte_80D4078
+    + 4*Param1, palette from ExtraVars+2; object_setupCollisionData(0x13,0x14,3) then CurState=CUR_STATE_UPDATE
+    before calling sub_80D4144; on object_createCollisionData failure it calls object_freeMemory and returns
+  refs:
+  - bn6f/asm/asm31.s:60883
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080D40A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The behavior matches: sets flag 0x2, loads sprite 0x80 layer 0xa, NameID = 0xdd+Param1, HP=MaxHP=0x3C,
+    Timer=0x960, ExtraVars = byte_80D4078 + 4*Param1, palette from ExtraVars[2], 0x13x0x14 collision type
+    3, then CUR_STATE_UPDATE and sub_80D4144 — consistent with proposal. However, ''object_initParamVariantEnemy''
+    assumes enemy-specific; sprite_80, 60 HP, 40s timer and enemy battle behavior are plausible but not
+    explicitly identifiable as enemy in this function — the table values are filled with 0x3C (just one
+    unique dword repeated). Use a more neutral name.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which enemy/trap this actually is (no caller known, name table at 0xdd+Param1 unresolved)
+- contents of byte_80D4078 per-variant data and role of sub_80D4144
+- meaning of the 2400-frame timer (self-destruct or time limit?)
+- 'The behavior matches: sets flag 0x2, loads sprite 0x80 layer 0xa, NameID = 0xdd+Param1, HP=MaxHP=0x3C,
+  Timer=0x960, ExtraVars = byte_80D4078 + 4*Param1, palette from ExtraVars[2], 0x13x0x14 collision type
+  3, then CUR_STATE_UPDATE and sub_80D4144 — consistent with proposal. However, ''object_initParamVariantEnemy''
+  assumes enemy-specific; sprite_80, 60 HP, 40s timer and enemy battle behavior are plausible but not
+  explicitly identifiable as enemy in this function — the table values are filled with 0x3C (just one
+  unique dword repeated). Use a more neutral name.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D40A8 -> object_initParamVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D40A8

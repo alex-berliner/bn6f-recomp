@@ -1,0 +1,72 @@
+name: aiAttack_runAttackSpawnState
+address: '0x080EB776'
+kind: function
+status: probable
+summary: Dispatches the active AI-attack spawn FSM by indexing the attack-vars struct's state byte into
+  a 5-entry thumb handler table, advancing through successive stages from illusion spawn up to waiting
+  for the spawned object.
+interface: (r7 = AI attack-vars struct; r0 taken from r7 state byte) -> tail-dispatches to one of five
+  state handlers, which return to pop {pc}; returns handler's r0.
+details: 'Reads a byte from the AI attack-vars struct at offset oAIAttackVars_HitElement, uses it as an
+  index into the table at off_80EB788, and calls the selected Thumb handler with the standard mov lr,pc/bx
+  r1 thunk so control returns to pop {pc}. The five targets are all sequential attack-spawn states: updateIllusionSpawnState,
+  BeginAttackSequence, spawnTempAttackObjectStep, sub_80EBB98, and attackWaitForObject, so the byte is
+  effectively a state counter advanced by the handlers themselves rather than an element code. r7 is passed
+  through unchanged as the struct pointer to each handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0] indexes off_80EB788 by that byte;
+    table at off_80EB788 holds five attack-spawn handlers (updateIllusionSpawnState, BeginAttackSequence,
+    spawnTempAttackObjectStep, sub_80EBB98, ai_attackWaitForObject); mov lr,pc / bx r1 is the Thumb 'call'
+    idiom, so handlers return into pop {pc}; all table entries are ai_attack* / battleAi_spawn* functions,
+    matching an attack state machine
+  refs:
+  - bn6f/asm/asm31.s:111220
+  reproduce: python3 tools/asmcat.py 0x080EB776
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic and targets match the proposal, but the summary is misleading: the field at oAIAttackVars_HitElement
+    is a state counter, not an attack element, so calling it HitElement suggests a misread of the struct.
+    The proposed name also overstates the role since this is plainly a 5-state finite-state-machine dispatcher;
+    r7 is the AI attack-vars struct and the callers in battle1/beastsp story routes make clear it advances
+    each frame through these five sequential states. The callee names (updateIllusionSpawnState, BeginAttackSequence,
+    spawnTempAttackObjectStep, sub_80EBB98, attackWaitForObject) confirm the spawning progression.; run
+    wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battles1
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Callers unknown, so it is not confirmed how r7 is set up or whether the oAIAttackVars_HitElement field
+  doubles as element and state; seeing the handler bodies would confirm the state counter is advanced
+  there
+- 'The dispatch logic and targets match the proposal, but the summary is misleading: the field at oAIAttackVars_HitElement
+  is a state counter, not an attack element, so calling it HitElement suggests a misread of the struct.
+  The proposed name also overstates the role since this is plainly a 5-state finite-state-machine dispatcher;
+  r7 is the AI attack-vars struct and the callers in battle1/beastsp story routes make clear it advances
+  each frame through these five sequential states. The callee names (updateIllusionSpawnState, BeginAttackSequence,
+  spawnTempAttackObjectStep, sub_80EBB98, attackWaitForObject) confirm the spawning progression.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EB776 -> aiAttack_runAttackSpawnState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB776

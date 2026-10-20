@@ -1,0 +1,61 @@
+name: object_postHitHandle
+address: '0x080DF132'
+kind: function
+status: probable
+summary: 'Handles a battle object after a hit: removes its collision data, spawns the hit effect, optionally
+  clears its collision region, decrements Timer each frame, refreshes collision data while the timer is
+  positive, then clears the region and transitions to CUR_STATE_DESTROY.'
+interface: (r5 = battle object pointer, no args) -> void; sets oBattleObject_CurState to CUR_STATE_DESTROY
+  when the timer expires
+details: 'Runs on an object whose collision has already been processed: it first tears down the collision
+  data, spawns the hit effect at the object''s position, and, if the collision flags word is nonzero,
+  clears the object''s collision-region byte so it leaves its collision region. Each frame it decrements
+  oBattleObject_Timer; while the timer is still positive it calls object_presentCollisionData to keep
+  refreshing collision state (clearing one-shot hit data). Once the timer reaches zero it clears the collision
+  region again and writes CUR_STATE_DESTROY into oBattleObject_CurState, handing the object over to the
+  destroyer. Reads oCollisionData_FlagsFromCollision through oBattleObject_CollisionDataPtr to decide
+  whether the early region clear is needed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry: standard hit-processing
+    teardown plus effect spawn; ldr flags via oBattleObject_CollisionDataPtr + oCollisionData_FlagsFromCollision;
+    tst/beq guards an object_clearCollisionRegion call; ldrh/sub/strh on oBattleObject_Timer with ble
+    to the destroy branch shows a countdown; timer>0 path calls object_presentCollisionData, matching
+    ''keep collision state while present in a collision''; expiry path: object_clearCollisionRegion then
+    mov #CUR_STATE_DESTROY; strb into oBattleObject_CurState'
+  refs:
+  - bn6f/asm/asm31.s:84482
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DF132
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function calls object_removeCollisionData first (not just ''tears down collision data'' generically),
+    and the CUR_STATE_DESTROY write matches. However, the summary and details overstate: object_presentCollisionData
+    is only called while the timer is positive (b locret_80DF15E branch), not unconditionally, and the
+    early region-clear is conditional on the flags word — both consistent with code. The name misses the
+    key initial action of removing collision data; something like object_postHitHandle reflects this better.;
+    run wf investigate investigate-20261018-230610; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so which objects/states use this handler (e.g. which CurState or AI state points
+  here) is unconfirmed; a caller showing the state transition into it would raise confidence
+- 'The function calls object_removeCollisionData first (not just ''tears down collision data'' generically),
+  and the CUR_STATE_DESTROY write matches. However, the summary and details overstate: object_presentCollisionData
+  is only called while the timer is positive (b locret_80DF15E branch), not unconditionally, and the early
+  region-clear is conditional on the flags word — both consistent with code. The name misses the key initial
+  action of removing collision data; something like object_postHitHandle reflects this better.'
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF132 -> object_postHitHandle
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF132

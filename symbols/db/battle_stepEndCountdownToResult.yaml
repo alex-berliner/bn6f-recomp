@@ -1,0 +1,76 @@
+name: battle_stepEndCountdownToResult
+address: '0x080082DC'
+kind: function
+status: probable
+summary: Per-battle step that clears flags 0xE4C53, dispatches battle effect kind 0x1C, counts down 0x66
+  frames while polling comm_checkCrossNetBattleReady, then either branches on battle-effects bit 0x400
+  (sub_800AF50 result 1 → step 0xC, other nonzero → step 0x10) or records battle result 3 and writes 3
+  to oGameState_BattleEndSubState and [r5,#4].
+interface: '(r0 = unused; r5 = battle step/state struct: +0 = step dword, +3 = phase byte, +4 = result
+  byte, +8 = frame counter halfword; r10 = toolkit) -> r0 = destroyed; writes [r5] step (0xC/0x10), [r5+4]
+  = 3, oGameState_BattleEndSubState = 3'
+details: 'On first entry (phase byte [r5,#3] == 0) it clears flag mask 0xE4C53 in the battle flags word
+  via dispatch_801DACC and flags_clearBits_eStruct2035280, sets the halfword counter at +8 to 0x66, advances
+  the phase byte to 4, and starts battle effect kind 0x1C via battle_dispatchKindEffect. Each subsequent
+  call decrements the +8 counter and early-returns unless comm_checkCrossNetBattleReady reports 0 (partner/session
+  not blocking). Once unblocked, it reads GetBattleEffects and tests bit 0x400: if set, sub_800AF50 is
+  polled — result 1 stores step 0xC into [r5], any other nonzero result stores step 0x10, and 0/2 falls
+  through. The fall-through (and the no-0x400-effect path) calls setTwoStructs_800A840(3) to record battle
+  result 3, then writes 3 into oGameState_BattleEndSubState and [r5,#4]. The blt after decrementing the
+  counter is odd since ldrh zero-extends, so it is likely a mis-aimed bne waiting for the count to hit
+  zero.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: entry block sets [r5,#8]=0x66, [r5,#3]=4 and calls battle_dispatchKindEffect_801E792 with kind
+    0x1C — a one-shot battle animation kickoff; loop decrements [r5,#8] and gates on comm_checkCrossNetBattleReady_801E754,
+    typical of a timed wait that also syncs with a link partner; GetBattleEffects result tested against
+    0x400 and polled again via sub_800AF50 with outcomes 0/1/2 choosing steps 0xC/0x10 vs finishing; finish
+    path calls setTwoStructs_800A840(3) (battle-result byte) and writes oGameState_BattleEndSubState =
+    3, i.e. transition to the battle-end game state; initial flag mask 0xE4C53 cleared through eStruct2035280
+    matches battle-state cleanup at sequence start
+  refs:
+  - bn6f/asm/asm00_1.s:11342
+  - 0x0802D246 GetBattleEffects
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x080082DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely accurate but slightly off in detail. The phase byte advances to 4 (not 1C),
+    and the counter decrements before the cross-net check, so the function exits while the counter is
+    still positive (blt after ldrh zero-extends is a mis-decoded bne waiting for zero, which matters for
+    naming). The bit-0x400 branch polls sub_800AF50: result 1 → step 0xC, otherwise nonzero → step 0x10,
+    while 0/2 falls through. The fall-through records battle result 3 via setTwoStructs_800A840 and writes
+    3 to oGameState_BattleEndSubState and [r5,#4]. Since the function ultimately drives the transition
+    to the battle-end substate 3, a name reflecting the end-of-battle effect launch and countdown is appropriate;
+    ''battle_stepEndCountdownToResult'' is fine but the summary should drop the ''phase byte 4'' misreading.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which battle effect kind 0x1C and effects bit 0x400 actually represent (likely the deletion/end-of-battle
+  animation) — needs the kind-0x1C handler and effects bit definitions
+- What sub_800AF50 checks (returns 0/1/2) to decide between steps 0xC and 0x10 versus finishing immediately
+- Meaning of battle result value 3 in setTwoStructs_800A840 (victory vs other outcomes)
+- No known callers, so the identity of the r5 step struct and how step values 0xC/0x10 are consumed is
+  unconfirmed
+- 'The summary is largely accurate but slightly off in detail. The phase byte advances to 4 (not 1C),
+  and the counter decrements before the cross-net check, so the function exits while the counter is still
+  positive (blt after ldrh zero-extends is a mis-decoded bne waiting for zero, which matters for naming).
+  The bit-0x400 branch polls sub_800AF50: result 1 → step 0xC, otherwise nonzero → step 0x10, while 0/2
+  falls through. The fall-through records battle result 3 via setTwoStructs_800A840 and writes 3 to oGameState_BattleEndSubState
+  and [r5,#4]. Since the function ultimately drives the transition to the battle-end substate 3, a name
+  reflecting the end-of-battle effect launch and countdown is appropriate; ''battle_stepEndCountdownToResult''
+  is fine but the summary should drop the ''phase byte 4'' misreading.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80082DC -> battle_stepEndCountdownToResult
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80082DC

@@ -1,0 +1,57 @@
+name: ai_callAttackElementHandler
+address: '0x08100944'
+kind: function
+status: probable
+summary: Thumb dispatcher that reads oAIAttackVars_HitElement from the AI attack vars at r7, indexes the
+  pointer table at off_8100958, and tail-calls the selected handler (ai_attackWindupStep, sub_8100996,
+  sub_81009E8, or sub_8100A08) before returning.
+interface: (r7 = AI attack vars struct) -> calls handler from off_8100958 table indexed by oAIAttackVars_HitElement;
+  returns to caller of dispatcher.
+details: 'Reads oAIAttackVars_HitElement from the attack vars struct at r7, uses it as an index into the
+  pointer table at off_8100958, and calls the selected Thumb handler with lr set to return into the dispatcher
+  itself (mov lr, pc; bx r1), then pops r7/pc. Slot 0 of the table is ai_attackWindupStep, the attack
+  windup step; the other three slots are unnamed handlers. No arguments beyond r7 are passed on, so the
+  handler presumably shares the same attack-vars context. Quirk: no bounds check on the element byte,
+  so values >3 would call garbage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] followed by ldr r1,[r1,r0] indexes a table by element;
+    mov lr,pc; bx r1 is the long-call idiom invoking the selected handler; table slot 0 is ai_attackWindupStep,
+    tying dispatch to AI attack phases; run during battlesweep route, consistent with AI attack execution
+  refs:
+  - bn6f/asm/asm31.s:155191
+  reproduce: python3 tools/asmcat.py 0x08100944
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic (ldrb r0 from oAIAttackVars_HitElement, ldr r1 from off_8100958, mov lr,pc /
+    bx r1) and the table contents match the proposal. However, slot 0 is ai_attackWindupStep+1 (a Thumb
+    address, as noted by the +1), not the routine itself; the proposal should not name a slot ''WindupStep''
+    since the function simply dispatches element handlers and is not itself a windup step. The name ai_callAttackElementHandler
+    fits, but the summary overstates slot 0 as ''the attack windup step'' when the dispatcher itself is
+    not a windup routine.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what the other three handlers (sub_8100996, sub_81009E8, sub_8100A08) do, to confirm the table is element-based
+  rather than phase-based
+- full layout of the AI attack vars struct at r7
+- The dispatch logic (ldrb r0 from oAIAttackVars_HitElement, ldr r1 from off_8100958, mov lr,pc / bx r1)
+  and the table contents match the proposal. However, slot 0 is ai_attackWindupStep+1 (a Thumb address,
+  as noted by the +1), not the routine itself; the proposal should not name a slot 'WindupStep' since
+  the function simply dispatches element handlers and is not itself a windup step. The name ai_callAttackElementHandler
+  fits, but the summary overstates slot 0 as 'the attack windup step' when the dispatcher itself is not
+  a windup routine.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8100944 -> ai_callAttackElementHandler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100944

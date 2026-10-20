@@ -1,0 +1,69 @@
+name: battle_initObjectSpriteAndSpawnCompanion
+address: '0x080C39BA'
+kind: function
+status: probable
+summary: 'Battle object init: loads sprite 0x13 from bank 8 with shadow, sets flag bit 0x2, zeroes CurAnim
+  and sets anim 0 with palette 0, applies getFlip/setFlip, repositions from panels, zeroes Z, spawns a
+  t1 companion using descriptor 0x14011308 into RelatedObject1Ptr, plays SFX 0x94, sets Timer to 0x64,
+  writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized, then tail-calls sub_80C3A24.'
+interface: (r5 = battle object header, global object pointer convention) -> void; sets oObjectHeader_Flags,
+  oBattleObject_CurAnim(+Copy), Z, RelatedObject1Ptr, Timer, CurStateUpdate/Phase
+details: Decompresses sprite 0x13 (bank 8) to temp via sprite_decompressTemp, then loads it with sprite_load(0x80,
+  8, 0x13) and enables its shadow. Sets flag bit 1 in the object header flags, zeroes CurAnim/CurAnimCopy
+  and runs sprite_setAnimation/sprite_loadAnimationData with animation 0 and palette 0. Faces the sprite
+  per object_getFlip and repositions the object from its panel coordinates via object_setCoordinatesFromPanels.
+  It then spawns a companion object using spawn descriptor dword_80C3A20 (0x14011308), storing the result
+  in RelatedObject1Ptr, plays sound effect 0x94, sets the object Timer to 100 (0x64) frames, and writes
+  CUR_STATE_UPDATE into the CurState/Phase field before tail-stepping into the next routine sub_80C3A24.
+  Likely the spawn/init entry of an enemy or object state machine whose identity is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: sprite_decompressTemp(8, 0x13) then sprite_load(0x80, 8, 0x13) and sprite_hasShadow —
+    sprite resource bring-up for the object; asm: sets CurAnim/CurAnimCopy = 0, sprite_setAnimation(0),
+    sprite_setPalette(0), sprite_setFlip(object_getFlip()) — standard new-object sprite setup; asm: spawn
+    via dword_80C3A20 = 0x14011308 stored into oBattleObject_RelatedObject1Ptr; asm: PlaySoundEffect(0x94),
+    Timer = 0x64, CurState = CUR_STATE_UPDATE, then bl sub_80C3A24 — entry into first state after delay;
+    callee set (object_getFlip, object_setCoordinatesFromPanels, spawn_t1_...) matches a battle-object
+    spawn/init context'
+  refs:
+  - bn6f/asm/asm31.s:25384
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080C39BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary captures the sprite load, shadow, anim/palette, flip, coordinate, Z-clear, spawn, SFX,
+    timer, and CUR_STATE_UPDATE. However the name says ''battle_initSpriteAndSpawnRelated'' but the proposed
+    interface lists ''CurStateUpdate/Phase'' as a settable field while in the code it''s stored via oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and the value is CUR_STATE_UPDATE, not CurStateUpdate. Also interface omits setting Z, RelatedObject1Ptr,
+    Timer. More importantly the function never directly sets CurStateUpdate/Phase in the proposed interface
+    — the code stores it, and the function then immediately tail-calls sub_80C3A24 (not ''next routine''
+    but a direct sibling). Proposed name is fine but summary overstates shadow enabling and minor field
+    coverage.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/object or state machine owns this init (no callers known; identity depends on the sprite
+  id 0x13 and SFX 0x94 mapping)
+- What object spawn descriptor 0x14011308 creates as the companion object
+- What sub_80C3A24 (the next state-step routine) does
+- The summary captures the sprite load, shadow, anim/palette, flip, coordinate, Z-clear, spawn, SFX, timer,
+  and CUR_STATE_UPDATE. However the name says 'battle_initSpriteAndSpawnRelated' but the proposed interface
+  lists 'CurStateUpdate/Phase' as a settable field while in the code it's stored via oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and the value is CUR_STATE_UPDATE, not CurStateUpdate. Also interface omits setting Z, RelatedObject1Ptr,
+  Timer. More importantly the function never directly sets CurStateUpdate/Phase in the proposed interface
+  — the code stores it, and the function then immediately tail-calls sub_80C3A24 (not 'next routine' but
+  a direct sibling). Proposed name is fine but summary overstates shadow enabling and minor field coverage.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C39BA -> battle_initObjectSpriteAndSpawnCompanion
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C39BA

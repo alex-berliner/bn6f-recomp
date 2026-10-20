@@ -1,0 +1,68 @@
+name: battle_initSpriteEffectObject
+address: '0x080BA388'
+kind: function
+status: probable
+summary: 'Battle-object one-shot initializer: recomputes pixel position from panels, clears Z, decompresses
+  sprite (8,0xE) into temp and loads it with VRAM slot 0x80, attaches animation/palette 0, disables shadow,
+  applies per-side flip, calls sub_8010DF6(2,0xE,1), and transitions to CUR_STATE_UPDATE.'
+interface: (r5 = battle object pointer, implicit) -> r0 = CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  no return value used
+details: Runs entirely on the object in r5. It first recomputes the object's pixel position from its panel
+  coordinates and clears its Z height. It decompresses sprite archive entry (8, 0xE) into temp memory,
+  loads it into the object via sprite_load with VRAM slot 0x80, and attaches animation data. It disables
+  the shadow, resets CurAnim/CurAnimCopy to 0 and applies animation 0, sets palette 0, and sets the horizontal
+  flip from object_getFlip, so the effect faces according to the owning side's alliance. The call sub_8010DF6(2,
+  0xE, 1) takes parameters matching the sprite resource numbers, but its role is unverified. Finally it
+  writes CUR_STATE_UPDATE into the state/phase field, the standard way a freshly spawned battle object
+  finishes its init state and enters normal updating.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels + strh r0,[r5,#oBattleObject_Z16]: panel-based placement
+    at ground level; sprite_decompressTemp(8,0xE) then sprite_load(0x80,8,0xE) + sprite_loadAnimationData:
+    loads one specific sprite resource into this object; sprite_noShadow + CurAnim=0 + sprite_setAnimation(0)
+    + sprite_setPalette(0): default visual setup for a spawned effect; object_getFlip -> sprite_setFlip:
+    orientation follows the object''s alliance side, typical for attack/summon effects; str CUR_STATE_UPDATE
+    to oBattleObject_CurStateActionPhaseAndPhaseInitialized: init state ends by switching to the update
+    state'
+  refs:
+  - bn6f/asm/asm31.s:4583
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080BA388
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly correct: the function repositions the object, decompresses (8,0xE), sprite_load
+    with 0x80, animation 0, palette 0, flips via object_getFlip, and writes CUR_STATE_UPDATE. However
+    the summary incorrectly calls object_setCoordinatesFromPanels a ''panel-coordinate recompute'' followed
+    by ''clears Z'' — the Z clear is a separate explicit store, not part of the helper. More importantly,
+    the second sprite_loadAnimationData after sprite_setAnimation is omitted from the summary, and the
+    description of sub_8010DF6 as ''sprite resource numbers'' is unsupported by its own callee label.
+    The name ''battle_initSpriteEffectObject'' fits the init pattern.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which game entity or effect uses sprite resource (8, 0xE) — no callers are known, so the spawning context
+  is missing
+- What sub_8010DF6(2,0xE,1) does (sound? animation queue? priority?) — its effect is opaque without its
+  body or known callers
+- 'The proposal is mostly correct: the function repositions the object, decompresses (8,0xE), sprite_load
+  with 0x80, animation 0, palette 0, flips via object_getFlip, and writes CUR_STATE_UPDATE. However the
+  summary incorrectly calls object_setCoordinatesFromPanels a ''panel-coordinate recompute'' followed
+  by ''clears Z'' — the Z clear is a separate explicit store, not part of the helper. More importantly,
+  the second sprite_loadAnimationData after sprite_setAnimation is omitted from the summary, and the description
+  of sub_8010DF6 as ''sprite resource numbers'' is unsupported by its own callee label. The name ''battle_initSpriteEffectObject''
+  fits the init pattern.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA388 -> battle_initSpriteEffectObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA388

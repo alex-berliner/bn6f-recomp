@@ -1,0 +1,73 @@
+name: object_thrownArcFlightPhase
+address: '0x080C88C8'
+kind: function
+status: probable
+summary: 'State handler for a battle object thrown in an arc: computes initial arc velocities from Param3/Param4
+  target panel and Param2 duration with gravity 0xffffd000, integrates XYZ each frame and decrements Timer,
+  periodically highlights a 3-panel vertical column at the target once Param1 >= 4, then on landing either
+  plays a sound picked from a 4-entry table by Params&3 (solid panel) or spawns effect 0x14 and self-destroys
+  (non-solid panel).'
+interface: (r5 = battle object) -> void; updates object X/Y/Z, velocities, Timer, CurState/Phase
+details: On first entry (PhaseInitialized==0) it converts Param3/Param4 (target panel column/row) to pixel
+  coords and calls math_getThrowSpeeds with Param2 (flight frames) and gravity 0xffffd000 (-12288), storing
+  the arc velocities and setting Timer=Param2. Each frame it integrates X/Y/Z and decrements ZVelocity
+  by the gravity constant, converting position back to panel coords; every 8th frame, once Param1 >= 4,
+  it highlights the target panel and the panels one row above and below (a 3-panel vertical telegraph).
+  When Timer runs out it snaps position to panel coords, zeroes Z, and either lands on a solid panel (playing
+  a sound selected by Params&3 from the table 0x70/0x97/0x90/0x90 at dword_80C89A0) or, if the panel is
+  not solid, spawns effect object 0x14 using the object's 0x34 data block and destroys itself (CUR_STATE_DESTROY).
+  It finishes by setting CurAction=4 and Phase=0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'math_getThrowSpeeds with dword_80C8A9C=0xffffd000 and Timer=Param2 gives an arc-flight trajectory
+    to the target panel; Loop adds X/Y/ZVelocity each frame and does ZVelocity += 0xffffd000, i.e. gravity
+    integration; object_highlightPanel called for (col,row), (col,row-1), (col,row+1) — a vertical 3-panel
+    highlight during flight; On landing it branches on object_isCurrentPanelSolid: solid -> PlaySoundEffect(Params&3
+    lookup at dword_80C89A0), otherwise spawn_t1_0x0_EffectObject and CUR_STATE_DESTROY; PhaseInitialized
+    guard block converts Param3/Param4 via object_getCoordinatesForPanels, matching the target-panel/throw-parameters
+    convention'
+  refs:
+  - bn6f/asm/asm31.s:36067
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080C88C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate: Param3/Param4 are converted to pixel coords, math_getThrowSpeeds
+    is called with Param2 and gravity 0xffffd000, position is integrated each frame, the timer decrements,
+    and on Timer==0 the panel is checked. However, the highlight condition is `(Timer >> 3) & 1` (bit
+    3 of the prior timer value), not ''every 8th frame'' strictly, and the check is `Timer & 7 == 0` before
+    the comparison, meaning it highlights when the prior timer''s bit 3 was clear. Also, the proposal
+    misreads loc_80C8920: it branches on `bne loc_80C8934`, so when the panel is solid it calls sub_80C89C8
+    (not when non-solid), and the non-solid path spawns the effect and destroys. The land/sound path plays
+    sound and calls sub_80C89C8 — the proposal swapped these. Sound selection is Params&3 from 0x90909770
+    (bytes 0x70,0x97,0x90,0x90), correct. The phase finalize writes CurAction=4 and Phase=0, correct.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which specific thrown entity (chip, boss attack) uses this handler, since no caller is known
+- Meaning of Param1 (threshold 4 before highlighting starts) and of the low 2 bits of Params selecting
+  the landing sound
+- 'The proposal is mostly accurate: Param3/Param4 are converted to pixel coords, math_getThrowSpeeds is
+  called with Param2 and gravity 0xffffd000, position is integrated each frame, the timer decrements,
+  and on Timer==0 the panel is checked. However, the highlight condition is `(Timer >> 3) & 1` (bit 3
+  of the prior timer value), not ''every 8th frame'' strictly, and the check is `Timer & 7 == 0` before
+  the comparison, meaning it highlights when the prior timer''s bit 3 was clear. Also, the proposal misreads
+  loc_80C8920: it branches on `bne loc_80C8934`, so when the panel is solid it calls sub_80C89C8 (not
+  when non-solid), and the non-solid path spawns the effect and destroys. The land/sound path plays sound
+  and calls sub_80C89C8 — the proposal swapped these. Sound selection is Params&3 from 0x90909770 (bytes
+  0x70,0x97,0x90,0x90), correct. The phase finalize writes CurAction=4 and Phase=0, correct.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C88C8 -> object_thrownArcFlightPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C88C8

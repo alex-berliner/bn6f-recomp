@@ -1,0 +1,64 @@
+name: object_resolveCollisionHit
+address: '0x0801AD6A'
+kind: function
+status: probable
+summary: 'Finishes processing a queued collision on a battle object: clears the sprite''s final palette,
+  tears down the collision data if the state flag is set, recomputes the (holy-panel-adjusted) final damage,
+  and spawns the hit effect — unless the battle is over or the object has flag 0x100 set.'
+interface: (r5 = battle object pointer, r0 unused) -> r0 = clobbered; returns early if battle-state flag
+  bit0 clear, battle is over, or object flag 0x100 set
+details: Uses r5 as the current battle object, loading oBattleObject_CollisionDataPtr (r7 keeps it, though
+  no callee here consumes it visibly). It first calls sprite_clearFinalPalette, then reads the battle-state
+  flags via battle_getFlags and proceeds only when bit0 is set. It then removes the object's collision
+  data (object_removeCollisionData), and unless the battle is over (battle_isBattleOver) or the object's
+  first collision-flag word has bit 0x100 set (object_getFlag), it recomputes the pending damage with
+  object_calculateFinalDamage2 (which halves damage on holy panels) and plays the hit spark/sound via
+  object_spawnHiteffect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7, [r5,#oBattleObject_CollisionDataPtr] shows r5 is the battle object whose collision entry
+    is being processed; calls object_removeCollisionData after the battle-state flag check, discarding
+    the queued collision; guard tst r0,#0x100 after object_getFlag skips damage for flagged objects; tail
+    pair object_calculateFinalDamage2 + object_spawnHiteffect applies damage and shows the hit spark;
+    single caller sub_80DB148 and callees all belong to the battle object/collision subsystem
+  refs:
+  - bn6f/asm/asm00_2.s:24454
+  - 0x080DB148 sub_80DB148
+  - 0x0800A2F0 battle_getFlags
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800E420 object_calculateFinalDamage2
+  reproduce: python3 tools/asmcat.py 0x0801AD6A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callees match the proposal''s claim of checking battle-state bit0, removing collision data,
+    recomputing damage, and spawning the hit effect. However, the proposal incorrectly claims it calls
+    sprite_clearFinalPalette; the asm shows that as the very first instruction after the prologue, applied
+    unconditionally. Also, the object flag being tested is 0x100 (1<<8), not 0x10 — the proposal''s wording
+    is fine but the early-return condition summary is slightly off. The function name and summary fit
+    well overall, but object_applyPendingDamage overstates ''pending damage''; it more precisely finishes
+    processing a queued/resolved hit on the object.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the battle-state flag bit0 (from battle_getFlags) semantically gates
+- why sprite_clearFinalPalette is called first — maybe resets a per-frame palette set by damage flashes
+- what flag 0x100 on the object means (e.g., no-hit-effect or invulnerable)
+- The callees match the proposal's claim of checking battle-state bit0, removing collision data, recomputing
+  damage, and spawning the hit effect. However, the proposal incorrectly claims it calls sprite_clearFinalPalette;
+  the asm shows that as the very first instruction after the prologue, applied unconditionally. Also,
+  the object flag being tested is 0x100 (1<<8), not 0x10 — the proposal's wording is fine but the early-return
+  condition summary is slightly off. The function name and summary fit well overall, but object_applyPendingDamage
+  overstates 'pending damage'; it more precisely finishes processing a queued/resolved hit on the object.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801AD6A -> object_resolveCollisionHit
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801AD6A

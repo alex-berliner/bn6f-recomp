@@ -1,0 +1,73 @@
+name: object_destroyProcState
+address: '0x080D48AE'
+kind: function
+status: probable
+summary: 'Per-frame handler for a battle object''s destroy state: gates on flag2 (0=early-out, 1 or flag
+  0x4000000=teardown only), otherwise waits out a countdown in ExtraVars+0xC (skipped under time-stop,
+  battle-over, or zero ExtraVars/+0x4) then spawns a deletion effect (variants 0x14/0x24 with z-offset
+  0x0C0000 or 0x100000, sound 0x107 for the big one), dispatches flag 0x40, queues battle-effect request
+  id 0x174 with the object''s alliance via sub_80E61D2, then converges on dispatchDestroyEvents, collision-region
+  clear, panel-reserve release, and CUR_STATE_DESTROY.'
+interface: (r0 = unused, r5 = battle object header) -> r0 = undefined; sets object CurStateAction to CUR_STATE_DESTROY,
+  clears flag bit 2, clears collision region and panel reserve
+details: Early-outs (returns with nothing done) when object_getFlag2's mapped value is 0, and takes a
+  no-effect teardown path when it is 1 or when object flag 0x4000000 is set. Otherwise it gates on ExtraVars+4
+  (nonzero = full effect path), battle_isTimeStop and battle_isBattleOver, and a countdown in ExtraVars+0xC;
+  when the countdown expires it sets phase 8 and clears object-flag bit 2. The effect path spawns a deletion
+  effect from the object's 0x34-block (x,y + z at +0xC or +0x10, effect variant 0x14 or 0x24 with 0x10/0x14
+  z-offsets), plays sound 0x107 for the big variant, dispatches flag 0x40, and queues a battle effect
+  request (via sub_80E61D2 on the object's panel coords and params, id 0x74) with the object's alliance.
+  All paths converge on battle_dispatchDestroyEvents_802EF5C, removal from the battle object list, collision-region
+  clear, panel-reserve release, and CUR_STATE_DESTROY. The byte_80D4A20/A24 tst masks pick between effect
+  variants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80D497E teardown: clearEntryOfBattleStateBattleObjectList_800F656 + object_clearCollisionRegion
+    + object_removePanelReserve + str CUR_STATE_DESTROY; spawn_t1_0x0_EffectObject called with variants
+    0x14/0x24 and z-offsets 0xC/0x10 from object+0x34 block — deletion/explosion effect; PlaySoundEffect(0x107)
+    only after the variant-0x24 spawn, matching a distinct deletion sound; battle_queueEffectRequest(alliance,
+    1, sub_80E61D2(panelX,panelY,params,...)) queues a follow-up battle effect at the object''s panel;
+    gates on battle_isTimeStop/battle_isBattleOver and ExtraVars+0xC countdown before setting phase 8
+    — a delayed death animation'
+  refs:
+  - bn6f/asm/asm31.s:61976
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D48AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s gist (per-frame destroy handler that gates on flags, plays effects, then tears down)
+    matches the code: loc_80D497E is the convergence teardown with clearCollisionRegion, panel-reserve
+    release, flag bit 2 clear, and CUR_STATE_DESTROY store at the end. However the proposal''s ''id 0x74''
+    is wrong: `mov r7, #0x75; add r7, #0xff` yields 0x174, not 0x74. Also the name prefix ''battle_object''
+    violates the allowed-prefix rules; ''object'' is the correct prefix. The ''CurStateAction'' write
+    target is actually the combined 32-bit CurStateActionPhaseAndPhaseInitialized field, and panel-reserve
+    release uses FuturePanelX/Y, not current panel.; run wf investigate investigate-20261018-222121; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Exact meaning of object_getFlag2's return values and the byte_80D4A20/A24 bit masks (data bytes shown
+  as 0)
+- What ExtraVars+0, +4 and +0xC count down (hidden flag vs. death delay)
+- No caller known, so the r0-vs-r5 calling convention (whether r0 is the object) is unconfirmed
+- 'The summary''s gist (per-frame destroy handler that gates on flags, plays effects, then tears down)
+  matches the code: loc_80D497E is the convergence teardown with clearCollisionRegion, panel-reserve release,
+  flag bit 2 clear, and CUR_STATE_DESTROY store at the end. However the proposal''s ''id 0x74'' is wrong:
+  `mov r7, #0x75; add r7, #0xff` yields 0x174, not 0x74. Also the name prefix ''battle_object'' violates
+  the allowed-prefix rules; ''object'' is the correct prefix. The ''CurStateAction'' write target is actually
+  the combined 32-bit CurStateActionPhaseAndPhaseInitialized field, and panel-reserve release uses FuturePanelX/Y,
+  not current panel.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D48AE -> object_destroyProcState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D48AE

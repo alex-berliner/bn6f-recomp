@@ -1,0 +1,67 @@
+name: battle_updateSlidingAttackerStep
+address: '0x080DBA7C'
+kind: function
+status: probable
+summary: 'Per-frame step for a sliding attacker: clears stale collision, winds up over 3 frames (play
+  sound 0x96, ramp SelfDamage by ExtraVars+4, swap CurAnim for first two steps), advances X by XVelocity
+  and re-registers collision region 1 on panel change, then destroys itself if it lands on a hole-like
+  panel (status bit 0x10) or off the field.'
+interface: (r5 = battle object pointer, implicit this) -> void; sets object state to CUR_STATE_DESTROY
+  on invalid/hole panel
+details: 'The routine first clears the object''s collision region if a collision flag is set, then, while
+  ExtraVars is non-null and RelatedObject2''s Param1 is nonzero, plays sound 0x96, adds ExtraVars+4 to
+  the collision data''s SelfDamage field (damage this object deals), and increments the object''s own
+  Param1 counter; for the first two counts it sets CurAnim from the small table at dword_80DBB08 (both
+  entries 0x01). It then advances X by XVelocity, recomputes PanelX/PanelY via object_setPanelsFromCoordinates
+  and object_updateCollisionPanels, and re-registers in collision region 1 whenever the panel changed.
+  Finally it reads the panel status flags: if bit 0x10 is set or object_isCurrentPanelValid fails, it
+  clears the collision region and writes CUR_STATE_DESTROY into the state/phase field, i.e. the object
+  is removed when it slides onto a hole or off the battlefield.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl PlaySoundEffect with r0=0x96 inside the ExtraVars/Param1 gate, plus SelfDamage += ExtraVars+4
+    (loc_80DBA8C block); ldrb from dword_80DBB08 (bytes 0x01,0x01) stores into oBattleObject_CurAnim,
+    limited by cmp r0,#3; X += XVelocity then bl object_setPanelsFromCoordinates / object_updateCollisionPanels
+    and object_setCollisionRegion(1) on panel change; object_getPanelParameters bit 0x10 or failed object_isCurrentPanelValid
+    leads to object_clearCollisionRegion + CUR_STATE_DESTROY (loc_80DBAF0); Callees are all battle-object
+    helpers (collision region, panel params, panel coords), confirming r5 is a battle object
+  refs:
+  - bn6f/asm/asm31.s:77130
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080DBA7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct, but two details are off. Sound ID: the code loads r0 with #0x97
+    then adds -1 (0xff), giving 0x96, not 0x97. The wind-up increments Param1 BEFORE the cmp #3, so the
+    cmov reads values 1-3 and falls through until reaching 3, meaning animation is set on counts 1 and
+    2 (the table sub #1 then idx is [0x0101], both entries 1, matches proposal). The cleanup path is bit
+    0x10 set OR panel invalid; proposal says ''if bit 0x10 is set or object_isCurrentPanelValid fails''
+    which matches. The 3-frame wind-up and CUR_STATE_DESTROY detection are correct.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so the exact object/attack this belongs to (and what ExtraVars/ExtraVars+4 and RelatedObject2's
+  Param1 represent) is unidentified
+- The meaning of collision SelfDamage accumulation (damage dealt per tick?) and which attack uses sound
+  0x96
+- 'The summary is largely correct, but two details are off. Sound ID: the code loads r0 with #0x97 then
+  adds -1 (0xff), giving 0x96, not 0x97. The wind-up increments Param1 BEFORE the cmp #3, so the cmov
+  reads values 1-3 and falls through until reaching 3, meaning animation is set on counts 1 and 2 (the
+  table sub #1 then idx is [0x0101], both entries 1, matches proposal). The cleanup path is bit 0x10 set
+  OR panel invalid; proposal says ''if bit 0x10 is set or object_isCurrentPanelValid fails'' which matches.
+  The 3-frame wind-up and CUR_STATE_DESTROY detection are correct.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DBA7C -> battle_updateSlidingAttackerStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DBA7C

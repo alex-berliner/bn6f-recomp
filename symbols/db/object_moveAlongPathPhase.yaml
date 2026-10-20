@@ -1,0 +1,67 @@
+name: object_moveAlongPathPhase
+address: '0x080DC872'
+kind: function
+status: probable
+summary: Battle-object phase handler that interpolates the object panel-by-panel along a path queried
+  via sub_80DCA38, completing when sub_80DC9EC signals the target is reached or destroying it on invalid
+  panels.
+interface: (r5 = battle object ptr) -> void; sets oBattleObject_CurAction (8 = done moving, 0xC = destroyed)
+  and CurPhaseAndPhaseInitialized
+details: On first run it queries sub_80DCA38 for a destination (stored in ExtraVars +0/+4 pixels and +0x18/+0x1c),
+  updates collision panels, resets Timer, and marks PhaseInitialized=4. Each tick it increments Timer;
+  at Param4/2 it converts the destination pixel pos back to panel coords and writes them into the collision
+  data's PanelX/Y (mid-slide collision handover), and at Timer==Param4 it snapshots the current panel
+  into ExtraVars +8/+c and re-queries the next target via sub_80DCA38; sub_80DC9EC on the target panel
+  decides whether to finish (CurAction=8, phase 0) or continue. Every frame it interpolates position between
+  the start panel and destination using object_getCoordinatesForPanels plus sub_80DCACC with Timer, writes
+  X/Y, and calls object_setPanelsFromCoordinates. If the resulting panel fails object_isValidPanel, or
+  the object ever sits on a solid panel (object_isPanelSolid), it clears the collision region and switches
+  to CurAction=0xC (removed) with phase 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'object_isPanelSolid at entry leads to object_clearCollisionRegion + CurAction=0xC: solid panels
+    destroy the mover; Timer counted up to Param4/2 then convertXYToPanelXY_800E258 writes oCollisionData_PanelX/Y:
+    mid-move collision panel handover; Timer==Param4 stores current PanelX/Y into ExtraVars+8/+c and re-queries
+    sub_80DCA38: chaining to a new slide segment; object_getCoordinatesForPanels + sub_80DCACC(Timer)
+    produce oBattleObject_X/Y, then object_setPanelsFromCoordinates: per-frame interpolated slide; sub_80DC9EC
+    nonzero -> CurAction=8, phase 0: target-reached check ends the movement action'
+  refs:
+  - bn6f/asm/asm31.s:78996
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080DC872
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code''s structure matches the proposal: it checks solidity up front (beq loc_80DC91E → destroy),
+    initializes PhaseInitialized=4 with sub_80DCA38 result, mid-slide handover via convertXYToPanelXY
+    at Param4/2, Timer==Param4 snapshot+re-query, and final interpolation via object_getCoordinatesForPanels+sub_80DCACC.
+    However, the object is only destroyed if object_isValidPanel fails; object_isPanelSolid is only the
+    initial early-return guard, not checked every tick as claimed. Name is fine but ''object_slideMovementPhase''
+    slightly overstates — suggest ''object_moveAlongPathPhase'' since sub_80DCA38 likely picks next path
+    segment.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80DCA38 computes exactly (likely the next destination pixel/panel pair) and what sub_80DC9EC
+  tests (target panel free/occupied?), and which in-game action id 8/0xC belong to, would confirm whether
+  this is e.g. a pushed-object or enemy-glide mover
+- 'The code''s structure matches the proposal: it checks solidity up front (beq loc_80DC91E → destroy),
+  initializes PhaseInitialized=4 with sub_80DCA38 result, mid-slide handover via convertXYToPanelXY at
+  Param4/2, Timer==Param4 snapshot+re-query, and final interpolation via object_getCoordinatesForPanels+sub_80DCACC.
+  However, the object is only destroyed if object_isValidPanel fails; object_isPanelSolid is only the
+  initial early-return guard, not checked every tick as claimed. Name is fine but ''object_slideMovementPhase''
+  slightly overstates — suggest ''object_moveAlongPathPhase'' since sub_80DCA38 likely picks next path
+  segment.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC872 -> object_moveAlongPathPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC872

@@ -1,0 +1,67 @@
+name: battle_beginTurnOpenSetup
+address: '0x080144CA'
+kind: function
+status: probable
+summary: 'Body of battle_beginTurnOpenProcess_80144C0: zeroes the 12-halfword hand field, clears AIData
+  0x20, conditionally releases the opposite-alliance player slot under battle-effect bit 8, sets NoCustom+
+  hit modifier and collision region 1, resets PwrAtk state, optionally inits AIData, then runs sub_8014536,
+  secondary-element weakness setup, and battle-effect self damage.'
+interface: (r5 = battle object) -> r0 = result of battle_applySelfDamageFromBattleEffect_80142C2; r7 flags
+  whether AIData init is skipped
+details: Zeroes 0xC halfwords at getBattleHandAddr(alliance)+0x26 and clears bit 0x20 of the object's
+  AIData field 0x48. If battle effects bit 8 is set and the inverted alliance is nonzero, it locates the
+  opposite-alliance player object and calls releaseSlotByValue_801DC36. It then stores the value from
+  battle_IsNoCustomPlusActive (0 or 3) as the object's hit modifier and sets collision region 1. r7=1
+  on entry makes the battleObject_initAIData call dead from this entry point, suggesting a second entry
+  at 0x80144C0 that enters with r7=0. Ends with sub_8014536, secondary-element weakness setup from NaviStats,
+  and battle-effect self damage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: trailing label 'thumb_func_end battle_beginTurnOpenProcess_80144C0' shows this body is shared
+    with the already-named begin-turn-open-process entry; ZeroFillByHalfword on getBattleHandAddr(alliance)+0x26
+    and ClearAIDataUnk0x48Flag(0x20) clear per-turn object state up front; battle_IsNoCustomPlusActive_80107C0
+    result is passed to battle_SetObjectHitModifier_8019F86 followed by object_setCollisionRegion(1);
+    battleObject_clearPwrAtkState_8012EA8 plus r7-gated battleObject_initAIData_800FEEC reset AI/charge
+    state; tail calls battleObject_setupSecondaryElementWeaknessFromNaviStats_801086C and battle_applySelfDamageFromBattleEffect_80142C2,
+    both battle-open effects
+  refs:
+  - bn6f/asm/asm00_2.s:12910
+  - 0x0801429C sub_801429C
+  - 0x0802D246 GetBattleEffects
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  - 0x0800FEEC battleObject_initAIData_800FEEC
+  reproduce: python3 tools/asmcat.py 0x080144CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is accurate per the code: ZeroFillByHalfword on getBattleHandAddr+0x26 (12 halfwords),
+    ClearAIDataUnk0x48Flag(0x20), releaseSlotByValue_801DC36 on opposite alliance player, battle_IsNoCustomPlusActive_80107C0
+    -> battle_SetObjectHitModifier_8019F86, object_setCollisionRegion(1), battleObject_clearPwrAtkState_8012EA8,
+    initAIData skipped when r7=1 (loc_8014528), then sub_8014536, secondary-element weakness, and battle_applySelfDamageFromBattleEffect_80142C2.
+    The thumb_func_end lines show the symbol is battle_beginTurnOpenProcess_80144C0, so the body name
+    should reflect that parent function rather than ''Body''.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what entry 0x80144C0 does before falling in (does it set r7=0 to enable battleObject_initAIData?)
+- what the 0xC-halfword block at battle-hand area +0x26 holds
+- what sub_8014536 does
+- which battle effect bit 8 is and why it releases the opposite player's slot
+- 'The summary is accurate per the code: ZeroFillByHalfword on getBattleHandAddr+0x26 (12 halfwords),
+  ClearAIDataUnk0x48Flag(0x20), releaseSlotByValue_801DC36 on opposite alliance player, battle_IsNoCustomPlusActive_80107C0
+  -> battle_SetObjectHitModifier_8019F86, object_setCollisionRegion(1), battleObject_clearPwrAtkState_8012EA8,
+  initAIData skipped when r7=1 (loc_8014528), then sub_8014536, secondary-element weakness, and battle_applySelfDamageFromBattleEffect_80142C2.
+  The thumb_func_end lines show the symbol is battle_beginTurnOpenProcess_80144C0, so the body name should
+  reflect that parent function rather than ''Body''.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80144CA -> battle_beginTurnOpenSetup
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80144CA

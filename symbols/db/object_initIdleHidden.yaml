@@ -1,0 +1,58 @@
+name: object_initIdleHidden
+address: '0x080D5C6C'
+kind: function
+status: probable
+summary: 'Initializes a battle object: loads sprite 0x80 (args 0x10/0x3c) with animation data, disables
+  its shadow, applies its effective facing flip, sets the hide flag (bit 0x2), resets the animation counter,
+  and sets CUR_STATE_UPDATE so it idles while hidden.'
+interface: (r5 = battle object, set by caller; sprite index 0x80, args 0x10/0x3c to sprite_load) -> r0
+  = state value stored; no return value used
+details: 'Treats r5 as a battle object: loads sprite index 0x80 with sprite_load(0x80, 0x10, 0x3c) and
+  then its animation data, marks it shadowless, and resets its animation counter (oBattleObject_CurAnimAndCurAnimCopy)
+  to 0. It applies the object''s effective facing via object_getFlip/sprite_setFlip, then sets flag bit
+  0x2 in oObjectHeader_Flags, which in the battle engine hides the sprite. Finally it stores CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object idles in the update state. The
+  pattern (load sprite, hide it, enter a no-op state) is the standard ''become invisible/inactive'' setup
+  used by battle objects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(0x80, 0x10, 0x3c) + sprite_loadAnimationData: a fixed sprite/animation is installed
+    on the object in r5; orr r0, r1 / strb to oObjectHeader_Flags with bit 2: sets the sprite-hidden flag;
+    strh r0=0 to oBattleObject_CurAnimAndCurAnimCopy: animation counter reset; object_getFlip then sprite_setFlip:
+    syncs sprite flip to the object''s facing; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized:
+    transitions to the idle/update state'
+  refs:
+  - bn6f/asm/asm31.s:64592
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080D5C6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but the name `object_initHiddenState` is misleading—there''s no
+    dedicated "hidden state," it just sets CUR_STATE_UPDATE (the standard update idle state) while hiding
+    the sprite. Also, callers list is empty (''none known''), so the intended use is unverified. A more
+    accurate name reflects that this initializes a battle object into the idle update state while hiding
+    it.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so what object/state uses this (r5 producer and sprite_load's exact 0x10/0x3c argument
+  meaning) is unconfirmed
+- Whether flag bit 0x2 is exactly 'sprite hidden' could be confirmed from the sprite render routine
+- The summary is mostly accurate, but the name `object_initHiddenState` is misleading—there's no dedicated
+  "hidden state," it just sets CUR_STATE_UPDATE (the standard update idle state) while hiding the sprite.
+  Also, callers list is empty ('none known'), so the intended use is unverified. A more accurate name
+  reflects that this initializes a battle object into the idle update state while hiding it.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5C6C -> object_initIdleHidden
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5C6C

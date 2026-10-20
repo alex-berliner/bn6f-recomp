@@ -1,0 +1,65 @@
+name: object_tickHandleDamageAndDispatch
+address: '0x080D2684'
+kind: function
+status: probable
+summary: 'Per-frame object tick: tears down and respawns collision (including hit-effect object), runs
+  damage handling that subtracts 1 HP and triggers a hit-reaction action unless dead, then either runs
+  the current action via a 5-entry jump table or refreshes collision during time-stop, jumping to the
+  destroy path if the battle ended, a related object exists, the object is in erased state (CurAction==0x10),
+  or the collision flags match the alliance mask from byte_80D270C.'
+interface: (r5 = battle object) -> r0 = ...; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY on death/erase
+details: 'Standard object tick: first removes and respawns the object''s collision data (spawning the
+  hit-effect object at the last collision point with jitter), bails to the destroy path if the battle
+  is over, a related object exists, or the collision flags match the object''s alliance mask from byte_80D270C
+  (0x05000080 for one alliance, 0x0A000080 for the other — likely panel/hazard erasure flags). Calls basicHandleBattleObjectDamage(1);
+  if it reports a landed hit, decrements HP — HP<=0 destroys the object, otherwise sets CurAction=0xC
+  (hit reaction) and clears PhaseInitialized. Otherwise it dispatches via a 5-entry jump table indexed
+  by CurAction (sub_80D2714..sub_80D27E2), or, while time is stopped, just refreshes the collision data
+  instead. The destroy path calls sub_80D2A68 and stores CUR_STATE_DESTROY into the packed state field.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry, then battle_isBattleOver
+    guard; ldrh r0,[r5,#oBattleObject_HP]; sub r0,#1 with ble -> destroy, else CurAction=0xC and PhaseInitialized=0;
+    alliance-mask check: ldr r0,[r1,r0] from byte_80D270C tst against oCollisionData_FlagsFromCollision;
+    jump table off_80D26F4 indexed by oBattleObject_CurAction with 5 action handlers, called via mov lr,pc;
+    bx r1; battle_isTimeStop branch falls to object_presentCollisionData instead of dispatching actions'
+  refs:
+  - bn6f/asm/asm31.s:57337
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D2684
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s description well: it removes collision, spawns the hit effect,
+    checks battle over and related object, dispatches via 5-entry table at off_80D26F4, calls object_presentCollisionData
+    when time-stopped, and on death sets CUR_STATE_DESTROY. However, the proposal misreads the early CurAction==0x10
+    check — that branches past the damage path entirely to loc_80D26BE (not a destroy path), suggesting
+    0x10 is an invulnerable/erased state, and the alliance-mask check at loc_80D26BE is what triggers
+    the destroy path, not HP loss alone. The name ''object_updateHandleDamage'' is a bit awkward.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no known caller, so which object type/state registers this handler is unknown
+- meaning of the 0x05000080 / 0x0A000080 alliance collision-flag masks
+- what sub_80D2A68 (shared destroy path) and the five action handlers do
+- 'The code matches the proposal''s description well: it removes collision, spawns the hit effect, checks
+  battle over and related object, dispatches via 5-entry table at off_80D26F4, calls object_presentCollisionData
+  when time-stopped, and on death sets CUR_STATE_DESTROY. However, the proposal misreads the early CurAction==0x10
+  check — that branches past the damage path entirely to loc_80D26BE (not a destroy path), suggesting
+  0x10 is an invulnerable/erased state, and the alliance-mask check at loc_80D26BE is what triggers the
+  destroy path, not HP loss alone. The name ''object_updateHandleDamage'' is a bit awkward.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2684 -> object_tickHandleDamageAndDispatch
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2684

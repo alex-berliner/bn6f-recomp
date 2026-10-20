@@ -1,0 +1,62 @@
+name: sprite_spawnObjectType23
+address: '0x0811C01C'
+kind: function
+status: probable
+summary: 'Spawns a sprite object: tags it with type 0x23, sets animation to ID+8, disables shadow, configures
+  palette bank 0xB/palette 0/priority 0, places it at coords from dword_811C078 indexed by ID, and tail-calls
+  sub_811C07C.'
+interface: (r0 = unused/scratch, r5 = object struct pointer) -> r0 = result of callee sub_811C07C; sets
+  [r5]=0x23, [r5+8]=4
+details: 'The routine fully configures a sprite entity held in r5: it tags the object with byte 0x23,
+  reads the object''s ID from [r5+4], adds 8 to pick an animation index, then calls the standard sprite
+  setup chain (setAnimation, loadAnimationData, noShadow). It stores halfword 0x1F8 through the slot-list
+  helper, sets sub-entry palette bank 0xB, palette 0, sub-record field A 0 and sprite priority 0. Coordinates
+  come from the table at dword_811C078 (bytes 0x78,0x28 / 0x78,0x78) indexed by [r5+4]*2, passed as x,y
+  to sprite_setCoordinates. Finally it writes 4 to [r5+8] (likely a state/substate counter) and tail-ends
+  with a call to sub_811C07C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] and strb #4,[r5+8] tag the object type and a state byte; ldrb [r5+4]; add #8;
+    bl sprite_setAnimation shows animation chosen from object ID; bl sprite_noShadow followed by palette
+    bank 0xB, palette 0 and priority 0 is a full visual setup sequence; table dword_811C078 = 0x78782878
+    indexed by [r5+4]*2 supplies x,y pairs to sprite_setCoordinates; ldr =0x1F8; bl slotList_storeHalfwordAndClearField
+    writes a fixed halfword into a sprite slot'
+  refs:
+  - bn6f/asm/asm32.s:29056
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811C01C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary are largely correct but slightly off: 0x1F8 is a halfword passed to
+    slotList_storeHalfwordAndClearField, not a coordinate; the proposal''s ''coordinate table'' wording
+    is fine but the dword_811C078 content description is slightly garbled. Both bytes are 0x78, with table
+    0x78,0x28 / 0x78,0x78 for x,y. Otherwise the function matches: sets type 0x23, animation from ID+8,
+    no shadow, palette bank 0xB/palette 0, priority 0, sub record A 0, writes [r5+8]=4, tail-calls sub_811C07C.
+    Better name to reflect it is a spawn/init.; run wf investigate investigate-20261018-222121; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the meaning of the 0x23 tag, the stored halfword 0x1F8, and what sub_811C07C does
+  remain unclear
+- Which in-game entity (NPC, object, effect) uses object IDs 0 and 1 for the two coordinate entries is
+  not determinable from this function alone
+- 'The proposed name and summary are largely correct but slightly off: 0x1F8 is a halfword passed to slotList_storeHalfwordAndClearField,
+  not a coordinate; the proposal''s ''coordinate table'' wording is fine but the dword_811C078 content
+  description is slightly garbled. Both bytes are 0x78, with table 0x78,0x28 / 0x78,0x78 for x,y. Otherwise
+  the function matches: sets type 0x23, animation from ID+8, no shadow, palette bank 0xB/palette 0, priority
+  0, sub record A 0, writes [r5+8]=4, tail-calls sub_811C07C. Better name to reflect it is a spawn/init.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811C01C -> sprite_spawnObjectType23
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811C01C

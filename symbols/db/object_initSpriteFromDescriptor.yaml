@@ -1,0 +1,61 @@
+name: object_initSpriteFromDescriptor
+address: '0x081172D0'
+kind: function
+status: probable
+summary: Initializes an object's sprite (resource/animation/palette/priority/coordinates/flip) from an
+  r5-pointed descriptor and tail-calls sub_811734C, leaving [r5]=0x23 and [r5+8]=4.
+interface: (r0 ignored; r5 = descriptor struct) -> r0 = result of sub_811734C; writes type/state byte
+  to [r5], 4 to [r5+8]
+details: 'Takes r5 pointing at a small descriptor: byte 4 selects one of two sprite resources (0x1c vs
+  0x1d) passed with the shared unk_2032A04 pointer to initGuiSprite_8002770; byte 5 low 7 bits become
+  the animation index and bit 7 triggers sprite_setFlip; byte 3+1 sets the palette bank and is also shifted
+  <<6 and OR''d with 0x100 into a halfword stored via slotList_storeHalfwordAndClearField_800306C (likely
+  tile/OAM slot data). Bytes 6/7 give x/y to sprite_setCoordinates, priority is fixed at 3, sub-record
+  field A set to 4, and sprite_noShadow disables the shadow. Finally [r5] is pre-set to 0x23 (an object
+  type/state id) before the sprite init, and [r5+8] is set to 4 (likely a state/step counter) before tail-calling
+  sub_811734C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #0x23,[r5] then branch on [r5+4] picking resource pointer for initGuiSprite_8002770 (81172D0-81172E8);
+    ldrb [r5+5] &0x7F -> sprite_setAnimation, then sprite_loadAnimationData and sprite_noShadow back-to-back;
+    ldrb [r5+3]+1 -> palette bank; ([r5+3]<<6)+0x100 stored via slotList_storeHalfwordAndClearField_800306C;
+    ldrb [r5+6],[r5+7] -> sprite_setCoordinates; bit7 of [r5+5] -> sprite_setFlip(1); mov #4 -> strb [r5+8]
+    before tail call sub_811734C'
+  refs:
+  - bn6f/asm/asm32.s:18662
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x081172D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s details: byte 4 selects 0x1c/0x1d with unk_2032A04, byte 5 low7
+    -> sprite_setAnimation, bit7 -> sprite_setFlip(1), byte 3+1 -> palette bank, byte 3<<6 | 0x100 ->
+    slotList_storeHalfwordAndClearField, fixed priority 3, sprite_noShadow, byte 6/7 coords, [r5]=0x23,
+    [r5+8]=4, tail-call sub_811734C. However initGuiSprite_8002770''s ''Gui'' prefix and lack of NPC-specific
+    code suggest a more general object-sprite init; ''object_initSpriteFromDescriptor'' better fits the
+    shared interface and naming rules.; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known callers, so the meaning of the 0x1c/0x1d resource selector and the descriptor layout at r5
+  is unconfirmed
+- What sub_811734C does after setup and why both selector branches load the same unk_2032A04 pointer
+- What the halfword ([palette]<<6)|0x100 written into the slot list represents (tile base/OAM attribute?)
+- 'The code matches the proposal''s details: byte 4 selects 0x1c/0x1d with unk_2032A04, byte 5 low7 ->
+  sprite_setAnimation, bit7 -> sprite_setFlip(1), byte 3+1 -> palette bank, byte 3<<6 | 0x100 -> slotList_storeHalfwordAndClearField,
+  fixed priority 3, sprite_noShadow, byte 6/7 coords, [r5]=0x23, [r5+8]=4, tail-call sub_811734C. However
+  initGuiSprite_8002770''s ''Gui'' prefix and lack of NPC-specific code suggest a more general object-sprite
+  init; ''object_initSpriteFromDescriptor'' better fits the shared interface and naming rules.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81172D0 -> object_initSpriteFromDescriptor
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81172D0

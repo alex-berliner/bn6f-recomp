@@ -1,0 +1,58 @@
+name: battle_resetObjectToIdle
+address: '0x0801657E'
+kind: function
+status: probable
+summary: Resets a battle object to its neutral standing state, clearing its battle-status list entry when
+  applicable, and post-hit invulnerability, panel reserve, collision region, action, and phase fields.
+interface: (r5 = battle object pointer; r10 = toolkit) -> r0 = destroyed; flags from alliance check
+details: Reads the battle mode; if it is not mode 6 and the object's alliance matches the player's side
+  (oBattleState_PlayerSide), it claims a battle-status list slot at 0x203EB50 via sub_801DC7C with name
+  ID 0 and HP 0, effectively blanking the object's status entry. It then clears the object's post-hit
+  invulnerability, releases any reserved panel (using FuturePanelX/Y), and sets its collision region to
+  region 1. Finally it writes CurAction = 1 and zeroes CurPhaseAndPhaseInitialized, putting the object
+  back into action 1 at phase 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetBattleMode; cmp r0,#6 gates the status-list update on mode and alliance (eor with oBattleState_PlayerSide);
+    bl sub_801DC7C called with r0=0, r1=0, i.e. blank name ID and HP for the status UI slot; bl object_clearInvulnerableTime
+    and bl object_removePanelReserve undo transient hit/occupancy state on r5''s object; mov r0,#1; bl
+    object_setCollisionRegion restores collision region 1; strb #1 to oBattleObject_CurAction and strh
+    #0 to oBattleObject_CurPhaseAndPhaseInitialized restart the object''s action state machine at its
+    first action'
+  refs:
+  - bn6f/asm/asm00_2.s:17135
+  - 0x0802D234 GetBattleMode
+  - 0x0800EB08 object_clearInvulnerableTime
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x0801657E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The alliance condition is inverted in the proposal. The asm does `cmp r0,#6; beq loc_8016594` (clear
+    if mode==6) then `eor r0,r1; beq loc_801659C` (skip if alliance==player side). So sub_801DC7C is called
+    when mode IS 6 OR the object is on the opposing side, not the player side as stated. The rest of the
+    description (clear invulnerable time, release panel reserve at FuturePanelX/Y, set collision region
+    to 1, CurAction=1, CurPhaseAndPhaseInitialized=0) matches the code.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so the trigger context (spawn, post-knockback recovery, or despawn) is unconfirmed
+- The meaning of CurAction value 1 (idle/stand?) and battle mode 6 come from other code, not this function
+- Whether sub_801DC7C with 0,0 hides the status entry rather than clearing it needs its own analysis
+- The alliance condition is inverted in the proposal. The asm does `cmp r0,#6; beq loc_8016594` (clear
+  if mode==6) then `eor r0,r1; beq loc_801659C` (skip if alliance==player side). So sub_801DC7C is called
+  when mode IS 6 OR the object is on the opposing side, not the player side as stated. The rest of the
+  description (clear invulnerable time, release panel reserve at FuturePanelX/Y, set collision region
+  to 1, CurAction=1, CurPhaseAndPhaseInitialized=0) matches the code.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801657E -> battle_resetObjectToIdle
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801657E

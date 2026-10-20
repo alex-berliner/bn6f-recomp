@@ -1,0 +1,64 @@
+name: battle_deleteObjectWithEffect
+address: '0x08016F1A'
+kind: function
+status: probable
+summary: 'Tears down a battle object: spawns the deletion poof effect at its position, releases its panel
+  reserve, detaches allies'' targets and its AI source, removes it from the alive-actor list, and sets
+  its state to destroy.'
+interface: (r5 = battle object to delete) -> r0 = spawned effect object (if not time-stopped); flags clobbered
+  by calls
+details: Exits immediately if battle_isTimeStop says a time-stop is active, so deletion is deferred during
+  time freeze. Reads three words (likely x/y/z position) from object+0x34 and passes them to spawn_t1_0x0_EffectObject,
+  which spawns a type-4 object with effect type 0 — the standard deletion/despawn puff. Sets bit 4 (0x4)
+  in the spawned effect's oObjectHeader_Flags. Then clears the dying object's slot in its alliance's target
+  record (battle_ClearAllianceTargetSlotIfSelf), releases any panel it reserved via oBattleObject_FuturePanelX/Y,
+  sets field 8 = 8 on the AI data's spawned-source object (sub_80E1A86, likely a 'source deleted' signal),
+  removes the object from the 8-entry alive player actor list, and finally stores CUR_STATE_DESTROY into
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized. The object pointer is taken from r5 rather than
+  r0, meaning callers invoke it with the object preloaded in a high register (an inlined call convention).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isTimeStop + bne locret_8016F54: deletion is skipped while time-stop is active; ldmia
+    r0!,{r1-r3} from object+0x34 then bl spawn_t1_0x0_EffectObject: spawns effect-0 object at the object''s
+    coordinates; orr with #4 into oObjectHeader_Flags of the spawned effect: tags the effect; bl object_removePanelReserve
+    with oBattleObject_FuturePanelX/Y: releases the object''s reserved panel; str CUR_STATE_DESTROY into
+    oBattleObject_CurStateActionPhaseAndPhaseInitialized and RemoveGivenAliveBattleActorFromList: final
+    teardown of the actor'
+  refs:
+  - bn6f/asm/asm00_2.s:18444
+  - 0x080077B4 RemoveGivenAliveBattleActorFromList
+  - 0x0802CDD0 battle_ClearAllianceTargetSlotIfSelf_802CDD0
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x08016F1A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s steps: time-stop guard, spawning a type-4 effect at offset 0x34,
+    setting bit 2 (value 4) on oObjectHeader_Flags, clearing alliance target, releasing panel reserve
+    at oBattleObject_FuturePanelX/Y, signaling the AI source object via sub_80E1A86, removing from alive-actor
+    list, and storing CUR_STATE_DESTROY. The flag value is 4, so bit 2, not bit 4 as the summary says.
+    The name is otherwise apt; minor summary fix only.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so it is unconfirmed whether this is the generic object-deletion path or one specific
+  object type's death routine
+- The exact meaning of effect type 0 and flag bit 4 on the spawned effect object is unverified
+- What field 8 = 8 on the spawned-source object signals to its owner
+- 'The code matches the proposal''s steps: time-stop guard, spawning a type-4 effect at offset 0x34, setting
+  bit 2 (value 4) on oObjectHeader_Flags, clearing alliance target, releasing panel reserve at oBattleObject_FuturePanelX/Y,
+  signaling the AI source object via sub_80E1A86, removing from alive-actor list, and storing CUR_STATE_DESTROY.
+  The flag value is 4, so bit 2, not bit 4 as the summary says. The name is otherwise apt; minor summary
+  fix only.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016F1A -> battle_deleteObjectWithEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016F1A

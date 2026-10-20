@@ -1,0 +1,60 @@
+name: init_battleObject
+address: '0x080C0358'
+kind: function
+status: probable
+summary: 'Initializes a battle object: recomputes pixel coords from grid, sets animation/palette/shader/flip
+  from Param1/RelatedObject1Ptr/Param3, enables shadow, clears flip marker, sets Flags bit 1, writes CUR_STATE_UPDATE,
+  and sets CurAction=4 when Param2==0.'
+interface: (r0 = object ptr, implicit r5 = object ptr) -> r0 = ?; sets object flags bit 1, state = CUR_STATE_UPDATE,
+  CurAction = 4 if Param2 == 0
+details: Operates on a battle object kept in r5. It first recomputes pixel coordinates from panel coords,
+  then loads sprite resource (0x80, 8, 0x13) — a fixed sprite used by whatever objects share this spawn
+  path. It copies oBattleObject_Param1 into CurAnim, loads animation data, enables the shadow, copies
+  palette from RelatedObject1Ptr's sprite, applies a color shader from ExtraVars, and sets flip from Param3
+  before resetting Param3 to 2 (a 'flip already applied' marker). It sets oObjectHeader_Flags bit 1 and
+  writes CUR_STATE_UPDATE into the state field, then sets CurAction = 4 only when Param2 is 0. This reads
+  like a common 'object appears' entry point where callers preconfigure Param1-Param3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load called with constants 0x80, 8, 0x13 — fixed resource IDs, not caller data; ldrb
+    r0,[r5,#oBattleObject_Param1]; strb ... [r5,#oBattleObject_CurAnim]; bl sprite_setAnimation — Param1
+    selects animation; ldrb r0,[r5,#oBattleObject_Param3]; bl sprite_setFlip; mov r0,#2; strb — Param3
+    is flip, then overwritten with sentinel 2; orr with #2 into oObjectHeader_Flags and CUR_STATE_UPDATE
+    store — marks object initialized and advances to state update; cmp Param2,#0; bne skip; CurAction
+    = 4 — Param2 gates the starting action'
+  refs:
+  - bn6f/asm/asm31.s:17811
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002D8C sprite_getPalette
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080C0358
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and summary are accurate for the code shown — sprite 0x80/8/0x13 loaded, CurAnim from Param1,
+    palette/shadow/shader/flip applied, Param3 reset to 2, bit 1 set on Flags, CurAction=4 only if Param2==0.
+    However, ''spawn_initSprite'' mixes two prefixes and doesn''t follow the convention; a cleaner pick
+    is ''init_battleObject'' which matches the battle-object prefix and describes the actual unit of work
+    (initializing a battle object).; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which object(s) use this spawn path — sprite 0x80/8/0x13 would identify them; no callers found yet
+- Exact meaning of Param2's gate and CurAction value 4
+- Whether ExtraVars/RelatedObject1Ptr are set by callers immediately before this is invoked
+- The name and summary are accurate for the code shown — sprite 0x80/8/0x13 loaded, CurAnim from Param1,
+  palette/shadow/shader/flip applied, Param3 reset to 2, bit 1 set on Flags, CurAction=4 only if Param2==0.
+  However, 'spawn_initSprite' mixes two prefixes and doesn't follow the convention; a cleaner pick is
+  'init_battleObject' which matches the battle-object prefix and describes the actual unit of work (initializing
+  a battle object).
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0358 -> init_battleObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0358

@@ -1,0 +1,56 @@
+name: ai_dispatchAttackPhase
+address: '0x0810A92C'
+kind: function
+status: probable
+summary: Dispatches one of three AI attack-phase continuations (charge tick, end/reset state, or exit-after-delay)
+  by indexing a small jump table with the oAIAttackVars phase byte.
+interface: (r7 = AI attack vars struct) -> r0 = result of dispatched handler; jumps via computed table,
+  lr trick returns to caller
+details: 'Loads the HitElement byte from the oAIAttackVars struct in r7 and uses it to index a jump table
+  at off_810A940, then performs a long-bl thumb call with ''mov lr, pc; bx r1'' so the callee returns
+  back into the pop {pc}. The three table targets are known AI routines: ai_chargeAttackTick, ai_attackEndResetState,
+  and genericAI_exitAttackStateAfterDelay. So the element field selects which attack continuation/update
+  runs for the current AI attack. Only three entries exist, so HitElement here holds a small attack-phase/element
+  code (0-2), not the full game element range. It runs during battle AI attack processing (battlesweep
+  route).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] then ldr r1, [r1,r0]; bx r1 — indexed dispatch on the
+    HitElement field; jump table at off_810A940 contains ai_chargeAttackTick+1, ai_attackEndResetState+1,
+    genericAI_exitAttackStateAffterDelay_81097B4+1 — all AI attack-state routines; mov lr, pc; bx r1 ...
+    pop {pc} — tail-call-style dispatch returning to the original caller; no other memory touched besides
+    the struct field and table — pure control-flow router
+  refs:
+  - bn6f/asm/asm31.s:176141
+  reproduce: python3 tools/asmcat.py 0x0810A92C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the byte load at `ldrb r0, [r7,#oAIAttackVars_HitElement]` and
+    the jump table at off_810A940 with the three callees, and the `mov lr, pc; bx r1` trick is consistent.
+    However, calling the field ''HitElement'' is misleading: the table only has three entries corresponding
+    to attack phases (charge, end/reset, exit-after-delay), so this is really an attack phase/state selector,
+    not an element.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 0-2 values of oAIAttackVars_HitElement (element vs attack phase)
+- which battle AI caller sets HitElement before this dispatch runs
+- 'The proposal correctly identifies the byte load at `ldrb r0, [r7,#oAIAttackVars_HitElement]` and the
+  jump table at off_810A940 with the three callees, and the `mov lr, pc; bx r1` trick is consistent. However,
+  calling the field ''HitElement'' is misleading: the table only has three entries corresponding to attack
+  phases (charge, end/reset, exit-after-delay), so this is really an attack phase/state selector, not
+  an element.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810A92C -> ai_dispatchAttackPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A92C

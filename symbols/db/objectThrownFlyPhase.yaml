@@ -1,0 +1,67 @@
+name: objectThrownFlyPhase
+address: '0x080D47C0'
+kind: function
+status: probable
+summary: Per-frame phase handler for a battle object thrown in an arc toward a target panel, integrating
+  X/Y/Z with gravity and on landing snapping to panel, setting panel type 4, playing sound 0x90, or aborting
+  to CurAction 2 if the panel is not solid.
+interface: (r5 = battle object pointer, no args) -> updates object velocities/position/panel state; r0
+  clobbered, flags used for time-stop early-out
+details: 'On first run (PhaseInitialized==0) it reads Param3/Param4 as target panel column/row, calls
+  math_getThrowSpeeds with frame count 0x3C (60) and gravity dword 0xFFFFE000 (-0x2000/frame), stores
+  the resulting X/Y/Z velocities, sets Timer2=60, ExtraVars+0xC=1 (in-flight flag), and marks itself initialized
+  with phase value 4. Each subsequent frame, once Timer2 drops below 5 it sets collision region 1 via
+  object_setCollisionRegion (making the falling body collideable just before impact); it then decrements
+  Timer2 and while it is still positive integrates X/Y position and Z, subtracting 0x2000 from ZVelocity
+  each frame and syncing collision panels to the new position. When the timer underflows, the object has
+  reached its target: if the target panel is solid it snaps coordinates from panel coords, zeroes Z, sets
+  the panel type to 4 via object_setPanelType, plays sound effect 0x90, clears the in-flight flag, and
+  switches to CurAction 8 phase 0; if the panel is not solid it instead switches to CurAction 2 (abort/destroy
+  path) and returns. battle_isTimeStop freezes the whole routine when time-stop is active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'math_getThrowSpeeds called with r4=60 frames and r0=0xFFFFE000 gravity, results stored to oBattleObject_X/Y/ZVelocity
+    at 80D4806''s setup block; flight loop at 80D4848 adds X/Y/ZVelocity to position and subtracts 0x2000
+    from ZVelocity each frame, then object_setPanelsFromCoordinates + object_updateCollisionPanels; landing
+    branch at 80D481E: object_isCurrentPanelSolid, object_setCoordinatesFromPanels, Z=0, object_setPanelType(x,y,4),
+    PlaySoundEffect(0x90), CurAction=8; non-solid branch at 80D4806''s tail sets CurAction=2, CurPhaseAndPhaseInitialized=0
+    and returns without landing; first-entry guard on oBattleObject_PhaseInitialized and Timer2=0x3C countdown
+    confirm a one-shot 60-frame arc animation'
+  refs:
+  - bn6f/asm/asm31.s:61849
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A098 battle_isTimeStop
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080D47C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct (throws arc to target panel, gravity 0xFFFFE000, Timer2=0x3C, collision
+    region 1 when Timer2<5, snap+panel type 4+sound 0x90+in-flight cleared), but it omits object_updateCollisionPanels
+    and object_setPanelsFromCoordinates, and the integration runs unconditionally only while Timer2>=0.
+    The action switch on solid panel is to CurAction=8 (proposal says phase 8 / phase 0, fine), and on
+    non-solid to CurAction=2 with phase cleared. Name fits but objectThrownFlyPhase is the clearest with
+    the chosen prefix.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which attack/spawner creates this object (no callers known), so the identity of the thrown thing and
+  the meaning of panel type 4 and sound 0x90 are unconfirmed
+- What CurAction 2 vs 8 mean in the owning object's action table
+- The summary is largely correct (throws arc to target panel, gravity 0xFFFFE000, Timer2=0x3C, collision
+  region 1 when Timer2<5, snap+panel type 4+sound 0x90+in-flight cleared), but it omits object_updateCollisionPanels
+  and object_setPanelsFromCoordinates, and the integration runs unconditionally only while Timer2>=0.
+  The action switch on solid panel is to CurAction=8 (proposal says phase 8 / phase 0, fine), and on non-solid
+  to CurAction=2 with phase cleared. Name fits but objectThrownFlyPhase is the clearest with the chosen
+  prefix.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D47C0 -> objectThrownFlyPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D47C0

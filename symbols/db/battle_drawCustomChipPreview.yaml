@@ -1,0 +1,62 @@
+name: battle_drawCustomChipPreview
+address: '0x080285FE'
+kind: function
+status: probable
+summary: Renders a chip preview (name text + tile/palette graphics) for the custom screen's chip picker,
+  then reloads Beast Out selection sprite sheets.
+interface: (r0 = chip id, masked with 0x1FF) -> r0 = undefined; queues GFX to VRAM 0x6009360 (name text)
+  and 0x6009560 (chip tiles), writes palette to unk_3001AA0
+details: Splits the chip id via chip_SelectNameTextTable_8027D10 and renders the chip-name glyphs to VRAM
+  0x6009360 through renderTextGfx_8045F8C with the toolkit state at byte_203C4E0 and glyph base dword_86B7AE0.
+  It then masks the id with 0x1FF and looks up the 44-byte chip record via getChip8021DA8. If the record's
+  field at +0x24 is non-zero (pointer to chip image data), it queues a 0x540-byte eight-word-aligned GFX
+  transfer of that data to 0x6009560 and a 0x20-byte palette from [+0x28] into unk_3001AA0. Finally it
+  reloads the Beast Out selection screen sprite sheets, so the preview coexists with that screen's graphics.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chip_SelectNameTextTable_8027D10 + bl renderTextGfx_8045F8C with dest 0x6009360 renders
+    chip-name text; and r0, r1(0x1FF) before bl getChip8021DA8 masks the raw value to a chip id; cmp [r4,#0x24],#0
+    / beq skips two QueueEightWordAlignedGFXTransfer calls: 0x540 bytes -> 0x6009560 and 0x20 bytes ->
+    unk_3001AA0 (tiles + palette); tail bl beastout_LoadSelectionScreenSpriteSheets_802869E ties it to
+    the Beast Out selection screen visuals; sole caller battleObject_runCustomScreenChipPickerEffect_8028476
+    is the custom-screen chip-use dispatcher'
+  refs:
+  - bn6f/asm/asm03_0.s:4789
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x0802869E beastout_LoadSelectionScreenSpriteSheets_802869E
+  - 0x08027D10 chip_SelectNameTextTable_8027D10
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x080285FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: it splits the chip id, renders name text to 0x6009360, queues chip tiles (0x540
+    bytes) to 0x6009560 and palette (0x20 bytes) to unk_3001AA0, then reloads BeastOut sprite sheets.
+    The name battle_drawCustomChipPreview fits the battle_/custom-screen context. However, the summary''s
+    phrase ''during the custom screen''s chip-use effect'' slightly overspecifies; it''s specifically
+    drawing a chip preview. A tighter summary is fine but the existing one is acceptable — I''ll revise
+    the name only to better reflect that this is a chip preview drawer for the custom screen.; run wf
+    investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of chip record fields +0x24/+0x28 (image vs. animation data)
+- whether unk_3001AD4 and the dword_8028644/864C/8654 constants are used by a sibling/switch-table path
+  rather than this entry
+- 'The code matches: it splits the chip id, renders name text to 0x6009360, queues chip tiles (0x540 bytes)
+  to 0x6009560 and palette (0x20 bytes) to unk_3001AA0, then reloads BeastOut sprite sheets. The name
+  battle_drawCustomChipPreview fits the battle_/custom-screen context. However, the summary''s phrase
+  ''during the custom screen''s chip-use effect'' slightly overspecifies; it''s specifically drawing a
+  chip preview. A tighter summary is fine but the existing one is acceptable — I''ll revise the name only
+  to better reflect that this is a chip preview drawer for the custom screen.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80285FE -> battle_drawCustomChipPreview
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80285FE

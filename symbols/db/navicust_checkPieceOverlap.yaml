@@ -1,0 +1,64 @@
+name: navicust_checkPieceOverlap
+address: '0x0813BB68'
+kind: function
+status: probable
+summary: Returns whether the placed NaviCust part, anchored with its 7x7 shape's top-left at (gridX-3,
+  gridY-3), overlaps any occupied cell of the 7x7 customizer board; on hit returns 1 with the obstructing
+  board cell's byte in r1, otherwise 0.
+interface: (r0 = passes through to ai_dispatchFromGlobalByte, r1 = unused, r2 = grid x, r3 = grid y) ->
+  r0 = 1 with r1 = overlapping board cell value, else r0 = 0; flags clobbered
+details: Gets the placed part's 7x7 shape buffer from ai_dispatchFromGlobalByte (part id read from the
+  global byte at 20096D8). Computes the board top-left as (x-3, y-3) and indexes the 7x7 board at *(toolkit->Unk200414c)
+  with (y-3)*7 + (x-3). A double loop over 7 rows x 7 cols skips cells outside 0..6 (so the part may hang
+  off the board edge), and for each in-range cell tests both shape[r3] and board[r3] bytes; if both are
+  nonzero it returns 1 in r0 and the board cell's value in r1, otherwise returns 0. The nonzero r1 return
+  gives the caller the id/value of the obstructing cell, which navicust_checkPiecePlacement presumably
+  uses to pick the failure dialog.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ai_dispatchFromGlobalByte; mov r7,r0 — r7 is the 7x7 shape buffer of the part being placed;
+    sub r1,#3 / sub r2,#3 ... mul r3,r2; add r3,r3,r1; add r6,r6,r3 — board pointer offset (y-3)*7+(x-3)
+    into toolkit Unk200414c; inner loop bounds cmp r1,#0 / cmp r1,#7 — out-of-grid cells of the centered
+    7x7 shape are ignored; ldrb r4,[r7,r3]; tst; ldrb r0,[r6,r3]; tst — returns 1 only when both the shape
+    cell and the board cell are nonzero; caller 0x08137378 navicust_checkPiecePlacement validates part
+    placement and shows failure dialogs, matching an overlap/collision test
+  refs:
+  - bn6f/asm/asm37_0.s:676
+  - 0x08137378 navicust_checkPiecePlacement
+  - 0x081371B0 sub_81371B0
+  - 0x0813BAEC sub_813BAEC
+  - 0x0813B790 ai_dispatchFromGlobalByte
+  reproduce: python3 tools/asmcat.py 0x0813BB68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and most details match (gridY-3)*7 + (gridX-3) board offset, 7x7 over-edge skip, both-nonzero
+    test, r0=1 with board cell value in r1 on hit). However the interface is wrong: r0 is not passed through
+    — the prologue str''s it then `bl ai_dispatchFromGlobalByte` overwrites r0 (line `bl ai_dispatchFromGlobalByte`
+    / `mov r7, r0`), so r0 is consumed as junk. Also on the miss path r1 is not ''unused'' — it holds
+    the stale r1 = gridX-3 from the prologue (`ldr r1, [sp,#8]; sub r1, #3`).; run wf investigate investigate-20261018-212108;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of r0 (passed through to the dispatcher) and the unused r1 argument
+- what the board cell byte values encode (part color vs part id) and how the caller uses the returned
+  r1 value
+- 'The summary and most details match (gridY-3)*7 + (gridX-3) board offset, 7x7 over-edge skip, both-nonzero
+  test, r0=1 with board cell value in r1 on hit). However the interface is wrong: r0 is not passed through
+  — the prologue str''s it then `bl ai_dispatchFromGlobalByte` overwrites r0 (line `bl ai_dispatchFromGlobalByte`
+  / `mov r7, r0`), so r0 is consumed as junk. Also on the miss path r1 is not ''unused'' — it holds the
+  stale r1 = gridX-3 from the prologue (`ldr r1, [sp,#8]; sub r1, #3`).'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813BB68 -> navicust_checkPieceOverlap
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BB68

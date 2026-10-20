@@ -1,0 +1,67 @@
+name: battle_initTimed1HpObject
+address: '0x080D4CA4'
+kind: function
+status: probable
+summary: 'Battle-object init routine: loads sprite 0x80 with its default animation, sets HP/MaxHP to 1,
+  Timer to 6000 and Timer2 to 3, spawns an optional visual effect for non-Param1=1 objects, allocates
+  a (0xE,0xF,3) collision slot, and enters CUR_STATE_UPDATE.'
+interface: (no args read; battle object pointer expected in r5, as for all object init callbacks) -> void;
+  sets oBattleObject_CurState to CUR_STATE_UPDATE on success
+details: Loads graphic (sprite_load with 0x80/0xC/0x35) plus animation data, zeroes CurAnim/CurAnimCopy,
+  applies setAnimation/sprite_update, and syncs flip from object_getFlip and pixel position from panel
+  coords. It zeroes Z, copies PanelXY into FuturePanelXY, sets NameID to 0xE3, HP and MaxHP to 1, Timer
+  to 0x1770 (6000 frames) and Timer2 to 3. If Param1 != 1 it copies the three halfwords at object+0x34
+  and spawns an effect object via spawn_t1_0x0_EffectObject with 0x10 added to the third value. It then
+  allocates a collision slot (object_createCollisionData); on failure it frees the object via object_freeMemory
+  and returns. On success it configures the collision with dimensions (0xE, 0xF, 3), clears/presents collision
+  state, and switches the object to its per-frame update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load(0x80,0xC,0x35) + sprite_loadAnimationData/setAnimation/shows standard object sprite
+    bring-up at the top; strh 1 into oBattleObject_HP and oBattleObject_MaxHP, and dword_80D4D30 = 0x1770
+    into oBattleObject_Timer (long-lived, 1-HP entity); object_createCollisionData failure path calls
+    object_freeMemory and returns without setting the state — typical init-or-die pattern; object_setupCollisionData
+    with r1=0xE, r2=0xF, r3=3 followed by clear/present collision sets up a small fixed hitbox; ldmia
+    [r5,#0x34] + spawn_t1_0x0_EffectObject guarded by Param1==1 shows an optional spawn-time visual effect
+  refs:
+  - bn6f/asm/asm31.s:62523
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D4CA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed summary closely: it loads sprite 0x80, animation data, zeroes CurAnim
+    fields, sets 1 HP, Timer 0x1770, Timer2 3, NameID 0xE3, sets up collision via object_createCollisionData/object_setupCollisionData
+    (0xe/0xf/3) and enters CUR_STATE_UPDATE. However, the callee at 0x08019... for collision setup is
+    object_setupCollisionData, not just ''clears/presents collision state'', and there is a spawn_t1 call
+    via spawn_t1_0x0_EffectObject, not ''spawn_t1_0x0_EffectObject with 0x10 added'' in detail language.
+    The prefix ''battle_'' in battle_initTimedOneHpObject is fine, but the existing fields (NameID 0xE3
+    = ''Timed1HPObject'') actually suggests this is a generic timed 1-HP object init. Better name: battle_initTimed1HpObject.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What entity sprite 0x80 / NameID 0xE3 actually is (sprite/texture table would tell) — name may need
+  adjusting once identified
+- Meaning of Timer2=3 and of Param1 (caller unknown, so the no-effect variant's purpose is unconfirmed)
+- Exact semantics of object_setupCollisionData's (0xE, 0xF, 3) arguments (offsets vs. size fields)
+- 'The code matches the proposed summary closely: it loads sprite 0x80, animation data, zeroes CurAnim
+  fields, sets 1 HP, Timer 0x1770, Timer2 3, NameID 0xE3, sets up collision via object_createCollisionData/object_setupCollisionData
+  (0xe/0xf/3) and enters CUR_STATE_UPDATE. However, the callee at 0x08019... for collision setup is object_setupCollisionData,
+  not just ''clears/presents collision state'', and there is a spawn_t1 call via spawn_t1_0x0_EffectObject,
+  not ''spawn_t1_0x0_EffectObject with 0x10 added'' in detail language. The prefix ''battle_'' in battle_initTimedOneHpObject
+  is fine, but the existing fields (NameID 0xE3 = ''Timed1HPObject'') actually suggests this is a generic
+  timed 1-HP object init. Better name: battle_initTimed1HpObject.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4CA4 -> battle_initTimed1HpObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4CA4

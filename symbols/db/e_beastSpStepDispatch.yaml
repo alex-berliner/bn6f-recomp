@@ -1,0 +1,60 @@
+name: e_beastSpStepDispatch
+address: '0x081368D4'
+kind: function
+status: probable
+summary: Dispatches one step of the beast-SP cutscene state machine by tail-calling the handler selected
+  from off_81368E8 by the step index at [r5+3]; entries 0-6 idle in sub_813691C, then run battle_beginInit,
+  pet_naviHealCutsceneStep, battle_beastOutTimerTick, sub_8136A74, e_waitChatboxThenFadeOut, and sub_8136AE8.
+interface: (r5 = cutscene/object state struct, r5+3 = step index) -> calls handler via lr, returns handler's
+  r0; no flags guaranteed
+details: 'Loads the byte at r5+3 (a step/phase counter) and uses it to index a 13-entry table of thumb
+  handler addresses at off_81368E8, then performs a tail-call (mov lr, pc; bx r0) so each handler returns
+  straight to this function''s caller. Entries 0-6 all point to sub_813691C, apparently an idle/wait step
+  reused for several phases; the later entries branch into real work: battle_beginInit, pet_naviHealCutsceneStep,
+  sub_8136A0C, sub_8136A74, e_waitChatboxThenFadeOut, and sub_8136AE8. The mix of battle init, pet navi
+  heal cutscene, and chatbox-then-fade handlers suggests this drives a multi-phase cutscene object rather
+  than a generic script VM.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#3]; ldr r0,[r0,r1] — state byte at r5+3 indexes the handler table at off_81368E8;
+    mov lr, pc; bx r0 — tail-call pattern, so r5 state is the only meaningful input; entries 0-6 all =
+    sub_813691C — several phases share one (likely wait/do-nothing) handler; table mixes battle_beginInit,
+    pet_naviHealCutsceneStep and e_waitChatboxThenFadeOut — cutscene-sequence step handlers; recorded
+    route 'beastsp' — only known runtime context for this dispatcher
+  refs:
+  - bn6f/asm/asm36.s:13694
+  reproduce: python3 tools/asmcat.py 0x081368D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch structure is correct: ldrb r1, [r5,#3] indexes off_81368E8 (13 entries) and mov lr,pc/bx
+    r0 tail-calls the handler. However the proposal misidentifies entry 8 (battle_beginInit is correct)
+    but entry 10 is battle_beastOutTimerTick, not sub_8136A0C. Also note entry 0-6 (seven entries) point
+    to sub_813691C. The ''beastSp'' route context supports a beast-SP specific cutscene dispatcher.; run
+    wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- No caller is known, so the owner struct r5 (its base pointer, allocation, and where +3 is incremented)
+  is unidentified.
+- sub_813691C, sub_8136A0C, sub_8136A74 and sub_8136AE8 are unnamed, so the individual steps' meanings
+  are unconfirmed.
+- Which exact cutscene (Beast Out / Beast Over / other 'beastsp' scene) this dispatcher belongs to is
+  inferred only from the recorded route, not from the code.
+- 'The dispatch structure is correct: ldrb r1, [r5,#3] indexes off_81368E8 (13 entries) and mov lr,pc/bx
+  r0 tail-calls the handler. However the proposal misidentifies entry 8 (battle_beginInit is correct)
+  but entry 10 is battle_beastOutTimerTick, not sub_8136A0C. Also note entry 0-6 (seven entries) point
+  to sub_813691C. The ''beastSp'' route context supports a beast-SP specific cutscene dispatcher.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81368D4 -> e_beastSpStepDispatch
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81368D4

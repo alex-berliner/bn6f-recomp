@@ -1,0 +1,60 @@
+name: ai_dispatchAttackHandler
+address: '0x081032F4'
+kind: function
+status: probable
+summary: AI attack dispatcher indexed by the HitElement byte in the AI attack vars, long-calling one of
+  six thumb handlers from a table at off_8103308 to run the selected attack step (battlesweep, multi-shot,
+  etc.).
+interface: (r7 = pointer to AI attack vars) -> r0 = handler's return value (untouched), control returns
+  to caller; clobbers lr
+details: 'Loads a byte from the AI attack state at [r7, oAIAttackVars_HitElement], uses it to index a
+  jump table at off_8103308, and performs a long call (mov lr, pc; bx r1) into the selected handler, then
+  returns via pop {r7,pc}. The table holds five thumb pointers: two unknown subs, ai_battlesweepStep,
+  sub_81033CE, and ai_stepMultiShotAttack, so the field selects which attack pattern/step the battlesweep
+  enemy executes. The field name ''HitElement'' is likely a mislabel from the struct definition; its real
+  role here is an attack-kind selector. Values outside 0–4 would read past the table into off_8103308''s
+  own words, so callers presumably clamp it. r7 is preserved but not otherwise touched, so it is a context/this
+  pointer for the AI object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement]; ldr r1, [r1,r0] — table index taken from the AI attack-var
+    struct; mov lr, pc; bx r1 — long-branch call into selected handler, return value passed through; jump
+    table contains ai_battlesweepStep and ai_stepMultiShotAttack — dispatches among battlesweep attack
+    routines; executed on recorded battlesweep routes — belongs to that enemy's AI; no other registers
+    touched — pure trampoline/dispatcher with r7 as context
+  refs:
+  - bn6f/asm/asm31.s:160786
+  reproduce: python3 tools/asmcat.py 0x081032F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch logic matches: ldrb r0,[r7,#oAIAttackVars_HitElement], table at off_8103308, mov lr,pc/bx
+    r1. However, the table actually holds six thumb pointers (sub_8103320+1, ai_battlesweepStep+1, sub_81033AC+1,
+    sub_81033CE+1, ai_stepMultiShotAttack+1, sub_8103452+1), not five, so values 0–5 are valid; the proposal''s
+    claim of ''five'' and ''outside 0–4'' is wrong. The name ''ai_dispatchAttackHandler'' is fine; consider
+    emphasizing it is the battlesweep attack dispatcher since it is only recorded on the battlesweep route.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8103320, sub_81033AC, sub_81033CE and sub_8103452 do, to confirm each table slot's attack kind
+- whether oAIAttackVars_HitElement is the right field name for what is really an attack-index selector
+- the valid range of the index and what callers set it to
+- 'The dispatch logic matches: ldrb r0,[r7,#oAIAttackVars_HitElement], table at off_8103308, mov lr,pc/bx
+  r1. However, the table actually holds six thumb pointers (sub_8103320+1, ai_battlesweepStep+1, sub_81033AC+1,
+  sub_81033CE+1, ai_stepMultiShotAttack+1, sub_8103452+1), not five, so values 0–5 are valid; the proposal''s
+  claim of ''five'' and ''outside 0–4'' is wrong. The name ''ai_dispatchAttackHandler'' is fine; consider
+  emphasizing it is the battlesweep attack dispatcher since it is only recorded on the battlesweep route.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81032F4 -> ai_dispatchAttackHandler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81032F4

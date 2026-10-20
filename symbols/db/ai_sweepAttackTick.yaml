@@ -1,0 +1,59 @@
+name: ai_sweepAttackTick
+address: '0x08115876'
+kind: function
+status: probable
+summary: 'Per-frame tick for the battlesweep enemy''s attack: decrements StepTimer each frame and, on
+  reaching zero, calls sub_80B87AC with the panel-choose callback/damage/target panel, reloads StepTimer
+  with 0x3F, stores 8 as the hit element, and highlights the target panel via ai_sweepHighlightTargetPanel.'
+interface: (r0-r3 unused on entry; uses AI struct at r7) -> no return value; clobbers r0-r3, flags
+details: 'Reads the AI attack variable block at r7: it decrements oAIAttackVars_StepTimer, and on reaching
+  zero calls sub_80B87AC with (PanelChooseCallback, Damage, TargetPanelX, TargetPanelY) — presumably spawning
+  the sweep''s hit/attack effect on the marked panel — then reloads StepTimer with 0x3F so the attack
+  repeats every 63 frames and writes 8 (an element/type constant) into oAIAttackVars_HitElement. The ChargeCycles-vs-StepTimer
+  comparison at the top has an empty branch body and no effect. Every invocation ends with ai_sweepHighlightTargetPanel,
+  which blinks the stored target panel on alternating ticks.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh/bne on oAIAttackVars_StepTimer: counts down and acts only on zero (loc_811589E skip);
+    bl sub_80B87AC with (callback, damage, panelX, panelY) loaded from the AI struct — one-shot attack
+    invocation; strh #0x3F into StepTimer right after the call: periodic retrigger; strh #8 into oAIAttackVars_HitElement:
+    sets the attack''s element on each fire; unconditional bl ai_sweepHighlightTargetPanel keeps the target
+    panel marker animating every frame'
+  refs:
+  - bn6f/asm/asm32.s:15341
+  - 0x0811590A ai_sweepHighlightTargetPanel
+  - 0x080B87AC sub_80B87AC
+  reproduce: python3 tools/asmcat.py 0x08115876
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The decremented value at line 811587A is #1, not #2, so it ticks every frame rather than every other
+    frame. The initial ChargeCycles-vs-StepTimer branch at 8115880 has no body, so it has no effect, but
+    it still suggests a readiness check. The function never reads r0-r3 on entry; it reads AI struct fields
+    at r7. The behavior matches ''per-frame tick for the sweep attack'' — name and summary are essentially
+    correct, but the decrement detail is wrong.; run wf investigate investigate-20261018-222121; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- sub_80B87AC is unknown — its behavior (panel attack vs. something else) would confirm the summary
+- meaning of HitElement=8 and of PanelChooseCallback are unverified
+- the dead ChargeCycles comparison suggests unfinished or leftover logic; its original intent is unclear
+- 'The decremented value at line 811587A is #1, not #2, so it ticks every frame rather than every other
+  frame. The initial ChargeCycles-vs-StepTimer branch at 8115880 has no body, so it has no effect, but
+  it still suggests a readiness check. The function never reads r0-r3 on entry; it reads AI struct fields
+  at r7. The behavior matches ''per-frame tick for the sweep attack'' — name and summary are essentially
+  correct, but the decrement detail is wrong.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115876 -> ai_sweepAttackTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115876

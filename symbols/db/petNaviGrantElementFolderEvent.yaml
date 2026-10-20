@@ -1,0 +1,61 @@
+name: petNaviGrantElementFolderEvent
+address: '0x0809CDD4'
+kind: function
+status: probable
+summary: Reloads the current PET navi's stats and, if petNaviTryGiveElementFolder reports a count, runs
+  one of three chatbox scripts (idx 0x33 default, 0x34 when count==0xf, 0x32 when count==0x10) from archive
+  4, then returns 0.
+interface: () -> r0 = 0 always; r0-r1 clobbered by callees
+details: 'First it reads the currently selected PET navi; if none is set it calls sub_809CE40 (some default/empty
+  handler), otherwise reloadCurNaviBaseStats. It then always calls reloadCurNaviStatBoosts, and calls
+  petNaviTryGiveElementFolder with arg 0 (element 0x22). If that call returns nonzero (r1 holds some count),
+  it selects a text script: 0x32 when the count is 0x10, 0x34 when 0xf, otherwise 0x33 — likely ''folder
+  granted / full / failed'' variants — and runs it from the archive pointed to by byte_809CEAC+4 (0x4).
+  The return value is 0 in every path, so callers presumably ignore it or use it as a ''done'' flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetCurPETNavi; tst/bne picks sub_809CE40 vs reloadCurNaviBaseStats — only runs for the active
+    PET navi; bl petNaviTryGiveElementFolder_8120D10 with r0=0; its known summary says it grants the element
+    0x22 folder by chip-count thresholds; cmp r1,#0x10 / #0xf select script indices 0x32/0x34/0x33 before
+    bl chatbox_runScript (archive from byte_809CEAC+4); bl reloadCurNaviStatBoosts_813c3ac unconditionally
+    after the base-stat reload; mov r0,#0 on every exit path; return value is constant'
+  refs:
+  - bn6f/asm/asm28_0.s:5201
+  - 0x080010B6 GetCurPETNavi
+  - 0x08040384 chatbox_runScript
+  - 0x08120D10 petNaviTryGiveElementFolder_8120D10
+  reproduce: python3 tools/asmcat.py 0x0809CDD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The flow matches: GetCurPETNavi -> (sub_809CE40 or reloadCurNaviBaseStats) -> reloadCurNaviStatBoosts
+    -> petNaviTryGiveElementFolder(0) -> chatbox_runScript based on r1 count (0x10/0xf/else). However
+    the proposal claims r0 is the script index (0x32/0x34/0x33) and r1 is set to it before the call, but
+    chatbox_runScript takes (archive, script_idx), so r0 is the archive and r1 is the index — the code
+    does `mov r1, r0` then loads r0 from byte_809CEAC+4. The summary is otherwise accurate but the script-idx
+    names should be 0x33/0x34/0x32 not 0x32/0x34/0x33.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_809CE40 does when no PET navi is selected
+- Which TextScriptArchive byte_809CEAC+4 refers to and the exact wording of scripts 0x32/0x34/0x33
+- What r1 returned by petNaviTryGiveElementFolder counts (chip total vs threshold) and why 0x10/0xf get
+  different scripts
+- 'The flow matches: GetCurPETNavi -> (sub_809CE40 or reloadCurNaviBaseStats) -> reloadCurNaviStatBoosts
+  -> petNaviTryGiveElementFolder(0) -> chatbox_runScript based on r1 count (0x10/0xf/else). However the
+  proposal claims r0 is the script index (0x32/0x34/0x33) and r1 is set to it before the call, but chatbox_runScript
+  takes (archive, script_idx), so r0 is the archive and r1 is the index — the code does `mov r1, r0` then
+  loads r0 from byte_809CEAC+4. The summary is otherwise accurate but the script-idx names should be 0x33/0x34/0x32
+  not 0x32/0x34/0x33.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809CDD4 -> petNaviGrantElementFolderEvent
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CDD4

@@ -1,0 +1,66 @@
+name: ow_endScenarioEffect
+address: '0x0809CD44'
+kind: function
+status: probable
+summary: 'Tears down the active scenario effect: queues PET effect 1, reinitializes scenario effect state
+  at 0x2000780, zeroes the 0x48-byte work struct at 0x2001010, clears the active flag (bit 7) at 0x2000780,
+  and acks the pending-event flag byte at eStruct2001010.'
+interface: (no args) -> r0 = 0; queues PET effect 1, clears effect state at 0x2000780 bit 7 and eStruct2001010
+  event bit 7
+details: The routine unconditionally queues PET effect index 1 (doPETEffect_8033fc0 with r0=1), reinitializes
+  the scenario effect state block at 0x2000780 via scenario_initEffectState_8003962, zeroes the 0x48-byte
+  work struct at 0x2001010 via zeroFill_8003AB2, then clears the effect-active bit (bit 7) at 0x2000780
+  and clears the new-event bit (bit 7) of the flag byte in eStruct2001010. It always returns 0 and ignores
+  the callee results. The sequence reads as a 'reset/tear down all active effects' used when an overworld
+  scenario effect (e.g. a PET effect like a virus or rank change) must be forcibly ended. No caller is
+  known, so the exact trigger point in the game is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#1; bl doPETEffect_8033fc0 queues PET effect 1 before any state reset; bl scenario_initEffectState_8003962
+    then bl scenario_ClearEffectActiveFlag_800399A reinit then deactivate 0x2000780; bl zeroFill_8003AB2
+    clears the eStruct2001010 work area used by the effect/event system; bl event_ackNewFlagByte_8003AEA
+    clears the fresh-event bit so the effect is no longer pending; mov r0,#0 / pop returns success unconditionally
+    with no input arguments
+  refs:
+  - bn6f/asm/asm28_0.s:5126
+  - 0x08033FC0 doPETEffect_8033fc0
+  - 0x08003AEA event_ackNewFlagByte_8003AEA
+  - 0x0800399A scenario_ClearEffectActiveFlag_800399A
+  reproduce: python3 tools/asmcat.py 0x0809CD44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The asm matches the described sequence exactly: it pushes lr/r4-r7, queues PET effect 1, inits scenario
+    effect state, zeroes the work struct, clears bit 7 of the 0x2000780 flag, acks the new-flag byte at
+    eStruct2001010, returns 0. However, the order of callees in the proposal differs (proposal says clear
+    happens before init, and lists ack last), while code does init → zero → clearFlag → ack. Functionally
+    equivalent for the ''tear down'' purpose, but a small naming tweak is warranted: ''ow_clearScenarioEffects''
+    implies only scenario effects, yet the routine also queues a PET effect, so ''clearScenarioAndPetEffects''
+    or ''ow_endScenarioEffect'' is more accurate. A simpler lowerCamel name using an allowed prefix is
+    preferable; ''ow_endScenarioEffect'' fits.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the in-game trigger (menu option, script opcode, or event handler) is unconfirmed
+- Exact meaning of PET effect index 1 (presumably the 'cancel active effect' effect) is inferred only
+  from effect 3's contrast in doPETEffect_8033fc0
+- 'The asm matches the described sequence exactly: it pushes lr/r4-r7, queues PET effect 1, inits scenario
+  effect state, zeroes the work struct, clears bit 7 of the 0x2000780 flag, acks the new-flag byte at
+  eStruct2001010, returns 0. However, the order of callees in the proposal differs (proposal says clear
+  happens before init, and lists ack last), while code does init → zero → clearFlag → ack. Functionally
+  equivalent for the ''tear down'' purpose, but a small naming tweak is warranted: ''ow_clearScenarioEffects''
+  implies only scenario effects, yet the routine also queues a PET effect, so ''clearScenarioAndPetEffects''
+  or ''ow_endScenarioEffect'' is more accurate. A simpler lowerCamel name using an allowed prefix is preferable;
+  ''ow_endScenarioEffect'' fits.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809CD44 -> ow_endScenarioEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CD44

@@ -1,0 +1,65 @@
+name: ai_attackLand
+address: '0x080EC2EA'
+kind: function
+status: probable
+summary: 'Per-frame AI attack landing: at StepTimer==3 spawns a t1 landing-marker effect at the FuturePanel
+  pixel coords; once the timer underflows, commits FuturePanelX/Y to PanelX/Y, frees the panel reservation,
+  refreshes pixel/collision panel data, zeroes Z, clears the 0x400000 flag, drops invulnerability, applies
+  the 0x8 battle-effect self-damage (10 hp), sets collision region to 1, and exits the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value
+details: Reads oAIAttackVars_StepTimer; while it equals 3 it converts oBattleObject_FuturePanelX/Y to
+  pixel coordinates and spawns a t1 effect object (r3=0x1E<<16, r4=0x13), likely a landing marker. Each
+  tick decrements the timer; when it goes negative the object's FuturePanelX/Y are copied into oBattleObject_PanelX/Y,
+  the previously reserved panel is freed (object_removePanelReserve), pixel coordinates and collision
+  panels are recomputed, and Z is set to 0 (ground level). It then clears ObjectFlags1 bit 0x400000 (likely
+  an airborne/no-interaction flag), clears invulnerability, applies battle-effect self damage (effect
+  flag 0x8 writes 10 damage, e.g. harmful panel terrain), sets collision region to 1 (own panel), and
+  calls object_exitAttackState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#3 / bl spawn_t1_0x0_EffectObject with FuturePanel coords: effect spawned at target
+    panel while timer==3; strb FuturePanelX/Y -> oBattleObject_PanelX/Y then object_removePanelReserve
+    + object_setCoordinatesFromPanels: object moves to the target panel; bl object_clearFlag with 0x400000
+    and object_clearInvulnerableTime: re-enables interaction after landing; bl battle_applySelfDamageFromBattleEffect_80142C2
+    and object_setCollisionRegion(1): applies panel-based self damage and full-panel collision on landing;
+    object_exitAttackState at end: this is one state step of an AI attack routine'
+  refs:
+  - bn6f/asm/asm31.s:112712
+  - 0x080142C2 battle_applySelfDamageFromBattleEffect_80142C2
+  - 0x0801A15C object_clearFlag
+  - 0x0800EB08 object_clearInvulnerableTime
+  reproduce: python3 tools/asmcat.py 0x080EC2EA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the timer-driven landing flow: at StepTimer==3 it telegraphs a
+    t1 effect at the FuturePanel pixel coords (asm lines 0x080EC2F6-0x080EC304), and when the timer underflows
+    it copies FuturePanel into PanelX/Y, frees the panel reserve, recomputes pixel coords and collision
+    panels, zeroes Z, clears the 0x400000 flag, ends invulnerability, applies the 0x8 battle-effect self-damage,
+    sets region 1, and exits the attack state (lines 0x080EC314-0x080EC340). The summary matches the code;
+    only the name ''ai_attackLandOnPanel'' could be tightened to ''ai_attackLand'' since the ''OnPanel''
+    suffix is implied by the FuturePanel→Panel copy.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which attack/enemy uses this handler (no known caller), to name it after the specific move
+- Exact meaning of ObjectFlags1 bit 0x400000 and the t1 effect spawned (marker visual)
+- 'The proposal correctly identifies the timer-driven landing flow: at StepTimer==3 it telegraphs a t1
+  effect at the FuturePanel pixel coords (asm lines 0x080EC2F6-0x080EC304), and when the timer underflows
+  it copies FuturePanel into PanelX/Y, frees the panel reserve, recomputes pixel coords and collision
+  panels, zeroes Z, clears the 0x400000 flag, ends invulnerability, applies the 0x8 battle-effect self-damage,
+  sets region 1, and exits the attack state (lines 0x080EC314-0x080EC340). The summary matches the code;
+  only the name ''ai_attackLandOnPanel'' could be tightened to ''ai_attackLand'' since the ''OnPanel''
+  suffix is implied by the FuturePanel→Panel copy.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC2EA -> ai_attackLand
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC2EA

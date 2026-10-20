@@ -1,0 +1,56 @@
+name: start_initBattleScene
+address: '0x0803CCFC'
+kind: function
+status: probable
+summary: 'Initialises a fresh battle scene: resets graphics state, starts bgm 0x63, sets up battle fade
+  gfx state, arms a screen fade-in, and stores 4 to [r5] as the new scene/flow state.'
+interface: () -> void; r5 must point to the scene-state byte (assumed set by caller); writes 4 to [r5]
+details: Calls chatbox_8040818 (likely chatbox reset), applies toolkit overlay palette 0x16, and writes
+  LCD control 0x1F40 (DISPCNT-style) via SetRenderInfoLCDControl. Then clears the render info counters
+  (renderInfo_8001788/80017A0) and performs a full graphics reset (VRAM/WRAM/palettes/render info, dummy
+  BG scroll callbacks) plus one setup step whose work area is wiped. It initialises the battle fade graphics
+  state struct, runs unknown helper sub_803CD58, starts bg music 0x63, and calls SetScreenFade(8, 8) to
+  arm a fade-in. Finally it stores byte 4 to [r5], presumably the caller's scene/flow state variable.
+  The [r5] use with no prior assignment suggests r5 is caller-set-up scene context.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_initBattleFadeGfxState_80027C4 ties the scene to the battle fade pipeline; bl resetAllGraphicsState_8005F40
+    + runSetupStepAndClearWorkArea_8005F6C = full scene graphics reset; SetRenderInfoLCDControl with dword
+    0x1F40 programs the frame's LCD control; mov r0,#0x63; bl music_80005F2 starts bg music track 0x63;
+    mov r0,#4; strb r0,[r5] sets a scene-state byte at entry end
+  refs:
+  - bn6f/asm/asm03_1_1.s:8384
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08001788 renderInfo_8001788
+  - 0x080017A0 renderInfo_80017A0
+  reproduce: python3 tools/asmcat.py 0x0803CCFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function clearly initializes a battle scene (resets graphics, starts music 0x63, sets up battle
+    fade, arms fade-in), but the name ''start_initFadeInScene'' is awkward. The callee sprite_initBattleFadeGfxState_80027C4
+    suggests this is battle-specific, not just a generic fade-in scene. A cleaner name like ''start_initBattleScene''
+    better captures the battle context and the fade-in purpose.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_803CD58 does and which scene this is (battle entry vs cutscene)
+- Who calls sub_803CCFC and what structure r5 points to (scene/flow state enum meaning of value 4)
+- What music track 0x63 is, to identify the scene
+- What chatbox_8040818 does (close vs init)
+- The function clearly initializes a battle scene (resets graphics, starts music 0x63, sets up battle
+  fade, arms fade-in), but the name 'start_initFadeInScene' is awkward. The callee sprite_initBattleFadeGfxState_80027C4
+  suggests this is battle-specific, not just a generic fade-in scene. A cleaner name like 'start_initBattleScene'
+  better captures the battle context and the fade-in purpose.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CCFC -> start_initBattleScene
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CCFC

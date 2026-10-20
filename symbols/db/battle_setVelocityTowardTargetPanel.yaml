@@ -1,0 +1,59 @@
+name: battle_setVelocityTowardTargetPanel
+address: '0x08113CC8'
+kind: function
+status: probable
+summary: Sets a battle object's XVelocity/YVelocity and a duration byte at +0x6E so it moves from its
+  current panel to a target panel at offsets +0x6C/+0x6D, using 16.16 fixed-point velocity ±0x140000 on
+  the non-zero axis and a diagonal ratio from SWI 6 (svc 6) signed division on the other axis.
+interface: (r5 = battle object; r0/r1 unused on entry) -> r0 = 0 on return; writes oBattleObject_XVelocity/YVelocity
+  and byte +0x6E (frame counter)
+details: Reads the object's current PanelX/PanelY and a target stored at offsets 0x6C/0x6D, then computes
+  deltas. If dx != 0, XVelocity is set to ±0x140000 (20 px/frame, sign of dx) and YVelocity = 0x180000
+  * dx / dy via SWI 6 signed division (so the path is diagonal toward the target); otherwise YVelocity
+  = ±0xC0000 alone. The counter byte at +0x6E is set to 2*delta (of the non-zero axis), acting as the
+  duration of the dash, and is set to 1 when already at the target. Uses the standard BN6 battle-object
+  layout (oBattleObject_* fields); velocity values are 16.16 fixed point.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb of oBattleObject_PanelX/Y minus bytes at +0x6C/+0x6D gives target deltas; str of 0x140000/0xC0000
+    into oBattleObject_XVelocity/YVelocity with sign fixups; svc 6 divides 0x180000*dx by dy to scale
+    YVelocity; strb of 2*delta at offset 0x6E, or 1 when both deltas are zero; caller sub_811393A and
+    neighbors (sub_8113840, sub_8114214) are in the battle-object AI dispatch table off_8113D50
+  refs:
+  - bn6f/asm/asm32.s:12083
+  - 0x0811393A ai_attackHitTarget
+  reproduce: python3 tools/asmcat.py 0x08113CC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s core mechanics match: PanelX/PanelY vs +0x6C/0x6D deltas drive XVelocity (±0x140000),
+    and SVC 6 divides Y delta by X delta for diagonal motion (lines setting dword_8113D44, mul+svc 6).
+    However the proposal mislabels the divisor direction: code computes (0x180000 * dy) / dx (mul r1,r2;
+    mov r2,r0; svc 6 yields dy/dx ratio), not ''dx/dy'' as written. The +0x6E counter is set to 2*|dx|
+    or 2*|dy|, or 1 when delta is zero (loc_8113D2A), which is correct. The name is fine but ''setVelocityTowardTarget''
+    better matches; calling it ''frame counter'' is fine since it doubles the panel distance to give a
+    duration.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what enemy/attack uses this movement (caller context needed to confirm which object)
+- exact meaning of the +0x6E counter field downstream
+- 'The summary''s core mechanics match: PanelX/PanelY vs +0x6C/0x6D deltas drive XVelocity (±0x140000),
+  and SVC 6 divides Y delta by X delta for diagonal motion (lines setting dword_8113D44, mul+svc 6). However
+  the proposal mislabels the divisor direction: code computes (0x180000 * dy) / dx (mul r1,r2; mov r2,r0;
+  svc 6 yields dy/dx ratio), not ''dx/dy'' as written. The +0x6E counter is set to 2*|dx| or 2*|dy|, or
+  1 when delta is zero (loc_8113D2A), which is correct. The name is fine but ''setVelocityTowardTarget''
+  better matches; calling it ''frame counter'' is fine since it doubles the panel distance to give a duration.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8113CC8 -> battle_setVelocityTowardTargetPanel
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113CC8

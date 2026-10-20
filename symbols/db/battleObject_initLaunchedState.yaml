@@ -1,0 +1,63 @@
+name: battleObject_initLaunchedState
+address: '0x080DB324'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s launched-away state: sets flag bit 2, loads sprite 0xC62, applies
+  directional forward/up velocity and backward position shift, sets a 16-frame timer, plays sound 0xC4,
+  sets hit-effect type 0xA, clears its collision region, and transitions to CUR_STATE_UPDATE.'
+interface: (r5 = battle object pointer, no args) -> r0 = clobbered; sets oObjectHeader_Flags bit 1, X/Z
+  velocity and position, Timer, CurState on the object
+details: Sets flag bit 0x2 in the object header, then initializes sprite 0xC62 via battleObject_initSpriteAndCollision
+  with packed params 0x15050300. Reads the object's front direction (+1/-1 by alliance), sets XVelocity
+  = dir*0x100000 and ZVelocity = 0x100000, shifts X backward by dir*-0x1000000 and sets Z = 0x1000000
+  (one panel-unit displacement, likely fixed-point). Sets Timer to 16 (0x10), plays sound effect 0xC4,
+  stores hit-effect type 0xA into the collision data, then clears the collision region so the object no
+  longer participates in collision, and writes CUR_STATE_UPDATE to oBattleObject_CurState. The backward
+  offset plus forward/upward drift with collision removed reads as a 'knocked/flown away' visual state
+  for a battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, =0xC62 + bl battleObject_initSpriteAndCollision_8011504: loads this object''s battle
+    sprite; bl object_getFrontDirection; mul into XVelocity and neg for X offset: movement is mirrored
+    by alliance side; str 0x100000 into X/ZVelocity and 0x1000000 into X/Z: fixed-point drift away from
+    the front position; mov r0,#0xC4; bl PlaySoundEffect and mov r0,#0xA; bl object_setCollisionHitEffect:
+    launch sound and hit-effect kind; bl object_clearCollisionRegion then strb CUR_STATE_UPDATE to oBattleObject_CurState:
+    object goes non-colliding and enters its update loop'
+  refs:
+  - bn6f/asm/asm31.s:76160
+  - 0x080005CC PlaySoundEffect
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DB324
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details are accurate against the asm: flag bit 2 set, sprite 0xC62 loaded via battleObject_initSpriteAndCollision
+    with 0x15050300, XVelocity=dir*0x100000/ZVelocity=0x100000, X shifted by dir*-0x1000000 and Z set
+    to 0x1000000, Timer=0x10, PlaySoundEffect(0xC4), object_setCollisionHitEffect(0xA), object_clearCollisionRegion,
+    CurState=CUR_STATE_UPDATE. No caller is known, so the ''blown away'' interpretation is a best guess.
+    Name is acceptable but could be more neutral.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which attack or enemy uses this state (sprite 0xC62's identity) — a caller/state table would confirm
+  the in-game context
+- Exact fixed-point scaling of the X/Z position and velocity fields
+- Meaning of flag bit 0x2 in oObjectHeader_Flags and hit-effect ID 0xA
+- 'The summary and details are accurate against the asm: flag bit 2 set, sprite 0xC62 loaded via battleObject_initSpriteAndCollision
+  with 0x15050300, XVelocity=dir*0x100000/ZVelocity=0x100000, X shifted by dir*-0x1000000 and Z set to
+  0x1000000, Timer=0x10, PlaySoundEffect(0xC4), object_setCollisionHitEffect(0xA), object_clearCollisionRegion,
+  CurState=CUR_STATE_UPDATE. No caller is known, so the ''blown away'' interpretation is a best guess.
+  Name is acceptable but could be more neutral.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB324 -> battleObject_initLaunchedState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB324

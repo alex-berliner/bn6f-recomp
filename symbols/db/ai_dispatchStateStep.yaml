@@ -1,0 +1,62 @@
+name: ai_dispatchStateStep
+address: '0x080FB5B8'
+kind: function
+status: probable
+summary: Loads a state index byte from the AI struct at r7, uses it to index a 5-entry handler table,
+  and tail-calls (mov lr,pc; bx r1) the selected handler, returning via pop {r7,pc}.
+interface: (r7 = pointer to AI state struct, r0 = state index loaded from [r7]) -> r0 = state index passed
+  to handler; returns via pop {r7,pc}, LR clobbered by long call
+details: 'Loads a byte from the struct at r7, uses it to index a 5-entry handler table at off_80FB5CC,
+  and long-calls the handler (mov lr,pc; bx r1). The table entries are per-state routines: sub_80FB5E0,
+  ai_moveObjectToTargetPanel, battle_stepPreActionWait, sub_80FB6C0, and object_attackStateTimerTick —
+  i.e. movement, pre-action wait, and attack-timer steps, consistent with an enemy AI state machine on
+  the battle field. The state index in r0 is forwarded to the handler as its first argument. r7 is preserved
+  by the push/pop pair, matching the frame-pointer convention used by AI state code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7] then ldr r1,[r1,r0]: state byte used as table index; off_80FB5CC entries are ai_moveObjectToTargetPanel,
+    battle_stepPreActionWait, object_attackStateTimerTick — per-state AI step handlers; mov lr,pc; bx
+    r1 is the long-call trampoline used everywhere for Thumb code crossing ranges; push/pop r7 shows r7
+    is a frame pointer to a persistent AI state struct, not scratch'
+  refs:
+  - bn6f/asm/asm31.s:144187
+  reproduce: python3 tools/asmcat.py 0x080FB5B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and dispatch logic are correct. However, `r0` is loaded as a byte from [r7] but is then
+    used to index a word table via `ldr r1, [r1,r0]` without shift, so the byte is used as a full word
+    index (indices 0..4 map to separate entries). On Thumb, `ldrb` returns 0..255 and the address `off_80FB5CC+4*r0`
+    is used, so values >4 would read out-of-bounds — fine semantically. The name ''ai_dispatchStateStep''
+    is reasonable but since this function is called by routes ''battlesweep, chips'' and is a generic
+    small dispatcher, and the proposed name is fine. Keeping the name but trimming the summary is unnecessary;
+    the main issue is naming consistency. I''ll keep the name but note the call sites dispute its exclusivity
+    to enemy AI.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact layout of the AI state struct r7 points to
+- meaning of the two unknown handlers sub_80FB5E0 and sub_80FB6C0 (likely idle/step-in states)
+- which callers set up r7 before entry
+- The summary and dispatch logic are correct. However, `r0` is loaded as a byte from [r7] but is then
+  used to index a word table via `ldr r1, [r1,r0]` without shift, so the byte is used as a full word index
+  (indices 0..4 map to separate entries). On Thumb, `ldrb` returns 0..255 and the address `off_80FB5CC+4*r0`
+  is used, so values >4 would read out-of-bounds — fine semantically. The name 'ai_dispatchStateStep'
+  is reasonable but since this function is called by routes 'battlesweep, chips' and is a generic small
+  dispatcher, and the proposed name is fine. Keeping the name but trimming the summary is unnecessary;
+  the main issue is naming consistency. I'll keep the name but note the call sites dispute its exclusivity
+  to enemy AI.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB5B8 -> ai_dispatchStateStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB5B8

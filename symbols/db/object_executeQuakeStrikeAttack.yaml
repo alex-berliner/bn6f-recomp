@@ -1,0 +1,65 @@
+name: object_executeQuakeStrikeAttack
+address: '0x080C5014'
+kind: function
+status: probable
+summary: 'Battle object attack routine: triggers a camera shake (magnitude 3, 0x28 ticks), plays sound
+  0xC3, spawns a visual effect (sub_801BD3C with 0x11) on the panel two steps ahead, and spawns an element-based
+  collision region on that panel with type 3.'
+interface: (r5 = battle object) -> void; no return value used
+details: Uses the battle object in r5 (its Alliance, PanelX, PanelY, Element, DamageAndStamina fields).
+  First requests a camera shake (magnitude 3, 0x28 ticks) via camera_initShakeEffect_80302a8 and plays
+  sound effect 0xC3. It then reads object_getFrontDirection (+1/-1 by alliance/DirectionFlip), doubles
+  it, and computes target panel X = PanelX − 2×dir, i.e. the panel two steps toward the enemy side, and
+  calls sub_801BD3C with (targetX, PanelY, 0, 0x11) — most likely to spawn a visual effect (0x11) on that
+  panel. Finally it calls object_spawnCollisionRegion with the same target panel, the object's Element
+  in r2, r3=0, r4=ROM data 0x405ff11 (per-panel damage/property word, low byte 0x11), and r7=3 (likely
+  collision type/lifetime). Called from the collision-phase handler, so it runs when the object triggers
+  its attack each tick.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#3 / mov r1,#0x28 / bl camera_initShakeEffect_80302a8 — camera shake of magnitude 3 for
+    40 frames; mov r0,#0xc3 / bl PlaySoundEffect — fixed sound effect 0xC3 accompanies the attack; bl
+    object_getFrontDirection; lsl r0,#1; sub r0, PanelX — target X is PanelX minus 2×facing direction;
+    push {r0,r1} ... bl sub_801BD3C (r3=0x11) then pop and bl object_spawnCollisionRegion with Element
+    and dword_80C5088=0x405ff11 — same panel gets an effect and a collision region; Caller battle_object_collisionPhase_80C4F02
+    advances/reacts per tick, so this is that object's per-tick attack behaviour
+  refs:
+  - bn6f/asm/asm31.s:28286
+  - 0x080C4F02 battle_object_collisionPhase_80C4F02
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C5014
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics are accurate: it does call camera_initShakeEffect_80302a8 with (3,0x28),
+    PlaySoundEffect 0xC3, computes target panel via object_getFrontDirection doubled (sub r0, r1, r0),
+    and calls sub_801BD3C(0x11) and object_spawnCollisionRegion with Element/DamageAndStamina and r7=3.
+    However, the prefix ''battle_object_'' already implies a battle context, so the name should follow
+    the established convention of object_*. The better name is object_executeQuakeStrikeAttack_80C5014
+    or similar, matching the codebase pattern (e.g., object_spawnCollisionRegion, object_getFrontDirection).;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_801BD3C spawns exactly (its r3=0x11 argument's meaning)
+- Field layout of the damage word 0x405ff11 passed to object_spawnCollisionRegion
+- Which specific in-game attack/object this belongs to and what sound 0xC3 is
+- 'The proposal''s mechanics are accurate: it does call camera_initShakeEffect_80302a8 with (3,0x28),
+  PlaySoundEffect 0xC3, computes target panel via object_getFrontDirection doubled (sub r0, r1, r0), and
+  calls sub_801BD3C(0x11) and object_spawnCollisionRegion with Element/DamageAndStamina and r7=3. However,
+  the prefix ''battle_object_'' already implies a battle context, so the name should follow the established
+  convention of object_*. The better name is object_executeQuakeStrikeAttack_80C5014 or similar, matching
+  the codebase pattern (e.g., object_spawnCollisionRegion, object_getFrontDirection).'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C5014 -> object_executeQuakeStrikeAttack
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5014

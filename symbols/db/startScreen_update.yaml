@@ -1,0 +1,65 @@
+name: startScreen_update
+address: '0x08038F0C'
+kind: function
+status: probable
+summary: 'Per-frame update for the start/logo screen: while a screen fade is active it re-inits the logo
+  screen, clears the IWRAM fade-related field, resets the start-screen animation control block to state
+  0xB4, and forces DISPCNT to 0x40 (OBJ layer only).'
+interface: () -> void; sets flags via IsScreenFadeActive (beq skips the body when no fade is active)
+details: 'First calls sub_8039198 (unexamined, possibly per-frame state handling). If IsScreenFadeActive
+  reports a fade in progress, it calls logoScreen_init_803D1A8 to re-init the logo screen, clears the
+  4-byte value at IWRAM 0x200AD04, and resets the 8-byte start-screen animation control block at 0x200B1A0
+  (zeroed then marked active with state 0xB4). Finally it writes DISPCNT value 0x40 (bit 6: OBJ enable
+  only, all background layers off) into the current frame''s render info, so during the fade only sprites
+  are shown. If no fade is active the function returns immediately without touching anything.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq locret_8038F2A after IsScreenFadeActive gates the whole body on an active fade; bl logoScreen_init_803D1A8
+    ties the routine to the logo/start-screen subsystem; bl init_eStartScreenAnimationControl200B1A0_1
+    restarts the start-screen animation (state 0xB4); SetRenderInfoLCDControl with .word 0x40 sets DISPCNT
+    to OBJ-enable only during the fade; clear_e200AD04 zeroes a related IWRAM state word as part of the
+    re-init
+  refs:
+  - bn6f/asm/asm03_1_1.s:861
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x0803F4C8 clear_e200AD04
+  - 0x0803E900 init_eStartScreenAnimationControl200B1A0_1
+  reproduce: python3 tools/asmcat.py 0x08038F0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly captures the control flow (call sub_8039..., check IsScreenFadeActive, re-init
+    via logoScreen_init, clear/reset the animation block, write 0x40 to DISPCNT). However, it misnames
+    the callee: the bl at 0x08038F1A targets 0x0803D1AC, which is logoScreen_init, but the proposal also
+    claims the function ''re-initializes the logo screen state'' which is accurate. The summary says ''re-initializes
+    the logo screen state and switches rendering to sprites only'' — the switching to OBJ-only (0x40 =
+    bit 6) is correct. The interface/flag semantics are fine. Minor: the name ''logoScreen_update'' is
+    acceptable but a ''start'' prefix is more consistent with the start-screen animation block being reset;
+    ''startScreen_update'' would fit the codebase conventions better.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_8039198 does each frame before the fade check
+- Which game state owns IWRAM 0x200AD04 and what the cleared word controls
+- No known caller; a caller would confirm whether this is the logo screen's per-frame main update or a
+  fade-transition handler
+- 'The proposal correctly captures the control flow (call sub_8039..., check IsScreenFadeActive, re-init
+  via logoScreen_init, clear/reset the animation block, write 0x40 to DISPCNT). However, it misnames the
+  callee: the bl at 0x08038F1A targets 0x0803D1AC, which is logoScreen_init, but the proposal also claims
+  the function ''re-initializes the logo screen state'' which is accurate. The summary says ''re-initializes
+  the logo screen state and switches rendering to sprites only'' — the switching to OBJ-only (0x40 = bit
+  6) is correct. The interface/flag semantics are fine. Minor: the name ''logoScreen_update'' is acceptable
+  but a ''start'' prefix is more consistent with the start-screen animation block being reset; ''startScreen_update''
+  would fit the codebase conventions better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8038F0C -> startScreen_update
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038F0C

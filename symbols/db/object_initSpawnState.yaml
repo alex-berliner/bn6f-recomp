@@ -1,0 +1,64 @@
+name: object_initSpawnState
+address: '0x080D5F2C'
+kind: function
+status: probable
+summary: 'Battle object spawn-state init: snaps to panel coords, loads sprite/animation with palette and
+  facing, allocates collision data (frees object on failure), configures collision box and hit effect,
+  and advances state to CUR_STATE_UPDATE.'
+interface: (r5 = battle object header) -> r0 = 0 on success, nonzero if object freed; sets object state
+  to CUR_STATE_UPDATE
+details: 'This is the INIT phase of a battle object state machine: it first snaps the object to panel
+  coordinates via object_setCoordinatesFromPanels and clears its Z, then loads sprite resource (0x80,
+  0x10, 0x54) with a shadow, sets the visible flag (bit 1 in oObjectHeader_Flags), resets both animation
+  fields to 0 and loads animation data with palette 0 and facing from object_getFlip. It then allocates
+  a collision slot with object_createCollisionData; on failure it frees the object entirely (object_freeMemory)
+  and returns. On success it configures the collision box (r1=0x13, r2=0x14, r3=3), sets hit-effect type
+  9, clears the collision region and refreshes present-collision state, and finally advances the object''s
+  state field to CUR_STATE_UPDATE so the normal per-frame handler takes over next.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels + strh 0 to oBattleObject_Z16 places the object on its panel
+    at ground level; mov r0,#0x80 / r1=#0x10 / r2=#0x54 followed by sprite_load, sprite_hasShadow loads
+    the object's battle sprite with shadow; calls object_createCollisionData; 'bne' skip path calls object_freeMemory
+    — allocation failure frees the object; object_setupCollisionData(0x13,0x14,3) + object_setCollisionHitEffect(9)
+    + clear/present collision configure its hitbox; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the routine by switching to the update state
+  refs:
+  - bn6f/asm/asm31.s:64976
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D5F2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function clearly initializes a battle object''s spawn state: it sets coordinates from panels,
+    loads sprite 0x80/0x10/0x54, sets visible flag, resets animations, loads anim data with palette 0
+    and facing, then allocates collision data (freeing the object on failure) and configures collision
+    box (0x13, 0x14, 3), hit-effect 9, clears collision region, refreshes collision, and transitions to
+    CUR_STATE_UPDATE. This matches the summary. However, the proposed name ''battle_spawnInitSpriteAndCollision''
+    is awkward; a cleaner lowerCamel name following the prefix rules would be ''object_initSpawnState''
+    or similar.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which battle object(s) use this init (sprite id 0x80) is unidentified; the meaning
+  of the setupCollisionData arguments (0x13,0x14,3) and hit-effect type 9 is only inferred from other
+  collision setup call sites
+- 'The function clearly initializes a battle object''s spawn state: it sets coordinates from panels, loads
+  sprite 0x80/0x10/0x54, sets visible flag, resets animations, loads anim data with palette 0 and facing,
+  then allocates collision data (freeing the object on failure) and configures collision box (0x13, 0x14,
+  3), hit-effect 9, clears collision region, refreshes collision, and transitions to CUR_STATE_UPDATE.
+  This matches the summary. However, the proposed name ''battle_spawnInitSpriteAndCollision'' is awkward;
+  a cleaner lowerCamel name following the prefix rules would be ''object_initSpawnState'' or similar.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5F2C -> object_initSpawnState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5F2C

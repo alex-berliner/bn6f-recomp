@@ -1,0 +1,61 @@
+name: battle_objectRunState
+address: '0x080E3DE0'
+kind: function
+status: probable
+summary: 'Battle object state dispatcher: selects and calls one of nine Thumb handlers via a Param1-indexed
+  table at off_80E3E10, then mirrors bit 0x02 of oObjectHeader_Flags from oBattleObject_RelatedObject1Ptr
+  into this object''s flags.'
+interface: (r0 = scratch, r5 = battle object) -> r0 = handler return/scratch; clobbers r1-r3, lr; flags
+  from the final strb path
+details: Reads oBattleObject_Param1, multiplies by 4, and indexes a 9-entry table of Thumb handler pointers
+  at off_80E3E10, calling the selected one with mov lr,pc / bx (long-call pattern). After the handler
+  returns, it clears bit 0x02 of the object's oObjectHeader_Flags and ORs in bit 0x02 taken from oObjectHeader_Flags
+  of oBattleObject_RelatedObject1Ptr, i.e. this flag is kept mirrored from the related object. One table
+  entry is battle_killObject, so one Param1 state means 'destroy this object'; the other entries are small
+  local helpers (sub_80E3E34 used for three states, then 80E3E38/80E3EB4/80E3EFC/80E3F2A/80E3F6C). An
+  unreachable-looking inline tail storing 8 to [r5,#8] followed by pop {pc} suggests one handler body
+  was placed inline here. The structure is the standard battle object header (Param1 as state selector,
+  Flags, RelatedObject1Ptr).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,r0,#2; ldr r1,[r1,r0]; mov lr,pc; bx r1 — table
+    dispatch on Param1; off_80E3E10 lists 9 Thumb handlers, one of which is battle_killObject+1; after
+    the call: and r0,r1 with mvn 2 clears bit1, then ORs bit1 of RelatedObject1Ptr''s oObjectHeader_Flags
+    before strb back; tail ''mov r0,#8; str r0,[r5,#8]; pop {pc}'' is an inline handler storing a constant
+    to object field 8; only caller sub_80E3D90, executed on the battlesweep route'
+  refs:
+  - bn6f/asm/asm31.s:94899
+  - 0x080E3D90 sub_80E3D90
+  reproduce: python3 tools/asmcat.py 0x080E3DE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary correctly describes dispatching to a 9-entry table indexed by Param1 and mirroring flag
+    bit 0x02 from oBattleObject_RelatedObject1Ptr; however, the ''unreachable'' inline tail is actually
+    dead code (no fall-through from the pop {pc} at 0x080E3E32), and calling it battle_dispatchParam1StateHandler
+    is overly verbose — battle_objectRunState or similar fits the pattern better.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- bodies of sub_80E3E34/80E3E38/80E3EB4/80E3EFC/80E3F2A/80E3F6C are not shown, so the meaning of each
+  Param1 state is unknown
+- what field at offset 8 (written 8 by the inline tail) means
+- what the 0x02 flag bit represents (likely a mirror of the related object's alive/visible state)
+- The summary correctly describes dispatching to a 9-entry table indexed by Param1 and mirroring flag
+  bit 0x02 from oBattleObject_RelatedObject1Ptr; however, the 'unreachable' inline tail is actually dead
+  code (no fall-through from the pop {pc} at 0x080E3E32), and calling it battle_dispatchParam1StateHandler
+  is overly verbose — battle_objectRunState or similar fits the pattern better.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3DE0 -> battle_objectRunState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3DE0

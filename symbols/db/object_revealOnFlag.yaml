@@ -1,0 +1,58 @@
+name: object_revealOnFlag
+address: '0x080AA194'
+kind: function
+status: probable
+summary: 'Object update: when its mapped event flag is set, plays a reveal sequence (animation 1, camera
+  shake, SFX 0x17B) and sets state to 8; otherwise just runs sprite_update.'
+interface: () -> void; uses r5 = object pointer; sets ZF from TestEventFlag internally
+details: Reads the object's byte at +4 and maps it through sub_8143B5E to an event flag ID, then tests
+  the flag. If the flag is set, it sets the sprite's current animation to index 1, reloads the animation
+  data, triggers a camera shake (magnitude 2, duration 0x14), plays sound effect 0x17B, and writes 8 into
+  the object's state byte at +8 (making this a one-shot transition since the flag branch then still runs
+  each frame but the fx block re-triggers only per flag semantics — actually it re-runs every call while
+  the flag is set, so +8 likely gates further behavior elsewhere). If the flag is clear, it only calls
+  sprite_update. The sprite helpers (setAnimation/loadAnimationData/update) operate on a current-object
+  context rather than an argument, matching the r5-based object layout.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#4]; bl sub_8143B5E; bl TestEventFlag — object field +4 selects the event flag being
+    polled; mov r0,#1; bl sprite_setAnimation; bl sprite_loadAnimationData — switches to and reloads a
+    new animation on flag set; mov r0,#2; mov r1,#0x14; bl camera_initShakeEffect — screen shake magnitude
+    2, 20 frames; mov r0,#0x7c; add r0,#0xff; bl PlaySoundEffect — plays SFX 0x17B; mov r0,#8; strb r0,[r5,#8]
+    — advances object state to 8; else path falls through to sprite_update only
+  refs:
+  - bn6f/asm/asm29.s:10388
+  - 0x080AA160 sub_80AA160
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F168 TestEventFlag
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080AA194
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: sub_8143B5E maps byte +4 to a flag ID, TestEventFlag branches on it, and on set
+    triggers animation swap, camera shake (r0=2, r1=0x14), SFX 0x17B, and writes 8 to state byte +8. sprite_update
+    always runs. The name is acceptable but a bit verbose; object_revealOnFlag captures the same idea
+    more concisely and matches the one-shot reveal pattern.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What sub_8143B5E does (presumably maps the +4 byte to a flag ID via a table)
+- Which object/actor uses this handler and what state byte 8 means downstream
+- Whether the fx block re-runs every frame while the flag is set or is meant to fire once
+- 'The code matches: sub_8143B5E maps byte +4 to a flag ID, TestEventFlag branches on it, and on set triggers
+  animation swap, camera shake (r0=2, r1=0x14), SFX 0x17B, and writes 8 to state byte +8. sprite_update
+  always runs. The name is acceptable but a bit verbose; object_revealOnFlag captures the same idea more
+  concisely and matches the one-shot reveal pattern.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AA194 -> object_revealOnFlag
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA194

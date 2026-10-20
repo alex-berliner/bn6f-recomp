@@ -1,0 +1,74 @@
+name: battle_updateFallingToPanel
+address: '0x080CD654'
+kind: function
+status: probable
+summary: 'Per-frame battle object fall-toward-panel handler: skips if Param1 set; otherwise integrates
+  a constant downward Z velocity each tick until Z<=0 or timer runs out, then snaps to Param3/Param4 panels.
+  If the panel is solid, plays sound 0xC0, shakes the camera (1/0xF), re-sets the collision region, sets
+  header flag 0x10, CurAction=9 and phase=0; if not solid, clears the collision region, removes from the
+  battle object list, dispatches destroy events, and sets CurState=DESTROY.'
+interface: (r5 = battle object, no args) -> void; sets object CurState to DESTROY when it falls through,
+  or CurAction=9/phase=0 when it lands
+details: Reads oBattleObject_Timer and counts it down; while it lasts, adds the constant velocity 0xFFFFD800
+  (-10240) to the object's Z velocity and integrates it into the position triple at offset 0x34 (loaded
+  from 0x40), stopping only once Z <= 0 (the object has reached the ground). When the timer expires or
+  Z hits zero, the object's PanelX/PanelY (and its collision data's copies) are set from Param3/Param4
+  and pixel coordinates are recomputed via object_getCoordinatesForPanels. If object_isCurrentPanelSolid
+  says the landing panel is solid, it plays sound 0xC0, triggers a camera shake (magnitude 1, duration
+  0xF), then restores its collision region, sets oObjectHeader_Flags bit 0x10, sets CurAction=9 and phase
+  0 (landing/get-up continuation). If the panel is not solid (hole/broken/off-grid), it finalizes coordinates
+  via object_setCoordinatesFromPanels and sub_80E1D7A, clears its collision region, removes itself from
+  the battle object list, dispatches destroy events, and switches CurState to CUR_STATE_DESTROY. If Param1
+  was nonzero on entry, the descent is skipped entirely and the routine jumps straight to the landing/recovery
+  path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: dword_80CD6F8 = 0xFFFFD800 is added to oBattleObject_ZVelocity each tick and integrated into
+    the position triple at +0x34, loop exits when Z <= 0 (asm at 0x80CD668-0x80CD686); landing path copies
+    Param3/Param4 into PanelX/PanelY and the collision data, then object_getCoordinatesForPanels repositions
+    the sprite (0x80CD688+); solid landing plays PlaySoundEffect(0xC0) and camera_initShakeEffect(1, 0xF),
+    classic heavy-landing feedback; non-solid panel path calls object_clearCollisionRegion, clearEntryOfBattleStateBattleObjectList_800F656,
+    battle_dispatchDestroyEvents and sets CurState = CUR_STATE_DESTROY (falling through a hole); callee
+    set object_isCurrentPanelSolid is explicitly documented as detecting holes/broken tiles/off-grid panels,
+    matching the two-way branch
+  refs:
+  - bn6f/asm/asm31.s:46570
+  - 0x080005CC PlaySoundEffect
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080CD654
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and key claims are accurate: Param1 nonzero skips descent (tst/bne at top), per-frame
+    gravity integration from 0x40 into Z vel at 0x34, landing sets panel coords and plays sound 0xC0 with
+    camera shake, falling-through hole sets CurState to DESTROY. However the landing branch sets oObjectHeader_Flags
+    bit 0x10 (not 0x10 set on landing in the solid path - it is), but the function also calls object_setCollisionRegion
+    (not object_clearCollisionRegion) on landing, which the summary got wrong. Also the per-iteration
+    is unconditional while Z > 0 (ble loc_80CD688), and the timer is just a fall duration, not a separate
+    condition.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so what launches an object into this state (which attacks or events set the timer,
+  Param3/4 target panel and initial Z height) is unconfirmed
+- The meaning of Param1 != 0 on entry (skips descent straight to the landing path) is unclear without
+  a caller
+- What sub_80E1D7A does with the final X/Y before the object is destroyed
+- 'The summary and key claims are accurate: Param1 nonzero skips descent (tst/bne at top), per-frame gravity
+  integration from 0x40 into Z vel at 0x34, landing sets panel coords and plays sound 0xC0 with camera
+  shake, falling-through hole sets CurState to DESTROY. However the landing branch sets oObjectHeader_Flags
+  bit 0x10 (not 0x10 set on landing in the solid path - it is), but the function also calls object_setCollisionRegion
+  (not object_clearCollisionRegion) on landing, which the summary got wrong. Also the per-iteration is
+  unconditional while Z > 0 (ble loc_80CD688), and the timer is just a fall duration, not a separate condition.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD654 -> battle_updateFallingToPanel
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD654

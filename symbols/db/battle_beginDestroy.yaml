@@ -1,0 +1,69 @@
+name: battle_beginDestroy
+address: '0x080D239C'
+kind: function
+status: probable
+summary: 'Begins an object''s destruction: dispatches destroy events, clears its collision region and
+  panel reservation, nulls the pointee of oBattleObject_ExtraVars, conditionally plays a sound or spawns
+  a single effect (silent path) or spawns three jittered effects (visible path), clears collision again,
+  and sets CurStateActionPhaseAndPhaseInitialized to CUR_STATE_DESTROY.'
+interface: (r5 = battle object pointer, r0 unused) -> r0 = ?; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY; no flags guaranteed
+details: 'Entry point for an object''s death/removal: it first dispatches the paired destroy sub-event
+  (battle_dispatchDestroyEvents_802EF5C), clears the object''s collision region and releases any panel
+  it reserved (using FuturePanelX/Y), and zeroes the pointer at oBattleObject_ExtraVars. It then reads
+  ObjectFlags2: if bit 0x8000 is clear, it spawns the visual death effects — two AddRandomVarianceToTwoCoords-jittered
+  spawns via sub_80E47A4 (r4=0) plus one effect object (r4=1) offset +0x14 from object+0x34 coordinates.
+  If bit 0x8000 is set (silent/quiet destroy), no effects are spawned; instead bit pair 0x300000 selects
+  either sound 5 (sub_800F90E) or a sub_800F8CE-gated path. Finally it re-clears the collision region
+  and writes CUR_STATE_DESTROY into the state/phase field; r4 is clobbered as scratch.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'prologue: bl battle_dispatchDestroyEvents_802EF5C then bl object_clearCollisionRegion — destroy-event
+    + collision teardown first; ldrb r0,[r5,#oBattleObject_FuturePanelX/Y]; bl object_removePanelReserve
+    — frees the object''s reserved panel; ldr r1,dword_80D2458 (0x8000); tst against object_getFlag2 result
+    — branch decides effects vs quiet path; loc_80D23F0: two AddRandomVarianceToTwoCoords+sub_80E47A4
+    pairs and spawn_t1_0x0_EffectObject from object+0x34 coords — death particle spawns; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — transitions the object to the
+    DESTROY state'
+  refs:
+  - bn6f/asm/asm31.s:56959
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D239C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and name are directionally correct (dispatches destroy events, clears collision, releases
+    panel, spawns effects, writes CUR_STATE_DESTROY), but the detail about ''zeroes the pointer at oBattleObject_ExtraVars''
+    is wrong: the code reads the ExtraVars pointer, tests it (tst r0,r0), and if non-zero, writes 0 to
+    *ExtraVars (str r1,[r0]) — it doesn''t zero the ExtraVars slot itself. Also, the proposal inaccurately
+    says ''only one effect object (r4=1)'' on the silent path; the code shows that sub_800F8CE returning
+    1 or other leads to a spawn with r4=1, but the non-jittered spawn uses Z offset 0x14 while the jittered
+    ones use Z=0x10, matching the code. A slightly better name would emphasize the transition to CUR_STATE_DESTROY.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so it is unclear whether this is the generic death entry or a specific object's destroy
+  handler
+- sub_80E47A4, sub_800F90E and sub_800F8CE are unidentified, so the exact effect/sound semantics are inferred
+- Meaning of ObjectFlags2 bits 0x8000 and 0x300000 is inferred from behavior only
+- 'The summary and name are directionally correct (dispatches destroy events, clears collision, releases
+  panel, spawns effects, writes CUR_STATE_DESTROY), but the detail about ''zeroes the pointer at oBattleObject_ExtraVars''
+  is wrong: the code reads the ExtraVars pointer, tests it (tst r0,r0), and if non-zero, writes 0 to *ExtraVars
+  (str r1,[r0]) — it doesn''t zero the ExtraVars slot itself. Also, the proposal inaccurately says ''only
+  one effect object (r4=1)'' on the silent path; the code shows that sub_800F8CE returning 1 or other
+  leads to a spawn with r4=1, but the non-jittered spawn uses Z offset 0x14 while the jittered ones use
+  Z=0x10, matching the code. A slightly better name would emphasize the transition to CUR_STATE_DESTROY.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D239C -> battle_beginDestroy
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D239C

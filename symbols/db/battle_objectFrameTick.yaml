@@ -1,0 +1,60 @@
+name: battle_objectFrameTick
+address: '0x080CE87C'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object: tears down previous collision data, spawns hit effect, dispatches
+  its current action via a 3-entry jump table, re-reads collision region to highlight panel, updates sprite,
+  and re-presents collision data.'
+interface: (r5 = battle object) -> void; preserves r7, clobbers lr/pc dispatch
+details: 'The routine operates on a battle object in r5. It first calls object_removeCollisionData and
+  object_spawnCollisionEffect (so collision state from the previous frame is cleared and any hit effect
+  is spawned), then reads the object''s collision-data pointer and, if the collision flags word is nonzero,
+  stores 1 into oBattleObject_ExtraVars+8 (a ''was hit this frame'' style flag) and calls object_clearCollisionRegion.
+  When battle_isTimeStop is false, it indexes off_80CE8CC by oBattleObject_CurAction (3 handlers: sub_80CE8D8,
+  sub_80CE9A4, sub_80CEA0A) and tail-dispatches via blx-style ''mov lr,pc; bx r1''. After the handler
+  returns, it re-reads the collision region and, if the object is inside one, calls object_highlightPanel
+  with the object''s panel X/Y; it then calls object_updateSprite (skipped during time-stop) and finally
+  object_presentCollisionData to re-establish this frame''s collision state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry calls object_removeCollisionData then object_spawnCollisionEffect before any dispatch;
+    ''ldr r1,[r1,r0]; mov lr,pc; bx r1'' with off_80CE8C8 indexed by oBattleObject_CurAction is an action-state
+    dispatch; hit path: ''str r0,[r5,#oBattleObject_ExtraVars+8]'' + object_clearCollisionRegion when
+    oCollisionData_FlagsFromCollision != 0; exit sequence object_highlightPanel -> object_updateSprite
+    -> object_presentCollisionData matches a per-frame object update wrapper; battle_isTimeStop guards
+    both the action dispatch and the sprite update, as expected in battle-frame logic'
+  refs:
+  - bn6f/asm/asm31.s:48969
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080CE87C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The callee list and code confirm the collision teardown/set-up, time-stop gating, panel highlight,
+    and sprite refresh; however the summary incorrectly claims object_presentCollisionData runs after
+    the highlight while the code shows object_removeCollisionData/object_spawnCollisionData run first,
+    and it omits object_updateSprite. The routine is correctly a per-frame tick of a battle object.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- no callers known, so it is unclear which object(s) reference this as their update pointer and what the
+  three action handlers (sub_80CE8D8/sub_80CE9A4/sub_80CEA0A) do
+- exact meaning of oBattleObject_ExtraVars+8 (set to 1 on collision) is unconfirmed
+- The callee list and code confirm the collision teardown/set-up, time-stop gating, panel highlight, and
+  sprite refresh; however the summary incorrectly claims object_presentCollisionData runs after the highlight
+  while the code shows object_removeCollisionData/object_spawnCollisionData run first, and it omits object_updateSprite.
+  The routine is correctly a per-frame tick of a battle object.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE87C -> battle_objectFrameTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE87C

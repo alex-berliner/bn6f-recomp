@@ -3154,15 +3154,15 @@ Next sub_802DD1E(void) {
 }
 
 /* ── battleObject_runAIScript_802DE5C ── */
-/* battleObject_runAIScript_802DE5C: if test battle flag 0x40 is set, run sub_802E2C4 for
+/* battleObject_runAIScript_802DE5C: if test battle flag 0x40 is set, run battle_processSelectedChip for
  * indices 0 and 1. Otherwise do nothing. */
 Next battleObject_runAIScript_802DE5C(void) {
     GUEST_CALL(TestBattleFlag_0x40); /* answers in Z; the original branches on it */
     if (!ZERO_FLAG()) { /* the flag is set */
         R0 = 0;
-        GUEST_CALL(sub_802E2C4);
+        GUEST_CALL(battle_processSelectedChip);
         R0 = 1;
-        GUEST_CALL(sub_802E2C4);
+        GUEST_CALL(battle_processSelectedChip);
     }
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,54 @@
+name: ai_dispatchScriptHandler
+address: '0x08113DD8'
+kind: function
+status: probable
+summary: Tail-dispatches to one of four AI behavior handlers (ai_pickTargetViaOppositeAlliance, ai_initTargetedAttack,
+  ai_setupMeleeAttack, ai_initAttackVars) selected from off_8113DEC by the AI work struct's oAIState_ScriptId
+  byte; uses mov lr,pc / bx r1 Thumb interwork so the callee returns through the enclosing pop.
+interface: (r6 = AI work struct) -> r0 = return value of the dispatched ai_* handler; returns to caller
+  via lr
+details: 'Indexes the handler table at off_8113DEC with the byte at [r6,#oAIState_ScriptId] and tail-dispatches
+  to it using the classic mov lr, pc / bx r1 Thumb interwork trick, so the callee''s return lands on the
+  following pop {r4,r6,pc}. r6 is the AI/enemy work structure and oAIState_ScriptId selects which phase
+  of the AI script runs. The table holds four known AI behaviors: ai_pickTargetViaOppositeAlliance, ai_initTargetedAttack,
+  ai_setupMeleeAttack, and ai_initAttackVars, so each script-id corresponds to a step in an attack routine.
+  No bounds check is visible; the state id is expected to be within table range.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes table by AI state id; mov lr, pc; bx
+    r1 is the Thumb long-call dispatch idiom, returning straight to pop {r4,r6,pc}; table entries are
+    ai_pickTargetViaOppositeAlliance/ai_initTargetedAttack/ai_setupMeleeAttack/ai_initAttackVars, all
+    AI behavior handlers; executed in battlesweep routes, consistent with per-frame battle AI stepping
+  refs:
+  - bn6f/asm/asm32.s:12195
+  reproduce: python3 tools/asmcat.py 0x08113DD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code correctly tail-dispatches via the table at off_8113DEC using oAIState_ScriptId, matching
+    the proposal''s mechanics. However, the function does not ''run'' the handler directly — it tail-dispatches
+    (mov lr, pc; bx r1) so the handler returns straight to the caller of sub_8113DD8 via the pop. The
+    summary should reflect a tail-dispatch role, and a name like ai_dispatchScriptHandler is more accurate.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- no caller is known, so which enemy/object uses this dispatcher and how r6 is set up is unconfirmed
+- whether other tables elsewhere share this dispatch pattern or this one is enemy-specific
+- The code correctly tail-dispatches via the table at off_8113DEC using oAIState_ScriptId, matching the
+  proposal's mechanics. However, the function does not 'run' the handler directly — it tail-dispatches
+  (mov lr, pc; bx r1) so the handler returns straight to the caller of sub_8113DD8 via the pop. The summary
+  should reflect a tail-dispatch role, and a name like ai_dispatchScriptHandler is more accurate.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8113DD8 -> ai_dispatchScriptHandler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113DD8

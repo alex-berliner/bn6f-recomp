@@ -1,0 +1,66 @@
+name: object_initSpriteAndCollision
+address: '0x080D7AF0'
+kind: function
+status: probable
+summary: Initializes a battle object's sprite (resource 0x80, anim 0xA, palette 0) and 4x5 collision data,
+  transitioning to CUR_STATE_UPDATE; on collision-slot failure, increments an ExtraVars spawn-attempt
+  counter and frees the object.
+interface: (r5 = battle object) -> void; object state set to CUR_STATE_UPDATE on success
+details: Recomputes the object's pixel position from its panel coordinates and zeroes its Z (height).
+  Loads sprite resource 0x80 with args (8, 0xF), marks the object flags with bit 1 (likely 'has sprite/shadow'),
+  selects animation 0xA in both CurAnim and CurAnimCopy, loads its animation data, sets palette 0 and
+  the flip from object_getFlip. Calls object_createCollisionData; on success fills the collision box with
+  (4, 5, 1), sets hit-effect type 6, runs object_presentCollisionData once, and stores CUR_STATE_UPDATE
+  into the state/phase field so the per-frame update handler takes over. On failure it increments the
+  first word of the object's ExtraVars struct (a spawn-attempt counter) and frees the object via object_freeMemory.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_load with r0=0x80, r1=8, r2=0xf followed by anim 0xA, palette 0 and flip setup configures
+    the object''s visuals; object_createCollisionData + tst/beq split: success path sets collision (4,5,1)
+    and hit effect 6, failure path increments [ExtraVars] and calls object_freeMemory; str CUR_STATE_UPDATE
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized hands control to the object''s update routine;
+    strh r0,[r5,#oBattleObject_Z16] with r0=0 and object_setCoordinatesFromPanels place the object on
+    its panel at ground level'
+  refs:
+  - bn6f/asm/asm31.s:68629
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080D7AF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s logic is accurate: it calls object_setCoordinatesFromPanels, zeros Z, loads sprite
+    0x80 with (8,0xF), ORs flag bit 1, sets CurAnim/CurAnimCopy to 0xA, sets palette 0 and flip, and on
+    collision-data success sets CUR_STATE_UPDATE. However, the failure path in the proposal says ''increments
+    the first word of the object''s ExtraVars struct''; the asm increments `[r1]` where r1 was loaded
+    from `oBattleObject_ExtraVars` (a pointer), so it bumps a counter at ExtraVars[0]. Also, `bl sprite_hasShadow`
+    is not ''marks object flags with bit 1'' — that OR happens after the call, where bit 1 is set on oObjectHeader_Flags.
+    The proposed name is reasonable but ''spawn_initSpriteAndCollision'' mixes ''spawn'' prefix with init
+    semantics; a simpler ''object_initSpriteAndCollision'' or ''object_spawnInit'' fits the prefix list
+    better.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so which enemy/object uses this initializer (sprite resource 0x80) is unidentified;
+  finding the spawn site or the sprite table entry for 0x80 would give a specific name
+- Meaning of sprite_load's (8, 0xF) arguments and of bit 1 in oObjectHeader_Flags is unconfirmed
+- 'The summary''s logic is accurate: it calls object_setCoordinatesFromPanels, zeros Z, loads sprite 0x80
+  with (8,0xF), ORs flag bit 1, sets CurAnim/CurAnimCopy to 0xA, sets palette 0 and flip, and on collision-data
+  success sets CUR_STATE_UPDATE. However, the failure path in the proposal says ''increments the first
+  word of the object''s ExtraVars struct''; the asm increments `[r1]` where r1 was loaded from `oBattleObject_ExtraVars`
+  (a pointer), so it bumps a counter at ExtraVars[0]. Also, `bl sprite_hasShadow` is not ''marks object
+  flags with bit 1'' — that OR happens after the call, where bit 1 is set on oObjectHeader_Flags. The
+  proposed name is reasonable but ''spawn_initSpriteAndCollision'' mixes ''spawn'' prefix with init semantics;
+  a simpler ''object_initSpriteAndCollision'' or ''object_spawnInit'' fits the prefix list better.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7AF0 -> object_initSpriteAndCollision
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7AF0

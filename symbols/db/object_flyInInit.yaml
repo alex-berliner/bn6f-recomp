@@ -1,0 +1,65 @@
+name: object_flyInInit
+address: '0x080E4DD0'
+kind: function
+status: probable
+summary: Battle-object fly-in setup that loads sprites, positions the object off-screen ahead of its row,
+  applies inward X/Z velocities with Timer=2, animation 4, palette, and sound 0x188, then tails into the
+  per-frame update.
+interface: (r5 = battle object, Param1 = palette, Param2 = skip-reposition flag) -> r0 = destroyed; sets
+  PanelX, X/Z, X/ZVelocity, Timer=2, anim=4, flags|=2, phase=CUR_STATE_UPDATE
+details: Loads sprite resources (0x80, 0x10, 0x30), disables the shadow, and mirrors the sprite to the
+  object's effective facing. Unless Param2 is nonzero, it looks up an alliance-dependent panel-param entry
+  (byte_80E4E74, filter 0x20) and asks object_getClosestPanelMatchingRowFiltered for a valid panel column,
+  falling back to PanelX + frontDirection if none qualify, storing the result in PanelX. It then recomputes
+  pixel coordinates and offsets X by -frontDirection*0x5f0000 (placing it off-screen ahead), sets Z to
+  0x280000 (airborne height), and X/Z velocities of frontDirection*0x208000 and 0xc8000, so the object
+  flies in toward its row over Timer=2 frames. It sets palette from Param1, sets object flag 0x2, plays
+  sound 0x188, starts animation 4, refreshes the sprite, marks the state phase CUR_STATE_UPDATE, and tails
+  into sub_80E4E84 for the per-frame update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load(0x80,0x10,0x30)+sprite_noShadow+sprite_setFlip(object_getFlip()) = battle-object
+    sprite setup; GetAllianceDependentPanelParamArgs(byte_80E4E74) then object_getClosestPanelMatchingRowFiltered,
+    result or PanelX+frontDirection stored to oBattleObject_PanelX; X -= frontDirection*0x5f0000, Z=0x280000,
+    XVelocity=frontDirection*0x208000, ZVelocity=0xc8000, Timer=2 — an off-screen fly-in; sprite_setPalette(Param1),
+    flags|=2, PlaySoundEffect(0x188), anim 4 via sprite_setAnimation; CurStateActionPhaseAndPhaseInitialized
+    = CUR_STATE_UPDATE and tail call to sub_80E4E84 as the follow-up phase
+  refs:
+  - bn6f/asm/asm31.s:97182
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080005CC PlaySoundEffect
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080E4DD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly reads most of the function: it loads sprites, sets PanelX via GetAllianceDependentPanelParamArgs
+    + getClosestPanelMatchingRowFiltered, offsets X off-screen, sets Z=0x280000, velocities 0x208000/0xc8000,
+    Timer=2, anim=4, sound 0x188, and tails into sub_80E4E84. However the proposal claims r0=destroyed
+    on return, but the function pops {pc} at the end with no destruction path; the ''destroyed'' return
+    is a guess. The name is reasonable but ''battle_initFlyInEntry'' doesn''t quite match the per-frame
+    tail; a name like ''battle_flyInInit'' or ''object_flyInInit'' is more idiomatic.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/object uses this handler (no callers known) and what animation 4 depicts
+- What sub_80E4E84 does each frame after entry
+- Exact meaning of the byte_80E4E74 filter value 0x20 (which panel type is matched)
+- 'The proposal correctly reads most of the function: it loads sprites, sets PanelX via GetAllianceDependentPanelParamArgs
+  + getClosestPanelMatchingRowFiltered, offsets X off-screen, sets Z=0x280000, velocities 0x208000/0xc8000,
+  Timer=2, anim=4, sound 0x188, and tails into sub_80E4E84. However the proposal claims r0=destroyed on
+  return, but the function pops {pc} at the end with no destruction path; the ''destroyed'' return is
+  a guess. The name is reasonable but ''battle_initFlyInEntry'' doesn''t quite match the per-frame tail;
+  a name like ''battle_flyInInit'' or ''object_flyInInit'' is more idiomatic.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4DD0 -> object_flyInInit
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4DD0

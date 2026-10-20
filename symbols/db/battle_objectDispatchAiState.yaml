@@ -1,0 +1,58 @@
+name: battle_objectDispatchAiState
+address: '0x08101AA0'
+kind: function
+status: probable
+summary: Selects one of four AI handler routines for a battle object based on its Param1 flag and whether
+  its HP has dropped below half (MaxHP>>1), tail-jumping to sub_8101AD4, sub_8101B90, ai_advanceTurnStateCounters,
+  or sub_8101CC0.
+interface: (r5 = battle object) -> tail-jumps to one of four handlers via lr=pc; returns to caller of
+  the dispatcher on handler return
+details: 'Reads oBattleObject_Param1 (r5+?): if it equals 1, base index 8 is used, otherwise 0. Then compares
+  oBattleObject_HP against oBattleObject_MaxHP>>1; if HP is below half, 4 is added. The resulting index
+  0/4/8/12 selects an entry from off_8101AC4 (sub_8101AD4, sub_8101B90, sub_8101C3A, sub_8101CC0) and
+  calls it with the classic mov lr, pc / bx r0 Thumb interwork trampoline. This is a phase/state selector
+  typical of boss AI: four states = (phase0,HP>=50%), (phase0,HP<50%), (phase1,HP>=50%), (phase1,HP<50%).
+  The object pointer stays in r5 so the handlers can access the same battle object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; cmp #1 -> add r3,#8 gates a phase/param state; ldrh r0,[r5,#oBattleObject_HP]
+    vs ldrh r1,[r5,#oBattleObject_MaxHP] lsr #1 -> add r3,#4 gates low-HP state; ldr r0,off_8101DF4; ldr
+    r0,[r0,r3]; mov lr,pc; bx r0 -> 4-entry dispatch table at off_8101AC4; table words sub_8101AD4+1..sub_8101CC0+1
+    are Thumb handler addresses, so this is an AI routine selector, not a data lookup; only reads of battle-object
+    fields (no writes) fit a dispatcher that delegates behavior to state handlers'
+  refs:
+  - bn6f/asm/asm31.s:157427
+  reproduce: python3 tools/asmcat.py 0x08101AA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch structure (Param1==1 → +8, HP<MaxHP>>1 → +4) and four-way table jump via `ldr r0,[r0,r3];
+    mov lr,pc; bx r0` agree with the proposal. However, the table at off_8101AC4 contains sub_8101AD4,
+    sub_8101B90, ai_advanceTurnStateCounters, and sub_8101CC0 — not the four handlers the proposal lists
+    (sub_8101AD4, sub_8101B90, sub_8101C3A, sub_8101CC0). The third entry is `ai_advanceTurnStateCounters`,
+    not sub_8101C3A, so the phase/handler mapping is incorrect.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what Param1==1 means (e.g. boosted/second-form flag) needs a writer of that field
+- the four handlers sub_8101AD4/B90/C3A/CC0 are unanalyzed, so the exact behaviors of each state are unknown
+- no caller known, so which boss/object uses this dispatcher is unidentified
+- The dispatch structure (Param1==1 → +8, HP<MaxHP>>1 → +4) and four-way table jump via `ldr r0,[r0,r3];
+  mov lr,pc; bx r0` agree with the proposal. However, the table at off_8101AC4 contains sub_8101AD4, sub_8101B90,
+  ai_advanceTurnStateCounters, and sub_8101CC0 — not the four handlers the proposal lists (sub_8101AD4,
+  sub_8101B90, sub_8101C3A, sub_8101CC0). The third entry is `ai_advanceTurnStateCounters`, not sub_8101C3A,
+  so the phase/handler mapping is incorrect.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101AA0 -> battle_objectDispatchAiState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101AA0

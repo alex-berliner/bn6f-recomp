@@ -1,0 +1,59 @@
+name: ow_updateObjectSprite
+address: '0x080A9A2C'
+kind: function
+status: probable
+summary: 'Refreshes an overworld object''s visual state: recalculates Z/layer draw data, reloads its sprite
+  and animation, and re-applies priority, palette, shadow, and animation index before tail-calling sub_80A9A76.'
+interface: (r5 = object pointer, implicit; no args read from r0-r3) -> r0 = undefined; sets object state
+  bytes
+details: 'r5 points at an overworld object: it stores 3 into byte 0 (a state/mode flag), then calls sprite_load
+  with the two bytes at +6/+7 as resource id arguments. It saves the object''s field at +0x14, runs checkZCoordModifiers
+  on the struct at +0xC, stores the result there, applies the map layer effect, then restores the saved
+  +0x14 value (so the layer pass sees modified draw data but the field itself is unchanged). It then re-applies
+  sprite priority, animation index (byte 4), animation data, no-shadow flag, palette (byte 5), writes
+  4 to byte 8, and tail-calls sub_80A9A76. The pattern reads like a per-state handler for an OW object
+  that (re)initializes its visual presentation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0(3),[r5] then sprite_load(r5->[6],[7]) reloads the sprite resources; save/restore of
+    [r5,#0x14] around checkZCoordModifiers+applyLayerEffect shows a temporary draw-layer computation;
+    sprite_setAnimation/­loadAnimationData/­noShadow/­setPalette with [r5,#4] and [r5,#5] match the known
+    object sprite-struct layout; all callees are sprite/OW-object setup routines, confirming r5 is an
+    OW object
+  refs:
+  - bn6f/asm/asm29.s:9431
+  - 0x08035694 applyLayerEffectToOWObject_8035694
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A9A2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal''s behavior: stores 3 at byte 0, calls sprite_load with id bytes at
+    +6/+7, saves/restores +0x14 around checkZCoordModifiers and applyLayerEffectToOWObject, then re-sets
+    priority, animation (byte 4), animation data, no-shadow, palette (byte 5), byte 8 = 4, tail-calls
+    sub_80A9A76. The ''reload sprite'' framing is accurate. A better name should convey that this is an
+    overworld object update/refresh (combining layer + sprite re-init) rather than just reloading a sprite.;
+    run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sub_80A9A76 does
+- which object type/state machine dispatches this (no caller known), and the meaning of the byte-0=3 /
+  byte-8=4 state values
+- 'The code matches the proposal''s behavior: stores 3 at byte 0, calls sprite_load with id bytes at +6/+7,
+  saves/restores +0x14 around checkZCoordModifiers and applyLayerEffectToOWObject, then re-sets priority,
+  animation (byte 4), animation data, no-shadow, palette (byte 5), byte 8 = 4, tail-calls sub_80A9A76.
+  The ''reload sprite'' framing is accurate. A better name should convey that this is an overworld object
+  update/refresh (combining layer + sprite re-init) rather than just reloading a sprite.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A9A2C -> ow_updateObjectSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9A2C

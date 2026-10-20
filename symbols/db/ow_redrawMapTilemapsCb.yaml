@@ -1,0 +1,63 @@
+name: ow_redrawMapTilemapsCb
+address: '0x08142D4C'
+kind: function
+status: probable
+summary: Register-saving trampoline (push r4-r7/lr, bl sub_80307D8, pop) used as a callback that triggers
+  sub_80307D8 to repaint both tilemap layers of the overworld map window centered on the camera.
+interface: () -> r0 = result of sub_80307D8 (unknown); r4-r7 clobbered (saved/restored)
+details: The function does nothing itself except save r4-r7, call sub_80307D8, and return; the real work
+  happens in the callee, which repaints both tilemap layers of the map window centered on the camera's
+  current tile. The word eMapTilesState200be70 in the function's literal pool suggests the surrounding
+  module owns the map-tiles state that sub_80307D8 operates on, but this function never loads it. Given
+  the beastsp route context and the callee's known behavior, this looks like an event hook or scheduler
+  callback invoked whenever the map needs refreshing (e.g. after a camera move or scene change). Its non-leaf
+  wrapper form (saving registers it never uses) suggests it is called indirectly as a callback rather
+  than as ordinary code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_8142D4C body is just push {r4-r7,lr}; bl sub_80307D8; pop {r4-r7,pc} — a pure wrapper around
+    the known map-redraw routine; callee sub_80307D8 is documented as redrawing both tilemap layers of
+    the map window centered on the camera's tile position; literal off_8142D54 holds eMapTilesState200be70,
+    tying this module to the overworld map-tiles state; recorded executions fall on beastsp routes, consistent
+    with an overworld map refresh hook; callers sub_808D108/sub_808D11C are unnamed, so no caller context
+    confirms the trigger condition
+  refs:
+  - bn6f/asm/asm37_1.s:2298
+  - 0x0808D108 sub_808D108
+  - 0x0808D11C sub_808D11C
+  - 0x080307D8 sub_80307D8
+  reproduce: python3 tools/asmcat.py 0x08142D4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal: sub_8142D4C is a thin wrapper that saves r4-r7/lr, calls sub_80307D8
+    (the tilemap redraw), and returns, with eMapTilesState200be70 only sitting in the literal pool. However,
+    since the function''s only role is a register-saving trampoline used as a callback (called from sub_808D108/sub_808D11C),
+    a name emphasizing the callback wrapper is more accurate than ''ow_redrawMapTilemaps'', which implies
+    it performs the redraw itself.; run wf investigate investigate-20261018-212108; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what sub_808D108/sub_808D11C do would reveal when this redraw is triggered (camera move, map load, scene
+  change, etc.)
+- why the wrapper saves r4-r7 when the callee's ABI may not require it — possibly a fixed callback signature
+- whether eMapTilesState200be70 is referenced by sub_80307D8 via this module or is only linked here for
+  layout reasons
+- 'The assembly matches the proposal: sub_8142D4C is a thin wrapper that saves r4-r7/lr, calls sub_80307D8
+  (the tilemap redraw), and returns, with eMapTilesState200be70 only sitting in the literal pool. However,
+  since the function''s only role is a register-saving trampoline used as a callback (called from sub_808D108/sub_808D11C),
+  a name emphasizing the callback wrapper is more accurate than ''ow_redrawMapTilemaps'', which implies
+  it performs the redraw itself.'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8142D4C -> ow_redrawMapTilemapsCb
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142D4C

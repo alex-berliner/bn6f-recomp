@@ -1,0 +1,60 @@
+name: battle_markSubobjectsMatchingPanelY
+address: '0x080C78F8'
+kind: function
+status: probable
+summary: Iterates the 3 sub-entry slots at r5+0x64..+0x6C and, for each whose +0x13 panel Y matches RelatedObject1Ptr's
+  oBattleObject_PanelY, writes 4 to the sub-entry's state byte at +0xB. Returns 4 in r0.
+interface: (r5 = battle object pointer, no used args in r0-r3) -> r0 = 0; clobbers r0-r3, no flags relied
+  on
+details: Iterates three pointers at r5+0x64, +0x68, +0x6C (loop index *4 + 0x64). For each non-null pointer
+  it loads the battle object's RelatedObject1Ptr, reads that object's oBattleObject_PanelY, and compares
+  it with byte +0x13 of the sub-entry, which is evidently that entry's panel Y. On a match it writes 4
+  to the sub-entry's state byte at +0xB. The entries look like a fixed-size (3-slot) list of tracked panels/entities
+  owned by the object; state 4 likely activates or triggers them. The caller apparently invokes it with
+  the object in r5 (dispatcher-style), since r0-r3 are never read.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r5,r1] with index*4+0x64 loops exactly 3 slots (add r3,#1; cmp r3,#3; blt); ldr r0,[r5,#oBattleObject_RelatedObject1Ptr];
+    ldrb r0,[r0,#oBattleObject_PanelY] takes the row from the linked battle object; ldrb r2,[r1,#0x13];
+    cmp r0,r2 compares the sub-entry's stored panel Y with that row; mov r0,#4; strb r0,[r1,#0xb] writes
+    state 4 into the matched sub-entry's status byte; caller sub_80C7484 and the 'battlesweep' route place
+    it in battle-object update code
+  refs:
+  - bn6f/asm/asm31.s:33843
+  - 0x080C7484 sub_80C7484
+  reproduce: python3 tools/asmcat.py 0x080C78F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly identifies the loop over 3 slots at r5+0x64/+0x68/+0x6C, comparing RelatedObject1Ptr''s
+    PanelY with byte +0x13 of each sub-entry, and writing 4 to +0xB on match (lines ldr r1,[r5,r1]; tst
+    r1,r1; beq; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0,[r0,#oBattleObject_PanelY]; ldrb
+    r2,[r1,#0x13]; cmp/bne; mov r0,#4; strb r0,[r1,#0xb]). However, r0 is set to 4 then stored, so the
+    return is r0=4, not 0. The name is fine but the summary is otherwise accurate; the only real fix is
+    the return value.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- What the 3-slot list at +0x64 represents (projectiles, traps, tiles?) — needs the owner object's init/cleanup
+  to confirm
+- What state 4 means in that sub-entry's state machine — need other code reading/writing +0xB of the same
+  struct
+- Whether RelatedObject1 is the owner or a target, which changes the in-game wording
+- The proposal correctly identifies the loop over 3 slots at r5+0x64/+0x68/+0x6C, comparing RelatedObject1Ptr's
+  PanelY with byte +0x13 of each sub-entry, and writing 4 to +0xB on match (lines ldr r1,[r5,r1]; tst
+  r1,r1; beq; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0,[r0,#oBattleObject_PanelY]; ldrb r2,[r1,#0x13];
+  cmp/bne; mov r0,#4; strb r0,[r1,#0xb]). However, r0 is set to 4 then stored, so the return is r0=4,
+  not 0. The name is fine but the summary is otherwise accurate; the only real fix is the return value.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C78F8 -> battle_markSubobjectsMatchingPanelY
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C78F8

@@ -1,0 +1,77 @@
+name: sprite_projectFromCamera
+address: '0x0300638C'
+kind: function
+status: probable
+summary: Projects an entity's world X/Y/Z position to a sprite entry's screen X/Y and depth using the
+  camera's next position plus X shake, inverting X and toggling hflip/vflip bits when the invert flag
+  is set.
+interface: '(r0 = entity position struct: x halfword @+2, y @+6, z @+0xA; r5 = sprite/render entry; r4
+  = flag (invert X when nonzero); r10 = toolkit for camera ptr) -> writes screen X to r5+0xC, screen Y
+  to r5+0xA, depth to r5+0xE/0xF; updates flip bits 0x30 at r5+0x13'
+details: Reads camera nextX/nextY/nextZ (>>16) plus ShakeOffsetX from the toolkit's camera and subtracts
+  them from the entity's world coords, centering with +0x78 (120, half of 240) for X and +0x50 (80, half
+  of 160) for Y — classic screen-space projection. When r4 (passed in r6) is nonzero and bit 0x2 of r5+0x16
+  is clear, the X offset is negated and the hflip/vflip bits (0x10/0x20 of r5+0x16, XORed with 0x10, masked
+  0x30) are rewritten into r5+0x13 (which also holds bits 0x30 there), i.e. mirroring flips the sprite.
+  Z difference is stored as sorting depth at r5+0xE and also r5+0xF; if bit 0x20 of r5+0x3 is set, r5+0xF
+  gets the X-derived depth instead, and bit 0x4 leaves the value in r7.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3,[r3,#oToolkit_CameraPtr] then oCamera_nextX_3c/oCamera_ShakeOffsetX etc.: camera-based
+    transform; add r1,#0x78 / add r6,#0x50: 240x160 screen centering of camera-relative coords; eor r2,#0x10
+    / and r2,#0x30 then bic/orr into [r5+0x13]: hflip flag fixup when mirrored; strb r6,[r5,#0xe]/strb
+    r7,[r5,#0xf]: Z (or X) stored as per-sprite depth/sort value; neg r1,r1 under tst r6: X sign inversion
+    for mirrored rendering requested via r4 flag'
+  refs:
+  - bn6f/asm/asm38.s:1205
+  reproduce: python3 tools/asmcat.py 0x0300638C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does world->screen projection with camera subtraction, shake offset, centering (+0x78 X,
+    +0x50 Y), conditional X negation + flip-bit mirroring, Z difference as depth. However the proposal''s
+    interface is wrong: r4 holds the invert flag (proposal says r6), and r6 is repurposed for the Y value
+    mid-function. r5+0x13/0x16 flip handling and r5+0xE/0xF depth outputs match. Camera projection + sprite
+    flip is the core job, so ''sprite_applyCameraTransform'' is reasonable but the name should reflect
+    it operates on a sprite entry.; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- Exact identity of the r5 struct (sprite render entry vs OAM builder record) and meaning of its fields
+  0x13/0x16/0x3
+- Which caller passes r4/r10 and when the mirror flag is set
+- 'The code does world->screen projection with camera subtraction, shake offset, centering (+0x78 X, +0x50
+  Y), conditional X negation + flip-bit mirroring, Z difference as depth. However the proposal''s interface
+  is wrong: r4 holds the invert flag (proposal says r6), and r6 is repurposed for the Y value mid-function.
+  r5+0x13/0x16 flip handling and r5+0xE/0xF depth outputs match. Camera projection + sprite flip is the
+  core job, so ''sprite_applyCameraTransform'' is reasonable but the name should reflect it operates on
+  a sprite entry.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_300638C -> sprite_projectFromCamera
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_300638C

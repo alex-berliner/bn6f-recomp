@@ -1,0 +1,60 @@
+name: get_battleObjectExtraVar1
+address: '0x0810F1F2'
+kind: function
+status: probable
+summary: Battle-object handler that loads the second word of the object's ExtraVars array (offset ExtraVars+4)
+  into r0 and returns; used as a dispatch-table entry.
+interface: (r5 = battle object ptr, r0 unused) -> r0 = value of [r5 + oBattleObject_ExtraVars+4]; flags
+  unaffected
+details: 'The routine is two instructions: it loads a halfword/word from the battle object at r5 plus
+  oBattleObject_ExtraVars+4 into r0 and returns with mov pc, lr, i.e. it preserves r0''s caller-sent value
+  and returns the stored field. It is not called directly but is referenced by a function pointer in off_810F1F8,
+  so it serves as one entry of an object handler/dispatch table (the trailing .word 0x12C = 300 looks
+  like an associated parameter such as a duration or count). Because it only reads the field, it behaves
+  as a getter/condition check for whatever the object''s script stored in its extra variable; byte_810F200/byte_810F208
+  tables nearby belong to the same object definition but are not touched by this routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_810F1F2 body is only 'ldr r0,[r5,#oBattleObject_ExtraVars+4]; mov pc, lr' — a pure field
+    getter; off_810F1F8 holds sub_810F1F2+1, showing it is installed as a dispatch-table handler, not
+    called directly; adjacent data (0x12C, byte_810F200/208) suggests an object behavior table with a
+    paired parameter; no callees and no state writes, so it cannot be a mutator or state-machine step
+  refs:
+  - bn6f/asm/asm32.s:3007
+  reproduce: python3 tools/asmcat.py 0x0810F1F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at sub_810F1F2 does load [r5, #oBattleObject_ExtraVars+4] into r0 and returns via mov pc,
+    lr, so the ''getter for ExtraVars+4'' reading is correct. However, the proposal incorrectly states
+    the routine is referenced via off_810F1F8 as a function pointer - off_810F1F8 actually holds sub_810F1F2+1
+    (Thumb bit), confirming it''s used as a handler entry. The summary''s note about flags unaffected
+    and r0 ''unused'' is fine but the interface should clarify r0 is the return value. A clearer name
+    following the ''get'' prefix convention fits better.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which dispatch table installs off_810F1F8 and how the returned ExtraVars+4 value is consumed (condition
+  vs. counter)
+- the semantic meaning of the ExtraVars+4 field for this object type
+- 'The code at sub_810F1F2 does load [r5, #oBattleObject_ExtraVars+4] into r0 and returns via mov pc,
+  lr, so the ''getter for ExtraVars+4'' reading is correct. However, the proposal incorrectly states the
+  routine is referenced via off_810F1F8 as a function pointer - off_810F1F8 actually holds sub_810F1F2+1
+  (Thumb bit), confirming it''s used as a handler entry. The summary''s note about flags unaffected and
+  r0 ''unused'' is fine but the interface should clarify r0 is the return value. A clearer name following
+  the ''get'' prefix convention fits better.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810F1F2 -> get_battleObjectExtraVar1
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810F1F2

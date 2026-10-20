@@ -1,0 +1,66 @@
+name: battle_initNaviFromStats
+address: '0x0802D7A0'
+kind: function
+status: probable
+summary: 'Initializes a navi battle actor for its selected NaviStats entry: syncs the alliance''s live
+  NaviStats from the eBattleNaviStats2034A60 snapshot (via sub_802DCCC/init_8013B64), sets NameID from
+  AIIndex, loads sprite/animation 3/palette, sets HP/MaxHP, dispatches by type/AIIdx, clears status flags,
+  and sets secondary element weakness.'
+interface: (r5 = battle object, r7 = AIData vars) -> r0 = ...; sets up oBattleObject_NameID, HP/MaxHP,
+  CurAnim, AIIndex; no meaningful return
+details: Reads NaviStats byte 0x2C and byte 0x29 (apparently the selected navi ID) for the object's side;
+  if the two agree, it copies 0x64 words from eBattleNaviStats2034A60 (indexed by alliance*0x64) into
+  the side's live NaviStats via GetBattleNaviStatsAddr/CopyWords, and does a similar sync through sub_802DCCC
+  (falling back to init_8013B64 otherwise). It stores byte 0x29 as AIData.AIIndex, sets oBattleObject_NameID
+  to AIIndex+0x1A0, then loads the navi's sprite via chip_class_lookup/sprite_load, sets animation 3,
+  palette (battle_pickPaletteIndexForNavi), flip, and the popup handler. Finally it writes HP/MaxHP from
+  NaviStats hwords 0x40/0x42 (or sub_802DD70 when byte 0x29 is nonzero), marks the used action, clears
+  object status flags/invulnerable time, and sets secondary element weakness from NaviStats.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/mov #0x29 then GetBattleNaviStats2034A60Byte stored to oAIData_AIIndex, and NameID = AIIndex+0x1A0
+    (naming uses the navi ID); GetBattleNaviStatsAddr + alliance*0x64 + eBattleNaviStats2034A60 + CopyWords
+    of 0x64 words: bulk NaviStats snapshot copy; chip_class_lookup_800FC9E + sprite_load + sprite_setAnimation/palette/flip:
+    builds the navi''s battle sprite; GetBattleNaviStatsHword 0x40/0x42 strh to oBattleObject_HP/MaxHP,
+    then battle_dispatchActorByTypeAndAIIdx_800F378 registers the actor; battleObject_markUsedAction_80143A6
+    and battleObject_setupSecondaryElementWeaknessFromNaviStats_801086C are navi-spawn-time housekeeping'
+  refs:
+  - bn6f/asm/asm03_0.s:15973
+  - 0x0800093C CopyWords
+  - 0x08013682 GetBattleNaviStatsAddr
+  - 0x080136CC GetBattleNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x0802D7A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s name and summary are close, but the function does more than spawn: it picks an in-battle
+    navi (ID 0x29 of eBattleNaviStats2034A60 vs side''s 0x29), syncs the live NaviStats from the snapshot
+    (CopyWords 0x64 words twice — once on agreement at the start and once after sub_802DCCC), sets HP
+    via the 0x40/0x42 path or sub_802DD70, sets oBattleObject_NameID to AIIndex-1+0x1A0, anim 3, palette,
+    secondary weakness, and dispatches via battle_dispatchActorByTypeAndAIIdx_800F378. Note the interface
+    lists r7=AIData vars but r7 isn''t touched in the code, while r4 holds AIDataPtr — minor inaccuracy.
+    The name ''battle_spawnNaviFromStats'' is acceptable but ''init'' prefix fits the init-like setup
+    role better.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of NaviStats bytes 0x29/0x2C and what sub_802DCCC/sub_802DD70 compare or return; no caller
+  is known, so when this runs (e.g. battle start vs mid-battle navi change) is unconfirmed
+- 'The proposal''s name and summary are close, but the function does more than spawn: it picks an in-battle
+  navi (ID 0x29 of eBattleNaviStats2034A60 vs side''s 0x29), syncs the live NaviStats from the snapshot
+  (CopyWords 0x64 words twice — once on agreement at the start and once after sub_802DCCC), sets HP via
+  the 0x40/0x42 path or sub_802DD70, sets oBattleObject_NameID to AIIndex-1+0x1A0, anim 3, palette, secondary
+  weakness, and dispatches via battle_dispatchActorByTypeAndAIIdx_800F378. Note the interface lists r7=AIData
+  vars but r7 isn''t touched in the code, while r4 holds AIDataPtr — minor inaccuracy. The name ''battle_spawnNaviFromStats''
+  is acceptable but ''init'' prefix fits the init-like setup role better.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D7A0 -> battle_initNaviFromStats
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D7A0

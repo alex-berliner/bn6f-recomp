@@ -1,0 +1,63 @@
+name: battle_objStateActiveTick
+address: '0x080CB5B4'
+kind: function
+status: probable
+summary: 'Per-frame ''active'' state handler for a battle object: tears down and respawns collision/effects,
+  runs action+sub-handler, and destroys on battle end or when collision flags are set with Param1 < 6.'
+interface: (r5 = battle object pointer) -> r0 = destroyed flag?; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY on removal
+details: Entry calls object_removeCollisionData then object_spawnCollisionEffect (per-frame collision
+  teardown + effect spawn). If battle_isBattleOver returns nonzero the object is destroyed; likewise if
+  oCollisionData_FlagsFromCollision is nonzero and oBattleObject_Param1 >= 6 (lethal condition), where
+  it also saves the current PanelXY into ExtraVars. Otherwise it dispatches oBattleObject_CurAction through
+  the one-entry table off_80CB624 (sub_80CB628) via `mov lr, pc; bx r1`, then calls sub_80CB6B0. If PhaseInitialized
+  is set, the object's collision region is 0, and the panel changed since ExtraVars, it re-registers into
+  region 4 via object_setCollisionRegion. If the current panel is valid it calls object_presentCollisionData;
+  otherwise (or on destroy) it clears the collision region and sets state to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isBattleOver / tst r0,r0 / bne loc_80CB614 -> destroy path (asm lines 4-6); ldr r1,[r5,#oBattleObject_CurAction]
+    + ldr r1,[r1,r0] + bx r1 dispatches the action handler via off_80CB624; cmp r0,#6 / blt keep-alive
+    after checking oCollisionData_FlagsFromCollision defines a lethal-hit condition; cmp r0,r1 (PanelXY
+    vs ExtraVars) then mov r0,#4 / bl object_setCollisionRegion re-registers the object after moving panels;
+    mov r0,#CUR_STATE_DESTROY / str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] is the
+    exit transition
+  refs:
+  - bn6f/asm/asm31.s:42184
+  - 0x080CB4D4 sub_80CB4D4
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080CB5B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The lethal-condition comparison is inverted in the proposal: `cmp r0, #6; blt loc_80CB614` destroys
+    on Param1 < 6 (not >= 6). The PanelXY-to-ExtraVars save and `object_clearCollisionRegion` occur in
+    the Param1 >= 6 path (continuing to loc_80CB5DC), not as part of destruction. Also, the function tail-pops
+    without explicitly setting r0, so the ''r0 = destroyed flag'' interface is speculative. The name and
+    overall summary are otherwise reasonable.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which object type this handler belongs to — the single caller sub_80CB4D4 and the sole action handler
+  sub_80CB628 would identify it
+- Exact meaning of oBattleObject_Param1 >= 6 (HP threshold vs. counter) and what sub_80CB6B0 does between
+  the action dispatch and the region check
+- 'The lethal-condition comparison is inverted in the proposal: `cmp r0, #6; blt loc_80CB614` destroys
+  on Param1 < 6 (not >= 6). The PanelXY-to-ExtraVars save and `object_clearCollisionRegion` occur in the
+  Param1 >= 6 path (continuing to loc_80CB5DC), not as part of destruction. Also, the function tail-pops
+  without explicitly setting r0, so the ''r0 = destroyed flag'' interface is speculative. The name and
+  overall summary are otherwise reasonable.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB5B4 -> battle_objStateActiveTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB5B4

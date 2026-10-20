@@ -1,0 +1,57 @@
+name: npc_runStateHandler
+address: '0x080A8394'
+kind: function
+status: probable
+summary: Dispatches an NPC/actor handler by indexing a 3-entry thumb jump table at off_80A83A8 with a
+  byte from [r5,#8], passing unk_2000B40 in r6 to the chosen handler.
+interface: (r5 = actor object, [r5+8] = handler/state index) -> r0 = handler's return value; calls table
+  entry with r6 = unk_2000B40 work area
+details: Loads r6 with the fixed IWRAM buffer unk_2000B40, reads a byte index from [r5,#8] of the caller's
+  object, and uses it to select one of three thumb pointers from the table at off_80A83A8. It performs
+  a tail-style call (mov lr, pc; bx r0) so the chosen handler returns here, then pops pc to return to
+  the caller. The three handlers are sub_80A83B8 (likely the setup/init state), npc_updateGuarded (per-frame
+  update), and ow_cleanupNpcAfterCutscene (teardown), so index 0..2 maps to init/run/cleanup phases of
+  an overworld NPC lifecycle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_80A83A8: table of exactly 3 handlers: sub_80A83B8+1, npc_updateGuarded+1, ow_cleanupNpcAfterCutscene+1
+    — a 3-phase lifecycle; ldrb r1,[r5,#8]; ldr r0,[off_80A83A8,r1] — state/handler id taken from offset
+    8 of the passed object; ldr r6,=unk_2000B40 before bx — shared IWRAM work area handed to every handler;
+    mov lr,pc; bx r0 ... pop {pc} — plain dispatcher that relays the handler''s return; callee ow_cleanupNpcAfterCutscene
+    ties the lifecycle to cutscene-scoped overworld NPCs'
+  refs:
+  - bn6f/asm/asm29.s:6349
+  reproduce: python3 tools/asmcat.py 0x080A8394
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The dispatch via a 3-entry table (sub_80A83B8, npc_updateGuarded, ow_cleanupNpcAfterCutscene) and
+    IWRAM buffer unk_2000B40 match the proposal, but the init/cleanup interpretation is unsupported: the
+    code has no known callers or callees, and sub_80A83B8''s role as ''setup/init state'' is speculative.
+    The three entries could equally be three distinct per-frame states rather than init/run/cleanup phases.
+    The prefix and lowerCamel form are fine, but the summary overclaims the lifecycle interpretation.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what sub_80A83B8 initializes (likely writes unk_2000B40 layout)
+- which callers set [r5+8] and what structure r5 points to
+- whether unk_2000B40 is global scratch or per-actor
+- 'The dispatch via a 3-entry table (sub_80A83B8, npc_updateGuarded, ow_cleanupNpcAfterCutscene) and IWRAM
+  buffer unk_2000B40 match the proposal, but the init/cleanup interpretation is unsupported: the code
+  has no known callers or callees, and sub_80A83B8''s role as ''setup/init state'' is speculative. The
+  three entries could equally be three distinct per-frame states rather than init/run/cleanup phases.
+  The prefix and lowerCamel form are fine, but the summary overclaims the lifecycle interpretation.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8394 -> npc_runStateHandler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8394

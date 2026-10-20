@@ -1,0 +1,72 @@
+name: battle_initTrapObject
+address: '0x080C9F98'
+kind: function
+status: probable
+summary: 'Spawn/init handler for a battle-field trap object: optionally configures one variant (sets panel
+  type 2 and shifts Damage), loads sprite/animation, picks palette and a constant timer via a Param1 table,
+  creates/initializes collision, optionally applies a status effect, and either transitions to the update
+  state or frees the object if the panel is invalid or collision allocation fails.'
+interface: (r5 = battle object) -> r0 = 1 if the object spawned, 0 if it freed itself; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: Runs as an object state handler on r5. For Param1==1 it calls sub_80CA234 and stores the result
+  back into Param1 (aborting setup if it returns 1), then writes panel type 2 onto the object's PanelX/PanelY
+  and shifts the low bits of oBattleObject_Damage left by 1 while preserving the 0xF800 flag bits. If
+  the current panel is invalid it ORs flag 0x3 into oObjectHeader_Flags and still tries to spawn; on failure
+  (invalid panel or no free collision slot) the object is freed via object_freeMemory. On success it loads
+  sprite (0x80, 0xC, 0x17), resets CurAnim/CurAnimCopy to 0 and loads that animation, applies flip from
+  object_getFlip, sets ExtraVars=1, positions itself from its panels with Z=0, and reads byte_80CA064[Param1*2]
+  / [Param1*2+1] as palette and a timer value (stored to ExtraVars+4 and Timer2, all entries use timer
+  4). It allocates collision data (size 0x12, value 5, flag 1), copies its element into the hit-effect
+  byte, applies Param2 as a status effect if nonzero, and for Param1==3 additionally calls sub_801A4D0(0x54,
+  5) before playing sound 0xB8 and switching to the update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_load with 0x80,0xC,0x17 followed by sprite_setAnimation/sprite_loadAnimationData/sprite_setFlip
+    is the standard battle-object spawn sequence; palette and timer are indexed by Param1 via byte_80CA064
+    = {1,4,0,4,3,4,3,4,4,4,2,4,5,4,0,0}, showing multiple visual variants of one entity; object_createCollisionData
+    + object_setupCollisionData(0x12,5,1) + battle_setCollisionHitEffectFromElement + optional object_setCollisionStatusEffect1(Param2)
+    configure a harmful hitbox; failure paths (invalid panel via object_isCurrentPanelValid, or createCollisionData
+    returning 0) end in object_freeMemory; stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and calls sub_80CA074, i.e. this is a state-phase handler transitioning to normal update
+  refs:
+  - bn6f/asm/asm31.s:39247
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A146 battle_setCollisionHitEffectFromElement
+  - 0x08019892 object_createCollisionData
+  reproduce: python3 tools/asmcat.py 0x080C9F98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary says it writes panel type 2 and shifts Damage low bits left by 1 preserving 0xF800,
+    sets ExtraVars=1, but the code confirms these. However the proposal misstates several details: object_createCollisionData
+    does not return the object index (the asm uses tst r0,r0 and frees on zero, not ''on failure''), the
+    Param2 check stores result into Timer2 (not an array indexed by Param1 — `ldrb r0,[r4]` is the palette,
+    `[r4,#1]` is the timer constant 4 for all entries), and the end calls sub_80CA074 (not just switching
+    to update state). Also `param1*2` indexing reads from `byte_80CA064`, not per-variant trap allocation;
+    this is a spawn/init, not the variant logic itself, so a simpler name fits.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- which game entity/attack this spawn belongs to (sprite ID 0x80/0xC/0x17 and sound 0xB8 need lookup)
+- what sub_80CA234 checks for the Param1==1 variant
+- meaning of panel type 2 written onto the object's panel
+- what sub_801A4D0(0x54,5) spawns for the Param1==3 variant
+- 'The summary says it writes panel type 2 and shifts Damage low bits left by 1 preserving 0xF800, sets
+  ExtraVars=1, but the code confirms these. However the proposal misstates several details: object_createCollisionData
+  does not return the object index (the asm uses tst r0,r0 and frees on zero, not ''on failure''), the
+  Param2 check stores result into Timer2 (not an array indexed by Param1 — `ldrb r0,[r4]` is the palette,
+  `[r4,#1]` is the timer constant 4 for all entries), and the end calls sub_80CA074 (not just switching
+  to update state). Also `param1*2` indexing reads from `byte_80CA064`, not per-variant trap allocation;
+  this is a spawn/init, not the variant logic itself, so a simpler name fits.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9F98 -> battle_initTrapObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9F98

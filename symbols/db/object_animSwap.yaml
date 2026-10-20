@@ -1,0 +1,57 @@
+name: object_animSwap
+address: '0x080E3904'
+kind: function
+status: probable
+summary: 'Battle-object step: on first call sets phase=4, CurAnim=1, Timer=27; on timer expiry switches
+  to CurAnim=2 with action 0xC and clears the phase.'
+interface: (r0 = unused/ignored, r5 = battle object pointer) -> updates oBattleObject_CurPhase, CurAnim,
+  Timer, CurAction, CurPhaseAndPhaseInitialized; no return value
+details: 'This is a per-frame state handler for a battle object passed in r5 (r0 is loaded but immediately
+  overwritten, so it is unused). When oBattleObject_CurPhase is 0 it initializes a state: phase = 4, CurAnim
+  = 1, and Timer = 0x1B (27, counted down over ~28 frames). On later frames it decrements the 16-bit Timer
+  and returns while it is still positive. When the timer expires it sets CurAnim = 2, CurAction = 0xC,
+  and writes 0 to the 16-bit phase/phase-initialized pair so the normal phase machinery restarts. It is
+  thus a timed ''play animation 1, then hand off to action 0xC with animation 2'' staging step, presumably
+  phase 4 of some scripted object behavior hit on the battlesweep/beastsp/chips routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst r0,r0; bne loc_80E391A gates init vs countdown; init
+    path: strb #4 CurPhase, strb #1 CurAnim, strh #0x1b Timer; countdown path: ldrh/sub/strh Timer, bgt
+    exit while timer > 0; expiry path: strb #2 CurAnim, strb #0xC CurAction, strh #0 CurPhaseAndPhaseInitialized;
+    executed on recorded battlesweep, beastsp and chips routes; r0 never read before overwrite'
+  refs:
+  - bn6f/asm/asm31.s:94183
+  reproduce: python3 tools/asmcat.py 0x080E3904
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — Code matches the summary: first entry writes phase=4, CurAnim=1, Timer=0x1B; then decrements Timer
+    and on expiry sets CurAnim=2, CurAction=0xC, and clears the phase/initialized pair. A better name
+    would be object_animSwap because the 0x1B is 27 (not 28 frames) and the function is a straightforward
+    two-animation handoff rather than a ''Wait'' idiom.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which battle object or scenario uses this handler (no callers found in the snapshot) and what action
+  0xC and anims 1/2 mean in game terms
+- Whether the r0 argument has a meaning at the call site that the handler simply ignores
+- 'Code matches the summary: first entry writes phase=4, CurAnim=1, Timer=0x1B; then decrements Timer
+  and on expiry sets CurAnim=2, CurAction=0xC, and clears the phase/initialized pair. A better name would
+  be object_animSwap because the 0x1B is 27 (not 28 frames) and the function is a straightforward two-animation
+  handoff rather than a ''Wait'' idiom.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3904 -> object_animSwap
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3904

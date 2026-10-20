@@ -1,0 +1,63 @@
+name: battle_phaseSpawnAttackAndEffect
+address: '0x080C296C'
+kind: function
+status: probable
+summary: 'Phase handler for a battle object: on init sets CurAnim to 5 (copy 6), spawns a table-parameterized
+  type-1/subtype-5 attack object linked via object+0x4C, plays sound 0xB0, sets Timer=0x14 and phase=4.
+  When Timer reaches 0xA, spawns a timestop-proof dimming collision region at the panel one step in the
+  object''s facing direction, then spawns a type-0 effect object at those pixel coordinates with r4 =
+  (ExtraVars+0xC << 8) | 0x27. Timer decrements each frame and at 0 clears the phase field.'
+interface: (r5 = battle object) -> void; spawns attack/collision/effect objects, plays sound 0xB0
+details: First entry (PhaseInitialized==0) sets CurAnim to 5 (copy to 6), reads oBattleObject_Param1 as
+  an index into byte_80C29F0 (three identical {0x11,0x0B,0x01,0x00} entries, *4 per index), calls spawn_t1_0x5_tempAttackObject
+  with r7 = object+0x4C as the linked object, plays sound 0xB0, sets Timer=0x14 and marks phase 4 initialized.
+  On the frame where Timer==10 it calls object_getFrontDirection and spawns a dimming collision region
+  (timestop-proof, dword 0x705FF04) at the panel one step in front, then object_getCoordinatesForPanels
+  to spawn a type-0 effect object at those pixel coordinates with r4 = (ExtraVars+0xC << 8) | 0x27. Timer
+  counts down each frame; at 0 the phase field CurPhaseAndPhaseInitialized is cleared, ending the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] / bne loc_80C299C: standard two-stage phase-handler
+    pattern; bl spawn_t1_0x5_tempAttackObject_80B8E30 with r4 = off_80C29EC[Param1*4] picks the attack-object
+    parameters from byte_80C29F0; object_getFrontDirection + PanelX gives the panel ahead, passed to object_spawnDimmingCollisionRegion
+    with dword_80C29E8 = 0x705FF04; object_getCoordinatesForPanels result feeds spawn_t1_0x0_EffectObject
+    with 0x27 | ExtraVars+0xC<<8; Timer set to 0x14, decremented, and CurPhaseAndPhaseInitialized zeroed
+    at expiry confirms a self-terminating attack phase'
+  refs:
+  - bn6f/asm/asm31.s:23128
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C296C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is mostly accurate: the function plays sound 0xB0, spawns a type-1/subtype-5 attack
+    object, and at Timer==10 spawns a dimming collision region (0x705FF04) plus a type-0 effect object.
+    However, it is not strictly an ''attack-phase'' for a battle object — it is a generic phase handler
+    tied to battle objects used for things like row-fan/wide-style attacks. The name ''battle_attackPhaseFrontPanelStrike''
+    over-specifies ''FrontPanelStrike''; a more neutral name fits better.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which in-game attack/object this belongs to (no known caller); the meaning of byte_80C29F0 fields {0x11,0x0B,0x01}
+  for spawn_t1_0x5
+- what ExtraVars+0xC and the 0x27 flag encode for the effect object
+- the exact semantics of dword 0x705FF04 for the dimming collision region
+- 'The proposal is mostly accurate: the function plays sound 0xB0, spawns a type-1/subtype-5 attack object,
+  and at Timer==10 spawns a dimming collision region (0x705FF04) plus a type-0 effect object. However,
+  it is not strictly an ''attack-phase'' for a battle object — it is a generic phase handler tied to battle
+  objects used for things like row-fan/wide-style attacks. The name ''battle_attackPhaseFrontPanelStrike''
+  over-specifies ''FrontPanelStrike''; a more neutral name fits better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C296C -> battle_phaseSpawnAttackAndEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C296C

@@ -1,0 +1,69 @@
+name: battle_objInitSpriteAndSpawn
+address: '0x080B8230'
+kind: function
+status: probable
+summary: Per-state battle-object action handler that decompresses sprite 0x12, loads it with animation
+  data and shadow, sets Z=0, recomputes pixel coords from panels, applies flip and a Param1-indexed palette
+  with 0x7FFF color shader, spawns a generic sub-object via the 0x47 helper storing the handle in oBattleObject_ExtraVars,
+  and advances the object to CUR_STATE_UPDATE.
+interface: (r5 = battle object, no args) -> r0 = spawned sub-object handle stored to oBattleObject_ExtraVars;
+  sets oBattleObject_CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
+details: 'Reads r5 as a battle object and runs its one-time graphics setup: sprite_decompressTemp(8, 0x12)
+  decompresses sprite resource 8, then sprite_load/sprite_loadAnimationData attach it with shadow enabled.
+  It resets CurAnim/CurAnimCopy to 0, applies animation 0, recomputes pixel coordinates from panel position
+  with Z = 0, and sets horizontal flip from object_getFlip. Palette is chosen via a small lookup table
+  indexed by oBattleObject_Param1 (byte_80B8294, mostly 0 with one 3), and sprite_setColorShader(0x7FFF)
+  applies a full-intensity shader. It then spawns a generic object via the 0x47 spawn helper, storing
+  the returned handle in oBattleObject_ExtraVars, and finally advances the object''s state machine to
+  CUR_STATE_UPDATE. The lack of arguments and the state write at the end indicate this is a per-state
+  action handler invoked by the battle object state dispatcher rather than a normally-called function.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_decompressTemp/sprite_load/sprite_loadAnimationData/sprite_hasShadow with fixed IDs
+    8 and 0x12 loads the object's sprite; strb r0(=0), [r5,#oBattleObject_CurAnim/CurAnimCopy] + bl sprite_setAnimation
+    resets to animation 0; ldrb r0,[r5,#oBattleObject_Param1]; ldr r1,off_80B828C; ldrb r0,[r1,r0] picks
+    palette from byte_80B8294 lookup table; dword_80B8290 = 0x7FFF passed to sprite_setColorShader, a
+    full-scale color shader value; str r0,[r5,#oBattleObject_ExtraVars] after spawn_t1_0x47, then mov
+    r0,#CUR_STATE_UPDATE stored to the state/phase field
+  refs:
+  - bn6f/asm/asm31.s:48
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080B8230
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary well: sprite_decompressTemp, sprite_load, sprite_loadAnimationData,
+    sprite_hasShadow, sprite_setAnimation, object_setCoordinatesFromPanels, Z=0, object_getFlip, sprite_setFlip,
+    sprite_setPalette via byte_80B8294 table, sprite_setColorShader 0x7FFF, spawn_t1_0x47_probablyGeneric
+    storing handle in oBattleObject_ExtraVars, and CUR_STATE_UPDATE write all match. However, the proposed
+    name ''battle_objInitSpriteEnterUpdate'' is misleading: there is no init/enter of a sprite state—it''s
+    a per-state action handler that just sets up the sprite and transitions to UPDATE. Also calling it
+    ''spriteEnterUpdate'' is confusing since no ''sprite enter'' state is defined; it''s more accurately
+    the UPDATE-prep handler.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which entity/state table dispatches to this handler (no callers known), so the exact object type (sprite
+  id 8, spawn kind 0x47) and its in-game identity are unidentified
+- Meaning of sprite_decompressTemp arguments (8, 0x12) and of the 0x7FFF color shader value (full white
+  tint vs. no tint) not confirmed
+- 'The code matches the summary well: sprite_decompressTemp, sprite_load, sprite_loadAnimationData, sprite_hasShadow,
+  sprite_setAnimation, object_setCoordinatesFromPanels, Z=0, object_getFlip, sprite_setFlip, sprite_setPalette
+  via byte_80B8294 table, sprite_setColorShader 0x7FFF, spawn_t1_0x47_probablyGeneric storing handle in
+  oBattleObject_ExtraVars, and CUR_STATE_UPDATE write all match. However, the proposed name ''battle_objInitSpriteEnterUpdate''
+  is misleading: there is no init/enter of a sprite state—it''s a per-state action handler that just sets
+  up the sprite and transitions to UPDATE. Also calling it ''spriteEnterUpdate'' is confusing since no
+  ''sprite enter'' state is defined; it''s more accurately the UPDATE-prep handler.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8230 -> battle_objInitSpriteAndSpawn
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8230

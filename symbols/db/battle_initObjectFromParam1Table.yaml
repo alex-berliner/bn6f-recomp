@@ -1,0 +1,71 @@
+name: battle_initObjectFromParam1Table
+address: '0x080BD3AC'
+kind: function
+status: probable
+summary: 'Initializes a battle object from a Param1-indexed 8-byte-per-entry table: loads its sprite (decompressing
+  temp data if the entry flag demands), copies the parent object''s X/Y/Z into both its +0x34 and +0x40
+  position blocks offset by signed dx/dy scaled by object_getFrontDirection, recomputes panels, sets flags/flip,
+  decodes actor type, and when Param1==0 also spawns a second linked object via sub_80BD9A2 and cross-links
+  the two through ExtraVars+4 before handing off to sub_80BD478 in CUR_STATE_UPDATE.'
+interface: (r5 = battle object to initialize; r0 unused on entry) -> r0 = new related object when Param1==0;
+  destroys r4/r6 scratch
+details: Uses the object's Param1 as an index (x8) into byte_80BD464, an 8-byte-per-entry table {flags,
+  spriteID, nameID halfword, signed dx, dy}. If the entry's 0x80 flag is set it decompresses the temp
+  sprite, then sprite_load/sprite_loadAnimationData/sprite_hasShadow load the sprite with shadow; CurAnim=0
+  and CurAnimCopy=0xFF reset the animation. It copies the parent's (RelatedObject1Ptr+0x34) X/Y/Z triple,
+  adds the entry's signed offsets (dx multiplied by object_getFrontDirection) into both its own +0x34
+  and +0x40 position blocks, recomputes PanelX/Y via object_setPanelsFromCoordinates, zeroes Z, sets object
+  flag bit 1, applies flip via object_getFlip/sprite_setFlip, and decodes the actor type from NameID.
+  For Param1==0 it additionally calls sub_80BD9A2 with panel coords, element and damage config to create
+  a second linked object and cross-links the two via ExtraVars+4, then sets CurStateActionPhase to CUR_STATE_UPDATE
+  and tail-calls sub_80BD478.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,#3; add r7... — Param1 indexes 8-byte entries of
+    byte_80BD464; tst r0,#0x80 / sprite_decompressTemp / sprite_load / sprite_loadAnimationData / sprite_hasShadow
+    — sprite setup from table entry; ldmia [RelatedObject1Ptr+0x34] ... ldrsb [r7,#4/5] ... mul by front
+    direction, stmia to r5+0x34 and r5+0x40 — parent-relative positioning with per-entry dx/dy; unpackVerActorTyAndAIIdx_800F29C
+    on NameID — sets version-specific actor type/AI from the table''s nameID; Param1==0 branch: sub_80BD9A2
+    then mirrored str r0,[ExtraVars+4] both ways — creates and cross-links a companion object'
+  refs:
+  - bn6f/asm/asm31.s:11197
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080BD3AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code does index byte_80BD464 by Param1*8, copy parent''s +0x34 triple to both child +0x34 and
+    +0x40, and link two objects via ExtraVars+4 when Param1==0, so the summary is largely correct. However,
+    the function never decompresses a temp sprite (it calls sprite_decompressTemp only when the high flag
+    bit of the entry''s first byte is set, not unconditionally) and the proposal''s table layout is wrong:
+    the third entry word is ldrh [r7,#2] which is a halfword used as NameID, not a ''nameID halfword''
+    alongside other fields as described. A more accurate name reflects the per-Param1 table-driven setup
+    of a battle object plus optional second linked object.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Purpose of sub_80BD9A2 and sub_80BD478 (not shown) — would confirm what kind of linked actor this spawns
+- No known callers; who sets Param1 and RelatedObject1Ptr before entry (r5 is used without being reloaded,
+  so the calling convention is unusual)
+- Exact meaning of the two table entries (which actors use Param1 0 vs 1)
+- 'The code does index byte_80BD464 by Param1*8, copy parent''s +0x34 triple to both child +0x34 and +0x40,
+  and link two objects via ExtraVars+4 when Param1==0, so the summary is largely correct. However, the
+  function never decompresses a temp sprite (it calls sprite_decompressTemp only when the high flag bit
+  of the entry''s first byte is set, not unconditionally) and the proposal''s table layout is wrong: the
+  third entry word is ldrh [r7,#2] which is a halfword used as NameID, not a ''nameID halfword'' alongside
+  other fields as described. A more accurate name reflects the per-Param1 table-driven setup of a battle
+  object plus optional second linked object.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD3AC -> battle_initObjectFromParam1Table
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD3AC

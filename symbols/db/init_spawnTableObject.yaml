@@ -1,0 +1,64 @@
+name: init_spawnTableObject
+address: '0x080CF974'
+kind: function
+status: probable
+summary: Initializes a spawned battle object from a per-ID table entry (animation, HP, name), arms its
+  collision and transitions it to its update state.
+interface: (r5 = battle object, Param1 = variant ID, Param3 = anim override flag) -> r0 = 1 if fully initialized;
+  object left in CUR_STATE_UPDATE
+details: Indexing byte_80CF934 by Param1*8, it stores the entry pointer in oBattleObject_ExtraVars, sets
+  flag bit 1, and loads sprite resource (0x80,0x10) with a fresh animation (from the table if Param3==3,
+  else 0). It copies the object's PanelXY to FuturePanelXY, sets Z=0, sets Element to 0 for variants 0-2
+  and 2 otherwise, sets HP/MaxHP to table[+2]<<1 (1 if that byte is 0), NameID from table[+6], and Timer
+  to 0x1770 (6000). It then creates a 3x3-ish collision region (0xe,0xf,3) with hit effect 0xa, clears
+  the collision region byte, refreshes present-collision state, and on allocation failure frees the object
+  instead. Finally it sets CurState=CUR_STATE_UPDATE and jumps to the state handler sub_80CFA18.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'r7 = byte_80CF934 + Param1*8 stored to oBattleObject_ExtraVars: per-variant data table of 8-byte
+    entries; HP/MaxHP from ldrb [r7,#2], lsl#1 (1 if zero) and NameID from [r7,#6]: table-driven stats;
+    object_createCollisionData failure path calls object_freeMemory, success path sets up region (0xe,0xf,3)
+    and hit effect 0xa; strb CUR_STATE_UPDATE to oBattleObject_CurState then bl sub_80CFA18: hands off
+    to variant''s state handler; Element 0 vs 2 split on Param1>=3 shows the ID selects differently-aligned
+    object variants'
+  refs:
+  - bn6f/asm/asm31.s:51219
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CF974
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s description is accurate: the function indexes byte_80CF934 by Param1*8, stores the
+    pointer in ExtraVars, sets flag bit 1, loads sprite resource, sets CurAnim from table if Param3==3
+    else 0, copies PanelXY to FuturePanelXY, Z=0, Element=0 for <3 else 2, HP/MaxHP from table[+2]<<1
+    (or 1), NameID, Timer=0x1770, creates collision data and frees on failure, sets hit effect 0xa, and
+    jumps to sub_80CFA18 in CUR_STATE_UPDATE. However, the name ''spawn_initTableObject'' uses no allowed
+    prefix; the function initializes a spawned object from a per-ID table, so ''init'' is the right action
+    prefix. The summary is otherwise fine.; run wf investigate investigate-20261018-222121; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What game object this spawns (the sprite resource 0x80,0x10 and byte_80CF934 contents would identify
+  it)
+- What sub_80CFA18 and the per-variant update handlers do
+- No callers known, so who invokes it and with which Param1/Param3 values is unknown
+- 'The proposal''s description is accurate: the function indexes byte_80CF934 by Param1*8, stores the
+  pointer in ExtraVars, sets flag bit 1, loads sprite resource, sets CurAnim from table if Param3==3 else
+  0, copies PanelXY to FuturePanelXY, Z=0, Element=0 for <3 else 2, HP/MaxHP from table[+2]<<1 (or 1),
+  NameID, Timer=0x1770, creates collision data and frees on failure, sets hit effect 0xa, and jumps to
+  sub_80CFA18 in CUR_STATE_UPDATE. However, the name ''spawn_initTableObject'' uses no allowed prefix;
+  the function initializes a spawned object from a per-ID table, so ''init'' is the right action prefix.
+  The summary is otherwise fine.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF974 -> init_spawnTableObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF974

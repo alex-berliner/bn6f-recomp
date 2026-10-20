@@ -1,0 +1,65 @@
+name: init_resetGfxAndBranchState
+address: '0x08039694'
+kind: function
+status: probable
+summary: Resets all graphics state (render info, BG tile buffer, LCD control 0x1F40), clears shared scratch,
+  applies overlay palette 0x11 and a screen fade, then re-inits battle eStruct records and chatbox; stores
+  mode byte 3 at [r5+5] and branches to one of three next states via [r5+0x14]/[r5+0x17].
+interface: (r5 = scene/task work struct, inherited from caller, not set here) -> r0 = clobbered; writes
+  state byte [r5+1] (0x1C, 8, or 4) and mode byte [r5+5]=3; flags preserved
+details: 'Runs a full reset sequence: resetAllGraphicsState, zero-fill of the 0x2000-byte BG tile buffer,
+  LCD control set to 0x1F40 (BG0-3+OBJ, page flip), render-info counters cleared, shared 0x180-byte scratch
+  cleared, overlay palette 0x11 applied, and a screen fade configured (8, 0x10). It then copies data (copyData_803B216),
+  runs sub_803C2EC, re-inits the battle eStruct record array via battle_resetEStructRecords_8046664, and
+  calls a chatbox reset. Finally it stores 3 into [r5,#5] and selects the next state: if [r5,#0x14] is
+  nonzero it calls sub_803993A/sub_803BB2C with that byte and sets [r5,#1]=4; else if [r5,#0x17] is nonzero
+  it does the same with [r5,#4] and sets [r5,#1]=8; otherwise [r5,#1]=0x1C with [r5,#2]=0. Notably r5
+  is never assigned here, so the caller must supply the work struct in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl resetAllGraphicsState_8005F40 / ZeroFillGFX30025c0 / SetRenderInfoLCDControl(0x1F40) — full
+    graphics reinit at entry; bl battle_resetEStructRecords_8046664 + bl cleareMemory_802FF2C — battle
+    scene records and shared scratch reset mid-function; bl chatbox_8040818 and bl SetScreenFade(8,0x10)
+    — dialog-ready scene setup; strb r0,[r5,#5] with r0=3, then three-way branch writing 0x1C/8/4 to [r5,#1]
+    — state-machine transition selection; r5 used without ever being loaded — caller passes work struct
+    implicitly
+  refs:
+  - bn6f/asm/asm03_1_1.s:1425
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x08046664 battle_resetEStructRecords_8046664
+  reproduce: python3 tools/asmcat.py 0x08039694
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary accurately reflect the code: resetAllGraphicsState, ZeroFillGFX30025c0,
+    SetRenderInfoLCDControl(0x1F40), renderInfo clears, cleareMemory_802FF2C, palette 0x11, fade (8,0x10),
+    copyData_803C2EC, sub_803C2EC, battle_resetEStructRecords, chatbox_8040818, [r5+5]=3, then three-way
+    branch on [r5+0x14]/[r5+0x17]. However, r5 is not declared as an input parameter—it is a register
+    variable with no push, so it must be set up by the caller but is treated as a work-struct base here.
+    A clearer name using the ''init'' prefix fits the actual sequence better.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the subsystem (and thus a proper t1/t3/t4/scene prefix) and the identity of the
+  r5 work struct are unknown
+- What copyData_803B216, sub_803C2EC, sub_803993A and sub_803BB2C do, and what states 0x1C, 8 and 4 lead
+  to
+- 'The proposed name and summary accurately reflect the code: resetAllGraphicsState, ZeroFillGFX30025c0,
+  SetRenderInfoLCDControl(0x1F40), renderInfo clears, cleareMemory_802FF2C, palette 0x11, fade (8,0x10),
+  copyData_803C2EC, sub_803C2EC, battle_resetEStructRecords, chatbox_8040818, [r5+5]=3, then three-way
+  branch on [r5+0x14]/[r5+0x17]. However, r5 is not declared as an input parameter—it is a register variable
+  with no push, so it must be set up by the caller but is treated as a work-struct base here. A clearer
+  name using the ''init'' prefix fits the actual sequence better.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8039694 -> init_resetGfxAndBranchState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039694

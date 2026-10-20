@@ -1,0 +1,62 @@
+name: e_giveChipStep
+address: '0x0804A460'
+kind: function
+status: probable
+summary: 'Per-tick step of a scenario effect: if a state byte equals 0x10, grants a chip via GiveChips
+  and queues a return-to-overworld fade (EnterMapFadeParam1=0xC), returning 1; otherwise resets the effect
+  state and acks the new-event flag, returning 0.'
+interface: () -> r0 = 1 when the chip was granted and the exit fade was queued, 0 otherwise; no flag guarantees
+details: 'Runs on a per-scenario-effect state struct eS200AC80 (fields +0x04/+0x06 hold chip id/code,
+  +0x30 a dword). Each tick it first runs several effect-side helpers (sub_804A8F4, menuCopyBackgroundTiles_804A7C0,
+  sub_804A9A0, sub_804AA58) and then checks IsScreenFadeActive: while a fade is active it abandons the
+  current mode via next_exitToMap_811F728 and unlocks the player. If a state byte pointed to by r5 equals
+  0x10 it takes the reward path: sub_804BD00 returns the chip id (r0, stored at +0x04) and code (r1, stored
+  at +0x06), calls GiveChips with count=1, sets GameState EnterMapFadeParam1 to 0xC to trigger the exit
+  fade, and returns 1. Otherwise it zeroes the struct fields, reinitializes/clears the scenario effect
+  (scenario_initEffectState_8003962, zeroFill_8003AB2, scenario_ClearEffectActiveFlag_800399A) and acks
+  the new-event flag, returning 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GiveChips with r0/r1 from sub_804BD00 and mov r2,#1 — grants one chip, whose id/code were
+    just stored at eS200AC80+4/+6; ldr r0,[r0,#oToolkit_GameStatePtr]; strb #0xC,[r0,#oGameState_EnterMapFadeParam1]
+    then return 1 — queues the map-exit fade after the reward; beq loc_804A4CC after IsScreenFadeActive
+    gates the whole handler on the screen fade state, returning 0 otherwise; bl scenario_ClearEffectActiveFlag_800399A
+    / event_ackNewFlagByte_8003AEA / scenario_initEffectState_8003962 — deactivates the scenario effect
+    and its event flag on the non-reward path; bl battle_resetEStructRecords_8046664 and bl next_exitToMap_811F728
+    — tears down battle-overlay records and transitions back to the overworld map'
+  refs:
+  - bn6f/asm/asm03_2.s:7483
+  - 0x08021AEE GiveChips
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x08003AEA event_ackNewFlagByte_8003AEA
+  reproduce: python3 tools/asmcat.py 0x0804A460
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The chip reward path uses sub_804BD00 (not directly stored from it as the only source) and GiveChips,
+    sets EnterMapFadeParam1=0xC, and returns 1; the else path zeros the struct and re-inits the effect.
+    The proposal''s prefix ''scenario_'' is not in the allowed list; ''e'' is allowed and fits a per-tick
+    scenario effect step.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller is known, so the dispatcher context (r5 pointing at which per-effect state byte, and why 0x10
+  selects the reward) is inferred, not confirmed
+- What sub_804BD00 and sub_804A970 compute (likely the reward chip id/code, possibly player- or progress-dependent)
+  is unverified
+- Exact meaning of EnterMapFadeParam1 = 0xC
+- The chip reward path uses sub_804BD00 (not directly stored from it as the only source) and GiveChips,
+  sets EnterMapFadeParam1=0xC, and returns 1; the else path zeros the struct and re-inits the effect.
+  The proposal's prefix 'scenario_' is not in the allowed list; 'e' is allowed and fits a per-tick scenario
+  effect step.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A460 -> e_giveChipStep
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A460

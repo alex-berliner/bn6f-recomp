@@ -1,0 +1,60 @@
+name: battle_updateTimerObject
+address: '0x080D072C'
+kind: function
+status: probable
+summary: 'Per-frame handler that drives a battle object''s timer: removes and re-presents its collision
+  data, spawns a hit effect, highlights its panel each tick, and destroys the object once its timer expires.'
+interface: (r0/r5 = battle object) -> r0 = 0 or next-state; sets oBattleObject state to CUR_STATE_DESTROY
+  when timer runs out
+details: State handler operating on the object in r5. Each tick it tears down and re-refreshes collision
+  data (object_removeCollisionData, object_presentCollisionData), spawns a hit-effect object at the last
+  collision position (object_spawnCollisionEffect, which itself may skip if flags/hit-effect rules say
+  so), and marks the object's current panel (PanelX/PanelY) highlighted. If the collision data reports
+  flags from the last collision, it also clears the object's collision region byte. It decrements oBattleObject_Timer;
+  while positive it continues, and when it hits zero it clears the collision region and writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, ending the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnCollisionEffect / object_presentCollisionData each frame before timer check
+    (80D072C block); ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; ble loc_80D075C gates destruction on
+    timer expiry; loc_80D075C: mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl object_highlightPanel with r0=PanelX, r1=PanelY marks the panel the object occupies; tst r0,r0
+    on oCollisionData_FlagsFromCollision guards object_clearCollisionRegion call'
+  refs:
+  - bn6f/asm/asm31.s:53104
+  - 0x080D0634 sub_80D0634
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D072C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x080D072C-0x80D0764 does match: removeCollisionData, spawnCollisionEffect, conditional
+    clearCollisionRegion on flags, decrement Timer, then branch on zero to either presentCollisionData
+    + sub_80D0766 + highlightPanel(PanelX,PanelY) or clearCollisionRegion + write CUR_STATE_DESTROY. The
+    summary is accurate but the name ''battle_timerHighlightObjectUpdate'' awkwardly combines two behaviors;
+    a simpler name fits the single primary purpose (timer-driven object lifecycle) better.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Purpose of callee sub_80D0766 is unknown
+- Which gameplay object/attack uses this handler (caller sub_80D0634 is undocumented), so the specific
+  effect (trap, hazard, persistent attack) is unconfirmed
+- 'The code at 0x080D072C-0x80D0764 does match: removeCollisionData, spawnCollisionEffect, conditional
+  clearCollisionRegion on flags, decrement Timer, then branch on zero to either presentCollisionData +
+  sub_80D0766 + highlightPanel(PanelX,PanelY) or clearCollisionRegion + write CUR_STATE_DESTROY. The summary
+  is accurate but the name ''battle_timerHighlightObjectUpdate'' awkwardly combines two behaviors; a simpler
+  name fits the single primary purpose (timer-driven object lifecycle) better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D072C -> battle_updateTimerObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D072C

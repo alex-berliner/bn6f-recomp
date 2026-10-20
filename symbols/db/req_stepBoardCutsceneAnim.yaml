@@ -1,0 +1,62 @@
+name: req_stepBoardCutsceneAnim
+address: '0x080A7640'
+kind: function
+status: probable
+summary: State-machine driver (states 0..3 at [r5+9]) that animates a request-board overworld sprite through
+  a two-stage cutscene (anim 0x0A then 9 with SFX 0xE1), then clears the BBS completion flag, zeroes [r5+0x24],
+  writes 2 to [r6+9], and hands control back via sub_80A7398.
+interface: (r5 = object state struct ptr, r6 = config/marker struct ptr) -> r0 = destroyed; advances state
+  byte [r5+9] 0..3 and loops back to 0 when done
+details: State 0 sets animation 0x0A via sprite_setAnimation/sprite_loadAnimationData and sprite_noShadow.
+  State 1 polls sprite_getFrameParameters until bit 0x80 (animation-finished flag) is set. State 2 copies
+  three words from [r6+0x7C], [r6+0x80], [r6+0x84] into [r5+0xC], [r5+0x10], [r5+0x14] (apparently destination
+  x/y and a parameter), sets animation 9, and plays sound effect 0xE1. State 3 writes 3 to [r6+7], calls
+  sub_80A76CC, again waits on the 0x80 animation flag, then calls reqBBS_clearFlag_8140A0C, resets its
+  state byte to 0, zeroes [r5+0x24], writes 2 to [r6+9], and tail-calls sub_80A7398 to hand control back.
+  The function re-enters every frame and is effectively a coroutine-style sequencer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: state byte [r5+9] gates the four branches (ldrb r4,[r5,#9] / cmp / strb r4,[r5,#9] throughout);
+    stage 2 copies the [r6+0x7C..0x84] triple into [r5+0xC..0x14] and plays SE 0xE1 (mov r0,#0xE1; bl
+    PlaySoundEffect); both waits use tst r0,#0x80 on sprite_getFrameParameters, the animation-end flag;
+    final state calls reqBBS_clearFlag_8140A0C, then sets [r6+9]=2 and jumps to sub_80A7398; sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow
+    calls frame each stage as an object animation setup
+  refs:
+  - bn6f/asm/asm29.s:4602
+  - 0x080005CC PlaySoundEffect
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A7640
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The state machine structure, animation sequence (0x0A then 9), frame-parameter polling at 0x80,
+    the three-word copy from [r6+0x7C/0x80/0x84] into [r5+0xC/0x10/0x14], sound 0xE1, and the final cleanup
+    (reqBBS_clearFlag, state reset, zeroing [r5+0x24], writing 2 to [r6+9], tail-call to sub_80A7398)
+    all match the proposal exactly. However, state 3 writes 3 to [r6+7] (not [r6+5]), and state 5 writes
+    3 to [r6+5], not state 3 writes 3 to [r6+5] as the proposal says. The proposal has [r6+7]/[r6+5] swapped
+    in the state 3 description.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact identity of the object (which board request / NPC uses this) and what sub_80A76CC and sub_80A7398
+  do
+- Meaning of the three words copied from [r6+0x7C..0x84] and of the control bytes [r6+5/7/9]
+- Why no callers are recorded — the entry point is presumably referenced from a script/state table
+- The state machine structure, animation sequence (0x0A then 9), frame-parameter polling at 0x80, the
+  three-word copy from [r6+0x7C/0x80/0x84] into [r5+0xC/0x10/0x14], sound 0xE1, and the final cleanup
+  (reqBBS_clearFlag, state reset, zeroing [r5+0x24], writing 2 to [r6+9], tail-call to sub_80A7398) all
+  match the proposal exactly. However, state 3 writes 3 to [r6+7] (not [r6+5]), and state 5 writes 3 to
+  [r6+5], not state 3 writes 3 to [r6+5] as the proposal says. The proposal has [r6+7]/[r6+5] swapped
+  in the state 3 description.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A7640 -> req_stepBoardCutsceneAnim
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7640

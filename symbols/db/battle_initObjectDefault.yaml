@@ -1,0 +1,62 @@
+name: battle_initObjectDefault
+address: '0x080B94E0'
+kind: function
+status: probable
+summary: 'Resets a battle object to its default visual/runtime state: recomputes panel coordinates, zeros
+  Z16, loads sprite 0x80 with shadow, clears and reapplies animation 0 with palette 0, sets flip from
+  object_getFlip, and transitions it into CUR_STATE_UPDATE.'
+interface: (r5 = battle object pointer, not passed in r0-r3) -> r0 = CUR_STATE_UPDATE; no meaningful return
+details: Uses r5 as the object pointer throughout. It first recalculates pixel X/Y from panel coordinates,
+  zeroes oBattleObject_Z16, then loads sprite resource 0x80 with args (0x80, 8, 6) and its animation data,
+  and enables the shadow via sprite state bits. It zeroes both oBattleObject_CurAnim and oBattleObject_CurAnimCopy,
+  applies animation 0 and palette 0, and sets the sprite flip from object_getFlip (alliance XOR DirectionFlip).
+  Finally it stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized, marking
+  the object as running its normal per-frame update. This reads as the 'spawn/reset object with default
+  sprite 0x80' step of battle object initialization.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then strh r0,[r5,#oBattleObject_Z16] zeroes Z before visual
+    setup; sprite_load (r0=0x80, r1=8, r2=6) followed by sprite_loadAnimationData loads a fixed default
+    sprite; sprite_hasShadow + sprite_setAnimation(0) + sprite_setPalette(0) + object_getFlip/sprite_setFlip
+    fully initialize sprite render state; str r0,#CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends with the object entering its update state; no other object fields are touched, so the routine
+    is purely a visual/state (re)initialization, not gameplay setup
+  refs:
+  - bn6f/asm/asm31.s:2566
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080B94E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s summary and callee list match the code: it recomputes coordinates, zeros Z16, calls
+    sprite_load(0x80,8,6), enables shadow, zeroes CurAnim/CurAnimCopy, calls sprite_setAnimation(0), sets
+    palette 0, applies object_getFlip, and finally stores CUR_STATE_UPDATE (asm line `mov r0, #CUR_STATE_UPDATE;
+    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`). However, the proposed name ''battle_initObjectSprite''
+    is misleading: this routine resets the entire battle object state (state phase, animation, palette,
+    flip), not just its sprite, so a name reflecting ''reset object to default state'' fits better.; run
+    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- what sprite resource 0x80 is (likely the default/placeholder sprite the loader falls back to)
+- what the (8, 6) arguments to sprite_load mean (likely width/height or bank/index fields)
+- which caller invokes this and whether it is used for newly spawned objects only or also for respawns
+- 'The proposal''s summary and callee list match the code: it recomputes coordinates, zeros Z16, calls
+  sprite_load(0x80,8,6), enables shadow, zeroes CurAnim/CurAnimCopy, calls sprite_setAnimation(0), sets
+  palette 0, applies object_getFlip, and finally stores CUR_STATE_UPDATE (asm line `mov r0, #CUR_STATE_UPDATE;
+  str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`). However, the proposed name ''battle_initObjectSprite''
+  is misleading: this routine resets the entire battle object state (state phase, animation, palette,
+  flip), not just its sprite, so a name reflecting ''reset object to default state'' fits better.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B94E0 -> battle_initObjectDefault
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B94E0

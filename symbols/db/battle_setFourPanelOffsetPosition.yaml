@@ -1,0 +1,70 @@
+name: battle_setFourPanelOffsetPosition
+address: '0x080DC280'
+kind: function
+status: probable
+summary: Places the battle object 4 panels ahead of its related object's X16 (along the front-facing axis),
+  copies Y16/Z16, recomputes panels from world coords, then attaches a 0x58x0x49 zero-depth collision
+  box with hit effect 0xFF and advances state to CUR_STATE_UPDATE; if no collision slot is available it
+  zeroes [ExtraVars] and frees the object.
+interface: (r0 = object? unused, r5 = battle object) -> r0 = 0 on success / freed; advances object state
+  to CUR_STATE_UPDATE on success
+details: Gets the +1/-1 front-facing multiplier via object_getFrontDirection, multiplies by 4, and adds
+  it to the RelatedObject1's X16, storing the result as this object's X16; Y16 and Z16 are copied verbatim
+  from the related object. object_setPanelsFromCoordinates then recomputes PanelX/PanelY from the new
+  world position. It zeroes DamageAndStaminaDamageCounterDisabler and Param1, then calls object_createCollisionData;
+  on failure it zeroes [ExtraVars] and calls object_freeMemory (object self-destructs). On success it
+  configures collision data as 0x58 wide x 0x49 tall x 0, sets hit effect 0xFF via object_setCollisionHitEffect,
+  calls object_presentCollisionData, and stores CUR_STATE_UPDATE into CurStateActionPhaseAndPhaseInitialized
+  so the object proceeds to its per-frame update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection; mov r1,#4; mul r0,r1; add to RelatedObject1's oBattleObject_X16
+    -> offset = 4 * frontDirection; ldrh/copies of oBattleObject_Y16 and oBattleObject_Z16 from RelatedObject1Ptr,
+    then bl object_setPanelsFromCoordinates; beq loc_80DC2C8 after object_createCollisionData -> [ExtraVars]=0
+    and bl object_freeMemory on allocation failure; mov r1,#0x58 / mov r2,#0x49 then object_setupCollisionData,
+    object_setCollisionHitEffect(0xFF), object_presentCollisionData; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    before returning
+  refs:
+  - bn6f/asm/asm31.s:78185
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DC280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is largely accurate — the X/Y/Z copy from the related object, panel recompute, 0x58x0x49
+    collision setup with hit effect 0xFF, state advance to CUR_STATE_UPDATE, and self-free on collision-slot
+    failure all match the asm. However, the callee `object_setupCollisionData` was omitted (called between
+    `object_createCollisionData` success and `object_setCollisionHitEffect`), and the interface says r0
+    is unused and r5 is the battle object — note `object_getFrontDirection` takes r5 as argument and returns
+    into r0, so r0 is used. Also the self-destruct branch stores 0 into [ExtraVars] (r7), which the summary
+    does mention but garbles. Name is acceptable but `battle_setFourPanelOffsetPosition` would be slightly
+    more descriptive and use the `battle_` prefix consistently with other proposals.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which in-game entity spawns this object (4-panel-forward placement with a wide
+  hitbox) is unidentified
+- What state CUR_STATE_UPDATE leads to for this object's kind, and what [ExtraVars] points to, is not
+  shown here
+- The proposal is largely accurate — the X/Y/Z copy from the related object, panel recompute, 0x58x0x49
+  collision setup with hit effect 0xFF, state advance to CUR_STATE_UPDATE, and self-free on collision-slot
+  failure all match the asm. However, the callee `object_setupCollisionData` was omitted (called between
+  `object_createCollisionData` success and `object_setCollisionHitEffect`), and the interface says r0
+  is unused and r5 is the battle object — note `object_getFrontDirection` takes r5 as argument and returns
+  into r0, so r0 is used. Also the self-destruct branch stores 0 into [ExtraVars] (r7), which the summary
+  does mention but garbles. Name is acceptable but `battle_setFourPanelOffsetPosition` would be slightly
+  more descriptive and use the `battle_` prefix consistently with other proposals.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC280 -> battle_setFourPanelOffsetPosition
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC280

@@ -1,0 +1,57 @@
+name: init_battleScene
+address: '0x08038630'
+kind: function
+status: probable
+summary: 'Initializes a battle scene: clears chatbox, applies palette 0xd, sets DISPCNT 0x1340, resets
+  graphics/fade state, starts BGM 0x63 and a (8,8) screen fade, then writes 4 to a scene-state byte.'
+interface: (r0 = palette index 0xd, r5 = pointer to scene-state byte) -> r0 = clobbered; sets [r5] = 4
+details: This is a whole-scene graphics/music bring-up routine. It first calls chatbox_8040818 (clearing/resetting
+  chatbox state), applies overlay palette 0xd, and writes DISPCNT value 0x1340 (BG0+BG1+BG3 on, OBJ 1D
+  mapping) via SetRenderInfoLCDControl. It then zeroes the render-info sprite counters (renderInfo_8001788/_80017A0),
+  does a full graphics reset (resetAllGraphicsState_8005F40), runs a setup step with work-area clear,
+  initializes the battle-fade gfx state and initGfx_80386CC. Finally it queues music 0x63, sets SetScreenFade(8,8)
+  to start a fade, and stores 4 into a byte at [r5] (preserved from entry, likely a scene/phase state
+  field in a caller-owned struct).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl resetAllGraphicsState_8005F40 + runSetupStepAndClearWorkArea_8005F6C: full scene graphics
+    reinit; ldr r0, =0x1340; bl SetRenderInfoLCDControl: sets a fixed DISPCNT for this scene; bl sprite_initBattleFadeGfxState_80027C4:
+    ties the scene to the battle fade pipeline; mov r0, #0x63; bl music_80005F2: plays a specific BGM
+    track for the scene; mov r0, #8; mov r1, #8; bl SetScreenFade then strb r0, [r5] with r0=4: fade start
+    plus a state byte write'
+  refs:
+  - bn6f/asm/asm03_1_1.s:42
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08001788 renderInfo_8001788
+  - 0x080017A0 renderInfo_80017A0
+  reproduce: python3 tools/asmcat.py 0x08038630
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and behavior match: it resets chatbox, palette, DISPCNT, render counters, full gfx reset,
+    fade gfx init, BGM 0x63, screen fade (8,8), and stores 4 at [r5]. However, the prefix `start_` isn''t
+    in the approved prefix list and the function initializes battle-fade sprite gfx (`sprite_initBattleFadeGfxState_80027C4`,
+    `initGfx_80386CC`), so a more fitting prefix is `init` per the allowed list.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers known, so the meaning of the state byte 4 written to [r5] and which scene/struct r5 points
+  into is unconfirmed
+- initGfx_80386CC is undocumented; it may reveal the exact scene this sets up
+- What chatbox_8040818 does exactly, and why palette 0xd is applied, is not visible
+- 'The summary and behavior match: it resets chatbox, palette, DISPCNT, render counters, full gfx reset,
+  fade gfx init, BGM 0x63, screen fade (8,8), and stores 4 at [r5]. However, the prefix `start_` isn''t
+  in the approved prefix list and the function initializes battle-fade sprite gfx (`sprite_initBattleFadeGfxState_80027C4`,
+  `initGfx_80386CC`), so a more fitting prefix is `init` per the allowed list.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8038630 -> init_battleScene
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038630

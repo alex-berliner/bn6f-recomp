@@ -1,0 +1,59 @@
+name: battle_sweepSetElement
+address: '0x081085A2'
+kind: function
+status: probable
+summary: 'AI attack tick for a sweep attack: on first call sets oAIAttackVars_AttackElement to 4 and oAIAttackVars_StepTimer
+  to 10; each call decrements StepTimer, and when it hits zero writes 0x10 to oAIAttackVars_HitElement
+  to switch into the hit phase.'
+interface: (r0 unused on entry, r7 = oAIAttackVars struct of the acting enemy) -> r0 = value written;
+  no flags used by callers
+details: 'Runs in a battle-enemy AI attack context, using r7 as the per-actor oAIAttackVars struct. First
+  call in state: if oAIAttackVars_AttackElement is 0, it stores element 4 and sets oAIAttackVars_StepTimer
+  to 10 (charge/delay). On later calls it decrements StepTimer each invocation; when it reaches 0 it stores
+  0x10 into oAIAttackVars_HitElement, which presumably switches the attack into its damage phase (element/value
+  0x10 likely a special hit type for this attack). It''s purely a per-frame tick with no other side effects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — only acts when AttackElement unset
+    (0x081085A4-…A8); mov r0,#4 / strb into AttackElement plus mov r0,#0xa / strh into StepTimer = arm
+    phase with 10-frame delay; StepTimer decrement loop (ldrh/sub/strh/bgt) — classic AI tick timer, runs
+    each attack step; on timeout stores 0x10 to oAIAttackVars_HitElement — hands off to the attack's hit
+    logic; recorded route is 'battlesweep', matching an enemy sweep attack tick; no calls or memory access
+    beyond the r7 struct — a pure AI state handler
+  refs:
+  - bn6f/asm/asm31.s:171685
+  reproduce: python3 tools/asmcat.py 0x081085A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary misreads the store widths and the trigger. The code stores 0xA as a halfword to oAIAttackVars_StepTimer
+    (strh), not as a ''10 step'' byte, and writes 0x10 as a halfword to oAIAttackVars_HitElement, not
+    a byte. Also, the transition fires when StepTimer decrements to 0 or below (bgt branch), so the ''when
+    it reaches 0'' phrasing is slightly misleading. The overall behavior (arm element 4, 10-tick delay,
+    then write 0x10 to HitElement) is correct, so the name is acceptable but the summary needs correction.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack this tick belongs to (element 4 = Wood? and what hit element 0x10 means in the HitElement
+  enum)
+- the caller in the attack script that dispatches to this state, to confirm the state machine ordering
+  and the attack's identity
+- The summary misreads the store widths and the trigger. The code stores 0xA as a halfword to oAIAttackVars_StepTimer
+  (strh), not as a '10 step' byte, and writes 0x10 as a halfword to oAIAttackVars_HitElement, not a byte.
+  Also, the transition fires when StepTimer decrements to 0 or below (bgt branch), so the 'when it reaches
+  0' phrasing is slightly misleading. The overall behavior (arm element 4, 10-tick delay, then write 0x10
+  to HitElement) is correct, so the name is acceptable but the summary needs correction.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81085A2 -> battle_sweepSetElement
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81085A2

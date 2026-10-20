@@ -1,0 +1,64 @@
+name: spawn_panelObjectInitAndDispatch
+address: '0x080DF34C'
+kind: function
+status: probable
+summary: Initialization (sets Z, loads sprite 0x80 with animation 3 and palette 0, applies flip, advances
+  to CUR_STATE_UPDATE) and per-frame CurAction dispatch over a five-entry handler table, with early returns
+  to CUR_STATE_DESTROY when the battle ends or a time-stop is active.
+interface: (r5 = battle object header) -> r0 = state (CUR_STATE_UPDATE on init, CUR_STATE_DESTROY when
+  battle over); touches oBattleObject_Z, Flags, CurAnim(+Copy), CurAction, CurStateActionPhaseAndPhaseInitialized
+details: 'The entry block is an object constructor: it recomputes the object''s pixel position from its
+  panel coordinates, stores 0xFF0000 into oBattleObject_Z, loads sprite resource (0x80, 0x10, 0x1d) via
+  sprite_load, removes the shadow with sprite_noShadow, sets object Flags bit 1, selects animation 3 (also
+  mirrored into CurAnimCopy), loads the animation data, sets palette 0 and the flip from object_getFlip,
+  then advances the state machine to CUR_STATE_UPDATE. The second block (loc_80DF390) is the update routine:
+  it returns early doing nothing when the battle is over (transitioning the object to CUR_STATE_DESTROY)
+  or when a time-stop freezes the battle, otherwise it reads oBattleObject_CurAction and calls the matching
+  handler from the five-entry table at off_80DF3B8 via the bl lr; bx r1 dispatch idiom.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels then str 0xFF0000 -> [r5,#oBattleObject_Z] and bl sprite_load(0x80,0x10,0x1d):
+    panel-spawned object setup; mov r0,#3; strb to CurAnim and CurAnimCopy, then sprite_setAnimation /
+    sprite_loadAnimationData / sprite_setPalette(0) / sprite_setFlip(object_getFlip()): full sprite init;
+    str CUR_STATE_UPDATE -> [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] hands control to
+    the state machine; loc_80DF390: bl battle_isBattleOver / battle_isTimeStop guard, then ldrb CurAction;
+    ldr r1,[r1,r0]; bl lr; bx r1 — per-frame action dispatch; off_80DF3B8 lists five handlers sub_80DF3CC..sub_80DF4B0,
+    and battle-over path stores CUR_STATE_DESTROY'
+  refs:
+  - bn6f/asm/asm31.s:84611
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080DF34C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code confirms initialization (sprite 0x80, animation 3, palette 0, flip set, CUR_STATE_UPDATE)
+    and the five-entry CurAction dispatch table at off_80DF3B8, plus the battle-over/time-stop guards.
+    However, it never calls sprite_noShadow; the proposal cites an asm line that doesn''t exist. Also
+    ''spawn_panel'' is a reasonable prefix but the object is generic, so ''spawn_panelBattleObjectInitAndDispatch''
+    or simply ''object_initAndDispatch'' fits better.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- No callers are known, so which gameplay entity uses this routine (and thus what sprite 0x80/anim 3 depicts)
+  is unidentified
+- Meaning of the Z value 0xFF0000 (draw layer vs. world Z) is unconfirmed
+- What the five action handlers at sub_80DF3CC..sub_80DF4B0 do, which would pin down the object's role
+- The code confirms initialization (sprite 0x80, animation 3, palette 0, flip set, CUR_STATE_UPDATE) and
+  the five-entry CurAction dispatch table at off_80DF3B8, plus the battle-over/time-stop guards. However,
+  it never calls sprite_noShadow; the proposal cites an asm line that doesn't exist. Also 'spawn_panel'
+  is a reasonable prefix but the object is generic, so 'spawn_panelBattleObjectInitAndDispatch' or simply
+  'object_initAndDispatch' fits better.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF34C -> spawn_panelObjectInitAndDispatch
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF34C

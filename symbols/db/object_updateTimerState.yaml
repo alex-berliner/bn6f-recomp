@@ -1,0 +1,56 @@
+name: object_updateTimerState
+address: '0x080D255A'
+kind: function
+status: probable
+summary: Battle object state routine that decrements oBattleObject_Timer each tick, clears bit 1 of oObjectHeader_Flags
+  every other 4-tick window, and destroys the object by writing CUR_STATE_DESTROY when the timer expires.
+interface: (r5 = battle object pointer, no args) -> r0 = 0 when destroyed; destroys object by setting
+  its state to CUR_STATE_DESTROY
+details: Decrements oBattleObject_Timer on the object in r5 each call. While the timer is still nonzero,
+  if bit 2 of the decremented timer is set (every other 4-tick window), it clears bit 1 of oObjectHeader_Flags
+  — likely toggling a visible/active flag for a blink-out effect. When the timer reaches 0, it clears
+  flags bit 1 unconditionally and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  so the engine despawns the object. It relies on r5 being set up by the caller, i.e. it is an object
+  behavior/state routine rather than a general helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh — classic per-frame countdown on the object;
+    mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — requests
+    destruction when timer hits 0; ldrb r0,[r5,#oObjectHeader_Flags]; mov r1,#2; bic r0,r1; strb — clears
+    flags bit 1 both mid-count (lsr #2 bcs) and at expiry; No other memory touched; runs on recorded beastsp
+    route as an object tick handler'
+  refs:
+  - bn6f/asm/asm31.s:57188
+  reproduce: python3 tools/asmcat.py 0x080D255A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially correct, but the proposed name ''object_timerDestroy'' implies a standalone
+    helper. The code is clearly an object behavior/state routine invoked with r5 holding the battle object
+    pointer, so a name reflecting its role as an object state handler fits better. Also, the ''toggling''
+    description is slightly off — bit 1 (value 2) of oObjectHeader_Flags is only ever cleared (BIC), never
+    set, so it isn''t truly toggled.; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of oObjectHeader_Flags bit 1 (visible? collidable?) — need a known writer/reader of that
+  bit
+- Which callers assign this as an object's update/state handler and what initial Timer values they use
+- The summary is essentially correct, but the proposed name 'object_timerDestroy' implies a standalone
+  helper. The code is clearly an object behavior/state routine invoked with r5 holding the battle object
+  pointer, so a name reflecting its role as an object state handler fits better. Also, the 'toggling'
+  description is slightly off — bit 1 (value 2) of oObjectHeader_Flags is only ever cleared (BIC), never
+  set, so it isn't truly toggled.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D255A -> object_updateTimerState
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D255A

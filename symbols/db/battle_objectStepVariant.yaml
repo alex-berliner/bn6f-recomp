@@ -1,0 +1,65 @@
+name: battle_objectStepVariant
+address: '0x080CD160'
+kind: function
+status: probable
+summary: 'Per-step battle-object handler: early-exits if bytes at offset 0x64 are both nonzero, ticks
+  a counter at ExtraVars+0xC that wraps 1→3, dispatches on ExtraVars[1] to sub_80CD26C or sub_80CD236,
+  and on nonzero return spawns via sub_80CD488 before moving to phase 4 with timer 12.'
+interface: (r4, r5 = battle object) -> void; r0/r2/r4/r6 used for the spawn call to sub_80CD488; sets
+  oBattleObject_Timer2 and oBattleObject_CurPhaseAndPhaseInitialized
+details: r5 is a battle object; r7=r5+0x64 is read as two bytes and if both are nonzero the function exits
+  immediately, so it only acts while at least one of those conditions is clear. It decrements the counter
+  at [oBattleObject_ExtraVars+0xC], wrapping 1 back to 3, so the action repeats on a 3-frame cycle. It
+  then reads a byte at offset 1 of the struct pointed to by oBattleObject_ExtraVars and calls sub_80CD26C
+  when it is zero or sub_80CD236 when it is not — two variants of the same step. If that step returns
+  nonzero, it calls sub_80CD488 with r2 = oBattleObject_AllianceAndDirectionFlip, r4 = that same byte,
+  and r6 = 0, presumably queuing the attack's effect/projectile. Finally it writes 12 to oBattleObject_Timer2
+  and phase 4 to oBattleObject_CurPhaseAndPhaseInitialized, handing control to the next phase after a
+  12-frame delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7]/add r7,#1/ldrb r0,[r7] + beq/bne early exits at 80CD16C-80CD1AC gate the whole
+    body on two bytes at r5+0x64/0x65; counter at [r5,#oBattleObject_ExtraVars+0xC] is decremented and
+    wrapped 1->3, a 3-frame cycle; branch between bl sub_80CD26C and bl sub_80CD236 selects a step variant
+    by the byte at [ExtraVars]+1; successful step (tst r0,r0 nonzero) leads to bl sub_80CD488 with r2=oBattleObject_AllianceAndDirectionFlip
+    and r4=that byte; writes mov r0,#0xc to oBattleObject_Timer2 and mov r0,#4 to oBattleObject_CurPhaseAndPhaseInitialized,
+    a phase transition with a 12-frame timer
+  refs:
+  - bn6f/asm/asm31.s:45925
+  - 0x080CD236 sub_80CD236
+  - 0x080CD26C sub_80CD26C
+  - 0x080CD488 sub_80CD488
+  reproduce: python3 tools/asmcat.py 0x080CD160
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The mechanics match the code: the early-exit guard at offset 0x64, the 3-frame wrap counter, dispatch
+    on ExtraVars[1] to sub_80CD26C/sub_80CD236, the spawn call to sub_80CD488 with the documented args,
+    and phase-4/timer-12 handoff all line up with the asm. The summary''s claim that 12 is a ''12-frame
+    timer'' is speculation beyond the code; the name ''battle_attackVariantStep'' is reasonable but the
+    ''attack'' framing isn''t directly evidenced here.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- chips
+open_questions:
+- what sub_80CD488 spawns or does (callee summaries unknown), which would pin down the attack type
+- meaning of the gate bytes at r5+0x64/0x65 and of the variant byte at [ExtraVars]+1
+- which chip or enemy behavior routes execute this, since no caller is recorded
+- 'The mechanics match the code: the early-exit guard at offset 0x64, the 3-frame wrap counter, dispatch
+  on ExtraVars[1] to sub_80CD26C/sub_80CD236, the spawn call to sub_80CD488 with the documented args,
+  and phase-4/timer-12 handoff all line up with the asm. The summary''s claim that 12 is a ''12-frame
+  timer'' is speculation beyond the code; the name ''battle_attackVariantStep'' is reasonable but the
+  ''attack'' framing isn''t directly evidenced here.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD160 -> battle_objectStepVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD160

@@ -1,0 +1,66 @@
+name: battle_panelObjectUpdate
+address: '0x080CA7AC'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object on a highlighted panel: rebuilds its collision, branches
+  via CurAction dispatcher, highlights the panel and refreshes sprite/collision while panel status flag
+  0x10 is set, otherwise spawns a configured effect object and self-destructs.'
+interface: (r0 = battle object ptr in r5 convention) -> r0 = possibly changed by callees; may set object
+  state to CUR_STATE_DESTROY
+details: The routine first tears down and respawns the object's collision data, then, if collision flags
+  are nonzero, saves PanelXY into ExtraVars and clears its collision region. It dispatches through a 3-entry
+  jump table indexed by oBattleObject_CurAction (three THUMB handlers at sub_80CA834/88E/E2, invoked via
+  blx-style bx lr trick). After the dispatcher it reads the panel status flags via object_getPanelParameters
+  for the object's PanelX/PanelY; if bit 0x10 is set, it assigns collision region 1 (object_setCollisionRegion)
+  unless already assigned or the panel changed, highlights the panel, then presents collision data and
+  returns. If bit 0x10 is clear, it copies fields from object+0x34..0x3F, bumps the third by 0x10<<16,
+  spawns an effect object via spawn_t1_0x0_EffectObject, clears its collision region, sets its state to
+  CUR_STATE_DESTROY, and returns.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_removeCollisionData / object_spawnCollisionEffect at entry refresh collision each
+    frame; ldr r1, off_80CA824; ldrb r0, [r5,#oBattleObject_CurAction]; bx r1 - 3-way action dispatcher;
+    bl object_getPanelParameters; tst r0,#0x10 - branch on panel status bit decides stay vs destroy; object_setCollisionRegion(1)
+    + object_highlightPanel when bit set, matching 'occupy and highlight panel'; spawn_t1_0x0_EffectObject
+    then mov r0,#CUR_STATE_DESTROY; str to oBattleObject_CurStateActionPhaseAndPhaseInitialized - effect
+    + self-destruct path
+  refs:
+  - bn6f/asm/asm31.s:40265
+  - 0x080CA6D8 sub_80CA6D8
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080CA7AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is largely correct: the code removes/re-spawns collision, checks panel status flag 0x10,
+    and on mismatch spawns an effect and destroys the object. Two details disagree with the code: (1)
+    after `object_clearCollisionRegion` at the top there is no extra condition for setting state—state
+    changes only in the `beq loc_80CA806` branch; (2) before returning from the highlighted path it calls
+    `object_updateSprite` (asm line `bl object_updateSprite`), not just `object_presentCollisionData`.
+    Also note the CurAction jump table at off_80CA828 dispatches three handlers, not the addresses claimed
+    in the proposal.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which in-game object uses this handler (a panel-bound hazard/obstacle?) - need its spawn site
+- Exact meaning of panel status bit 0x10 and of the three CurAction handlers at 80CA834/88E/E2
+- Meaning of the object+0x34 fields copied into the spawned effect and the 0x10<<16 adjustment
+- 'The summary is largely correct: the code removes/re-spawns collision, checks panel status flag 0x10,
+  and on mismatch spawns an effect and destroys the object. Two details disagree with the code: (1) after
+  `object_clearCollisionRegion` at the top there is no extra condition for setting state—state changes
+  only in the `beq loc_80CA806` branch; (2) before returning from the highlighted path it calls `object_updateSprite`
+  (asm line `bl object_updateSprite`), not just `object_presentCollisionData`. Also note the CurAction
+  jump table at off_80CA828 dispatches three handlers, not the addresses claimed in the proposal.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA7AC -> battle_panelObjectUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA7AC

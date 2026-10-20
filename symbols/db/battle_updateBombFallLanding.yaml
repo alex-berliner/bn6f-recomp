@@ -1,0 +1,64 @@
+name: battle_updateBombFallLanding
+address: '0x080CF4E6'
+kind: function
+status: probable
+summary: Update handler that lets a falling bomb object travel via timer-controlled X/Z velocity until
+  the timer expires, then snaps it to panel coords, optionally detonates (per panel status mask 0xF800010)
+  by spawning a type-0 t4 effect, playing SOUND_HIT_BOMB_1, optionally shaking the camera, and setting
+  collision region 1; always transitions to CurAction=8 and clears flag bit 1.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurAction=8 on landing
+details: 'Decrement oBattleObject_Timer; while nonzero, add XVelocity to X and subtract ZVelocity from
+  Z (parabolic fall) and return. On timeout: recompute pixel coords from PanelX/PanelY, zero Z, and read
+  panel status via object_getPanelParameters; mask 0xF800010 selects which panel states allow detonation.
+  If it detonates: spawn a type-4 effect object taking 3 parameter words from the object at offset 0x34,
+  play SOUND_HIT_BOMB_1, and if byte 4 of oBattleObject_ExtraVars is set, request a camera shake (0xF,
+  0xF) via camera_initShakeEffect; then object_setCollisionRegion(1). Finally it sets CurAction to 8 (post-blast
+  state), clears CurPhaseAndPhaseInitialized, and clears flag bit 1 (0x2) in oObjectHeader_Flags.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub #1; bne loc_80CF53E — timer-gated landing; loc_80CF53E
+    adds oBattleObject_XVelocity to X and subtracts oBattleObject_ZVelocity from Z — projectile flight;
+    object_getPanelParameters + tst r0,0xF800010 / beq — detonation gated on panel flags (holes don''t
+    trigger it); spawn_t1_0x0_EffectObject with args from [r5+0x34] and PlaySoundEffect(SOUND_HIT_BOMB_1)
+    — explosion + bomb hit sound; str #8 into oBattleObject_CurAction and bic 0x2 on oObjectHeader_Flags
+    — transition to post-impact state'
+  refs:
+  - bn6f/asm/asm31.s:50619
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080CF4E6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposal closely: timer decrement, loop adds XVelocity to X and subtracts ZVelocity
+    from Z (not standard parabolic add/subtract pattern but functionally falling), on zero recomputes
+    coordinates, zeroes Z, tests panel mask 0xF800010, spawns t4 effect, plays SOUND_HIT_BOMB_1, conditional
+    camera shake, sets collision region 1, and sets CurAction=8. Minor issues: the effect spawn is type
+    0 per spawn_t1_0x0_EffectObject, not type 4 as stated, and the name ''bomb_onLandingExplode'' is reasonable
+    but the prefix should be ''battle'' to match convention.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which bomb attack/owner uses this object (no callers known), and the exact meaning of panel flag bits
+  0x0F800010
+- What CurAction=8 does afterwards (lingering explosion vs. despawn) and where offset 0x34 data is filled
+  in
+- 'The code matches the proposal closely: timer decrement, loop adds XVelocity to X and subtracts ZVelocity
+  from Z (not standard parabolic add/subtract pattern but functionally falling), on zero recomputes coordinates,
+  zeroes Z, tests panel mask 0xF800010, spawns t4 effect, plays SOUND_HIT_BOMB_1, conditional camera shake,
+  sets collision region 1, and sets CurAction=8. Minor issues: the effect spawn is type 0 per spawn_t1_0x0_EffectObject,
+  not type 4 as stated, and the name ''bomb_onLandingExplode'' is reasonable but the prefix should be
+  ''battle'' to match convention.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF4E6 -> battle_updateBombFallLanding
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF4E6

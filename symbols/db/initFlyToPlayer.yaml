@@ -1,0 +1,68 @@
+name: initFlyToPlayer
+address: '0x080E9810'
+kind: function
+status: probable
+summary: Initializes a battle object's sprite (loading sprite/palette/animation/flip from Param1/Param3/Param4)
+  and computes per-frame X/Y/Z velocities that move it to the player (selected by Param2 alliance) in
+  9 frames.
+interface: (r0 = battle object ptr) -> r0 = object ready for CUR_STATE_UPDATE; sets Timer=9, flag bit
+  1, velocities, RelatedObject1Ptr
+details: Reads oBattleObject_Param1 as an ID, doubles it to index byte_80E98C0, and passes the two bytes
+  (sprite id + palette/anim byte) to sprite_load with flag 0x80, then loads animation data and clears
+  the shadow. Sets CurAnim/CurAnimCopy from Param3 via sprite_setAnimation, palette from Param4, and flip
+  from object_getFlip; when Param1==2 it also calls sprite_setUnk0x2c with ExtraVars+8. It looks up the
+  player with battle_findPlayer, stores it in RelatedObject1Ptr, snapshots the player's X/Y into ExtraVars/ExtraVars+4,
+  and offsets the target X by ±0x14 depending on the player's facing (object_getFlipDirection), i.e. aims
+  at the tile the player faces from. With Timer=9 it uses BIOS SWI 6 (signed divide) to compute (target
+  - current)/9 for X, Y, and a target Z of 0x10*0x10000, storing the per-frame velocities. Finally sets
+  oObjectHeader_Flags bit 1 and switches the state field to CUR_STATE_UPDATE.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; lsl #1; ldr r3,off_80E9990 selects sprite params from byte_80E98C0
+    before sprite_load/sprite_loadAnimationData/sprite_noShadow; bl battle_findPlayer then copies player
+    X/Y into ExtraVars and RelatedObject1Ptr, targeting the player; mov r1,#0x14; mul with object_getFlipDirection
+    result shifts target X by ±20 to the player''s facing side; svc 6 after sub of target-current with
+    r1=#9 computes per-frame velocities over Timer=9 frames for X, Y and Z (0x1000 target); str CUR_STATE_UPDATE
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized ends init, matching caller-side state-machine
+    spawn pattern'
+  refs:
+  - bn6f/asm/asm31.s:107623
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080E9810
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s mechanics match the asm: Param1 indexed into byte_80E98C0 (lsl r0,#1) feeds sprite_load
+    with 0x80 (mov r0,#0x80; bl sprite_load), CurAnim/anim/palette/flip setup follows, Param2 (not Param1)
+    selects the alliance for the player lookup (ldrb r0,[r5,#oBattleObject_Param2]; bl battle_findPlayer),
+    Z target is 0x10<<16 (mov r0,#0x10; lsl r0,r0,#0x10) and Timer=9 with SWI 6 signed divide, flag bit
+    1 and state CUR_STATE_UPDATE are set. The summary calling the target Z ''0x10*0x10000'' is a minor
+    phrasing slip, but the bigger issue is the name: this initializes/extends a battle object sprite that
+    flies to the player, so ''spawn_initFlyToPlayer'' conflates two concerns; ''initFlyToPlayer'' is cleaner.;
+    run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No callers known, so which attack/spawner sets Param1-Param4 and the meaning of the byte_80E98C0 entry
+  pairs (sprite id vs palette) is inferred, not confirmed
+- The exact rendering meaning of sprite_setUnk0x2c used only for Param1==2 is unknown
+- 'The proposal''s mechanics match the asm: Param1 indexed into byte_80E98C0 (lsl r0,#1) feeds sprite_load
+  with 0x80 (mov r0,#0x80; bl sprite_load), CurAnim/anim/palette/flip setup follows, Param2 (not Param1)
+  selects the alliance for the player lookup (ldrb r0,[r5,#oBattleObject_Param2]; bl battle_findPlayer),
+  Z target is 0x10<<16 (mov r0,#0x10; lsl r0,r0,#0x10) and Timer=9 with SWI 6 signed divide, flag bit
+  1 and state CUR_STATE_UPDATE are set. The summary calling the target Z ''0x10*0x10000'' is a minor phrasing
+  slip, but the bigger issue is the name: this initializes/extends a battle object sprite that flies to
+  the player, so ''spawn_initFlyToPlayer'' conflates two concerns; ''initFlyToPlayer'' is cleaner.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9810 -> initFlyToPlayer
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9810

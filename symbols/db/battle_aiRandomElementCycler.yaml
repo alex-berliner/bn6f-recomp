@@ -1,0 +1,66 @@
+name: battle_aiRandomElementCycler
+address: '0x080F6EA6'
+kind: function
+status: probable
+summary: AI attack object tick that travels one panel per frame and, every StepTimer cycles (up to 5),
+  rerolls its element via GetPositiveSignedRNG & 7 (avoiding repeat) and sets HitElement=4; when the cycle
+  cap is reached or the object deactivates, it stores HitElement=0x10 and hides the object.
+interface: (r0 = battle object (r5 ptr), r7 = AI attack vars) -> void; updates object X position, panels,
+  and HitElement
+details: On first entry (AttackElement==0) it sets AttackElement=4, anim 0xF, plays SFX 0xE3, computes
+  an X velocity and a step timer. Each run it advances X by XVelocity, converts panel X/Y to screen coords,
+  then via collision checks (byte_80F6F74 alliance-based flag masks) clears/moves its collision region
+  and refreshes panels. When the step timer counts down it calls sub_80F7514, deactivates the object (Z=0xFF,
+  shadow/collision removal), and increments a cycle counter; for up to 5 cycles it rolls GetPositiveSignedRNG
+  & 7, rerolling to avoid repeating the previous value, and stores it as the new HitElement (0x10 when
+  the attack ends or the object survived). The avoid-repeat RNG on a hit element strongly suggests a boss/AI
+  projectile that changes its element each hit.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: first-entry block sets AttackElement=4, CurAnim=0xF, PlaySoundEffect(0xE3) and a velocity/timer
+    (asm start); per-frame block applies oBattleObject_XVelocity to oBattleObject_X then object_setPanelsFromCoordinates/object_updateCollisionPanels;
+    timer expiry calls battle_deactivateObject and cycles oAIAttackVars_TimerOrCycles up to 5; GetPositiveSignedRNG
+    & 7 compared against AttackBoost2 with reroll, result stored to HitElement — random non-repeating
+    element choice; byte_80F6F74 is an alliance-indexed mask table used with oCollisionData_FlagsFromCollision
+    to detect hitting an object
+  refs:
+  - bn6f/asm/asm31.s:135133
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x080F7140 battle_deactivateObject
+  reproduce: python3 tools/asmcat.py 0x080F6EA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary mostly fits: on first entry it sets AttackElement=4 and anim 0xF (lines 0x080F6EB0-0x080F6EB8),
+    plays SFX 0xE3 (0x080F6EBC), advances X each frame (0x080F6EE0), checks collision via byte_80F6F74
+    (0x080F6F00), clears/moves collision region, and on step-timer expiry increments TimerOrCycles up
+    to 5 then rerolls element via GetPositiveSignedRNG & 7 avoiding repeat (0x080F6F3A-0x080F6F5E). However
+    the proposal misidentifies the struct field used to avoid repeat as ''AttackBoost2''; the asm stores
+    the rolled element into the same field and sets oAIAttack_HitElement=4 (0x080F6F60), while on termination
+    sets HitElement=0x10 (0x080F6F6A). The 5-cycle limit and random element per cycle are correct, so
+    only naming/summary needs tightening.; run wf investigate investigate-20261018-222121; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- which boss or chip spawns this attack (no callers known)
+- meaning of sub_80F742E/sub_80F7500/sub_80F710A/sub_80F7514 helpers
+- exact semantics of HitElement values 4 vs 0x10
+- 'The summary mostly fits: on first entry it sets AttackElement=4 and anim 0xF (lines 0x080F6EB0-0x080F6EB8),
+  plays SFX 0xE3 (0x080F6EBC), advances X each frame (0x080F6EE0), checks collision via byte_80F6F74 (0x080F6F00),
+  clears/moves collision region, and on step-timer expiry increments TimerOrCycles up to 5 then rerolls
+  element via GetPositiveSignedRNG & 7 avoiding repeat (0x080F6F3A-0x080F6F5E). However the proposal misidentifies
+  the struct field used to avoid repeat as ''AttackBoost2''; the asm stores the rolled element into the
+  same field and sets oAIAttack_HitElement=4 (0x080F6F60), while on termination sets HitElement=0x10 (0x080F6F6A).
+  The 5-cycle limit and random element per cycle are correct, so only naming/summary needs tightening.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6EA6 -> battle_aiRandomElementCycler
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6EA6

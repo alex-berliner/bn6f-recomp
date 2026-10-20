@@ -1,6 +1,6 @@
 /*
  * sprite_gfx.c — per-frame sprite placement and graphics residency
- * (sprite_projectAndCull, sub_300631C, sub_300638C, sprite_ensureGfxResident, sprite_acquireObjPaletteSlot and their
+ * (sprite_projectAndCull, sub_300631C, sprite_projectFromCamera, sprite_ensureGfxResident, sprite_acquireObjPaletteSlot and their
  * helpers in bn6f asm38.s; IWRAM routines in the original).
  *
  * For every visible object the overworld calls, in order:
@@ -96,7 +96,7 @@ IWRAM_HELPER static ScreenPos project_iso(u32 pos, u32 spr) {
     return s;
 }
 
-/* Side-view camera (sub_300638C), optionally mirrored horizontally. */
+/* Side-view camera (sprite_projectFromCamera), optionally mirrored horizontally. */
 IWRAM_HELPER static ScreenPos project_side(u32 pos, u32 spr, u32 mirror) {
     u32 cam = U32(R10 + TK_CAMERA);
     ScreenPos s;

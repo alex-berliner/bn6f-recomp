@@ -2416,10 +2416,10 @@ static bool is_valid_panel(u32 x, u32 y) {
     return R0 != 0;
 }
 
-/* register form: calls sub_80C5014 outside this file, which has no typed C interface yet */
+/* register form: calls object_executeQuakeStrikeAttack outside this file, which has no typed C interface yet */
 static void sub_80c5014(u32 obj) {
     R5 = obj;
-    GUEST_CALL(sub_80C5014);
+    GUEST_CALL(object_executeQuakeStrikeAttack);
 }
 
 /* register form: calls object_setCoordinatesFromPanels outside this file, which has no typed C interface yet */

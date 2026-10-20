@@ -1,0 +1,61 @@
+name: object_updateDestroyOnHit
+address: '0x080D730A'
+kind: function
+status: probable
+summary: Per-frame update that tears down and respawns the object's collision effect, then either runs
+  a per-action handler or, on a collision hit, spawns a hit effect, plays sound 0x85, clears its collision
+  region, and marks it destroyed.
+interface: (r5 = battle object ptr) -> void; destroys object on hit
+details: 'First tears down the object''s collision data, then spawns the standard hit-effect object for
+  its last collision. If the collision flags byte at oCollisionData_FlagsFromCollision is nonzero it takes
+  the hit path: copies three fields from r5+0x34 into a type-0 effect spawn, plays sound 0x85, clears
+  its collision region, and sets its state to CUR_STATE_DESTROY. Otherwise it loads a jump table (off_80D734C,
+  three entries) indexed by oBattleObject_CurAction and tail-dispatches to one of three per-action handlers,
+  then refreshes the object''s collision state for the frame via object_presentCollisionData.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne loc_80D732C after testing oCollisionData_FlagsFromCollision separates hit path from normal
+    path; hit path: spawn_t1_0x0_EffectObject with r5+0x34 fields, PlaySoundEffect(0x85), state = CUR_STATE_DESTROY;
+    ldr r1, [r1,r0] off CurAction with bx dispatch shows per-action handler table of 3 entries; object_presentCollisionData
+    called after normal-path dispatch, per its collision-refresh summary; callees object_removeCollisionData/object_spawnCollisionEffect
+    match the known collision teardown/effect helpers'
+  refs:
+  - bn6f/asm/asm31.s:67589
+  - 0x080D729C sub_80D729C
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D730A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary accurately captures the flow: removeCollisionData, spawnCollisionEffect, then either
+    the hit-path (spawn effect, play sound, clear region, set CUR_STATE_DESTROY) or the action-handler
+    dispatch followed by presentCollisionData. The name ''object_updateHitDestroyable'' is reasonable
+    but ''HitDestroyable'' is vague; ''object_updateDestroyOnHit'' more directly reflects the destroy-on-hit
+    behavior. Note the proposal claims ''copies three fields from r5+0x34'' - the asm does `add r0, #0x34`
+    then `ldmia r0!, {r1-r3}`, which matches.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what the three action handlers (sub_80D7358/80D7382/80D73AC) do, to tell which destructible object type
+  this is
+- which callers/objects use this handler, i.e. what CurAction values 0-2 mean here
+- 'The summary accurately captures the flow: removeCollisionData, spawnCollisionEffect, then either the
+  hit-path (spawn effect, play sound, clear region, set CUR_STATE_DESTROY) or the action-handler dispatch
+  followed by presentCollisionData. The name ''object_updateHitDestroyable'' is reasonable but ''HitDestroyable''
+  is vague; ''object_updateDestroyOnHit'' more directly reflects the destroy-on-hit behavior. Note the
+  proposal claims ''copies three fields from r5+0x34'' - the asm does `add r0, #0x34` then `ldmia r0!,
+  {r1-r3}`, which matches.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D730A -> object_updateDestroyOnHit
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D730A

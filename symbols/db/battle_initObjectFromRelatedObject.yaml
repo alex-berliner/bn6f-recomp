@@ -1,0 +1,71 @@
+name: battle_initObjectFromRelatedObject
+address: '0x080BAF74'
+kind: function
+status: probable
+summary: Clones a related object's sprite (graphic+animation), position, palette, and facing into the
+  given battle object, then advances its state to CUR_STATE_UPDATE and runs sub_80BB00C.
+interface: (r5 = battle object being set up; uses r5->RelatedObject1Ptr as source) -> r0 = void; called
+  late in the object's setup with r5 already holding the object
+details: The source is r4 = r5->RelatedObject1Ptr. Its NameID is unpacked via unpackVerActorTyAndAIIdx;
+  if the variant/type byte is 2, the sprite graphic is chosen via GetBattleNaviStatsByte (0x2C, 0x29)
+  plus chip_class_lookup, otherwise via enemy_getArmPosition (slot 0xCD..0xFF vs normal actor ids). sprite_load/sprite_loadAnimationData
+  load the graphic and animation, then CurAnim is zeroed, CurAnimCopy set to 0xFF, and oObjectHeader_Flags
+  bit 1 is set. Three words at source+0x34 (position x/y/z) are copied to the new object's +0x34 before
+  object_setPanelsFromCoordinates recomputes its panel coords; palette comes from battle_pickPaletteIndexForNavi
+  and facing from object_getFlip. Finally sub_8010DF6/sub_80E1352(0xF) run, CurStateActionPhaseAndPhaseInitialized
+  is set to CUR_STATE_UPDATE, and sub_80BB00C is called. The heavy reliance on the related object's Navi
+  stats for palette suggests this builds a visual copy/clone of another actor (e.g. an illusion or transformed
+  navi).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r4,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh r0,[r4,#oBattleObject_NameID] — sprite id
+    comes from the related object; bl sprite_load / sprite_loadAnimationData / sprite_hasShadow — loads
+    and animates the sprite; ldmia r0!,{r1-r3} at src+0x34; stmia at r5+0x34 then bl object_setPanelsFromCoordinates
+    — copies world position from source; bl battle_pickPaletteIndexForNavi_801002C + sprite_setPalette
+    + object_getFlip + sprite_setFlip — palette and facing derived from the source navi; mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]; bl sub_80BB00C — finishes setup
+    by advancing the state machine
+  refs:
+  - bn6f/asm/asm31.s:6276
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0801002C battle_pickPaletteIndexForNavi_801002C
+  - 0x0800FC9E chip_class_lookup_800FC9E
+  reproduce: python3 tools/asmcat.py 0x080BAF74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads RelatedObject1Ptr (r4), copies its position, palette, facing, and loads sprite/animation
+    data into r5, then advances r5 to CUR_STATE_UPDATE. That matches a ''clone/visual copy from related
+    object'' description well. However, the name ''initSpriteFromRelatedObject'' is fine but a bit narrow
+    — it also sets position, palette, facing, and calls sub_80BB00C (likely a final init step). The proposed
+    summary is largely accurate, but it omits that CurAnimCopy is set to 0xFF (already in details), and
+    the heavy Navi-stats path is only one branch (cmp r0,#2 / bne loc_80BAF9E); non-Navi sources go through
+    enemy_getArmPosition_800F26C. The name ''battle_initSpriteFromRelatedObject'' is reasonable; a more
+    general name like ''battle_initObjectFromRelatedObject'' would cover the position/palette/facing/state
+    work too.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No known caller, so which objects take this path (clone/illusion/transform?) and what r5 points to at
+  entry is unconfirmed
+- Meaning of the variant==2 branch (stats bytes 0x2C/0x29 + chip class) and of sub_8010DF6 / sub_80BB00C
+  / sub_80E1352(0xF) is unresolved
+- The function reads RelatedObject1Ptr (r4), copies its position, palette, facing, and loads sprite/animation
+  data into r5, then advances r5 to CUR_STATE_UPDATE. That matches a 'clone/visual copy from related object'
+  description well. However, the name 'initSpriteFromRelatedObject' is fine but a bit narrow — it also
+  sets position, palette, facing, and calls sub_80BB00C (likely a final init step). The proposed summary
+  is largely accurate, but it omits that CurAnimCopy is set to 0xFF (already in details), and the heavy
+  Navi-stats path is only one branch (cmp r0,#2 / bne loc_80BAF9E); non-Navi sources go through enemy_getArmPosition_800F26C.
+  The name 'battle_initSpriteFromRelatedObject' is reasonable; a more general name like 'battle_initObjectFromRelatedObject'
+  would cover the position/palette/facing/state work too.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAF74 -> battle_initObjectFromRelatedObject
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAF74

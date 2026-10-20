@@ -1,0 +1,63 @@
+name: object_advanceXAndCull
+address: '0x080C524C'
+kind: function
+status: probable
+summary: Per-frame object update which adds XVelocity to X, refreshes panels/collision/sprite, and destroys
+  the object if its collision flags are set, the battle is over, or its current panel is invalid.
+interface: (r5 = battle object header) -> void; sets object state to CUR_STATE_DESTROY on cull
+details: The routine first tears down the object's collision data (object_removeCollisionData) and spawns
+  its collision effect, then checks the collision flags at oCollisionData_FlagsFromCollision — any nonzero
+  flag short-circuits to the destroy path. It also destroys the object when battle_isBattleOver reports
+  the battle has ended. Otherwise it adds oBattleObject_XVelocity to oBattleObject_X, recomputes PanelX/PanelY
+  via object_setPanelsFromCoordinates and object_updateCollisionPanels, and only continues the normal
+  update (object_presentCollisionData, object_updateSprite) if object_isCurrentPanelValid succeeds. The
+  destroy path clears collision region, clears bit 2 of oObjectHeader_Flags, and stores CUR_STATE_DESTROY
+  into the state field. Note r5 is used without setup, so the caller must place the object pointer in
+  r5; no caller is known, so which entities use this (likely projectiles or hazards that fly off-field)
+  is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_XVelocity]; ldr r0,[r5,#oBattleObject_X]; add/str — applies X velocity;
+    bl battle_isBattleOver; bne loc_80C5288 — ends object when battle over; bl object_isCurrentPanelValid;
+    beq loc_80C5288 — culls when new panel invalid; loc_80C5288: mov r0,#CUR_STATE_DESTROY; str ... oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    — destroy path; bl object_presentCollisionData; bl object_updateSprite on the surviving path — normal
+    per-frame object update'
+  refs:
+  - bn6f/asm/asm31.s:28570
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080C524C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary and details match the code well: r5 holds the object, collision flags or battle-is-over
+    short-circuit to destroy (loc_80C5288), otherwise X velocity is added to X, panels recomputed, validity
+    checked, then collision presented and sprite updated. The destroy path clears collision region, clears
+    bit 1 (mov r1,#2; bic = 0b10) of oObjectHeader_Flags, and stores CUR_STATE_DESTROY. The name ''object_moveXAndCullOffField''
+    is okay but ''object_advanceXAndCull'' is more accurate since culling triggers on battle-over and
+    invalid panel, not only off-field movement.; run wf investigate investigate-20261018-223614; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which entity types call this (no callers known) — likely flying projectiles that despawn off-field
+- Whether object_spawnCollisionEffect's summary matches (it is called second but appears unnamed in the
+  prompt's callee list context)
+- 'The summary and details match the code well: r5 holds the object, collision flags or battle-is-over
+  short-circuit to destroy (loc_80C5288), otherwise X velocity is added to X, panels recomputed, validity
+  checked, then collision presented and sprite updated. The destroy path clears collision region, clears
+  bit 1 (mov r1,#2; bic = 0b10) of oObjectHeader_Flags, and stores CUR_STATE_DESTROY. The name ''object_moveXAndCullOffField''
+  is okay but ''object_advanceXAndCull'' is more accurate since culling triggers on battle-over and invalid
+  panel, not only off-field movement.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C524C -> object_advanceXAndCull
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C524C

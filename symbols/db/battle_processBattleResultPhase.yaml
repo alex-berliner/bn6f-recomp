@@ -1,0 +1,63 @@
+name: battle_processBattleResultPhase
+address: '0x0800980E'
+kind: function
+status: probable
+summary: 'Battle-end sub-phase: runs once-only init, then sub_80084F0 + the end-of-battle check; classifies
+  the outcome (1=win, 2=loss, 7=other), records it via setTwoStructs_800A840, computes/stores BustingLevelCategory
+  for wins/losses, syncs into the 200A008 overworld-player struct, and advances the sub-state machine
+  by writing Index_01 (0x10/0x14) and clearing StatePhaseAndInitFlag.'
+interface: (r5 = battle state struct) -> r0 = 0; writes BustingLevelCategory, Index_01 (0x10 or 0x14),
+  clears StatePhaseAndInitFlag; no return value used
+details: 'Runs the once-per-phase init (sub_8008928 guarded by SubPhaseInitFlag, flag set to 4), then
+  calls sub_80084F0 and a check routine whose nonzero return means the battle has ended. It reads oBattleState_BattlePhase
+  and branches on 1, 2 and 7: each case stores the same value as the battle-result byte via setTwoStructs_800A840
+  (shared battle-result update) and, for 1 and 2, computes and stores the busting-level category and syncs
+  it into the 200A008 overworld-player struct (setUnk00/setUnk03). For wins/losses it consults GetBattleEffects:
+  bit 0x2 aborts to the short path, while 0x400 is gated by sub_800AF50; passing keeps r2=0x10, failing
+  gives 0x14. Finally Index_01 = r2 and StatePhaseAndInitFlag = 0 to move to the next sub-state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleState_BattlePhase]; branches on 1/2/7, each calling setTwoStructs_800A840
+    with the same value (result byte per outcome); battle_bustingLevelCategoryForEffect_800AF84 result
+    stored to oBattleState_BustingLevelCategory in phases 1 and 2; phase 1 tests effects bit 0x2 and bit
+    0x400 (with sub_800AF50 gate) to pick r2=0x10 vs 0x14; phase 2 tests 0x8, 0x2 and 0x400 the same way;
+    locret path writes strb r2,[r5,#oBattleState_Index_01] and clears StatePhaseAndInitFlag, i.e. state-machine
+    advance; no callers known; one-shot init via SubPhaseInitFlag=4 indicates a phase handler invoked
+    from the battle state dispatcher
+  refs:
+  - bn6f/asm/asm00_1.s:14379
+  - 0x0802D246 GetBattleEffects
+  - 0x0800AF84 battle_bustingLevelCategoryForEffect_800AF84
+  - 0x0800B6B6 eStruct200A008_setUnk00
+  reproduce: python3 tools/asmcat.py 0x0800980E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The branch flow, setTwoStructs_800A840 usage, and writes to Index_01/StatePhaseAndInitFlag match
+    the summary well, but the proposal overstates the role of sub_80084F0: in the asm it is called before
+    any branch (loc_800981E) and is followed by someChipHandValidationHappensHere_800B090 which is the
+    actual end-of-battle check, not sub_80084F0. The 0x2/0x400 gating logic via sub_800AF50 is present
+    in both the r0==1 and r0==2 branches, not only ''for wins/losses'' via GetBattleEffects bit 0x400
+    alone.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- exact meaning of BattlePhase 7 and of effects bits 0x2, 0x8 and 0x400
+- what sub_800AF50 and sub_800B6F2 do (sub_800AF50 gates the 0x10 vs 0x14 choice)
+- which caller invokes this, to confirm which BattlePhase value routes here
+- 'The branch flow, setTwoStructs_800A840 usage, and writes to Index_01/StatePhaseAndInitFlag match the
+  summary well, but the proposal overstates the role of sub_80084F0: in the asm it is called before any
+  branch (loc_800981E) and is followed by someChipHandValidationHappensHere_800B090 which is the actual
+  end-of-battle check, not sub_80084F0. The 0x2/0x400 gating logic via sub_800AF50 is present in both
+  the r0==1 and r0==2 branches, not only ''for wins/losses'' via GetBattleEffects bit 0x400 alone.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800980E -> battle_processBattleResultPhase
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800980E

@@ -1,0 +1,55 @@
+name: battle_waitParam2FramesThenAction4
+address: '0x080D1094'
+kind: function
+status: probable
+summary: Battle object step that arms a Param2-frame timer on first call (phase 0->4) and decrements it
+  each tick; when the timer underflows it requests action 4 and resets CurPhaseAndPhaseInitialized to
+  0.
+interface: (r5 = battle object) -> updates oBattleObject_CurPhase, Timer, CurAction, CurPhaseAndPhaseInitialized;
+  no return value
+details: On phase 0 it stores 4 into oBattleObject_CurPhase, copies oBattleObject_Param2 into oBattleObject_Timer,
+  and returns. On later phases it decrements oBattleObject_Timer each call; while the timer is still >=
+  0 it does nothing further. When the timer underflows it writes 4 to oBattleObject_CurAction (requesting
+  the next action) and zeroes CurPhaseAndPhaseInitialized so the next action restarts at phase 0. It is
+  a per-frame step invoked with the object in r5, typical of battle object update dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst; strb #4 sets phase 4 on first run (80D1096-80D109E);
+    strh r0,[r5,#oBattleObject_Timer] after ldrb from oBattleObject_Param2: Param2 seeds the wait timer;
+    ldrh/sub #1/strh on Timer with bge: per-frame countdown while phase 4; strb #4 into oBattleObject_CurAction
+    and strh 0 into CurPhaseAndPhaseInitialized on timer expiry: transition to action 4'
+  refs:
+  - bn6f/asm/asm31.s:54358
+  reproduce: python3 tools/asmcat.py 0x080D1094
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is essentially correct: on phase 0 it sets CurPhase=4, copies Param2 to Timer; thereafter
+    it decrements Timer and on underflow writes 4 to CurAction and clears CurPhaseAndPhaseInitialized.
+    Minor note: ''later phases'' is a bit loose since CurPhase is forced to 4, so only phase 4 runs the
+    decrement branch. Name is okay but ''action4Step'' slightly undersells the Param2-driven wait; a clearer
+    name would be ''battle_waitParam2FramesThenAction4''.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which object/character uses this step and what action 4 means for it is unidentified
+- Whether Param2 is set once externally or re-armed elsewhere is unknown
+- 'The summary is essentially correct: on phase 0 it sets CurPhase=4, copies Param2 to Timer; thereafter
+  it decrements Timer and on underflow writes 4 to CurAction and clears CurPhaseAndPhaseInitialized. Minor
+  note: ''later phases'' is a bit loose since CurPhase is forced to 4, so only phase 4 runs the decrement
+  branch. Name is okay but ''action4Step'' slightly undersells the Param2-driven wait; a clearer name
+  would be ''battle_waitParam2FramesThenAction4''.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D1094 -> battle_waitParam2FramesThenAction4
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1094

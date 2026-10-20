@@ -1,0 +1,73 @@
+name: initScreenSceneAndFadeIn
+address: '0x0812A694'
+kind: function
+status: probable
+summary: 'One-shot handler that runs after a screen fade-out completes: it clears the 0x200BC50 flag and
+  IsScreenFadeActive guard, calls battle_initScene_8129248, screens3_loadBackgroundTiles, and loadEntityJumpOffset00Gfx_812B530;
+  sets state 8 on the r5 struct, zeroes r5+0x1C/0x1E and a 16-byte block at unk_20251A0; chooses r5+2
+  from sub_81325F4 or sub_81325E4 per the r5+0xE flag (clearing r5+3); spawns eStruct records from the
+  byte_8129150 table; and finally calls SetScreenFade(8, 0x10) to start the fade-in.'
+interface: (r5 = screen/state struct) -> void; gates on IWRAM 0x200BC50 flag bit 5 and IsScreenFadeActive,
+  ends with SetScreenFade(8, 0x10)
+details: First it bails out if the flag byte at offset 5 of the 0x200BC50 IWRAM struct is set, or if a
+  screen fade is still active, so the body runs only after a fade-out completes. It then calls battle_initScene_8129248
+  (full battle-scene/GFX reset), screens3_loadBackgroundTiles (30x20 BG tilemap plus text panels), and
+  loadEntityJumpOffset00Gfx_812B530 (entity slot-0 graphics). It writes state 8 to r5+1, zeroes r5+0x1C/0x1E,
+  zero-fills a 16-byte block at unk_20251A0, and picks a value for r5+2 via sub_81325F4 or sub_81325E4
+  depending on the r5+0xE flag (r5+3 cleared either way). Finally it spawns one batch of eStruct records
+  from the 0xFF-terminated table byte_8129150 and issues SetScreenFade(8, 0x10) to begin the fade-in.
+  This is a one-shot 'enter screen' transition handler in some state loop where r5 is the current context/state
+  struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne/beq pair on test0x200bc50_0x5_813D60C and IsScreenFadeActive gates the whole body until
+    fade-out is done; body calls battle_initScene_8129248 then screens3_loadBackgroundTiles then loadEntityJumpOffset00Gfx_812B530;
+    strb #8,[r5,#1] plus zeroing r5+0x1C/0x1E and unk_20251A0 (0x10 bytes) resets per-screen state; tail
+    calls battle_spawnEStructRecordsFromTable_80465A0 with table byte_8129150 then SetScreenFade(8, 0x10);
+    r5+0xE flag selects sub_81325F4 vs sub_81325E4 for the byte stored at r5+2'
+  refs:
+  - bn6f/asm/asm33.s:15185
+  - 0x080008E0 ZeroFillByWord
+  - 0x08129248 battle_initScene_8129248
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x0812A694
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The assembly matches the proposal''s structure: it tests the IWRAM 0x200BC50 flag byte (bl test0x200bc50_0x5_813D60C
+    / bne locret), checks IsScreenFadeActive (beq locret), initializes the scene (battle_initScene_8129248),
+    loads BG tiles (screens3_loadBackgroundTiles), loads entity slot-0 Gfx (loadEntityJumpOffset00Gfx_812B530),
+    writes state 8 to r5+1, zero-fills unk_20251A0 with ZeroFillByWord(0x10), zeros r5+0x1C/0x1E, picks
+    r5+2 via sub_81325F4/sub_81325E4 based on r5+0xE (clearing r5+3 either way), spawns eStructs from
+    byte_8129150, and ends with SetScreenFade(8, 0x10). The name screens3_setupSceneAndFadeIn is plausible
+    given the screens3_loadBackgroundTiles call, but ''screens3'' is a misleading prefix (none in the
+    allowed list), and the function also initializes a battle scene and spawns eStructs, so a better name
+    would use the ''init'' prefix to reflect the broader initialization role.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- Which state loop invokes this (no callers known) and what r5's struct is, to confirm the state byte
+  8 semantics
+- What sub_81325F4/sub_81325E4 return (likely a palette/animation index for r5+2)
+- Whether SetScreenFade(8, 0x10) means fade-in direction 8 at speed 0x10
+- 'The assembly matches the proposal''s structure: it tests the IWRAM 0x200BC50 flag byte (bl test0x200bc50_0x5_813D60C
+  / bne locret), checks IsScreenFadeActive (beq locret), initializes the scene (battle_initScene_8129248),
+  loads BG tiles (screens3_loadBackgroundTiles), loads entity slot-0 Gfx (loadEntityJumpOffset00Gfx_812B530),
+  writes state 8 to r5+1, zero-fills unk_20251A0 with ZeroFillByWord(0x10), zeros r5+0x1C/0x1E, picks
+  r5+2 via sub_81325F4/sub_81325E4 based on r5+0xE (clearing r5+3 either way), spawns eStructs from byte_8129150,
+  and ends with SetScreenFade(8, 0x10). The name screens3_setupSceneAndFadeIn is plausible given the screens3_loadBackgroundTiles
+  call, but ''screens3'' is a misleading prefix (none in the allowed list), and the function also initializes
+  a battle scene and spawns eStructs, so a better name would use the ''init'' prefix to reflect the broader
+  initialization role.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A694 -> initScreenSceneAndFadeIn
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A694

@@ -1,0 +1,69 @@
+name: object_resetToIdle
+address: '0x080E1B68'
+kind: function
+status: probable
+summary: Reloads the object's base sprite (using Param1 as the sprite ID), forces shadow off (hasShadow
+  then removeShadow), zeroes CurAnim/CurAnimCopy and replays animation 0, resets palette to 0, reapplies
+  effective horizontal flip, sets header flag bit 1, plays sound 0x8C, calls sub_8010DF6(1, Param1, 1),
+  and writes CUR_STATE_UPDATE to resume the normal update loop.
+interface: (r5 = battle object, caller-set) -> r0 = clobbered; object sprite state, CurAnim, CurAnimCopy,
+  Flags, CurStateActionPhaseAndPhaseInitialized all written
+details: The function reloads the object's base sprite with Param1 as an argument, forces the shadow off,
+  zeroes CurAnim and CurAnimCopy and re-runs the animation loader plus a sprite update, then sets palette
+  0 and reapplies the object's effective horizontal flip via object_getFlip. It sets bit 1 of the object
+  header flags, plays sound effect 0x8C, calls sub_8010DF6(1, oBattleObject_Param1, 1), and finally writes
+  CUR_STATE_UPDATE into the object's state word so the object resumes its regular update handler. The
+  sequence reads like a 'revert/respawn to idle' transition rather than a one-off, since every visual
+  field of the object is reinitialized to defaults.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(sprite_loadAnimationData) + sprite_hasShadow/sprite_removeShadow restore the base
+    sprite and shadow state; strb r0 of 0 to oBattleObject_CurAnim and oBattleObject_CurAnimCopy, then
+    sprite_setAnimation/sprite_loadAnimationData/sprite_update restart animation 0; sprite_setPalette(0)
+    and object_getFlip -> sprite_setFlip reset palette and facing; PlaySoundEffect(0x8C) plus sub_8010DF6(1,
+    Param1, 1) fire side effects on the transition; final ''mov r0, #CUR_STATE_UPDATE; str r0, [r5,oBattleObject_CurStateActionPhaseAndPhaseInitialized]''
+    hands the object back to the standard update state'
+  refs:
+  - bn6f/asm/asm31.s:90169
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080E1B68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The name and intent match the assembly well: it reloads sprite (sprite_load with oBattleObject_Param1),
+    turns shadow off (sprite_removeShadow), resets CurAnim/CurAnimCopy, reapplies palette/flip, sets header
+    flag bit, plays sound 0x8C, calls sub_8010DF6, and writes CUR_STATE_UPDATE. However, the proposal
+    incorrectly states it calls sprite_hasShadow followed by removal — the code actually calls both sprite_hasShadow
+    AND sprite_removeShadow in sequence, which is contradictory for a ''reset to idle'' that wants shadow
+    off. Also, the proposal implies it''s called from somewhere, but callers are none known, so ''reset
+    to idle'' is interpretive. The name is fine since the prefix ''battle_'' isn''t in the allowed list;
+    ''object_'' would be the matching allowed prefix.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- what sound effect 0x8C is (would confirm reset vs. spawn flavor)
+- what sub_8010DF6 does with (1, Param1, 1)
+- which callers invoke this — no callers are known, so the exact trigger (deletion recovery, transformation
+  revert, custom-style timeout?) is unconfirmed
+- 'The name and intent match the assembly well: it reloads sprite (sprite_load with oBattleObject_Param1),
+  turns shadow off (sprite_removeShadow), resets CurAnim/CurAnimCopy, reapplies palette/flip, sets header
+  flag bit, plays sound 0x8C, calls sub_8010DF6, and writes CUR_STATE_UPDATE. However, the proposal incorrectly
+  states it calls sprite_hasShadow followed by removal — the code actually calls both sprite_hasShadow
+  AND sprite_removeShadow in sequence, which is contradictory for a ''reset to idle'' that wants shadow
+  off. Also, the proposal implies it''s called from somewhere, but callers are none known, so ''reset
+  to idle'' is interpretive. The name is fine since the prefix ''battle_'' isn''t in the allowed list;
+  ''object_'' would be the matching allowed prefix.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1B68 -> object_resetToIdle
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1B68

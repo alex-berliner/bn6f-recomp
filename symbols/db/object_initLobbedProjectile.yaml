@@ -1,0 +1,64 @@
+name: object_initLobbedProjectile
+address: '0x080E20B0'
+kind: function
+status: probable
+summary: Spawn/init handler that repositions a battle object behind its front, gives it constant velocities
+  (away from front, upward in Z) scaled by a random remainder, and sets a randomized life timer of 15-rem
+  frames before transitioning to CUR_STATE_UPDATE.
+interface: (r5 = battle object) -> void; transitions object to CUR_STATE_UPDATE
+details: 'Recomputes the object''s pixel position from its panel coords, then applies a random offset:
+  BIOS SVC 6 divides GetPositiveSignedRNG by 15 to get a remainder 0-14. The X offset is frontDirection*(20.0
+  - rem*2.67) in 16.16 fixed point and Z = 128.0 - rem*8.42, so higher remainders place the object further
+  back and lower. It sets a constant X velocity toward the front (dir*2.67/frame) and constant Z velocity
+  upward (-8.42/frame, no gravity applied here), plus a frame timer of 15-rem with Param1 copied into
+  Timer2 as the timer''s reload value. It loads sprite resource (0x80,16,16), clears the shadow, sets
+  Flags |= 2, selects animation 0 (twice) and palette 0, applies the object''s flip, and writes CUR_STATE_UPDATE
+  into the state field.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'svc 6 with r1=0xf after GetPositiveSignedRNG: r4 = rand % 15 drives the random spread (svc
+    6 remainder in r1); X = panelX + dir*0x140000 - dir*rem*0x2AAAA and Z = 0x800000 - rem*0xfff77778:
+    fixed-point launch offsets scaled by front direction; XVelocity = dir*0x2AAAA, ZVelocity = 0xfff77778:
+    constant forward+upward motion each frame; Timer = 15 - rem, Timer2 = Param1: short self-terminating
+    lifetime with reload from Param1; sprite_load(0x80,16,16) + sprite_noShadow + Flags|=2 + anim 0/pal
+    0 + state = CUR_STATE_UPDATE: standard projectile-object init tail'
+  refs:
+  - bn6f/asm/asm31.s:90939
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080E20B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The front-direction is negated (`neg r0, r0`), so the object moves backward, not forward as claimed.
+    Higher remainders bring X closer (forward) but Z is negative (`0xfff77778` is ~-0x88888), meaning
+    Z velocity is upward — consistent. But the object''s initial offset X is `dir * 0x140000 - dir * 0x2AAA8
+    * rem`, so higher `rem` reduces the backward offset, and Z starts lower (`0x800000 - 0x88888*rem`).
+    The proposed name ''initFlyingProjectile'' fits since the object has velocity and a life timer; summary''s
+    ''forward'' is wrong due to the negation. No callers found, so ''projectile'' is an inference.; run
+    wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
+    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- No caller known, so which enemy/attack spawns this and which sprite 0x80 is is unknown; a caller would
+  show the object id and Param1 meaning
+- Whether gravity/state code elsewhere bends the trajectory or the object flies straight until the timer
+  expires
+- The front-direction is negated (`neg r0, r0`), so the object moves backward, not forward as claimed.
+  Higher remainders bring X closer (forward) but Z is negative (`0xfff77778` is ~-0x88888), meaning Z
+  velocity is upward — consistent. But the object's initial offset X is `dir * 0x140000 - dir * 0x2AAA8
+  * rem`, so higher `rem` reduces the backward offset, and Z starts lower (`0x800000 - 0x88888*rem`).
+  The proposed name 'initFlyingProjectile' fits since the object has velocity and a life timer; summary's
+  'forward' is wrong due to the negation. No callers found, so 'projectile' is an inference.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E20B0 -> object_initLobbedProjectile
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E20B0

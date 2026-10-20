@@ -1,0 +1,60 @@
+name: battle_spawnFrontDimRegionAndFlipEffect
+address: '0x080BA31C'
+kind: function
+status: probable
+summary: Spawns a timestop-surviving dim collision region on the object's front panel, and spawns a flip-aware
+  effect at the front panel coords.
+interface: (r5 = battle object; no stack args) -> r0 = spawned effect object pointer
+details: Uses r5 as an oBattleObject (set up by the caller). It calls object_getFrontDirection, adds the
+  object's PanelX to get the front panel column, and with PanelY, Element, a=0x700FF04 (likely a hit/damage
+  mask or region type) and 0x3, calls object_spawnDimmingCollisionRegion to create a collision region
+  that keeps running during timestop. It then reads object_getFlip, computes effect id 0x39 + flip<<8,
+  converts the same front-panel column/row to screen coordinates via object_getCoordinatesForPanels, and
+  spawns a type-4 effect object (effect type 0, param 0x39<<8|flip? actually flip<<8 | 0x39 in r4) at
+  that position. The flip argument makes the effect animation mirror according to the object's facing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#oBattleObject_PanelX] after bl object_getFrontDirection: target is the panel in
+    front of r5''s object; r4=0x700FF04, r7=3 then bl object_spawnDimmingCollisionRegion: spawns the special
+    dimming region with those parameters; mov r0,#0x39; add r4,r4,r0 after object_getFlip: effect id 0x39
+    combined with the object''s horizontal facing; bl object_getCoordinatesForPanels then bl spawn_t1_0x0_EffectObject:
+    renders the effect at the front panel''s screen position; caller 0x080BA152 sets r5 context (function
+    reads oBattleObject fields from r5 only)'
+  refs:
+  - bn6f/asm/asm31.s:4529
+  - 0x080BA152 sub_80BA152
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BA31C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches: object_spawnDimmingCollisionRegion is called with the front panel coords and 0x700FF04/0x3,
+    and spawn_t1_0x0_EffectObject is called with a 0x39 effect id modified by flip. However the region
+    is spawned on the *front* panel, not in front of ''the object'' generically, and the summary''s ''facing-aware
+    effect 0x39'' is correct (flip<<8 | 0x39 in r4). The name is too verbose and the ''0x39'' detail is
+    implementation noise.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Exact meaning of the 0x700FF04 and 3 arguments to object_spawnDimmingCollisionRegion (hit mask vs region
+  type)
+- Which attack/chip triggers caller sub_80BA152 and thus which game effect this visually represents
+- Semantics of effect id 0x39 in the type-4 effect object table
+- 'The code matches: object_spawnDimmingCollisionRegion is called with the front panel coords and 0x700FF04/0x3,
+  and spawn_t1_0x0_EffectObject is called with a 0x39 effect id modified by flip. However the region is
+  spawned on the *front* panel, not in front of ''the object'' generically, and the summary''s ''facing-aware
+  effect 0x39'' is correct (flip<<8 | 0x39 in r4). The name is too verbose and the ''0x39'' detail is
+  implementation noise.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA31C -> battle_spawnFrontDimRegionAndFlipEffect
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA31C

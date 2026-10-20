@@ -1,0 +1,60 @@
+name: ai_setFacingTowardTarget
+address: '0x081117DA'
+kind: function
+status: probable
+summary: Computes dx = targetX - selfX and dy = targetY - selfY, then writes the facing code (1=right,
+  3=left, 2=down, 0=up) to AI work area +0x64, encoding the direction from the entity toward the passed
+  target tile.
+interface: (r0 = target tile x, r1 = target tile y, r5 = AI work area base) -> r0 = direction code (0/1/2/3)
+  stored at [r5+0x64]; no return value; flags set by the compare branches
+details: 'Reads the entity''s current position bytes from AI work area +0x65 (x) and +0x66 (y), subtracts
+  them from the passed r0/r1 to get dx/dy deltas, then classifies: dx==1 stores 1, dx!=0 and !=1 stores
+  3, dx==0 with dy==1 stores 2, dx==0 otherwise stores 0; dy==0 with dx==0 writes nothing. This matches
+  the common 0=up, 1=right, 2=down, 3=left compass encoding, so it sets the direction the AI should face/act
+  toward the chosen target, written to field +0x64 (the byte just before the position pair). Only writes
+  when a direction differs from ''same tile''; the delta can exceed 1 if caller passes non-adjacent tiles,
+  in which case dx>1 collapses to 3 (left).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r5,#0x65]/ldrb r3,[r5,#0x66] then sub r0,r0,r2 / sub r1,r1,r3 — deltas of passed coords
+    vs current position bytes; chain cmp/beq on dx then dy writes codes 1, 3, 2, 0 to [r5+0x64] — four-way
+    direction classification; caller ai_sweepTargetSelect (0x081114C8) 'picks or refreshes a target ...
+    writes target coords into AI work area +0x65/+0x66' — this runs right after, converting target into
+    a facing; dx==0, dy==0 falls through without a strb — no direction update when target equals current
+    tile
+  refs:
+  - bn6f/asm/asm32.s:7565
+  - 0x081114C8 ai_sweepTargetSelect
+  reproduce: python3 tools/asmcat.py 0x081117DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — Code agrees: reads x/y from +0x65/+0x66, computes dx = r0 - x, dy = r1 - y, then writes to +0x64.
+    The dx==1 branch stores 1, dx>0/not1 stores 3, dx==0 dy==1 stores 2, dx==0 dy>0 stores 0 — i.e., the
+    direction from the entity toward the target (right=1, left=3, down=2, up=0), contrary to the proposal''s
+    claim of 0=up. Caller ai_sweepTargetSelect confirms target coordinates in r0/r1. Name is fine but
+    summary''s encoding claim is reversed.; run wf investigate investigate-20261018-222121; proposed by
+    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 4 direction codes in the AI work area (assumed up/right/down/left per BN6 convention)
+- whether +0x65/+0x66 are tile coords or panel-relative coords, and whether deltas are guaranteed to be
+  -1..1
+- 'Code agrees: reads x/y from +0x65/+0x66, computes dx = r0 - x, dy = r1 - y, then writes to +0x64. The
+  dx==1 branch stores 1, dx>0/not1 stores 3, dx==0 dy==1 stores 2, dx==0 dy>0 stores 0 — i.e., the direction
+  from the entity toward the target (right=1, left=3, down=2, up=0), contrary to the proposal''s claim
+  of 0=up. Caller ai_sweepTargetSelect confirms target coordinates in r0/r1. Name is fine but summary''s
+  encoding claim is reversed.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81117DA -> ai_setFacingTowardTarget
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81117DA

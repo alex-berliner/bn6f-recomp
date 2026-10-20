@@ -1,0 +1,63 @@
+name: battle_phaseWaitThenAdvance
+address: '0x080D8AB6'
+kind: function
+status: probable
+summary: 'Battle object phase: on entry initializes the slot (PhaseInitialized=4, Timer=0xF), decrements
+  Timer each tick, and when it expires calls sub_80D8C06 then writes CurAction=8 and clears CurPhaseAndPhaseInitialized
+  to dispatch the next action.'
+interface: (no args used; r5 = battle object pointer) -> r0 = 0 on transition; no meaningful return otherwise
+details: On first run (oBattleObject_PhaseInitialized == 0) it stores 0xF into oBattleObject_Timer and
+  4 into oBattleObject_PhaseInitialized, so the delay happens only once per phase entry. Each subsequent
+  call decrements oBattleObject_Timer and returns while it is still > 0. When the counter reaches 0 it
+  calls sub_80D8C06 (likely the object's attack/effect step for this state), then writes 8 to oBattleObject_CurAction
+  and 0 to oBattleObject_CurPhaseAndPhaseInitialized, which switches the object's dispatcher to the next
+  action handler. r0 is clobbered and not a real return value; the object pointer comes in via r5, the
+  battle engine's per-object register convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / strh #0xf,[r5,#oBattleObject_Timer]: one-shot
+    16-frame delay initialization; bgt locret_80D8ADA after decrement: early-out keeps the object waiting
+    until the timer expires; bl sub_80D8C06 right before the transition: the actual work happens once
+    at delay end; strb #8,[r5,#oBattleObject_CurAction] + strh #0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]:
+    hands control to the CurAction-8 handler at its phase 0'
+  refs:
+  - bn6f/asm/asm31.s:70637
+  - 0x080D8C06 sub_80D8C06
+  reproduce: python3 tools/asmcat.py 0x080D8AB6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal correctly describes the phase-slot behavior (init to 4, store 0xF timer, decrement,
+    fire sub_80D8C06, then advance to CurAction 8 / phase 0). However, the field written at the end is
+    oBattleObject_CurPhaseAndPhaseInitialized (a halfword store `strh r0, ...`), which clobbers both phase
+    and PhaseInitialized — not just phase. The summary saying ''phase 0'' is fine, but a sharper name
+    should drop the ''16'' since the timer starts at 15 (0xF), giving a 16-frame wait including the boundary
+    tick; using ''Wait16'' is conventional in MBN. Also no callers are known, so ''phase handler'' overstates
+    the evidence, but the object/slot naming is otherwise accurate.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- What sub_80D8C06 does (attack, movement, or effect) — its body is needed to name this state meaningfully
+- Which enemy/object uses this handler (no callers recorded; only the beastsp route touches it), i.e.
+  what CurAction 8 means for it
+- The proposal correctly describes the phase-slot behavior (init to 4, store 0xF timer, decrement, fire
+  sub_80D8C06, then advance to CurAction 8 / phase 0). However, the field written at the end is oBattleObject_CurPhaseAndPhaseInitialized
+  (a halfword store `strh r0, ...`), which clobbers both phase and PhaseInitialized — not just phase.
+  The summary saying 'phase 0' is fine, but a sharper name should drop the '16' since the timer starts
+  at 15 (0xF), giving a 16-frame wait including the boundary tick; using 'Wait16' is conventional in MBN.
+  Also no callers are known, so 'phase handler' overstates the evidence, but the object/slot naming is
+  otherwise accurate.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8AB6 -> battle_phaseWaitThenAdvance
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8AB6

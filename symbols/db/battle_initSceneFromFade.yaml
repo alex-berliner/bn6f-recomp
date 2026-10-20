@@ -1,0 +1,69 @@
+name: battle_initSceneFromFade
+address: '0x0812AE74'
+kind: function
+status: probable
+summary: 'Fade-gated scene initializer: clears VRAM/GFX, loads entity slot-0 graphics, primes the chatbox,
+  sets a speed/timer field on the caller''s state struct, clears a flag, zero-fills a small EWRAM block,
+  loads the screens3 background tiles, spawns eStruct records from a table, and conditionally stops the
+  RFU wireless mode.'
+interface: (r5 = cutscene/screen state struct, set by caller) -> r0 = undefined; no meaningful flags
+details: Entry is gated on IsScreenFadeActive — if no fade is in progress the whole body is skipped, so
+  this runs as part of a fade-driven scene transition. It calls battle_initScene_8129248 (VRAM/GFX clears
+  + render-info block setup), loads the current entity's jump-table slot-0 graphics, and primes the chatbox.
+  It writes r5+3 = 0x10, bumped to 0x2C when r5+2 >= 0x14 (looks like a wait/timer or text-speed field),
+  and clears r5+0x1E. It zero-fills the 0x10-byte block at unk_20251A0, redraws the menu-style background
+  via screens3_loadBackgroundTiles, and spawns eStruct records from the (id,slot,param) table byte_8129150.
+  Finally, if the mode byte at EWRAM 0x200BC30 is nonzero it issues rfu_REQ_stopMode and waits for completion,
+  ending a wireless link before the cutscene proceeds.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsScreenFadeActive / beq locret_812AEBE: entire init only fires during a screen fade; bl
+    battle_initScene_8129248 then bl loadEntityJumpOffset00Gfx_812B530: scene reset plus entity GFX upload;
+    ldrb r1,[r5,#2] / cmp #0x14 / strb r0,[r5,#3]: timer-or-speed field 0x10 vs 0x2C in a caller-owned
+    state struct; bl battle_spawnEStructRecordsFromTable_80465A0 with a1 = byte_8129150: table-driven
+    entity spawn for this scene; ldr r0,=unk_20251A0; mov r1,#0x10; bl ZeroFillByWord plus trailing rfu_REQ_stopMode/rfu_waitREQComplete:
+    scratch reset and wireless teardown'
+  refs:
+  - bn6f/asm/asm33.s:16217
+  - 0x0812ACF0 sub_812ACF0
+  - 0x080008E0 ZeroFillByWord
+  - 0x08129248 battle_initScene_8129248
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x0812AE74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the summary well: fade-gated, calls battle_initScene_8129248, loads entity slot-0
+    GFX, primes chatbox, sets r5+3 to 0x10/0x2C based on r5+2 threshold, clears r5+0x1E, zero-fills 0x10
+    bytes at unk_20251A0, renders screens3 background, spawns eStruct records from byte_8129150, and conditionally
+    rfu_REQ_stopMode. However, the name ''battle_initIntroCutscene'' is too specific — this is a general
+    scene initialization called from sub_812ACF0, not specifically an intro. Also the summary claims ''tears
+    down any active wireless session'' which overstates a simple conditional stop. A more neutral name
+    reflecting the scene-init pattern is appropriate.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- What struct r5 points to (offsets 2, 3, 0x1E) and what the 0x10/0x2C byte controls — the caller sub_812ACF0
+  is unnamed
+- Exact sense of the IsScreenFadeActive branch (fade in progress vs. finished)
+- What unk_20251A0 holds and who consumes it
+- What the eStruct table byte_8129150 spawns (which cutscene/entities this actually is)
+- 'The code matches the summary well: fade-gated, calls battle_initScene_8129248, loads entity slot-0
+  GFX, primes chatbox, sets r5+3 to 0x10/0x2C based on r5+2 threshold, clears r5+0x1E, zero-fills 0x10
+  bytes at unk_20251A0, renders screens3 background, spawns eStruct records from byte_8129150, and conditionally
+  rfu_REQ_stopMode. However, the name ''battle_initIntroCutscene'' is too specific — this is a general
+  scene initialization called from sub_812ACF0, not specifically an intro. Also the summary claims ''tears
+  down any active wireless session'' which overstates a simple conditional stop. A more neutral name reflecting
+  the scene-init pattern is appropriate.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812AE74 -> battle_initSceneFromFade
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812AE74

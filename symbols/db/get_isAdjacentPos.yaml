@@ -1,0 +1,61 @@
+name: get_isAdjacentPos
+address: '0x0814299C'
+kind: function
+status: probable
+summary: Returns 1 if two packed (x,y) tile positions are the same or 4-neighbors (Manhattan distance
+  <= 1), else 0.
+interface: (r0 = packed pos A (hi=x<<8|lo? hi byte x, lo byte y), r1 = packed pos B) -> r0 = 1 if |dx|+|dy|
+  <= 1 else 0; sets flags via tst
+details: 'Splits each 16-bit argument into high and low bytes, treating each as a coordinate pair (x =
+  >>8, y = &0xFF). It subtracts the components pairwise, negates negative differences to get absolute
+  deltas, sums them into a Manhattan distance, and sets the result flag to 1 only when the sum is <= 1
+  — i.e. the two positions are identical or one step apart on a grid. Pure computation: no memory, structures,
+  or callees touched; r4-r6 are saved but unused. Sign handling is done with neg/cmp rather than a helper,
+  and the result is returned in r0 with r7 as the internal flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsr r2,r0,#8 / and r3,#0xff: unpack r0 into two byte coordinates (0x081429A2-0x081429A7); sub
+    r2,r2,r4; neg on negative branch: absolute per-axis deltas (0x081429A8-0x081429BC); add r2,r2,r3;
+    cmp r2,#1; bgt skip; mov r7,#1: return 1 only when Manhattan distance <= 1 (0x081429BE-0x081429C4);
+    no loads/stores or bl in the whole routine: pure positional predicate'
+  refs:
+  - bn6f/asm/asm37_1.s:1794
+  - 0x08142ADA sub_8142ADA
+  - 0x08142B58 sub_8142B58
+  - 0x08142BFA sub_8142BFA
+  reproduce: python3 tools/asmcat.py 0x0814299C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code at 0x0814299C matches: it splits r0/r1 into x (>>8) and y (&0xFF), computes |dx|+|dy| into
+    r2, and sets r7=1 when r2<=1 (bgt skips), then returns r0. However, the comparison r2<=1 means adjacent
+    includes the same tile and also diagonally-adjacent tiles (dx=1,dy=1 gives 2 and fails, so only 4-neighbors
+    + same). The summary''s ''Manhattan distance of at most 1'' is correct, so the only issue is the proposed
+    name prefix ''grid'' is not in the allowed list.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which subsystem uses this — all four call sites are inside unnamed sub_8142Axx/sub_8142Bxx functions,
+  so caller context (beastsp route) doesn't confirm whether the bytes are x/y tile coords or something
+  else packed the same way
+- Whether the comparison is meant as 'adjacent or equal' vs 'adjacent only' — code includes equality (distance
+  0)
+- 'The code at 0x0814299C matches: it splits r0/r1 into x (>>8) and y (&0xFF), computes |dx|+|dy| into
+  r2, and sets r7=1 when r2<=1 (bgt skips), then returns r0. However, the comparison r2<=1 means adjacent
+  includes the same tile and also diagonally-adjacent tiles (dx=1,dy=1 gives 2 and fails, so only 4-neighbors
+  + same). The summary''s ''Manhattan distance of at most 1'' is correct, so the only issue is the proposed
+  name prefix ''grid'' is not in the allowed list.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814299C -> get_isAdjacentPos
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814299C

@@ -1,0 +1,56 @@
+name: ai_attackDelayedHitTick
+address: '0x081086DC'
+kind: function
+status: probable
+summary: 'Per-frame tick for a delayed AI attack: on first entry (AttackElement==0) arms it by setting
+  AttackElement=4 and StepTimer=AttackDuration, then each subsequent tick decrements StepTimer; when it
+  reaches 0, writes 0x24 into HitElement to trigger the hit.'
+interface: (r0 = unused/whatever caller passes; r7 = battle object with oAIAttackVars) -> r0 clobbered;
+  no flags used
+details: 'r7 points to a battle object''s oAIAttackVars. If AttackElement is 0 (attack not yet started),
+  it stores 4 into AttackElement and copies AttackDuration into StepTimer, arming a timer. On later calls
+  it decrements StepTimer each tick; when it reaches 0 it writes 0x24 into HitElement, which the engine
+  reads as the element/effect code of the hit to apply. The function is the per-frame tick of a delayed
+  enemy attack: press a button (or reach attack state) once, wait AttackDuration frames, then land a 0x24-type
+  hit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — distinguishes 'attack not started'
+    from 'running'; mov r0,#4; strb [r7,#oAIAttackVars_AttackElement] plus copying AttackDuration to StepTimer
+    arms the delayed attack; ldrh [r7,#oAIAttackVars_StepTimer]; sub r0,#1; bgt — per-frame countdown
+    of the armed attack; mov r0,#0x24; strh [r7,#oAIAttackVars_HitElement] — on expiry the attack lands
+    with hit code 0x24; fields all live under the documented oAIAttackVars struct offset labels
+  refs:
+  - bn6f/asm/asm31.s:171871
+  reproduce: python3 tools/asmcat.py 0x081086DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed summary misstates two details: the arming writes AttackElement=4 (strb, byte) and StepTimer=AttackDuration
+    (strh), but the hit element write is strh of 0x24 (not strb), and there''s no initial-condition gating
+    other than AttackElement==0. The behavior matches: first call arms, subsequent calls count, on expiry
+    set HitElement=0x24. Naming is fine but summary needs correction; also strh vs strb suggests HitElement
+    is a halfword field, worth noting.; run wf investigate investigate-20261018-222121; proposed by Hyper
+    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- what attack element 4 and hit element 0x24 correspond to in game terms (which enemy/attack uses this)
+- what r0/r7 are actually passed by the caller (no caller is known, r7 assumed to be the object pointer)
+- 'The proposed summary misstates two details: the arming writes AttackElement=4 (strb, byte) and StepTimer=AttackDuration
+  (strh), but the hit element write is strh of 0x24 (not strb), and there''s no initial-condition gating
+  other than AttackElement==0. The behavior matches: first call arms, subsequent calls count, on expiry
+  set HitElement=0x24. Naming is fine but summary needs correction; also strh vs strb suggests HitElement
+  is a halfword field, worth noting.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81086DC -> ai_attackDelayedHitTick
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81086DC

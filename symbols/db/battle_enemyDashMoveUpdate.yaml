@@ -1,0 +1,80 @@
+name: battle_enemyDashMoveUpdate
+address: '0x080C1BEC'
+kind: function
+status: probable
+summary: Enemy battle-object phase handler that on first entry picks a destination panel via sub_80C1EF4,
+  reserves it, plays the dash anim (0xA), spawns a type-1/subtype-5 attack object, plays sound 0xF0, and
+  re-calls sub_80C2000(1) every 10 frames until the 30-frame timer expires, then cleans up the spawned
+  object and ends with CurAction=0x14; if no destination panel is found it sets Param3=1, calls sub_80C205C,
+  and waits out the timer before ending.
+interface: (r0 = battle object, r5-relative convention; no args used) -> void; sets oBattleObject_CurPhaseAndPhaseInitialized
+  to 0 when the action finishes
+details: On first entry (PhaseInitialized==0) it marks the phase inited with value 4, sets Timer=30, releases
+  the panel reserved at FuturePanelX/Y, and calls sub_80C1EF4(1) which picks a destination panel and returns
+  success, target X/Y in r1/r0 and a facing in r2. On success it writes DirectionFlip and PanelX/Y, recomputes
+  pixel coordinates via object_setCoordinatesFromPanels, applies sprite_setFlip from object_getFlip, copies
+  the new coords back into FuturePanelX/Y, re-reserves the panel with object_reservePanel, plays CurAnim=0xA
+  (movement/dash anim), stores 0x10120 as the argument pointer at [r5+0x64], spawns a type-1 subtype-5
+  temp attack object via spawn_t1_0x5_tempAttackObject_80B8E30, calls sub_80C2000(1), plays sound effect
+  0xF0, and sets Timer2=10. During the phase it counts Timer2 down and re-calls sub_80C2000(1) every 10
+  frames (a repeating effect tied to the move), and when the 30-frame Timer expires it resets CurAnim=0,
+  calls sub_80B8E58 on the pointer in ExtraVars+4 (likely cleaning up the spawned object), clears Param3,
+  sets CurAction=0x14 (action done) and phase 0. If sub_80C1EF4 fails (no valid destination panel), it
+  sets Param3=1 and calls sub_80C205C instead, then just waits out the 30-frame Timer before ending the
+  action the same way.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Phase-init block reserves/releases FuturePanelX/Y with object_removePanelReserve/object_reservePanel
+    and moves the object with object_setCoordinatesFromPanels + sprite_setFlip — classic panel-to-panel
+    enemy move; sub_80C1EF4's return is tested (tst r0; beq loc_80C1C90) and its r1/r2 results are written
+    into PanelX/Y and DirectionFlip, so it is the move-target chooser; spawn_t1_0x5_tempAttackObject_80B8E30
+    is called with dword_80C1C9C=0x10120 staged in r4 and r7=r5+0x64, i.e. an attack object spawned alongside
+    the move; Timer2 reset to 10 with sub_80C2000(1) re-invoked each tick shows a repeating effect during
+    the dash, and PlaySoundEffect(0xF0) fires once at move start; Termination writes CurAction=0x14 and
+    clears CurPhaseAndPhaseInitialized, the standard battle 'action finished' handoff
+  refs:
+  - bn6f/asm/asm31.s:21376
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080C1BEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal''s main mechanics match the asm: PhaseInitialized=4, Timer=30, FuturePanel reserve
+    release, sub_80C1EF4 success writes DirectionFlip/PanelX/PanelY, sprite flip, FuturePanel re-reserve,
+    CurAnim=0xA, spawn_t1_0x5..., PlaySoundEffect 0xF0, Timer2=10, and the failure path stores Param3=1
+    then calls sub_80C205C. However, the summary claims ''repeats an effect while moving'' but actually
+    sub_80C2000(1) is re-called when Timer2 hits 0 and is reset to 10 (every 10 frames), which is a periodic
+    trail/effect, not strictly ''while moving''. Also the spawned-object cleanup uses ExtraVars+4, fine.
+    Name fits ''enemy dash move update'', summary is reasonable but the action 0x14 end + Param3=1 failure
+    variant are part of it. The summary is slightly overstated but accurate enough; keep name.; run wf
+    investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- What sub_80C1EF4(1) computes exactly (adjacent-panel target selection vs. a fixed offset) and what its
+  r2 direction value encodes
+- What effect sub_80C2000(1) triggers every 10 frames and what the 0x10120 temp attack object does (trail?
+  contact hitbox?)
+- Which enemy/AI uses this handler — no callers are known, so the specific attack or enemy identity is
+  unconfirmed
+- 'The proposal''s main mechanics match the asm: PhaseInitialized=4, Timer=30, FuturePanel reserve release,
+  sub_80C1EF4 success writes DirectionFlip/PanelX/PanelY, sprite flip, FuturePanel re-reserve, CurAnim=0xA,
+  spawn_t1_0x5..., PlaySoundEffect 0xF0, Timer2=10, and the failure path stores Param3=1 then calls sub_80C205C.
+  However, the summary claims ''repeats an effect while moving'' but actually sub_80C2000(1) is re-called
+  when Timer2 hits 0 and is reset to 10 (every 10 frames), which is a periodic trail/effect, not strictly
+  ''while moving''. Also the spawned-object cleanup uses ExtraVars+4, fine. Name fits ''enemy dash move
+  update'', summary is reasonable but the action 0x14 end + Param3=1 failure variant are part of it. The
+  summary is slightly overstated but accurate enough; keep name.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1BEC -> battle_enemyDashMoveUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1BEC

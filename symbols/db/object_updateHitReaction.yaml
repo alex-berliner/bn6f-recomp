@@ -1,0 +1,70 @@
+name: object_updateHitReaction
+address: '0x080CE2B4'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object in r5: clears pending collision and spawns its hit effect;
+  if the battle is over, spawns a t1 effect from r5+0x34, clears the present flag, clears the collision
+  region, and stores CUR_STATE_DESTROY; if time is stopped, refreshes the collision; otherwise dispatches
+  via the two-entry Thumb handler table off_80CE300 indexed by oBattleObject_CurAction.'
+interface: (r0 = battle object pointer, also kept in r5) -> void; sets object state to CUR_STATE_DESTROY
+  on the battle-over path
+details: 'On entry r5 is the battle object. It first calls object_removeCollisionData and object_spawnCollisionEffect,
+  i.e. it consumes the object''s pending collision: the collision data is torn down and a hit effect is
+  spawned at the last hit position (with the usual RNG jitter). If the battle is over (battle_isBattleOver
+  != 0) it spawns a separate effect built from three words at r5+0x34, clears bit 1 of oObjectHeader_Flags
+  (the ''present'' flag), clears the collision region, and stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+  Otherwise, if time is stopped it only refreshes collision state via object_presentCollisionData; otherwise
+  it indexes off_80CE300 with oBattleObject_CurAction and tail-calls one of two Thumb handlers (sub_80CE308,
+  sub_80CE3C4) via ''mov lr, pc; bx r1'', so the handlers run in ARM mode and can call back. The two-entry
+  action table implies an object with exactly two behaviors/states.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at start: consumes the last hit
+    each frame (80CE2B8-80CE2BC); jump table off_80CE300 indexed by ldrb r0,[r5,#oBattleObject_CurAction]
+    with exactly two handlers (80CE2C8-80CE2D2); battle-over path: spawn_t1_0x0_EffectObject from r5+0x34,
+    bic flag #2, object_clearCollisionRegion, store CUR_STATE_DESTROY (80CE2DC-80CE2F4); time-stop shortcut
+    calls only object_presentCollisionData, matching battle_isTimeStop semantics (80CE2D6-80CE2DA)'
+  refs:
+  - bn6f/asm/asm31.s:48192
+  - 0x080CE270 sub_80CE270
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CE2B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposal is essentially correct: the function tears down collision, spawns a hit effect (object_spawnCollisionEffect),
+    then either spawns a t1 effect from r5+0x34 and marks destroy (loc_80CE2DC), refreshes collision if
+    time-stopped (loc_80CE2D6), or dispatches via the two-entry table off_80CE300. However it misreads
+    the dispatch: the table entries are Thumb markers (sub_80CE308+1, sub_80CE3C4+1), not ARM handlers—''mov
+    lr, pc'' here is the standard GBA Thumb veneer pattern; tail-calling Thumb from ARM uses `bx` and
+    the +1 sets Thumb bit. So the claim that handlers run in ARM mode is wrong. Behaviorally the summary
+    is right; naming ''updateHitReaction'' is fine, but the ARM-mode claim is inaccurate.; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+open_questions:
+- Which game object type uses this update handler (the caller sub_80CE270 and the object's spawn site
+  are unknown)
+- What the two action handlers sub_80CE308 and sub_80CE3C4 do, which would reveal the object's in-game
+  identity
+- Meaning of the three words at r5+0x34 used as effect spawn parameters
+- 'The proposal is essentially correct: the function tears down collision, spawns a hit effect (object_spawnCollisionEffect),
+  then either spawns a t1 effect from r5+0x34 and marks destroy (loc_80CE2DC), refreshes collision if
+  time-stopped (loc_80CE2D6), or dispatches via the two-entry table off_80CE300. However it misreads the
+  dispatch: the table entries are Thumb markers (sub_80CE308+1, sub_80CE3C4+1), not ARM handlers—''mov
+  lr, pc'' here is the standard GBA Thumb veneer pattern; tail-calling Thumb from ARM uses `bx` and the
+  +1 sets Thumb bit. So the claim that handlers run in ARM mode is wrong. Behaviorally the summary is
+  right; naming ''updateHitReaction'' is fine, but the ARM-mode claim is inaccurate.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE2B4 -> object_updateHitReaction
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE2B4

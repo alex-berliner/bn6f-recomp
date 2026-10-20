@@ -1,0 +1,57 @@
+name: battle_orderPairByAllianceFlip
+address: '0x080E5208'
+kind: function
+status: probable
+summary: Reorders two input values in r0,r1 so their low nibbles are ascending when the caller's r5 object's
+  Alliance XOR DirectionFlip is nonzero, or descending when zero (full-word tiebreak).
+interface: (r0 = value A (low nibble = coordinate/index), r1 = value B) -> r0, r1 = pair ordered per r5
+  object's alliance^flip (ascending if nonzero, descending if zero); r3 preserved via stack
+details: Loads oBattleObject_Alliance and oBattleObject_DirectionFlip from the object in r5 (set up by
+  the caller) and EORs them to pick a sort direction. If the EOR is zero, the low nibbles of r0 and r1
+  are compared and the pair is returned so the low nibble of r0 is >= that of r1 (ties broken by full-word
+  descending order). If the EOR is nonzero, the pair is instead normalized so r0's nibble is <= r1's (ties
+  broken ascending). In other words it canonicalizes a coordinate pair (likely panel coordinates packed
+  with other bits in the high nibble) relative to which way the acting object faces, so range/area calculations
+  read left-to-right or right-to-left correctly.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r5,#oBattleObject_Alliance]; eor with DirectionFlip selects ascending vs descending
+    ordering; mov r2,#0xf; and r2,r0 masks low nibbles of both args before comparing, implying packed
+    coordinate bytes; loc_80E5234 swap block exchanges r0/r1 only when the direction-relative comparison
+    fails; leaf routine, no calls; r5 is caller context (current battle object), typical of battle helper
+    functions
+  refs:
+  - bn6f/asm/asm31.s:97749
+  - 0x080E5174 sub_80E5174
+  reproduce: python3 tools/asmcat.py 0x080E5208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary''s high-nibble/coord interpretation is speculation; the code simply swaps two values
+    so the low nibbles are ordered one way (r0<=r1) when alliance^flip is nonzero and the other way (r0>=r1)
+    when zero, with full-word tiebreaks. The name ''battle_orderPairByFacing'' is reasonable but the ''Facing''
+    suffix is wrong since the flag is Alliance^DirectionFlip, not facing alone.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- what the two values represent exactly (panel coords? HP? indices) — caller sub_80E5174's body/summary
+  is unknown
+- which battle subsystem calls it (attack range scan vs panel-target iteration)
+- The summary's high-nibble/coord interpretation is speculation; the code simply swaps two values so the
+  low nibbles are ordered one way (r0<=r1) when alliance^flip is nonzero and the other way (r0>=r1) when
+  zero, with full-word tiebreaks. The name 'battle_orderPairByFacing' is reasonable but the 'Facing' suffix
+  is wrong since the flag is Alliance^DirectionFlip, not facing alone.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5208 -> battle_orderPairByAllianceFlip
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5208

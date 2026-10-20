@@ -1,0 +1,59 @@
+name: battle_reloadObjectSprite
+address: '0x080B92DC'
+kind: function
+status: probable
+summary: Re-initializes a battle object's sprite by recomputing pixel position from panels, loading resource
+  0x80(8,2) with its animation data, resetting anim/palette/flip/shadow, then setting state to CUR_STATE_UPDATE.
+interface: (r5 = battle object, no register args read) -> r0 = CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  no return value
+details: Operating on the battle object in r5, it recomputes pixel X/Y from the object's panel coordinates
+  and zeroes oBattleObject_Z, then loads sprite resource 0x80 with args (8, 2) plus its animation data
+  and enables the shadow. It clears oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 0 and re-applies
+  animation 0, sets palette 0, and sets the sprite flip from object_getFlip (alliance side XOR DirectionFlip).
+  Finally it writes CUR_STATE_UPDATE into the CurState/phase field so the object resumes normal per-frame
+  updating. This reads like a spawn/reset routine that re-derives everything from the object's current
+  data rather than taking parameters.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl object_setCoordinatesFromPanels and stores 0 to oBattleObject_Z, grounding the
+    object on its panel; sprite_load called with r0=0x80, r1=8, r2=2 followed by sprite_loadAnimationData
+    and sprite_hasShadow; zeroes oBattleObject_CurAnim/CurAnimCopy then calls sprite_setAnimation(0) and
+    sprite_setPalette(0); flip comes from object_getFlip (alliance XOR DirectionFlip), i.e. derived from
+    the object, not an argument; ends by storing CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and returning
+  refs:
+  - bn6f/asm/asm31.s:2282
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080B92DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The code matches the proposed behavior: panel coordinates, sprite 0x80(8,2), animation reset, flip
+    from object_getFlip, and CUR_STATE_UPDATE. However, there are two sprite_loadAnimationData calls,
+    and the second one comes after sprite_setAnimation with r0=0, which loads animation 0''s data — not
+    just re-applying. Also, the proposal omits sprite_setPalette entirely. The name ''battle_resetObjectSprite''
+    is fine but ''reset'' understates the second animation-data reload.; run wf investigate investigate-20261018-223614;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+open_questions:
+- no caller is known, so the object type / sprite 0x80 identity and when this reset runs (spawn, respawn
+  after hit?) are unconfirmed; a caller or the object template would pin down the exact role
+- 'The code matches the proposed behavior: panel coordinates, sprite 0x80(8,2), animation reset, flip
+  from object_getFlip, and CUR_STATE_UPDATE. However, there are two sprite_loadAnimationData calls, and
+  the second one comes after sprite_setAnimation with r0=0, which loads animation 0''s data — not just
+  re-applying. Also, the proposal omits sprite_setPalette entirely. The name ''battle_resetObjectSprite''
+  is fine but ''reset'' understates the second animation-data reload.'
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B92DC -> battle_reloadObjectSprite
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B92DC

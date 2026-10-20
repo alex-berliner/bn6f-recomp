@@ -1,0 +1,64 @@
+name: battle_initEnemyVariant
+address: '0x080D3500'
+kind: function
+status: probable
+summary: 'Initialises a battle enemy variant object: sets flag, loads sprite (0x80,4,0x18) and anim, copies
+  panel XY to FuturePanelXY, sets NameID 0xe7, and indexes byte_80D34C0 by Param1 to fill HP/MaxHP/Timer/Palette
+  plus ExtraVars pointer; allocates and sets collision (0x13,0x14,3), spawns a linked type-1 obj3, sets
+  CurState=CUR_STATE_UPDATE and calls sub_80D358C.'
+interface: (r5 = battle object header, reads oBattleObject_Param1) -> r0 = 0 on failure path only; on
+  success sets up sprite, collision, and a linked type-1 object and enters CUR_STATE_UPDATE
+details: 'Sets an object flag bit (0x2), loads a sprite with args (0x80, 4, 0x18), checks for a shadow,
+  resets the animation and loads its data, then applies flip from object_getFlip and panel-derived coordinates.
+  It copies the current panel XY into FuturePanelXY, zeroes Z, and hardcodes NameID 0xe7. It indexes byte_80D34C0
+  by Param1*4: entry[3] becomes HP/MaxHP, entry[0]*2 becomes Timer, entry[2] is passed to sprite_setPalette,
+  and the entry pointer is stored in ExtraVars. It allocates collision data (freeing the object on failure),
+  sets up collision as (0x13, 0x14, 3), runs one collision refresh, spawns a linked type-1 obj3 stored
+  in RelatedObject1Ptr, sets CurState to CUR_STATE_UPDATE, and tail-calls sub_80D358C (the object''s update
+  routine).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r5,#oBattleObject_Param1]; mul r1,r2; ldr r0,off_80D3844 indexes a 4-byte-per-variant
+    table; strh r1,[r5,#oBattleObject_HP]/MaxHP from table byte 3 and Timer from table byte 0 doubled;
+    mov r0,#0xe7; strh r0,[r5,#oBattleObject_NameID] hardcodes the enemy's name/ID; bl object_createCollisionData
+    with object_freeMemory on failure shows it is a spawn/init path for a battle object; bl battle_spawnLinkedType1Obj3
+    stored into oBattleObject_RelatedObject1Ptr, then CurState=CUR_STATE_UPDATE and tail call to sub_80D358C
+  refs:
+  - bn6f/asm/asm31.s:59352
+  - 0x080B89DC battle_spawnLinkedType1Obj3
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D3500
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly accurate, but the claim that it ''sets up sprite, collision, ... and enters
+    CUR_STATE_UPDATE'' and tail-calls sub_80D358C as ''the object''s update routine'' is plausible but
+    speculative — sub_80D358C is not identified as update. More critically, the function is called by
+    no known caller, doesn''t free itself on failure (it frees the passed-in object via object_freeMemory),
+    and a better name would reflect it''s an enemy variant initialiser. The proposal''s name ''battle_initVariantEnemy''
+    is reasonable but lacks the ''battle_'' alignment with sibling functions; ''battle_initEnemyVariant''
+    is more idiomatic.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy NameID 0xe7 is and what the byte_80D34C0 variant table entries correspond to (only their
+  field roles are visible)
+- What sub_80D358C (the update state) does to confirm the enemy's behavior
+- The summary is mostly accurate, but the claim that it 'sets up sprite, collision, ... and enters CUR_STATE_UPDATE'
+  and tail-calls sub_80D358C as 'the object's update routine' is plausible but speculative — sub_80D358C
+  is not identified as update. More critically, the function is called by no known caller, doesn't free
+  itself on failure (it frees the passed-in object via object_freeMemory), and a better name would reflect
+  it's an enemy variant initialiser. The proposal's name 'battle_initVariantEnemy' is reasonable but lacks
+  the 'battle_' alignment with sibling functions; 'battle_initEnemyVariant' is more idiomatic.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3500 -> battle_initEnemyVariant
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3500

@@ -1,0 +1,72 @@
+name: battleObject_initDriftSpawn
+address: '0x080CC5C8'
+kind: function
+status: probable
+summary: 'Initializes a drifting battle object (drift hazard/projectile): loads sprite 0x100040f, picks
+  speed from a Param1-indexed table, sets front-direction XVelocity, stores random seed in ExtraVars+8
+  and panel-Y lane in ExtraVars+0xc, configures collision (effect 2, status 0x60), sets CurState to update
+  and dispatches to sub_80CC668.'
+interface: (r0 = object ptr (this, in r5 convention)) -> r0 = destroyed; sets XVelocity, Timer2, ExtraVars+8/+0xc,
+  CurState = CUR_STATE_UPDATE
+details: Sets the object's screen coords from its panel and aborts (spawn effect kind 0x14 using data
+  at r5+0x34 with +0x100000 added, then object_freeMemory) if the panel is invalid or sprite 0x100040f
+  fails to load via battleObject_initSpriteAndCollision. On success it sets oObjectHeader_Flags bit 2,
+  sets the sprite palette from oBattleObject_Param1, and writes XVelocity = object_getFrontDirection *
+  speedTable[Param1] with speedTable = {0x18000, 0x24000, 0x30000} at byte_80CC65C — Param1 thus selects
+  one of three variants. It stores abs(random % 0x500000) (unused locally) and random % 0x10000 into oBattleObject_ExtraVars+8,
+  sets oBattleObject_Timer2 = 0x8000, and stores the panel's pixel Y (object_getCoordinatesForPanels)
+  into ExtraVars+0xc as a lane reference. It configures collision hit effect 2 and status effect 0x60,
+  refreshes collision via object_presentCollisionData, sets CurState to CUR_STATE_UPDATE, and tail-calls
+  sub_80CC668 as the next state's handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battleObject_initSpriteAndCollision_8011504 with literals 0x100040f/0x4050000, failure path
+    spawns effect 0x14 and calls object_freeMemory (loc_80CC5E2); XVelocity = object_getFrontDirection
+    * word from byte_80CC65C[Param1] = {0x18000,0x24000,0x30000} (loc_80CC5FA region); sprite_setPalette(oBattleObject_Param1)
+    and ExtraVars+0xc = object_getCoordinatesForPanels(PanelX, PanelY).y tie motion to the object's lane;
+    random via svc 6 twice, second result stored to ExtraVars+8; Timer2 = 0x8000; collision effects 2/0x60
+    then object_presentCollisionData; CurState = CUR_STATE_UPDATE then tail-call sub_80CC668, matching
+    a state-init -> state-update pattern
+  refs:
+  - bn6f/asm/asm31.s:44360
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x08003458 object_freeMemory
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080CC5C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The drift direction is set by object_getFrontDirection (alliance-based), so ''DriftEnemy'' suggests
+    a generic wandering enemy but this is specifically a front-aligned (player or enemy side) drifting
+    object spawned from a template (object ptr via r5). The code matches the summary''s mechanics: Param1
+    selects speed from byte_80CC65C, sprite 0x100040f is loaded, fallback spawns effect 0x14 and frees.
+    However the proposal''s ''abs(random % 0x500000) (unused locally)'' is wrong — svc 6 is the random
+    intrinsic returning r0, and the result is stored into ExtraVars+8, not derived from the prior random
+    call; the +0x500000 constant only seeds/limits the first svc 6 call and that value is never stored.
+    Also ExtraVars+0xc stores the panel''s Y coordinate, used as a lane reference for later drift, consistent
+    with summary.; run wf investigate investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which enemy/attack this is (sprite id 0x100040f) — needs caller or sprite-resource table context
+- What sub_80CC668 does with ExtraVars+8/+0xc and Timer2 during the update state
+- Meaning of the effect arguments at r5+0x34 and why the first random roll is discarded
+- 'The drift direction is set by object_getFrontDirection (alliance-based), so ''DriftEnemy'' suggests
+  a generic wandering enemy but this is specifically a front-aligned (player or enemy side) drifting object
+  spawned from a template (object ptr via r5). The code matches the summary''s mechanics: Param1 selects
+  speed from byte_80CC65C, sprite 0x100040f is loaded, fallback spawns effect 0x14 and frees. However
+  the proposal''s ''abs(random % 0x500000) (unused locally)'' is wrong — svc 6 is the random intrinsic
+  returning r0, and the result is stored into ExtraVars+8, not derived from the prior random call; the
+  +0x500000 constant only seeds/limits the first svc 6 call and that value is never stored. Also ExtraVars+0xc
+  stores the panel''s Y coordinate, used as a lane reference for later drift, consistent with summary.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC5C8 -> battleObject_initDriftSpawn
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC5C8

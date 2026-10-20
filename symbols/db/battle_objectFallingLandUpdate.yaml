@@ -1,0 +1,61 @@
+name: battle_objectFallingLandUpdate
+address: '0x080DC018'
+kind: function
+status: probable
+summary: 'Per-frame update for an airborne battle object: while timer is nonzero, moves it by its velocities
+  and updates collision panels; on timer expiry, snaps to grid coords, zeros Z, and if the panel isn''t
+  already a hole it either cracks (ExtraVars[5]==1) or breaks it, optionally spawning effect object 5,
+  playing SOUND_HIT_BOMB_1, and shaking the camera (ExtraVars[4] nonzero), then sets CurAction=8, phase=0,
+  region=1, and clears header flag 0x2.'
+interface: (r5 = battle object) -> void; sets CurAction=8 and phase 0 on landing, clears object header
+  flag bit 2
+details: While oBattleObject_Timer is nonzero it adds XVelocity to X and ZVelocity to Z, re-derives panel
+  coords, and updates collision panels. On timer expiry it zeroes Z and reads panel status; if the panel
+  is a hole (mask 0xF800010) it spawns effect object 5, plays SOUND_HIT_BOMB_1, and if ExtraVars[4] triggers
+  a camera shake (mag 1, dur 0xF). ExtraVars[5]==1 makes it crack the panel instead of breaking it. It
+  then sets CollisionData region to 1, CurAction to 8, phase to 0, and clears object header flag 0x2 (likely
+  the airborne/no-collision flag).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Timer countdown gate at start: nonzero path integrates X/Z velocity and calls object_updateCollisionPanels;
+    Zero path sets Z=0 and checks panel flags against 0xF800010 (hole/broken) before spawning effect 5
+    and SOUND_HIT_BOMB_1; ExtraVars[5] selects object_crackPanel vs object_breakPanel at the landing tile;
+    Landing state: CollisionData_Region=1, oBattleObject_CurAction=8, phase=0, header flag 0x2 cleared;
+    Callee camera_initShakeEffect_80302a8(1,0xF) and spawn_t1_0x0_EffectObject(5) match an explosion on
+    impact'
+  refs:
+  - bn6f/asm/asm31.s:77862
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800C9F8 object_breakPanel
+  reproduce: python3 tools/asmcat.py 0x080DC018
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: revise
+    — The summary is mostly correct but says it ''reads panel status'' before checking for a hole. Actually
+    object_getPanelParameters returns flags, but the code first zeros Z, then calls object_setCoordinatesFromPanels,
+    then gets panel params. Also, ExtraVars[4] is tested with tst which checks non-zero (any nonzero value
+    triggers shake, not just bit-specific). The summary is acceptable but naming could be better. The
+    proposed name ''battle_objectFallingLandUpdate'' is reasonable since it handles a falling object''s
+    landing behavior.; run wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+open_questions:
+- Which attack spawns this object (caller unknown), and exact meaning of header flag bit 0x2 and CurAction
+  8
+- The summary is mostly correct but says it 'reads panel status' before checking for a hole. Actually
+  object_getPanelParameters returns flags, but the code first zeros Z, then calls object_setCoordinatesFromPanels,
+  then gets panel params. Also, ExtraVars[4] is tested with tst which checks non-zero (any nonzero value
+  triggers shake, not just bit-specific). The summary is acceptable but naming could be better. The proposed
+  name 'battle_objectFallingLandUpdate' is reasonable since it handles a falling object's landing behavior.
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC018 -> battle_objectFallingLandUpdate
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC018

@@ -1,0 +1,59 @@
+name: battle_updateSineHoverY
+address: '0x080C14B2'
+kind: function
+status: probable
+summary: Adds a sine-bob offset to a battle object's Y each tick, using a per-object phase accumulator
+  and a +/-1 direction byte, around the base Y stored in the object's ExtraVars.
+interface: (r0 = unused, r5 = battle object) -> r0 = new Y; no flags of note
+details: Advances a phase accumulator at object+0x67 by the speed byte at object+0x66, uses it (doubled,
+  since the table holds halfwords) as an index into math_sinTable. The sine sample is scaled by 12 <<
+  8 (0xC00, 8.8 fixed-point = 12 px amplitude) and multiplied by +1/-1 from byte_80C14E4 selected by object+0x64
+  (a direction/sign flag). The result is added to the base Y stored at oBattleObject_ExtraVars+8 and written
+  to oBattleObject_Y. Called every frame from sub_80C1320 during battles, so the object oscillates vertically
+  around its anchor point.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#0x66]; ldrb r3,[r5,#0x67]; add r3,r3,r1; strb — phase accumulator incremented
+    by speed; ldr r2,off_80C1568 (math_sinTable); ldrh r0,[r2,r3] — sine lookup by phase; mul r0,#0xC
+    then lsl #8 — fixed-point amplitude of 12 px; byte_80C14E4 words {1,-1} indexed by [r5+0x64]<<2 —
+    sign flip table; add r1,[r5,#oBattleObject_ExtraVars+8]; str r1,[r5,#oBattleObject_Y] — writes resulting
+    Y'
+  refs:
+  - bn6f/asm/asm31.s:20375
+  - 0x080C1320 sub_80C1320
+  reproduce: python3 tools/asmcat.py 0x080C14B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The function reads byte at +0x66 as speed and byte at +0x67 as phase accumulator, then reads a 32-bit
+    word from a table of +/-1 multipliers using index (byte at +0x64)*4. The sine result is multiplied
+    by 0xC (12) then shifted left by 8, giving amplitude 12 in 8.8 fixed point, then added to base Y at
+    ExtraVars+8 and stored at oBattleObject_Y. This matches the proposal''s mechanics, but the caller
+    sub_80C1320 isn''t necessarily called every frame for sine-hover; it also does other updates. The
+    name is fine but summary could be tighter since ''each frame'' is an inference.; run wf investigate
+    investigate-20261018-222121; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of object+0x64 (could be facing or a 'bob direction' flag) and whether ExtraVars+8 is updated
+  elsewhere
+- Which object type uses this (needs caller sub_80C1320's object identity)
+- The function reads byte at +0x66 as speed and byte at +0x67 as phase accumulator, then reads a 32-bit
+  word from a table of +/-1 multipliers using index (byte at +0x64)*4. The sine result is multiplied by
+  0xC (12) then shifted left by 8, giving amplitude 12 in 8.8 fixed point, then added to base Y at ExtraVars+8
+  and stored at oBattleObject_Y. This matches the proposal's mechanics, but the caller sub_80C1320 isn't
+  necessarily called every frame for sine-hover; it also does other updates. The name is fine but summary
+  could be tighter since 'each frame' is an inference.
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C14B2 -> battle_updateSineHoverY
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C14B2

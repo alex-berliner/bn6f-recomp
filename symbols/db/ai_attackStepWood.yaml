@@ -1,0 +1,57 @@
+name: ai_attackStepWood
+address: '0x080F15FC'
+kind: function
+status: probable
+summary: 'AI attack step handler for the wood element: on first call sets AttackElement=4, CurAnim=0x11,
+  StepTimer=0x23; decrements the timer, switching CurAnim to 0x12 at 0x1E, and writes 4 into HitElement
+  when the timer reaches 0.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars struct) -> r0 = undefined; flags from the final
+  sub/cmp
+details: 'If oAIAttackVars_AttackElement is 0, it initializes the attack: AttackElement = 4 (wood), oBattleObject_CurAnim
+  = 0x11, and StepTimer = 0x23 (35). On later frames it decrements StepTimer; when it reaches 0x1E it
+  changes CurAnim to 0x12 (follow-through/release pose). When the timer drops to 0 it stores element 4
+  into oAIAttackVars_HitElement so the subsequent hit check deals wood damage. The function is a pure
+  state machine over the AI attack vars; it makes no calls.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards the one-time init (lines 2-9); mov
+    r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement] arms element 4 (wood) on entry; strh r0(0x23),[r7,#oAIAttackVars_StepTimer]
+    plus decrement loop is the attack''s frame countdown; cmp r0,#0x1e; beq switches CurAnim from 0x11
+    to 0x12 mid-attack; at timer 0: strh r0(4),[r7,#oAIAttackVars_HitElement] stamps the attack element
+    for the hit'
+  refs:
+  - bn6f/asm/asm31.s:123925
+  reproduce: python3 tools/asmcat.py 0x080F15FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
+    — The proposed name and summary match the code: it sets AttackElement to 4 (wood), CurAnim to 0x11,
+    StepTimer to 0x23, decrements the timer, switches to anim 0x12 at 0x1E, and writes 4 to HitElement
+    when timer hits 0. Minor inaccuracies: HitElement is stored with strh (halfword), not strb, and the
+    function is not purely ''boss AI'' — it''s a generic per-element attack step handler. A more accurate
+    lowerCamel name reflecting the element dispatch would be ai_attackStepWood.; run wf investigate investigate-20261018-222121;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+coverage:
+- beastsp
+open_questions:
+- Which boss/routine calls this step and whether element 4's attack is the wood swipe or a specific panel
+  attack — a caller table of AI attack handlers would confirm
+- Exact meaning of animations 0x11/0x12 in the battle object's anim list
+- 'The proposed name and summary match the code: it sets AttackElement to 4 (wood), CurAnim to 0x11, StepTimer
+  to 0x23, decrements the timer, switches to anim 0x12 at 0x1E, and writes 4 to HitElement when timer
+  hits 0. Minor inaccuracies: HitElement is stored with strh (halfword), not strb, and the function is
+  not purely ''boss AI'' — it''s a generic per-element attack step handler. A more accurate lowerCamel
+  name reflecting the element dispatch would be ai_attackStepWood.'
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 165ede43
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F15FC -> ai_attackStepWood
+  where: bn6f 989c7258
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F15FC
