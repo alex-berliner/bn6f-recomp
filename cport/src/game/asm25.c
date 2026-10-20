@@ -719,6 +719,74 @@ Next getAreaTableEntry_808FFC0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── weatherComp_checkTrigger70_8090004 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_reqBBS_81409E4_result_weatherComp_checkTrigger70_8090004;
+/* register form: generated wrapper: reqBBS_81409E4 has no typed C interface yet */
+static inline call_reqBBS_81409E4_result_weatherComp_checkTrigger70_8090004 call_reqBBS_81409E4_weatherComp_checkTrigger70_8090004(void) {
+    GUEST_CALL(reqBBS_81409E4);
+    return (call_reqBBS_81409E4_result_weatherComp_checkTrigger70_8090004){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* Weather component trigger check (0x08090004).
+ * Asks the BBS request helper for the current request ID (returned in r0;
+ * the call is fed r10 and leaves r1-r3, r10, r11 set for the caller, with
+ * r4-r9/r12 preserved). Request IDs 0x70..0x79 pick weather 0..9, which is
+ * written to the object at [r5+0xE]; anything else selects nothing.
+ * Returns whether a weather was selected (the caller tests the Z flag). */
+static bool weatherComp_checkTrigger70(u32 weatherObj)
+{
+    s32 requestId = (s32)call_reqBBS_81409E4_weatherComp_checkTrigger70_8090004().r0;
+
+    if (requestId < 0x70 || requestId > 0x79)
+        return false;
+
+    ST8(weatherObj + 0xE, (u32)(requestId - 0x70));
+    return true;
+}
+
+Next weatherComp_checkTrigger70_8090004(void)
+{
+    bool triggered = weatherComp_checkTrigger70(R5);
+    SET_FLAGS_NZ(triggered);
+    RETURN_TO_CALLER();
+}
+
+/* ── weatherComp_checkTrigger60_8090020 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_reqBBS_81409E4_result_weatherComp_checkTrigger60_8090020;
+/* register form: generated wrapper: reqBBS_81409E4 has no typed C interface yet */
+static inline call_reqBBS_81409E4_result_weatherComp_checkTrigger60_8090020 call_reqBBS_81409E4_weatherComp_checkTrigger60_8090020(void) {
+    GUEST_CALL(reqBBS_81409E4);
+    return (call_reqBBS_81409E4_result_weatherComp_checkTrigger60_8090020){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* Weather component "trigger 60" check.
+ *
+ * Queries reqBBS_81409E4 for a result code. When the code falls in the
+ * 0x60..0x69 range, it is a trigger hit: store code - 0x60 as the component's
+ * new state byte at [r5 + 0x0E] and return 1. Otherwise leave the incoming
+ * r4 untouched as the result ("not triggered"). r4 and r5 are preserved for
+ * the caller (the callee keeps r5 intact; r4 is saved around the call).
+ * The caller branches on the Z/N flags of the returned value (tst r4, r4). */
+static u32 weatherComp_checkTrigger60_impl(u32 flag, u32 state_obj) {
+    u32 code = call_reqBBS_81409E4_weatherComp_checkTrigger60_8090020().r0;
+
+    if ((s32)code >= 0x60 && (s32)code <= 0x69) {
+        ST8(state_obj + 0xE, code - 0x60);
+        flag = 1;
+    }
+    return flag;
+}
+
+/* r4 = result flag seed, r5 = component state object -> nz, r4
+ * (r1/r2/r3/r9/r10/r11/r12 pass through from reqBBS_81409E4's call) */
+Next weatherComp_checkTrigger60_8090020(void) {
+    R4 = weatherComp_checkTrigger60_impl(R4, R5);
+    SET_FLAGS_NZ(R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── bbs_requestOnEventBE4_809003C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; bool z, n, c, v; } call_TestEventFlagFromImmediate_result_sub_809003C;
@@ -774,6 +842,69 @@ static void bbs_request_scene(void) {
  * Flags are clobbered only, so nothing has to be set explicitly here. */
 Next bbs_requestOnEventBE4_809003C(void) {
     bbs_request_scene();
+    RETURN_TO_CALLER();
+}
+
+/* ── weatherComp_findRingCapture_80901EC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r3; bool z, n; } call_TestEventFlag_result;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result call_TestEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Weather computer ring-capture check.
+ *
+ * Scans the three "ring captured" event flags stored as halfwords in the table
+ * at byte_8090220. The first flag that is set has its index (0..2) written to
+ * state+0x0C and the function reports "found"; if none is set, state+0x0C
+ * stays 0 and the function reports "not found".
+ *
+ * The original leaves r1/r3 behind from its last TestEventFlag call, so the
+ * last call's values are returned for the adapter to restore.
+ */
+typedef struct {
+    u32 found;   /* 1 if a ring-capture flag was set (drives the N/Z output) */
+    u32 last_r1; /* r1/r3 as the last TestEventFlag call left them */
+    u32 last_r3;
+    u32 r4;      /* restored unchanged by the original's push/pop */
+} find_ring_capture_result;
+
+#define RING_CAPTURE_FLAG_COUNT 3
+
+static find_ring_capture_result find_ring_capture(u32 state, u32 r4_in) {
+    find_ring_capture_result res;
+
+    ST8(state + 0xC, 0);
+    res.found = 0;
+    res.last_r1 = 0;
+    res.last_r3 = 0;
+
+    for (u32 i = 0; i < RING_CAPTURE_FLAG_COUNT; i++) {
+        u16 flag = LD16(A_byte_8090220 + i * 2);
+        call_TestEventFlag_result f = call_TestEventFlag(flag);
+        res.last_r1 = f.r1;
+        res.last_r3 = f.r3;
+        if (!f.z) {                 /* Z clear: this flag is set */
+            res.found = 1;
+            ST8(state + 0xC, i);
+            break;
+        }
+    }
+
+    res.r4 = r4_in;
+    return res;
+}
+
+/* inputs: r5 (state pointer) r10 lr; outputs: nz r1 r3 r4; r4/r6 preserved */
+Next weatherComp_findRingCapture_80901EC(void) {
+    find_ring_capture_result res = find_ring_capture(R5, R4);
+    R4 = res.r4;
+    R1 = res.last_r1;
+    R3 = res.last_r3;
+    SET_FLAGS_NZ(res.found);
     RETURN_TO_CALLER();
 }
 

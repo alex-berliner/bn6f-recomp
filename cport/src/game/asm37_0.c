@@ -25,6 +25,19 @@ Next toolkit_resetToolState_813B768(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813B920 ── */
+/* Store a byte into the work buffer at 0x20096D8. r0 is the value;
+ * r1 ends up holding the buffer address, as the original leaves it. */
+static void store_byte_20096D8(u32 value) {
+    ST8(A_byte_20096D8, value);
+}
+
+Next sub_813B920(void) {
+    store_byte_20096D8(R0);
+    R1 = A_byte_20096D8;
+    RETURN_TO_CALLER();
+}
+
 /* ── zeroFill_813B934 ── */
 /* zeroFill_813B934:
  * Clear the scratch work buffers hanging off the toolkit struct that r10 points
@@ -873,6 +886,49 @@ Next sub_813CBCC(void) {
 
     /* Restore caller's r4-r7 (original: pop {r4-r7,pc}). */
     R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813CDC0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sub_813CDD8_result;
+/* register form: generated wrapper: sub_813CDD8 has no typed C interface yet */
+static inline call_sub_813CDD8_result call_sub_813CDD8(u32 r4, u32 r6) {
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(sub_813CDD8);
+    return (call_sub_813CDD8_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* sub_813CDC0: fixed-argument front end for sub_813CDD8.
+ * It calls sub_813CDD8 with r4 = 10 and r6 = 2, passes its r2 result
+ * through, and preserves r4-r7: the original pushes them around the call
+ * and pops them afterwards, so the caller's values survive the callee. */
+
+typedef struct {
+    u32 r2;     /* the result register sub_813CDD8 leaves behind */
+    u32 r4;     /* caller's r4, restored by the pop */
+    u32 r6;     /* caller's r6, restored by the pop */
+} Sub813CDC0Result;
+
+/* Run sub_813CDD8 with its fixed arguments and report what the caller
+ * sees afterwards: the callee's r2 plus the saved r4/r6 it popped back. */
+static Sub813CDC0Result sub_813CDC0_body(u32 caller_r4, u32 caller_r6) {
+    call_sub_813CDD8_result res = call_sub_813CDD8(0xA, 2);
+
+    Sub813CDC0Result out;
+    out.r2 = res.r2;
+    out.r4 = caller_r4;
+    out.r6 = caller_r6;
+    return out;
+}
+
+/* sub_813CDC0(inputs: r10 lr; outputs: r2 r6; preserved: r4-r7) */
+Next sub_813CDC0(void) {
+    Sub813CDC0Result out = sub_813CDC0_body(R4, R6);
+    R2 = out.r2;
+    R4 = out.r4;
+    R6 = out.r6;
     RETURN_TO_CALLER();
 }
 

@@ -3496,6 +3496,73 @@ Next chatbox_resetCounterIfFlag80Clear_8137368(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81374C4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81374C4;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_81374C4 call_chatbox_mask_eFlags2009F38_sub_81374C4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_81374C4){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* sub_81374C4: if chatbox flag 0x80 is clear (mask test returns zero),
+ * store the byte 0x74 to the address passed in r5. No register results. */
+static void check_chatbox_flag_and_store(u32 dest_addr) {
+    /* chatbox_mask_eFlags2009F38 sets Z when the tested flag is clear */
+    if (call_chatbox_mask_eFlags2009F38_sub_81374C4(0x80).z)
+        ST8(dest_addr, 0x74);
+}
+
+Next sub_81374C4(void) {
+    check_chatbox_flag_and_store(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_813759C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_813759C;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_sub_813759C call_chatbox_mask_eFlags2009F38_sub_813759C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_sub_813759C){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* If chatbox event flag 0x80 (of the 0x2009F38 flag block) is clear, write the
+ * textbox command 0x8C to the byte pointed at by r5.  Does nothing otherwise. */
+static void sub_813759C_impl(u32 dest_addr)
+{
+    /* chatbox_mask_eFlags2009F38: Z clear when the flag is set */
+    if (call_chatbox_mask_eFlags2009F38_sub_813759C(0x80).z)
+        ST8(dest_addr, 0x8C);
+}
+
+/* sub_813759C(r5 = destination byte pointer) -> r0 */
+Next sub_813759C(void) {
+    sub_813759C_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81375CC ── */
+/* sub_81375CC (at r5): re-store the byte at [r5] unchanged.
+ *
+ * The body is "ldrb r0,[r5]; add r0,#0; strb r0,[r5]": the add #0 never
+ * changes the value, so this is effectively a read-modify-write of a single
+ * byte, with the flags from the add discarded (no caller uses them). It is
+ * most likely a breakpoint/patch site kept as a plain memory round-trip.
+ */
+static void sub_81375CC_impl(u32 addr) {
+    u8 value = LD8(addr);
+    ST8(addr, value);
+}
+
+/* sub_81375CC(r5 = address) -> nothing (r0 and flags clobbered, not preserved) */
+Next sub_81375CC(void) {
+    sub_81375CC_impl(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── RunTextScriptNaviCustDialog ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_chatbox_runScript_result;

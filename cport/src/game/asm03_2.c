@@ -4231,3 +4231,22 @@ Next sub_804CC7E(void) {
     set_mode_bytes(R10, &R5);
     RETURN_TO_CALLER();
 }
+
+/* ── t4_setCycleFrameIndex ── */
+/* Set the cycling animation state for the current battle effect:
+ * look up a frame index from the low 4 bits of the global frame counter
+ * and write it, plus the fixed sub-counter 0x10, into the state struct. */
+static void set_cycle_frame_index(u32 toolkit) {
+    u32 frame_counter = LD16(LD32(toolkit + oToolkit_CurFramePtr));
+    u32 state = LD32(toolkit + oToolkit_Unk2009740_Ptr);
+
+    u8 index = LD8(A_byte_804CCE0 + (frame_counter & 0xF));
+    ST8(state + 2, index);
+    ST8(state + 3, 0x10);
+}
+
+/* t4_setCycleFrameIndex(r10 = toolkit) -> no outputs */
+Next t4_setCycleFrameIndex(void) {
+    set_cycle_frame_index(R10);
+    RETURN_TO_CALLER();
+}
