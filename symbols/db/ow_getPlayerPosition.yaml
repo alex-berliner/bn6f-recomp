@@ -1,46 +1,66 @@
 name: ow_getPlayerPosition
 address: '0x0809E1BC'
 kind: function
-status: probable
-summary: Returns the overworld player object's three position coordinates (fields 0x1C, 0x20, 0x24) in
-  r1-r3.
-interface: (no inputs; r0 ignored) -> r1 = player obj +0x1C (X), r2 = player obj +0x20 (Y), r3 = player
-  obj +0x24 (Z/height); clobbers r1-r3, preserves r0
-details: Loads r10's toolkit pointer, reads GameStatePtr, then OverworldPlayerObjectPtr, and pulls three
-  consecutive longwords starting at offset 0x1C of the player object. The three values are almost certainly
-  the object's 3D/position coordinates, since the caller ow_applyCutsceneDirOffset adds a cutscene-direction-dependent
-  pixel offset (32/64/96 along one axis) to the three values it receives. The function ignores its r0
-  argument entirely; the player object is always taken from the global game state. No other fields are
-  touched and no calls are made.
+status: confirmed
+summary: Returns the overworld player object's X/Y/Z position from the current game state.
+interface: void ow_getPlayerPosition(void* toolkit /* r10 */, out int* x /* r1 */, out int* y /* r2 */, out int*
+  z /* r3 */)
+details: 'Follows toolkit->gameState (oToolkit_GameStatePtr) -> overworld player object (oGameState_OverworldPlayerObjectPtr),
+  then loads the player object''s position fields at offsets 0x1C (X), 0x20 (Y) and 0x24 (Z) directly into r1, r2
+  and r3 and returns. Pure getter: no state is modified, no flags are set, and r0 is left untouched. The player
+  object pointer must already be valid (overworld active); a null pointer here would fault. Tail-called via mov
+  pc, lr, so the caller must not expect lr preservation semantics beyond that.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r3,[r3,#oGameState_OverworldPlayerObjectPtr] then three loads at +0x1c/+0x20/+0x24: returns
-    a coordinate triple from the player object; caller 0x0809C890 ow_applyCutsceneDirOffset is documented
-    as adding a positional offset to three coordinate values — matches the returned triple; no callees
-    and r0 unused: a pure global-state getter'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/ow_player.s:2335
-  - 0x0809C890 ow_applyCutsceneDirOffset
-  - 0x0809332C sub_809332C
-  reproduce: python3 tools/asmcat.py 0x0809E1BC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_getPlayerPosition
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_getPlayerPosition
+
+    ./wf verify --function ow_getPlayerPosition --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_getPlayerPosition
+
+    ./wf verify --function ow_getPlayerPosition --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_getPlayerPosition
+
+    ./wf verify --function ow_getPlayerPosition --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809e1bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/ow_player.c
 coverage:
 - beastsp
-open_questions:
-- Exact meaning of the third field (Z vs shadow-Y vs facing) at player object +0x24 would be confirmed
-  by seeing how callers use r3
+related:
+- ow_applyCutsceneDirOffset
+open_questions: []
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_809E1BC -> ow_getPlayerPosition
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_809E1BC
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

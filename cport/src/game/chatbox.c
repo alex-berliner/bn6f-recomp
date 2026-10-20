@@ -3557,7 +3557,7 @@ Next chatbox_formatBcdNumber_8042A14(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8042EE8 ── */
+/* ── chatbox_entryMatchesBuffer_8042EE8 ── */
 /* Compare one chatbox entry against a byte buffer.
  * r0 selects the entry (index * 8 into the table at byte_8045CCC),
  * r1 is the byte count (treated as signed by the original's bgt loop),
@@ -3578,8 +3578,8 @@ static u32 chatbox_entry_matches(u32 index, s32 count, u32 record) {
     return 1;
 }
 
-/* chatbox_8042EE8(r0 = entry index, r1 = byte count, r5 = record base) -> r0 */
-Next chatbox_8042EE8(void) {
+/* chatbox_entryMatchesBuffer_8042EE8(r0 = entry index, r1 = byte count, r5 = record base) -> r0 */
+Next chatbox_entryMatchesBuffer_8042EE8(void) {
     R0 = chatbox_entry_matches(R0, (s32)R1, R5);
     RETURN_TO_CALLER();
 }
@@ -3608,7 +3608,7 @@ Next chatbox_setCutsceneStateByte_8042FF4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── chatbox_8045EDC ── */
+/* ── chatbox_storeWord_8045EDC ── */
 /* Write one 32-bit word into the chatbox's word buffer.
  * r0 = slot index (scaled by 4), r1 = value to store, r10 = toolkit whose
  * oToolkit_ChatboxPtr field points at the active chatbox.
@@ -3622,8 +3622,8 @@ static u32 chatbox_store_word(u32 slot, u32 value, u32 toolkit, u32 r5_unchanged
     return r5_unchanged;
 }
 
-/* chatbox_8045EDC(r0 = slot index, r1 = value, r10 = toolkit) -> r5 (unchanged) */
-Next chatbox_8045EDC(void) {
+/* chatbox_storeWord_8045EDC(r0 = slot index, r1 = value, r10 = toolkit) -> r5 (unchanged) */
+Next chatbox_storeWord_8045EDC(void) {
     R5 = chatbox_store_word(R0, R1, R10, R5);
     RETURN_TO_CALLER();
 }

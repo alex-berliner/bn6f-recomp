@@ -1,45 +1,64 @@
 name: owMapObject_freeThunk
 address: '0x080A9568'
 kind: function
-status: probable
-summary: Thin wrapper that frees the overworld map object passed in r0, likely used as a shared despawn/destructor
-  step handler.
-interface: (r0 = overworld map object) -> r0 = FreeOverworldMapObject result; flags from FreeOverworldMapObject
-details: The function only saves LR, tail-calls FreeOverworldMapObject on r0, and returns, so all work
-  (clearing the active bit in the allocation bitfield, freeing the slot, unmarking the sprite) happens
-  in the callee. Its 4-instruction size suggests it exists to be referenced as a function pointer (e.g.
-  a step/destructor slot) rather than called inline. Mr. Weather's init uses it in one of its branch targets,
-  and sub_80A94F8 also reaches it, consistent with a generic 'remove this object now' handler.
+status: confirmed
+summary: Tail-call thunk that frees the overworld map object whose pointer is passed in r5.
+interface: void owMapObject_freeThunk(void /* r5 = overworld map object pointer */); returns whatever FreeOverworldMapObject
+  leaves in r0-r3 and the nzcv flags; r5 preserved
+details: 'A two-instruction wrapper: push {lr}, bl FreeOverworldMapObject, pop {pc}. The object pointer to free
+  travels in r5, which the callee preserves, so callers can hand it straight through. All caller-visible outputs
+  (r0-r3, nz/c/v) are just the callee''s outputs; lr is only the return channel. Exists presumably as a fixed-address
+  entry point so code that needs a "free this map object" callback/trampoline has one stable target instead of calling
+  FreeOverworldMapObject directly.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: sub_80A9568 body is just `bl FreeOverworldMapObject` between push {lr}/pop {pc}; caller owMapObject_mrWeatherInit_80A9458
-    branches to it as an alternative to the normal step/init path; callee FreeOverworldMapObject clears
-    the active bit, marks the slot free, and unmarks the sprite
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:8721
-  - 0x080A9458 owMapObject_mrWeatherInit_80A9458
-  - 0x080A94F8 sub_80A94F8
-  - 0x080048B2 FreeOverworldMapObject
-  reproduce: python3 tools/asmcat.py 0x080A9568
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_freeThunk
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_freeThunk
+
+    ./wf verify --function owMapObject_freeThunk --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_freeThunk
+
+    ./wf verify --function owMapObject_freeThunk --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 56 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_freeThunk
+
+    ./wf verify --function owMapObject_freeThunk --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9568 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
-open_questions:
-- whether it is registered as a step-function pointer (would need the vtable/step-table assignment in
-  the callers to confirm)
+open_questions: []
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80A9568 -> owMapObject_freeThunk
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9568
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

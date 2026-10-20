@@ -1,0 +1,86 @@
+name: reqBBS_81405E8
+address: '0x081405E8'
+kind: function
+status: confirmed
+summary: Draws the bulletin-board (BBS) background by copying a fixed 8x2 block of tiles from a table into tile
+  block 32x32
+interface: void drawBbsBackground_81405E8(r10 context, lr return_address); reads r4/r5 to preserve them; returns
+  r5 unchanged (callers read r5 back but it is untouched)
+details: 'Wrapper around CopyBackgroundTiles with fully constant arguments: j=0xA (destination tile
+
+  column 10), i=0 (destination row), tileBlock32x32=2, tileIds=*byte_813F32C (a fixed tile
+
+  id table), j_size=8, i_size=2. So it pastes an 8-wide, 2-tall background tile chunk into
+
+  the third 32x32 tile block of the background map — evidently the backdrop of the BBS
+
+  (bulletin board) screen. The function itself is just six moves plus the call; all logic
+
+  lives in CopyBackgroundTiles. It pushes r4-r7,lr solely because CopyBackgroundTiles
+
+  clobbers r4/r5 (its internal 8x2 loops leave r4=18), so the save/restore is pure register
+
+  preservation, not real state. The register contract lists r10 as an input, but this body
+
+  never touches r10 — likely a caller-side convention artifact (r10 carries some context in
+
+  the surrounding BBS scene code) rather than a real parameter. r5 is listed as an output
+
+  only because it passes through unchanged for the callers to keep reading.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81405E8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81405E8
+
+    ./wf verify --function reqBBS_81405E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81405E8
+
+    ./wf verify --function reqBBS_81405E8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81405E8
+
+    ./wf verify --function reqBBS_81405E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^081405e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- why callers pass r10 (context) — this function never reads it; may be a scene-state register set up before the
+  call
+- what scene exactly hosts this BBS background (the byte_813F32C tile table would identify the art)
+- whether other reqBBS* functions share this tile block 2 target or draw other parts of the board
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

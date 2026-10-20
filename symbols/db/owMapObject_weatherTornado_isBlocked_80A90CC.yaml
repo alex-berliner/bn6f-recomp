@@ -1,30 +1,68 @@
 name: owMapObject_weatherTornado_isBlocked_80A90CC
 address: '0x080A90CC'
 kind: function
-previous_names:
-- sub_80A90CC
-status: probable
-summary: 'Tornado: blocked if the coordinate trigger at its position is 0xC0 (returns 1, Z clear).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Returns whether the tile 0xC bytes past an overworld object's coordinate is occupied by a tornado (coordinate-trigger
+  value 0xC0), signaling a blocked move.
+interface: int owMapObject_weatherTornado_isBlocked(coordBase /*r5*/, pass /*r10*/) -> r0 = 0|1, NZ set from r0
+details: 'Tiny predicate used by the weather-tornado map object: it adds 0xC to the object coordinate pointer/base
+  in r5 and calls checkCoordinateTrigger_8031a7a with r10 passed through untouched (likely a secondary coordinate
+  or context word the trigger checker consumes). If the trigger check returns 0xC0 — the marker for a tornado standing
+  on that tile — the result register r4 is set to 1, otherwise it stays 0. Returns the 0/1 result in r0 and sets
+  NZ from it so callers can branch directly. Only r4 and the call are local work; r5/r6/r8-r12 on exit are just
+  whatever checkCoordinateTrigger_8031a7a left in them (r5 itself is preserved), so callers must not rely on them.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_isBlocked_80A90CC:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_isBlocked_80A90CC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isBlocked_80A90CC
+
+    ./wf verify --function owMapObject_weatherTornado_isBlocked_80A90CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isBlocked_80A90CC
+
+    ./wf verify --function owMapObject_weatherTornado_isBlocked_80A90CC --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isBlocked_80A90CC
+
+    ./wf verify --function owMapObject_weatherTornado_isBlocked_80A90CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a90cc ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A90CC -> owMapObject_weatherTornado_isBlocked_80A90CC
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the +0xC offset within the object/coordinate structure (adjacent tile? sub-field?)
+- role of the r10 input, which is forwarded to checkCoordinateTrigger_8031a7a without use here
+- whether 0xC0 is a general "tornado" trigger ID or encodes more state
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,0 +1,77 @@
+name: reqBBS_813FDA8
+address: '0x0813FDA8'
+kind: function
+status: confirmed
+summary: Scene load/init for the BBS request board — clears VRAM/palette buffers and decompresses the board's tiles,
+  palettes, and text script from the reference table before the board state is set up.
+interface: void reqBBS_813FDA8(void) /* r5 preserved end-to-end, returned as the caller's r5; clobbers r0-r3, lr,
+  flags */
+details: 'Standard "load a scene" stub built around decompAndCopyData. It first clears VRAM (zeroFillVRAM) and the
+  palette buffer at 0x3001960 (ZeroFill_byte_3001960), then hands the resource reference table at byte_813FDCC to
+  decompAndCopyData. The table (terminating at NULL entries) describes the request-board screen''s assets: compressed
+  tiles to 0x06000200 with work RAM at byte_2017A00, a text/eText script into eTextScript201BA00 via unk_2018A00,
+  font shade tables (reqBBS_textualShades, 0x20 entries into unk_30019C0 at 0x30019E0 with 0x60), a 0x280-entry
+  block into VRAM 0x06001000, a 0x60-entry palette at palette_3001960, plus two further compressed graphics blocks
+  (0x06010000 via unk_2019200, and one with NULL dest read from byte_201AA00) with their parameter tables (byte_87EFBA4,
+  byte_87EF824, byte_86C9D6C, byte_86C9D6C-related byte_30016D0, byte_86C9BD4). After loading, reqBBS_8140600 initializes
+  the BBS scene state (returning r4-r6 context), ZeroFillGFX30025c0 clears an OAM/GFX work area at 0x30025c0, and
+  battle_resetEStructRecords_8046664 resets enemy/struct records. The function itself only pushes/pops r5, so r5
+  and (per contract) r10 pass through unchanged; the "r5 out" in the contract is just the preserved caller value.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_813FDA8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_813FDA8
+
+    ./wf verify --function reqBBS_813FDA8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_813FDA8
+
+    ./wf verify --function reqBBS_813FDA8 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_813FDA8
+
+    ./wf verify --function reqBBS_813FDA8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0813fda8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+related:
+- reqBBS_8140600
+open_questions:
+- Exact on-screen meaning of each table row — likely request board UI text/font blocks rather than in-battle assets
+- What reqBBS_8140600 does with the returned r4-r6 (scene state setup not yet read)
+- Why one compressed block has a NULL destination (decompAndCopyData may treat NULL as a fixed default target)
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

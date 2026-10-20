@@ -1,0 +1,65 @@
+name: loadGameProgressFromGameProgressBuffer_8035354
+address: '0x08035354'
+kind: function
+status: confirmed
+summary: Copies one byte of game-progress data from the save buffer (selected by index in r0) into the live GameState's
+  GameProgress field.
+interface: void loadGameProgressFromGameProgressBuffer(int slot /* r0 */, Toolkit* toolkit /* r10 */); reads gameProgressBuffer_20010f0[slot],
+  writes gameState->GameProgress
+details: Indexes gameProgressBuffer_20010f0 (the save/progress staging buffer in IWRAM) by the byte offset passed
+  in r0, then resolves the current GameState via toolkit->oToolkit_GameStatePtr (r10 = toolkit pointer) and stores
+  the single byte at GameState + oGameState_GameProgress. No bounds check on the slot index; only one byte is transferred
+  per call, so callers presumably call it once per progress field. r4-r7 are pushed/popped purely to preserve them;
+  lr is the return address. Flags are clobbered by the loads/stores but not used.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c loadGameProgressFromGameProgressBuffer_8035354
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function loadGameProgressFromGameProgressBuffer_8035354
+
+    ./wf verify --function loadGameProgressFromGameProgressBuffer_8035354 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function loadGameProgressFromGameProgressBuffer_8035354
+
+    ./wf verify --function loadGameProgressFromGameProgressBuffer_8035354 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function loadGameProgressFromGameProgressBuffer_8035354
+
+    ./wf verify --function loadGameProgressFromGameProgressBuffer_8035354 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08035354 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- beastsp
+open_questions:
+- Which progress fields correspond to which slot indices (call sites not examined)
+- Whether callers batch-load the whole progress struct byte by byte or only selected fields
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

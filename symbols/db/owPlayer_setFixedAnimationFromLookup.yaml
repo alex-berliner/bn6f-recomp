@@ -1,47 +1,70 @@
 name: owPlayer_setFixedAnimationFromLookup
 address: '0x0809C814'
 kind: function
-status: probable
-summary: Reads an index from an object field and sets the overworld player's fixed animation to a table-mapped
-  animation id.
-interface: (r5 = context object, no args) -> r0 = 0; calls owPlayer_setS200ace0_fixedAnimationSelect with
-  mapped animation id
-details: Loads a sub-structure pointer from [r5+0x70] and reads a byte at +0xC as an index. Uses that
-  index to look up a byte in the 4-entry table dword_809C82C (bytes 01 03 05 07), mapping indices 0-3
-  to animation ids 1,3,5,7. Passes the mapped id (and the table pointer in r1, likely vestigial) to owPlayer_setS200ace0_fixedAnimationSelect,
-  which stores it into eStruct200ace0 and raises EVENT_1719. Always returns 0, suggesting it is a script/event
-  step handler. The 4-way mapping suggests a state (e.g., form or transformation) selecting among four
-  fixed player animations.
+status: confirmed
+summary: Reads the player's overworld state index and applies the matching fixed animation id from a small lookup
+  table.
+interface: void owPlayer_setFixedAnimationFromLookup(r5 player, r10 context) -> r0 = 0 (Z set, N clear), r3 = callee's
+  r3, r4/r5/r7 preserved
+details: 'Loads [player+0x70], a pointer to a shared state block, reads its byte at offset 0x0C as a pose/state
+  index, and uses that byte to index the table dword_809C82C (whose four bytes are 1, 3, 5, 7) to get an animation
+  id. That id is passed in r0 to owPlayer_setS200ace0_fixedAnimationSelect_809e13c, which actually applies the animation.
+  r10 must still hold the caller''s value for the callee (likely a sprite/animation context pointer); r4, r5 and
+  r7 are pushed/popped so they survive the callee unchanged and are visible to the caller after return, along with
+  the callee''s r3. Always returns r0 = 0 with Z set and N clear via "mov r0, #0". Only the first four entries of
+  dword_809C82C are meaningful here (the word packs 0x7050301); indices 0-3 map to animations 1, 3, 5, 7 - the odd
+  animation ids suggest state indices step through a fixed animation set in pairs.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r3,#0xc] with r3=[r5,#0x70]: index comes from a field of the context''s sub-struct;
-    ldrb r0,[r1,r0] over dword_809C82C = 0x7050301 maps indices 0..3 to anim ids 1,3,5,7; bl owPlayer_setS200ace0_fixedAnimationSelect_809e13c
-    performs the actual animation set; mov r0,#0 before pop: constant success/continue return typical
-    of event-step handlers; recorded route ''beastsp'' runs it, consistent with a beast-form/player-anim
-    change event'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm28_0.s:4509
-  - 0x0809E13C owPlayer_setS200ace0_fixedAnimationSelect_809e13c
-  reproduce: python3 tools/asmcat.py 0x0809C814
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owPlayer_setFixedAnimationFromLookup
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owPlayer_setFixedAnimationFromLookup
+
+    ./wf verify --function owPlayer_setFixedAnimationFromLookup --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owPlayer_setFixedAnimationFromLookup
+
+    ./wf verify --function owPlayer_setFixedAnimationFromLookup --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owPlayer_setFixedAnimationFromLookup
+
+    ./wf verify --function owPlayer_setFixedAnimationFromLookup --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809c814 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - beastsp
 open_questions:
-- What structure [r5+0x70] points to and what field +0xC semantically holds (form/state id)
-- Which caller invokes this and with what trigger, to confirm it is a script event handler
+- exact meaning of the state-block byte at +0x0C (which overworld states map to which of the four entries)
+- what structure r10 points to for the callee owPlayer_setS200ace0_fixedAnimationSelect_809e13c
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_809C814 -> owPlayer_setFixedAnimationFromLookup
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_809C814
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

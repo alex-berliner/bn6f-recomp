@@ -1,46 +1,75 @@
 name: object_freeRelatedObjectAndExtraVars
 address: '0x08011236'
 kind: function
-status: probable
-summary: 'Battle-object cleanup helper: deletes and nulls the object''s RelatedObject2 pointer and its
-  ExtraVars allocation.'
-interface: (r5 = battle object) -> r0 = 0; clears oBattleObject_RelatedObject2Ptr and oBattleObject_ExtraVars
-  fields
-details: Reads [r5,#oBattleObject_RelatedObject2Ptr]; if non-null calls sub_80C44C8 on it and stores 0
-  back into the field, then repeats the same pattern for [r5,#oBattleObject_ExtraVars]. Both fields follow
-  the same check-free-null idiom, so sub_80C44C8 acts as the shared free/delete routine for whatever these
-  fields point at (likely the heap allocator or object destructor). This is a teardown step, run for the
-  beastsp route's battle objects; the object pointer r5 is set up by the caller and no return value is
-  produced. No flags are meaningfully returned since it ends with pop {pc}.
+status: confirmed
+summary: Clears a battle object's related-object pointer and extra-vars pointer, asking battle_objectSetStateActionPhase8
+  to tear each of them down first.
+interface: 'u32 object_freeRelatedObjectAndExtraVars(Object* r5 object); /* in: r5=object, lr=return; out: r1=last
+  callee''s r1 (or incoming r1 if nothing freed), lr preserved; clobbers r0, NZ flags */'
+details: 'Operates on a battle object struct (r5). Reads field oBattleObject_RelatedObject2Ptr;
+
+  if non-NULL, calls battle_objectSetStateActionPhase8 with that pointer in r0 (presumably
+
+  queuing the object for teardown/removal at its next phase-8 state update) and then stores 0
+
+  into the field. Repeats the same sequence for the oBattleObject_ExtraVars field. Returns
+
+  whatever r1 battle_objectSetStateActionPhase8 left; if both pointers were already NULL, the
+
+  function is effectively a no-op and r1 passes through unchanged. Uses lr as the return
+
+  address (called via bl from other object lifecycle code, e.g. object cleanup paths).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq; bl sub_80C44C8; str #0 back — free-and-null
-    pattern; identical check-free-null sequence repeated for oBattleObject_ExtraVars at loc_8011246; function
-    ends pop {pc} with r0=0 after each free, no other side effects; runs in beastsp routes on battle objects,
-    consistent with a cleanup/destructor helper'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:5293
-  - 0x080C44C8 sub_80C44C8
-  reproduce: python3 tools/asmcat.py 0x08011236
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_freeRelatedObjectAndExtraVars
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_freeRelatedObjectAndExtraVars
+
+    ./wf verify --function object_freeRelatedObjectAndExtraVars --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_freeRelatedObjectAndExtraVars
+
+    ./wf verify --function object_freeRelatedObjectAndExtraVars --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 64 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_freeRelatedObjectAndExtraVars
+
+    ./wf verify --function object_freeRelatedObjectAndExtraVars --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011236 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - beastsp
 open_questions:
-- what sub_80C44C8 actually does (heap free vs object destructor) — its body is not shown
-- which caller invokes this and at what point of object lifetime (death vs battle end)
-- exact meaning of RelatedObject2Ptr vs ExtraVars in the battle object structure
+- exact semantics of battle_objectSetStateActionPhase8 (queued delete vs. immediate state change) unknown here
+- why callers pass r1 in / whether its passthrough value is meaningful to them
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8011236 -> object_freeRelatedObjectAndExtraVars
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8011236
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

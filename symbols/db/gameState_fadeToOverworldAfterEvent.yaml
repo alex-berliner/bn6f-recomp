@@ -1,53 +1,73 @@
 name: gameState_fadeToOverworldAfterEvent
 address: '0x08005A50'
 kind: function
-status: probable
-summary: 'One-shot game state handler: sets two story event flags, starts a screen fade, delays 160 frames,
-  then hands control to the overworld subsystem.'
-interface: (r5 = * GameState, self) -> void; no return value, writes SubsystemIndex = 0x10 to schedule
-  overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC
-details: Runs as a GameState callback (r5 = state struct). It first sets event flags EVENT_1703 and EVENT_1738
-  via SetEventFlagFromImmediate, then calls SetScreenFade(0xc, 0x10) — presumably a fade-in of the overworld
-  after an event/cutscene. It ticks the 32-entry countdown-timer table, then stores 0xa0 (160) into GameState.FrameCountdown,
-  a delay before the next transition, and finally writes 0x10 into GameState.SubsystemIndex to switch
-  to the overworld subsystem. The word table right after the body points at CutsceneScripts for map warp
-  / jack-in / enter-after-jack-out, suggesting this state is part of the map-warp/jack-out flow and the
-  table is consumed by the state dispatcher or a neighbor function.
+status: confirmed
+summary: 'Wraps up an in-map event/cutscene: sets the post-event event flags, starts a screen fade, then hands control
+  back to the overworld map subsystem.'
+interface: void gameState_fadeToOverworldAfterEvent(GameState *self /*r5*/, u32 flagBank /*r10*/)
+details: 'Game-state handler (self pointer in r5, called via the gameState dispatch in cbGameState_80050EC). Sequence:
+  (1) sets event flag EVENT_1703 (event/cutscene finished) and EVENT_1738 (leaving the map after the event) via
+  SetEventFlagFromImmediate, passing the flag ID''s high byte (word number) in r0 and low byte (bit index) in r1,
+  with the flag bank/base in r10 per the movflag macro; (2) calls SetScreenFade(0xC, 0x10) — 12 frames down, 16
+  frames per step — to fade the screen; (3) calls timer_tickCountdownTable_8035738 to keep the shared countdown
+  table ticking; (4) stores 0xA0 (160 frames) into self+oGameState_FrameCountdown as the state timer; (5) stores
+  0x10 into self+oGameState_SubsystemIndex, which selects the overworld map subsystem (overworld_owMap_renderAndTickSubsystems_800536E)
+  on the next dispatch. Tail of the routine holds a jump table of CutsceneScript pointers (off_8005A78..off_8005A88:
+  CutsceneScriptOnMapWarp_8098a02, CutsceneScriptOnMapEnterAfterJackOut_8098a2e, CutsceneScriptOnInMapWarp_8098a78,
+  CutsceneScript_809b5ad, CutsceneScript_8098b1c) reached from nearby dispatch code. r4-r7 preserved; clobbers r0-r3,
+  lr and flags.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: two movflag + bl SetEventFlagFromImmediate pairs set EVENT_1703 and EVENT_1738 at entry; bl
-    SetScreenFade with r0=0xc, r1=0x10 starts the screen transition; str 0xa0 -> [r5,#oGameState_FrameCountdown]
-    sets a 160-frame delay; strb 0x10 -> [r5,#oGameState_SubsystemIndex] with comment 'trigger overworld_owMap_renderAndTickSubsystems_800536E
-    via cbGameState_80050EC' shows the exit into the overworld; off_8005A78 table of CutsceneScriptOnMapWarp/OnInMapWarp/OnMapEnterAfterJackOut
-    ties it to the map-warp cutscene flow
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_1.s:5516
-  - 0x0802F110 SetEventFlagFromImmediate
-  - 0x08035738 timer_tickCountdownTable_8035738
-  - 0x08006270 SetScreenFade
-  reproduce: python3 tools/asmcat.py 0x08005A50
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c gameState_fadeToOverworldAfterEvent
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function gameState_fadeToOverworldAfterEvent
+
+    ./wf verify --function gameState_fadeToOverworldAfterEvent --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function gameState_fadeToOverworldAfterEvent
+
+    ./wf verify --function gameState_fadeToOverworldAfterEvent --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function gameState_fadeToOverworldAfterEvent
+
+    ./wf verify --function gameState_fadeToOverworldAfterEvent --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08005a50 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_1.c
 coverage:
 - beastsp
 open_questions:
-- which cutscene or route actually dispatches into this state (no caller recorded beyond the 'beastsp'
-  route snapshot)
-- the exact meaning of event flags 0x1703 and 0x1738
-- whether the CutsceneScript word table belongs to this function or is shared with the following handler
-- semantics of SetScreenFade(0xc, 0x10) parameters (speed vs. color/palette)
+- Exact meaning of EVENT_1703 and EVENT_1738 in story terms (names are placeholder IDs)
+- Whether r10 is the event-flag bank/page base assumed by movflag, and where callers set it
+- Significance of the 0xA0 frame countdown and of the SetScreenFade parameters (12/16) vs other fade sites
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8005A50 -> gameState_fadeToOverworldAfterEvent
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8005A50
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,46 +1,71 @@
 name: ow_spriteObjectUpdate
 address: '0x080A9D86'
 kind: function
-status: probable
-summary: 'Per-frame update for an overworld sprite object: dispatches to its type''s handler via jump
-  table, then runs sprite_update.'
-interface: (r5 = overworld object struct, byte at +9 = type id) -> jumps to handler from off_80A9DA4,
-  then bl sprite_update; no return value used
-details: 'Uses r5 as the object pointer (r5-calling convention). It reads the type byte at [r5,#9], indexes
-  a 5-entry dispatch table at off_80A9DA4 (handlers: object_timerStateTick, sub_80A9DFE, sub_80A9E48,
-  e_decelRiseUpdate, sub_80A9EB6), and calls the handler with the long-call sequence (mov lr,pc / bx r0).
-  After the handler returns, it unconditionally calls sprite_update so the object''s sprite animation/render
-  state advances each frame. The function is called from ow_initSpriteObject, meaning it is registered
-  as the update callback for newly spawned overworld objects.'
+status: confirmed
+summary: Per-frame update for one overworld sprite object — dispatches to a state handler selected by the object's
+  state byte, then advances its sprite animation.
+interface: void ow_spriteObjectUpdate(r2 param, r5 object /* r10, lr also live in */); callers see r2 r3 r8 r9 r10
+  r11 r12 back; nz c v clobbered
+details: "r5 points at the overworld sprite object being updated. The state byte at\nobject+9 indexes the 5-entry\
+  \ jump table off_80A9DA4:\n  0: object_timerStateTick\n  1: beastsp_updateMotion\n  2: object_tick8SetState\n\
+  \  3: e_decelRiseUpdate\n  4: sub_80A9EB6\nThe dispatch is a tail-style table call executed on the live guest\
+  \ registers:\nr1 = the state byte read from object+9, r2/r5/r10 pass through unchanged, so\nwhatever the handler\
+  \ leaves in r2/r3 and r8-r12 flows straight to this\nroutine's callers (r8 is explicitly saved/restored around\
+  \ the dispatch by\nthe original's push {r4}/pop {r4}/mov r8,r4 pair). After the state handler\nreturns, sprite_update(r5)\
+  \ is called to advance the object's animation\nframe; its r0-r3/flag results are forwarded, with r2 and r3 being\
+  \ the values\ncallers read back. The handler set (timer tick, set-state-after-tick,\ndecel-rise enemy motion,\
+  \ beast-sprite motion) suggests this is the generic\nupdate entry used for overworld NPC/enemy sprite objects\
+  \ that run small\nstate machines plus standard sprite animation.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r1,[r5,#9]; ldr r0,[r0,r1]; bx r0 — table dispatch on object type byte; off_80A9DA4 contains
-    object_timerStateTick and e_decelRiseUpdate — per-type update handlers; bl sprite_update after dispatch
-    — sprite animation advanced every frame; caller ow_initSpriteObject attaches sprite resource and stores
-    this as the object's update routine
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9736
-  - 0x080A9D30 ow_initSpriteObject
-  - 0x080026C4 sprite_update
-  reproduce: python3 tools/asmcat.py 0x080A9D86
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_spriteObjectUpdate
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_spriteObjectUpdate
+
+    ./wf verify --function ow_spriteObjectUpdate --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_spriteObjectUpdate
+
+    ./wf verify --function ow_spriteObjectUpdate --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 48 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_spriteObjectUpdate
+
+    ./wf verify --function ow_spriteObjectUpdate --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9d86 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- exact semantics of the type byte values 0-4 and the two unnamed handlers sub_80A9DFE / sub_80A9EB6
-- whether the handler receives other object fields set up before dispatch
+- exact meaning of the state byte values beyond the handler they select (state numbering vs. object type field)
+- what r10 carries into the handlers and whether all five handlers actually consume it
+- role of sub_80A9EB6 and sub_80A9DFE-class handlers (only partially named so far)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A9D86 -> ow_spriteObjectUpdate
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9D86
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

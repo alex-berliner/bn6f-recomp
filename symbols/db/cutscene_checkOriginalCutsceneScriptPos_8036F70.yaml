@@ -1,0 +1,82 @@
+name: cutscene_checkOriginalCutsceneScriptPos_8036F70
+address: '0x08036F70'
+kind: function
+status: confirmed
+summary: Returns CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1 if the given script position equals the cutscene state's
+  saved "original" script position, else 0; also outputs the loaded original position.
+interface: "u32 cutscene_isOriginalScriptPos_8036F70(u32 scriptPos /* r0 */,\n                                 \
+  \         u32 *posOut /* r1 */,\n                                          u32 *flagOut /* r2 */,\n          \
+  \                                struct Toolkit *toolkit /* r10 */);\n// returns nz/c/v in flags, returns r0\n"
+details: 'Reads the global CutsceneState pointer from the toolkit at oToolkit_CutsceneStatePtr,
+
+  then loads the saved oCutsceneState_originalCutsceneScriptPos_40 field (offset 0x40).
+
+  Compares that saved position against the caller''s scriptPos. If equal, returns the
+
+  magic constant CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1; otherwise 0. The loaded
+
+  original position is also returned in r1 and the boolean-like result in r2, so the
+
+  caller can use either as a flag without re-running the comparison. The final
+
+  `tst r0, r0` only refreshes N/Z (C/V left as set by the cmp).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c cutscene_checkOriginalCutsceneScriptPos_8036F70
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function cutscene_checkOriginalCutsceneScriptPos_8036F70
+
+    ./wf verify --function cutscene_checkOriginalCutsceneScriptPos_8036F70 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function cutscene_checkOriginalCutsceneScriptPos_8036F70
+
+    ./wf verify --function cutscene_checkOriginalCutsceneScriptPos_8036F70 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function cutscene_checkOriginalCutsceneScriptPos_8036F70
+
+    ./wf verify --function cutscene_checkOriginalCutsceneScriptPos_8036F70 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, story8.'
+  reproduce: grep -l '^08036f70 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+- story8
+related:
+- ow_cleanupNpcAfterCutscene
+open_questions:
+- What does CUTSCENE_SCRIPT_UNK_MAGIC_SCRIPT_VALUE_0x1 actually represent (a sentinel, a per-original instruction
+  opcode, or just "true")?
+- Why does the function also dump the loaded position into r1 — is the caller using it as a second piece of state
+  alongside the bool result?
+- When/who populates oCutsceneState_originalCutsceneScriptPos_40 (the field at offset 0x40 of CutsceneState)?
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

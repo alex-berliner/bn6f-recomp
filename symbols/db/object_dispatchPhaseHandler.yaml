@@ -1,49 +1,80 @@
 name: object_dispatchPhaseHandler
 address: '0x080E5296'
 kind: function
-status: probable
-summary: Calls the current-phase handler of the battle object in r5, dispatching through a two-entry jump
-  table indexed by oBattleObject_CurPhase.
-interface: (r5 = battle object) -> r0 = phase index passed through to handler; returns handler's r0; lr
-  clobbered by manual call
-details: 'Loads the address of a jump table (off_80E52A8), reads the object''s current phase byte at oBattleObject_CurPhase,
-  fetches the handler address table[phase], and tail-calls it via the mov lr,pc/bx r1 Thumb interwork
-  trick, so handlers are ARM/Thumb-safe and lr must be preserved by them. The table has exactly two entries:
-  phase 0 -> sub_80E52B0, phase 1 -> sub_80E5304. The callee receives r0 = the raw phase byte (r0 is reloaded
-  with it after being used to index), and r5 still points at the object. Any phase value >= 2 would fetch
-  garbage, so the object''s phase is expected to stay within {0,1}. It is a generic state-machine stepper
-  for this object type, invoked from sub_80E527A in battle routes.'
+status: confirmed
+summary: Dispatches a battle object to the handler for its current phase via a two-entry jump table indexed by the
+  object's CurPhase byte.
+interface: void object_dispatchPhaseHandler(r5=battleObject, r10=context, lr=return) -> results in r5, r8-r12 as
+  left by the phase handler; clobbers r0-r4, r6, r7, lr and nzcv
+details: 'Trampoline-style dispatcher: reads the object''s CurPhase byte at [r5 + oBattleObject_CurPhase],
+
+  uses it as an index into the two-entry handler table at off_80E52A8 (entries:
+
+  battle_scanPanelRunEnd+1 and battle_phaseWaitTimer2+1, thumb addresses), then calls the
+
+  selected handler with mov lr, pc; bx r1 — passing r0 = phase byte and r1 = handler address,
+
+  with r5 (object pointer) and r10 (context) still holding the caller''s values. The dispatcher
+
+  itself does no real work; everything the phase handler leaves in r5 and r8-r12 passes
+
+  straight through to the dispatcher''s caller via pop {pc}. Phase indices beyond the table''s
+
+  two entries would read garbage out of the table, so callers are expected to keep CurPhase
+
+  in {0,1} while using this path.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0]: dispatch indexed by the object''s
-    phase field; table off_80E52A8 holds exactly two thumb pointers (sub_80E52B0+1, sub_80E5304+1): two-phase
-    state machine; mov lr,pc / bx r1 / pop {pc}: manual branch-link call, lr clobbered, tail return to
-    caller; caller sub_80E527A runs in recorded battlesweep/beastsp routes: battle-object update context'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:97490
-  - 0x080E527A sub_80E527A
-  reproduce: python3 tools/asmcat.py 0x080E5296
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_dispatchPhaseHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_dispatchPhaseHandler
+
+    ./wf verify --function object_dispatchPhaseHandler --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_dispatchPhaseHandler
+
+    ./wf verify --function object_dispatchPhaseHandler --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 10 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_dispatchPhaseHandler
+
+    ./wf verify --function object_dispatchPhaseHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e5296 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What sub_80E52B0 and sub_80E5304 do (phase 0 init vs phase 1 behavior) to confirm the state machine's
-  semantics
-- Which concrete object type uses this update (r5's structure beyond oBattleObject_CurPhase is unknown)
-- Whether callers other than sub_80E527A exist
+- whether any object types reach this dispatcher with CurPhase values other than 0 or 1
+- exact meaning of the values the phase handlers leave in r8-r12 for the caller
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E5296 -> object_dispatchPhaseHandler
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E5296
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

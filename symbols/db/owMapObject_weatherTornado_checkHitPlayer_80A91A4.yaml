@@ -1,33 +1,70 @@
 name: owMapObject_weatherTornado_checkHitPlayer_80A91A4
 address: '0x080A91A4'
 kind: function
-previous_names:
-- sub_80A91A4
-status: probable
-summary: 'Tornado: while flag 0xBE4 is set, sets flag 0xBE6 when MegaMan is within 0x14 px (sub_80011D6).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10 = toolkit
+status: confirmed
+summary: Per-frame check for a tornado weather map object - if tornado weather (EVENT_BE4) is active and the player
+  stands inside the tornado's box, sets EVENT_BE6 ("player caught by tornado").
+interface: void Next(owMapObject* tornado /* r5 */); /* r10 = overworld state base read by callees; no return value,
+  flags clobbered */
+details: "Tail-less helper (called via bl, returns with pop {r4,pc}) run for the weather-tornado\noverworld map\
+  \ object. r5 points at the map object; its hitbox bounds are the words at\n+0xC (left/top) and +0x10 (right/bottom).\
+  \ Flow:\n  1. Test event flag EVENT_BE4 (bank 0xB, index 0xE4, \"tornado weather active\"); if clear,\n     return\
+  \ immediately without doing anything.\n  2. Call ReadOWPlayerObjectCoords to get the player's overworld position\
+  \ (r0=x, r1=y).\n  3. Call overworldObject_withinBoxCheck_signed_80011D6 with the object's bounds, the\n     player\
+  \ coords, and a half-extent of 0x14 << 16 = 0x140000 (0x14 in 16.16 fixed point,\n     i.e. half the tornado's\
+  \ tile radius in the box test).\n  4. If the box check returns 1 (player inside), set event flag EVENT_BE6 (bank\
+  \ 0xB,\n     index 0xE6) - the \"player hit/caught by tornado\" trigger presumably used by the\n     weather/tornado\
+  \ event script.\nr10 must remain intact across the call since the callees read the overworld state from it\ndirectly;\
+  \ the function itself preserves r4 and only clobbers r0-r3, lr and flags.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_checkHitPlayer_80A91A4:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_checkHitPlayer_80A91A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_checkHitPlayer_80A91A4
+
+    ./wf verify --function owMapObject_weatherTornado_checkHitPlayer_80A91A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_checkHitPlayer_80A91A4
+
+    ./wf verify --function owMapObject_weatherTornado_checkHitPlayer_80A91A4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_checkHitPlayer_80A91A4
+
+    ./wf verify --function owMapObject_weatherTornado_checkHitPlayer_80A91A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a91a4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A91A4 -> owMapObject_weatherTornado_checkHitPlayer_80A91A4
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a5b62063
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- Exact gameplay consequence of EVENT_BE6 (likely handed to a script/event handler elsewhere; not verified here).
+- Whether the 0x14 half-extent is in pixels or subpixels in the box check's fixed-point convention.
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

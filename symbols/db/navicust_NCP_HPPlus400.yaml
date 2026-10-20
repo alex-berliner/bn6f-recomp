@@ -1,0 +1,62 @@
+name: navicust_NCP_HPPlus400
+address: '0x0813CBA4'
+kind: function
+status: confirmed
+summary: Navicust program "HP+400" effect — adds 400 to the player's current max-HP bonus.
+interface: void navicust_NCP_HPPlus400(r10 toolkit) — no return value; r10 input only, r0-r2 clobbered
+details: Reads the toolkit pointer passed in r10, follows toolkit->Unk2004334_Ptr to a struct whose halfword at
+  offset 0 holds the max-HP bonus, and adds 0x190 (400 HP) to it in place (ldrh/add/strh). This is the on-activate
+  effect of the HP+400 NaviCust program; the same pointer presumably also carries other stat bonuses at other offsets.
+  No flags are tested or preserved; condition codes are clobbered but callers per the contract ignore them.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c navicust_NCP_HPPlus400
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_NCP_HPPlus400
+
+    ./wf verify --function navicust_NCP_HPPlus400 --snapshots build-snapshots'
+  result: 'captured calls: 21 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_NCP_HPPlus400
+
+    ./wf verify --function navicust_NCP_HPPlus400 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_NCP_HPPlus400
+
+    ./wf verify --function navicust_NCP_HPPlus400 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813cba4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- beastsp
+open_questions:
+- Whether callers wrap this with an overflow/limit check on the bonus halfword
+- Exact identity of the struct at Unk2004334 and what its other fields (e.g. other NCP bonuses) mean
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

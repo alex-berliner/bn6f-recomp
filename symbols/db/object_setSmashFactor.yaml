@@ -1,47 +1,67 @@
 name: object_setSmashFactor
 address: '0x0814F988'
 kind: function
-status: probable
-summary: Sets a strength value on an object tagged with the 'Smsh' magic and recomputes its scaled product
-  field.
-interface: (r0 = object ptr with magic 'Smsh' (0x68736D53) at +0x34, r1 = 8-bit factor) -> r0 clobbered
-  (popped into pc path); stores factor at +0x1E and factor*base>>8 at +0x20; flags from cmp/mul
-details: The function takes a struct pointer in r0 and a value in r1, masks r1 to 16 bits, and only acts
-  if the struct's field at +0x34 equals the fourcc 0x68736D53 ('Smsh' little-endian). It stores the masked
-  r1 into halfword +0x1E, reads halfword +0x1C as a base value, computes base*factor with the result arithmetically
-  shifted right by 8 (a fixed-point /256 scale), and writes that to halfword +0x20. If the magic check
-  fails it does nothing, so this is a type-guarded setter rather than a generic field write. The /256
-  fixed-point multiply suggests +0x1C is a full magnitude and +0x20 a scaled result (e.g. a size or intensity
-  driven by a 0-255 factor). No other fields are touched and there is no call in this function.
+status: confirmed
+summary: Applies a 16-bit "smash" value to a battle object flagged 'Smsh', storing the value and a fixed-point (value
+  * rate >> 8) result in the object.
+interface: 'void object_setSmashFactor(BattleObject* obj /*r0*/, u16 value /*r1*/); extra register outputs callers
+  rely on: r2 = obj, r3 = kind word from +0x34, r1 = masked value on the non-smash path but the rate from +0x1C
+  on the smash path; clobbers r0 and nzcv.'
+details: 'Reads the object''s kind word at +0x34 and only acts when it equals the magic 0x68736D53 (little-endian
+  ''Smsh''), which marks smash-sensitive battle objects (objects that react to being smashed/hit). For such objects
+  it stores the truncated 16-bit input at +0x1E, loads the 16-bit rate already present at +0x1C, computes (value
+  * rate) >> 8 with an arithmetic shift (an 8.8 fixed-point product), and stores that at +0x20. For any other kind
+  word the function writes nothing and just returns, leaving the caller-visible r1 holding the masked input. Quirks:
+  the register leftovers differ between the two paths (r1 holds the input vs. the rate), so callers appear to depend
+  on the exact exit path; the function is a plain leaf with push {lr}/pop {r0}; bx r0.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r3,[r2,#0x34] / cmp r3, 0x68736D53 (''Smsh'') guards the whole body — type tag check; strh
-    r1,[r2,#0x1e] after lsl/lsr #16 masking — factor stored as halfword; mul r0,r1; asr r0,#8; strh r0,[r2,#0x20]
-    — fixed-point product base(+0x1C)*factor>>8; bne skips everything when magic mismatches — setter is
-    object-type-specific'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/libs.s:25334
-  reproduce: python3 tools/asmcat.py 0x0814F988
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_setSmashFactor
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_setSmashFactor
+
+    ./wf verify --function object_setSmashFactor --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 189 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_setSmashFactor
+
+    ./wf verify --function object_setSmashFactor --snapshots build-snapshots'
+  result: 37 compared, 0 differed, 59 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_setSmashFactor
+
+    ./wf verify --function object_setSmashFactor --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0814f988 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/libs.c
 coverage:
 - beastsp
 - maps
-open_questions:
-- No callers captured, so what game object carries the 'Smsh' tag and what +0x1C/+0x20 mean in game terms
-  (size? damage? squash factor?) is unknown
-- Whether +0x1C is written elsewhere (e.g. an init or update routine) would confirm the fixed-point interpretation
+open_questions: []
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_814F988 -> object_setSmashFactor
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_814F988
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,42 +1,63 @@
 name: e_setEventFlagFromStruct
 address: '0x0809C954'
 kind: function
-status: probable
-summary: Sets one story/event flag whose ID is read from a field of a context structure.
-interface: (r5 = context struct pointer; no args in r0-r3) -> r0 = 0; clobbers r0-r1, lr
-details: Loads a pointer from [r5+0x70], then loads a word at offset 0x10 of that pointee and passes it
-  to SetEventFlag with r1=0x10, i.e. it marks the story flag whose ID is stored in the struct as set.
-  The 'mov r0,r0' after the load is a nop. It always returns 0 in r0. The r5-based struct (likely a cutscene/trigger
-  or event-script context whose field 0x70 points to a parameter block) is not otherwise identified here,
-  and no callers are recorded, so the in-game trigger that runs it is unknown.
+status: confirmed
+summary: Sets the event flag whose id is stored in an object's state block (object+0x70 -> state+0x10).
+interface: void e_setEventFlagFromStateBlock(void) — object pointer in r5, context in r10; clobbers r0-r1, r3, C/V;
+  sets N/Z from 0 (Z set); preserves r4, r5, r6, r7
+details: 'An "e_" (event/object script) helper. It reads the pointer at +0x70 of the object in r5 (the object''s
+  state/parameter block used by the event engine), loads the event flag id from word +0x10 of that block, and passes
+  it to SetEventFlag. r10 survives across the call as context the flag routine expects intact. After the call r0
+  is set to 0, so callers observe N clear and Z set (a "success"/void return convention). This is the struct-driven
+  counterpart of calling SetEventFlag directly: the flag id comes from data laid out with the object instead of
+  from a script argument. Callers read back r4, r5 and r7, which the prologue/epilogue keep intact.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldr r0,[r5,#0x70] / ldr r0,[r0,r1] with r1=0x10: flag ID comes from struct+0x10 via a pointer
-    at ctx+0x70; bl SetEventFlag with r1=0x10: sole effect is setting one event (story progress) flag;
-    mov r0,#0 before pop: function unconditionally returns 0'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm28_0.s:4643
-  - 0x0802F114 SetEventFlag
-  reproduce: python3 tools/asmcat.py 0x0809C954
-  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c e_setEventFlagFromStruct
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function e_setEventFlagFromStruct
+
+    ./wf verify --function e_setEventFlagFromStruct --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function e_setEventFlagFromStruct
+
+    ./wf verify --function e_setEventFlagFromStruct --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function e_setEventFlagFromStruct
+
+    ./wf verify --function e_setEventFlagFromStruct --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809c954 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - beastsp
-open_questions:
-- No callers are captured, so which trigger/route (beastsp) invokes it and what r5's struct is remain
-  unknown
-- What the value at pointee+0x10 counts as (flag ID vs. flag-word/index) and what r1=0x10 means to SetEventFlag
+open_questions: []
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_809C954 -> e_setEventFlagFromStruct
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_809C954
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

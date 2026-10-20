@@ -1,0 +1,70 @@
+name: reqBBS_81408C8
+address: '0x081408C8'
+kind: function
+status: confirmed
+summary: Returns the e-Request ID of the entry currently selected on the e-Reader-style BBS board, combining cursor
+  position and page offset.
+interface: u32 reqBBS_getSelectedEntryId_81408C8(void* board_state /* r5 */); returns entry ID in r0, r5 passed
+  through unchanged
+details: 'Reads the BBS board selection state from the struct at r5: halfword at +0x20 (cursor/page index) plus
+  halfword at +0x24 (per-page offset / scroll) forms an index into the reqBBS_eRequestEntriesIDs byte table, and
+  the byte at that index (the e-Request ID for that board slot) is returned in r0. r5 is untouched, so callers can
+  chain further board-state queries. lr is pushed/popped only for the return, no flags or other registers are used.
+  Part of the BN6 e-Request / BBS board subsystem (reqBBS_ prefix, entries referenced through reqBBS_eRequestEntriesIDs).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81408C8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81408C8
+
+    ./wf verify --function reqBBS_81408C8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81408C8
+
+    ./wf verify --function reqBBS_81408C8 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81408C8
+
+    ./wf verify --function reqBBS_81408C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081408c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+related:
+- reqBBS_81408DC
+open_questions:
+- exact meaning of the +0x20 vs +0x24 halfwords (cursor index vs page/scroll base) inferred from usage, not confirmed
+  by callers
+- whether callers validate the returned ID before use is not visible from this function
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

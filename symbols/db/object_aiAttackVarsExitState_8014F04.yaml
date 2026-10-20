@@ -1,69 +1,71 @@
 name: object_aiAttackVarsExitState_8014F04
 address: '0x08014F04'
 kind: function
-previous_names:
-- sub_8014F04
-status: probable
-summary: Countdown-then-exit routine for an AI attack-vars state, clearing AI/battle flags and tearing
-  the object out of its attack state.
-interface: (r7 = BattleObject*, r6 = related object?, r5 = related object?, r10 = toolkit) -> side effects
-  only (no value returned to callers); clears AI flag 0x80 and the AI Unk_44 flag 0x80000000, clears battle-state
-  flag 0x20, and exits the object's attack state via object_exitAttackState.
-details: 'Reads AIAttackVars_Unk_01 (a one-shot guard): on first entry (when the byte is 0) it seeds AIAttackVars_Unk_10
-  = 0x14 and AIAttackVars_Unk_01 = 4, marking the routine as initialized. Every call then decrements AIAttackVars_Unk_10;
-  while it stays non-negative, the routine just returns (r4/lr pop). When it underflows, it calls ClearAIDataUnk0x48Flag
-  with r0 = 0x80 (clearing bit 0x80 in the AIData Unk_48 word), then battle_clearFlags with r0 = 0x20
-  (clearing that bit of BattleState''s flag halfword), then ClearAIData_Unk_44_Flag with the mask 0x80000
-  applied to the AIData Unk_44 word (ClearAIData_Unk_44_Flag receives a pointer in r0 — the literal 0x80008600
-  looks like a static, but per the callee summary the bit-mask argument selects the bits), and finally
-  object_exitAttackState which detaches the object from its attack action/phase and resets its CurState.
-  The routine is keyed on r7 (the BattleObject) and reuses the toolkit in r10 to reach the battle state.
-
-  '
+status: confirmed
+summary: Ticks an AI object's attack step timer and, once it expires, clears the AI's pending attack flags and returns
+  the object to its normal state machine.
+interface: void object_aiAttackVarsExitState_8014F04(u32 ai_data /*r5*/, BattleObject* object /*r6*/, AIAttackVars*
+  vars /*r7*/); // r10 = battle context, passed through to battle_clearFlags
+details: "Per-call state routine for an object's AI attack, operating on the AI attack\nvars block in r7 (oAIAttackVars_AttackElement,\
+  \ oAIAttackVars_StepTimer) with\nthe AI data pointer in r5 and the battle object in r6.\n\nOn first entry with\
+  \ AttackElement == 0, the attack is initialized: the\nstep timer is set to 20 (0x14) frames and AttackElement\
+  \ to 4. Afterwards\n(and every call when the element is already nonzero) the 16-bit step timer\nis decremented;\
+  \ while it remains >= 0 nothing else happens, so the attack\nstate simply waits out its countdown.\n\nWhen the\
+  \ timer wraps negative (decrementing 0), the attack ends:\n  - ClearAIDataUnk0x48Flag(r5, 0x80)      - clear AI\
+  \ data flag bit 0x80\n  - battle_clearFlags(0x20)               - clear battle flag bit 0x20 (uses r10)\n  - ClearAIDataUnk0x48Flag(r5,\
+  \ 0x80000)   - clear AI data flag bit 0x80000\n  - ClearAIData_Unk_44_Flag(r5, 0x80008600) - clear mask in AI\
+  \ data field 0x44\n  - object_exitAttackState(r5, r6, r7)    - hand the object back to its normal AI state\n\n\
+  The 32-bit decrement of a 16-bit stored timer is what detects expiry;\nthe signed >= 0 test on the full register\
+  \ means the branch stays in the\nstate until the timer was exactly 0. Preserves r4.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {r4,lr}` then reads `[r7,#oAIAttackVars_Unk_01]` and branches on `tst r0,r0`: first-time
-    init seeds Unk_10 = 0x14 and sets Unk_01 = 4 (lines 14162-14165 of asm00_2.s). - `ldrh r0,[r7,#oAIAttackVars_Unk_10]`
-    / `sub r0,#1` / `strh r0,[r7,#oAIAttackVars_Unk_10]` / `bge locret_8014F38`: simple per-frame countdown
-    gate. - On underflow: `mov r0,#0x80` then `bl ClearAIDataUnk0x48Flag` clears the 0x80 bit of AIData
-    Unk_48. - `mov r0,#0x20` then `bl battle_clearFlags` clears battle-state flag 0x20. - `ldr r0,dword_80152B4`
-    (=0x80008600) is the address-style argument actually loaded into r0 before `bl ClearAIData_Unk_44_Flag`;
-    per the callee summary, ClearAIData_Unk_44_Flag takes an AIData pointer + the mask selects bits, but
-    the routine at this function only ever reads r7 (the BattleObject) — so the 0x80008600 likely encodes
-    the pointer+bit (mask 0x80000000 in AIData Unk_44, with the high bits being a pointer tag) as one
-    immediate; treating the 0x80000 component as the mask is the conservative read. - `bl object_exitAttackState`
-    is the terminal cleanup that ends the attack sub-state. - Caller contract reads r5/r6/r7/r10/lr; callee
-    summary of object_exitAttackState matches same in/out set, indicating the object is unwound via the
-    standard battleObject exit path.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08014F04
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_aiAttackVarsExitState_8014F04
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_aiAttackVarsExitState_8014F04
 
-    '
-  result: the body read as described above
+    ./wf verify --function object_aiAttackVarsExitState_8014F04 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 177 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_aiAttackVarsExitState_8014F04
+
+    ./wf verify --function object_aiAttackVarsExitState_8014F04 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 71 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_aiAttackVarsExitState_8014F04
+
+    ./wf verify --function object_aiAttackVarsExitState_8014F04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08014f04 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Whether `dword_80152B4` (=0x80008600) is really a single literal pointer to the AIData Unk_44 word,
-  or an AIData pointer (with 0x80000000 mask embedded) split across 0x80000 + low bits; the callee signature
-  takes `r0` as the AIData pointer, so it is most likely a pointer to the Unk_44 field of some global
-  AI struct (probably the player's AI data block, given the constant sits at a project symbol address
-  0x08000xxx range — but the constant looks like a packed mask; resolving this requires seeing how ClearAIData_Unk_44_Flag
-  dereferences r0).
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08014f04 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8014F04 -> object_aiAttackVarsExitState_8014F04
-  where: bn6f d43feadd
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- beastsp
+open_questions:
+- Meaning of the AI data flag bits 0x80 / 0x80000 and the 0x80008600 mask cleared at offset 0x44.
+- What AttackElement value 4 denotes in the attack vars block.
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

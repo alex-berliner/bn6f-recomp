@@ -1,49 +1,77 @@
 name: ow_cleanupNpcAfterCutscene
 address: '0x080A8484'
 kind: function
-status: probable
-summary: After a cutscene has advanced past a marker and a per-object countdown hits zero, resets the
-  jack-out lock, clears three event flags and a BBS flag, and frees the overworld object (NPC) itself.
-interface: (r0 = unused/0 at call, r5 = overworld object struct) -> void; flags not meaningfully set
-details: First it calls cutscene_checkOriginalCutsceneScriptPos_8036F70 with byte_808C74C as the expected
-  script position and exits if the cutscene is not at that point. It then decrements the u8 counter at
-  [r5+7] (an overworld-object field) and returns until it reaches zero. Once it fires, it calls gameState_setUnk09_8001172(0)
-  to lift the 'can't jack out'/control-lock state, clears event flags EVENT_9D8, EVENT_9FF and EVENT_9D9,
-  calls reqBBS_clearFlag_8140A0C (removes a board/BBS-related flag), and finally FreeOverworldMapObject
-  to release the object slot and its sprite. Overall it is a delayed self-destruct/rollback for an event
-  NPC once its cutscene has run.
+status: confirmed
+summary: After a cutscene's script returns to its start, counts down a short delay on an overworld NPC map object,
+  then clears the scene's event flags and frees the object.
+interface: void ow_cleanupNpcAfterCutscene(r5 npc, r10 ctx); caller-facing r2/r3/r4 are callee garbage, r5 preserved
+  on the early-return paths, flags clobbered
+details: 'First calls cutscene_checkOriginalCutsceneScriptPos_8036F70 with the byte at byte_808C74C (a global cutscene/script
+  position or current scene id); if the script position is not back at its original spot (Z clear) it returns immediately,
+  leaving the NPC in place. Otherwise it decrements the byte at npc+7 (r5+7), a frame countdown the object uses
+  to linger after the scene ends; while nonzero it returns. When the counter reaches zero it calls gameState_setUnk09_8001172(0),
+  clears event flags EVENT_9D8, EVENT_9FF and EVENT_9D9 (the flags the cutscene raised), calls reqBBS_clearFlag_8140A0C
+  (clears the BBS/reqBBS state flag, clobbers r4), and finally frees the map object with FreeOverworldMapObject,
+  which trashes r0-r3 and r5. All caller-visible register outputs (r2-r5) are whatever the callees leave behind;
+  the routine itself writes no registers except the npc+7 countdown byte. r10 is passed through untouched as context
+  for the callees (the typed wrapper forwards it).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bne locret after bl cutscene_checkOriginalCutsceneScriptPos_8036F70 gates everything on the
-    script position in byte_808C74C; ldrb r0,[r5,#7]; sub r0,#1; strb; bne locret is a per-frame countdown
-    on the object struct before acting; bl gameState_setUnk09_8001172 with r0=0 plus the three ClearEventFlagFromImmediate
-    calls (9D8/9FF/9D9) revert story/control state; bl reqBBS_clearFlag_8140A0C followed by bl FreeOverworldMapObject
-    ends with despawning the object; no callers known; run on recorded beastsp routes, consistent with
-    an event-object update step
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:6370
-  - 0x0802F12C ClearEventFlagFromImmediate
-  - 0x080048B2 FreeOverworldMapObject
-  - 0x08001172 gameState_setUnk09_8001172
-  reproduce: python3 tools/asmcat.py 0x080A8484
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_cleanupNpcAfterCutscene
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_cleanupNpcAfterCutscene
+
+    ./wf verify --function ow_cleanupNpcAfterCutscene --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_cleanupNpcAfterCutscene
+
+    ./wf verify --function ow_cleanupNpcAfterCutscene --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_cleanupNpcAfterCutscene
+
+    ./wf verify --function ow_cleanupNpcAfterCutscene --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8484 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
+related:
+- cutscene_checkOriginalCutsceneScriptPos_8036F70
+- reqBBS_clearFlag_8140A0C
 open_questions:
-- exact meaning of event flags 9D8/9D9/9FF and which BBS flag is cleared
-- what [r5+7] is initialized to and by whom (the caller/script that spawns this object)
+- Exact meaning of gameState_setUnk09_8001172's argument 0 (some game-state field at offset 9?)
+- What byte_808C74C holds (current cutscene script id/position) and why the check compares against the object's
+  original script position
+- What reqBBS_clearFlag_8140A0C clears in the BBS/mail subsystem and why this cutscene touches it
+- Which specific cutscene(s) set EVENT_9D8/9FF/9D9, i.e. which NPC(s) this cleanup path serves
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A8484 -> ow_cleanupNpcAfterCutscene
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A8484
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

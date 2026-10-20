@@ -1,30 +1,68 @@
 name: owMapObject_weatherTornado_loadHome_80A90B0
 address: '0x080A90B0'
 kind: function
-previous_names:
-- sub_80A90B0
-status: probable
-summary: 'Tornado: home position X/Y from its parameter entry (+8/+0xA, pixels -> s16.16), Z = 0x40.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Initializes a weather-tornado overworld object's home position and initial counter from its map params.
+interface: void owMapObject_weatherTornado_loadHome_80A90B0(mapObject r5, ctx r10)
+details: "Calls owMapObject_weatherTornado_getParams_80A916C (passing r5, and r10 through to it,\npresumably an\
+  \ overworld/context register) to obtain the tornado's parameter block, then:\n- reads the 16-bit home X at params+0x8\
+  \ and stores it at object+0xC widened to 16.16\n  fixed point (value << 16),\n- reads the 16-bit home Y at params+0xA\
+  \ and stores it at object+0x10, also 16.16,\n- stores 0x40 << 16 (0x400000) at object+0x14, seeding a timer/counter\
+  \ or state field\n  at the fixed-point \"home\" scale.\nThe object pointer is only in r5 (r10 is forwarded for\
+  \ the params lookup); the function\nreturns nothing and clobbers r0-r3, lr and flags. r7 is used as a scratch\
+  \ for the params\npointer and preserved per ABI. This looks like a per-spawn/per-reset setup step for the\ntornado\
+  \ map object so later update code can move it relative to its home and count down\nfrom 0x40.0.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_loadHome_80A90B0:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_loadHome_80A90B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadHome_80A90B0
+
+    ./wf verify --function owMapObject_weatherTornado_loadHome_80A90B0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadHome_80A90B0
+
+    ./wf verify --function owMapObject_weatherTornado_loadHome_80A90B0 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadHome_80A90B0
+
+    ./wf verify --function owMapObject_weatherTornado_loadHome_80A90B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a90b0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A90B0 -> owMapObject_weatherTornado_loadHome_80A90B0
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the 0x40 fixed-point value stored at object+0x14 (timer vs. substate vs. velocity seed) needs
+  the update tick function
+- layout/meaning of the params block beyond offsets 0x8/0xA (see owMapObject_weatherTornado_getParams_80A916C)
+- whether r10 is a context pointer or an incidental live register for getParams
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

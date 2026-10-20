@@ -1,30 +1,71 @@
 name: owMapObject_weatherTornado_setPriority_80A91F4
 address: '0x080A91F4'
 kind: function
-previous_names:
-- sub_80A91F4
-status: probable
-summary: 'Tornado: sprite priority 1 while flag 0xBE6 is set, else from the layer at its position.'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Sets the sprite priority of the overworld tornado weather object, forcing overlay priority 1 once the BE6
+  event flag is set and otherwise letting the generic layer-effect code pick the priority.
+interface: void owMapObject_weatherTornado_setPriority_80A91F4(owMapObject* obj /*r5*/, u32 context /*r10*/); //
+  calls only, no meaningful return; on the layer-effect path r0 (priority) and r5 (object) are left set by applyLayerEffectToOWObject
+  for the callee sprite_setPriority
+details: "r5 points at the tornado map object's work area; r10 is a context value that is only\npreserved (read\
+  \ by callees but not used here). First it tests event flag EVENT_BE6\n(bank 11 / 0xB, flag 0xE6) via TestEventFlagFromImmediate:\n\
+  \  - flag set (Z clear): the tornado is currently drawn as a foreground overlay, so it\n    calls sprite_setPriority_8002E14\
+  \ with priority r0=1 and the object pointer in r5.\n  - flag clear: it computes r5+0xC (the object's layer record\
+  \ / layer-effect field)\n    and calls applyLayerEffectToOWObject_8035694, which decides the sprite priority\n\
+  \    from the map layer and leaves the priority in r0 and the object pointer in r5;\n    it then calls sprite_setPriority_8002E14\
+  \ with those values.\nThe layer-effect path also leaves other registers (r6, r8-r12) modified; those are\njust\
+  \ leftovers from applyLayerEffectToOWObject and are irrelevant here. Tail of the\nfunction is pop {pc}. The r5+0xC\
+  \ field is presumably part of the standard overworld\nmap-object work area layout used by applyLayerEffectToOWObject.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_setPriority_80A91F4:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_setPriority_80A91F4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_setPriority_80A91F4
+
+    ./wf verify --function owMapObject_weatherTornado_setPriority_80A91F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_setPriority_80A91F4
+
+    ./wf verify --function owMapObject_weatherTornado_setPriority_80A91F4 --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_setPriority_80A91F4
+
+    ./wf verify --function owMapObject_weatherTornado_setPriority_80A91F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a91f4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A91F4 -> owMapObject_weatherTornado_setPriority_80A91F4
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of EVENT_BE6 (presumably "BE area scenario 6 / post-event" state that turns the tornado into a foreground
+  overlay) needs cross-checking with the event-flag list
+- exact layout/type of the layer record at owMapObject+0xC consumed by applyLayerEffectToOWObject_8035694
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

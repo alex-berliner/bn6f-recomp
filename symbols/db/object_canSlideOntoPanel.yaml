@@ -1,50 +1,69 @@
 name: object_canSlideOntoPanel
 address: '0x080D8C10'
 kind: function
-status: probable
-summary: Returns whether the panel at the given coordinates exists, is not a hole/broken panel, and has
-  status bit 0x10 set, used to validate a sliding object's target panel.
-interface: (r0 = packed panel x/y coords) -> r0 = 1 if panel is valid slide target, else 0; r1 clobbered,
-  flags clobbered
-details: Calls object_getPanelParameters to fetch the panel status word for the coordinates in r0. If
-  the word is 0 (off-field or nonexistent panel) it returns 0. It then tests the word against mask 0xF800000
-  — if any of those high bits (presumably hole/broken/out panel states) are set it returns 0. Finally
-  it requires bit 0x10 (0x10 = some usable/occupied-panel state) to be set, returning 1 only if all three
-  conditions hold. Used by object_updateSlideMovement, which slides a battle object toward its FuturePanel
-  target and aborts the action based on this check, so it gates whether the slide may continue onto the
-  next panel.
+status: confirmed
+summary: Returns whether an object is allowed to slide onto the panel it is facing, based on the panel's parameter
+  flags.
+interface: bool object_canSlideOntoPanel(u32 object, u32 panelOrParamArg); // r0,r1 in -> r0 out (1 = may slide,
+  0 = may not)
+details: "Wraps object_getPanelParameters(r0, r1), which returns a panel parameter\nbitmask in r0, and applies three\
+  \ checks to decide if the object may slide\nonto that panel:\n  1. flags == 0 -> not slidable (no panel parameters\
+  \ at all).\n  2. flags & 0x0F800000 -> not slidable; this bit group appears to mark\n     special/occupied panel\
+  \ states (e.g. hole/broken/special attribute\n     bits) that block sliding.\n  3. !(flags & 0x10) -> not slidable;\
+  \ bit 0x10 is the \"slidable\" flag of\n     the panel parameter word.\nOnly if all three pass does it return\
+  \ 1. The routine itself is a pure\npredicate: it clobbers r1-r3 and flags but preserves nothing, and its\nresult\
+  \ is just the flag test. The neighboring literal pool words\n(0x3800000, 0xC41, 0xE0F0300, 0x40000, 0xF800002,\
+  \ ...) belong to other\nnearby functions, not to this one.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_getPanelParameters with coords in r0, then tst r0,r0 / beq return-0: off-field panels
-    rejected (sub_80D8C10 lines 2-5); tst r0, 0xF800000 / bne return-0: hole/broken-class panel bits disqualify
-    the panel; tst r0,#0x10 / beq return-0: bit 0x10 of panel status is required for a return of 1; only
-    caller object_updateSlideMovement slides along X toward a FuturePanel and ''aborts if the target panel
-    becomes invalid'', matching this validation; returns via mov r0,#1 / mov r0,#0 with no other side
-    effects — a pure panel-validity predicate'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:70515
-  - 0x080D8A3C object_updateSlideMovement
-  - 0x0800C8F8 object_getPanelParameters
-  reproduce: python3 tools/asmcat.py 0x080D8C10
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_canSlideOntoPanel
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_canSlideOntoPanel
+
+    ./wf verify --function object_canSlideOntoPanel --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_canSlideOntoPanel
+
+    ./wf verify --function object_canSlideOntoPanel --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_canSlideOntoPanel
+
+    ./wf verify --function object_canSlideOntoPanel --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8c10 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of panel status bit 0x10 and of the 0xF800000 mask bits (would need the panel-status flag
-  definitions or other callers)
-- whether the caller aborts on 0 or on 1, i.e. whether bit 0x10 means 'free' or 'blocked'
+- exact meaning of the 0x0F800000 mask bits in the panel parameter word (which panel states they denote)
+- whether the r1 argument to object_getPanelParameters is a panel type, a panel index, or an extra selector
+- which callers drive this (moving objects/boulders during panel-slide updates) to confirm the in-game trigger
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D8C10 -> object_canSlideOntoPanel
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D8C10
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,31 +1,71 @@
 name: owMapObject_weatherTornado_getParams_80A916C
 address: '0x080A916C'
 kind: function
-previous_names:
-- sub_80A916C
-status: probable
-summary: 'Tornado: its 16-byte parameter entry, from off_80A9194[map number, or 3 for map group 0x85]
-  + 16 * instance (+4).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Returns the address of the 0x10-byte weather-tornado parameter record for the tornado instance stored in
+  the given overworld map object, selected by current map.
+interface: u32 *owMapObject_weatherTornado_getParams_80A916C(owMapObject *obj /*r5*/, Toolkit *toolkit /*r10*/);
+  // r0 out; clobbers r1-r3 and flags
+details: 'Reads the toolkit''s GameState pointer and picks a table index: if oGameState_MapGroup equals 0x85 (the
+  underground group) the fixed index 3 is used regardless of map number, otherwise oGameState_MapNumber is used.
+  The index selects one of four base pointers from the table at byte_81436B4 / byte_81436C4 / byte_81436E4 / byte_8143704
+  (accessed indirectly through off_80A9190 -> off_80A9194, i.e. the table is an array of pointers to per-map record
+  arrays). Each base points to an array of 0x10-byte records; the byte at [r5+4] of the map object selects the record,
+  so the return value is base + obj[4]*0x10. The record presumably holds the tornado object''s per-instance parameters
+  (e.g. position/timing) for that map. Map group 0x85 forcing entry 3 is a quirk: underground maps always share
+  the last table entry.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_getParams_80A916C:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_getParams_80A916C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_getParams_80A916C
+
+    ./wf verify --function owMapObject_weatherTornado_getParams_80A916C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_getParams_80A916C
+
+    ./wf verify --function owMapObject_weatherTornado_getParams_80A916C --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_getParams_80A916C
+
+    ./wf verify --function owMapObject_weatherTornado_getParams_80A916C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a916c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A916C -> owMapObject_weatherTornado_getParams_80A916C
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact field layout of the 0x10-byte records (positions, timing, etc.) not determined from this function alone
+- whether obj+4 is a slot/instance index or a parameter-set id
+- semantic meaning of map group 0x85 (assumed underground) worth confirming
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

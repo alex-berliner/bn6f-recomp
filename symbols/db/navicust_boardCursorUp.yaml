@@ -1,50 +1,70 @@
 name: navicust_boardCursorUp
 address: '0x081367A0'
 kind: function
-status: probable
-summary: 'Board-screen cursor action: moves the Navi Customizer cursor/list up (with wrap/clamp), stores
-  the new position fields, sets a state byte, and plays the menu-select sound.'
-interface: (r5 = board-screen state object) -> r0 = sound-effect id passed on; writes halfwords [r5+0x24]
-  and [r5+0x20], byte [r5+0xc]; no return value
-details: Reads the halfword at [r5+0x1e] (current cursor/scroll index), computes index-4, and on success
-  stores that to [r5+0x24] with r1=3 to [r5+0x20]; when index-4 goes negative it clamps to 0 for [r5+0x24]
-  and stores index-1 for [r5+0x20] (wrap/clamp branch). It then writes 0xC to byte [r5+0xc], which looks
-  like a screen/cursor state or timer field, and plays SOUND_MENU_SELECT via PlaySoundEffect. Being dispatched
-  from navicust_handleBoardInput, it is one of the directional/action handlers for the Navi Customizer
-  board. The -4 step suggests movement across a 4-wide row or a 4-item page of the board layout.
+status: confirmed
+summary: Moves the Navicust screen's board cursor one row up (4 slots back), clamping at the top row, plays the
+  menu-select sound.
+interface: 'void navicust_boardCursorUp(u32 r2 /* passthrough arg to PlaySoundEffect */, u32 r5 /* board state struct
+  */); // outputs: r5/r10 survive via PlaySoundEffect; flags NZCV clobbered'
+details: 'Reads the cursor''s current slot (halfword at board+0x1E) and computes the destination slot by subtracting
+  4 (one row up on the 3x? Navicust grid). If the current slot is < 4 (already on the top row), the destination
+  is clamped to 0 and the companion value written to board+0x20 becomes (oldSlot - 1) instead of the usual 3, presumably
+  so the move animation / rendering logic can tell a clamped no-op move from a real one. The target slot is stored
+  to board+0x24, the companion/aux value to board+0x20, and a refresh/state timer byte at board+0x0C is set to 0xC
+  (12 frames?). Then PlaySoundEffect(SOUND_MENU_SELECT) is called with r2 passed through untouched; r5, r10 and
+  the other preserved registers are whatever PlaySoundEffect leaves. Function is Thumb, padded with .byte 0,0.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrh r0,[r5,#0x1e]; sub r0,#4 / bge: index-based movement with a -4 step and a wrap branch;
-    strh r0,[r5,#0x24] / strh r1,[r5,#0x20]: writes new cursor/scroll pair into the state object; mov
-    r0,#0xc; strb r0,[r5,#0xc]: sets a small state/counter byte in the same object; bl PlaySoundEffect
-    with SOUND_MENU_SELECT: standard UI-confirmation feedback; caller 0x08135830 navicust_handleBoardInput
-    dispatches button presses to this handler'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:13497
-  - 0x08135830 navicust_handleBoardInput
-  - 0x08135FDC sub_8135FDC
-  - 0x080005CC PlaySoundEffect
-  reproduce: python3 tools/asmcat.py 0x081367A0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c navicust_boardCursorUp
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_boardCursorUp
+
+    ./wf verify --function navicust_boardCursorUp --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 240 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_boardCursorUp
+
+    ./wf verify --function navicust_boardCursorUp --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_boardCursorUp
+
+    ./wf verify --function navicust_boardCursorUp --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081367a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- Exact meaning of fields 0x1e/0x20/0x24 (cursor index vs. scroll offset vs. selected cell) — need the
-  board-state struct layout
-- Whether this is 'cursor up', 'page up', or a compress/rotate action; the negative-branch r1 = index-1
-  value is not fully explained
+- exact meaning of the aux value at board+0x20 (3 vs slot-1) for the move animation
+- which struct r5 points to (Navicust screen/board editor state) and its full layout
+- what r2 represents when passed to PlaySoundEffect (probably a second/unused argument)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81367A0 -> navicust_boardCursorUp
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81367A0
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

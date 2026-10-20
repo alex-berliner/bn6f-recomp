@@ -1,63 +1,85 @@
 name: owMapObject_updateLayerPriorityForPlayerZ_80A95EC
 address: '0x080A95EC'
 kind: function
-previous_names:
-- sub_80A95EC
-status: probable
-summary: For an overworld NPC object (r5), reads the player Z and sets the sprite's OAM priority to 3
-  if the player is below it, otherwise calls the standard layer resolver and applies the resulting priority.
-interface: '(r5 = overworld NPC object ptr) -> ; side effects: updates sprite OAM priority at object+r5->Unk_14..r5+0x12
-  area'
-details: "- Early-out: if r5->TypeAndSpriteOffset.Type (byte 0x7) is 0, return immediately.\n  - Calls\
-  \ ReadOWPlayerObjectCoords to fetch the player X/Y/Z into r1/r2/r3.\n  - If the player Z (r2) is 0,\
-  \ forces sprite priority to 3 via sprite_setPriority_8002E14.\n  - Otherwise computes r0 = r5 + 0xc\
-  \ and calls applyLayerEffectToOWObject_8035694 to get a layer/priority value, then applies it with sprite_setPriority_8002E14.\n\
-  \  - Callee applyLayerEffectToOWObject takes the object pointer's 0xc-relative region (matching the\
-  \ OAM sprite offset inside ObjectSprite) and the toolkit (r10), and returns a priority in r0.\n  - The\
-  \ Z==0 branch is the early-return / default-low case (player at ground level doesn't pull focus from\
-  \ elevated objects).\ndetails: |\n  - This looks like a per-frame sprite priority update for OW map\
-  \ objects whose behavior depends on the player's vertical position (Z), used to keep objects above/below\
-  \ the player drawing in a sensible order.\n  - The \"+0xc\" used as r0 argument to applyLayerEffectToOWObject\
-  \ isn't the full object ptr; given ObjectSprite size 0x38 starting at +0x90 in an NPC object, this 0xc\
-  \ corresponds to a small fixed offset inside the sprite struct (likely the start of render coords inside\
-  \ ObjectSprite). Likely r5 here actually points to the sprite data region, not the NPC object root -\
-  \ though both work since the byte at +7 test reads the object type byte. The semantics fit \"sprite\
-  \ priority layer adjustment vs player Z\".\n"
+status: confirmed
+summary: Refreshes an overworld map object's sprite draw priority based on which map layer the player is currently
+  standing on.
+interface: void owMapObject_updateSpritePriorityByPlayerLayer(mapObject* obj /* r5 */); uses r10 as ambient context
+  for the callees; r0-r3 and flags clobbered, r4-r9 and r12 preserved
+details: 'Takes a map object in r5. If the object''s byte at +7 is 0 the object is skipped entirely
+
+  (likely an "active/in-use" or visibility flag). Otherwise it calls ReadOWPlayerObjectCoords
+
+  and looks at r2, the player''s current layer/height. If the player is on layer 0, the object''s
+
+  sprite gets a fixed priority of 3 via sprite_setPriority_8002E14 (r5 passed through as the
+
+  second argument, so the callee also receives the map object pointer). If the player is on a
+
+  higher layer, the object''s sprite struct at +0xC is passed to
+
+  applyLayerEffectToOWObject_8035694, which computes a priority from the tile''s layer effect
+
+  (returned in r0), and that value is then set with sprite_setPriority_8002E14. This keeps
+
+  overworld objects sorting correctly against the player when the player moves between
+
+  elevated/foreground layers. The wrapper itself writes no registers; the "outputs"
+
+  r5-r6/r8-r12 are just values left behind by the callees.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#7]` reads the object type byte (offset 7 = Type in ObjectHeader / overworld_player_object_struct
-    Unk_07). - `bl ReadOWPlayerObjectCoords` returns player X/Y/Z in r1/r2/r3 per that function''s contract.
-    - `cmp r2, #0` + `bne loc_80A9604` only branches when player Z != 0. - The non-zero branch goes to
-    `add r0, r5, #0xc` then `bl applyLayerEffectToOWObject_8035694`, which (per its description) returns
-    a layer decision. - Both branches end in `bl sprite_setPriority_8002E14` which writes r0 (0..3) into
-    sprite byte 0x15 (the OAM priority field). - The constant #3 used in the player-Z=0 branch matches
-    the documented priority range of sprite_setPriority.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080A95EC
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_updateLayerPriorityForPlayerZ_80A95EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC
 
-    '
-  result: the body read as described above
+    ./wf verify --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC
+
+    ./wf verify --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 54 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC
+
+    ./wf verify --function owMapObject_updateLayerPriorityForPlayerZ_80A95EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080a95ec '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Whether r5 points to the OW map object base or to the embedded ObjectSprite (the +0xc offset suggests
-  sprite-internal data, but the type byte at +7 is object-header-internal). Worth checking whether callers
-  pass an NPC pointer or a sprite pointer; that's the only thing keeping this name from being fully certain.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a95ec ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A95EC -> owMapObject_updateLayerPriorityForPlayerZ_80A95EC
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the byte at mapObject+7 (in-use flag vs. some layer/enable field)
+- what applyLayerEffectToOWObject_8035694 returns for layer 0 vs. higher layers, to confirm the fixed priority 3
+  matches the layered path's semantics
+- which map contexts call this (r10 is only passed through to the callees' own reads)
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,69 +1,92 @@
 name: spawnBattleIllusion
 address: '0x080EAFC2'
 kind: function
-status: probable
-summary: Spawns an afterimage/illusion battle object for the caller's battle object (r5), computing a
-  packed id from object_getFlip and oBattleObject_NameID with a 0xA2..0xAB range override, calling spawnIllusionObject_80E33FA,
-  then dispatching sub_80E341E with arg 1 or 2 based on GetBattleNaviStatsByte at offset 0x2C for the
-  object's alliance side.
-interface: (r0-r3 = spawn params, reordered to (old r3,r2,r1,r0); r5 = battle object) -> r0 = spawned
-  illusion object or 0
-details: Reads the battle object's effective facing via object_getFlip and the object's NameID; if NameID-0xFF
-  falls in 0xA1..0xAB (a specific form/ID range) the low index becomes 0, otherwise it stays 0xF. It builds
-  a packed id r4 = (flip<<8 | index)<<16 | 0xFF, shuffles its four incoming arguments (r0<->r3, r1<->r2)
-  and calls spawnIllusionObject_80E33FA with r6=0x83E0 and r7=0x1010014-old r3, apparently using the custom
-  r4/r6/r7 side-channel arguments. If an object is returned, it reads NaviStats byte 0x2C for the object's
-  alliance side via GetBattleNaviStatsByte; values 0x0B..0x18 call sub_80E341E(obj,1), anything else sub_80E341E(obj,2).
-  Nearby data (byte table at 80EB028, AIAttackJumptable pointer, 0xFFFF sentinel) suggests this belongs
-  to a Beast/AI attack setup block. Run on the beastsp route, consistent with Beast Out handling.
+status: confirmed
+summary: Spawns a flickering holographic illusion copy of a battle object and programs its flicker rate from the
+  owning navi's stats.
+interface: void spawnBattleIllusion(r0..r3 = spawn args, r5 = battle object*) ; leaves r5 = spawned illusion object,
+  r6 = illusion attr2 word, preserves r4 and r7; clobbers r0-r3, flags
+details: 'Builds OAM attributes for the illusion sprite from the source object: object_getFlip
+
+  supplies the horizontal-flip bit (shifted into attr1''s high byte), and the palette
+
+  slot is 0xF unless the object''s oBattleObject_NameID (raw value, compared after
+
+  subtracting 0xFF) falls in the special range 0x1A1..0x1AB, in which case palette 0
+
+  is used. attr2 is the fixed word 0x83E0 (dword_80EB01C) combined with the flip and
+
+  palette nibble; attr1 is base 0x1010014 (dword_80EB020) minus the old r3 argument.
+
+  Calls spawnIllusionObject_80E33FA to create the illusion; if it returns non-null,
+
+  reads oBattleObject_Alliance from the source object and queries
+
+  GetBattleNaviStatsByte(alliance, 0x2C): if that stat is 0x0B..0x18 the illusion''s
+
+  flicker mode (sub_80E341E) is set to 1 (fast flicker), otherwise 2 (slow flicker).
+
+  Quirk: r0-r3 are pushed before the getFlip call and popped back one slot shifted
+
+  (pop {r1-r3}; pop {r0}), so the spawner sees r1=old r0, r2=old r1, r3=old r2, and
+
+  old r3 only offsets the attr1 base; r4/r6/r7 are saved and restored verbatim.
+
+  Nearby data (byte_80EB028 table of small values, AIAttackJumptable pointer) suggests
+
+  this belongs to the battle AI''s illusion/clone effect, not a player-facing routine.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_getFlip then flip<<8 feeds the packed id in r4; NameID check: sub 0xFF, kept only
-    if 0xA1..0xAB, else index 0xF; bl spawnIllusionObject_80E33FA with r6=0x83E0, r7=0x1010014-old_r3;
-    r0 result returned to caller (0 means nothing spawned); GetBattleNaviStatsByte(Alliance, 0x2C) compared
-    to 0x0B..0x18 selects sub_80E341E(obj,1) vs (obj,2); route ''beastsp'' and adjacent AIAttackJumptable
-    data tie it to Beast Out battle setup'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:109552
-  - 0x080136CC GetBattleNaviStatsByte
-  - 0x0800E456 object_getFlip
-  - 0x080E33FA spawnIllusionObject_80E33FA
-  reproduce: python3 tools/asmcat.py 0x080EAFC2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code calls spawnIllusionObject_80E33FA on a battle object (r5) and then uses GetBattleNaviStatsByte
-    with the object''s alliance side at offset 0x2C; the proposal''s core mechanics (read flip, check
-    NameID range, pack id, swap args, call spawnIllusionObject, dispatch sub_80E341E based on stats) match
-    the assembly accurately. However, ''beastsp'' only tells us it ran in the BeastSP route, not that
-    this code is specifically about Beast Out or ''NaviStats'' as named — the caller''s call site would
-    clarify that, but it''s not in the callers list. A name using the ''spawn'' prefix is fine; ''spawnBeastOutIllusion''
-    embeds an unverified ''BeastOut'' claim, so a more neutral name grounded in callees is safer.; run
-    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c spawnBattleIllusion
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function spawnBattleIllusion
+
+    ./wf verify --function spawnBattleIllusion --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function spawnBattleIllusion
+
+    ./wf verify --function spawnBattleIllusion --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 65 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function spawnBattleIllusion
+
+    ./wf verify --function spawnBattleIllusion --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080eafc2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 open_questions:
-- Exact meaning of the packed r4 id and the r6=0x83E0 / r7=0x1010014-arg arguments to spawnIllusionObject_80E33FA
-- What NaviStats byte 0x2C counts (range 0x0B..0x18 picks variant 1) and what sub_80E341E's 1 vs 2 variants
-  do
-- Which specific NameIDs 0x1A1..0x1AB correspond to
-- The code calls spawnIllusionObject_80E33FA on a battle object (r5) and then uses GetBattleNaviStatsByte
-  with the object's alliance side at offset 0x2C; the proposal's core mechanics (read flip, check NameID
-  range, pack id, swap args, call spawnIllusionObject, dispatch sub_80E341E based on stats) match the
-  assembly accurately. However, 'beastsp' only tells us it ran in the BeastSP route, not that this code
-  is specifically about Beast Out or 'NaviStats' as named — the caller's call site would clarify that,
-  but it's not in the callers list. A name using the 'spawn' prefix is fine; 'spawnBeastOutIllusion' embeds
-  an unverified 'BeastOut' claim, so a more neutral name grounded in callees is safer.
+- exact gameplay effect that calls this (which chip/boss spawns the illusion copies)
+- meaning of navi stats byte 0x2C (the value driving fast vs slow flicker)
+- purpose of the 0x1A1..0x1AB name-ID range getting palette slot 0
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80EAFC2 -> spawnBattleIllusion
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80EAFC2
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

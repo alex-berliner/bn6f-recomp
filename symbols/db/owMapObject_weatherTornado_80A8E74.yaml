@@ -1,39 +1,71 @@
 name: owMapObject_weatherTornado_80A8E74
 address: '0x080A8E74'
 kind: function
-previous_names:
-- sub_80A8E74
 status: confirmed
-summary: 'Mr. Weather comp tornado (map object type 0x1A): update, dispatching on state +8 (0 init, 4
-  active, 8 caught, 0xC free when its animation ends).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
-details: 'r6 = eWeatherCompState; jumps through off_80A8E88 by byte +8: owMapObject_weatherTornado_init_80A8E9C,
-  owMapObject_weatherTornado_active_80A8F08, owMapObject_weatherTornado_caught_80A8FA0, owMapObject_weatherTornado_freeWhenAnimEnds_80A8FE4.'
+summary: 'State dispatcher for the Mr. Weather comp tornado map object (type 0x1A): tail-calls the handler selected
+  by the object''s state byte (init / active / caught / free-when-animation-ends).'
+interface: void weatherTornadoDispatcher(mapObject in r5, context in r10); r6 = &eWeatherCompState; clobbers r0,r1,r2-r5,r6,r7,r8-r12,NZCV;
+  tail-call — handler's registers (r2-r5, r8-r12) are the observed outputs
+details: 'Pure dispatcher. Loads the map object''s state byte at [r5,#8] (values 0, 4, 8, 0xC, doubling as byte
+  offsets into the table off_80A8E88) and jumps to the corresponding Thumb handler via a computed bx, with push
+  {lr}/pop {pc} making it a tail call — the chosen handler returns directly to the map object''s caller. Handlers
+  are owMapObject_weatherTornado_init_80A8E9C (state 0), _active_80A8F08 (state 4), _caught_80A8FA0 (state 8), and
+  _freeWhenAnimEnds_80A8FE4 (state 0xC). On entry to the handler: r5 = the map object, r6 = address of the shared
+  state variable eWeatherCompState (table off_80A8E98), r10 = caller''s context passed through untouched. The dispatcher
+  itself clobbers r0, r1, r6, r7 and lr; the handler''s register side effects (r2-r5, r8-r12 plus flags) flow through
+  to callers and cannot be expressed as a C return value.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_80A8E74:' bn6f/asm/asm29.s
-- method: runtime
-  date: '2026-10-13'
-  detail: 'One-off emulator probe: writing the tornado''s fields moved it as predicted.'
-  reproduce: 'python3 tools/vidsync/probes/obj0.py RESULT STATE G   # on the PC with the vidsync
-    data: RESULT/STATE from build-vidsync/data/auto/, run there through tools/vidsync/remote/py.sh;
-    see docs/vidsync/SYMBOL_DOSSIER.md'
-related:
-- eWeatherCompState
-- OverworldMapObjectUpdateJumptable
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_80A8E74
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_80A8E74
+
+    ./wf verify --function owMapObject_weatherTornado_80A8E74 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_80A8E74
+
+    ./wf verify --function owMapObject_weatherTornado_80A8E74 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 32 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_80A8E74
+
+    ./wf verify --function owMapObject_weatherTornado_80A8E74 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8e74 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A8E74 -> owMapObject_weatherTornado_80A8E74
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact behavior of each handler (init/active/caught/freeWhenAnimEnds) depends on those functions, not verified
+  here
+- how eWeatherCompState is shared with other weather-comp map objects
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,51 +1,79 @@
 name: ow_applyCutsceneDirOffset
 address: '0x0809C890'
 kind: function
-status: probable
-summary: Adds a cutscene-direction-dependent positional offset (32/64/96 pixels along one axis) to three
-  coordinate values when initializing an overworld object.
-interface: (r0 = scratch, r1/r2/r3 = base coords (high halves), r5 = object struct) -> r0 = 0, r1/r2/r3
-  = coords + offset; clobbers r4-r6
-details: 'First calls sub_809E1BC and keeps the upper halves of r1-r3 as three base values. It then reads
-  eCutsceneState+0x70 and the byte at +0xC of that struct (0-3), using it to pick one of four 24-byte
-  vector tables at off_809C8CC: right(+x), down(+y), left(-x), up(-y). The caller''s struct field at r5+4,
-  times 8, selects one of three magnitude groups inside the table (32, 64, or 96 as halfwords), and the
-  three halfwords of that group are added to r1, r2 and r3 respectively. Only one component of the vector
-  is nonzero, so the offset moves the position along a single axis in the direction of the cutscene camera/scroll.
-  Returns 0 in r0. This looks like placing a newly spawned overworld object (e.g. the log-out effect)
-  off-screen or stepped away from the player along the current cutscene direction.'
+status: confirmed
+summary: Computes a position next to the player for a cutscene actor by adding a per-facing-direction offset (selected
+  from a table by the cutscene state's direction byte and an actor slot byte) to the player's tile coordinates.
+interface: "u32 ow_getPlayerPosPlusFacingOffset(u32 actor /* r5, byte +4 used */);\n/* r10: overworld context, passed\
+  \ through to ow_getPlayerPosition;\n   returns r1 = (playerX + offX) << 16, r2 = (playerY + offY) << 16,\n   r3\
+  \ = (playerZ + offZ) << 16, r5 = actor unchanged, r0 = 0;\n   clobbers r0, flags, lr; preserves r4-r7 */\n"
+details: 'Calls ow_getPlayerPosition (which consumes the r10 context) and takes the high halfwords of r1/r2/r3 as
+  the player''s tile-space x/y/z. Reads the cutscene state pointer from eCutsceneState+0x70 and its facing-direction
+  byte at +0xC (values 0-3: down/right?/left?/up? — the four rows are +x, +y, -x, -y offsets respectively). Indexes
+  off_809C8CC[dir] to pick one of four 24-byte tables (byte_809C8DC/F4/90C/924), each holding three 8-byte slots
+  of three halfword deltas: 0x20/0x40/0x60 pixels forward, or -0x20/-0x40/-0x60 (0xFFE0/0xFFC0/0xFFA0) for the opposite
+  direction, with the other two axes always 0. The byte at actor+4 selects the slot (slot<<3), i.e. which of three
+  positions relative to the player (near / mid / far, or front / beside / behind) the actor takes. Adds each delta
+  to the corresponding coordinate and shifts each sum back left 16 bits so the result is returned in the same packed
+  halfword-high format the position came in. r5 (the actor pointer/handle) is passed through untouched so callers
+  can chain. Effectively "where should this cutscene character stand relative to the player, given where the player
+  is facing".
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_809C890 calls sub_809E1BC then uses lsr r1/r2/r3,#0x16... #0x10 upper halves as base values;
-    ldr r0,[eCutsceneState+0x70]; ldrb r0,[r0,#0xc]; lsl #2 indexes off_809C8CC''s four tables; tables
-    hold halfwords 0x20/0x40/0x60 or 0xFFE0/0xFFC0/0xFFA0 in one of the first two slots — axis+sign, growing
-    magnitude; ldrb r4,[r5,#4]; lsl r4,#3 selects which of the three 8-byte magnitude groups is used;
-    only callers are ow_initSpriteObject and ow_startLogoutEffect, both overworld object initializers'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm28_0.s:4576
-  - 0x080A9D30 ow_initSpriteObject
-  - 0x080A9EEC ow_startLogoutEffect
-  - 0x0809E1BC sub_809E1BC
-  reproduce: python3 tools/asmcat.py 0x0809C890
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm28_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_applyCutsceneDirOffset
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_applyCutsceneDirOffset
+
+    ./wf verify --function ow_applyCutsceneDirOffset --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_applyCutsceneDirOffset
+
+    ./wf verify --function ow_applyCutsceneDirOffset --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_applyCutsceneDirOffset
+
+    ./wf verify --function ow_applyCutsceneDirOffset --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809c890 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm28_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm28_0.c
 coverage:
 - beastsp
+related:
+- ow_getPlayerPosition
 open_questions:
-- what sub_809E1BC returns in r0-r3 (screen vs world coords, and what the third component is)
-- what the byte at eCutsceneState+0x70+0xC semantically means (camera direction vs cutscene step)
-- what the r5 struct and its field +4 (0-2, magnitude selector) represent
+- exact meaning of the direction byte at cutscene state +0xC (which of 0-3 maps to which compass direction depends
+  on ow coordinate conventions)
+- semantics of the actor byte at +4 (slot index 0-2) — likely a named role (front/behind/side) in the cutscene script,
+  not confirmed
+- whether r10 is only a passthrough context for ow_getPlayerPosition or also read elsewhere in the caller frame
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_809C890 -> ow_applyCutsceneDirOffset
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_809C890
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

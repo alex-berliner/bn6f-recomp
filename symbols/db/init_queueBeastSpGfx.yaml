@@ -1,49 +1,74 @@
 name: init_queueBeastSpGfx
 address: '0x08142C94'
 kind: function
-status: probable
-summary: Queues a 0x420-byte VRAM DMA of Beast+ special-scenario tile graphics from ROM into BG VRAM.
-interface: () -> r0 = queued transfer (src dword_8619730, dest 0x6006C00, size 0x420); no return value
-details: 'This is a zero-argument thunk that builds one call to QueueEightWordAlignedGFXTransfer with
-  three hardcoded constants: source pointer dword_8619730 (ROM-resident compressed/raw tile data), destination
-  0x6006C00 (inside BG VRAM char block 1, at offset 0x2C00), and size 0x420. It performs no logic of its
-  own, so its purpose comes entirely from its callers: init_beastSpScenario calls it while initializing
-  the Beast+ special-scenario mode (wiping work buffers, clearing flags, starting scene sound), so this
-  loads that mode''s VRAM tile set. sub_808CAD4 calls it as well, presumably to (re)load the same tiles.
-  No state is kept; nothing is returned.'
+status: confirmed
+summary: Queues a VRAM DMA transfer that uploads the Beast-Out SP sprite graphics into the BG/tile area at VRAM
+  0x6006C00.
+interface: 'void init_queueBeastSpGfx(void); passes callee outputs through: returns r4 and r7 as left by QueueEightWordAlignedGFXTransfer;
+  clobbers r0-r3, lr, flags'
+details: 'Thin wrapper around QueueEightWordWordAlignedGFXTransfer (queued_src, queued_dest, queued_size):
+
+  src = pointer table dword_8619730 (the Beast-Out SP sprite graphics blob), dest = VRAM address
+
+  0x6006C00, size = 0x420 bytes (0x84 eight-word entries). The queued-transfer helper leaves
+
+  tracking values in r4 and r7 which the caller of this function also expects in its own r4/r7,
+
+  so they are passed through unchanged (r4-r7 preserved here). No other registers are read or
+
+  written; the function is essentially a parameterized call for the Beast-Out SP (Falzar version)
+
+  sprite sheet upload during Beast-Out init.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'asm: only ldr of dword_8619730, 0x6006C00, 0x420 then bl QueueEightWordAlignedGFXTransfer and
-    pop {pc}; caller 0x0808CA68 init_beastSpScenario (known Beast+ scenario init) calls it during scenario
-    setup; second caller 0x0808CAD4 also invokes it immediately with no arguments; callee QueueEightWordAlignedGFXTransfer
-    signature (src, dest, size) matches the three loaded registers; dest 0x6006C00 falls in GBA BG VRAM
-    (0x6000000-0x600FFFF), indicating tile/graphics data'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm37_1.s:2178
-  - 0x0808CA68 init_beastSpScenario
-  - 0x0808CAD4 sub_808CAD4
-  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
-  reproduce: python3 tools/asmcat.py 0x08142C94
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c init_queueBeastSpGfx
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function init_queueBeastSpGfx
+
+    ./wf verify --function init_queueBeastSpGfx --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 160 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function init_queueBeastSpGfx
+
+    ./wf verify --function init_queueBeastSpGfx --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function init_queueBeastSpGfx
+
+    ./wf verify --function init_queueBeastSpGfx --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^08142c94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_1.c
 coverage:
 - beastsp
 - maps
-open_questions:
-- exact contents of dword_8619730 (tileset? which screen element it feeds) unknown without inspecting
-  the ROM data
-- why sub_808CAD4 re-queues it is unclear
+open_questions: []
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8142C94 -> init_queueBeastSpGfx
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8142C94
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

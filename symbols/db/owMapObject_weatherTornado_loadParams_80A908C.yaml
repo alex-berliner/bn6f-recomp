@@ -1,32 +1,69 @@
 name: owMapObject_weatherTornado_loadParams_80A908C
 address: '0x080A908C'
 kind: function
-previous_names:
-- sub_80A908C
-status: probable
-summary: 'Tornado: loads its parameters from owMapObject_weatherTornado_getParams_80A916C''s entry: speed
-  +0x2C (word 0), +0x30 = speed/2, move period +0x26 (+4), pause length +0x27 (+6), moves per pause +7
-  (+0xC).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Loads the current weather-tornado parameters (countdown timer, half-timer, and two/three config bytes)
+  from the weather param block into an overworld map object.
+interface: void owMapObject_weatherTornado_loadParams_80A908C(r5=object, r10=weather state /* passed through to
+  getParams */)
+details: "Calls owMapObject_weatherTornado_getParams_80A916C (r5 passed through, r10 supplying the\nweather state)\
+  \ to get a pointer to the tornado parameter block, then copies fields into\nthe map object at r5:\n  obj+0x2C\
+  \ (word)  = params+0x00: countdown timer\n  obj+0x30 (word)  = timer >> 1: half of the countdown, likely used\
+  \ as a second-phase timer\n  obj+0x26 (byte)  = params+0x04 low byte: halfword read, stored as byte (sprite/anim\
+  \ id?)\n  obj+0x27 (byte)  = params+0x06 low byte: halfword read, stored as byte\n  obj+0x07 (byte)  = params+0x0C\
+  \ low byte: halfword read, stored as byte\nUses r7 as the temp param pointer (pushed/popped, not part of the caller\
+  \ contract).\nPadded with two zero bytes after pop {r7,pc}. The halfword->byte stores mean the upper\nbyte of\
+  \ each source halfword is discarded; likely the params are really bytes at 4, 6, 0xC.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_loadParams_80A908C:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_loadParams_80A908C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadParams_80A908C
+
+    ./wf verify --function owMapObject_weatherTornado_loadParams_80A908C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadParams_80A908C
+
+    ./wf verify --function owMapObject_weatherTornado_loadParams_80A908C --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_loadParams_80A908C
+
+    ./wf verify --function owMapObject_weatherTornado_loadParams_80A908C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a908c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A908C -> owMapObject_weatherTornado_loadParams_80A908C
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the byte fields at obj+0x26, obj+0x27, obj+0x07 (sprite/anim id vs flags)
+- what owMapObject_weatherTornado_getParams_80A916C selects with r10 (current weather scenario variant?)
+- whether obj+0x30 (timer/2) is a warning-phase trigger time
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

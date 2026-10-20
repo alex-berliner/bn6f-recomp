@@ -1,40 +1,65 @@
 name: isEventFlag216Set
 address: '0x080AA7C0'
 kind: function
-status: probable
-summary: Returns 1 if story/event flag EVENT_216 is set, else 0.
-interface: () -> r0 = 0 or 1 (EVENT_216 flag state as int)
-details: Loads the constant event flag EVENT_216 and calls TestEventFlagFromImmediate; if the zero flag
-  is clear (flag set) it stores 1 in r4, otherwise 0, and returns it in r0. It is a thin predicate wrapper
-  converting the callee's ZF convention into a boolean return value. Since it takes no arguments, it is
-  a hard-coded check for that one flag, likely inlining a story-progress condition for beastsp route code.
-  The meaning of flag 216 itself is not visible here.
+status: confirmed
+summary: Returns in r0 whether story/event flag 216 (bank 2, index 0x16) is currently set.
+interface: void isEventFlag216Set(void) -> r0 = 1 if flag set else 0; r4 preserved (passed through); Z clear when
+  the flag is set on return (from TestEventFlagFromImmediate)
+details: Tiny wrapper around TestEventFlagFromImmediate for one specific story/event flag. The "movflag EVENT_216"
+  pseudo-op resolves to flag bank 2, index 0x16 (event flag 216), which is loaded into r0/r1 before the call; TestEventFlagFromImmediate
+  leaves Z clear when the flag is set, so the wrapper does beq on "not set", materializes r4 = 1 when set or 0 when
+  not, and returns it in r0. r4 is only borrowed as scratch but is pushed/popped, so callers' r4 is preserved unchanged.
+  Clobbers r1, r3, lr and the flags; the contract shows callers ignore r1/r3 and read r0. Typical of a small check
+  used by event/NPC cutscene scripts or battle setup code gating progress on flag 216.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'mov r4, #0 / movflag EVENT_216 sets up a default-false test (asm lines 2-3); bl TestEventFlagFromImmediate
-    then beq loc_80AA7D0 branches on the flag test result; mov r4, #1 only when the flag is set, and mov
-    r0, r4 returns it as a 0/1 boolean; no arguments or other state touched besides the single flag constant'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:11202
-  - 0x0802F164 TestEventFlagFromImmediate
-  reproduce: python3 tools/asmcat.py 0x080AA7C0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c isEventFlag216Set
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function isEventFlag216Set
+
+    ./wf verify --function isEventFlag216Set --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function isEventFlag216Set
+
+    ./wf verify --function isEventFlag216Set --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function isEventFlag216Set
+
+    ./wf verify --function isEventFlag216Set --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080aa7c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- what story/event state EVENT_216 represents; a caller would show the gameplay context of this predicate
+- What game event flag 216 corresponds to (story progression? post-game?) is not identified by the function itself;
+  cross-reference callers to name it more specifically, e.g. isStoryFlagXSet
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80AA7C0 -> isEventFlag216Set
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80AA7C0
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

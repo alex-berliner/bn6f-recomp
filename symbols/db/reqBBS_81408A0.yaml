@@ -1,0 +1,66 @@
+name: reqBBS_81408A0
+address: '0x081408A0'
+kind: function
+status: confirmed
+summary: Marks a BBS (request board) request as accepted/completed by setting its event flag.
+interface: u32 reqBBS_setRequestFlag(u32 requestIndex /* r0 */, u32 flagBase /* r10 */); returns r5 (pass-through)
+details: 'Called with a request index in r0 and the event-flag word base in r10. It loads a fixed flag-ID offset
+  from reqBBS_textualPointers+0x10 (pointing into byte_813F354+8) and adds it to the request index to get the actual
+  event flag id, then tail-calls SetEventFlag(r0=flagId, r10=flagWordBase) to set the flag for that board request.
+  r4-r7 are saved/restored; the returned r5 is just the caller''s saved value passed through untouched, so it is
+  not a real result. Used by the request-board (BBS) system so completed request flags persist in the event-flag
+  table.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81408A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81408A0
+
+    ./wf verify --function reqBBS_81408A0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81408A0
+
+    ./wf verify --function reqBBS_81408A0 --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81408A0
+
+    ./wf verify --function reqBBS_81408A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081408a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the fixed offset stored at reqBBS_textualPointers+0x10 (base flag id for the request table)
+- which request indices callers pass and whether any caller relies on the r5 pass-through
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

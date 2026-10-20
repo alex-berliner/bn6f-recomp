@@ -1,0 +1,68 @@
+name: navicust_NCP_SlipRunr
+address: '0x0813C9E0'
+kind: function
+status: confirmed
+summary: NaviCust "SlipRunner" program hook — turns the SlipRunner effect on by setting a flag byte in the current
+  PET's navi stats.
+interface: void navicust_NCP_SlipRunr(void); // hidden arg in r10, forwarded to SetCurPETNaviStatsByte
+details: 'Hook/apply routine for the SlipRunner NaviCust program. It sets the current PET''s navi stats byte at
+  offset 0x35 to 1 via SetCurPETNaviStatsByte(0, 0x35, 1), presumably marking the program as installed/enabled so
+  the game''s stat code can then apply the SlipRunner effect. r0 = 0 is likely a slot/index or "current PET" selector,
+  0x35 is the stats-field offset for this program, and 1 is the value being written. Notably, r10 is never read
+  here but is clobbered in name only — the contract lists it as an input because SetCurPETNaviStatsByte reads r10
+  as a hidden argument, so the caller''s r10 flows through unchanged (the push/pop of lr around it does not disturb
+  r10). Function is padded with 2 bytes of zeros after pop {pc}.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c navicust_NCP_SlipRunr
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function navicust_NCP_SlipRunr
+
+    ./wf verify --function navicust_NCP_SlipRunr --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function navicust_NCP_SlipRunr
+
+    ./wf verify --function navicust_NCP_SlipRunr --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function navicust_NCP_SlipRunr
+
+    ./wf verify --function navicust_NCP_SlipRunr --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813c9e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of r10 for SetCurPETNaviStatsByte (PET/context pointer?) and of the 0x35 stats byte
+- whether offset 0x35 is a per-program enable flag shared by similar NCP hooks
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

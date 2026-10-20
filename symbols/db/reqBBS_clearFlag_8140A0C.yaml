@@ -1,0 +1,75 @@
+name: reqBBS_clearFlag_8140A0C
+address: '0x08140A0C'
+kind: function
+status: confirmed
+summary: Completes a bulletin-board (BBS) request by clearing its event flag and marking the request's state slot
+  as resolved in the save work area.
+interface: void reqBBS_finishRequest(Toolkit* toolkit /* r10 */) -> r1 = as left by ClearEventFlagFromImmediate,
+  r3 = 0x12, c/v as left by ClearEventFlagFromImmediate; r4/r5 preserved
+details: 'Board-request completion routine. First clears the fixed event flag EVENT_1700 via ClearEventFlagFromImmediate
+  (the movflag pseudo-op splits the flag number''s high byte into r0 and low byte into r1). Then it loads the toolkit''s
+  save work-area pointer from Toolkit + oToolkit_S2001c04_Ptr (r5,[r10] -> r5), reads the request''s state halfword
+  at work + 0x14, and stores that same value to work + 0x12 — the halfword slot the game checks to treat the request
+  as resolved. So the 0x14 -> 0x12 copy folds the request''s current state onto the "done" slot rather than writing
+  a constant. Final `movs r3,#0x12` leaves 0x12 in r3 and refreshes only n/z; carry and overflow stay as the flag-clear
+  call left them. r3/r4/r5 registers are scratch in the original but callers read back r1 and r3.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_clearFlag_8140A0C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_clearFlag_8140A0C
+
+    ./wf verify --function reqBBS_clearFlag_8140A0C --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_clearFlag_8140A0C
+
+    ./wf verify --function reqBBS_clearFlag_8140A0C --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_clearFlag_8140A0C
+
+    ./wf verify --function reqBBS_clearFlag_8140A0C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, story5, story6.'
+  reproduce: grep -l '^08140a0c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- story5
+- story6
+related:
+- ow_cleanupNpcAfterCutscene
+open_questions:
+- Whether offset 0x12 vs 0x14 in the S2001c04 work area are "completed state" and "current state" of the same request,
+  or two different request slots (field names unverified).
+- Why EVENT_1700 is hardcoded rather than taken from the request's data — callers may only use this for one specific
+  board request.
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,61 +1,74 @@
 name: object_dieOrUpdateCollision_80CC562
 address: '0x080CC562'
 kind: function
-previous_names:
-- sub_80CC562
-status: probable
-summary: For a battle object, tears down collision immediately if the battle is over, otherwise removes+sprays
-  and then refreshes collision for a final hit.
-interface: '(r4,r5,r7,r8,r10 = caller battle object + toolkit context) -> void ; side effects: clears
-  region / spawns hit effect / transitions to CUR_STATE_DESTROY, or continues present-collision flow.'
-details: "Pushes lr; calls object_removeCollisionData unconditionally, then object_spawnCollisionEffect\n\
-  \  to emit the death/hit visuals. It then asks battle_isBattleOver (which reads r10 toolkit):\n  - If\
-  \ the battle is NOT over (r0 != 0, falls through to loc_80CC57A): it clears the object's\n    collision\
-  \ region via object_clearCollisionRegion (r5 is the object's own BattleObject*),\n    then stores #CUR_STATE_DESTROY\
-  \ into oBattleObject_CurStateActionPhaseAndPhaseInitialized\n    on that same object, scheduling its\
-  \ destruction this frame.\n  - If battle_isBattleOver returns 0 (battle over): it instead runs object_presentCollisionData\n\
-  \    to flush the final collision update with normal hit/status one-shot timers.\n  Returns via `pop\
-  \ {pc}`, restoring lr to caller.\n"
+status: confirmed
+summary: Handles a battle object's death tick or collision refresh - removes and respawns its collision data with
+  a death effect, and if the battle is over, clears its collision region and marks it destroyed.
+interface: void object_dieOrUpdateCollision(u32 r4, BattleObject* r5, u32 r7, u32 r8, u32 r10); // r5 and r8 are
+  in/out via callees; r4/r7 passed through; clobbers r0-r3, lr, flags
+details: 'Runs the per-object death/collision update in the battle engine. r5 is the battle object pointer (oBattleObject
+  struct) and is the argument every callee receives; r4/r7 carry additional object context and r8 is collision scratch
+  state that callees keep up to date; r10 is the battle toolkit pointer, preserved throughout. Sequence: object_removeCollisionData
+  drops the object''s current collision data (possibly retargeting r5), then object_spawnCollisionEffect spawns
+  the object''s removal/damage effect. If battle_isBattleOver returns 0 (battle still running), the object''s present
+  collision data is rebuilt via object_presentCollisionData. Otherwise (battle finished) object_clearCollisionRegion
+  empties the collision region and the object''s state field oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  at [r5] is set to CUR_STATE_DESTROY, marking the object destroyed. The r5/r8 outputs are produced entirely inside
+  the callees; the function itself only writes the destroy state in the battle-over branch.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {lr}` ... `pop {pc}` confirms leaf-via-pc-return Thumb idiom matching the contract''s
-    lr-in / lr-out (note: lr is listed in `out` because `pop {pc}` reads it from the stack). - `bl object_removeCollisionData`
-    (0x0801a00e) and `bl object_spawnCollisionEffect` (0x0801a0d4) are always called before the branch.
-    - `bl battle_isBattleOver`; `tst r0, r0`; `bne loc_80CC57A` — nonzero (battle not over) takes the
-    branch, zero falls through to present-collision. - `bl object_presentCollisionData` on the fall-through
-    path matches battle_isBattleOver()==0. - `bl object_clearCollisionRegion` on the taken branch (r5
-    is the BattleObject* — see object helpers'' contracts). - `mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
-    writes 0x08 to that field; the offset/symbol `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
-    exists in BattleObject.inc.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080CC562
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_dieOrUpdateCollision_80CC562
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_dieOrUpdateCollision_80CC562
 
-    '
-  result: the body read as described above
+    ./wf verify --function object_dieOrUpdateCollision_80CC562 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_dieOrUpdateCollision_80CC562
+
+    ./wf verify --function object_dieOrUpdateCollision_80CC562 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 92 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_dieOrUpdateCollision_80CC562
+
+    ./wf verify --function object_dieOrUpdateCollision_80CC562 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp, chips'
-  reproduce: 'grep -l ''^080cc562 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp, chips
-open_questions:
-- Whether the "battle not over" path's clearCollisionRegion+CUR_STATE_DESTROY is meant for this-frame
-  deletion or a deferred kill; the precise object subtype (r5 is treated as a generic BattleObject* by
-  all callees, so no t1/t3/t4 distinction can be inferred here).
-- Why `CUR_STATE_DESTROY` is set unconditionally with `CUR_STATE_DESTROY (0x08)` while the other three
-  state bits aren't touched; may rely on prior zeroing or only matters combined with CurAction already
-  set.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc562 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80CC562 -> object_dieOrUpdateCollision_80CC562
-  where: bn6f 82358707
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of r4 and r7 inputs (object context fields not identified)
+- what r8 scratch collision value represents and where it lives
+- how the CUR_STATE_DESTROY state value is named/encoded in the state enum
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

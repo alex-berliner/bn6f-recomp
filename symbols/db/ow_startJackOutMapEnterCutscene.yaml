@@ -1,47 +1,71 @@
 name: ow_startJackOutMapEnterCutscene
 address: '0x080059EC'
 kind: function
-status: probable
-summary: Clears story flag EVENT_1703 and launches the 'OnMapEnterAfterJackOut' cutscene with param 0,
-  triggered when re-entering a map after jack-out.
-interface: (r5 = GameState* self, passed via fixed register per calling convention) -> r0 = undefined;
-  no meaningful flags
-details: 'The function clears event flag 1703 (used as a one-shot story-progress marker) via ClearEventFlagFromImmediate,
-  then calls StartCutscene with the CutsceneScript ''CutsceneScriptOnMapEnterAfterJackOut_8098a2e'' and
-  parameter 0. The flag clear before starting the cutscene suggests the flag gates whether this cutscene
-  should run: something checks it elsewhere, and this routine both resets the condition and fires the
-  cutscene. It operates on the GameState in $r5 only implicitly (StartCutscene writes to the Toolkit cutscene
-  state). Recorded execution routes (beastsp, maps) match a map-entry hook rather than battle code.'
+status: confirmed
+summary: Clears the jack-out event flag (0x1703) and starts the "on map enter after jack-out" cutscene.
+interface: void ow_startJackOutMapEnterCutscene(void); // callers pass only lr (and r10); no meaningful register
+  inputs, no outputs
+details: 'Overworld cutscene entry point run when the player finishes jacking out and lands on the map.
+
+  It first clears event flag 0x1703 via ClearEventFlagFromImmediate (flag group 0x17, mask 0x03) —
+
+  the same flag whose set state triggers this jack-out sequence — then calls StartCutscene with the
+
+  script pointer CutsceneScriptOnMapEnterAfterJackOut_8098a2e and a zero parameter.
+
+  The name''s "self: * GameState r5" annotation is incidental; the body never reads r5 (r5 is listed
+
+  as preserved). Only lr is pushed, and the function tail-returns via pop {pc}.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'asm: movflag EVENT_1703 + bl ClearEventFlagFromImmediate clears story flag 1703 first; asm:
-    ldr r0, off_8005A7C loads CutsceneScriptOnMapEnterAfterJackOut_8098a2e and bl StartCutscene with r1=0;
-    callee 0x08036E90 StartCutscene installs the script and param into the Toolkit cutscene state; recorded
-    routes beastsp/maps are consistent with a map-enter trigger point'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_1.s:5451
-  - 0x0802F12C ClearEventFlagFromImmediate
-  - 0x08036E90 StartCutscene
-  reproduce: python3 tools/asmcat.py 0x080059EC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_startJackOutMapEnterCutscene
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_startJackOutMapEnterCutscene
+
+    ./wf verify --function ow_startJackOutMapEnterCutscene --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_startJackOutMapEnterCutscene
+
+    ./wf verify --function ow_startJackOutMapEnterCutscene --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_startJackOutMapEnterCutscene
+
+    ./wf verify --function ow_startJackOutMapEnterCutscene --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080059ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_1.c
 coverage:
 - beastsp
 - maps
-open_questions:
-- which caller/site invokes this (no caller found), i.e. what condition (flag 1703 set?) leads here
-- whether param 0 is ever nonzero in other builds/uses
+open_questions: []
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80059EC -> ow_startJackOutMapEnterCutscene
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80059EC
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

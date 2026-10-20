@@ -1,45 +1,64 @@
 name: getRandomFadeLevel
 address: '0x080A84FC'
 kind: function
-status: probable
-summary: Returns a random fade/brightness amount chosen from an 8-entry ramp table, for a screen or sprite
-  fade effect.
-interface: () -> r0 = byte from byte_80A8510[0..7] (one of 0x00,0x1F,0x3F,0x7F,0x9F,0xBF,0xDF,0xFF); flags
-  not meaningful
-details: Calls the shared RNG helper reqBBS_81409D0 with n=8 to get an index 0..7, moves that index to
-  r1, then loads and returns the byte at byte_80A8510[index]. The table is a monotonic ramp of 8 values
-  spanning 0..255 (0, 31, 63, 127, 159, 191, 223, 255), shaped like brightness/alpha fade steps rather
-  than e.g. indices or IDs. The function is a trivial selector; all real semantics live in the caller
-  sub_80A84C4 and how the returned value is applied (likely a fade or blend register/palette write).
+status: confirmed
+summary: Returns one of eight pre-set fade/blend intensity levels (0x00..0xFF) chosen at random.
+interface: (void) -> u8 fadeLevel in r0; clobbers r1-r3, lr, flags; calls reqBBS_81409D0(8) for the RNG draw
+details: 'Asks the RNG helper reqBBS_81409D0 with the modulus value 8 to obtain a random index 0..7, then uses that
+  index to read a byte from the LUT at byte_80A8510: {0x00, 0x1F, 0x3F, 0x7F, 0x9F, 0xBF, 0xDF, 0xFF}. These look
+  like 8-bit fade / brightness steps for a GBA blend (BLDCNT/BLDY) effect, so the function hands back a randomly
+  picked fade strength from fully black (0x00) to full (0xFF). Note the step values are non-uniform (0x1F, then
+  0x20 increments), and that a roll of 0 yields 0x00. Only lr is a real caller input; r0 out is a single byte value
+  in a u32 register.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'mov r0, #8; bl reqBBS_81409D0 — rolls a uniform random number in 0..7; ldr r2, off_80A850C
-    (=byte_80A8510); ldrb r0, [r2,r0] — indexes the 8-byte table with the roll and returns it; byte_80A8510:
-    0x00,0x1F,0x3F,0x7F,0x9F,0xBF,0xDF,0xFF — a 0..255 ramp typical of fade/alpha step values'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:6473
-  - 0x080A84C4 sub_80A84C4
-  - 0x081409D0 reqBBS_81409D0
-  reproduce: python3 tools/asmcat.py 0x080A84FC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c getRandomFadeLevel
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function getRandomFadeLevel
+
+    ./wf verify --function getRandomFadeLevel --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function getRandomFadeLevel
+
+    ./wf verify --function getRandomFadeLevel --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function getRandomFadeLevel
+
+    ./wf verify --function getRandomFadeLevel --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a84fc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
-open_questions:
-- What sub_80A84C4 (the only caller) does with the returned level — whether it feeds a screen fade, palette,
-  or object alpha — would confirm the exact subsystem and a better prefix
-- Why the ramp is non-linear (31,63,127 gaps) — possibly matching a specific blend-table convention
+open_questions: []
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A84FC -> getRandomFadeLevel
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A84FC
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

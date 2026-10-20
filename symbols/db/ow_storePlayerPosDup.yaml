@@ -1,49 +1,70 @@
 name: ow_storePlayerPosDup
 address: '0x0808CC84'
 kind: function
-status: probable
-summary: Reads the overworld player object's X/Y position and stores it twice into the caller's work structure
-  (as current and duplicate/previous coords).
-interface: (r0 = unused, r5 = target work struct) -> r0 destroyed; stores halfword X at +0x16/+0x1a and
-  Y at +0x18/+0x1c; no flags meaningful
-details: Calls ReadOWPlayerObjectCoords, which returns X in r0, Y in r1 (packed halfwords) and a pointer
-  to the player object. Both values are arithmetic-shifted right by 16, converting the packed 16.16 or
-  low/high halves to signed halfword coordinates. The results are written to r5 at offsets 0x16 and 0x18,
-  then the same values are written again to offsets 0x1a and 0x1c — evidently a 'current' and a copy (likely
-  last/previous or mirrored slot) so both pairs start equal. r5 is not set inside, so the caller must
-  have prepared the work struct pointer; the only known caller is init_beastSpScenario, which wipes its
-  buffer before calling. No return value is produced; it just pops {pc}.
+status: confirmed
+summary: Reads the player's overworld position and stores it (as integer halves) into both position pairs of the
+  object at r5.
+interface: void ow_storePlayerPosDup(void* obj /*r5*/, coordsSource /*r10*/)
+details: 'Calls ReadOWPlayerObjectCoords (r10 appears to be the source selector/context passed through to that callee)
+  and receives packed fixed-point coordinates in r0 (x) and r1 (y). Each value is arithmetic-shifted right by 16
+  to extract the integer part, then stored as 16-bit halves into four fields of the structure at r5: x at +0x16
+  and again at +0x1A, y at +0x18 and again at +0x1C. The second pair duplicates the first, so the function both
+  sets the object''s position and refreshes its saved/backup copy of the same position. No return value; only r0-r3
+  and flags are clobbered besides the calls.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl ReadOWPlayerObjectCoords supplies player X/Y to r0/r1 (asm line 2); asr r0,#16 / asr r1,#16
-    unpack the packed coords to halfwords (lines 3-4); strh pair at [r5,#0x16/#0x18] then identical pair
-    at [r5,#0x1a/#0x1c] shows duplicate storage (lines 5-8); only known caller init_beastSpScenario initializes
-    Beast+ scenario work, so r5 is that buffer (caller list)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm24.s:1382
-  - 0x0808CA68 init_beastSpScenario
-  - 0x0809E1AE ReadOWPlayerObjectCoords
-  reproduce: python3 tools/asmcat.py 0x0808CC84
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_storePlayerPosDup
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_storePlayerPosDup
+
+    ./wf verify --function ow_storePlayerPosDup --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_storePlayerPosDup
+
+    ./wf verify --function ow_storePlayerPosDup --snapshots build-snapshots'
+  result: 49 compared, 0 differed, 47 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_storePlayerPosDup
+
+    ./wf verify --function ow_storePlayerPosDup --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808cc84 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
 coverage:
 - beastsp
 - maps
 open_questions:
-- semantic difference between the two coord slots (0x16/0x18 vs 0x1a/0x1c) — a consumer of offsets 0x1a/0x1c
-  would confirm if they are 'previous position'
-- what structure r5 points to and whether other code later reads these fields
+- Exact meaning of r10 for ReadOWPlayerObjectCoords (which coordinate source it selects) not verified from this
+  function alone.
+- Why the duplicate pair at +0x1A/+0x1C exists (previous-position snapshot vs. second consumer) is not established
+  here.
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_808CC84 -> ow_storePlayerPosDup
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_808CC84
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

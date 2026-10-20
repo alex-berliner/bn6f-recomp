@@ -1,37 +1,92 @@
 name: ow_renderMapNameHudGfx
 address: '0x0811EFB8'
 kind: function
-status: probable
-summary: Refreshes the overworld HUD tile graphics for the current area name, also caching the current
-  PET navi's id and two HP-related stats.
-interface: () -> r0 undefined; writes toolkit Unk200a220 struct fields +8/+0xC, builds gfx in unk_200BEA0,
-  repacks into VRAM 0x06015000
-details: Loads the toolkit pointer from [r10,#oToolkit_Unk200a220_Ptr]. If sub_8123360 says the selected
-  navi is absent for HUD purposes it zeroes the +8 and +0xC fields; otherwise it stores GetCurPETNavi()'s
-  id at +8 and reads u16 stats 0x40 and 0x42 for that navi (likely current/max HP) into +8 and +0xC. It
-  then runs renderTextGfx_8045F8C with the TextScriptMapNames graphics as base, glyph index 0xF0, destination
-  buffer unk_200BEA0, and 9 tiles, then repacks those tiles via sprite_repackAndQueueTiles_811F5DC from
-  unk_200BEA0 into VRAM 0x6015000 with byte_200CC20 as layout/params. This matches an overworld HUD element
-  (area-name banner) whose tiles get DMA'd each refresh, with the navi id/HP fields read by whatever HUD
-  draws from that toolkit struct. Runs on nearly every recorded route (story, maps, menus, battles), consistent
-  with a recurring HUD update.
+status: confirmed
+summary: Overworld map-name HUD update — refreshes the cached PET navi stats, renders the current area's name as
+  9 glyphs, and queues the tiles to VRAM.
+interface: void ow_renderMapNameHudGfx(u32 r10 /* toolkit ptr */, u32 lr /* return addr */)
+details: 'Called with r10 = toolkit pointer; reads the toolkit''s Unk200a220 record
+
+  (oToolkit_Unk200a220_Ptr). First calls sub_8123360(): if it returns false
+
+  (r0 == 0), it zeroes the record''s fields at +8 and +0xC (no PET/navi data
+
+  available); if true, it gets the current PET navi id via GetCurPETNavi and
+
+  caches that navi''s stat halfwords 0x40 into +8 and 0x42 into +0xC
+
+  (presumably the map-name/stat display values shown next to the area name).
+
+  Then it renders text via renderTextGfx_8045F8C with the map-names text
+
+  script table (A_TextScriptMapNames), render flag 0xF0, target scratch tile
+
+  buffer unk_200BEA0, glyph count 9, arg 1, and glyph/layout table
+
+  dword_86A5D60 — i.e. draws the current area''s name (map names are indexed
+
+  elsewhere, likely by the cached stats or a separate map index). Finally
+
+  sprite_repackAndQueueTiles_811F5DC repacks unk_200BEA0 through byte_200CC20
+
+  and queues 9 tiles of the rendered text to VRAM at 0x06015000, the map-name
+
+  HUD character block.
+
+  Register quirks: r4-r7 are pushed/popped unchanged; r8-r12 on exit are
+
+  whatever renderTextGfx_8045F8C leaves (repack call preserves them), so
+
+  callers see pass-through garbage from the text renderer. r0-r3, flags and
+
+  lr are clobbered.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl sub_8123360 + tst/bne: presence gate decides whether navi fields are filled or zeroed; bl
-    GetCurPETNavi / GetCurPETNaviStatsHword(0x40, 0x42) stored at [r6,#8]/[r6,#0xc]: navi id + HP stats
-    cached; ldr r0,=TextScriptMapNames ... bl renderTextGfx_8045F8C: renders area-name glyphs into unk_200BEA0;
-    ldr r2,=0x6015000; bl sprite_repackAndQueueTiles_811F5DC with 9 tiles: publishes the rendered glyphs
-    to BG VRAM; Callee sprite_repackAndQueueTiles_811F5DC ''queues an 8-word-aligned GFX DMA transfer''
-    confirms the VRAM-publish step'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:33979
-  - 0x080010B6 GetCurPETNavi
-  - 0x080137FE GetCurPETNaviStatsHword
-  - 0x08045F8C renderTextGfx_8045F8C
-  reproduce: python3 tools/asmcat.py 0x0811EFB8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_renderMapNameHudGfx
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_renderMapNameHudGfx
+
+    ./wf verify --function ow_renderMapNameHudGfx --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_renderMapNameHudGfx
+
+    ./wf verify --function ow_renderMapNameHudGfx --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_renderMapNameHudGfx
+
+    ./wf verify --function ow_renderMapNameHudGfx --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^0811efb8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32_811CAEC.c
 coverage:
 - battles1
 - battles2
@@ -51,19 +106,9 @@ coverage:
 - story8
 - story9
 open_questions:
-- Exact meaning of stat indices 0x40/0x42 (presumably current/max HP) not confirmed here
-- Which HUD consumer reads the toolkit struct fields at +8/+0xC
-- Role of byte_200CC20 in the tile repack call (tilemap vs. palette/params)
+- what sub_8123360 checks (likely "is a PET/navi currently readable")
+- what stats 0x40 and 0x42 mean exactly and how they drive which map name is shown
+- which hardware VRAM slot 0x6015000 corresponds to and what sprite/OAM entry displays it
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_811EFB8 -> ow_renderMapNameHudGfx
-  where: bn6f 2b08d76c
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811EFB8
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,57 +1,80 @@
 name: reqBBS_pollTouchTrigger_808CD04
 address: '0x0808CD04'
 kind: function
-previous_names:
-- sub_808CD04
-status: probable
-summary: Polls the on-touch BBS request and caches its id if it falls in the 0xC0..0xCC range.
-interface: '() -> r0 = bool (1 if the touch request id was accepted and stored, 0 otherwise) ; side effects:
-  stores the request id byte at *(dword_808CA44+5) when in range'
-details: "Loads the pointer chain dword_808CA44 -> dword_2000B40 (the comment \"(byte_2000B45 - 0x2000b40)\"\
-  \ confirms the base is 0x2000B40, so the store lands at EWRAM 0x2000B45).\n  Calls reqBBS_81409E4, which\
-  \ returns a request id byte in r0.\n  If the returned byte is in the inclusive range [0xC0, 0xCC] (cmp\
-  \ #0xc0 / blt and cmp #0xcc / bgt form a signed range test), it is strb'd into the cached byte at offset\
-  \ 0x05 of the ReqBBS2001150-style struct and r4 is set to 1; otherwise r4 stays 0.\n  Returns r4 in\
-  \ r0 (mov r0, r4) and the caller uses tst r0, r0 to branch on the boolean.\n  The narrow 0xC0..0xCC\
-  \ range (13 values) suggests these are the \"BBS request from NPC touch\" ids, distinct from any other\
-  \ trigger source.\n"
+status: confirmed
+summary: Polls the touch-trigger handler and, if the reported touch id is in the range 0xC0..0xCC, records it in
+  the BBS work area's trigger byte and reports success.
+interface: 'u32 reqBBS_pollTouchTrigger_808CD04(void); // r0 in: none used; r0 out: 1 if a trigger id was recorded
+  else 0; NZ set from r0; r10 passed through untouched'
+details: 'Loads the BBS work-area pointer from dword_808CA44 (points at 0x2000B40) and calls
+
+  reqBBS_81409E4, which reports the current touch-input event id in r0. If the id is
+
+  within the signed range 0xC0..0xCC (inclusive), the id is stored as a byte at
+
+  work+5 (byte_2000B45, the "last touch trigger id" slot) and the return flag is set
+
+  to 1; otherwise the byte is left alone and 0 is returned. The caller reads the
+
+  result via r0/NZ. Values 0xC0..0xCC are presumably the per-button/per-region touch
+
+  trigger ids for the BBS screen layout. Note the id is a signed comparison, so ids
+
+  0x80..0xBF would also satisfy the lower bound if ever produced. r2/r5/r9-r12 on
+
+  exit simply inherit whatever reqBBS_81409E4 left behind.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl reqBBS_81409E4` followed by `cmp r0, #0xc0` / `blt loc_808CD1C` and `cmp r0, #0xcc` /
-    `bgt loc_808CD1C` is a textbook signed range check on the returned id byte. - `strb r0, [r5,#0x5]`
-    with the assembly comment `(byte_2000B45 - 0x2000b40)` shows the store hits EWRAM byte 0x2000B45,
-    i.e. offset 5 from a 0x2000B40 base. - `mov r4, #1` only on the in-range branch and `mov r0, r4` then
-    `tst r0, r0` at the return shows a boolean (1=true, 0=false) was returned. - The single caller `sub_808CB0C`
-    (the only known call site) provides r10 (Toolkit) so the function inherits the EWRAM context indirectly
-    via dword_808CA44. - The id range 0xC0..0xCC is contiguous and small, consistent with a fixed set
-    of NPC-triggered BBS ids rather than a generic range.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808CD04
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_pollTouchTrigger_808CD04
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_pollTouchTrigger_808CD04
 
-    '
-  result: the body read as described above
+    ./wf verify --function reqBBS_pollTouchTrigger_808CD04 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_pollTouchTrigger_808CD04
+
+    ./wf verify --function reqBBS_pollTouchTrigger_808CD04 --snapshots build-snapshots'
+  result: 88 compared, 0 differed, 8 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_pollTouchTrigger_808CD04
+
+    ./wf verify --function reqBBS_pollTouchTrigger_808CD04 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808cd04 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Which exact BBS request id each value in 0xC0..0xCC maps to (semantic meaning of the stored byte), and
-  what `dword_808CA44` actually points at (it's read through a pointer chain rather than being a known
-  struct directly). Looking up which NPC scripts trigger ids in 0xC0..0xCC, or confirming the struct at
-  0x2000B40 is ReqBBS2001150, would settle this.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cd04 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808CD04 -> reqBBS_pollTouchTrigger_808CD04
-  where: bn6f 9d86d495
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the trigger ids 0xC0..0xCC (which screen buttons/regions they correspond to)
+- what reqBBS_81409E4 reads to detect the touch event (hardware touch controller vs. emulated key state)
+- which subsystem reads byte_2000B45 afterwards
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

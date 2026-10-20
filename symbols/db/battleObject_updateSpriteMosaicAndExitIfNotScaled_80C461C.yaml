@@ -1,67 +1,80 @@
 name: battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
 address: '0x080C461C'
 kind: function
-previous_names:
-- sub_80C461C
-status: probable
-summary: Per-frame battle-object sprite hook that forces sprite mosaic/scale handling and exits the object
-  on a state flag.
-interface: '(r5 = BattleObject) -> r0 = updated sprite state ; side effects: writes CurAction/CurPhaseAndPhaseInitialized,
-  clears an ObjectHeader bit, conditionally invokes sub_80C464C'
-details: "Pushes only lr (one-shot leaf on r5/r10). Loads the related-object pointer at oBattleObject_RelatedObject1Ptr\
-  \ and runs sprite_getMosaicScalingParameters, then sprite_setAlpha (passing r0/r2/r5/r10 from the prior\
-  \ call). Calls battle_getStateUnk5c_800139A to fetch a state counter/timer word, shifts it right by\
-  \ 2, and uses the carry bit (BCC after LSRS) as a \"not yet\" guard: only when bit 2 of Unk_5c has gone\
-  \ low does it fall through to the body. In that body, if the object's Param3 is zero it clears the OBJECT_FLAG_STOP_SPRITE_UPDATE\
-  \ (bit 0x04) of the ObjectHeader. Then it forces CurAction = 4, zeros CurPhaseAndPhaseInitialized, and\
-  \ tail-calls sub_80C464C (an object sprite-update helper).\n  The early return via \"bcc locret_80C464A\"\
-  \ when Unk_5c bit 2 is still set makes this look like a counter-gated routine: the object is only re-initialized\
-  \ (and its sprite re-synced) once every few frames, or after a specific animation/state milestone. The\
-  \ \"CurAction = 4\" + phase-clear pattern is the standard way Mega Man BCAT objects re-enter their \"\
-  update\" phase.\n"
+status: confirmed
+summary: Refreshes a battle object's mosaic-scaled sprite alpha, then if the battle state's mosaic bit is set, ends
+  the object's current action (CurAction = 4, phase cleared) and updates its sprite.
+interface: u32 battleObject_updateMosaicAlphaAndFinishAction_80C461C(u32 self /* r5 */); r10 = battle state struct
+  (passed through untouched); returns the object pointer left in r5 (unchanged on the early-exit path, or battleObject_updateSprite_80C464C's
+  r5 otherwise). Clobbers r0-r3, flags, lr; preserves r4, r5, r7.
+details: "Called with r5 = battle object, r10 = battle state (r10 is only needed by the callee\nbattle_getStateUnk5c_800139A,\
+  \ which reads the state word at +0x5c).\n\n1. Loads oBattleObject_RelatedObject1Ptr (+RelatedObject1Ptr) from\
+  \ the object and calls\n   sprite_getMosaicScalingParameters, then passes the results (r0, r2) plus the object\n\
+  \   pointer to sprite_setAlpha — i.e. it re-applies the related sprite's current mosaic\n   scaling as an alpha/blending\
+  \ setting each frame.\n2. Calls battle_getStateUnk5c_800139A to get the battle state word and tests bit 2\n  \
+  \ (lsr #2 into carry): if the bit is CLEAR (bcc), the function returns immediately\n   without touching the object's\
+  \ state — the mosaic transition is presumably still\n   running and the object keeps doing what it was doing.\n\
+  3. If the bit is SET (mosaic effect finished), it finishes the object's action:\n   - If oBattleObject_Param3\
+  \ == 0, clears bit 2 (value 4) of oObjectHeader_Flags\n     (an \"active/has-turn\" style flag).\n   - Sets oBattleObject_CurAction\
+  \ = 4 (the \"done acting\" action id) and zeroes\n     oBattleObject_CurPhaseAndPhaseInitialized (halfword: current\
+  \ phase + phase-init flag).\n   - Tail-calls battleObject_updateSprite_80C464C with r5 to refresh the object's\n\
+  \     sprite for the new state, and propagates its r5 back to the caller.\n\nBit-2 of the state word acting as\
+  \ \"mosaic over, wrap up the actor\" is inferred from the\ncode flow, not independently verified; the early-exit\
+  \ case leaves the mosaic/alpha update\napplied but the object's action state untouched.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {lr}` then `pop {pc}` confirms single-leaf, r5/r10 preserved by caller; matches contract
-    `out=[''r4'',''r5'',''r7'',''lr'', ...]`. - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]` then `bl
-    sprite_getMosaicScalingParameters` shows this targets the related object''s sprite (likely an attachment/beast
-    sprite). - `bl sprite_setAlpha` is called immediately after with no extra setup, using r0/r2/r5/r10
-    from the previous call. - `bl battle_getStateUnk5c_800139A` + `lsr r0, r0, #2` + `bcc locret_80C464A`
-    cleanly gates the body on Unk_5c bit 2 being 0 (carry clear after LSRS); this is a counter gate. -
-    `ldrb r0, [r5,#oBattleObject_Param3]`, `cmp r0, #0`, `bne loc_80C463E`: skips the flag clear only
-    when Param3 != 0. - `ldrb r0, [r5,#oObjectHeader_Flags]`, `bic r0, r1` with `mov r1, #4`, `strb r0,
-    [r5,#oObjectHeader_Flags]`: clears OBJECT_FLAG_STOP_SPRITE_UPDATE (bit 2 of the flag byte, value 0x04)
-    when Param3 is 0. - `mov r0, #4`, `strb r0, [r5,#oBattleObject_CurAction]`: forces CurAction = 4 (CUR_STATE_UPDATE
-    enum value). - `mov r0, #0`, `strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`: resets phase
-    + PhaseInitialized. - `bl battleObject_updateSprite_80C464C`: a sibling sprite-update routine that
-    runs after re-initialization.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080C461C
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
+
+    ./wf verify --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
+
+    ./wf verify --function battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080c461c '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The semantic meaning of Unk_5c bit 2 (a frame counter? an "animation slot done" flag?) is not derivable
-  from this function alone; a label on battle_getStateUnk5c and review of its other consumers would clarify.
-- Why Param3 controls flag clearing, and why the OBJECT_FLAG_STOP_SPRITE_UPDATE is unconditionally cleared
-  in that case, is also unclear without seeing the callers and the specific chip/ObjectType this routine
-  targets.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c461c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C461C -> battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C
-  where: bn6f df5b9de6
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- 'The verified C comment says ''bit 1 of the battle state word'' but lsr #2 + bcc actually tests bit 2 (value 0x4);
+  the comment''s bit index appears off by one.'
+- Exact meaning of oBattleObject_Param3 gating the flag clear (why some objects keep bit 2 of oObjectHeader_Flags
+  set).
+- Whether CurAction = 4 is a generic 'done/idle' action or a specific battle-flow state.
+- Semantic identity of the RelatedObject1 sprite whose mosaic parameters drive the alpha here.
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

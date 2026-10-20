@@ -1,0 +1,68 @@
+name: reqBBS_81409F4
+address: '0x081409F4'
+kind: function
+status: confirmed
+summary: Returns the current game state's coord-interaction value (u8), used as a condition for the BBS/quest request
+  it gates.
+interface: u32 reqBBS_getCoordInteractionValue_81409F4(u32 toolkitR10); // r10 = toolkit ptr, returns u8 zero-extended
+  in r0
+details: Tiny accessor from a family of "req" requirement-check functions (used to evaluate whether a BBS/request-related
+  condition is met). Loads the toolkit's GameState pointer (r10 + oToolkit_GameStatePtr), then reads the single
+  byte at GameState + oGameState_CoordInteractionValue and returns it zero-extended in r0. No side effects; clobbers
+  only r1 (holding the GameState pointer temporarily) and lr via push/pop {lr}/pop {pc}. Padded with two zero bytes
+  to 4-byte alignment. The CoordInteractionValue field presumably stores the id/type of the coordinate (tile) the
+  player is currently interacting with, which the caller compares against an expected value.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81409F4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81409F4
+
+    ./wf verify --function reqBBS_81409F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81409F4
+
+    ./wf verify --function reqBBS_81409F4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81409F4
+
+    ./wf verify --function reqBBS_81409F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^081409f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- Exact gameplay meaning of oGameState_CoordInteractionValue (tile-interaction id vs. step counter) not confirmed
+  here.
+- Which specific BBS/request entries invoke this check (callers not examined).
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

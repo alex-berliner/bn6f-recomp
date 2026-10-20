@@ -1,47 +1,71 @@
 name: object_setFlag
 address: '0x080C46C0'
 kind: function
-status: probable
-summary: Sets a boolean flag field (offset oBattleObject_ExtraVars+8) of a battle object to 1.
-interface: (r0 = battle object pointer) -> r0 unchanged; writes 1 to [r0, oBattleObject_ExtraVars+8]
-details: 'The routine is three instructions: it loads 1 into r1 and stores it into the battle object''s
-  ExtraVars area at +8, then returns. It takes the object pointer in r0 and touches no other fields or
-  callees. Since the caller at 0x08011366 invokes it twice in a row (0x08011366 and 0x08011368), it is
-  presumably applied to two different object pointers to flag both. The semantics of the flag (invisible,
-  invincible, custom-state, etc.) cannot be determined from this snippet alone; it is a generic flag-set
-  helper on the battle object structure.'
+status: confirmed
+summary: Sets the "flag" slot of a battle object's extra vars to 1.
+interface: void object_setFlag(BattleObject* object) /* r0=object; returns r1=1, NZ flags set from that value */
+details: 'Stores 1 into [r0 + oBattleObject_ExtraVars + 8], i.e. the third word of the battle
+
+  object''s ExtraVars block (offset +8 from ExtraVars). r1 is loaded with 1 before the
+
+  store, so on return r1 holds the value written and the caller can test NZ against it
+
+  (mov r1,#1 always sets Z=0, N=0 — callers apparently can rely on r1==1 rather than the
+
+  flags). Tiny leaf routine; no other registers touched, no branches.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_80C46C0: ''mov r1, #1 / str r1, [r0,#oBattleObject_ExtraVars+8]'' stores true into a named
-    object field; caller sub_8011366 calls it back-to-back at 0x08011366 and 0x08011368, implying two
-    objects get flagged; offset oBattleObject_ExtraVars+8 identifies it as a battle-object struct field,
-    not a global'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:27132
-  - 0x08011366 sub_8011366
-  - 0x08011368 sub_8011366
-  reproduce: python3 tools/asmcat.py 0x080C46C0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_setFlag
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_setFlag
+
+    ./wf verify --function object_setFlag --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 201 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_setFlag
+
+    ./wf verify --function object_setFlag --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_setFlag
+
+    ./wf verify --function object_setFlag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c46c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What the ExtraVars+8 flag means (which behaviors it enables/disables) — would need the code that reads/consumes
-  this field
-- Whether r0 is the full battle object or a sub-struct pointer; caller disassembly of sub_8011366 would
-  confirm
+- exact gameplay meaning of this particular extra-var slot (flag vs. the other ExtraVars words) not independently
+  confirmed
+- whether callers actually read the NZ flags or just the r1==1 return value
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80C46C0 -> object_setFlag
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80C46C0
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

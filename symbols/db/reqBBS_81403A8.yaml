@@ -1,0 +1,69 @@
+name: reqBBS_81403A8
+address: '0x081403A8'
+kind: function
+status: confirmed
+summary: BBS menu request handler that starts a screen fade, sets the caller's menu-state byte to 8 (leaving/transition),
+  and plays the "unselect" sound.
+interface: 'u32 bbs_menu_beginFadeOut_81403A8(u32 unusedR2, u8* menuStatePtr); // in: r2 (arg, unused), r5 (pointer
+  to menu state byte), lr; out: r10 (whatever PlaySoundEffect leaves there); clobbers r0-r3, lr, NZCV'
+details: "One of the \"req\" (request) handlers dispatched by the BBS/board menu. It:\n  1. Calls SetScreenFade(0xC,\
+  \ 0x10) — fade type 0x0C at speed 0x10, i.e. a scripted fade-out for leaving the menu.\n  2. Stores 8 into the\
+  \ byte pointed to by r5, advancing the caller's menu/scene state machine into its transition state.\n  3. Calls\
+  \ PlaySoundEffect(SOUND_UNSELECT_68), the menu-cancel/unselect blip.\nQuirks: the caller's r2 input is never actually\
+  \ consumed before the sound call — PlaySoundEffect receives\nwhatever SetScreenFade left in r2, so the caller's\
+  \ r2 value is effectively dead (likely vestigial from a\ncommon dispatcher signature). The state pointer survives\
+  \ because SetScreenFade preserves r5. The only live\noutput is r10 as set by PlaySoundEffect; its V flag output\
+  \ is not propagated as meaningful. Function ends\nwith two padding bytes (0x00 0x00).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81403A8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81403A8
+
+    ./wf verify --function reqBBS_81403A8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 241 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81403A8
+
+    ./wf verify --function reqBBS_81403A8 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81403A8
+
+    ./wf verify --function reqBBS_81403A8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081403a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of menu-state value 8 (presumably a "fade out and return to previous screen" state)
+- what fade type 0x0C looks like on screen versus other fade types
+- what PlaySoundEffect's r10 output represents and whether any caller actually reads it
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

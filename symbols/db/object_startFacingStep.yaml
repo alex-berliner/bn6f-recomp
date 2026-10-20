@@ -1,54 +1,76 @@
 name: object_startFacingStep
 address: '0x080A79DC'
 kind: function
-status: probable
-summary: Sets an entity's sprite animation and initializes a linear move of param-scaled ±8 px toward
-  the entity's facing direction over a param-length duration.
-interface: '(r5 = entity/base struct, r6 = sprite/motion slot, r7 = params: [1]=anim id, [2]=duration
-  divisor, [3]=distance scalar) -> r0 = 1'
-details: Caches the animation id from param byte 1 into the slot (offset 2) and applies it via sprite_setAnimation
-  plus sprite_loadAnimationData. Indexes byte_80A7A38 by anim id*2 to get signed per-direction offsets
-  (8,0 / 0,8 / -8,0 / 0,-8), multiplies both by param byte 3, and adds them to r5+0xC / r5+0x10 (current
-  x/y) to form a destination stored at r6+0x1C / r6+0x20. Param byte 2 is used with SWI 6 (Div) as 0x10000/value,
-  giving a fixed-point reciprocal step size kept at r6+0x24 with its complement in halfword r6+6, suggesting
-  per-frame interpolation toward the target. The unmodified r5+0xC/0x10 values are also copied to r6+0x14/0x18
-  as the move's origin. Finally calls sub_80A7BA2 with r0=4 (likely arming a per-frame step handler) and
-  returns 1.
+status: confirmed
+summary: Begins a facing/step motion for a battle object — sets the facing-direction animation, computes the step's
+  target offset from a direction table scaled by the step length, and seeds the step's duration timer via BIOS division.
+interface: void object_startFacingStep(sprite r5, object r6, step r7) -> returns r0 = 1 with NZ flags set from it;
+  also returns r5, r6 (preserved/rewritten from inputs); clobbers r0-r3, lr, C/V
+details: 'r5 is a sprite context, r6 the battle object struct, r7 a step descriptor byte struct: [?, facing/anim
+  id (+1), step duration or flip count (+2), step length scale (+3)]. The function stores the facing id into object+2,
+  calls sprite_setAnimation and sprite_loadAnimationData so the object plays the animation for that facing. It then
+  looks up a signed (dx,dy) byte pair from byte_80A7A38 indexed by the facing id*2 — the table is (8,0),(0,8),(-8,0),(0,-8),
+  i.e. right/down/left/up 8-pixel unit offsets. Each offset is sign-extended, shifted left 16 (fixed point 0x4000-space),
+  multiplied by the step length byte at step+3, and added to the sprite''s current position (sprite+0xC/+0x10) to
+  form the step''s destination, stored at object+0x1C (x) and +0x20 (y). Next it performs BIOS Div (svc 6) of 0x4000
+  by the byte at step+2 (frames/duration): the quotient goes to object+0x24 (step increment per frame) and 0x4000-remainder
+  to halfword object+6 (an accumulator/remainder for the fractional motion). The sprite''s current position is snapshotted
+  as the step''s start position into object+0x14/+0x18. Finally it calls sub_80A7BA2 with r0=4 (sprite/object update
+  mode 4, presumably "start moving" state) and returns 1. Quirk: the multiply of a <<16 value by scale is done with
+  32-bit MUL, so a large scale byte could overflow the fixed-point layout; the direction table only has 4 entries,
+  so facing ids beyond 3 index past byte_80A7A38.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r7,#1]; strb r0,[r6,#2]; bl sprite_setAnimation then sprite_loadAnimationData — param
-    1 is an animation index applied to the entity; ldrsb pair from byte_80A7A38 at [r6,#2]*1 gives table
-    {8,0, 0,8, -8,0, 0,-8} — per-direction ±8 offsets; mul r0/r1 by ldrb r2,[r7,#3], add to [r5,#0xC]/[r5,#0x10],
-    store to [r6,#0x1C]/[r6,#0x20] — scaled displacement from current position; mov r0,#0x40; lsl r0,#8;
-    svc 6 with r1=[r7,#2] — Div of 0x10000 by param 2, result to r6+0x24 (fixed-point step); str [r5,#0xC]/[r5,#0x10]
-    into r6+0x14/0x18 then bl sub_80A7BA2(4), return 1 — records origin and hands off to a follow-up handler
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:5082
-  - 0x080026A4 sprite_loadAnimationData
-  - 0x08002DA4 sprite_setAnimation
-  - 0x080A7BA2 sub_80A7BA2
-  reproduce: python3 tools/asmcat.py 0x080A79DC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_startFacingStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_startFacingStep
+
+    ./wf verify --function object_startFacingStep --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_startFacingStep
+
+    ./wf verify --function object_startFacingStep --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 66 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_startFacingStep
+
+    ./wf verify --function object_startFacingStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a79dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- What sub_80A7BA2(r0=4) does — likely installs a per-frame move/step callback that consumes r6+0x1C/0x20
-  and the step reciprocal
-- Which entity/struct layouts r5 (fields 0xC/0x10 = current x/y?) and r6 correspond to, and who calls
-  this with the 3-byte param block
-- Whether the beastsp route context means this is a Beast-Out lunge/step or a generic knockback/dash initializer
+- exact meaning of step+2 (frames vs. divisor for interpolation) and of the halfword at object+6
+- what mode 4 in sub_80A7BA2 selects
+- ownership/meaning of object fields 0x14/0x18/0x1C/0x20/0x24 in the battle object struct
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A79DC -> object_startFacingStep
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A79DC
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

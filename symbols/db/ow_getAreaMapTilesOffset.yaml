@@ -1,50 +1,82 @@
 name: ow_getAreaMapTilesOffset
 address: '0x08142DE6'
 kind: function
-status: probable
-summary: Returns a per-area halfword constant (from a 4-entry table) selected by the current overworld
-  map area, with map group 0x85 forced to entry 3.
-interface: () -> r0 = halfword from byte_8142E0C[2*areaIndex]; no flags meaningfully used
-details: Loads the GameState pointer from the toolkit (r10) and reads oGameState_MapGroup; if it equals
-  0x85 the index is hard-coded to 3, otherwise the byte at GameState+5 (current map/area id) is used as
-  the index. The index is doubled and a halfword is read from byte_8142E0C, yielding 0x3C50, 0x45D0, 0x4A90
-  or 0x49C0. The function is a pure lookup with no writes; the eMapTilesState200be70 / unk_2000B40 words
-  in the listing are literal pools of the following functions, not data this routine touches. The extra
-  byte_ blobs (byte_8142E24..byte_8142EA0, referenced by off_8142E14/1C) belong to adjacent code and look
-  like coordinate/path tables, unrelated to this lookup. The returned values most plausibly select an
-  offset/section for the streamed overworld map tile/background data, but the exact consumer is not visible
-  here.
+status: confirmed
+summary: Returns the halfword tile offset (from a 4-entry lookup table) used to draw the current area's overworld
+  map, forcing entry 3 for the Sky Area map group.
+interface: u32 ow_getAreaMapTilesOffset(u32 toolkit /* r10 */); -> r0 = tile offset halfword
+details: 'Reads the toolkit from r10 and dereferences [toolkit + oToolkit_GameStatePtr] to get the
+
+  GameState. Loads the map group byte at GameState + oGameState_MapGroup; if it equals 0x85
+
+  (the Sky Area map group) the area index is forced to 3, otherwise it is taken from the byte
+
+  at GameState + 5 (the current area number, 0-3). The index is doubled (<<1) and used to read
+
+  a halfword from the 8-byte table AREA_MAP_TILE_OFFSETS (byte_8142E0C = 0x3C50, 0x45D0,
+
+  0x4A90, 0x49C0), which is presumably the tile-VRAM/tileset offset at which that area''s map
+
+  image tiles start. The halfword is returned in r0. No other state is touched; the caller
+
+  reads only r0. Note the assembly also pools nearby pointers (eMapTilesState200be70,
+
+  unk_2000B40, byte_8142E24/byte_8142E7C/byte_8142E48/byte_8142EA0) which belong to adjacent
+
+  map-tiles code, not this routine.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'cmp r2,#0x85 / mov r1,#3 : map group 0x85 special-cased to table index 3; ldrb r1,[r1,#5] :
-    otherwise index comes from GameState+5 (area/map id); ldr r2,off_8142E0C ; ldrh r0,[r2,r1] : returns
-    halfword 0x3C50/0x45D0/0x4A90/0x49C0; function ends at pop {pc} right after the pool at off_8142E00;
-    the other data/pools (off_8142E04/08/14/1C) belong to following functions; only caller seen is sub_8142D58
-    (undocumented), route ''beastsp'''
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm37_1.s:2408
-  - 0x08142D58 sub_8142D58
-  reproduce: python3 tools/asmcat.py 0x08142DE6
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c ow_getAreaMapTilesOffset
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ow_getAreaMapTilesOffset
+
+    ./wf verify --function ow_getAreaMapTilesOffset --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ow_getAreaMapTilesOffset
+
+    ./wf verify --function ow_getAreaMapTilesOffset --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ow_getAreaMapTilesOffset
+
+    ./wf verify --function ow_getAreaMapTilesOffset --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142de6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm37_1.c
 coverage:
 - beastsp
 open_questions:
-- what the returned halfword indexes (VRAM/tilemap offset vs background parameter) — need sub_8142D58
-  or a known consumer of the result
-- meaning of GameState+5 (map id vs area index) and what map group 0x85 is
-- whether byte_8142E24..EA0 tables are truly separate functions' data
+- Exact consumer of the returned halfword (assumed to be a tile/VRAM offset for the area-map drawing routine) not
+  verified from call sites.
+- Semantics of GameState+5 (area id vs. some other selector) inferred from the special case for map group 0x85;
+  other map-group values that alias area 0-3 were not audited.
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8142DE6 -> ow_getAreaMapTilesOffset
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8142DE6
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,0 +1,68 @@
+name: reqBBS_81408DC
+address: '0x081408DC'
+kind: function
+status: confirmed
+summary: BBS GUI helper that computes a byte from r5 via reqBBS_81408C8 and stores it at eReqBBSGui+0xF.
+interface: void reqBBS_81408DC(u32 arg /* r5 */); // returns nothing; calls reqBBS_81408C8(arg) and stores its r0
+details: 'Thin wrapper around reqBBS_81408C8: it forwards r5 unchanged as that function''s argument, takes the returned
+  byte in r0, and writes it to byte offset 0xF of the eReqBBSGui structure (loaded from off_81409C4). Offset 0xF
+  is reached via a pooled constant (dword_81408EC = 0xF), a common pattern for byte-sized state/flag fields. The
+  name reqBBS suggests the request/BBS (bulletin board) screen; the byte is likely a GUI state, mode, or cursor-related
+  field for that screen. No other registers are read or written; r4-r7 are preserved per the ABI and the call chain.
+  Flags are clobbered by the inner call.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81408DC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81408DC
+
+    ./wf verify --function reqBBS_81408DC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81408DC
+
+    ./wf verify --function reqBBS_81408DC --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81408DC
+
+    ./wf verify --function reqBBS_81408DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081408dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+related:
+- reqBBS_81408C8
+open_questions:
+- exact meaning of the byte at eReqBBSGui+0xF (state, cursor, or selection) not confirmed
+- semantics of the argument r5 and what reqBBS_81408C8 returns for it are unknown without reading reqBBS_81408C8
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

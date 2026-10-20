@@ -1,48 +1,69 @@
 name: npc_syncScreenPosToCamera
 address: '0x080A8644'
 kind: function
-status: probable
-summary: Converts two 26.8 fixed-point source positions (likely the camera) into integer halfwords stored
-  into the NPC actor's screen-offset fields, anchoring the actor to the viewport.
-interface: (r5 = source struct with fixed-point fields at +0xC and +0x10, r6 = destination actor struct)
-  -> stores halfwords at r6+0x16 and r6+0x18; no return value
-details: Loads two 32-bit values from [r5,#0xC] and [r5,#0x10], each arithmetic-shifted right by 16 —
-  the standard unpacking of 26.8 fixed-point coordinates (e.g. camera x/y) into integer pixel values.
-  The results are stored as halfwords at offsets 0x16 and 0x18 of the struct in r6, which per the caller
-  npc_updateGuarded is an overworld NPC/actor whose update runs only outside cutscenes/busy states. This
-  looks like re-anchoring a screen-space overlay NPC (one that should stay at a fixed screen position)
-  every frame, using the camera's current fixed-point position as the source. The push/pop of r4 is vestigial;
-  r4 is never used.
+status: confirmed
+summary: Copies an NPC's fixed-point screen position (dropping the fractional bits) into its integer on-screen x/y
+  coordinates.
+interface: void npc_syncScreenPosToCamera(r5 sourceObj, r6 destObj) /* no return value, no flags read */
+details: 'Takes the 32-bit fixed-point values at [r5+0xC] (screen x) and [r5+0x10] (screen y), arithmetic-shifts
+  each right by 16 to convert from a 16.16 fixed-point value to an integer, and stores the results as halfwords
+  at [r6+0x16] (x) and [r6+0x18] (y). The destination offsets 0x16/0x18 look like the render/camera-facing coordinate
+  fields of the destination object, so this syncs an NPC''s precise world/screen position into the integer coordinates
+  used for drawing or camera checks. Reads only the two source fields, writes only the two destination halfwords.
+  r4 is preserved; only r0/r1 and flags are clobbered. Named in the disassembly already, and the C reconstruction
+  was verified, so no further action needed beyond confirming the struct layouts for 0xC/0x10 (fixed-point pos)
+  and 0x16/0x18 (integer screen pos).
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'asr r0,#16 / asr r1,#16 on [r5,#0xC] and [r5,#0x10]: fixed-point to integer conversion of a
-    camera-style position pair; strh r0,[r6,#0x16] / strh r1,[r6,#0x18]: writes integer x/y into adjacent
-    halfword fields of the actor struct; sole caller npc_updateGuarded (0x080A8424) runs per-frame for
-    an overworld actor when not in cutscene/menu state; called with r5/r6 already set by caller (no argument
-    setup in callee), indicating caller-supplied source/destination pair'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:6663
-  - 0x080A8424 npc_updateGuarded
-  reproduce: python3 tools/asmcat.py 0x080A8644
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c npc_syncScreenPosToCamera
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function npc_syncScreenPosToCamera
+
+    ./wf verify --function npc_syncScreenPosToCamera --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 250 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function npc_syncScreenPosToCamera
+
+    ./wf verify --function npc_syncScreenPosToCamera --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 85 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function npc_syncScreenPosToCamera
+
+    ./wf verify --function npc_syncScreenPosToCamera --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a8644 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- exact identity of the r5 source struct (camera vs. some other fixed-point position holder) — caller
-  disassembly around 0x080A8424 would confirm
-- meaning of actor fields 0x16/0x18 (screen offsets vs. render position) needs the actor struct layout
+- Exact meaning of source fields 0xC/0x10 (world position vs. scroll-adjusted position) and destination fields 0x16/0x18
+  (draw coords vs. camera-relative coords) in the enclosing struct.
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A8644 -> npc_syncScreenPosToCamera
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A8644
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

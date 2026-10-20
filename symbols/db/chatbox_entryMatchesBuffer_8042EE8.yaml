@@ -1,0 +1,81 @@
+name: chatbox_entryMatchesBuffer_8042EE8
+address: '0x08042EE8'
+kind: function
+status: confirmed
+summary: Compares a chatbox text-table entry (selected by index) byte-for-byte against a buffer stored
+  at +0x4C of a record, returning 1 on full match and 0 on the first mismatch.
+interface: u32 chatbox_entryMatchesBuffer(u32 entryIndex, s32 byteCount, u32 recordBase); // r0=entryIndex,
+  r1=byteCount, r5=recordBase -> r0=1/0; clobbers flags only
+details: 'The function computes byte_8045CCC + (entryIndex * 8) to select one of the 8-byte slots in the
+  chatbox text/table data, and points at recordBase+0x4C, a fixed-offset byte buffer inside the caller''s
+  record (likely a chatbox/textbox state struct whose text or command bytes live at +0x4C). It then runs
+  a do-while loop comparing the two streams byte by byte: on the first unequal byte it returns 0 immediately;
+  if all byteCount bytes match it returns 1. Quirk: the loop is do-while (compares one byte before testing
+  the counter), so with a count <= 0 it still compares exactly one byte and returns based on that; byteCount
+  is treated as signed (bgt). Inputs r1 and r5 are passed through on the stack frame (push/pop r1-r7)
+  purely as a save/restore; r1''s output value is the caller''s original. No writes to memory; purely
+  a comparison helper. Given the 8-byte stride of the table, entries are probably short text tokens or
+  opcode strings rather than full lines.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/chatbox.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c
+    chatbox_8042EE8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function chatbox_8042EE8
+
+    ./wf verify --function chatbox_8042EE8 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    259 out of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function chatbox_8042EE8
+
+    ./wf verify --function chatbox_8042EE8 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 70 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function chatbox_8042EE8
+
+    ./wf verify --function chatbox_8042EE8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08042ee8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/chatbox.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename chatbox_8042EE8 -> chatbox_entryMatchesBuffer_8042EE8
+  where: bn6f 9896d61f
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/chatbox.c
+coverage:
+- beastsp
+open_questions:
+- What structure recordBase belongs to and what its +0x4C field holds (text buffer, command queue, etc.)
+  is inferred only from the fixed offset.
+- What the 8-byte entries in byte_8045CCC represent (text tokens vs. control sequences) is not confirmed.
+- Which callers rely on the compare-one-byte-even-if-count<=0 behavior is unknown.
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5
+previous_names:
+- chatbox_8042EE8

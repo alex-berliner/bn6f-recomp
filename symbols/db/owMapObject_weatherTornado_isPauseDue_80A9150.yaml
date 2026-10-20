@@ -1,31 +1,66 @@
 name: owMapObject_weatherTornado_isPauseDue_80A9150
 address: '0x080A9150'
 kind: function
-previous_names:
-- sub_80A9150
-status: probable
-summary: 'Tornado: pause due when moves since the last pause (+0x28) >= +7; then resets +0x28 (returns
-  1, Z clear).'
-interface: r5 = the map object, r6 = eWeatherCompState (set by owMapObject_weatherTornado_80A8E74), r10
-  = toolkit
+status: confirmed
+summary: Checks a tornado overworld map object's pause countdown, resetting it and signaling the caller when it
+  has reached its threshold.
+interface: u32 owMapObject_weatherTornado_isPauseDue_80A9150(MapObject* obj /* r5 */); sets NZ flags from r0
+details: 'r5 points to a map-object struct. The object keeps a countdown at +0x28 and a threshold/pause-length byte
+  at +7. If the countdown (read as signed byte) is still below the threshold, the function returns 0. Once the countdown
+  reaches or exceeds the threshold, it writes 0 back to +0x28 (resetting the timer so the pause cycle restarts)
+  and returns 1. The result is also left in the NZ flags via tst r0, r0, so callers can branch directly on the return
+  value. The +0x28 field and +7 field are presumably the object''s shared timer slot and a per-object parameter
+  byte set by the tornado spawn code.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: Read in full for this entry; it agrees with the vidsync dossier's reading where that has one.
-  reproduce: grep -n -A60 '^owMapObject_weatherTornado_isPauseDue_80A9150:' bn6f/asm/asm29.s
-related:
-- owMapObject_weatherTornado_80A8E74
-- eWeatherCompState
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c owMapObject_weatherTornado_isPauseDue_80A9150
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isPauseDue_80A9150
+
+    ./wf verify --function owMapObject_weatherTornado_isPauseDue_80A9150 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 180 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isPauseDue_80A9150
+
+    ./wf verify --function owMapObject_weatherTornado_isPauseDue_80A9150 --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function owMapObject_weatherTornado_isPauseDue_80A9150
+
+    ./wf verify --function owMapObject_weatherTornado_isPauseDue_80A9150 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9150 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
+  where: bn6f 214cb7a1
   tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_80A9150 -> owMapObject_weatherTornado_isPauseDue_80A9150
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the +7 threshold byte (pause interval vs. phase id) not confirmed against the spawn/setup code
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,0 +1,68 @@
+name: reqBBS_81408B4
+address: '0x081408B4'
+kind: function
+status: confirmed
+summary: Marks a BBS (bulletin-board) request as read/completed by setting the event flag whose index the caller
+  passes, offset by the request-text table's base value.
+interface: void reqBBS_setRequestReadFlag(u32 r0 flagIndex); inputs r0 = request flag index, r10 must be valid (required
+  by SetEventFlag); outputs none meaningful (r3 is whatever SetEventFlag left in it), r4-r7 preserved, flags clobbered
+details: 'Loads the pointer table reqBBS_textualPointers, reads entry at offset 0x18 (word index 6) to get a base
+  flag value, adds the caller''s index in r0 to it, and tail-calls SetEventFlag to mark that event flag set. In
+  game terms this is the "request board post has been handled/read" trigger: each BBS request text has an associated
+  flag, and this routine sets it so the board state or NPC dialogue can reflect completion. No other state is touched;
+  r4-r7 are pushed/popped purely as a formality (or to match a wrapper convention) and are unchanged. The result
+  registers r3 (and the nzcv flags) are just residue from the SetEventFlag call, not intentional outputs.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c reqBBS_81408B4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_81408B4
+
+    ./wf verify --function reqBBS_81408B4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_81408B4
+
+    ./wf verify --function reqBBS_81408B4 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 53 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_81408B4
+
+    ./wf verify --function reqBBS_81408B4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081408b4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the base value at reqBBS_textualPointers+0x18 (which flag-ID block the BBS request flags live
+  in) not verified
+- whether callers interpret r3 after the call (contract lists it as an output, but it looks like incidental residue)
+- what in-game action routes here (posting a reply vs. reading a request) not independently confirmed
+sources:
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

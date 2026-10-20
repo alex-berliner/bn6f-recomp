@@ -1,44 +1,71 @@
 name: object_blinkOutUpdate
 address: '0x080D1E7E'
 kind: function
-status: probable
-summary: Object update that blinks the object's render flag every other frame for 10 frames, then destroys
-  the object.
-interface: (r5 = battle object) -> void; on entry phase 0 it clears the collision region and sets Timer=10,
-  on timer expiry sets state to CUR_STATE_DESTROY
-details: 'Standard r5-based battle object update. First run: sets oBattleObject_CurPhase=1, calls object_clearCollisionRegion
-  so the object leaves its collision region, and sets oBattleObject_Timer=0xA. Each frame it ORs bit 1
-  into oObjectHeader_Flags, then clears bit 1 whenever bit 1 of the timer is clear, making the object
-  flash with a 2-frame period. Decrements Timer each frame and, when it reaches 0, writes CUR_STATE_DESTROY
-  to oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object engine deletes it.'
+status: confirmed
+summary: Per-frame update for a battle object's blink-out death animation — drop collision, blink the sprite for
+  10 frames, then switch to the destroy state.
+interface: void object_blinkOutUpdate(u32 r5=obj) -> r1=2, flags nz/c/v from CMP(old_timer, 1)
+details: 'Runs as a battle object''s state update while the object is disappearing. On the first tick (oBattleObject_CurPhase
+  == 0) it sets CurPhase to 1, calls object_clearCollisionRegion on the object so it can no longer be hit, and arms
+  oBattleObject_Timer to 10 frames. Every tick it sets bit 1 of oObjectHeader_Flags (the "blinking/invisible" flag
+  the renderer uses to skip drawing), then clears bit 1 again on frames where the timer''s bit 1 is clear — producing
+  the alternating visible/hidden blink pattern for the 10 frames. The timer is decremented each tick; when it reaches
+  zero the combined CurState/ActionPhase/PhaseInitialized word (oBattleObject_CurStateActionPhaseAndPhaseInitialized)
+  is set to CUR_STATE_DESTROY so the object''s next update destroys it. Quirk: it always exits with r1 = 2 (the
+  last bit-mask loaded), and the returned NZCV flags reflect `sub r0,#1` on the old timer value, i.e. CMP of old_timer
+  against 1; callers must not rely on r0 being preserved. r5 is the only real input and is preserved implicitly
+  by not being written.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb [r5,#oBattleObject_CurPhase] / strb #1: one-time init on first update; bl object_clearCollisionRegion
-    in init: object becomes non-collidable immediately; tst Timer,#2 / bic Flags,#2: blink flag toggled
-    on odd/even frames; sub Timer,#1 / str CUR_STATE_DESTROY to state field: self-terminates after 10
-    frames; no other state or pointer fields touched: pure timed-visibility/teardown handler'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:55979
-  - 0x0801A074 object_clearCollisionRegion
-  reproduce: python3 tools/asmcat.py 0x080D1E7E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_blinkOutUpdate
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_blinkOutUpdate
+
+    ./wf verify --function object_blinkOutUpdate --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 185 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_blinkOutUpdate
+
+    ./wf verify --function object_blinkOutUpdate --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_blinkOutUpdate
+
+    ./wf verify --function object_blinkOutUpdate --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d1e7e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - beastsp
 open_questions:
-- which game object uses this update (no captured caller); the flag bit 1's exact rendering meaning (hide
-  vs. draw flag) is inferred from blink behavior, not confirmed from a renderer
+- whether other object types share this blink routine or if each has its own copy with slightly different timers
+- exact meaning of bit 1 in oObjectHeader_Flags at the renderer level (assumed "hide sprite" here)
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D1E7E -> object_blinkOutUpdate
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D1E7E
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

@@ -1,52 +1,87 @@
 name: object_stepUpdateByVelocity
 address: '0x080D1EF2'
 kind: function
-status: probable
-summary: 'Per-frame update for a moving battle object: runs a common step, then dispatches to one of two
-  handlers based on the object''s XVelocity, then a final step.'
-interface: (r0/r5 = battle object) -> r0 = ?; flags set by oBattleObject_XVelocity compare
-details: 'Takes the current battle object (r5 holds it across the calls, matching the caller object_updateMoveStep).
-  First calls sub_80D1F0E unconditionally. It then loads oBattleObject_XVelocity and compares to 0: if
-  zero it calls sub_80D1F68, otherwise sub_80D1FA0, so the XVelocity field selects between two alternative
-  per-frame behaviors (plausibly vertical vs. horizontal movement handling). Finally it always calls sub_80D1FD8
-  before returning, a common tail step (likely collision/animation/cleanup). The function itself allocates
-  nothing and touches no fields directly besides reading XVelocity; all work is delegated. It is a dispatcher
-  layer of the object''s update chain, one frame of the slide-toward-target-panel behavior driven by Timer2
-  in the caller.'
+status: confirmed
+summary: Advances a battle object one step by its velocity, bouncing at the target column or steering toward the
+  target panel depending on its X velocity.
+interface: Next object_stepUpdateByVelocity(void) — object in r5, battle context in r10 (read-only); returns the
+  (possibly changed) object in r5; clobbers r0-r3, lr and flags
+details: 'Per-frame movement step for a battle object (r5, oBattleObject fields). First calls
+
+  sub_80D1F0E, the common pre-step work; it may relocate the object and returns possibly
+
+  different r0/r1 values plus an updated r5 object pointer, which are passed through to
+
+  the movement helpers. It then reads oBattleObject_XVelocity: if zero, it calls
+
+  object_bounceAtTargetColumn (bounce behavior at the object''s target column); otherwise
+
+  object_stepRedirectTowardTargetPanel (steer the step toward the target panel). Finally
+
+  sub_80D1FD8 finishes the step and returns the possibly changed object, and
+
+  battleObject_updateDirectionFlip updates the object''s horizontal flip to match its
+
+  movement direction. r10 (battle context) is untouched and only passed through to callees.
+
+  The r0/r1 values produced by the pre-step are consumed by the movement helpers, so the
+
+  pre-step and the branch helpers form one contract; their exact meaning is not yet typed.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r2,[r5,#oBattleObject_XVelocity]; cmp r2,#0; bne loc_80D1F04 — velocity field selects the
-    branch; bl sub_80D1F0E before the branch — common per-frame preamble for the object; bne picks sub_80D1FA0
-    else sub_80D1F68 — two mutually exclusive per-frame handlers; bl sub_80D1FD8 after both paths — unconditional
-    common tail step; caller object_updateMoveStep 'slides a battle object toward a target panel over
-    Timer2 frames' confirms per-frame object update context
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:56051
-  - 0x080D1D90 object_updateMoveStep
-  - 0x080D1F0E sub_80D1F0E
-  - 0x080D1F68 sub_80D1F68
-  - 0x080D1FA0 sub_80D1FA0
-  reproduce: python3 tools/asmcat.py 0x080D1EF2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_stepUpdateByVelocity
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_stepUpdateByVelocity
+
+    ./wf verify --function object_stepUpdateByVelocity --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_stepUpdateByVelocity
+
+    ./wf verify --function object_stepUpdateByVelocity --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 85 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_stepUpdateByVelocity
+
+    ./wf verify --function object_stepUpdateByVelocity --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1ef2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
+related:
+- object_stepRedirectTowardTargetPanel
 open_questions:
-- What sub_80D1F0E, sub_80D1F68, sub_80D1FA0 and sub_80D1FD8 each do (needed to say what the two branches
-  mean, e.g. vertical vs horizontal motion)
-- Which object type/spawner assigns this update pointer (needed for a more specific name)
+- What sub_80D1F0E does in the pre-step and what its r0/r1 outputs mean
+- Whether r10 is a battle context pointer or something else passed to callees
+- Exact semantics of object_bounceAtTargetColumn vs object_stepRedirectTowardTargetPanel
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D1EF2 -> object_stepUpdateByVelocity
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D1EF2
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

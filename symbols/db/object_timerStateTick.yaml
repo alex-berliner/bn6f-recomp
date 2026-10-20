@@ -1,48 +1,72 @@
 name: object_timerStateTick
 address: '0x080A9DC0'
 kind: function
-status: probable
-summary: 'Per-frame update for a battle object: counts frames in field 0x24 and on thresholds changes
-  state, animation, shadow and plays an SFX.'
-interface: (r5 = object base, no args) -> void; fields [r5+0x24] counter, [r5+0] state, [r5+4] flag, [r5+9]
-  value written
-details: Increments the halfword counter at object+0x24 each call. When the counter reaches 5 it writes
-  state 3 to byte object+0x00 and returns. When it exceeds 0x1E (30) it resets the counter to 0, calls
-  sprite_setAnimation(1) + sprite_loadAnimationData to switch the object to animation 1, calls sprite_noShadow,
-  then — unless byte object+0x04 is nonzero — plays sound effect 0x123, and finally stores 4 into byte
-  object+0x09. r5 is preset by the caller, so the function is a zero-argument object tick/state handler.
-  No callers are known, so the exact object identity is unconfirmed.
+status: confirmed
+summary: Per-frame tick for an object in a timed waiting state; after a 30-frame wait it switches to animation 1,
+  drops its shadow, plays SFX 0x123 and moves to state 4.
+interface: void object_waitThenActivateTick(Object *obj /* r5 */)  // preserved in r5; r10 passes through unless
+  PlaySoundEffect runs
+details: "State-machine tick for a field/battle object whose pointer lives in r5. It increments the frame counter\
+  \ halfword at obj+0x24 every call. Two checkpoints during the wait: - at count 5 it writes sub-state 3 into the\
+  \ byte at obj+0x00 and keeps waiting (a short\n  mid-phase beat, likely a pose/anticipation frame);\n- at count\
+  \ 30 the wait ends: the counter is reset to 0, the sprite is set to animation 1\n  (sprite_setAnimation(1) followed\
+  \ by sprite_loadAnimationData and sprite_noShadow, so the\n  object loses its ground shadow), and unless the suppress\
+  \ flag byte at obj+0x04 is nonzero,\n  sound effect 0x123 (0x24+0xff packed immediate = 0x123) is played via PlaySoundEffect.\n\
+  Finally it writes state 4 into the byte at obj+0x09, handing control to the next phase of the object's state machine.\
+  \ Byte obj+0x00 holds a sub-state, obj+0x09 the main state, obj+0x04 a flag (used here only to mute the SFX),\
+  \ obj+0x24 a u16 frame timer. r5 is preserved; r10 is returned unchanged except when PlaySoundEffect runs, in\
+  \ which case the value PlaySoundEffect leaves in r10 becomes the output. r2 passed to PlaySoundEffect is whatever\
+  \ sprite_loadAnimationData happened to leave there (uninitialized carry-through).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrh r0,[r5,#0x24]; add #1; strh — frame counter at +0x24; cmp r0,#5; beq; mov r0,#3; strb
-    r0,[r5] — state 3 written to +0 at frame 5; cmp r0,#0x1e; blt locret — main action fires at frame
-    30; sprite_setAnimation(1), sprite_loadAnimationData, sprite_noShadow call sequence after counter
-    reset; ldrb r0,[r5,#4]; tst; PlaySoundEffect(0x123) conditional; mov r0,#4; strb r0,[r5,#9]'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:9702
-  - 0x080005CC PlaySoundEffect
-  - 0x080026A4 sprite_loadAnimationData
-  - 0x08002F90 sprite_noShadow
-  reproduce: python3 tools/asmcat.py 0x080A9DC0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_timerStateTick
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_timerStateTick
+
+    ./wf verify --function object_timerStateTick --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_timerStateTick
+
+    ./wf verify --function object_timerStateTick --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 67 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_timerStateTick
+
+    ./wf verify --function object_timerStateTick --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a9dc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 open_questions:
-- Which battle object uses this handler (no callers found in snapshots)
-- Meaning of state 3 at +0, the flag at +4, and the value 4 stored at +9
-- Identity of SFX 0x123 (0x24+0xFF) in the game's sound table
+- what object/entity this tick belongs to (state 4 target and SFX 0x123 would identify the specific event)
+- meaning of the sub-state 3 write at obj+0x00 on frame 5 (which handler consumes it)
+- what the flag byte at obj+0x04 normally indicates besides muting the SFX
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80A9DC0 -> object_timerStateTick
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80A9DC0
+- tools/wf run convert-20261020-123728
+- recomp 11272c5

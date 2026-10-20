@@ -1,50 +1,77 @@
 name: object_stepDependentOnParent
 address: '0x080D02D6'
 kind: function
-status: probable
-summary: Per-frame update for a battle object that destroys itself unless its related object is in action
-  0xB, then dispatches its own action handler.
-interface: (r5 = battle object) -> r0 = handler return or none; destroys object (writes CUR_STATE_DESTROY
-  to oBattleObject_CurStateActionPhaseAndPhaseInitialized) if battle over or parent not in action 0xB
-details: This is the step/update routine of some battle object (r5 = oBattleObject). If the battle is
-  over, or the object's RelatedObject1's CurAction is not 0xB, it immediately writes CUR_STATE_DESTROY
-  into the object's state field, ending it. Otherwise, if time-stop is active it returns without doing
-  anything. Otherwise it indexes a two-entry function table (off_80D0308) with its own CurAction and tail-calls
-  the handler in thumb mode via mov lr,pc / bx r1 — so only actions 0 and 1 are valid; any other CurAction
-  would jump through garbage. The dependence on a parent's action 0xB suggests a projectile/attachment
-  that only lives while the parent performs that specific action.
+status: confirmed
+summary: Per-frame step for a battle object that exists only while its related "parent" object is mid-action 0xB;
+  destroys it when the battle ends or the parent leaves that action, otherwise runs its own wait/destroy step routine.
+interface: void object_stepDependentOnParent(oBattleObject *obj /* r5 */); // r2, r10 also live in; dispatched routine
+  leaves results in r5/r8-r12 which pass through as outputs; clobbers flags and r0-r4,r6,r7,lr
+details: "Steps a battle object whose lifetime is tied to another object (oBattleObject_RelatedObject1Ptr,\nthe\
+  \ \"parent\"). First checks battle_isBattleOver; if the battle is over the object is immediately\nswitched to\
+  \ the destroy state by writing CUR_STATE_DESTROY into\noBattleObject_CurStateActionPhaseAndPhaseInitialized. Next\
+  \ it reads the parent's\noBattleObject_CurAction: if the parent is NOT currently at action 0xB the object is likewise\n\
+  sent to the destroy state — i.e. the object only lives while the parent is performing that\naction (0xB acts as\
+  \ the \"attachment window\"). If the parent is still at 0xB, battle_isTimeStop\nis consulted; while time is stopped\
+  \ the object just idles this step (Z flag semantics: return\nwithout stepping). Otherwise the object's own oBattleObject_CurAction\
+  \ indexes a two-entry jump\ntable at off_80D0308 and the selected routine is tail-dispatched:\n  action 0 -> battle_objWaitThenSetAction4\
+  \ (wait a timer, then move to action 4)\n  action 1 -> battle_objectDestroyAfterTimer (count down, then self-destruct)\n\
+  The dispatched routine's register results (r5, r8-r12) are this function's de-facto outputs;\nthey pass straight\
+  \ through the guest register file. r5 is the object pointer throughout.\nNote: the verified C's header comment\
+  \ claims destroy happens when the parent HAS reached 0xB,\nbut both the assembly and the code body branch to destroy\
+  \ when the parent's action != 0xB;\nthe code body matches the assembly.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl battle_isBattleOver; tst/bne -> loc_80D02FC writes CUR_STATE_DESTROY: battle end destroys
-    it; ldrb r0,[RelatedObject1,#oBattleObject_CurAction]; cmp r0,#0xb; bne destroy: requires parent action
-    0xB; bl battle_isTimeStop; bne locret: skips update while battle is time-stopped; ldr r1,[r1,r0] off
-    2-entry table; mov lr,pc; bx r1: dispatches own CurAction 0/1 to sub_80D0310/sub_80D033C; callee battle_isBattleOver
-    and oBattleObject fields confirm battle-object context'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (5 attempt(s), run convert-20261020-123728);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:52269
-  - 0x0800A18E battle_isBattleOver
-  - 0x0800A098 battle_isTimeStop
-  reproduce: python3 tools/asmcat.py 0x080D02D6
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 94' --file leaves_farm_94.c object_stepDependentOnParent
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function object_stepDependentOnParent
+
+    ./wf verify --function object_stepDependentOnParent --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-123728-verify-5)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function object_stepDependentOnParent
+
+    ./wf verify --function object_stepDependentOnParent --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 49 out of domain (verify run convert-20261020-123728-verify-5)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function object_stepDependentOnParent
+
+    ./wf verify --function object_stepDependentOnParent --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-123728-verify-5)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d02d6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 11272c5
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 214cb7a1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Which object type uses this step (what spawns it) and what parent action 0xB is — need the spawn table
-  entry or callers
-- What sub_80D0310/sub_80D033C do for actions 0 and 1
+- Which spawner/attack sets RelatedObject1Ptr to this object's parent and what action 0xB represents for that parent
+  (one specific attack animation?)
+- What the object's actions 0 and 4 are used for in practice (who sets curAction to 0 vs 1 before/after the parent
+  window)
+- Whether r2 and r10 carry meaningful inputs to the dispatched step routines or are just live-through caller state
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D02D6 -> object_stepDependentOnParent
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D02D6
+- tools/wf run convert-20261020-123728
+- recomp 11272c5
