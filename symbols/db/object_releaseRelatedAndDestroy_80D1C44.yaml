@@ -1,0 +1,88 @@
+name: object_releaseRelatedAndDestroy_80D1C44
+address: '0x080D1C44'
+kind: function
+status: confirmed
+summary: Drops a reference on the object's related object, clears its extra variable slot, and runs the
+  generic object destructor on it.
+interface: u32 object_releaseRelatedAndDestroy(u32 r5 self); // returns the same object pointer in r5,
+  flags clobbered
+details: 'Battle-object teardown helper taking the object pointer in r5. It reads the related-object
+
+  pointer at self+oBattleObject_RelatedObject1Ptr and decrements that object''s
+
+  oBattleObject_ObjectHeader field by 1, i.e. releases one reference/share of the related
+
+  object''s header. It then zeroes the word pointed to by self+oBattleObject_ExtraVars+8
+
+  (a pointer to an extra variable slot in the object) and tail-calls object_genericDestroy,
+
+  which does the standard destruction for this object. object_genericDestroy preserves r5,
+
+  so the caller still holds the same object pointer in r5 on return; the function is
+
+  effectively "pop {pc}"-terminated with r5 passing straight through. Preserves r5-r7,
+
+  clobbers r0-r3 and lr plus all flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D1C44
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D1C44
+
+    ./wf verify --function sub_80D1C44 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D1C44
+
+    ./wf verify --function sub_80D1C44 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D1C44
+
+    ./wf verify --function sub_80D1C44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1c44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D1C44 -> object_releaseRelatedAndDestroy_80D1C44
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the oBattleObject_ObjectHeader refcount (shared header across objects?) not independently
+  verified.
+- Whether the ExtraVars+8 slot being zeroed has any side effects on other owners of that buffer.
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D1C44

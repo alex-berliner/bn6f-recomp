@@ -2,25 +2,25 @@ name: battle_stateTimedExpire
 address: '0x080BF11A'
 kind: function
 status: probable
-summary: Battle object state that on first entry starts anim 4 and a 3-tick timer via sub_80B8E58, decrements
-  the timer each tick, then clears bit 1 of oObjectHeader_Flags, zeroes a back-pointer from ExtraVars,
-  notifies via unpackVerActorTyAndAIIdx + sub_8011044, and sets CUR_STATE_DESTROY.
+summary: Battle object state that on first entry starts anim 4 and a 3-tick timer via sub_80B8E58, decrements the
+  timer each tick, then clears bit 1 of oObjectHeader_Flags, zeroes a back-pointer from ExtraVars, notifies via
+  unpackVerActorTyAndAIIdx + sub_8011044, and sets CUR_STATE_DESTROY.
 interface: (r0-r3 ignored; r5 = battle object) -> r0 = ?; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
   to CUR_STATE_DESTROY on completion
-details: This is a per-object state routine (r5 = battle object). On first entry it sets CurAnim=4, calls
-  sub_80B8E58 with ExtraVars+4, sets Timer=3, and marks PhaseInitialized. Each subsequent tick decrements
-  Timer and returns while it is still positive. When the timer hits zero it clears bit 1 of oObjectHeader_Flags
-  (likely an 'active/visible' bit), writes 0 to the byte pointed to by ExtraVars (clearing a flag/owner
-  reference in a linked structure), then decodes oBattleObject_NameID via unpackVerActorTyAndAIIdx_800F29C
-  and passes the result to sub_8011044 (r2=1) — apparently a removal/notification keyed by version/actor-type/AI
-  index — before writing CUR_STATE_DESTROY to the packed state field so the object is torn down.
+details: This is a per-object state routine (r5 = battle object). On first entry it sets CurAnim=4, calls sub_80B8E58
+  with ExtraVars+4, sets Timer=3, and marks PhaseInitialized. Each subsequent tick decrements Timer and returns
+  while it is still positive. When the timer hits zero it clears bit 1 of oObjectHeader_Flags (likely an 'active/visible'
+  bit), writes 0 to the byte pointed to by ExtraVars (clearing a flag/owner reference in a linked structure), then
+  decodes oBattleObject_NameID via unpackVerActorTyAndAIIdx_800F29C and passes the result to sub_8011044 (r2=1)
+  — apparently a removal/notification keyed by version/actor-type/AI index — before writing CUR_STATE_DESTROY to
+  the packed state field so the object is torn down.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / strb #4 -> once-only init sets CurAnim=4 and
-    Timer=3; locret path: Timer decrement with bgt keeps object alive for 3 frames before acting; bic
-    r0,#2 on oObjectHeader_Flags clears a flag bit right at timer expiry; ldr r1,[r5,#oBattleObject_ExtraVars];
-    strb #0,[r1] zeroes a field of an external referenced structure; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / strb #4 -> once-only init sets CurAnim=4 and Timer=3;
+    locret path: Timer decrement with bgt keeps object alive for 3 frames before acting; bic r0,#2 on oObjectHeader_Flags
+    clears a flag bit right at timer expiry; ldr r1,[r5,#oBattleObject_ExtraVars]; strb #0,[r1] zeroes a field of
+    an external referenced structure; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
     — final act is self-destruction'
   refs:
   - bn6f/asm/asm31.s:15376
@@ -28,30 +28,27 @@ evidence:
   - 0x08011044 sub_8011044
   - 0x080B8E58 sub_80B8E58
   reproduce: python3 tools/asmcat.py 0x080BF11A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and mechanics are accurate: the timer-based wait, animation init, flag clear, owner-pointer
-    null-out, AI-index notification, and CUR_STATE_DESTROY transition all match the asm. However, the
-    proposed name ''battle_stateTimedSelfDestruct'' is overly generic and conflates the destroy transition
-    with a self-destruct mechanic; this looks like a generic timed cleanup/expire handler for battle objects,
-    so a name like ''battle_stateTimedExpire'' or ''battle_stateWaitThenDestroy'' is more honest. Also
-    note the detail says ''bit 1'' cleared via bic with #2, and NameID is 16-bit (ldrh) — both correct,
-    but the summary phrase ''version/AI-index unpacker'' should be ''unpacks version/actor-type/AI index''
-    to match callee.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    and mechanics are accurate: the timer-based wait, animation init, flag clear, owner-pointer null-out, AI-index
+    notification, and CUR_STATE_DESTROY transition all match the asm. However, the proposed name ''battle_stateTimedSelfDestruct''
+    is overly generic and conflates the destroy transition with a self-destruct mechanic; this looks like a generic
+    timed cleanup/expire handler for battle objects, so a name like ''battle_stateTimedExpire'' or ''battle_stateWaitThenDestroy''
+    is more honest. Also note the detail says ''bit 1'' cleared via bic with #2, and NameID is 16-bit (ldrh) — both
+    correct, but the summary phrase ''version/AI-index unpacker'' should be ''unpacks version/actor-type/AI index''
+    to match callee.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by
+    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - purpose of sub_80B8E58 (called with ExtraVars+4) and what anim 4 is for this object class
-- what sub_8011044 does with the unpacked {version, actorType, AIIdx} and r2=1 (notification vs. actual
-  despawn)
-- meaning of the cleared bit 1 in oObjectHeader_Flags and what ExtraVars points to; no callers known,
-  so the object class using this state is unidentified
-- 'The summary and mechanics are accurate: the timer-based wait, animation init, flag clear, owner-pointer
-  null-out, AI-index notification, and CUR_STATE_DESTROY transition all match the asm. However, the proposed
-  name ''battle_stateTimedSelfDestruct'' is overly generic and conflates the destroy transition with a
-  self-destruct mechanic; this looks like a generic timed cleanup/expire handler for battle objects, so
-  a name like ''battle_stateTimedExpire'' or ''battle_stateWaitThenDestroy'' is more honest. Also note
-  the detail says ''bit 1'' cleared via bic with #2, and NameID is 16-bit (ldrh) — both correct, but the
-  summary phrase ''version/AI-index unpacker'' should be ''unpacks version/actor-type/AI index'' to match
-  callee.'
+- what sub_8011044 does with the unpacked {version, actorType, AIIdx} and r2=1 (notification vs. actual despawn)
+- meaning of the cleared bit 1 in oObjectHeader_Flags and what ExtraVars points to; no callers known, so the object
+  class using this state is unidentified
+- 'The summary and mechanics are accurate: the timer-based wait, animation init, flag clear, owner-pointer null-out,
+  AI-index notification, and CUR_STATE_DESTROY transition all match the asm. However, the proposed name ''battle_stateTimedSelfDestruct''
+  is overly generic and conflates the destroy transition with a self-destruct mechanic; this looks like a generic
+  timed cleanup/expire handler for battle objects, so a name like ''battle_stateTimedExpire'' or ''battle_stateWaitThenDestroy''
+  is more honest. Also note the detail says ''bit 1'' cleared via bic with #2, and NameID is 16-bit (ldrh) — both
+  correct, but the summary phrase ''version/AI-index unpacker'' should be ''unpacks version/actor-type/AI index''
+  to match callee.'
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -63,5 +60,9 @@ changes:
   what: rename sub_80BF11A -> battle_stateTimedExpire
   where: bn6f 101226a8
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
 previous_names:
 - sub_80BF11A

@@ -3157,7 +3157,7 @@ Next battle_clearObjectTimer24_80CBAF2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CC208 ── */
+/* ── battle_objectWaitAndAdvancePhase_80CC208 ── */
 /* Tick down a battle object's phase timer and advance its action when it hits
  * zero. If Param4 is 2 the timer is bypassed: the object immediately goes to
  * action 8. Otherwise the first tick arms the timer (PhaseInitialized = 4,
@@ -3191,8 +3191,8 @@ static u32 battle_object_phase_tick(u32 obj, u32 r1) {
     return r1;
 }
 
-/* sub_80CC208(r5 = battle object, lr) -> r1; flags are clobbered freely. */
-Next sub_80CC208(void) {
+/* battle_objectWaitAndAdvancePhase_80CC208(r5 = battle object, lr) -> r1; flags are clobbered freely. */
+Next battle_objectWaitAndAdvancePhase_80CC208(void) {
     R1 = battle_object_phase_tick(R5, R1);
     RETURN_TO_CALLER();
 }
@@ -3235,7 +3235,7 @@ Next battleObject_rollingCannonPhaseDispatch(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CC260 ── */
+/* ── battle_phasePanelHighlight_80CC260 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4; } call_object_highlightPanelRegion_result;
 /* register form: generated wrapper: object_highlightPanelRegion has no typed C interface yet */
@@ -3295,8 +3295,8 @@ static u32 panel_highlight_update(u32 obj, u32 r1_in) {
     return r1_out;
 }
 
-/* sub_80CC260(r5 = object, r1 passes through) -> r1 */
-Next sub_80CC260(void) {
+/* battle_phasePanelHighlight_80CC260(r5 = object, r1 passes through) -> r1 */
+Next battle_phasePanelHighlight_80CC260(void) {
     R1 = panel_highlight_update(R5, R1);
     RETURN_TO_CALLER();
 }
@@ -4254,7 +4254,7 @@ Next object_stateStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D01BC ── */
+/* ── battle_destroyObject_80D01BC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: battle_clearExtraVarsOwnerRef has no typed C interface yet */
 static inline void call_battle_clearExtraVarsOwnerRef(u32 r5) {
@@ -4280,8 +4280,8 @@ static u32 destroy_battle_object(u32 object) {
     return result.r5;
 }
 
-/* sub_80D01BC(r5 = object) -> r5 */
-Next sub_80D01BC(void) {
+/* battle_destroyObject_80D01BC(r5 = object) -> r5 */
+Next battle_destroyObject_80D01BC(void) {
     R5 = destroy_battle_object(R5);
     RETURN_TO_CALLER();
 }
@@ -4625,7 +4625,7 @@ Next battle_objectDestroyAfterTimer(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D035C ── */
+/* ── battle_destroyObjectReleasePanel_80D035C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3; } call_object_removePanelReserve_result;
 /* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
@@ -4656,13 +4656,13 @@ static u32 destroy_object_with_panel_release(u32 object) {
     return call_object_genericDestroy_sub_80D035C(object).r5;
 }
 
-/* sub_80D035C(r5 = object) -> r5 */
-Next sub_80D035C(void) {
+/* battle_destroyObjectReleasePanel_80D035C(r5 = object) -> r5 */
+Next battle_destroyObjectReleasePanel_80D035C(void) {
     R5 = destroy_object_with_panel_release(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D0498 ── */
+/* ── battle_advanceObjectXAndDestroyIfInvalid_80D0498 ── */
 /* Battle object upkeep: advance the object along X by its velocity, refresh
  * its panel data, and destroy it if it has collided or ended up somewhere
  * it cannot stay.
@@ -4742,13 +4742,13 @@ static u32 advance_object_x_and_maybe_destroy(u32 object) {
     return object;
 }
 
-/* sub_80D0498(r5 = battle object) -> r1 (leftover from last callee), r5 */
-Next sub_80D0498(void) {
+/* battle_advanceObjectXAndDestroyIfInvalid_80D0498(r5 = battle object) -> r1 (leftover from last callee), r5 */
+Next battle_advanceObjectXAndDestroyIfInvalid_80D0498(void) {
     R5 = advance_object_x_and_maybe_destroy(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D04D2 ── */
+/* ── object_destroyWrapper_80D04D2 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_object_genericDestroy_result_sub_80D04D2;
 /* register form: generated wrapper: object_genericDestroy has no typed C interface yet */
@@ -4765,13 +4765,13 @@ static u32 destroy_object_sub_80D04D2(u32 object) {
     return call_object_genericDestroy_sub_80D04D2(object).r5;
 }
 
-/* sub_80D04D2: r5 = object -> r5 */
-Next sub_80D04D2(void) {
+/* object_destroyWrapper_80D04D2: r5 = object -> r5 */
+Next object_destroyWrapper_80D04D2(void) {
     R5 = destroy_object_sub_80D04D2(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D04DA ── */
+/* ── battle_spawnObject5FAtPanel_80D04DA ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r6, r7; } call_object_spawnType3_result_sub_80D04DA;
 /* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
@@ -4833,10 +4833,10 @@ static sub_80D04DA_result spawn_and_init_object(u32 panel_x, u32 panel_y, u32 el
     return out;
 }
 
-/* sub_80D04DA(r0 = panel X, r1 = panel Y, r2 = element, r3/r4 = spawn args,
+/* battle_spawnObject5FAtPanel_80D04DA(r0 = panel X, r1 = panel Y, r2 = element, r3/r4 = spawn args,
  *              r5 = parent object)
  * -> r1 = 0x10 (or r0 on spawn failure), r5 = parent object */
-Next sub_80D04DA(void) {
+Next battle_spawnObject5FAtPanel_80D04DA(void) {
     sub_80D04DA_result out = spawn_and_init_object(R0, R1, R2, R3, R4, R5);
     R1 = out.r1_out;
     R5 = out.r5_out;
@@ -5130,7 +5130,7 @@ Next battle_spawnObject66Linked(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D1C44 ── */
+/* ── object_releaseRelatedAndDestroy_80D1C44 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_object_genericDestroy_result_sub_80D1C44;
 /* register form: generated wrapper: object_genericDestroy has no typed C interface yet */
@@ -5157,13 +5157,13 @@ static u32 release_object_and_related(u32 self) {
     return self;
 }
 
-/* sub_80D1C44(r5 = object) -> r5 */
-Next sub_80D1C44(void) {
+/* object_releaseRelatedAndDestroy_80D1C44(r5 = object) -> r5 */
+Next object_releaseRelatedAndDestroy_80D1C44(void) {
     R5 = release_object_and_related(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D1DEE ── */
+/* ── battle_dispatchObjectPhaseHandler_80D1DEE ── */
 /* Battle object phase dispatcher: reads the object's CurPhase byte and calls
  * the matching handler from a two-entry table
  *   0 -> battle_draggedObjectCheckTargetPanel (normal phase)
@@ -5188,8 +5188,8 @@ static void sub_80D1DEE_dispatch(u32 obj, u32 context) {
     call_phase_handler(handler, phase, obj, context);
 }
 
-/* sub_80D1DEE(r5 = battle object, r10 = battle context) */
-Next sub_80D1DEE(void) {
+/* battle_dispatchObjectPhaseHandler_80D1DEE(r5 = battle object, r10 = battle context) */
+Next battle_dispatchObjectPhaseHandler_80D1DEE(void) {
     sub_80D1DEE_dispatch(R5, R10);
     RETURN_TO_CALLER();
 }
@@ -5255,7 +5255,7 @@ Next object_blinkOutUpdate(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D1EB8 ── */
+/* ── battle_spawnInitializedObject6c_80D1EB8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r6, r7; } call_object_spawnType3_result_sub_80D1EB8;
 /* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
@@ -5315,9 +5315,9 @@ static SpawnBattleObjectResult spawn_battle_object(u32 arg_r0, u32 arg_r1, u32 a
     return out;
 }
 
-/* sub_80D1EB8: spawn an initialized battle object.
+/* battle_spawnInitializedObject6c_80D1EB8: spawn an initialized battle object.
  * inputs r0-r7; outputs r1, r2 (path dependent, see above) and r5 = entry r5. */
-Next sub_80D1EB8(void) {
+Next battle_spawnInitializedObject6c_80D1EB8(void) {
     SpawnBattleObjectResult out = spawn_battle_object(R0, R1, R2, R3, R4, R5);
     R1 = out.out_r1;
     R2 = out.out_r2;
@@ -5575,8 +5575,8 @@ Next battleObject_runUpdateActionsAndCollisions_80D2320(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D2398 ── */
-/* sub_80D2398 is an empty stub: its whole body is "push {lr}; pop {pc}",
+/* ── stub_noOp_80D2398 ── */
+/* stub_noOp_80D2398 is an empty stub: its whole body is "push {lr}; pop {pc}",
  * which simply returns to the caller without touching any state. */
 
 static void sub_80D2398_body(u32 return_address) {
@@ -5584,13 +5584,13 @@ static void sub_80D2398_body(u32 return_address) {
     (void)return_address;
 }
 
-Next sub_80D2398(void) {
+Next stub_noOp_80D2398(void) {
     sub_80D2398_body(LR);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D24F0 ── */
-/* sub_80D24F0 — mark an object as mid-action and dispatch to its handler.
+/* ── battle_runObjectAction_80D24F0 ── */
+/* battle_runObjectAction_80D24F0 — mark an object as mid-action and dispatch to its handler.
  *
  * The jump table at off_80D250C is indexed by the raw CurAction byte,
  * exactly as the original's `ldr r1, [r1, r0]` does: the entries are 4
@@ -5633,13 +5633,13 @@ static void run_current_action(u32 obj) {
     call_action_handler(handler, cur_action, obj);
 }
 
-/* sub_80D24F0(r5 = object) -> r5 r8-r12 (set by the action handler) */
-Next sub_80D24F0(void) {
+/* battle_runObjectAction_80D24F0(r5 = object) -> r5 r8-r12 (set by the action handler) */
+Next battle_runObjectAction_80D24F0(void) {
     run_current_action(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D2580 ── */
+/* ── battle_spawnType6FAndInitObject_80D2580 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6, r7; } call_object_spawnType3_result_sub_80D2580;
 /* register form: generated wrapper: object_spawnType3 has no typed C interface yet */
@@ -5705,8 +5705,8 @@ static SpawnType3InitResult spawn_type3_and_initialize(u32 a0, u32 a1, u32 a2, u
     return out;
 }
 
-/* sub_80D2580(r0-r6 = arguments) -> r1 r4 r5 r6 */
-Next sub_80D2580(void) {
+/* battle_spawnType6FAndInitObject_80D2580(r0-r6 = arguments) -> r1 r4 r5 r6 */
+Next battle_spawnType6FAndInitObject_80D2580(void) {
     SpawnType3InitResult out = spawn_type3_and_initialize(R0, R1, R2, R3, R4, R5, R6);
     R1 = out.r1;
     R4 = out.r4;

@@ -1,0 +1,98 @@
+name: battle_spawnType6FAndInitObject_80D2580
+address: '0x080D2580'
+kind: function
+status: confirmed
+summary: Spawns battle object type 0x6F and, if the spawn succeeded, runs BasicBattleObjectInitialize
+  on the new object before returning.
+interface: (r0-r6 = arguments passed through) -> r1 = BasicBattleObjectInitialize result, or the original
+  r0 when the spawn failed; r4, r6 = passed back from object_spawnType3; r5 = original r5; flags clobbered
+details: 'Thin battle-side spawn-and-init wrapper. It saves r0, r1, r2 and r5, sets r0 = 0x6F,
+
+  and calls object_spawnType3, passing the caller''s original r1-r4 through as the spawn
+
+  arguments (so the caller effectively shifts its argument set down one register to make
+
+  room for the object type). If the returned object pointer (r5 from object_spawnType3)
+
+  is non-null, it restores the saved registers via pop {r1-r3,r5} (so r1 = original r0,
+
+  r2 = original r1, r3 = original r2, r5 = original r5), loads the new object pointer
+
+  into r0, and calls BasicBattleObjectInitialize with (object, origR0, origR1, origR2,
+
+  origR5, object_spawnType3''s r6). The conditional is taken off the flags left by
+
+  object_spawnType3 after the pops, so the null-check is on the spawned object pointer.
+
+  On the failure path the initialization is skipped and the saved r0 is left in r1 as
+
+  the return value. r7 is preserved throughout; the caller''s r6 is never read directly
+
+  (only object_spawnType3''s outgoing r6 comes back). No typed C interface exists yet for
+
+  either callee, so the exact meaning of the arguments passed to the type-0x6F object
+
+  and to BasicBattleObjectInitialize is unknown.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D2580
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D2580
+
+    ./wf verify --function sub_80D2580 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D2580
+
+    ./wf verify --function sub_80D2580 --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 64 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D2580
+
+    ./wf verify --function sub_80D2580 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2580 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2580 -> battle_spawnType6FAndInitObject_80D2580
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- what battle object type 0x6F is (its spawn semantics/behavior)
+- meaning of the argument set forwarded to object_spawnType3 (r1-r4) and to BasicBattleObjectInitialize
+  (r0-r2, r5)
+- significance of the r1 return value (BasicBattleObjectInitialize's result) to callers
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D2580

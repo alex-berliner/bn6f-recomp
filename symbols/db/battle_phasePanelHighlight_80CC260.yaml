@@ -1,0 +1,99 @@
+name: battle_phasePanelHighlight_80CC260
+address: '0x080CC260'
+kind: function
+status: confirmed
+summary: Per-frame update for a battle object's "highlight the panel it stands on" phase, ending in phase
+  4 after 0x14 frames.
+interface: void sub_80CC260(r5=battle object, r1=pass-through value) -> r1 (4 after phase init, otherwise
+  whatever object_highlightPanelRegion leaves / incoming value on skipped frames)
+details: 'Phase handler for a battle object (r5 = object base, standard oBattleObject layout).
+
+  On the first frame of the phase (oBattleObject_PhaseInitialized == 0) it initialises:
+
+  PhaseInitialized = 4, CurAnim = 1, Timer = 0x14 (20 frames), Timer2 = 0, and returns r1 = 4.
+
+  On subsequent frames it increments Timer2; whenever bit 2 of the incremented Timer2 is
+
+  clear (carry of Timer2>>3 clear, so the highlight fires in alternating 4-frame windows
+
+  of each 8-frame cycle, not just once per 8 frames) it calls
+
+  object_highlightPanelRegion(PanelX, PanelY, 8, AllianceAndDirectionFlip) to highlight
+
+  the panel region under the object; r2 = 8 is passed verbatim (likely region size/kind).
+
+  Every frame it decrements Timer; once it underflows below zero the 16-bit
+
+  oBattleObject_CurPhaseAndPhaseInitialized field is written with 4, which both advances
+
+  the state machine to phase 4 and clears PhaseInitialized so a later activation
+
+  re-initialises. r1 is untouched except on the init frame (set to 4) and on frames that
+
+  call the highlight routine (r1 is whatever that helper leaves).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80CC260
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80CC260
+
+    ./wf verify --function sub_80CC260 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    196 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80CC260
+
+    ./wf verify --function sub_80CC260 --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80CC260
+
+    ./wf verify --function sub_80CC260 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc260 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80CC260 -> battle_phasePanelHighlight_80CC260
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Meaning of the r1 pass-through/return value in the caller's phase dispatch (why init returns 4).
+- What the constant 8 passed as r2 to object_highlightPanelRegion means (region size? highlight type?).
+- Which in-game object/entity uses this phase (enemy attack telegraph, trap, effect, etc.).
+- Whether the highlight really repeats in 4-frame-on/4-frame-off windows as the bit-2 test implies, or
+  the C comment's "every 8th tick" reading is intended.
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80CC260

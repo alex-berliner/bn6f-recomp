@@ -1,0 +1,85 @@
+name: battle_spawnObject5FAtPanel_80D04DA
+address: '0x080D04DA'
+kind: function
+status: confirmed
+summary: Spawns a battle object of spawner kind 0x5F at a given panel/element and copies the parent's
+  alliance/direction fields into it.
+interface: (u32 panelX r0, u32 panelY r1, u32 element r2, u32 spawnArg3 r3, u32 spawnArg4 r4, BattleObject*
+  parent r5) -> u32 r1 (0x10 on success, original panelX on spawn failure), BattleObject* parent r5
+details: 'Battle-side spawner helper. It stacks r0/r1/r2/r5 around the call to object_spawnType3 and invokes
+  it with r0 = 0x5F (the object kind constant), passing panelY/element/spawnArg3/spawnArg4 through as
+  the spawner''s r1-r4; the parent pointer in r5 is preserved around the call and handed back to the caller.
+  The spawner returns the new object in r5 and a damage-related word in r6. On success (object pointer
+  non-null) the function writes to the new BattleObject: PanelX (byte, arg r0), PanelY (byte, arg r1),
+  Element (byte, arg r2), DamageAndStaminaDamageCounterDisabler (word, from the spawner''s r6), and copies
+  the parent''s AllianceAndDirectionFlip halfword into the child, giving the spawned object the parent''s
+  side/direction. Finally it ORs flag bit 0x10 into the new object''s oObjectHeader_Flags byte (an init/just-spawned
+  flag). Quirk: on the success path r1 ends up holding the 0x10 used for the flag OR (the mov is the last
+  value live in r1), while on the failure path r1 holds the original panelX argument that was stacked
+  around the spawner call; callers presumably ignore r1 in both cases. Nothing is written if the spawn
+  fails.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D04DA
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D04DA
+
+    ./wf verify --function sub_80D04DA --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D04DA
+
+    ./wf verify --function sub_80D04DA --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 66 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D04DA
+
+    ./wf verify --function sub_80D04DA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d04da ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D04DA -> battle_spawnObject5FAtPanel_80D04DA
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What gameplay object kind 0x5F is (which attack/effect uses this spawner); naming it precisely needs
+  the kind table.
+- Exact meaning of oBattleObject_DamageAndStaminaDamageCounterDisabler as seeded from the spawner's r6
+  result.
+- Whether callers ever read the r1 return value (0x10 vs panelX) deliberately or treat it as garbage.
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D04DA

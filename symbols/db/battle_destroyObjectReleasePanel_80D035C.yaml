@@ -1,0 +1,72 @@
+name: battle_destroyObjectReleasePanel_80D035C
+address: '0x080D035C'
+kind: function
+status: confirmed
+summary: Destroys a battle object and releases the panel area it had reserved.
+interface: void sub_80D035C(void) with the object in r5; returns the same object pointer in r5
+details: Takes a battle object pointer in r5, reads its oBattleObject_PanelX and oBattleObject_PanelY
+  bytes, calls object_removePanelReserve with (panelX, panelY) to free the panel area the object was occupying/reserving,
+  then calls object_genericDestroy to run the standard object teardown (which frees the object slot).
+  The object pointer is preserved through both calls and handed back in r5, so callers can keep the (now-dead)
+  pointer in r5 afterwards. r5-r7 are preserved; nzcv and r0-r3/lr are clobbered.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D035C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D035C
+
+    ./wf verify --function sub_80D035C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D035C
+
+    ./wf verify --function sub_80D035C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D035C
+
+    ./wf verify --function sub_80D035C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d035c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D035C -> battle_destroyObjectReleasePanel_80D035C
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of object_removePanelReserve (whether it clears flags in the panel reservation map)
+  not verified
+- relationship to other destroy variants (ones that release multiple panels or drop items) unknown
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D035C

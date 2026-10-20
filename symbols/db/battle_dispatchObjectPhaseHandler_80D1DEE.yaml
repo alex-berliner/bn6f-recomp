@@ -1,0 +1,83 @@
+name: battle_dispatchObjectPhaseHandler_80D1DEE
+address: '0x080D1DEE'
+kind: function
+status: confirmed
+summary: Trampoline that reads a battle object's CurPhase byte and jumps to the matching per-phase handler
+  via a two-entry table.
+interface: void battle_dispatchObjectPhaseHandler(r5 = battle object ptr, r10 = battle context ptr, lr
+  = return); returns whatever the phase handler leaves in r1/r5/r8-r12 (r0 return value is discarded here);
+  flags NZCV clobbered
+details: 'Tiny dispatcher/trampoline for battle objects (the same struct family touched by the drag-and-drop
+  object handlers). Loads oBattleObject_CurPhase (byte) from [r5], uses it as an index into the word table
+  off_80D1E00, and calls the selected handler with the classic ARM->Thumb long-call trick: mov lr, pc
+  + bx r1, so the handler returns into this function, which then does pop {pc} straight back to the original
+  caller. Table contents: phase 0 -> battle_draggedObjectCheckTargetPanel+1, phase 1 -> battle_objectDraggedPhaseHandler+1.
+  On entry the handler sees r0 = phase byte, r5 = object pointer, r10 = battle context; r1/r5/r8-r12 as
+  left by the handler are this function''s effective outputs (contract derived from callers), so no state
+  is copied back. No other registers are preserved. Only phases 0 and 1 are defined; any other CurPhase
+  value would read a garbage entry out of the table (no bounds check).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D1DEE
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D1DEE
+
+    ./wf verify --function sub_80D1DEE --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D1DEE
+
+    ./wf verify --function sub_80D1DEE --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 42 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D1DEE
+
+    ./wf verify --function sub_80D1DEE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1dee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D1DEE -> battle_dispatchObjectPhaseHandler_80D1DEE
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- The verified C comments say phase 0 handler is 'sub_80D1E08 (normal phase)', but the table entry symbol
+  is battle_draggedObjectCheckTargetPanel+1 - the symbol may be misplaced/misnamed and actually resolve
+  to 0x80D1E08, or the comment is stale; worth confirming before renaming that symbol.
+- Exact semantic meaning of phase 0 vs phase 1 (e.g. idle vs dragged) rests on the handlers' behavior,
+  not this dispatcher.
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D1DEE

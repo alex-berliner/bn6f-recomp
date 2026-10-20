@@ -1,0 +1,77 @@
+name: battle_destroyObject_80D01BC
+address: '0x080D01BC'
+kind: function
+status: confirmed
+summary: Tears down a battle object, clearing its owner back-reference in the extra-vars list and then
+  freeing the object itself.
+interface: void sub_80D01BC(u32 object /* r5 */) -> returns object in r5; lr is return address, all other
+  registers scratch
+details: 'Small destructor wrapper for a battle object passed in r5. First calls battle_clearExtraVarsOwnerRef
+  with r5 unchanged, which clears the owner back-reference the object holds in the extra-vars list (so
+  the list no longer points at a freed object). Then calls object_genericDestroy, the generic object teardown
+  that releases the object from the battle object manager. Neither callee modifies r5, so the wrapper
+  passes the object pointer back out in r5; callers apparently use that value (it is listed as an output).
+  Flags nz c v and r0-r3/lr are clobbered by the callees; r6 and r7 are preserved. Typical use is as the
+  cleanup/destroy step of an object''s lifecycle callbacks.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D01BC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D01BC
+
+    ./wf verify --function sub_80D01BC --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D01BC
+
+    ./wf verify --function sub_80D01BC --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D01BC
+
+    ./wf verify --function sub_80D01BC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d01bc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D01BC -> battle_destroyObject_80D01BC
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of battle_clearExtraVarsOwnerRef and the extra-vars owner field are not yet documented
+- whether callers rely on the returned r5 or merely expect it preserved
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D01BC

@@ -1,0 +1,83 @@
+name: battle_advanceObjectXAndDestroyIfInvalid_80D0498
+address: '0x080D0498'
+kind: function
+status: confirmed
+summary: Moves a battle object forward by its X velocity and destroys it if it has collided or is standing
+  somewhere it cannot remain.
+interface: battle_advanceObjectXAndDestroyIfInvalid_80D0498(BattleObject* r5 object) -> r5 object (returned
+  unchanged; r1 is whatever the last object_* callee left there); clobbers r0, r2, r3, lr and flags; preserves
+  r4, r6
+details: 'Battle-object upkeep step for horizontal (X) motion: adds oBattleObject_XVelocity into oBattleObject_X,
+  then calls object_setPanelsFromCoordinates with the new and previous X (r0/r1) and object_updateCollisionPanels
+  to refresh panel data after the move. It reads oBattleObject_CollisionDataPtr -> oCollisionData_FlagsFromCollision;
+  any nonzero collision flag goes straight to destruction. Otherwise it looks up the panel parameters
+  for (oBattleObject_PanelX, oBattleObject_PanelY) via object_getPanelParameters; if the 0x10 bit is set
+  (a panel the object may not simply occupy), it calls object_isCurrentPanelValid and survives only on
+  nonzero. On the destruction path it calls object_clearCollisionRegion to drop the object''s active collision
+  region and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, which
+  sends the object through its destroy state. Quirk: r1 is never written by this function itself, so callers
+  receive whatever r1 the last executed callee left behind; the C model reproduces this by returning r1
+  untouched.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D0498
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D0498
+
+    ./wf verify --function sub_80D0498 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D0498
+
+    ./wf verify --function sub_80D0498 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D0498
+
+    ./wf verify --function sub_80D0498 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d0498 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D0498 -> battle_advanceObjectXAndDestroyIfInvalid_80D0498
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of panel-parameter bit 0x10 (hole/wrap/void panel vs. other special terrain) and what
+  object_isCurrentPanelValid actually validates
+- which caller(s) rely on the incidental r1 output value
+- whether oCollisionData_FlagsFromCollision holds a bitmask whose individual bits matter elsewhere (here
+  any nonzero is treated the same)
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D0498

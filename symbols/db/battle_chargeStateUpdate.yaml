@@ -3,56 +3,54 @@ address: '0x080DF742'
 kind: function
 status: probable
 summary: 'Per-frame handler for an object''s 120-frame charge-up state: initializes PhaseInitialized=4/Timer=120/Timer2=10/CurAnim=4,
-  plays sounds 0xF8 then 0xF9, spawns a linked subtype-5 temp attack object and a panel-anchored type-4
-  effect object, then beeps sound 0xF9 every 10 ticks until Timer expires, at which point it clears CurAnim/CurAction/CurPhaseAndPhaseInitialized
+  plays sounds 0xF8 then 0xF9, spawns a linked subtype-5 temp attack object and a panel-anchored type-4 effect object,
+  then beeps sound 0xF9 every 10 ticks until Timer expires, at which point it clears CurAnim/CurAction/CurPhaseAndPhaseInitialized
   and tail-calls sub_80B8E58(ExtraVars[0]) to hand control to the next phase.'
-interface: (r5 = battle object pointer) -> r0 = destroyed; touches PhaseInitialized, Timer, Timer2, CurAnim,
-  CurAction, ExtraVars
-details: 'Standard phase-handler pattern: on first entry it sets PhaseInitialized=4, Timer=0x78 (120 frames),
-  Timer2=0xA, CurAnim=4, plays sound 0xF8 followed by 0xF9, and stores 11 in ExtraVars+8 as a repeat counter.
-  It spawns a subtype-5 temp attack object linked to this object (link slot at object+0x60), passing parameter
-  (facing<<8)+0x5d built from object_getFlip, then spawns a type-0 effect object at this object''s panel
-  coordinates offset by +0x180000 (24.0 in 16.16, likely a vertical pixel offset) and copies the 120-frame
-  Timer into it so they run in parallel. Each subsequent frame it decrements ExtraVars+8 and replays sound
-  0xF9 every 11 ticks (a repeating telegraph beep), while counting down the main Timer. When the Timer
-  expires it resets CurAnim, CurAction and CurPhaseAndPhaseInitialized to 0 and tail-calls sub_80B8E58(ExtraVars[0]),
-  presumably handing control to the next phase. The load of dword_80DF904 (=0x1090b) into r4 is dead —
-  r4 is overwritten by lsl r4,r0,#8 before use.'
+interface: (r5 = battle object pointer) -> r0 = destroyed; touches PhaseInitialized, Timer, Timer2, CurAnim, CurAction,
+  ExtraVars
+details: 'Standard phase-handler pattern: on first entry it sets PhaseInitialized=4, Timer=0x78 (120 frames), Timer2=0xA,
+  CurAnim=4, plays sound 0xF8 followed by 0xF9, and stores 11 in ExtraVars+8 as a repeat counter. It spawns a subtype-5
+  temp attack object linked to this object (link slot at object+0x60), passing parameter (facing<<8)+0x5d built
+  from object_getFlip, then spawns a type-0 effect object at this object''s panel coordinates offset by +0x180000
+  (24.0 in 16.16, likely a vertical pixel offset) and copies the 120-frame Timer into it so they run in parallel.
+  Each subsequent frame it decrements ExtraVars+8 and replays sound 0xF9 every 11 ticks (a repeating telegraph beep),
+  while counting down the main Timer. When the Timer expires it resets CurAnim, CurAction and CurPhaseAndPhaseInitialized
+  to 0 and tail-calls sub_80B8E58(ExtraVars[0]), presumably handing control to the next phase. The load of dword_80DF904
+  (=0x1090b) into r4 is dead — r4 is overwritten by lsl r4,r0,#8 before use.'
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'ldrb tst on oBattleObject_PhaseInitialized with one-shot init block setting Timer=0x78, Timer2=0xA,
-    CurAnim=4 (loc 80DF742-80DF75C); PlaySoundEffect 0xF8 then 0xF9, and in the tick path sound 0xF9 replayed
-    every 11 frames via ExtraVars+8 countdown; bl spawn_t1_0x5_tempAttackObject_80B8E30 with r7=object+0x60
-    and r4=(object_getFlip()<<8)+0x5d; bl object_getCoordinatesForPanels then spawn_t1_0x0_EffectObject
-    with +0x180000 offsets and Timer copied into the effect; on Timer expiry: CurAnim/CurAction/CurPhaseAndPhaseInitialized
-    zeroed and sub_80B8E58(ExtraVars[0]) called'
+  detail: 'ldrb tst on oBattleObject_PhaseInitialized with one-shot init block setting Timer=0x78, Timer2=0xA, CurAnim=4
+    (loc 80DF742-80DF75C); PlaySoundEffect 0xF8 then 0xF9, and in the tick path sound 0xF9 replayed every 11 frames
+    via ExtraVars+8 countdown; bl spawn_t1_0x5_tempAttackObject_80B8E30 with r7=object+0x60 and r4=(object_getFlip()<<8)+0x5d;
+    bl object_getCoordinatesForPanels then spawn_t1_0x0_EffectObject with +0x180000 offsets and Timer copied into
+    the effect; on Timer expiry: CurAnim/CurAction/CurPhaseAndPhaseInitialized zeroed and sub_80B8E58(ExtraVars[0])
+    called'
   refs:
   - bn6f/asm/asm31.s:85151
   - 0x080005CC PlaySoundEffect
   - 0x0800E276 object_getCoordinatesForPanels
   - 0x0800E2C0 object_getEnemyDirection
   reproduce: python3 tools/asmcat.py 0x080DF742
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal is mostly accurate, but the summary exaggerates a ~2 second timescale (Timer=120 frames
-    = 2.0s) and treats the spawn pattern as standard. The spawn_t1_0x5 call at 0x080DF76C spawns and links
-    into r7 (not really ''passing (facing<<8)+0x5d'' — r4 holds the argument register but spawn_t1_0x5
-    doesn''t take it; r4 is loaded with dword_80DF904=0x1090b then overwritten by lsl r4,r0,#8 before
-    being used only as offset 0x5d added later, so it''s dead before spawn). The 0x180000 is 24*4 panels
-    in 16.16, and Final: ExtraVars[0] is just zeroed implicitly via strh at CurPhaseAndPhaseInitialized;
-    the real ''next phase'' is sub_80B8E58 called with ExtraVars[0] (likely a class/state index).; run
-    wf investigate investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal
+    is mostly accurate, but the summary exaggerates a ~2 second timescale (Timer=120 frames = 2.0s) and treats the
+    spawn pattern as standard. The spawn_t1_0x5 call at 0x080DF76C spawns and links into r7 (not really ''passing
+    (facing<<8)+0x5d'' — r4 holds the argument register but spawn_t1_0x5 doesn''t take it; r4 is loaded with dword_80DF904=0x1090b
+    then overwritten by lsl r4,r0,#8 before being used only as offset 0x5d added later, so it''s dead before spawn).
+    The 0x180000 is 24*4 panels in 16.16, and Final: ExtraVars[0] is just zeroed implicitly via strh at CurPhaseAndPhaseInitialized;
+    the real ''next phase'' is sub_80B8E58 called with ExtraVars[0] (likely a class/state index).; run wf investigate
+    investigate-20261018-223614; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
 open_questions:
-- Which enemy/attack this belongs to (no caller known); what 0x5d encodes in the subtype-5 attack object;
-  what sub_80B8E58 does with ExtraVars[0]
-- 'The proposal is mostly accurate, but the summary exaggerates a ~2 second timescale (Timer=120 frames
-  = 2.0s) and treats the spawn pattern as standard. The spawn_t1_0x5 call at 0x080DF76C spawns and links
-  into r7 (not really ''passing (facing<<8)+0x5d'' — r4 holds the argument register but spawn_t1_0x5 doesn''t
-  take it; r4 is loaded with dword_80DF904=0x1090b then overwritten by lsl r4,r0,#8 before being used
-  only as offset 0x5d added later, so it''s dead before spawn). The 0x180000 is 24*4 panels in 16.16,
-  and Final: ExtraVars[0] is just zeroed implicitly via strh at CurPhaseAndPhaseInitialized; the real
-  ''next phase'' is sub_80B8E58 called with ExtraVars[0] (likely a class/state index).'
+- Which enemy/attack this belongs to (no caller known); what 0x5d encodes in the subtype-5 attack object; what sub_80B8E58
+  does with ExtraVars[0]
+- 'The proposal is mostly accurate, but the summary exaggerates a ~2 second timescale (Timer=120 frames = 2.0s)
+  and treats the spawn pattern as standard. The spawn_t1_0x5 call at 0x080DF76C spawns and links into r7 (not really
+  ''passing (facing<<8)+0x5d'' — r4 holds the argument register but spawn_t1_0x5 doesn''t take it; r4 is loaded
+  with dword_80DF904=0x1090b then overwritten by lsl r4,r0,#8 before being used only as offset 0x5d added later,
+  so it''s dead before spawn). The 0x180000 is 24*4 panels in 16.16, and Final: ExtraVars[0] is just zeroed implicitly
+  via strh at CurPhaseAndPhaseInitialized; the real ''next phase'' is sub_80B8E58 called with ExtraVars[0] (likely
+  a class/state index).'
 sources:
 - wf investigate investigate-20261018-223614
 changes:
@@ -64,5 +62,9 @@ changes:
   what: rename sub_80DF742 -> battle_chargeStateUpdate
   where: bn6f 73926dff
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
 previous_names:
 - sub_80DF742

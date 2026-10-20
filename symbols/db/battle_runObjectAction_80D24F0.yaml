@@ -1,0 +1,84 @@
+name: battle_runObjectAction_80D24F0
+address: '0x080D24F0'
+kind: function
+status: confirmed
+summary: Marks a battle object as mid-action (sets header flag 0x02) and dispatches to the handler for
+  its current action via a jump table.
+interface: void sub_80D24F0(r5 = object ptr) -> r5 = object ptr, r8-r12 = results set by the action handler
+  (live-register contract); clobbers r0-r4, r6, r7, flags, lr
+details: 'Battle-object action dispatcher, run with the object pointer in r5. First it ORs bit 0x02 into
+  the object header''s Flags byte (oObjectHeader_Flags), the "action busy / handler running" marker that
+  the rest of the battle object code presumably tests to avoid re-entry or to see that an action is in
+  progress. It then reads the object''s CurAction byte (oBattleObject_CurAction) and uses it directly
+  as a byte offset into the table at off_80D250C — i.e. word-index = CurAction/4, with the entries 4 bytes
+  apart, so action value 0 selects sub_80D2514 and action value 4 selects sub_80D255A. The selected handler
+  is entered with the classic `mov lr, pc; bx r1` Thumb tail-call, so the handler runs with r0 = CurAction,
+  r1 = its own entry address, r5 = the object, and lr pointing back into this function; the `pop {pc}`
+  after the return re-enters the caller directly. The handler''s results are left in r5 and r8-r12 (a
+  live-register contract that typed C parameters cannot express), and flags nzcv are clobbered. This two-entry
+  table variant only supports two action states for this object kind; other object types likely have their
+  own copies/tables of this dispatcher pattern.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-140313);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 98' --file leaves_farm_98.c
+    sub_80D24F0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D24F0
+
+    ./wf verify --function sub_80D24F0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    297 out of domain (verify run convert-20261020-140313-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D24F0
+
+    ./wf verify --function sub_80D24F0 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 6 out of domain (verify run convert-20261020-140313-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D24F0
+
+    ./wf verify --function sub_80D24F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-140313-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d24f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a74ecfd
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c38aec27
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D24F0 -> battle_runObjectAction_80D24F0
+  where: bn6f 09ac6541
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- 'Which object kind(s) use this exact table (only two actions: sub_80D2514 and sub_80D255A) and what
+  those actions mean in game terms'
+- Whether flag bit 0x02 in oObjectHeader_Flags is cleared elsewhere after the handler finishes, and by
+  whom
+- Whether sibling dispatcher functions exist for other object types with larger tables
+sources:
+- tools/wf run convert-20261020-140313
+- recomp a74ecfd
+previous_names:
+- sub_80D24F0
