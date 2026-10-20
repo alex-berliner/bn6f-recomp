@@ -3,64 +3,59 @@ address: '0x0811368A'
 kind: function
 status: probable
 summary: 'Boss AI turn chooser: on counter<2 it updates AiAttackParam, PanelParamFlags2, loads a version-indexed
-  scratch, sets TargetObjectPtr to the closest enemy (alliance eor 1), and issues attack 0xa via sub_8113330;
-  on counter==2 (after reset) it branches on object flags 0x8000/0x2000, then on FindBattleActorsWithNonzeroParam
-  count, setting version-scaled StepTimer/Damage/AttackBoost2 and calling object_setAttack0 with 9 or
-  0xb.'
-interface: (no args; r4 = AI data ptr, r5 = battle object, r6 = AI state, r7 = AI attack vars) -> r0 =
-  attack id passed to object_setAttack0; returns void
+  scratch, sets TargetObjectPtr to the closest enemy (alliance eor 1), and issues attack 0xa via sub_8113330; on
+  counter==2 (after reset) it branches on object flags 0x8000/0x2000, then on FindBattleActorsWithNonzeroParam count,
+  setting version-scaled StepTimer/Damage/AttackBoost2 and calling object_setAttack0 with 9 or 0xb.'
+interface: (no args; r4 = AI data ptr, r5 = battle object, r6 = AI state, r7 = AI attack vars) -> r0 = attack id
+  passed to object_setAttack0; returns void
 details: 'Keeps an oAIState_TurnCounter; until it reaches 2 it just increments it, then clears oAIAttackVars_AiAttackParam,
-  sets PanelParamFlags2 = 0x3800000, loads a version-indexed scratch value from byte_81135FC, finds the
-  closest enemy object (alliance eor 1), stores it as TargetObjectPtr, sets attack 0xa and calls sub_8113330.
-  On the attack turn it resets the counter and reads object_getFlag: if flag 0x8000 is set it bails (leaves
-  the counter reset to the version-table value read earlier in the same path — actually it reloads TurnCounter),
-  if flag 0x2000 is set it sets StepTimer=0x3c and attack 9. Otherwise it counts battle actors with nonzero
-  fields (0x64, 0x8b, 0x90); if none, it sets ExtraVars+4 = 1 and programs a version-scaled attack (Damage/AttackDuration/AttackBoost2
-  from byte_8113614/811361A/8113620, ExtraDamage = 10) as attack 0xb, else sets StepTimer from byte_8113620
-  and attack 9.'
+  sets PanelParamFlags2 = 0x3800000, loads a version-indexed scratch value from byte_81135FC, finds the closest
+  enemy object (alliance eor 1), stores it as TargetObjectPtr, sets attack 0xa and calls sub_8113330. On the attack
+  turn it resets the counter and reads object_getFlag: if flag 0x8000 is set it bails (leaves the counter reset
+  to the version-table value read earlier in the same path — actually it reloads TurnCounter), if flag 0x2000 is
+  set it sets StepTimer=0x3c and attack 9. Otherwise it counts battle actors with nonzero fields (0x64, 0x8b, 0x90);
+  if none, it sets ExtraVars+4 = 1 and programs a version-scaled attack (Damage/AttackDuration/AttackBoost2 from
+  byte_8113614/811361A/8113620, ExtraDamage = 10) as attack 0xb, else sets StepTimer from byte_8113620 and attack
+  9.'
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
   detail: 'cmp r0,#2 / blt at top: attack logic only fires on every 3rd turn; bl battleObject_findClosestEnemyBattleObject_80103F8
-    then str into oAIAttackVars_TargetObjectPtr and object_setAttack0 #0xa; tst r0,0x8000 / 0x2000 gates
-    map the same turn into different object_setAttack0 calls (9); FindBattleActorsWithNonzeroParam(0x64,0x8b,0x90)==0
-    path stores version-table Damage/AttackDuration/AttackBoost2 and ExtraDamage=0xa, attack 0xb; all
-    table reads are indexed by [r4,#oAIData_Version_16], so values differ per boss version (Falzar-route
-    SP variants)'
+    then str into oAIAttackVars_TargetObjectPtr and object_setAttack0 #0xa; tst r0,0x8000 / 0x2000 gates map the
+    same turn into different object_setAttack0 calls (9); FindBattleActorsWithNonzeroParam(0x64,0x8b,0x90)==0 path
+    stores version-table Damage/AttackDuration/AttackBoost2 and ExtraDamage=0xa, attack 0xb; all table reads are
+    indexed by [r4,#oAIData_Version_16], so values differ per boss version (Falzar-route SP variants)'
   refs:
   - bn6f/asm/asm32.s:10959
   - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
   - 0x0801A166 object_getFlag
   - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
   reproduce: python3 tools/asmcat.py 0x0811368A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is broadly correct but the proposed name ai_turnChooseAttack is reasonable; however,
-    the function flips the branches relative to the proposal: the ''non-attack'' housekeeping path (counter<2
-    increment, target lookup, scratch var, attack 0xa, sub_8113330) is the loc_8113700 branch, while the
-    counter>=2 branch is the action turn with object_getFlag checks and version-table attacks 9/0xb. The
-    summary''s phrase ''sets attack 0xa and calls sub_8113330'' on the housekeeping path is correct, but
-    calling it a ''charge-up'' attack 9/0xb oversimplifies—the 0x3c StepTimer path is actually a charge-up
-    but the other branches are versioned damage scaling. The name is acceptable but ai_decideAttack or
-    ai_pickTurnAttack better captures the per-turn decision logic.; run wf investigate investigate-20261018-155607;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    is broadly correct but the proposed name ai_turnChooseAttack is reasonable; however, the function flips the
+    branches relative to the proposal: the ''non-attack'' housekeeping path (counter<2 increment, target lookup,
+    scratch var, attack 0xa, sub_8113330) is the loc_8113700 branch, while the counter>=2 branch is the action turn
+    with object_getFlag checks and version-table attacks 9/0xb. The summary''s phrase ''sets attack 0xa and calls
+    sub_8113330'' on the housekeeping path is correct, but calling it a ''charge-up'' attack 9/0xb oversimplifies—the
+    0x3c StepTimer path is actually a charge-up but the other branches are versioned damage scaling. The name is
+    acceptable but ai_decideAttack or ai_pickTurnAttack better captures the per-turn decision logic.; run wf investigate
+    investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
+    (tools/investigate_land.py reconcile)'
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- which boss/enemy this AI belongs to (no known callers; route names battlesweep/beastsp only hint at
-  SP boss use)
+- which boss/enemy this AI belongs to (no known callers; route names battlesweep/beastsp only hint at SP boss use)
 - meaning of flags 0x8000 and 0x2000 on object_getFlag
 - what sub_8113330 does after attack 0xa is queued
 - exact meaning of the FindBattleActorsWithNonzeroParam fields 0x64/0x8b/0x90
-- 'The summary is broadly correct but the proposed name ai_turnChooseAttack is reasonable; however, the
-  function flips the branches relative to the proposal: the ''non-attack'' housekeeping path (counter<2
-  increment, target lookup, scratch var, attack 0xa, sub_8113330) is the loc_8113700 branch, while the
-  counter>=2 branch is the action turn with object_getFlag checks and version-table attacks 9/0xb. The
-  summary''s phrase ''sets attack 0xa and calls sub_8113330'' on the housekeeping path is correct, but
-  calling it a ''charge-up'' attack 9/0xb oversimplifies—the 0x3c StepTimer path is actually a charge-up
-  but the other branches are versioned damage scaling. The name is acceptable but ai_decideAttack or ai_pickTurnAttack
-  better captures the per-turn decision logic.'
+- 'The summary is broadly correct but the proposed name ai_turnChooseAttack is reasonable; however, the function
+  flips the branches relative to the proposal: the ''non-attack'' housekeeping path (counter<2 increment, target
+  lookup, scratch var, attack 0xa, sub_8113330) is the loc_8113700 branch, while the counter>=2 branch is the action
+  turn with object_getFlag checks and version-table attacks 9/0xb. The summary''s phrase ''sets attack 0xa and calls
+  sub_8113330'' on the housekeeping path is correct, but calling it a ''charge-up'' attack 9/0xb oversimplifies—the
+  0x3c StepTimer path is actually a charge-up but the other branches are versioned damage scaling. The name is acceptable
+  but ai_decideAttack or ai_pickTurnAttack better captures the per-turn decision logic.'
 sources:
 - wf investigate investigate-20261018-155607
 changes:
@@ -72,5 +67,9 @@ changes:
   what: rename sub_811368A -> ai_pickTurnAttack
   where: bn6f 0086088f
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
 previous_names:
 - sub_811368A
