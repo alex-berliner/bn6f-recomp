@@ -685,7 +685,8 @@ def try_nudge(D):
         res = reach_many(w, {f'{dx}:{dy}': [[W, spec(dx, dy)]] for dx, dy in pts}, D + 400, D)
         k = max(res, key=lambda t: (res[t][0], -res[t][1]))
         log(f'  nudge: MegaMan +({k.replace(":", ", ")}) px at {W} reaches {res[k][0]} (mean cost {res[k][1]:.3f})')
-        if res[k][0] >= D + 150:
+        # (a close match: run10g 1235246 took +12,-4 at 2.50, the next loss 29 frames later at the same spot)
+        if res[k][0] >= D + 150 and res[k][1] < 1.8:
             dx, dy = map(int, k.split(':'))
             KEEP_NEXT[0] = True
             return w, [[W, spec(dx, dy)]]
