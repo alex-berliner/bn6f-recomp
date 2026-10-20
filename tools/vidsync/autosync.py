@@ -567,7 +567,9 @@ def try_position(D):
     """Back on the map after a battle, MegaMan stands elsewhere than in the video: the video's encounter came at
     another point of his walk. Write the place the map reload uses (GameState.PlayerX/Y) during the black screen
     before the loss: each point of the walk before the encounter, and that walk's direction carried on."""
-    w = state_at(max(D - 2000, ring[0][0]))
+    # (6000 back: a long battle, or one a kill held to the video's end, can end 3000+ frames after it began,
+    # run10p 1305617: the battle from ~1302000 to the black at 1305216, the loss after a PET visit at 1305617)
+    w = state_at(max(D - 6000, ring[0][0]))
     if w is None: return None
     ks = path_keys(); p0 = b.press_gf
     set_emu_pokes(); b.e.load(w[1]); trail = []; dark = None
@@ -1546,6 +1548,34 @@ def skip_video_battle(D, w, vD):
     if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
     return None
 
+def try_menuwalk(D):
+    """A menu that differs from the video's inside (run10o 1293903: the NaviCustomizer, our program set not the
+    video's after earlier battles went another way) but is driven by the same keys: play the video's keys
+    unjudged (a FREE window) until ours is back on the map, and judge the sync from a little after that; the menu's
+    insides are left as ours."""
+    w = state_at(D)
+    if w is None: return None
+    b.e.load(w[1]); sub = b.e.read(syms.GS_SUBSYSTEM, 1)[0]
+    if sub in (4, 0x0C): return None
+    vD = w[5].v if w[5] is not None else b.vbase(w[2])
+    set_emu_pokes(); node = w[5]; G = None
+    for g in range(D, D + 6000):
+        vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
+        if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4: G = g + 1; break
+    if G is None: log(f'  menu walk: ours not back on the map in 6000 frames from {D} (subsystem {sub:#x})'); return None
+    for J in (G + 30, G + 90):
+        w2 = state_at(D); b.e.load(w2[1]); node = w2[5]
+        for g in range(D, J):
+            vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
+        gg, h = b.e.gf(); slot = RSLOT - 1; b.e.save(slot)
+        w3 = (J, slot, h, vD + int(round((J - D) * bm.RATE)) - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), node)
+        r = evaluate([(ck_file(w3), [], J + 300, 'MW')] * 2)['MW']
+        log(f'  menu walk: from {D} (subsystem {sub:#x}) on the video keys, ours on the map at {G}; the sync from {J} reaches {r[0]} (mean cost {r[1]:.3f})')
+        if r[0] >= J + 300 and r[1] < 1.6:
+            FREE.append((D, J))
+            return w3, []
+    return None
+
 def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
     """A battle that ends in black (a story battle: the scene goes on on the map) and went another way than the
     video's: its last stretch cannot match (the field, MegaMan's HP: run8e at 539262, the video's LifeSword ends a
@@ -1952,7 +1982,7 @@ def repair(D):
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
-             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('split', try_split), ('skipahead', try_skipahead), ('die', lambda D: try_kill(D, 0)),
+             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('split', try_split), ('skipahead', try_skipahead), ('menuwalk', try_menuwalk), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
