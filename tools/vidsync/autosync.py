@@ -668,8 +668,9 @@ def try_nudge(D):
     accesses a mystery data, ours turns away on the same keys): a place the picture cannot tell apart, so each
     small move (+-12 px, 2 px steps) is written some frames before the loss and the path's keys judge it."""
     s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
-    for back in (30, 60, 120):
-        W = D - back
+    m0 = map_since(D)
+    if m0 is None: return None
+    for W in sorted({max(D - b_, m0 + 2) for b_ in (30, 60, 120)}, reverse=True):
         w = state_at(W)
         if w is None: continue
         b.e.load(w[1])
@@ -696,6 +697,19 @@ def obj_errs(w, a, x0, y0, pts, keys, vT):
     against video frames vT +- 2 -> [(error, dx, dy)]"""
     cands = [[[a + 0xC, (x0 + (dx << 16)) & 0xFFFFFFFF], [a + 0x10, (y0 + (dy << 16)) & 0xFFFFFFFF]] for dx, dy in pts]
     return [(e, dx, dy) for e, (dx, dy) in zip(grid(w, cands, keys, vT, 2), pts)]
+def map_since(D, back=150):
+    """The first frame of the map stretch D is in (at most back frames before it), or None off the map: a loss
+    right after a battle (run10f 1222921, 40 frames on the map) leaves the map handlers no frame 60 back."""
+    w = state_at(max(D - back, ring[0][0]))
+    if w is None: return None
+    ks = path_keys(); p0 = b.press_gf; set_emu_pokes(); b.e.load(w[1]); first = None
+    for g in range(w[0], D):
+        if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4:
+            if first is None: first = g
+        else: first = None
+        b.e.step(ks[g - p0][0])
+    return first
+
 def try_mapobj(D):
     """A roaming map object (the Weather comp's tornado) goes another way than the video's: for each map object
     that moved in the last 60 frames, the place (16 px steps over +-512 px, then 2 px around the best) whose
@@ -707,7 +721,9 @@ def try_mapobj(D):
             a = MAPOBJS + n * MAPOBJ_SIZE
             if b.e.read(a, 1)[0] & 1: out[n] = (s32(b.e.u32(a + 0xC)), s32(b.e.u32(a + 0x10)))
         return out
-    w0 = state_at(max(D - 60, ring[0][0]))
+    m0 = map_since(D)
+    if m0 is None: return None
+    w0 = state_at(max(D - 60, ring[0][0], m0 + 2))
     if w0 is None: return None
     b.e.load(w0[1])
     if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None
@@ -717,8 +733,7 @@ def try_mapobj(D):
     if not movers: return None
     ks = path_keys(); p0 = b.press_gf
     best_all = None
-    for back in (90, 60):
-        W = D - back
+    for W in sorted({max(D - 90, m0 + 2), max(D - 60, m0 + 2)}):
         w = state_at(W)
         if w is None: continue
         b.e.load(w[1]); now = objs()
@@ -1462,8 +1477,9 @@ def try_skipahead(D):
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
-    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: log(f'  skip ahead: not in a battle at {D}'); return None
     vD = w[5].v if w[5] is not None else b.vbase(w[2])
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4: return skip_video_battle(D, w, vD)
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: log(f'  skip ahead: not in a battle at {D}'); return None
     set_emu_pokes(); node = w[5]; G = None
     for g in range(D, D + 1500):
         vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
@@ -1488,6 +1504,41 @@ def try_skipahead(D):
     if r[0] >= J + 300 and r[1] < kill_cost():
         FREE.append((D, J))
         return w3, []
+    return None
+
+def skip_video_battle(D, w, vD):
+    """The video has a battle ours does not (run10f 1222921: a Mettaur battle the runner flees, ours walks on):
+    ours stays on the map at D, and the video comes back to the same map after its battle. Find the first video
+    frame after a stretch away from the map that looks like ours at D, and re-anchor the video there (the
+    stretch FREE): the trace leaves the video's battle out."""
+    from feat import emu_thumb
+    # where the video left the map (its encounter's flash): ours there stands where the video's MegaMan comes back
+    # to after its battle (a fled or won random battle puts him back where it started)
+    ks = path_keys(); p0 = b.press_gf; away = None
+    for g in range(D, max(D - 300, ring[0][0]), -1):
+        v = ks[g - p0][1]
+        if float(b.T[min(v, b.N - 1)].astype(np.float32).mean()) < 200: away = g; break
+    if away is None: return None
+    wa = state_at(away)
+    if wa is None: return None
+    b.e.load(wa[1]); th = emu_thumb(b.e.shot()).astype(np.float32); va = ks[away - p0][1]
+    off = None; best = None
+    for v in range(va, va + 4000):
+        d = float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean())
+        if off is None:
+            if d > 25: off = v
+            continue
+        if v - off < 120: continue
+        if best is None or d < best[0]: best = (d, v)
+        if d < 6: break
+    if best is None: log(f'  skip ahead: the video does not leave the map after {va}'); return None
+    dv, vb = best
+    log(f'  skip ahead: ours at {away} (the video {va}) looks like the video again at {vb} ({dv:.1f}), after it left at {off}')
+    if dv > 10: return None
+    w3 = (wa[0], wa[1], wa[2], wa[3] + (vb - va), wa[4], wa[5])
+    r = evaluate([(ck_file(w3), [], away + 300, 'SV')] * 2)['SV']
+    log(f'  skip ahead: re-anchored {vb - va:+d} video frames at {away}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
+    if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
     return None
 
 def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
