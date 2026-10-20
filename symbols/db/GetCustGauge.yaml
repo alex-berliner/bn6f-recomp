@@ -1,0 +1,69 @@
+name: GetCustGauge
+address: '0x0801DFE4'
+kind: function
+previous_names:
+- sub_801DFE4
+- battle_getTotalDamageTakenForActor_801DFE4
+status: probable
+summary: Returns the custom gauge (u16 at eStruct2035280+0x20, 0 to 0x4000).
+interface: () -> r0 = custom gauge
+details: 'Accessor for the custom gauge. The earlier reading took +0x20 for AIData.TotalDamageTaken, but
+  eStruct2035280 is not an AIData record: it is the battle HUD struct whose +0x20 ClearCustGauge, SetCustGauge
+  and AddCustGauge write. Callers: battle_isCustGaugeFull_800A21C (compares it with 0x4000) and battle_calcCustGaugeRamp.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_801E0D8 // =eStruct2035280` loads the EWRAM base at 0x02035280. - `ldrh r0,
+    [r0,#0x20]` reads exactly the offset labelled `TotalDamageTaken // loc=0x20` inside `ai_data_struct`
+    in AIData.inc. - Function returns the loaded halfword directly in r0 (`mov pc, lr`), matching the
+    contract''s `out=[''r0'']`. - Both callers are battle/AI routines, consistent with consuming an AIData
+    field.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801DFE4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801dfe4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'eStruct2035280+0x20 is the custom gauge: ClearCustGauge (confirmed) zeroes it, SetCustGauge
+    clamps what it stores there to 0x4000, battle_fillCustGauge fills it with SetCustGauge(0x4000), and
+    battle_dispatchNextPhase adds 13 to it each frame the battle is not time-stopped.'
+  refs:
+  - bn6f/asm/asm00_2.s:32258
+  - bn6f/asm/asm00_2.s:32189
+  - bn6f/asm/asm00_1.s:16272
+  - bn6f/asm/asm00_2.s:4544
+  reproduce: python3 tools/asmcat.py 0x0801DFE4
+  result: 'ldrh r0, [eStruct2035280, #0x20]: the halfword the gauge setters write'
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801DFE4 -> battle_getTotalDamageTakenForActor_801DFE4
+  where: bn6f dfa12bf8
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename battle_getTotalDamageTakenForActor_801DFE4 -> GetCustGauge
+  where: bn6f abfc4a89
+  tool: tools/rename_symbol.py
+related:
+- ClearCustGauge
+- SetCustGauge
+- battle_fillCustGauge
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+- claude session_01WFp8UePQ4NMHsiu16Siidk

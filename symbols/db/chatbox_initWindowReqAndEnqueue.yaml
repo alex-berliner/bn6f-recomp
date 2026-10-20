@@ -2,30 +2,27 @@ name: chatbox_initWindowReqAndEnqueue
 address: '0x08006920'
 kind: function
 status: probable
-summary: Zero-fills unk_20096A0, seeds its task state from a caller descriptor (9 words into +8..+0x2C
-  plus a flag byte at +3, plus +4=0 and +0xC=0x20000), prepares the work buffer at unk_2008980 via sub_8006B94(0x500,
-  0xA0), then enqueues a background request via req_enqueueTask(unk_2008980, Window0HorizontalDimensions,
-  4, 0xA2600000).
-interface: (r0 = pointer to an 11-field task descriptor) -> r0 = result of req_enqueueTask; r4-r7 clobbered
-  (saved/restored)
-details: The function zero-fills the fixed 0x30-byte control block at unk_20096A0 with ZeroFillByWord,
-  clears the halfword at +4 (likely a progress/counter) and stores the constant 2 at +0xC (likely a state/step
-  field). It then copies ten words from the caller's descriptor ([r4]..[r4+0x20]) into +8..+0x2C and a
-  byte from [r4+0x24] into the flag byte at +3, so unk_20096A0 is a task-state struct seeded from a static
-  descriptor. It calls sub_8006B94 on unk_2008980 with size 0x500 and value 0xA0 (prepare/fill of the
-  work buffer used by the queued job). Finally it calls req_enqueueTask(unk_2008980, Window0HorizontalDimensions,
-  4, 0xA2600000), which fills the queue control block at byte_20081B0 and sets its active flag; 0xA2600000
-  likely packs the command id and a VRAM-relative destination (0x6000000). This is a submit/init wrapper
-  for the polled background-request queue, apparently related to the window (text-window) subsystem.
+summary: Zero-fills unk_20096A0, seeds its task state from a caller descriptor (9 words into +8..+0x2C plus a flag
+  byte at +3, plus +4=0 and +0xC=0x20000), prepares the work buffer at unk_2008980 via sub_8006B94(0x500, 0xA0),
+  then enqueues a background request via req_enqueueTask(unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000).
+interface: (r0 = pointer to an 11-field task descriptor) -> r0 = result of req_enqueueTask; r4-r7 clobbered (saved/restored)
+details: The function zero-fills the fixed 0x30-byte control block at unk_20096A0 with ZeroFillByWord, clears the
+  halfword at +4 (likely a progress/counter) and stores the constant 2 at +0xC (likely a state/step field). It then
+  copies ten words from the caller's descriptor ([r4]..[r4+0x20]) into +8..+0x2C and a byte from [r4+0x24] into
+  the flag byte at +3, so unk_20096A0 is a task-state struct seeded from a static descriptor. It calls sub_8006B94
+  on unk_2008980 with size 0x500 and value 0xA0 (prepare/fill of the work buffer used by the queued job). Finally
+  it calls req_enqueueTask(unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000), which fills the queue control
+  block at byte_20081B0 and sets its active flag; 0xA2600000 likely packs the command id and a VRAM-relative destination
+  (0x6000000). This is a submit/init wrapper for the polled background-request queue, apparently related to the
+  window (text-window) subsystem.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: ZeroFillByWord(unk_20096A0, 0x30) followed by strh 0 to +4 and mov 2 str to +0xC resets the
-    task-state block; Ten-word copy loop from [r4]..[r4+0x20] into unk_20096A0+8..+0x2C plus strb [r4+0x24]
-    -> +3 copies a descriptor struct; bl sub_8006B94 with (unk_2008980, 0x500, 0xA0) prepares the work
-    buffer before queueing; bx req_enqueueTask with (unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000)
-    matches the queue's command-id/param/work-buffer interface; Callee req_enqueueTask's known summary
-    confirms it raises the queue active flag at byte_20081B0
+  detail: ZeroFillByWord(unk_20096A0, 0x30) followed by strh 0 to +4 and mov 2 str to +0xC resets the task-state
+    block; Ten-word copy loop from [r4]..[r4+0x20] into unk_20096A0+8..+0x2C plus strb [r4+0x24] -> +3 copies a
+    descriptor struct; bl sub_8006B94 with (unk_2008980, 0x500, 0xA0) prepares the work buffer before queueing;
+    bx req_enqueueTask with (unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000) matches the queue's command-id/param/work-buffer
+    interface; Callee req_enqueueTask's known summary confirms it raises the queue active flag at byte_20081B0
   refs:
   - bn6f/asm/asm00_1.s:7457
   - 0x0804CB0C sub_804CB0C
@@ -33,27 +30,24 @@ evidence:
   - 0x080068EC req_enqueueTask
   - 0x08006B94 sub_8006B94
   reproduce: python3 tools/asmcat.py 0x08006920
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary accurately describes the assembly: it zero-fills unk_20096A0 (0x30 bytes), seeds fields
-    at +4/+8/+0xC/+3..+0x2C from the caller''s descriptor, calls sub_8006B94(unk_2008980, 0x500, 0xA0),
-    and tail-calls req_enqueueTask(unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000). However,
-    the proposed name uses ''req_initTaskStateAndEnqueue'', but the task-state struct is specifically
-    seeded with a 9-word + 1-byte flag payload (fields +8..+0x2C and byte at +3), suggesting chatbox/window-specific
-    state. A clearer name reflecting the window/chatbox context is preferable.; run wf investigate investigate-20261019-010606;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    accurately describes the assembly: it zero-fills unk_20096A0 (0x30 bytes), seeds fields at +4/+8/+0xC/+3..+0x2C
+    from the caller''s descriptor, calls sub_8006B94(unk_2008980, 0x500, 0xA0), and tail-calls req_enqueueTask(unk_2008980,
+    Window0HorizontalDimensions, 4, 0xA2600000). However, the proposed name uses ''req_initTaskStateAndEnqueue'',
+    but the task-state struct is specifically seeded with a 9-word + 1-byte flag payload (fields +8..+0x2C and byte
+    at +3), suggesting chatbox/window-specific state. A clearer name reflecting the window/chatbox context is preferable.;
+    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - What command id 0xA2 means in req_enqueueTask (likely a VRAM transfer, given 0xA2600000 packing 0x6000000)
 - What sub_8006B94 does with (buffer, 0x500, 0xA0) — fill vs. copy
 - Semantics of the state fields at unk_20096A0+4/+0xC and the byte at +3
-- What the caller sub_804CB0C passes as the descriptor, which would pin down the exact job (e.g. window/tile
-  loading)
-- 'The summary accurately describes the assembly: it zero-fills unk_20096A0 (0x30 bytes), seeds fields
-  at +4/+8/+0xC/+3..+0x2C from the caller''s descriptor, calls sub_8006B94(unk_2008980, 0x500, 0xA0),
-  and tail-calls req_enqueueTask(unk_2008980, Window0HorizontalDimensions, 4, 0xA2600000). However, the
-  proposed name uses ''req_initTaskStateAndEnqueue'', but the task-state struct is specifically seeded
-  with a 9-word + 1-byte flag payload (fields +8..+0x2C and byte at +3), suggesting chatbox/window-specific
-  state. A clearer name reflecting the window/chatbox context is preferable.'
+- What the caller sub_804CB0C passes as the descriptor, which would pin down the exact job (e.g. window/tile loading)
+- 'The summary accurately describes the assembly: it zero-fills unk_20096A0 (0x30 bytes), seeds fields at +4/+8/+0xC/+3..+0x2C
+  from the caller''s descriptor, calls sub_8006B94(unk_2008980, 0x500, 0xA0), and tail-calls req_enqueueTask(unk_2008980,
+  Window0HorizontalDimensions, 4, 0xA2600000). However, the proposed name uses ''req_initTaskStateAndEnqueue'',
+  but the task-state struct is specifically seeded with a 9-word + 1-byte flag payload (fields +8..+0x2C and byte
+  at +3), suggesting chatbox/window-specific state. A clearer name reflecting the window/chatbox context is preferable.'
 sources:
 - wf investigate investigate-20261019-010606
 changes:
@@ -65,5 +59,9 @@ changes:
   what: rename sub_8006920 -> chatbox_initWindowReqAndEnqueue
   where: bn6f 54bc3514
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
 previous_names:
 - sub_8006920

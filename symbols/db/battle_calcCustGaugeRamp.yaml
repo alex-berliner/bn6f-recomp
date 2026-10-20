@@ -1,0 +1,79 @@
+name: battle_calcCustGaugeRamp
+address: '0x08010B78'
+kind: function
+previous_names:
+- sub_8010B78
+- battle_calcDamageTakenRamp
+status: probable
+summary: Maps the custom gauge (>>7) through a piecewise-linear ramp to 10..256, or 10 once it is full;
+  with battle flag 0x40 returns the per-alliance gauge value (record +0x28) + 0x1500 instead.
+interface: (r0 = actor index/param, r1 = index into the 0x1D0-stride array at 2036120) -> r0 = computed
+  value; r1 clobbered by BIOS Div.
+details: 'Without flag 0x40 the input is GetCustGauge, not a damage counter: t = gauge >> 7 (0..0x80);
+  t <= 0x40 gives 10 + 22t/64, t <= 0x70 gives 32 + 96(t-64)/48, t < 0x80 gives 128 + 128(t-112)/15, and
+  a full gauge (t = 0x80) returns 10. With flag 0x40 the battle keeps a gauge per alliance (battle_fillCustGauge
+  adds 0x1555 to it through sub_802E032), and this returns that record''s +0x28 halfword plus 0x1500.
+  What consumes the result is still unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'locret path: total damage counter >>7 drives cmp against 0x40/0x70/0x80 branches, each a linear
+    ramp via svc 6 (BIOS Div); add r0,#0xa / #0x20 / #0x80 base offsets give a 10-256 output range that
+    drops back to 10 for t>=0x80; flag-0x40 branch: getEntryPtr_2036120_1D0 then ldrh [r0,#0x28]; add
+    r0,#0x1500 returns the stored field plus 0x1500 instead; callees battle_getTotalDamageTakenForActor_801DFE4
+    and battle_testFlag0x40_800A8F8 place it in the battle subsystem'
+  refs:
+  - bn6f/asm/asm00_2.s:4445
+  - 0x0801DFE4 battle_getTotalDamageTakenForActor_801DFE4
+  - 0x0800A8F8 battle_testFlag0x40_800A8F8
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x08010B78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: revise
+    — The piecewise linear ramp and the 0x1500-add branch both match the proposal. However, the model
+    says ''For t>=0x80 it returns 0xA'' — the assembly (loc_8010B96: mov r0,#0xa) shows r0 is preloaded
+    with 0xa and all three branches that fall through exit at locret_8010BCE with r0 modified, so the
+    bge at 8010BAE actually skips ALL three branches and returns the literal 0xa for the wrap case. Also
+    the interface claim ''r1 = index into the 0x1D0-stride array'' is backwards: r0=actor, r1=index. The
+    flag-set branch returns 0x1500+halfword, used in two registers r0/r1 then overwritten — fine. The
+    name ''battle_calcDamageTakenRamp'' is reasonable.; run wf investigate investigate-20261018-235109;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
+- method: assembly-reading
+  date: '2026-10-20'
+  detail: 'eStruct2035280+0x20 is the custom gauge: ClearCustGauge (confirmed) zeroes it, SetCustGauge
+    clamps what it stores there to 0x4000, battle_fillCustGauge fills it with SetCustGauge(0x4000), and
+    battle_dispatchNextPhase adds 13 to it each frame the battle is not time-stopped. The non-flag path
+    reads it through GetCustGauge.'
+  refs:
+  - bn6f/asm/asm00_2.s:4531
+  - bn6f/asm/asm00_2.s:4544
+  - bn6f/asm/asm00_1.s:18514
+  reproduce: python3 tools/asmcat.py 0x08010B78
+  result: the ramp input is the custom gauge; t >= 0x80 only when the gauge is at 0x4000
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 3e7dd5f6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8010B78 -> battle_calcDamageTakenRamp
+  where: bn6f cfc4da77
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b369aecd
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename battle_calcDamageTakenRamp -> battle_calcCustGaugeRamp
+  where: bn6f abfc4a89
+  tool: tools/rename_symbol.py
+related:
+- ClearCustGauge
+- SetCustGauge
+- battle_fillCustGauge
+open_questions:
+- What consumes the returned value (reached through the table at bn6f/asm/asm00_2.s:4400).
+- Meaning of battle flag 0x40 (per-alliance gauges).
+sources:
+- wf investigate investigate-20261018-235109
+- claude session_01WFp8UePQ4NMHsiu16Siidk
