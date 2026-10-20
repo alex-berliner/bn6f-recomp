@@ -1,0 +1,84 @@
+name: battle_getAIHandlerSlot_80ECC86
+address: '0x080ECC86'
+kind: function
+status: confirmed
+summary: Looks up a battle enemy's AI index in its AI data and maps it through a small table to an AI
+  behavior slot (0 = default, 2 = custom handler).
+interface: int battle_getAIHandlerSlot(BattleObject* obj /* in r5 */); returns slot byte in r0
+details: 'Reads the battle object''s AI data pointer (oBattleObject_AIDataPtr at [r5,#oBattleObject_AIDataPtr]),
+
+  loads the AI index byte (oAIData_AIIndex) from that AI data struct, and uses it as an index into
+
+  the byte table at 0x080ECC94 (27 entries). Table values are only 0 or 2 in the observed data:
+
+  indices 1 and 9 and 10 map to 2, everything else to 0. Likely a discriminator between the default
+
+  AI routine (0) and a special/custom AI handler (2), e.g. for specific enemy types whose
+
+  aiIndex values are 1, 9, or 10. Uses lr as a plain jump target (tail-style return, mov pc, lr)
+
+  and only clobbers r1 (the table pointer).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80ECC86
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ECC86
+
+    ./wf verify --function sub_80ECC86 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ECC86
+
+    ./wf verify --function sub_80ECC86 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ECC86
+
+    ./wf verify --function sub_80ECC86 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, chips.'
+  reproduce: grep -l '^080ecc86 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ECC86 -> battle_getAIHandlerSlot_80ECC86
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+- chips
+open_questions:
+- What semantic meaning the values 0 and 2 have at call sites (dispatch to which AI handlers?)
+- Whether any enemy actually uses aiIndex values beyond the observed 0/1/2/9/10 range; table has 27 entries
+  mostly zero
+- Which enemy IDs correspond to aiIndex values 1, 9, 10 (the ones mapping to slot 2)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80ECC86

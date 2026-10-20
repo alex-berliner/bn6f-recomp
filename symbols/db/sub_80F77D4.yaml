@@ -1,0 +1,69 @@
+name: sub_80F77D4
+address: '0x080F77D4'
+kind: function
+status: hypothesis
+summary: Thin wrapper that invokes sub_800FE28 with a fixed 4-byte descriptor (0x03030302) and passes its r5 argument
+  through, returning sub_800FE28's result.
+interface: u32 sub_80F77D4(u32 r5 /* arg passed through to sub_800FE28 */); returns r0 from sub_800FE28
+details: 'Pushes lr, loads the address of dword_80F77E4 (whose contents are the single word "0x03030302", i.e. bytes
+  02 03 03 03 in memory), calls sub_800FE28 with that pointer in r0 and the caller''s r5 preserved, then pops pc
+  and returns sub_800FE28''s r0 unchanged. The wrapper itself touches no game state besides the descriptor pointer;
+  all actual behavior lives in sub_800FE28, which is not yet analyzed, so the game-level meaning of the descriptor
+  bytes (possibly a small struct of mode/count fields) is unknown. Clobbers r1, r2 and flags; keeps nothing of its
+  own besides lr.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80F77D4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F77D4
+
+    ./wf verify --function sub_80F77D4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F77D4
+
+    ./wf verify --function sub_80F77D4 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F77D4
+
+    ./wf verify --function sub_80F77D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f77d4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does sub_800FE28 do with (r0=descriptor, r5)? Its role determines this wrapper's real meaning.
+- What do the individual bytes of the descriptor 0x03030302 (02,03,03,03) mean to sub_800FE28?
+- Which callers invoke this wrapper and with what r5 values?
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

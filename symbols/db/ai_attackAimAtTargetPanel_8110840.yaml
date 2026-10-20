@@ -1,0 +1,108 @@
+name: ai_attackAimAtTargetPanel_8110840
+address: '0x08110840'
+kind: function
+status: confirmed
+summary: Aims an AI-controlled battle object at its target panel by setting its velocity along the panel
+  axis toward the target, then derives the attack's step timer and charge cycles from the distance.
+interface: void sub_8110840(BattleObject *obj /* r5 */, AIAttackVars *ai /* r7 */)
+details: 'Part of the enemy AI attack pipeline: given the AIAttackVars block''s TargetPanelX/Y and a
+
+  per-attack ScratchVar speed multiplier, it computes the panel-space delta between the object
+
+  (oBattleObject_PanelY / oBattleObject_PanelX) and the target panel and sets the object''s
+
+  oBattleObject_YVelocity / oBattleObject_XVelocity to delta * scratch.
+
+
+  Axis selection: it first tries Y (delta Y * scratch); if that is nonzero the object moves
+
+  purely vertically (X velocity forced to 0) and uses step base 0x00180000. Otherwise it tries
+
+  X; if that is also zero the object is already on the target panel, so both velocities are
+
+  zeroed and StepTimer/ChargeCycles are both set to 1 (immediately restart/advance the attack),
+
+  and the function returns without dividing. If X is nonzero, the object moves purely
+
+  horizontally (Y velocity forced to 0) and uses step base 0x00280000.
+
+
+  When moving, it performs a BIOS signed divide (svc 6) of the step base by ScratchVar,
+
+  storing the quotient as the halfword oAIAttackVars_StepTimer and half of it as
+
+  oAIAttackVars_ChargeCycles, so ChargeCycles is the point at which the object charges while
+
+  stepping to the target panel. The different step bases (0x18 vs 0x28) make horizontal
+
+  attacks take longer per step than vertical ones for the same speed.
+
+  Quirk: ScratchVar == 0 falls into BIOS div-by-zero (which returns ~UINT_MAX on GBA), and
+
+  the mul results are treated as 32-bit signed values, so a negative delta yields negative
+
+  velocity (moving in the opposite direction is expected, since it walks toward the target).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8110840
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8110840
+
+    ./wf verify --function sub_8110840 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    253 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8110840
+
+    ./wf verify --function sub_8110840 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8110840
+
+    ./wf verify --function sub_8110840 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110840 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8110840 -> ai_attackAimAtTargetPanel_8110840
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of oAIAttackVars_ScratchVar (attack-specific speed multiplier passed in from the AI attack
+  setup)
+- why horizontal steps use a larger step base (0x00280000) than vertical ones (0x00180000) - possibly
+  to make crossing the field slower than lane changes
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8110840

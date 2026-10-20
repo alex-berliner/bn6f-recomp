@@ -1,0 +1,78 @@
+name: battle_findClosestPanelOnObjectRow_8100070
+address: '0x08100070'
+kind: function
+status: confirmed
+summary: Finds the closest panel to a given position that lies on a source object's row and matches the
+  asking object's alliance, returning the panel's position.
+interface: (u32 rowSrc r0, u32 x r2, u32 y r3, u32 selfObj r5) -> u32 panel r0, u32 panelY r1; preserves
+  r2-r5
+details: 'Thin wrapper around object_getClosestPanelMatchingRowFiltered. It reads the row (byte at +0x13)
+  from the object passed in r0 and the alliance field (oBattleObject_Alliance) from the calling battle
+  object in r5, then calls object_getClosestPanelMatchingRowFiltered with (alliance, row, x, y) and passes
+  its r0/r1 result (the chosen panel''s position/coordinates as the battle engine uses them) straight
+  back to the caller. r5 is preserved by the callee, so no re-write is needed. Likely used to pick a target/landing
+  panel on the same row as another battle entity, restricted to panels of the asker''s own side.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8100070
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8100070
+
+    ./wf verify --function sub_8100070 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    258 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8100070
+
+    ./wf verify --function sub_8100070 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8100070
+
+    ./wf verify --function sub_8100070 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^08100070 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8100070 -> battle_findClosestPanelOnObjectRow_8100070
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning/layout of the r0/r1 panel result (e.g. packed panel coords vs. pointer) pending typed
+  interface for object_getClosestPanelMatchingRowFiltered
+- which callers use this and what the +0x13 byte represents beyond "row" (may be a shared entity field)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8100070

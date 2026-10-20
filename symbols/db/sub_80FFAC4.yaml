@@ -1,0 +1,70 @@
+name: sub_80FFAC4
+address: '0x080FFAC4'
+kind: function
+status: hypothesis
+summary: Passes a packed list of four event/flag IDs (0x12, 0x18, 0x1E, 0x24) to the flag-check helper sub_800FE28
+  and returns its result.
+interface: 'u32 checkEventFlagList_80FFAC4(u32 r5) // in: r5 (argument forwarded to sub_800FE28), lr; out: r0 =
+  result of sub_800FE28; clobbers r1, r2, flags'
+details: Thin wrapper. It loads the address of dword_80FFAD4, a 4-byte constant containing the packed value "0x12181E24"
+  (four bytes 0x12, 0x18, 0x1E, 0x24, which look like event/flag or scenario-step IDs), puts that pointer in r0,
+  forwards the caller's r5 unchanged, and tail-calls sub_800FE28, returning that call's r0 (r2 is also produced
+  by the callee but discarded here). sub_800FE28 is presumably the generic "check a list of flags" routine used
+  by scene/script code; this instance is a hardcoded flag-list check specific to one scene or trigger. No state
+  is modified in this function itself.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FFAC4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFAC4
+
+    ./wf verify --function sub_80FFAC4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFAC4
+
+    ./wf verify --function sub_80FFAC4 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFAC4
+
+    ./wf verify --function sub_80FFAC4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffac4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What sub_800FE28 does with the list (any-of vs all-of, and the meaning of r5) is unknown until that helper is
+  analyzed.
+- What the flag IDs 0x12, 0x18, 0x1E and 0x24 correspond to in the event/flag table.
+- Whether r5 is a scene/entity pointer, a comparison value, or a mode selector for the check.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

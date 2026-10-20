@@ -1,0 +1,79 @@
+name: ai_attack_dispatchByHitElement_80F870C
+address: '0x080F870C'
+kind: function
+status: confirmed
+summary: Dispatches the current AI attack to an element-specific handler chosen by the HitElement byte
+  in the AI attack vars.
+interface: void sub_80F870C(r5=ctx?, r6=ctx?, r7=AIAttackVars*, lr=return) -> r1/r8-r12 as left by handler,
+  r5 passthrough, r7 preserved; flags clobbered
+details: "Reads the HitElement byte (oAIAttackVars_HitElement) from the AI attack vars structure pointed\
+  \ to by r7, then calls one of three handlers through the table at off_80F8720:\n  entry 0 -> sub_80F872C\n\
+  \  entry 1 -> ai_attackStepWindupAnim3Hit8\n  entry 2 -> sub_80F87DA\nQuirk: the raw HitElement byte\
+  \ is used directly as a BYTE offset into the word-sized table, so the game stores it pre-scaled to 0/4/8\
+  \ rather than as a 0/1/2 element index. The handler is entered with r0 = the raw element value and r1\
+  \ = its own table entry address; r5/r6 (and lr as a general register) simply stay live and pass through\
+  \ to the handler. Tail call is via mov lr,pc / bx r1 with a push {r7,lr}/pop {r7,pc} wrapper, so the\
+  \ handler returns straight to this function's caller. r1 and r8-r12 on exit are whatever the chosen\
+  \ handler left there.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F870C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F870C
+
+    ./wf verify --function sub_80F870C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F870C
+
+    ./wf verify --function sub_80F870C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 21 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F870C
+
+    ./wf verify --function sub_80F870C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f870c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F870C -> ai_attack_dispatchByHitElement_80F870C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which structures r5/r6 actually point to (passed through untouched to the handlers)
+- Full semantics of the three element handlers (sub_80F872C, sub_80F87DA) and what HitElement values beyond
+  8 would do if ever stored unscaled
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F870C

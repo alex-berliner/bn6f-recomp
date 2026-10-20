@@ -1,0 +1,83 @@
+name: battle_releaseObject_80D9532
+address: '0x080D9532'
+kind: function
+status: confirmed
+summary: Releases/clears a battle entity by nulling the pointer held in its 0x60 field's target and setting
+  its state byte to 0xC.
+interface: void battle_releaseObject_80D9532(void *object); // r0 = object pointer (may be NULL); returns
+  with r5 = object (or incoming r5 if object was NULL), C set and V clear from the `cmp r0,#0`
+details: "Takes a battle object/entity pointer in r0. If it is NULL the function returns immediately\n\
+  (r5 is preserved, so callers see their incoming r5 again). Otherwise it:\n  - loads the 32-bit pointer\
+  \ stored at object+0x60 and stores 0 through it\n    (i.e. *object->field60 = NULL — the record that\
+  \ field points at is cleared at its\n    own location, not the field itself);\n  - stores the byte 0xC\
+  \ (12) at object+9, which looks like a state/phase marker marking\n    the object as finished/released\
+  \ (offset 9 used as a state byte is common for battle\n    entities in this codebase).\nThe original\
+  \ r0 is copied into r5 before use, so r5 comes back holding the object pointer.\nBecause the only flag-setting\
+  \ instruction is `cmp r0, #0`, the function leaves C=1 and\nV=0 (NZ reflecting the object pointer) on\
+  \ every return path, and callers are documented\nas reading C and V. Clobbers r0, r1 and NZ; preserves\
+  \ r5. Thumb, push {r5,lr}/pop {r5,pc}.\nThe trailing dword_80D9548 (0xF880080) is pool data after the\
+  \ function end, not code.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D9532
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D9532
+
+    ./wf verify --function sub_80D9532 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D9532
+
+    ./wf verify --function sub_80D9532 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D9532
+
+    ./wf verify --function sub_80D9532 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d9532 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D9532 -> battle_releaseObject_80D9532
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of state byte 0xC at +9 (assumed 'released/inactive'; confirm against the battle entity
+  state enum).
+- What structure the 0x60 field points into — the store only zeroes that target's first word, the object's
+  own field 0x60 keeps pointing there.
+- Which battle subsystem owns this object type (entity, custom block, attack handler?), so a more specific
+  prefix can be chosen.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D9532

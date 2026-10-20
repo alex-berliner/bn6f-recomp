@@ -1,0 +1,76 @@
+name: battle_setObjectExtraVar1To10_80D8C06
+address: '0x080D8C06'
+kind: function
+status: confirmed
+summary: Sets the second halfword of a battle object's "extra vars" field to 10, likely initializing a
+  counter or timer.
+interface: void battle_setObjectExtraVar1To10_80D8C06(battle_object *obj /* r5 */); r5 in, no outputs,
+  clobbers r0 and NZ flags
+details: 'Trivial battle-object setter. Takes the battle object pointer in r5 (note: this caller convention
+  passes the object in r5, not r0), and stores the immediate value 0xA (10) at oBattleObject_ExtraVars+4,
+  i.e. the second halfword slot of the object''s extra-vars area. The `mov r0,#0xa; b loc_80D8C0C` before
+  the store is a vestigial jump; the value 10 is what lands in the field. The store is a full 32-bit str,
+  so it also writes the adjacent halfword slot with the upper half of 0xA being 0 — effectively zeroing
+  ExtraVars+6 as well. Likely used to set up a 10-frame/10-step counter or state value for some battle
+  object behavior. Returns to caller via popped lr (tail of a thunk-style routine per the readable C,
+  RETURN_TO_CALLER).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D8C06
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D8C06
+
+    ./wf verify --function sub_80D8C06 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    184 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D8C06
+
+    ./wf verify --function sub_80D8C06 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D8C06
+
+    ./wf verify --function sub_80D8C06 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8c06 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D8C06 -> battle_setObjectExtraVar1To10_80D8C06
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- What gameplay meaning the value 10 in this extra-vars halfword has (counter, timer, HP-like quantity,
+  phase id) is unknown without seeing the readers of this field.
+- Which battle object type(s) call this with r5 is not established from this function alone.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D8C06

@@ -1,0 +1,77 @@
+name: ai_dispatchAttackStateHandler_811348E
+address: '0x0811348E'
+kind: function
+status: confirmed
+summary: Dispatches one step of an enemy AI attack state by tail-calling the handler selected from a 4-entry
+  jump table indexed by the AI attack vars' HitElement byte.
+interface: void ai_dispatchAttackStateHandler(u8* aiAttackVars in r7, context in r5/r6/r10); tail-calls
+  handler(handler in r1, element in r0) which returns results to this function's caller in r1/r5/r8-r12
+details: 'Reads the oAIAttackVars_HitElement byte from the AI attack-vars block pointed to by r7, uses
+  it as an index into the table at off_81134A0 (entries 0-3: sub_81134B0, ai_stepTargetPanelRepeatAttack,
+  ai_restartAttackAnimOnLoop, genericAI_exitAttackStateAffterDelay_81097B4, all +1 for Thumb), then performs
+  a tail-call dispatch: sets lr = pc and bx to the handler, so the handler returns directly to sub_811348E''s
+  caller rather than back here. The handler is invoked with r0 = the HitElement value and r1 = its own
+  address (the standard dispatch idiom). r5, r6 and r10 pass through untouched and act as the handler''s
+  own context. Results r1/r8-r12 seen at the caller come straight from the handler. HitElement here is
+  really a small state/selector field (0-3), not a battle element, despite the field name.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_811348E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811348E
+
+    ./wf verify --function sub_811348E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811348E
+
+    ./wf verify --function sub_811348E --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 29 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811348E
+
+    ./wf verify --function sub_811348E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811348e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811348E -> ai_dispatchAttackStateHandler_811348E
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the HitElement values 0-3 (attack-state phase ids?) and what each handler does with
+  the r1/r8-r12 outputs
+- whether any caller can pass a HitElement value > 3 (no bounds check on the table index)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_811348E

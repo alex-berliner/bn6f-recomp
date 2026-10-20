@@ -1,0 +1,101 @@
+name: battle_getSignedDistanceToOpposingBattler_80F8610
+address: '0x080F8610'
+kind: function
+status: confirmed
+summary: Returns the signed horizontal panel distance between the battler on the opposite side of the
+  field and the closest panel in that battler's row, 0 if no panel matches.
+interface: u32 battle_getSignedDistanceToOpposingBattler_80F8610(BattleObject *self /* r5 */, BattleState
+  *state /* r10 */)
+details: 'Takes a BattleObject pointer in r5. Reads oBattleObject_Alliance, XORs it with 1 and calls
+
+  battle_findPlayer to get the battler fighting for the opposite side; reads that battler''s
+
+  oBattleObject_PanelX and oBattleObject_PanelY. Then looks up the caller''s own alliance again and
+
+  indexes byte_80F864C with alliance<<3 (8-byte stride) to get per-side lookup parameters:
+
+  side 0 uses {start=0, end/limit=0x20}, side 1 uses {start=0x20, end/limit=0} — i.e. the search
+
+  direction across the field is reversed for the two sides. Calls
+
+  object_getClosestPanelMatchingRowFiltered(alliance, foe_y, param0, param4) to find the closest
+
+  panel in the foe''s row that matches the side''s filter. If no panel is found, returns the callee''s
+  0.
+
+  Otherwise returns a signed horizontal distance: for alliance 0, foe_x - found_panel_x (panel lies
+
+  left of the foe); for alliance 1, found_panel_x - foe_x (panel lies right of the foe). The
+
+  magnitude is how far from the foe the matching panel is, with the sign telling which side of the
+
+  foe it sits on relative to that side''s forward direction. r5 is passed through unchanged; r10 is
+
+  an unused/context input (battle state for the callee). Note: the "distance" is computed against
+
+  the foe''s row but the search filter comes from the caller''s own side.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F8610
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F8610
+
+    ./wf verify --function sub_80F8610 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F8610
+
+    ./wf verify --function sub_80F8610 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F8610
+
+    ./wf verify --function sub_80F8610 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f8610 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F8610 -> battle_getSignedDistanceToOpposingBattler_80F8610
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the byte_80F864C per-side parameter pair (min/max X range vs. filter flags) depends
+  on object_getClosestPanelMatchingRowFiltered's undocumented contract
+- what callers do with the sign convention (forward distance for attack/AI range checks?)
+- why r10 is passed at all if unused here (possibly context required by the callee)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F8610

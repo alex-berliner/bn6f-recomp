@@ -1,0 +1,84 @@
+name: battle_tickWhiteFlashBlink_80D45AE
+address: '0x080D45AE'
+kind: function
+status: confirmed
+summary: Runs one frame of a battle object's white-flash blink effect (sprite flashes white, blinks three
+  times, then hands control back to the action state machine).
+interface: 'battle_whiteFlashTick(BattleObject *obj /* r5 */) -> u32 /* r1: 2, or sprite_forceWhitePalette''s
+  r1 if it ran */; clobbers r0-r3, flags'
+details: "Per-frame handler for a \"flash white and blink\" effect on a battle object, driven by the object's\
+  \ action state machine via CurAction/phase. While oBattleObject_Timer has bit 1 (0x2) set, the object's\
+  \ sprite is forced to the white palette via sprite_forceWhitePalette (presumably the palette-swap used\
+  \ for damage flashes / transformation glows). The 16-bit Timer is then decremented each frame; while\
+  \ it is still >0 the function just returns. When the timer expires, the blink counter in oBattleObject_Param3\
+  \ is incremented:\n  - counter < 2: queue the next animation frame (CurAnim++) and clear\n    oBattleObject_CurPhaseAndPhaseInitialized,\
+  \ so the effect handler runs again on a later\n    frame (the next blink delay presumably comes from\
+  \ elsewhere / Param2 scheduling).\n  - counter == 2: same, plus 0x3C (60) frames are added to oBattleObject_Param2,\
+  \ scheduling\n    the final blink one second later.\n  - counter > 2: effect finished — CurAction is\
+  \ set to 0x0C (next action step) and the\n    phase field is cleared, returning control to the state\
+  \ machine.\nQuirk: r1 is loaded with 2 before the palette test and only overwritten if sprite_forceWhitePalette\
+  \ actually runs; the caller-visible r1 value is thus 2 in the no-flash case and whatever that callee\
+  \ leaves otherwise (likely incidental/unused). The timer is reloaded from memory after the palette call,\
+  \ so the callee could in principle alter it.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D45AE
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D45AE
+
+    ./wf verify --function sub_80D45AE --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D45AE
+
+    ./wf verify --function sub_80D45AE --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D45AE
+
+    ./wf verify --function sub_80D45AE --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d45ae ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D45AE -> battle_tickWhiteFlashBlink_80D45AE
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which battle context uses this (boss defeat flash, beast-out/ transformation, damage blink) — CurAction
+  0x0C's meaning in the owning state machine is unknown
+- exact meaning of Param2 (accumulated blink delay?) and how the timer is initially seeded
+- whether the r1 return value is meaningful to callers or just an artifact
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D45AE

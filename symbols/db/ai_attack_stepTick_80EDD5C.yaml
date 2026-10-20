@@ -1,0 +1,88 @@
+name: ai_attack_stepTick_80EDD5C
+address: '0x080EDD5C'
+kind: function
+status: confirmed
+summary: AI attack-state step handler that seeds a 5-frame step timer (element 4) when none is queued,
+  ticks it down each frame, and exits the attack state when it expires.
+interface: u32 ai_attack_stepTick(u32 r1, u32 r5, u32 r6, AIAttackVars* r7); returns r1 (passthrough)
+  unless the attack ends
+details: 'Per-frame handler for an AI-controlled object''s attack step, called with r5/r6 = object
+
+  pointers and r7 = an AIAttackVars block (oAIAttackVars_AttackElement, oAIAttackVars_StepTimer).
+
+  If AttackElement is 0 (nothing chosen yet), it seeds StepTimer = 5 frames and sets
+
+  AttackElement = 4 (the element/action id for this step). Each call then decrements
+
+  StepTimer; while the result is >= 0 the function does nothing else. Once the timer
+
+  underflows below 0 it calls object_exitAttackState(r5, r6, r7) to hand the object back
+
+  to normal (non-attack) behavior. On frames where the exit call is not made, r1 passes
+
+  through unchanged; when the exit runs, r1 comes from object_exitAttackState.
+
+  Quirk: the decrement is done before the >= 0 check, so a seeded timer of 5 gives
+
+  5 frames of "active" behavior before the exit fires (exit on the frame the counter
+
+  goes negative).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80EDD5C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EDD5C
+
+    ./wf verify --function sub_80EDD5C --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    188 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EDD5C
+
+    ./wf verify --function sub_80EDD5C --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EDD5C
+
+    ./wf verify --function sub_80EDD5C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080edd5c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EDD5C -> ai_attack_stepTick_80EDD5C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80EDD5C

@@ -1,0 +1,88 @@
+name: ai_attackVarsTickElementTimer_8110B16
+address: '0x08110B16'
+kind: function
+status: confirmed
+summary: Ticks an enemy-AI attack state's step timer, winding the attack down (setting hit element 0x18
+  and clearing the attack element) each time it expires.
+interface: 'void sub_8110B16(oAIAttackVars *r7); /* r5 pass-through: read as input and returned unchanged
+  in r5; no flags consumed, NZCV clobbered */'
+details: 'Runs one tick of an AI attack whose state lives in an oAIAttackVars struct pointed to by r7.
+
+  First, if oAIAttackVars_AttackElement (byte) is 0 it is forced to 1, ensuring an attack is
+
+  flagged active before the timer runs. Then oAIAttackVars_StepTimer (halfword) is decremented
+
+  and written back. If it did not reach 0 the routine just returns. When the timer hits 0 it is
+
+  reloaded from oAIAttackVars_ScratchVar (halfword) — so the scratch field acts as the period of
+
+  this attack''s tick — oAIAttackVars_HitElement (halfword) is set to 0x18 (24, some fixed
+
+  element/effect id consumed elsewhere), and oAIAttackVars_AttackElement is cleared back to 0,
+
+  ending the attack until something re-arms it. Purely a state-machine step function: no
+
+  pointers dereferenced beyond the r7 struct, r4-r7 preserved, r5 simply passes through.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8110B16
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8110B16
+
+    ./wf verify --function sub_8110B16 --snapshots build-snapshots'
+  result: 'captured calls: 16 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    169 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8110B16
+
+    ./wf verify --function sub_8110B16 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 70 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8110B16
+
+    ./wf verify --function sub_8110B16 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110b16 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8110B16 -> ai_attackVarsTickElementTimer_8110B16
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the constant 0x18 written to oAIAttackVars_HitElement (element id? damage table index?)
+- which caller(s) own the ScratchVar period and what gameplay values it typically holds
+- whether AttackElement=1 is a specific element or just an "attack active" flag
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8110B16

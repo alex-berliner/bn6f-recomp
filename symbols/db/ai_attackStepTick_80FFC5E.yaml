@@ -1,0 +1,79 @@
+name: ai_attackStepTick_80FFC5E
+address: '0x080FFC5E'
+kind: function
+status: confirmed
+summary: Ticks one step of an enemy AI's queued attack, starting it (element 4, anim 0, load step timer)
+  on the first call and handing the state back to object_exitAttackState when the timer runs out.
+interface: void sub_80FFC5E(u32 object /*r5*/, u32 companion /*r6*/, AIAttackVars* vars /*r7*/); returns
+  u16 result in r1 (from object_exitAttackState on the exit path, pass-through otherwise); clobbers r0-r3,
+  r6, r7, lr and nzcv
+details: 'Per-frame tick of an AI attack state machine. r7 points at the object''s oAIAttackVars: if AttackElement
+  is 0, an attack is queued by writing element 4 (some fixed attack id/element used by this AI), setting
+  the battle object''s oBattleObject_CurAnim (r5) to 0, and copying AttackDuration into StepTimer as the
+  countdown. On subsequent calls (element nonzero) StepTimer is decremented; while it stays >0 nothing
+  else happens, and when it hits zero object_exitAttackState(r5=object, r6=companion, r7=vars) is called
+  to leave the attack state, which also produces the r1 output value. On the start and still-counting
+  paths r1 is simply passed through, so callers get a defined value only after the exit call. r6 is never
+  read here, just forwarded.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FFC5E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFC5E
+
+    ./wf verify --function sub_80FFC5E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    193 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFC5E
+
+    ./wf verify --function sub_80FFC5E --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 81 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFC5E
+
+    ./wf verify --function sub_80FFC5E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffc5e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FFC5E -> ai_attackStepTick_80FFC5E
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what attack/element the literal 4 in oAIAttackVars_AttackElement denotes (element index vs attack id)
+- the exact meaning of the r1 value returned by object_exitAttackState
+- which AI entities use this handler and how r6's "companion" pointer is used downstream
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FFC5E

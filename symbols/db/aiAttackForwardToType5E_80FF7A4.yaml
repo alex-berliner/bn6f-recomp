@@ -1,0 +1,78 @@
+name: aiAttackForwardToType5E_80FF7A4
+address: '0x080FF7A4'
+kind: function
+status: confirmed
+summary: Thin AI-attack wrapper that reads the attack's init flag and cycle timer from the attack-vars
+  block and forwards them with the caller's arguments to the type-5E spawn/linked-object routine.
+interface: int sub_80FF7A4(r0 attackCtx, r1 arg, r3 arg, r5 arg, r7 attackVarsPtr) -> r1 updatedField,
+  r5 updatedField; clobbers r0, r2, r3, lr, flags NZCV
+details: 'Preserves r4 and r7 (push {r4,lr} / pop {r4,pc}); r7 is only read, never written. Loads two
+  bytes from the AI attack-vars struct pointed to by r7: oAIAttackVars_InitFlag (byte) and oAIAttackVars_TimerOrCycles
+  (byte). Calls sub_80D036C (spawnType5ELinkedToObject) with r0/r1/r3/r5 passed through unchanged, init
+  flag in r2, and the timer in r4 (which the callee clobbers, hence the save/restore). Returns the callee''s
+  r1 and r5 outputs directly; these are presumably updated attack-state fields echoed back to the caller.
+  The function itself has no logic beyond this marshalling, so its identity depends entirely on sub_80D036C''s
+  semantics.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FF7A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FF7A4
+
+    ./wf verify --function sub_80FF7A4 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FF7A4
+
+    ./wf verify --function sub_80FF7A4 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FF7A4
+
+    ./wf verify --function sub_80FF7A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ff7a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FF7A4 -> aiAttackForwardToType5E_80FF7A4
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of r1 and r5 outputs of sub_80D036C (assumed updated attack-state fields)
+- what r0, r1, r3 and r5 carry on input (no use in this function)
+- semantic name of oAIAttackVars_TimerOrCycles field (init flag vs cycle counter roles)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FF7A4

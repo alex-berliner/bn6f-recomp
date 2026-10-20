@@ -1,0 +1,87 @@
+name: battle_markObjectDead_80E71B8
+address: '0x080E71B8'
+kind: function
+status: confirmed
+summary: Sets field +8 of a battle object to 8 (the standard "object destroyed/inactive" flag), doing
+  nothing on a NULL pointer.
+interface: void battle_markObjectDead_80E71B8(u32* obj /* r0 */) -> r1 = 8 on store, r1 unchanged if obj
+  == NULL; clobbers NZ flags
+details: 'Tiny battle-code helper: if the object pointer in r0 is non-NULL it loads r1 = 8 and
+
+  stores it to [r0 + 0x8], then returns; with a NULL pointer it returns immediately without
+
+  touching memory or r1. In MMBN battle object layouts, field +0x8 is the object''s
+
+  active/life state, and the value 8 is the conventional "dead / cleared / inactive" marker
+
+  written all over the battle engine when an entity (custom panel object, projectile,
+
+  attack hitbox, etc.) is being torn down. Because r1 is assigned 8 before the store, it
+
+  doubles as an output register: callers that read back r1 get 8 on success and the
+
+  incoming value when the pointer was NULL. Flags NZ are clobbered by the tst/mov.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E71B8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E71B8
+
+    ./wf verify --function sub_80E71B8 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    188 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E71B8
+
+    ./wf verify --function sub_80E71B8 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 85 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E71B8
+
+    ./wf verify --function sub_80E71B8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080e71b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E71B8 -> battle_markObjectDead_80E71B8
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of state value 8 in the battle object struct (dead vs. awaiting-reuse) not independently
+  confirmed
+- whether any caller actually relies on the r1 = 8 return value or treats it as scratch
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E71B8

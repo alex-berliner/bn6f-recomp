@@ -1,0 +1,87 @@
+name: battle_condDispatchRelatedPhase_80E527A
+address: '0x080E527A'
+kind: function
+status: confirmed
+summary: Conditionally runs the battle object's phase handler unless its related object is performing
+  action 4 or has the 0x80010000 collision-flag condition.
+interface: void sub_80E527A(u32 r5_object, u32 r10_ctx); // passes r5/r8-r12 through to object_dispatchPhaseHandler;
+  outputs r5,r8-r12 (pass-through of callee result or unchanged inputs), clobbers flags
+details: 'Small thunk that sits immediately before object_dispatchPhaseHandler and shares its code path
+  (the two fall together; callers land here or at the dispatch routine depending on flow). It loads the
+  object''s RelatedObject1Ptr from the battle object struct (r5 + oBattleObject_RelatedObject1Ptr) and
+  checks that object''s CurAction byte: if it equals 4, the dispatch is skipped entirely. Otherwise it
+  follows the related object''s CollisionDataPtr and tests oCollisionData_ObjectFlags1 against dword_80E546C
+  = 0x80010000 (two bits/fields, one possibly a signed/upper-word condition); if either is set the dispatch
+  is also skipped. In game terms this appears to gate the object''s per-phase update on the state of a
+  linked object (e.g. suppress normal phase processing while the related object is in a special action
+  state or flagged as e.g. invulnerable/intangible by collision data). When the gate passes, it tail-calls
+  object_dispatchPhaseHandler with r5 (the object) still set; the callee''s outputs r5, r8, r9, r10, r11,
+  r12 are returned verbatim to this function''s callers. When the gate blocks, all output registers keep
+  their incoming values. r10 is read by object_dispatchPhaseHandler directly from the live register (handler
+  context), so it must not have been clobbered before entry. Flags NZCV are clobbered by the compare/test
+  and callee.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E527A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E527A
+
+    ./wf verify --function sub_80E527A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E527A
+
+    ./wf verify --function sub_80E527A --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 53 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E527A
+
+    ./wf verify --function sub_80E527A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e527a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E527A -> battle_condDispatchRelatedPhase_80E527A
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_80E5264
+open_questions:
+- exact meaning of CurAction value 4 (special/finished action state?)
+- meaning of the two 0x80010000 bits in oCollisionData_ObjectFlags1
+- which callers enter here vs. object_dispatchPhaseHandler directly
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E527A

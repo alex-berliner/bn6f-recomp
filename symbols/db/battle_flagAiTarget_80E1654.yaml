@@ -1,0 +1,77 @@
+name: battle_flagAiTarget_80E1654
+address: '0x080E1654'
+kind: function
+status: confirmed
+summary: Fetches the calling battle object's AI target and sets two "flagged" fields on it, returning
+  the target pointer.
+interface: u32 battle_flagAiTarget_80E1654(void); // r5 = battle object, r1 = returns target object pointer,
+  clobbers r0 and NZ flags
+details: 'Reads the battle object passed in r5 (not a stack argument, hence the odd contract), follows
+  oBattleObject_AIDataPtr to the object''s AIData block, then follows oAIData_TargetObjectPtr to the object
+  the AI is currently targeting. On that target it stores 1 to the word at +0x64 and 1 to the byte at
+  +0x10, then returns the target pointer in r1. The two writes look like flag/marker fields rather than
+  counters (both set to constant 1); likely used to mark the target for follow-up AI or battle processing
+  (e.g. lock-on/retarget or a per-target state flag). No other fields are touched and the flags register
+  is clobbered by the movs-style flag-setting writes.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E1654
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1654
+
+    ./wf verify --function sub_80E1654 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1654
+
+    ./wf verify --function sub_80E1654 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1654
+
+    ./wf verify --function sub_80E1654 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e1654 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1654 -> battle_flagAiTarget_80E1654
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the word at target+0x64 and the byte at target+0x10 (which battle-object state/flag
+  each represents)
+- whether callers rely on the returned r1 or only on the side effects
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E1654

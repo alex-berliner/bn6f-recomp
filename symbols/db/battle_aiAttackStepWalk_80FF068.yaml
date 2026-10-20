@@ -1,0 +1,98 @@
+name: battle_aiAttackStepWalk_80FF068
+address: '0x080FF068'
+kind: function
+status: confirmed
+summary: AI attack step handler that walks the enemy one panel toward its target before landing the hit.
+interface: u32 battle_aiAttackStepWalk(u32 object /* r5 */, u32 vars /* r7 */, u32 r1_in) -> r1 (untouched
+  caller r1 on the countdown paths, else last callee's r1); r8-r12 preserved; flags clobbered
+details: 'Per-frame step handler for a "walk up and attack" AI action, operating on a battle
+
+  object (r5) and its oAIAttackVars block (r7). First invocation: AttackElement is 0,
+
+  so it writes AI_ELEM_WALKING (4) into oAIAttackVars_AttackElement, checks
+
+  object_canMove, and if the object can move loads two context words from a
+
+  per-alliance table at byte_80FF0CC (entry = alliance<<3: alliance 0 gives
+
+  {0x10, 0x0F88}, alliance 1 gives {0x30, 0x0F80}) and tail-calls the AI''s
+
+  oAIAttackVars_PanelChooseCallback via mov lr,pc / bx r1 with
+
+  r0=oAIAttackVars_TargetObjectPtr and r1=the callback address itself. If the
+
+  callback returns nonzero r0 (chosen X) it stores FuturePanelX/FuturePanelY on the
+
+  object, calls object_reservePanel, sets oBattleObject_CurAnim = 4 (walk anim), sets
+
+  flag OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, clears the collision region, and
+
+  sets oAIAttackVars_StepTimer = 5. Later frames count StepTimer down; at zero it sets
+
+  oAIAttackVars_HitElement = 4 to trigger the attack''s hit. Failure paths (cannot
+
+  move, or the callback returns X == 0) cancel the attack by writing
+
+  oAIAttackVars_AttackDuration = 0x3C and oAIAttackVars_HitElement = 0x10.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FF068
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FF068
+
+    ./wf verify --function sub_80FF068 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    181 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FF068
+
+    ./wf verify --function sub_80FF068 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 84 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FF068
+
+    ./wf verify --function sub_80FF068 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ff068 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FF068 -> battle_aiAttackStepWalk_80FF068
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- meaning of the two context words supplied per alliance from byte_80FF0CC to the panel-choose callback
+- exact semantics of HitElement values 4 and 0x10 downstream of this handler
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FF068

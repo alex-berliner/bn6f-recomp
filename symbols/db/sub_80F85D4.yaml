@@ -1,0 +1,82 @@
+name: sub_80F85D4
+address: '0x080F85D4'
+kind: function
+status: hypothesis
+summary: Thin wrapper that passes a hardcoded 4-entry flag table (dword_80F85E4 = "0x10181E26") to sub_800FE28 and
+  returns its result.
+interface: u32 sub_80F85D4(u32 r5 /* forwarded to sub_800FE28 */); returns r0 of sub_800FE28
+details: 'Nothing but a trampoline: pushes lr, loads r0 with the address of the constant dword
+
+  at dword_80F85E4 (0x10181E26), then tail-calls sub_800FE28 with r5 forwarded untouched
+
+  from the caller. The dword reads as four bytes 26 1E 18 10, which looks like a small
+
+  flag-ID list (descending) handed to the flag-table routine, with r5 likely being the
+
+  flag-work pointer or a mode/selector. Whatever sub_800FE28 computes in r0 (and r2,
+
+  which this wrapper drops) is returned in r0. r1/r2 and all flags are clobbered by the
+
+  callee; no registers are preserved by this wrapper itself.
+
+  Without the analysis of sub_800FE28 it is unknown whether this sets, clears, tests,
+
+  or counts the listed flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80F85D4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F85D4
+
+    ./wf verify --function sub_80F85D4 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F85D4
+
+    ./wf verify --function sub_80F85D4 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F85D4
+
+    ./wf verify --function sub_80F85D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f85d4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What does sub_800FE28 do with the table at r0 and the value in r5 (set vs. test vs. count flags)?
+- Is dword_80F85E4 a 4-byte flag-ID list (0x26, 0x1E, 0x18, 0x10) or a packed bitmask/other structure?
+- Which game state do flags 0x10-0x26 belong to (story, trades, mailbox, ...)?
+- Why is r2 from the callee discarded here while other callers may use it?
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

@@ -1,0 +1,107 @@
+name: battle_spawnObject7BAndInit_80D4B44
+address: '0x080D4B44'
+kind: function
+status: confirmed
+summary: Spawns a battle object of spawn-type 0x7B with the caller's r1-r4 as arguments and, if the spawn
+  produced a non-null object, runs the basic battle-object initializer on it.
+interface: void battle_spawnObject7BAndInit_80D4B44(u32 initArg0 /*r0*/, u32 spawnArg1 /*r1*/, u32 spawnArg2
+  /*r2*/, u32 spawnArg3 /*r3*/, u32 spawnArg4 /*r4*/, u32 initArg5 /*r5*/, u32 r6); // clobbers r0-r3,
+  lr, flags; returns caller's r5 unchanged
+details: 'Wrapper around two battle-subsystem calls. It pushes the caller''s r0-r2 and r5,
+
+  calls object_spawnType3 with r0 = 0x7B (the object/spawn type) and the caller''s
+
+  r1-r4 as the spawn arguments; the new object pointer comes back in r5 from that
+
+  call. It then does "mov r0, r5" and "pop {r1-r3,r5}": in Thumb the low-register
+
+  mov is encoded as lsls rd, rs, #0 and sets the Z/N flags, so the following
+
+  "beq" branches on the object pointer being null. If non-null, it calls
+
+  BasicBattleObjectInitialize with r0 = the new object, r1-r3 = the caller''s
+
+  original r0-r2, and r5/r6 passing through unchanged - i.e. the caller''s r0-r2
+
+  are reinterpreted as initialization parameters for the spawned object. If the
+
+  spawn failed (null pointer), the initializer is skipped and only the pop runs.
+
+  On return, r5 holds the caller''s original r5 (restored by the pop), so despite
+
+  the register contract listing r5 as an output, it is effectively pass-through.
+
+  No memory structures are touched directly by this function; it only orchestrates
+
+  the spawn and init calls. No caller of record was visible in the provided snippet,
+
+  so the actual meaning of spawn type 0x7B (which battle entity it creates) is
+
+  inferred only from the shared spawn/init pattern, not identified.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D4B44
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D4B44
+
+    ./wf verify --function sub_80D4B44 --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D4B44
+
+    ./wf verify --function sub_80D4B44 --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 64 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D4B44
+
+    ./wf verify --function sub_80D4B44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4b44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D4B44 -> battle_spawnObject7BAndInit_80D4B44
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_80D4674
+open_questions:
+- what battle entity spawn type 0x7B corresponds to (object kind/behavior) is not identified here
+- meaning of the BasicBattleObjectInitialize parameters passed as the caller's r0-r2 (likely position/owner/team-style
+  init data) is unconfirmed
+- whether any caller relies on the Z flag left by the internal mov/pop sequence (flags are clobbered on
+  return)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D4B44

@@ -1191,9 +1191,9 @@ Next battle_toggleAllianceAndAccumulateCollisionToAiData_801A308(void) {
 /* battle_spawnHitEffectAtArm_801A42E(r5 = battle object):
  * While the object is in a hit/collision state (collision timer byte at
  * +0x74 and hit-flash counter at +0x80 of its collision data are both
- * non-zero), compute the object's arm position and call sub_80E8124 to
+ * non-zero), compute the object's arm position and call battle_spawnObject6B_linkRelated_80E8124 to
  * spawn/draw the associated effect there.
- * Preserves r4-r7; r3 on return is whatever sub_80E8124 left (or the
+ * Preserves r4-r7; r3 on return is whatever battle_spawnObject6B_linkRelated_80E8124 left (or the
  * incoming r3 when it returns early). */
 Next battle_spawnHitEffectAtArm_801A42E(void) {
     u32 savedR4 = R4;
@@ -1215,7 +1215,7 @@ Next battle_spawnHitEffectAtArm_801A42E(void) {
         R2 = 0;
         R3 = posY << 16;
         R4 = 0;
-        GUEST_CALL(sub_80E8124);
+        GUEST_CALL(battle_spawnObject6B_linkRelated_80E8124);
     }
 
     R4 = savedR4;
@@ -1358,8 +1358,8 @@ Next battle_handleCollisionCrouchSlideReset_801A45C(void) {
 /* battle_spawnArmHitEffect_801A4A6(r5 = battle object):
  * Checks the object's collision data byte at offset 0xA4; when it reports
  * hit type 0xF4 or 0xF7, looks up where the arm attack connects for this
- * object and hands the result to the battle-effect helper sub_80E8124.
- * Returns with r3 and the c/v flags as left by sub_80E8124; r4-r7 preserved. */
+ * object and hands the result to the battle-effect helper battle_spawnObject6B_linkRelated_80E8124.
+ * Returns with r3 and the c/v flags as left by battle_spawnObject6B_linkRelated_80E8124; r4-r7 preserved. */
 Next battle_spawnArmHitEffect_801A4A6(void) {
     u32 savedR4 = R4;
 
@@ -1386,7 +1386,7 @@ Next battle_spawnArmHitEffect_801A4A6(void) {
         R2 = 0;
         R3 = other << 16;
         R4 = 3;
-        GUEST_CALL(sub_80E8124); /* updates r3 and the c/v flags */
+        GUEST_CALL(battle_spawnObject6B_linkRelated_80E8124); /* updates r3 and the c/v flags */
     }
 
     R4 = savedR4;

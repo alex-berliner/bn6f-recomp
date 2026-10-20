@@ -1,0 +1,80 @@
+name: ai_attackStepDispatch_81151A0
+address: '0x081151A0'
+kind: function
+status: confirmed
+summary: 'Dispatches an enemy AI''s current attack step: reads the attack-phase byte from the attacker''s
+  AI attack vars and jumps to one of six per-step attack handlers.'
+interface: void ai_attackStepDispatch_81151A0(void); // r7 = attacker AIAttackVars, r5/r6/r10 inputs passed
+  through; returns whatever the selected handler leaves in r1/r5/r8-r12
+details: 'r7 points at the attacker''s AIAttackVars struct; the byte at oAIAttackVars_HitElement doubles
+  as the attack-step/phase selector. The handler table at off_81151B4 holds six Thumb entry addresses:
+  ai_chargeAttackInitAndStep, sub_811523C, ai_attackVars_runMoveStep_8115272, ai_throwObjectStep, ai_hopStepUpdate,
+  sub_8115404. The table is indexed with the raw byte (ldr [r1,r0], no <<2), so the byte value IS the
+  byte offset into the word table - only values 0, 4, 8, 12, 16, 20 are valid; other values would load
+  a misaligned/garbage address. The selected handler is entered with r0 = HitElement (the raw selector)
+  and r1 = the handler address itself, via the mov lr, pc; bx r1 idiom (ARM->Thumb interwork long branch).
+  Callers consume the handler''s resulting register state directly (r1, r5, r8-r12), so this thunk has
+  no observable outputs of its own. The two padding bytes after pop {pc} pad the function to word alignment
+  for the table pointer.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_81151A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81151A0
+
+    ./wf verify --function sub_81151A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81151A0
+
+    ./wf verify --function sub_81151A0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 27 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81151A0
+
+    ./wf verify --function sub_81151A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081151a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81151A0 -> ai_attackStepDispatch_81151A0
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of each step index in game terms (charge, sub_811523C, sub_8115404 are only identified
+  by address)
+- whether oAIAttackVars_HitElement genuinely doubles as the phase selector or the field name is a mislabel
+  from another consumer
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_81151A0

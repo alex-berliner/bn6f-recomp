@@ -1,0 +1,80 @@
+name: battle_killObjectByHpDrain_80D45EC
+address: '0x080D45EC'
+kind: function
+status: confirmed
+summary: Destroys a battle object by draining one HP from its related object and marking the object destroyed.
+interface: void battle_killObjectByHpDrain_80D45EC(BattleObject* obj in r5) -> obj in r5, leftover r1
+  from battle_decrementHp; clobbers flags and r0-r3/lr
+details: 'Entry point expects the battle object pointer in r5 (preserved through the call). Reads the
+  object''s Param1 byte (oBattleObject_Param1); when it equals 4, it first calls sub_80D4674, an extra
+  cleanup/branch for that param value which may replace the r5 object pointer before continuing. It then
+  loads RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr) from the object and calls battle_decrementHp
+  on that target, removing HP from the linked object. Finally it stores CUR_STATE_DESTROY into the object''s
+  CurState byte (oBattleObject_CurState) and returns, so the next state-machine pass removes it. r1 on
+  exit is whatever battle_decrementHp leaves there; callers reportedly read r1 and r5, so r1 appears to
+  be part of the contract even though it is just an untyped byproduct here. Preserves r4-r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D45EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D45EC
+
+    ./wf verify --function sub_80D45EC --snapshots build-snapshots'
+  result: 'captured calls: 31 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D45EC
+
+    ./wf verify --function sub_80D45EC --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D45EC
+
+    ./wf verify --function sub_80D45EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d45ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D45EC -> battle_killObjectByHpDrain_80D45EC
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_80D4674
+open_questions:
+- what Param1 == 4 means and what sub_80D4674 does in game terms
+- whether callers actually use the returned r1 or it is merely left in place
+- whether battle_decrementHp itself triggers death/defeat handling on the target
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D45EC

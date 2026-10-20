@@ -1,0 +1,73 @@
+name: sub_80FFAA0
+address: '0x080FFAA0'
+kind: function
+status: hypothesis
+summary: Looks up a byte value from a small 4-entry table via sub_800FE28 using the object at r5, then adds 60 (0x3C)
+  if the object's 0xA000 status flag bits are set, returning the result.
+interface: int sub_80FFAA0(void *obj /* r5 */); returns the computed value in r0; clobbers r1, r2, lr, flags; preserves
+  r4
+details: 'Takes the object/entity pointer (or index) in r5. First calls sub_800FE28 with the pointer to dword_80FFAC0,
+  whose bytes form a 4-entry lookup table with values 0x24, 0x1E, 0x18, 0x12 (36, 30, 24, 18 - a strictly decreasing
+  sequence), using r5 as the selection key; the returned r0 is the base value. It then calls object_getFlag on r5
+  and tests the result against 0xA000 (bits 15 and 13); if either bit is set, 0x3C (60) is added to the base value.
+  The final value is returned in r0. The table lives inline right after the function body. r4 is only used as a
+  scratch copy of the lookup result. The exact game meaning of the table values and of the 0xA000 flag combination
+  is not identifiable from this function alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FFAA0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFAA0
+
+    ./wf verify --function sub_80FFAA0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFAA0
+
+    ./wf verify --function sub_80FFAA0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFAA0
+
+    ./wf verify --function sub_80FFAA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffaa0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what sub_800FE28's lookup semantics are (index vs. compare/search over the 4 bytes at dword_80FFAC0)
+- what game state the 0xA000 flag bits (15 and 13) represent on the object
+- what quantity the table values (36/30/24/18) and the +60 bonus measure (HP, timer, damage, etc.)
+- what the caller's r5 actually holds (object pointer, entity index, or something else)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

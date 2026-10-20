@@ -1,0 +1,79 @@
+name: aiAttackStepTick_80ED394
+address: '0x080ED394'
+kind: function
+status: confirmed
+summary: Ticks down an enemy-AI attack's step timer and, once it expires, arms the hit element and jumps
+  to the attack's execution routine.
+interface: void sub_80ED394(u32 r1, u32 r3, u32 r5, struct oAIAttackVars* r7, u32 r10); // out r1, r5,
+  r10; clobbers r0,r2,r3,r6, nzcv
+details: 'Operates on an AI attack state block pointed to by r7 (fields oAIAttackVars_AttackElement, oAIAttackVars_StepTimer,
+  oAIAttackVars_HitElement). On the first invocation after an attack is selected (AttackElement == 0),
+  it seeds the step timer to 10 ticks and writes 4 into AttackElement to mark the attack armed. Every
+  call then decrements StepTimer and returns early while it is still > 0 (the AI waits out the wind-up).
+  When the countdown reaches 0, it writes 4 into HitElement (as a halfword, unlike the byte AttackElement)
+  and tail-calls sub_80ED3B6, which performs the actual attack and produces the outgoing r1 state; r5
+  and r10 pass through unchanged. Control-flow quirk: the timer decrement happens every call including
+  the arming call, so an attack armed with 10 ticks actually fires after 9 further calls; entering with
+  StepTimer == 0 would underflow to 0xFFFF and still take the fired branch (signed bgt), firing immediately.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80ED394
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80ED394
+
+    ./wf verify --function sub_80ED394 --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    191 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80ED394
+
+    ./wf verify --function sub_80ED394 --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 67 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80ED394
+
+    ./wf verify --function sub_80ED394 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080ed394 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80ED394 -> aiAttackStepTick_80ED394
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of element value 4 in AttackElement/HitElement (element id vs. armed flag) and of the
+  pass-through r3 in the sub_80ED3B6 call
+- caller-side meaning of the returned r1 (attack result/next-phase token from sub_80ED3B6)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80ED394

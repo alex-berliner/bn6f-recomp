@@ -1,0 +1,81 @@
+name: battle_aiAttackDispatch_8109E7A
+address: '0x08109E7A'
+kind: function
+status: confirmed
+summary: Dispatches the AI attack step by jumping through a 3-entry handler table selected by the state
+  byte of the current enemy's AI attack variable block.
+interface: void sub_8109E7A(r5 in/work, r6 in (preserved), r7 = AI attack vars ptr, lr return); tail-jump
+  into handler(r0 = state index, r1 = handler address); outputs r1,r5,r8-r12 from the chosen handler,
+  r6 preserved, flags clobbered
+details: 'Reads the first byte of the AI attack variable block (oAIAttackVars_HitElement / Unk_00, at
+  [r7]) and uses it as an index into the table at off_8109E8C, which has exactly three entries: sub_8109E98
+  (initial/default state), battleObject_beastOutOnTurn_8109EC4 (Beast Out triggered on this turn), and
+  battle_attackTimerExpireExit (attack timer expired - exit). The selected handler is entered with r0
+  = the state index, r1 = the handler''s own address (a common self-pointer convention), and r5/r6/r7
+  passed through unchanged; the call is done via mov lr,pc / bx r1 so the handler returns directly to
+  this function''s caller through pop {r6,pc}, making the handler''s register state (r1, r5, r8-r12) effectively
+  this function''s output. r6 is preserved across the dispatch by the pop. This is a state-machine trampoline
+  in the battle AI attack sequencing, not a routine with its own logic.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8109E7A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8109E7A
+
+    ./wf verify --function sub_8109E7A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8109E7A
+
+    ./wf verify --function sub_8109E7A --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 21 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8109E7A
+
+    ./wf verify --function sub_8109E7A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08109e7a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8109E7A -> battle_aiAttackDispatch_8109E7A
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8109E98 (state 0) does
+- exact layout/meaning of the AIAttackVars block fields beyond byte 0
+- whether state index is guaranteed < 3 (no bounds check before table load)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8109E7A

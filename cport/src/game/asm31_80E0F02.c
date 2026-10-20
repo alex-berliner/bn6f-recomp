@@ -269,7 +269,7 @@ Next ai_getTargetObjectPos(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E1654 ── */
+/* ── battle_flagAiTarget_80E1654 ── */
 /* Mark the AI's current target as ... (the target object at r5's AIData gets
  * flagged: word 1 at +0x64 and byte 1 at +0x10), returning the target pointer. */
 static u32 flag_ai_target(u32 battleObject) {
@@ -281,8 +281,8 @@ static u32 flag_ai_target(u32 battleObject) {
     return target;
 }
 
-/* sub_80E1654(r5 = battle object) -> r1 = target object pointer */
-Next sub_80E1654(void) {
+/* battle_flagAiTarget_80E1654(r5 = battle object) -> r1 = target object pointer */
+Next battle_flagAiTarget_80E1654(void) {
     R1 = flag_ai_target(R5);
     RETURN_TO_CALLER();
 }
@@ -1129,20 +1129,20 @@ Next battle_despawnEnemyObject(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E341E ── */
+/* ── battle_objectSetExtraVar3_80E341E ── */
 /* Store a value into a battle object's scratch slot 3 of its extra-vars block
  * (used by the AI as a general-purpose memory cell). */
 static void battle_object_set_extra_var_c(u32 object, u32 value) {
     ST32(object + (oBattleObject_ExtraVars + 0xC), value);
 }
 
-/* sub_80E341E(r0 = object, r1 = value) -> void */
-Next sub_80E341E(void) {
+/* battle_objectSetExtraVar3_80E341E(r0 = object, r1 = value) -> void */
+Next battle_objectSetExtraVar3_80E341E(void) {
     battle_object_set_extra_var_c(R0, R1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E3950 ── */
+/* ── battle_finishObjectPhase_80E3950 ── */
 /* Advance a battle object past its current phase: when the phase has finished
  * initializing, move it to action 8 (phase done) and clear the phase counter
  * so the next phase starts fresh. Objects not yet initialized are left alone. */
@@ -1154,8 +1154,8 @@ static void finish_battle_object_phase(u32 obj) {
     ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
 }
 
-/* sub_80E3950(r5 = battle object) -> nothing */
-Next sub_80E3950(void) {
+/* battle_finishObjectPhase_80E3950(r5 = battle object) -> nothing */
+Next battle_finishObjectPhase_80E3950(void) {
     finish_battle_object_phase(R5);
     RETURN_TO_CALLER();
 }
@@ -1428,7 +1428,7 @@ Next sub_80E3D1A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E4A4C ── */
+/* ── battle_objectTickAction3_80E4A4C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3; bool c, v; } call_sprite_getFrameParameters_result_sub_80E4A4C;
 /* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
@@ -1465,8 +1465,8 @@ static void battle_object_tick_action(u32 obj)
         call_sub_8016C9C(obj);
 }
 
-/* sub_80E4A4C(r5 = battle object) -> r5 unchanged */
-Next sub_80E4A4C(void) {
+/* battle_objectTickAction3_80E4A4C(r5 = battle object) -> r5 unchanged */
+Next battle_objectTickAction3_80E4A4C(void) {
     battle_object_tick_action(R5);
     RETURN_TO_CALLER();
 }
@@ -1726,7 +1726,7 @@ Next object_scriptedEffectTick(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E5264 ── */
+/* ── battle_finishActionToStateUpdate_80E5264 ── */
 #define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E5264 0x8u
 #define CUR_STATE_UPDATE_sub_80E5264 0x4u
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
@@ -1740,10 +1740,10 @@ static inline call_PlaySoundEffect_result call_PlaySoundEffect(u32 r0, u32 r2) {
 }
 
 typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_sub_80E527A_result;
-/* register form: generated wrapper: sub_80E527A has no typed C interface yet */
+/* register form: generated wrapper: battle_condDispatchRelatedPhase_80E527A has no typed C interface yet */
 static inline call_sub_80E527A_result call_sub_80E527A(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80E527A);
+    GUEST_CALL(battle_condDispatchRelatedPhase_80E527A);
     return (call_sub_80E527A_result){ R5, R8, R9, R10, R11, R12 };
 }
 
@@ -1752,7 +1752,7 @@ static inline call_sub_80E527A_result call_sub_80E527A(u32 r5) {
  * continue into the state dispatcher, whose results are this function's outputs.
  *
  * inputs: r2 (passed through to PlaySoundEffect), r5 (battle object pointer), r10
- * outputs: r5 r8 r9 r10 r11 r12 (all from sub_80E527A)
+ * outputs: r5 r8 r9 r10 r11 r12 (all from battle_condDispatchRelatedPhase_80E527A)
  */
 static call_sub_80E527A_result finish_state_phase(u32 obj, u32 arg2)
 {
@@ -1762,7 +1762,7 @@ static call_sub_80E527A_result finish_state_phase(u32 obj, u32 arg2)
     return call_sub_80E527A(obj);
 }
 
-Next sub_80E5264(void) {
+Next battle_finishActionToStateUpdate_80E5264(void) {
     call_sub_80E527A_result res = finish_state_phase(R5, R2);
     R5 = res.r5;
     R8 = res.r8;
@@ -1773,7 +1773,7 @@ Next sub_80E5264(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E527A ── */
+/* ── battle_condDispatchRelatedPhase_80E527A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_object_dispatchPhaseHandler_result;
 /* register form: generated wrapper: object_dispatchPhaseHandler has no typed C interface yet */
@@ -1818,8 +1818,8 @@ static PhaseHandlerRegs sub_80E527A_body(u32 object, u32 r8, u32 r9, u32 r10,
     return call_object_dispatchPhaseHandler(object);
 }
 
-/* sub_80E527A(r5 = object, r10 = handler context) -> r5 r8 r9 r10 r11 r12 */
-Next sub_80E527A(void) {
+/* battle_condDispatchRelatedPhase_80E527A(r5 = object, r10 = handler context) -> r5 r8 r9 r10 r11 r12 */
+Next battle_condDispatchRelatedPhase_80E527A(void) {
     PhaseHandlerRegs out = sub_80E527A_body(R5, R8, R9, R10, R11, R12);
     R5 = out.r5;
     R8 = out.r8;
@@ -2005,7 +2005,7 @@ Next battle_phaseWaitTimer2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E5314 ── */
+/* ── battle_destroyObject_80E5314 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: battle_clearDropEntryById has no typed C interface yet */
 static inline void call_battle_clearDropEntryById(u32 r0) {
@@ -2034,13 +2034,13 @@ static void destroy_battle_object_sub_80E5314(u32 object) {
     call_object_freeMemory(object);
 }
 
-/* sub_80E5314(r5 = object, r10 = context) -> r5 preserved */
-Next sub_80E5314(void) {
+/* battle_destroyObject_80E5314(r5 = object, r10 = context) -> r5 preserved */
+Next battle_destroyObject_80E5314(void) {
     destroy_battle_object_sub_80E5314(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E5410 ── */
+/* ── entity_resetTimerAndCounter_80E5410 ── */
 /* Initialize an entity's timer/state fields: set the 8-unit field at +8
  * and clear the counter at +0x60. Returns 0 in r1 (the last value written). */
 static u32 reset_entity_fields(u32 entity) {
@@ -2049,8 +2049,8 @@ static u32 reset_entity_fields(u32 entity) {
     return 0;
 }
 
-/* sub_80E5410(r0 = entity) -> r1 */
-Next sub_80E5410(void) {
+/* entity_resetTimerAndCounter_80E5410(r0 = entity) -> r1 */
+Next entity_resetTimerAndCounter_80E5410(void) {
     R1 = reset_entity_fields(R0);
     RETURN_TO_CALLER();
 }
@@ -2088,8 +2088,8 @@ Next battle_clearDropEntryById(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E54DC ── */
-/* Battle-object action dispatcher (sub_80E54DC).
+/* ── battle_dispatchObjectAction_80E54DC ── */
+/* Battle-object action dispatcher (battle_dispatchObjectAction_80E54DC).
  *
  * Reads the battle object's current action (CurAction byte) and calls the
  * matching handler from the jump table at off_80E54F0:
@@ -2119,7 +2119,7 @@ static void run_battle_action_handler(u32 object) {
     GUEST_CALL_ADDR(handler);
 }
 
-Next sub_80E54DC(void) {
+Next battle_dispatchObjectAction_80E54DC(void) {
     run_battle_action_handler(R5);
     RETURN_TO_CALLER();
 }
@@ -2239,7 +2239,7 @@ Next battle_restoreBaseSprite(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E7142 ── */
+/* ── battle_objectMirrorRelatedAndFlinchStep_80E7142 ── */
 #define oBattleObject_Param1_sub_80E7142 0x4u
 #define oBattleObject_CurStateActionPhaseAndPhaseInitialized_sub_80E7142 0x8u
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
@@ -2306,8 +2306,8 @@ static void sub_80E7142_step(u32 self) {
          CUR_STATE_DESTROY);
 }
 
-/* sub_80E7142(r5 = object, r10 = battle context) -> no outputs */
-Next sub_80E7142(void) {
+/* battle_objectMirrorRelatedAndFlinchStep_80E7142(r5 = object, r10 = battle context) -> no outputs */
+Next battle_objectMirrorRelatedAndFlinchStep_80E7142(void) {
     sub_80E7142_step(R5);
     RETURN_TO_CALLER();
 }
@@ -2348,7 +2348,7 @@ Next battle_objectFlinchStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E71B8 ── */
+/* ── battle_markObjectDead_80E71B8 ── */
 /* Write the value 8 to object+8 when the object pointer is non-NULL.
  * This is the usual "flag object as destroyed" setter used all over the battle code.
  * r1 is an output: it becomes 8 on a successful store and keeps its incoming
@@ -2360,8 +2360,8 @@ static u32 mark_object_at(u32 obj, u32 r1) {
     return 8;
 }
 
-/* sub_80E71B8(r0 = object pointer, r1 = incoming r1) -> r1 */
-Next sub_80E71B8(void) {
+/* battle_markObjectDead_80E71B8(r0 = object pointer, r1 = incoming r1) -> r1 */
+Next battle_markObjectDead_80E71B8(void) {
     R1 = mark_object_at(R0, R1);
     RETURN_TO_CALLER();
 }
@@ -2441,7 +2441,7 @@ Next ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E8124 ── */
+/* ── battle_spawnObject6B_linkRelated_80E8124 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_object_spawnType4_result_sub_80E8124;
 /* register form: generated wrapper: object_spawnType4 has no typed C interface yet */
@@ -2472,8 +2472,8 @@ static u32 spawn_object_and_link_related(u32 a1, u32 a2, u32 a3, u32 a4, u32 rel
     return related;     /* r5 is restored by the original's pop {r5} */
 }
 
-/* sub_80E8124 (r1-r4 = spawner arguments, r5 = object to link) -> r2 r3 r5 r6 r7 */
-Next sub_80E8124(void) {
+/* battle_spawnObject6B_linkRelated_80E8124 (r1-r4 = spawner arguments, r5 = object to link) -> r2 r3 r5 r6 r7 */
+Next battle_spawnObject6B_linkRelated_80E8124(void) {
     R5 = spawn_object_and_link_related(R1, R2, R3, R4, R5);
     RETURN_TO_CALLER();
 }
@@ -2742,7 +2742,7 @@ Next battle_commitPanelMove(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EAF1A ── */
+/* ── battle_objectCheckGuardAction_80EAF1A ── */
 /* Check the battle object's current action: return 0xC when the object is
  * performing action 0x52 (guard/shield-style action), otherwise 0. */
 static u32 get_action_result(u32 object) {
@@ -2751,8 +2751,8 @@ static u32 get_action_result(u32 object) {
     return 0;
 }
 
-/* sub_80EAF1A(r5 = battle object) -> r0 */
-Next sub_80EAF1A(void) {
+/* battle_objectCheckGuardAction_80EAF1A(r5 = battle object) -> r0 */
+Next battle_objectCheckGuardAction_80EAF1A(void) {
     R0 = get_action_result(R5);
     RETURN_TO_CALLER();
 }
@@ -2805,11 +2805,11 @@ static inline call_GetBattleNaviStatsByte_result call_GetBattleNaviStatsByte(u32
     return (call_GetBattleNaviStatsByte_result){ R0 };
 }
 
-/* register form: generated wrapper: sub_80E341E has no typed C interface yet */
+/* register form: generated wrapper: battle_objectSetExtraVar3_80E341E has no typed C interface yet */
 static inline void call_sub_80E341E(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_80E341E);
+    GUEST_CALL(battle_objectSetExtraVar3_80E341E);
 }
 
 /*

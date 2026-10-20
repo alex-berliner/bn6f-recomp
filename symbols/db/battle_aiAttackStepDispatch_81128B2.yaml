@@ -1,0 +1,80 @@
+name: battle_aiAttackStepDispatch_81128B2
+address: '0x081128B2'
+kind: function
+status: confirmed
+summary: AI attack-state step dispatcher - reads the HitElement byte from the AI attack vars and jumps
+  to one of four per-step handlers chosen from a small jump table.
+interface: void battle_aiAttackStepDispatch_81128B2(AiWork *r5, AiAttackVars *r7) // lr = return; outputs
+  (r0/r1/r5/r8-r12) are whatever the dispatched handler leaves in the guest register file
+details: "Trampoline/dispatcher used by the enemy AI while an attack is in progress. Reads the byte at\n\
+  oAIAttackVars_HitElement (offset into the struct in r7) and uses it directly as a byte offset\ninto\
+  \ the 4-entry jump table at off_81128C4, then does the classic \"mov lr, pc; bx r1\" Thumb\ntail-dispatch\
+  \ so the selected handler runs with lr pointing back at this function's pop {pc}.\nEntries (Thumb addresses,\
+  \ +1 bit set):\n  0: ai_attackStepTick - per-frame attack step ticker\n  1: ai_attackAnimHitStep - attack\
+  \ animation/hit-frame step\n  2: ai_attackPhaseSubStep - attack phase sub-step advance\n  3: genericAI_exitAttackStateAfterDelay_81097BA\
+  \ - end the attack state after a delay\nThe selected handler is called with r0 = the HitElement byte\
+  \ value, r1 = its own table entry\naddress, r5 = AI work pointer and r7 = AI attack vars pointer unchanged\
+  \ from the caller.\nBecause of the lr/pc dispatch, no registers are saved or restored here: the handler's\
+  \ results\nin r0/r1/r5/r8-r12 land straight in the caller's register file, which is why the contract\
+  \ lists\nthem as outputs of this function. HitElement here is really acting as an attack-step/state\n\
+  selector, not a battle element - values outside 0-3 would index past the table (no bounds check).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_81128B2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81128B2
+
+    ./wf verify --function sub_81128B2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    292 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81128B2
+
+    ./wf verify --function sub_81128B2 --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 27 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81128B2
+
+    ./wf verify --function sub_81128B2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081128b2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81128B2 -> battle_aiAttackStepDispatch_81128B2
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of each HitElement/step value (0-3) in the attack state machine, and who sets them
+- whether any caller ever passes a value >3 (out-of-table dispatch would call garbage)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_81128B2

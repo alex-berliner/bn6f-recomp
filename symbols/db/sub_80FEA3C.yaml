@@ -1,0 +1,73 @@
+name: sub_80FEA3C
+address: '0x080FEA3C'
+kind: function
+status: hypothesis
+summary: Fetches three related values from a small constant table at byte_80FEA68 (offsets 0, 4 and 8) through the
+  getter sub_800FE28 and returns them in r0-r2.
+interface: int getRelatedParamTriple(int context /* r5 */) -> returns three values in r0, r1, r2; clobbers flags
+  and lr
+details: 'Loads the address of the byte table byte_80FEA68 (0x080FEA68) and calls sub_800FE28 three times, once
+  with table+0, once with table+4 and once with table+8, passing the caller''s r5 through as context each time.
+  Each call''s r0 result becomes one of the three return values (r0, r1, r2). The table holds 12 bytes: 0x0A,0x0A,0x0A,0x0A,
+  0x1E,0x1E, 0x14,0x14, 0x03,0x03,0x03,0x05, so the first bytes of the three groups read are 0x0A (10), 0x1E (30)
+  and 0x03 (3) - plausibly a set of related timing/count parameters (e.g. short/long frame delays plus a repeat
+  count), but the meaning of sub_800FE28''s lookup and of the r5 context is not visible here. Note the table is
+  addressed byte-wise yet at 4-byte strides, so sub_800FE28 likely reads a single byte (or small field) per entry
+  rather than a word. Uses push/pop of r0/r1 around the middle call to shuffle the first result into r1.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FEA3C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEA3C
+
+    ./wf verify --function sub_80FEA3C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEA3C
+
+    ./wf verify --function sub_80FEA3C --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEA3C
+
+    ./wf verify --function sub_80FEA3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fea3c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_800FE28 actually does with the table pointer and the r5 context (plain byte read? indexed/scaling lookup?)
+- which game system consumes the returned (10, 30, 3)-style triple
+- why the table is 12 bytes when only offsets 0, 4 and 8 are fetched here; other callers may use the remaining entries
+- whether r5 is a scene/battle context pointer or a small index
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

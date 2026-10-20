@@ -955,7 +955,7 @@ Next ai_attackHoldTimeoutUpdate(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80ECC86 ── */
+/* ── battle_getAIHandlerSlot_80ECC86 ── */
 /* Map a battle object's AI index to its AI behavior slot.
  * Reads the object's AI data pointer, takes the AI index from it, and looks the
  * index up in a small table (0 = no special AI, 2 = custom AI handler).
@@ -970,7 +970,7 @@ static u32 ai_index_to_slot(u32 battle_object) {
     return LD8(AI_SLOT_TABLE + ai_index);
 }
 
-Next sub_80ECC86(void) {
+Next battle_getAIHandlerSlot_80ECC86(void) {
     R0 = ai_index_to_slot(R5);
     RETURN_TO_CALLER();
 }
@@ -1286,7 +1286,7 @@ Next battle_elementHitDispatcher(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80ED394 ── */
+/* ── aiAttackStepTick_80ED394 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r5, r10; } call_sub_80ED3B6_result;
 /* register form: generated wrapper: sub_80ED3B6 has no typed C interface yet */
@@ -1328,8 +1328,8 @@ static struct AiAttackTickResult ai_attack_tick_sub_80ED394(u32 r1, u32 r3, u32 
     return (struct AiAttackTickResult){ next.r1, r5, r10 };
 }
 
-/* sub_80ED394: in r3 r5 r7 r10, out r1 r5 r10 (r5/r10 pass through unchanged) */
-Next sub_80ED394(void) {
+/* aiAttackStepTick_80ED394: in r3 r5 r7 r10, out r1 r5 r10 (r5/r10 pass through unchanged) */
+Next aiAttackStepTick_80ED394(void) {
     struct AiAttackTickResult res = ai_attack_tick_sub_80ED394(R1, R3, R5, R7, R10);
     R1 = res.r1;
     R5 = res.r5;
@@ -1502,7 +1502,7 @@ Next ai_attackTelegraphStep(void) {
  * r7 points at the AI attack variable block.  The byte at
  * oAIAttackVars_HitElement selects an entry in the jump table at
  * off_80EDCD4 (ai_beastSpAttackStep for the neutral element,
- * sub_80EDD5C otherwise).  The selected handler is called with the
+ * ai_attack_stepTick_80EDD5C otherwise).  The selected handler is called with the
  * element in r0.  Because the original loads the handler address into
  * r1 immediately before `bx r1` and the handlers preserve r1, the
  * table entry must also be left in r1 across the call; the handler's
@@ -1533,7 +1533,7 @@ Next airspinAttack_80EDCC0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EDD5C ── */
+/* ── ai_attack_stepTick_80EDD5C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result_sub_80EDD5C;
 /* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
@@ -1572,19 +1572,19 @@ static u32 ai_attack_step_tick(u32 r1, u32 r5, u32 r6, u32 r7) {
     return call_object_exitAttackState_sub_80EDD5C(r5, r6, r7).r1;
 }
 
-/* sub_80EDD5C(r5, r6, r7, lr) -> r1 (r1 untouched unless the exit call runs) */
-Next sub_80EDD5C(void) {
+/* ai_attack_stepTick_80EDD5C(r5, r6, r7, lr) -> r1 (r1 untouched unless the exit call runs) */
+Next ai_attack_stepTick_80EDD5C(void) {
     R1 = ai_attack_step_tick(R1, R5, R6, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EEC70 ── */
-/* sub_80EEC70 — dispatch the AI's pending attack.
+/* ── ai_dispatchHitAttackByElement_80EEC70 ── */
+/* ai_dispatchHitAttackByElement_80EEC70 — dispatch the AI's pending attack.
  *
  * The attack-state struct reached through r7 holds the element of the hit
  * that triggered this attack. That element selects an entry in a small jump
  * table at off_80EEC84:
- *   entry 0 -> sub_80EEC90
+ *   entry 0 -> aiAttack_windupTick_80EEC90
  *   entry 1 -> ai_frontPanelSlashAttack
  *   entry 2 -> ai_attackWaitThenCleanup
  * Note the original indexes the word table with the raw element byte
@@ -1614,12 +1614,12 @@ static void run_hit_attack(u32 attackVars) {
     call_hit_handler(handler, element);
 }
 
-Next sub_80EEC70(void) {
+Next ai_dispatchHitAttackByElement_80EEC70(void) {
     run_hit_attack(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EEC90 ── */
+/* ── aiAttack_windupTick_80EEC90 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; } call_object_setAnimation_result;
 /* register form: generated wrapper: object_setAnimation has no typed C interface yet */
@@ -1682,8 +1682,8 @@ static void ai_attack_windup_tick_sub_80EEC90(u32 obj, u32 vars) {
     }
 }
 
-/* sub_80EEC90(r5 = object, r7 = AI attack vars, r10 = battle state) -> r1 */
-Next sub_80EEC90(void) {
+/* aiAttack_windupTick_80EEC90(r5 = object, r7 = AI attack vars, r10 = battle state) -> r1 */
+Next aiAttack_windupTick_80EEC90(void) {
     ai_attack_windup_tick_sub_80EEC90(R5, R7);
     RETURN_TO_CALLER();
 }
@@ -1737,8 +1737,8 @@ Next ai_attackWaitThenCleanup(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EF534 ── */
-/* sub_80EF534: dispatch one AI attack step based on the element the attack hit
+/* ── battle_aiAttackDispatchByHitElement_80EF534 ── */
+/* battle_aiAttackDispatchByHitElement_80EF534: dispatch one AI attack step based on the element the attack hit
  * with. r7 points at the AI attack vars; the HitElement byte indexes a
  * two-entry handler table (SnakeArm attack-part step / plain attack tick-down),
  * and the selected handler is tail-called with r0 = element and r1 = handler
@@ -1766,9 +1766,9 @@ static void run_ai_attack_element_step(u32 aiVars)
     call_attack_element_handler_sub_80EF534(element, handler);
 }
 
-/* sub_80EF534(r5, r6, r7 = AI attack vars, r10, lr): tail-calls the element's
+/* battle_aiAttackDispatchByHitElement_80EF534(r5, r6, r7 = AI attack vars, r10, lr): tail-calls the element's
  * attack handler; no results of its own besides what the handler leaves. */
-Next sub_80EF534(void)
+Next battle_aiAttackDispatchByHitElement_80EF534(void)
 {
     run_ai_attack_element_step(R7);
     RETURN_TO_CALLER();
@@ -1865,14 +1865,14 @@ Next battle_EndRelatedObject2Anim_80F06CE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F153C ── */
-/* sub_80F153C -- AI attack dispatcher (bn6f asm31.s).
+/* ── ai_dispatchAttackStep_80F153C ── */
+/* ai_dispatchAttackStep_80F153C -- AI attack dispatcher (bn6f asm31.s).
  *
  * Reads the routine selector from the AI attack-vars block pointed to by r7
  * and jumps to one of the two handlers in the table at off_80F1550.  The
  * handler is entered with r0 = selector byte, r1 = its own address and
  * r3/r5/r6/r7 passed through untouched; the values it leaves behind in
- * r1, r5 and r8-r12 are sub_80F153C's outputs, so they never pass through
+ * r1, r5 and r8-r12 are ai_dispatchAttackStep_80F153C's outputs, so they never pass through
  * C values here -- the guest call leaves them in the guest registers directly. */
 
 /* register form: the call target comes from the dispatch table, and the
@@ -1895,7 +1895,7 @@ static void run_attack_handler(u32 selector, u32 handler,
     R7 = savedR7;
 }
 
-/* Typed body of sub_80F153C: pick the handler for the current AI attack
+/* Typed body of ai_dispatchAttackStep_80F153C: pick the handler for the current AI attack
  * step and run it. */
 static void dispatch_ai_attack_sub_80F153C(u32 varsPtr, u32 passR3, u32 passR5, u32 passR6) {
     u32 selector = LD8(varsPtr + oAIAttackVars_HitElement);
@@ -1903,13 +1903,13 @@ static void dispatch_ai_attack_sub_80F153C(u32 varsPtr, u32 passR3, u32 passR5, 
     run_attack_handler(selector, handler, passR3, passR5, passR6, varsPtr);
 }
 
-/* sub_80F153C(r3, r5, r6, r7 = attack vars) -> r1 r5 r8 r9 r10 r11 r12 */
-Next sub_80F153C(void) {
+/* ai_dispatchAttackStep_80F153C(r3, r5, r6, r7 = attack vars) -> r1 r5 r8 r9 r10 r11 r12 */
+Next ai_dispatchAttackStep_80F153C(void) {
     dispatch_ai_attack_sub_80F153C(R7, R3, R5, R6);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F15CE ── */
+/* ── ai_dispatchAttackStep_80F15CE ── */
 /* AI attack dispatcher. The AI attack vars struct holds a selector byte; this
  * routine reads it, looks up one of seven attack handlers in the table at
  * off_80F15E0, and calls it with r0 = selector and r1 = handler address (the
@@ -1921,7 +1921,7 @@ Next sub_80F153C(void) {
  * "mov lr, pc; bx r1" dispatch.
  * Register form: the call goes through a computed code address, and the
  * handler's results must stay in the guest registers (r1, r5, r8-r12) so
- * they reach sub_80F15CE's caller untouched. */
+ * they reach ai_dispatchAttackStep_80F15CE's caller untouched. */
 static u32 call_attack_handler_sub_80F15CE(u32 handler, u32 attackIndex) {
     R0 = attackIndex;   /* selector byte, as the original passes it */
     R1 = handler;       /* the table entry is still live in r1 at the call */
@@ -1931,17 +1931,17 @@ static u32 call_attack_handler_sub_80F15CE(u32 handler, u32 attackIndex) {
 
 /* Read the attack selector from the AI attack vars and run the matching
  * handler. The handler leaves its results in r1/r5/r8-r12, which stay in the
- * guest registers for the caller of sub_80F15CE. */
+ * guest registers for the caller of ai_dispatchAttackStep_80F15CE. */
 static void run_ai_attack_sub_80F15CE(u32 attackVars) {
     u32 attackIndex = LD8(attackVars + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80F15E0 + attackIndex);
     call_attack_handler_sub_80F15CE(handler, attackIndex);
 }
 
-/* sub_80F15CE(r5, r6, r7 = AI attack vars) -> r1 r5 r8 r9 r10 r11 r12
+/* ai_dispatchAttackStep_80F15CE(r5, r6, r7 = AI attack vars) -> r1 r5 r8 r9 r10 r11 r12
  * The outputs are exactly what the dispatched handler leaves behind, so the
  * adapter computes nothing itself. */
-Next sub_80F15CE(void) {
+Next ai_dispatchAttackStep_80F15CE(void) {
     run_ai_attack_sub_80F15CE(R7);
     RETURN_TO_CALLER();
 }
@@ -1985,7 +1985,7 @@ Next battleObject_aiDispatchAttack_80F17C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F17E4 ── */
+/* ── battle_aiAttackWindupStepWood_80F17E4 ── */
 /* AI attack step handler (r5 = battle object, r7 = AI attack vars).
  *
  * First invocation (AttackElement == 0): initialize the attack — pick element
@@ -2009,8 +2009,8 @@ static void step_ai_attack(u32 obj, u32 atk) {
     }
 }
 
-/* sub_80F17E4(r5 = battle object, r7 = AI attack vars) -> nothing */
-Next sub_80F17E4(void) {
+/* battle_aiAttackWindupStepWood_80F17E4(r5 = battle object, r7 = AI attack vars) -> nothing */
+Next battle_aiAttackWindupStepWood_80F17E4(void) {
     step_ai_attack(R5, R7);
     RETURN_TO_CALLER();
 }
@@ -2226,7 +2226,7 @@ Next sub_80F77D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F79F0 ── */
+/* ── ai_attackStepDispatch_80F79F0 ── */
 /* AI attack step dispatcher (0x080F79F0).
  *
  * r7 points to the AI attack vars; the byte at oAIAttackVars_HitElement selects
@@ -2253,16 +2253,16 @@ static void run_ai_attack_sub_80F79F0(u32 vars) {
     call_ai_handler(selector, handler);
 }
 
-/* sub_80F79F0(r7 = AI attack vars; r5/r6 pass through to the handler).
+/* ai_attackStepDispatch_80F79F0(r7 = AI attack vars; r5/r6 pass through to the handler).
  * The handler's results are already in the guest registers when it returns,
  * so the adapter reads only the vars pointer and writes nothing itself. */
-Next sub_80F79F0(void) {
+Next ai_attackStepDispatch_80F79F0(void) {
     run_ai_attack_sub_80F79F0(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F7AD2 ── */
-/* AI attack dispatcher (sub_80F7AD2).
+/* ── ai_dispatchAttackState_80F7AD2 ── */
+/* AI attack dispatcher (ai_dispatchAttackState_80F7AD2).
  *
  * r7 points at the AI attack state (oAIAttackVars). The byte at offset
  * oAIAttackVars_HitElement is used directly as a BYTE offset into the handler
@@ -2298,7 +2298,7 @@ static void dispatch_ai_attack_sub_80F7AD2(u32 vars)
     call_attack_handler_sub_80F7AD2(selector, handler);
 }
 
-Next sub_80F7AD2(void)
+Next ai_dispatchAttackState_80F7AD2(void)
 {
     u32 vars = R7;
 
@@ -2308,9 +2308,9 @@ Next sub_80F7AD2(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F7EA6 ── */
+/* ── ai_attackDispatchStep_80F7EA6 ── */
 /*
- * sub_80F7EA6 -- AI attack dispatcher.
+ * ai_attackDispatchStep_80F7EA6 -- AI attack dispatcher.
  *
  * Reads the selected attack slot from the AI variable block in r7
  * ([r7 + oAIAttackVars_HitElement]) and calls the matching handler from the
@@ -2328,7 +2328,7 @@ Next sub_80F7AD2(void)
  * entry, r5/r6/r7/r10 passed through), then reloads r7 the way the
  * original's pop {r7,pc} does, so the handler may clobber it freely.
  * Every other register the handler leaves (r1, r5, r8..r12, flags) stays in
- * the guest registers and is sub_80F7EA6's own result. */
+ * the guest registers and is ai_attackDispatchStep_80F7EA6's own result. */
 static u32 call_attack_handler_sub_80F7EA6(u32 handler, u32 slot, u32 r5, u32 r6, u32 r7, u32 r10)
 {
     R0 = slot;      /* the handlers take the selected attack slot in r0 */
@@ -2355,9 +2355,9 @@ static void dispatch_ai_attack_sub_80F7EA6(u32 r5, u32 r6, u32 r7, u32 r10)
     call_attack_handler_sub_80F7EA6(handler, slot, r5, r6, r7, r10);
 }
 
-/* sub_80F7EA6(r5, r6, r7 = AI vars ptr, r10) -- results: r1 r5 r8 r9 r10 r11 r12
+/* ai_attackDispatchStep_80F7EA6(r5, r6, r7 = AI vars ptr, r10) -- results: r1 r5 r8 r9 r10 r11 r12
  * all come straight from the attack handler, so there is nothing to write here. */
-Next sub_80F7EA6(void)
+Next ai_attackDispatchStep_80F7EA6(void)
 {
     dispatch_ai_attack_sub_80F7EA6(R5, R6, R7, R10);
     RETURN_TO_CALLER();
@@ -2422,7 +2422,7 @@ Next sub_80F85D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8610 ── */
+/* ── battle_getSignedDistanceToOpposingBattler_80F8610 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r5; } call_battle_findPlayer_result_sub_80F8610;
 /* register form: generated wrapper: battle_findPlayer has no typed C interface yet */
@@ -2474,8 +2474,8 @@ static u32 distance_to_opposing_battler(u32 self) {
         return found - foe_x;   /* foe sits to the left of the panel */
 }
 
-/* sub_80F8610(r5 = this BattleObject, r10 = battle state) -> r0, r5 (unchanged) */
-Next sub_80F8610(void) {
+/* battle_getSignedDistanceToOpposingBattler_80F8610(r5 = this BattleObject, r10 = battle state) -> r0, r5 (unchanged) */
+Next battle_getSignedDistanceToOpposingBattler_80F8610(void) {
     u32 self = R5;
     R0 = distance_to_opposing_battler(self);
     R5 = self;                  /* output r5: the original leaves it unchanged */
@@ -2514,14 +2514,14 @@ Next battle_aiLoadAttackVarsFromTables(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F870C ── */
-/* sub_80F870C -- AI attack dispatcher.
+/* ── ai_attack_dispatchByHitElement_80F870C ── */
+/* ai_attack_dispatchByHitElement_80F870C -- AI attack dispatcher.
  *
  * Reads the HitElement byte from the AI attack vars (r7) and calls one of
  * three element handlers through the table at off_80F8720:
  *   entry 0 -> sub_80F872C
  *   entry 1 -> ai_attackStepWindupAnim3Hit8
- *   entry 2 -> sub_80F87DA
+ *   entry 2 -> ai_tickAttackWindup_80F87DA
  * The raw HitElement byte is used directly as the BYTE offset into the
  * table (the game stores it already scaled to 0/4/8), and the handler is
  * entered with r0 = that same element value and r1 = its own table entry.
@@ -2549,9 +2549,9 @@ static void dispatch_element_attack(u32 attack_vars) {
     call_element_handler_sub_80F870C(handler, element);
 }
 
-/* sub_80F870C(r5/r6 pass through, r7 = AI attack vars, lr = return address)
+/* ai_attack_dispatchByHitElement_80F870C(r5/r6 pass through, r7 = AI attack vars, lr = return address)
  * -> r1 r5 r8 r9 r10 r11 r12 as left by the handler, r7 preserved. */
-Next sub_80F870C(void) {
+Next ai_attack_dispatchByHitElement_80F870C(void) {
     dispatch_element_attack(R7);
     RETURN_TO_CALLER();
 }
@@ -2660,7 +2660,7 @@ Next ai_attackStepWindupAnim3Hit8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F87DA ── */
+/* ── ai_tickAttackWindup_80F87DA ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result_sub_80F87DA;
 /* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
@@ -2672,7 +2672,7 @@ static inline call_object_exitAttackState_result_sub_80F87DA call_object_exitAtt
     return (call_object_exitAttackState_result_sub_80F87DA){ R0, R1, R2, R3, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* AI attack tick (sub_80F87DA).
+/* AI attack tick (ai_tickAttackWindup_80F87DA).
  *
  * r7 points at the AI's attack variables, r5 at the battle object, r6 is
  * passed through to the state-exit helper. When AttackElement is still
@@ -2706,13 +2706,13 @@ static u32 ai_attack_tick_sub_80F87DA(u32 r1, u32 object, u32 passthrough, u32 a
     return exit.r1;
 }
 
-/* sub_80F87DA(r5 = object, r6 = passthrough, r7 = AI attack vars) -> r1 */
-Next sub_80F87DA(void) {
+/* ai_tickAttackWindup_80F87DA(r5 = object, r6 = passthrough, r7 = AI attack vars) -> r1 */
+Next ai_tickAttackWindup_80F87DA(void) {
     R1 = ai_attack_tick_sub_80F87DA(R1, R5, R6, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8996 ── */
+/* ── ai_dispatchAttackStep_80F8996 ── */
 /* AI attack-state dispatcher.
  *
  * The battle AI keeps its current attack state in a per-object variable block;
@@ -2744,8 +2744,8 @@ static void dispatch_ai_attack_step(u32 attackVars) {
     call_ai_attack_handler_sub_80F8996(handler, element);
 }
 
-/* sub_80F8996(r5 r6 r7 r10 lr; r7 = attack variable block) */
-Next sub_80F8996(void) {
+/* ai_dispatchAttackStep_80F8996(r5 r6 r7 r10 lr; r7 = attack variable block) */
+Next ai_dispatchAttackStep_80F8996(void) {
     dispatch_ai_attack_step(R7);
     RETURN_TO_CALLER();
 }
@@ -2873,7 +2873,7 @@ Next ai_attackTimerStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8A66 ── */
+/* ── battle_aiChargeAttackTick_80F8A66 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; } call_sub_80F8EAA_result;
 /* register form: generated wrapper: battle_highlightFrontPanel has no typed C interface yet */
@@ -2915,9 +2915,9 @@ static u32 ai_attack_charge(u32 object, u32 vars, u32 r1) {
     return r1;
 }
 
-/* sub_80F8A66(r5 = battle object, r7 = AI attack vars) -> r1
+/* battle_aiChargeAttackTick_80F8A66(r5 = battle object, r7 = AI attack vars) -> r1
  * r1 comes from battle_highlightFrontPanel when it runs, and is left as on entry otherwise. */
-Next sub_80F8A66(void) {
+Next battle_aiChargeAttackTick_80F8A66(void) {
     R1 = ai_attack_charge(R5, R7, R1);
     RETURN_TO_CALLER();
 }
@@ -5302,7 +5302,7 @@ Next ai_circusManLoadAttackParams(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEE44 ── */
+/* ── aiAttackStepChooseMovePanel_80FEE44 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r4; bool z, n, c, v; } call_object_canMove_result_sub_80FEE44;
 /* register form: generated wrapper: object_canMove has no typed C interface yet */
@@ -5339,7 +5339,7 @@ static inline call_object_clearCollisionRegion_result_sub_80FEE44 call_object_cl
     return (call_object_clearCollisionRegion_result_sub_80FEE44){ R1 };
 }
 
-/* sub_80FEE44: AI attack step handler.
+/* aiAttackStepChooseMovePanel_80FEE44: AI attack step handler.
  *
  * r5 = BattleObject*, r7 = AIAttackVars* of the acting object.
  * If no attack element is queued yet, the object is marked as attacking and
@@ -5429,13 +5429,13 @@ static u32 sub_80FEE44_step(u32 obj, u32 ai, u32 r1_out) {
     return clr.r1;
 }
 
-/* sub_80FEE44(r5 = BattleObject*, r7 = AIAttackVars*) -> r1 */
-Next sub_80FEE44(void) {
+/* aiAttackStepChooseMovePanel_80FEE44(r5 = BattleObject*, r7 = AIAttackVars*) -> r1 */
+Next aiAttackStepChooseMovePanel_80FEE44(void) {
     R1 = sub_80FEE44_step(R5, R7, R1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEF50 ── */
+/* ── battle_resetAIAttackStepState_80FEF50 ── */
 /* Reset an AI attack's per-step state: no sub-step, no panel param flags,
  * and the hit element back to its default (0xC). */
 
@@ -5446,13 +5446,13 @@ static void reset_attack_step_state(u32 vars)
     ST16(vars + oAIAttackVars_HitElement, 0xC);
 }
 
-/* sub_80FEF50(r7 = AIAttackVars pointer) */
-Next sub_80FEF50(void) {
+/* battle_resetAIAttackStepState_80FEF50(r7 = AIAttackVars pointer) */
+Next battle_resetAIAttackStepState_80FEF50(void) {
     reset_attack_step_state(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEFFA ── */
+/* ── battle_aiAttackWindupTick_80FEFFA ── */
 /* AI attack wind-up tick for one battle object.
  * If no attack element has been chosen yet, start the attack: element 4,
  * animation 9, and a step timer of 0x17. Otherwise count the step timer
@@ -5473,20 +5473,20 @@ static void ai_attack_windup_tick_sub_80FEFFA(u32 object, u32 vars) {
     }
 }
 
-/* sub_80FEFFA(r5 = battle object, r7 = AI attack vars) -> nothing */
-Next sub_80FEFFA(void) {
+/* battle_aiAttackWindupTick_80FEFFA(r5 = battle object, r7 = AI attack vars) -> nothing */
+Next battle_aiAttackWindupTick_80FEFFA(void) {
     ai_attack_windup_tick_sub_80FEFFA(R5, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FF042 ── */
-/* AI attack dispatcher (sub_80FF042).
+/* ── ai_dispatchAttackHandler_80FF042 ── */
+/* AI attack dispatcher (ai_dispatchAttackHandler_80FF042).
  *
  * Reads the HitElement byte from the AI attack block pointed to by r7 and uses
  * it directly as a byte offset into the handler table at off_80FF054 (valid
  * element values are already multiples of 4 in memory):
  *
- *   0x00 -> sub_80FF068
+ *   0x00 -> battle_aiAttackStepWalk_80FF068
  *   0x04 -> battleObject_moveAlongThrow_80FF0DC
  *   0x08 -> ai_attackChargeHandler
  *   0x0C -> sub_80FF1A2
@@ -5520,14 +5520,14 @@ static void run_attack_state_handler(u32 attackVars, u32 r3)
     call_attack_handler_sub_80FF042(target, element, r3);
 }
 
-/* sub_80FF042(r7 = AI attack vars, r3/r5/r10/lr pass through) ->
+/* ai_dispatchAttackHandler_80FF042(r7 = AI attack vars, r3/r5/r10/lr pass through) ->
  * handler results in r1 r5 r8 r9 r10 r11 r12 */
-Next sub_80FF042(void) {
+Next ai_dispatchAttackHandler_80FF042(void) {
     run_attack_state_handler(R7, R3);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FF068 ── */
+/* ── battle_aiAttackStepWalk_80FF068 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r4; bool z, n, c, v; } call_object_canMove_result_sub_80FF068;
 /* register form: generated wrapper: object_canMove has no typed C interface yet */
@@ -5662,9 +5662,9 @@ static u32 ai_attack_step_sub_80FF068(u32 object, u32 vars, u32 r1_in)
     return cleared.r1;
 }
 
-/* sub_80FF068(r5 = battle object, r7 = AI attack vars) -> r1
+/* battle_aiAttackStepWalk_80FF068(r5 = battle object, r7 = AI attack vars) -> r1
  * r5 and r8-r12 leave the function exactly as they entered. */
-Next sub_80FF068(void)
+Next battle_aiAttackStepWalk_80FF068(void)
 {
     R1 = ai_attack_step_sub_80FF068(R5, R7, R1);
     RETURN_TO_CALLER();
@@ -5745,14 +5745,14 @@ static inline call_PlaySoundEffect_result_ai_chargedPanelAttack call_PlaySoundEf
 }
 
 typedef struct { u32 r1, r5; } call_sub_80FF7A4_result;
-/* register form: generated wrapper: sub_80FF7A4 has no typed C interface yet */
+/* register form: generated wrapper: aiAttackForwardToType5E_80FF7A4 has no typed C interface yet */
 static inline call_sub_80FF7A4_result call_sub_80FF7A4(u32 r0, u32 r1, u32 r3, u32 r5, u32 r7) {
     R0 = r0;
     R1 = r1;
     R3 = r3;
     R5 = r5;
     R7 = r7;
-    GUEST_CALL(sub_80FF7A4);
+    GUEST_CALL(aiAttackForwardToType5E_80FF7A4);
     return (call_sub_80FF7A4_result){ R1, R5 };
 }
 
@@ -5790,7 +5790,7 @@ struct ai_charge_step_result {
  * TimerOrCycles + 12.
  *
  * While charging, the step timer counts down.  Hitting ChargeCycles -
- * AttackBoost2 boosts the target panel (sub_80FF7A4); hitting ChargeCycles -
+ * AttackBoost2 boosts the target panel (aiAttackForwardToType5E_80FF7A4); hitting ChargeCycles -
  * TimerOrCycles fires the attack (ai_runAttackFromVars).  If the timer
  * reaches 0 without either milestone, the attack step index advances; once
  * it reaches SubStepIndex the attack is finished off with HitElement 0x10,
@@ -5970,7 +5970,7 @@ Next battle_endRelatedObjectAnims(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FF680 ── */
+/* ── aiAttack_runStepTwice_80FF680 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r5; } call_sub_80D01C8_result;
 /* register form: generated wrapper: object_spawnElemWithParent has no typed C interface yet */
@@ -6018,8 +6018,8 @@ static call_sub_80D01C8_result run_attack_steps(u32 vars, u32 pass_r5) {
     return run_attack_step_sub_80FF680(vars, pass_r5, 0x100, LD32(vars + oAIAttackVars_AiAttackParam));
 }
 
-/* sub_80FF680(r5 = pass-through, r7 = AI attack vars) -> r1, r5 */
-Next sub_80FF680(void) {
+/* aiAttack_runStepTwice_80FF680(r5 = pass-through, r7 = AI attack vars) -> r1, r5 */
+Next aiAttack_runStepTwice_80FF680(void) {
     u32 vars = R7, pass_r5 = R5, saved_r4 = R4, saved_r6 = R6;
     call_sub_80D01C8_result res = run_attack_steps(vars, pass_r5);
     R1 = res.r1;
@@ -6034,7 +6034,7 @@ Next sub_80FF680(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FF7A4 ── */
+/* ── aiAttackForwardToType5E_80FF7A4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r5; } call_sub_80D036C_result;
 /* register form: generated wrapper: spawnType5ELinkedToObject has no typed C interface yet */
@@ -6065,7 +6065,7 @@ static call_sub_80D036C_result forward_attack_update(u32 r0, u32 r1, u32 r3, u32
     return call_sub_80D036C(r0, r1, init_flag, r3, timer, r5);
 }
 
-Next sub_80FF7A4(void)
+Next aiAttackForwardToType5E_80FF7A4(void)
 {
     u32 saved_r4 = R4;   /* spawnType5ELinkedToObject clobbers r4; original push/pop preserves it */
     call_sub_80D036C_result res = forward_attack_update(R0, R1, R3, R5, R7);
@@ -6075,16 +6075,16 @@ Next sub_80FF7A4(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFA1A ── */
-/* sub_80FFA1A: an empty stub — it returns immediately to its caller
+/* ── stub_noop_80FFA1A ── */
+/* stub_noop_80FFA1A: an empty stub — it returns immediately to its caller
  * (push {lr} / pop {pc}, i.e. a plain return with no effect). */
 
 static void sub_80FFA1A_body(void) {
     /* nothing happens */
 }
 
-/* sub_80FFA1A() -> no outputs */
-Next sub_80FFA1A(void) {
+/* stub_noop_80FFA1A() -> no outputs */
+Next stub_noop_80FFA1A(void) {
     sub_80FFA1A_body();
     RETURN_TO_CALLER();
 }
@@ -6249,12 +6249,12 @@ Next battle_objectHasExtraVars(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFB88 ── */
-/* sub_80FFB88 -- AI attack dispatch by hit element.
+/* ── ai_attackDispatchByHitElement_80FFB88 ── */
+/* ai_attackDispatchByHitElement_80FFB88 -- AI attack dispatch by hit element.
  *
  * r7 points to the AI attack variables; the HitElement byte selects one of
  * three handler routines through the table at off_80FFB9C:
- *   +0: ai_attackStepReservePanel   +4: ai_attackStrikeStep   +8: sub_80FFC5E
+ *   +0: ai_attackStepReservePanel   +4: ai_attackStrikeStep   +8: ai_attackStepTick_80FFC5E
  * The index is used unscaled (the original's `ldr r1,[r1,r0]` does not shift
  * it), so HitElement already holds a byte offset into the table. The handler
  * is entered with r0 = element and r1 = its own table entry, exactly as the
@@ -6282,8 +6282,8 @@ static void dispatch_hit_element_handler_sub_80FFB88(u32 attackVars) {
     GUEST_CALL_ADDR(handler);
 }
 
-/* sub_80FFB88(r4, r5, r6, r7 = AI attack vars, lr) -> r1 r5 r8 r9 r10 r11 r12 */
-Next sub_80FFB88(void) {
+/* ai_attackDispatchByHitElement_80FFB88(r4, r5, r6, r7 = AI attack vars, lr) -> r1 r5 r8 r9 r10 r11 r12 */
+Next ai_attackDispatchByHitElement_80FFB88(void) {
     dispatch_hit_element_handler_sub_80FFB88(R7);
     RETURN_TO_CALLER();
 }
@@ -6388,7 +6388,7 @@ Next ai_attackStrikeStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFC5E ── */
+/* ── ai_attackStepTick_80FFC5E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result_sub_80FFC5E;
 /* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
@@ -6433,14 +6433,14 @@ static u32 ai_attack_step_sub_80FFC5E(u32 object, u32 companion, u32 vars, u32 o
     return call_object_exitAttackState_sub_80FFC5E(object, companion, vars).r1;
 }
 
-/* sub_80FFC5E(r5 = object, r6 = companion, r7 = AI attack vars) -> r1 */
-Next sub_80FFC5E(void) {
+/* ai_attackStepTick_80FFC5E(r5 = object, r6 = companion, r7 = AI attack vars) -> r1 */
+Next ai_attackStepTick_80FFC5E(void) {
     R1 = ai_attack_step_sub_80FFC5E(R5, R6, R7, R1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFC82 ── */
-/* AI attack dispatcher (sub_80FFC82).
+/* ── ai_dispatchElementAttackStep_80FFC82 ── */
+/* AI attack dispatcher (ai_dispatchElementAttackStep_80FFC82).
  *
  * r7 points at the AI's attack variables; the hitElement byte stored there
  * selects one of five attack step routines from the jump table at
@@ -6479,9 +6479,9 @@ static void element_attack_step(u32 hitVars, u32 r2, u32 r3, u32 r5, u32 r6, u32
     dispatch_attack_step_sub_80FFC82(element, hitVars, r2, r3, r5, r6, r10);
 }
 
-/* sub_80FFC82(r2, r3, r5, r6, r7 = AIAttackVars, r10) -> r1 r5 r8 r9 r10 r11 r12
+/* ai_dispatchElementAttackStep_80FFC82(r2, r3, r5, r6, r7 = AIAttackVars, r10) -> r1 r5 r8 r9 r10 r11 r12
  * All outputs are whatever the dispatched step leaves behind. */
-Next sub_80FFC82(void) {
+Next ai_dispatchElementAttackStep_80FFC82(void) {
     element_attack_step(R7, R2, R3, R5, R6, R10);
     RETURN_TO_CALLER();
 }
@@ -6624,10 +6624,10 @@ Next ai_panelTargetAttackStep(void) {
 /* ── ai_chipAttackTick ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; } call_sub_80E71B8_result;
-/* register form: generated wrapper: sub_80E71B8 has no typed C interface yet */
+/* register form: generated wrapper: battle_markObjectDead_80E71B8 has no typed C interface yet */
 static inline call_sub_80E71B8_result call_sub_80E71B8(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_80E71B8);
+    GUEST_CALL(battle_markObjectDead_80E71B8);
     return (call_sub_80E71B8_result){ R1 };
 }
 
@@ -6764,7 +6764,7 @@ Next ai_attackDelayHit(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8100070 ── */
+/* ── battle_findClosestPanelOnObjectRow_8100070 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_getClosestPanelMatchingRowFiltered_result_sub_8100070;
 /* register form: generated wrapper: object_getClosestPanelMatchingRowFiltered has no typed C interface yet */
@@ -6796,10 +6796,10 @@ static closest_panel_result find_closest_panel(u32 row_src, u32 x, u32 y, u32 se
     return out;
 }
 
-/* sub_8100070(r0 = row source object, r2/r3 = x/y position, r5 = asking object)
+/* battle_findClosestPanelOnObjectRow_8100070(r0 = row source object, r2/r3 = x/y position, r5 = asking object)
  * -> r0/r1 = closest matching panel, r5 passed through unchanged.
  * The callee leaves r2/r3/r4/r5 alone, so r5 needs no re-write here. */
-Next sub_8100070(void) {
+Next battle_findClosestPanelOnObjectRow_8100070(void) {
     closest_panel_result res = find_closest_panel(R0, R2, R3, R5);
     R0 = res.r0;
     R1 = res.r1;
@@ -7518,17 +7518,17 @@ Next aiAttackTimer_tick_8109E4A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8109E7A ── */
+/* ── battle_aiAttackDispatch_8109E7A ── */
 /* AI attack dispatch (08109E7A). The AI attack variable block is pointed to by
  * r7; its first byte selects one of three handlers in the table at
  * off_8109E8C. The selected handler runs with r0 = slot index, r1 = its own
  * address and r5/r6/r7 unchanged. When it returns, its register state is what
- * sub_8109E7A leaves behind (r1, r5, r8-r12), with r6 restored by the
+ * battle_aiAttackDispatch_8109E7A leaves behind (r1, r5, r8-r12), with r6 restored by the
  * original's pop {r6,pc}. */
 
 /* register form: dispatch through the AI attack jump table with
  * GUEST_CALL_ADDR; no wrapper covers the three handlers, and their register
- * state (r1, r5, r8-r12) is sub_8109E7A's output, so it is left in the guest
+ * state (r1, r5, r8-r12) is battle_aiAttackDispatch_8109E7A's output, so it is left in the guest
  * register file for the adapter's caller. */
 static void dispatch_ai_attack_handler_sub_8109E7A(u32 vars_ptr, u32 in_r5, u32 in_r6)
 {
@@ -7546,8 +7546,8 @@ static void dispatch_ai_attack_handler_sub_8109E7A(u32 vars_ptr, u32 in_r5, u32 
     R6 = in_r6;     /* pop {r6,pc}: r6 is preserved across the dispatch */
 }
 
-/* sub_8109E7A(r5, r6, r7 = AI attack vars): run the selected attack handler. */
-Next sub_8109E7A(void) {
+/* battle_aiAttackDispatch_8109E7A(r5, r6, r7 = AI attack vars): run the selected attack handler. */
+Next battle_aiAttackDispatch_8109E7A(void) {
     dispatch_ai_attack_handler_sub_8109E7A(R7, R5, R6);
     RETURN_TO_CALLER();
 }
@@ -7710,7 +7710,7 @@ Next ai_attackStateStep_810A080(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810A204 ── */
+/* ── npc_aiAdvanceSubstate_810A204 ── */
 /* Advance the AI actor's sub-state counter; when it reaches 0x28, switch to
  * script 0x0C and reset the counter for the next phase. (r6 = AI state block) */
 static void advance_ai_substate(u32 statePtr) {
@@ -7723,13 +7723,13 @@ static void advance_ai_substate(u32 statePtr) {
     }
 }
 
-/* sub_810A204(r6 = AI state block) -> nothing */
-Next sub_810A204(void) {
+/* npc_aiAdvanceSubstate_810A204(r6 = AI state block) -> nothing */
+Next npc_aiAdvanceSubstate_810A204(void) {
     advance_ai_substate(R6);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810A534 ── */
+/* ── battle_countActorsWithParamAt0x68_810A534 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_FindBattleActorsWithNonzeroParam_ReturnCountAndSum_result;
 /* register form: generated wrapper: FindBattleActorsWithNonzeroParam_ReturnCountAndSum has no typed C interface yet */
@@ -7742,7 +7742,7 @@ static inline call_FindBattleActorsWithNonzeroParam_ReturnCountAndSum_result cal
     return (call_FindBattleActorsWithNonzeroParam_ReturnCountAndSum_result){ R0, R1, R2, R3, R4, R5, R6, R7 };
 }
 
-/* sub_810A534: scan the battle for actors whose per-actor parameter at offset
+/* battle_countActorsWithParamAt0x68_810A534: scan the battle for actors whose per-actor parameter at offset
  * 0x68 is nonzero.  Fixed search parameters: field offset 0x68, actor kind 7,
  * up to 12 actors.  Returns the number of matches (r0), their parameter sum
  * (r1), and the matching actors' data in r5-r7 as produced by the callee; the
@@ -7753,8 +7753,8 @@ find_actors_with_nonzero_param_0x68(u32 search_context)
     return call_FindBattleActorsWithNonzeroParam_ReturnCountAndSum(0x68, 7, 0xC, search_context);
 }
 
-/* sub_810A534() -> r0 r1 r5 r6 r7 */
-Next sub_810A534(void) {
+/* battle_countActorsWithParamAt0x68_810A534() -> r0 r1 r5 r6 r7 */
+Next battle_countActorsWithParamAt0x68_810A534(void) {
     call_FindBattleActorsWithNonzeroParam_ReturnCountAndSum_result result =
         find_actors_with_nonzero_param_0x68(R5);
     R0 = result.r0;
@@ -7765,7 +7765,7 @@ Next sub_810A534(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810A5D6 ── */
+/* ── battle_objectPhaseStepInitExtraVars_810A5D6 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_battleObject_initAndRunAI_8016B02_result;
 /* register form: generated wrapper: battleObject_initAndRunAI_8016B02 has no typed C interface yet */
@@ -7777,7 +7777,7 @@ static inline call_battleObject_initAndRunAI_8016B02_result call_battleObject_in
     return (call_battleObject_initAndRunAI_8016B02_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_810A5D6: one step of a battle object's per-phase AI (bn6f asm31.s:179874).
+/* battle_objectPhaseStepInitExtraVars_810A5D6: one step of a battle object's per-phase AI (bn6f asm31.s:179874).
  *
  * On the first entry into this phase (PhaseInitialized == 0) the object's two
  * extra phase variables are cleared; then the shared "init and run AI" handler
@@ -7802,8 +7802,8 @@ static void object_phase_step(u32 obj_r4, u32 obj_r5, u32 obj_r8)
     call_battleObject_initAndRunAI_8016B02(obj_r4, obj_r5, obj_r8);
 }
 
-/* sub_810A5D6(r4 = object, r5 = object, r8 = object) */
-Next sub_810A5D6(void) {
+/* battle_objectPhaseStepInitExtraVars_810A5D6(r4 = object, r5 = object, r8 = object) */
+Next battle_objectPhaseStepInitExtraVars_810A5D6(void) {
     object_phase_step(R4, R5, R8);
     RETURN_TO_CALLER();
 }
@@ -8196,7 +8196,7 @@ Next battle_objectUpdateInitOnce(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810C05C ── */
+/* ── battle_aiAttackCountdownTick_810C05C ── */
 /* Tick the AI attack countdown for one battle object.
  * The half-word at Unk_10 counts down each tick. While it stays non-negative
  * after the decrement nothing else happens; once it goes negative the timer is
@@ -8218,13 +8218,13 @@ static void ai_attack_tick_sub_810C05C(u32 vars) {
     ST16(vars + oAIAttackVars_HitElement, 8);
 }
 
-/* sub_810C05C(r7 = AI attack vars) -> nothing (r0 and flags are clobbered) */
-Next sub_810C05C(void) {
+/* battle_aiAttackCountdownTick_810C05C(r7 = AI attack vars) -> nothing (r0 and flags are clobbered) */
+Next battle_aiAttackCountdownTick_810C05C(void) {
     ai_attack_tick_sub_810C05C(R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810C14A ── */
+/* ── battle_spawnCollisionRegionAtObjectPanel_810C14A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5; } call_object_spawnCollisionRegion_result_sub_810C14A;
 /* register form: generated wrapper: object_spawnCollisionRegion has no typed C interface yet */
@@ -8257,7 +8257,7 @@ static inline call_object_spawnCollisionRegion_result_sub_810C14A call_object_sp
  * so the adapter restores the entry values after the call.
  */
 
-/* Result registers of sub_810C14A: updated object pointer, plus the
+/* Result registers of battle_spawnCollisionRegionAtObjectPanel_810C14A: updated object pointer, plus the
  * pass-through values for the registers the original leaves untouched. */
 typedef struct {
     u32 object;   /* r5 out - object pointer as updated by the callee */
@@ -8287,8 +8287,8 @@ static CollisionRegionSpawn spawn_collision_region_for_object(u32 object,
     return out;
 }
 
-/* sub_810C14A(r5 = object) -> r5 = updated object, r7 unchanged (r4/r6 preserved) */
-Next sub_810C14A(void) {
+/* battle_spawnCollisionRegionAtObjectPanel_810C14A(r5 = object) -> r5 = updated object, r7 unchanged (r4/r6 preserved) */
+Next battle_spawnCollisionRegionAtObjectPanel_810C14A(void) {
     CollisionRegionSpawn out = spawn_collision_region_for_object(R5, R4, R6, R7);
     R4 = out.r4;
     R5 = out.object;

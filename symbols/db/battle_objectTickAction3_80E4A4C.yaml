@@ -1,0 +1,79 @@
+name: battle_objectTickAction3_80E4A4C
+address: '0x080E4A4C'
+kind: function
+status: confirmed
+summary: Ticks a battle object's queued action — starts action/animation 3 when none is queued, otherwise
+  ends the action via sub_8016C9C once the sprite's 0x80 (animation end) frame flag fires.
+interface: void sub_80E4A4C(battle object in r5); returns r5 unchanged; lr clobbered, flags clobbered
+details: 'Expects the battle object pointer in r5 (preserved on exit). If oBattleObject_CurAction is 0
+  (no action queued), it writes 3 into oBattleObject_CurAction and 3 into oBattleObject_CurAnim, launching
+  both the action and its matching animation in one step. If an action is already queued, it calls sprite_getFrameParameters
+  (object still in r5) and tests the returned frame parameter bits for 0x80, the animation-finished flag;
+  when set it calls sub_8016C9C, the generic action-completion handler, to wrap up the current action
+  (likely advancing the object''s state or clearing the action slot). Hard-codes action/anim id 3, so
+  this is the tick handler for one specific action type rather than a general-purpose action dispatcher.
+  Flags nzcv are treated as clobbered by the lifter only because of the tst/cmp; the callee side effects
+  come from the sprite calls.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E4A4C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E4A4C
+
+    ./wf verify --function sub_80E4A4C --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E4A4C
+
+    ./wf verify --function sub_80E4A4C --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E4A4C
+
+    ./wf verify --function sub_80E4A4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e4a4c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E4A4C -> battle_objectTickAction3_80E4A4C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of action/anim id 3 and which enemy/object type uses this tick handler
+- what sub_8016C9C does on completion (no typed interface yet)
+- whether other bit flags from sprite_getFrameParameters are meaningful here
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E4A4C

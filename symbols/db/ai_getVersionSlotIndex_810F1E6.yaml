@@ -1,0 +1,84 @@
+name: ai_getVersionSlotIndex_810F1E6
+address: '0x0810F1E6'
+kind: function
+status: confirmed
+summary: Computes an AI version slot index from the battle object's ExtraVars field and the AI data's
+  version byte (6 entries per extra var).
+interface: int ai_getVersionSlotIndex_810F1E6(AIData* aiData /* r4 */, BattleObject* obj /* r5 */); //
+  returns r0 = obj->ExtraVars * 6 + aiData->Version, tail-calls back to lr
+details: 'Small leaf helper (returns via mov pc, lr, so callers pass the return address in lr and it
+
+  preserves nothing it doesn''t need to). Reads oBattleObject_ExtraVars (u32) from the battle
+
+  object in r5 and oAIData_Version_16 (u8) from the AI data in r4, then returns
+
+  ExtraVars * 6 + Version in r0. The multiply-by-6 implies a table of 6 entries (words or
+
+  slots) per extra-var value, indexed by the AI data''s version byte - i.e. the version byte
+
+  selects an entry within one extra-var group and ExtraVars selects the group. Sets flags as
+
+  a side effect of the mov/mul (nz c v clobbered) but callers appear to only use r0.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_810F1E6
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810F1E6
+
+    ./wf verify --function sub_810F1E6 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    252 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810F1E6
+
+    ./wf verify --function sub_810F1E6 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810F1E6
+
+    ./wf verify --function sub_810F1E6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810f1e6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810F1E6 -> ai_getVersionSlotIndex_810F1E6
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What table this index is used against; no table access happens in this function, so the consumer's identity
+  is unverified
+- Exact meaning of oBattleObject_ExtraVars (count of active extra vars vs. a raw group index)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_810F1E6

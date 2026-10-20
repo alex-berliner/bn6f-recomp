@@ -1,0 +1,101 @@
+name: battle_checkPanelFlagsByState_8110FA2
+address: '0x08110FA2'
+kind: function
+status: confirmed
+summary: Reads the panel flag state at a battle object's panel, using a per-state parameter table chosen
+  by the object to decide which panel flags count.
+interface: PanelFlagResult battle_checkPanelFlagsByState_8110FA2(BattleObject* obj /* r5 */); returns
+  r0/r1 from panelFlagCheck_8015D80, r5 preserved
+details: 'r5 is a battle object. The word at obj + oBattleObject_ExtraVars+8 acts as a state/index
+
+  selector: it is doubled (lsl #2) and used to pick one of four pointer entries at off_8110FC4,
+
+  each pointing to an 8-byte parameter table (byte_8110FD4/8110FDC/8110FE4/8110FEC). The table
+
+  consists of four pairs like (0/1/0xFF, 0xFF/0/1) — typical panelFlagCheck arguments where a
+
+  value of 0xFF presumably means "don''t care" and 0/1 mean "must be clear/set" for the flag
+
+  being tested. The function then loads the object''s panel coordinates (oBattleObject_PanelX/
+
+  PanelY as bytes) and calls GetAllianceDependentPanelParamArgs with the table base byte_8111020
+
+  in r3 and the object in r5 to obtain alliance-adjusted panel parameters (returned in r2/r3).
+
+  Finally it calls panelFlagCheck_8015D80 with panelX (r0), panelY (r1), the alliance-dependent
+
+  parameters (r2/r3), the selected parameter table (r4), and the object (r5); that callee''s
+
+  r0/r1 results are this function''s result, so callers get back two panel-flag-related values.
+
+  Quirks: the selected table index is not bounds-checked (values 0-3 expected); the function
+
+  reuses its own saved r4 as the callee''s argument register, hence the push/pop of r4-r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8110FA2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8110FA2
+
+    ./wf verify --function sub_8110FA2 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8110FA2
+
+    ./wf verify --function sub_8110FA2 --snapshots build-snapshots'
+  result: 33 compared, 0 differed, 0 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8110FA2
+
+    ./wf verify --function sub_8110FA2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110fa2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8110FA2 -> battle_checkPanelFlagsByState_8110FA2
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_8110F8C
+open_questions:
+- exact meaning of the two return values r0/r1 from panelFlagCheck_8015D80 (e.g. "panel usable" + flag
+  detail)
+- what the four table indices in ExtraVars+8 correspond to semantically (object state, facing, or step
+  phase)
+- contents of the alliance-dependent parameter table at byte_8111020 and how the ally/enemy split changes
+  the check
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8110FA2

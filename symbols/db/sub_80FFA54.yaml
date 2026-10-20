@@ -1,0 +1,73 @@
+name: sub_80FFA54
+address: '0x080FFA54'
+kind: function
+status: hypothesis
+summary: Computes a palette-like index/base value for an object by looking it up in a small table (0x12,0x18,0x1E,0x24),
+  then adds 0x3C when the object carries flag bits 0xA000.
+interface: u32 sub_80FFA54(u32 r5_object); // -> r0 = base value (+0x3C if flags & 0xA000)
+details: 'Entry point loads the pointer to dword_80FFA74 (a table of four byte-like entries 0x12, 0x18, 0x1E, 0x24,
+  i.e. 18/24/30/36 in steps of 6) and calls sub_800FE28 with the table pointer in r0 and the object (passed in r5
+  by all callers) still in r5; sub_800FE28 returns a base value in r0 (and something in r2, which is ignored here).
+  The result is saved in r4. object_getFlag is then called on the same object (r5) and the result is tested against
+  0xA000 (bits 13 and 15); if either bit is set, 0x3C (60) is added to the base value. Returns the adjusted value
+  in r0. The +0x3C offset applied to a flag-conditioned variant strongly suggests a palette/VRAM-slot style second
+  bank or an alternate-color variant of the base value, but the semantics of sub_800FE28 and object_getFlag are
+  not typed yet, so this remains a guess. r4 is preserved for the caller; r1, r2 and flags are clobbered.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FFA54
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFA54
+
+    ./wf verify --function sub_80FFA54 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFA54
+
+    ./wf verify --function sub_80FFA54 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFA54
+
+    ./wf verify --function sub_80FFA54 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffa54 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- 'What sub_800FE28 actually indexes: the meaning of entries 0x12,0x18,0x1E,0x24 and which object field selects
+  among them'
+- What object flag bits 13/15 (0xA000) mean for the object in r5
+- Whether the returned value is a palette id, tile/OAM index, or something else entirely
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

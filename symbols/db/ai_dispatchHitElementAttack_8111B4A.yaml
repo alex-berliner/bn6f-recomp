@@ -1,0 +1,81 @@
+name: ai_dispatchHitElementAttack_8111B4A
+address: '0x08111B4A'
+kind: function
+status: confirmed
+summary: Dispatches an in-progress AI attack to the per-hit-element handler selected from a small jump
+  table.
+interface: void ai_dispatchHitElementAttack(r2, r5, r7 (AI attack vars), r10, lr); // tail dispatch; results
+  passed through in r1, r5, r8-r12
+details: 'Reads the attacker''s HitElement byte from its AI attack-vars struct at [r7 + oAIAttackVars_HitElement],
+  uses it directly as a byte offset into the 5-entry handler table at off_8111B5C (so the stored value
+  is effectively pre-multiplied by 4, i.e. 0/4/8/12/16), and jumps to the selected handler via the classic
+  "mov lr, pc; bx r1" Thumb interwork trampoline. The handler returns into this routine (to pop {pc}),
+  which returns straight to the original caller, so the handler''s register results (r1, r5, r8-r12) are
+  observed unchanged by the caller. Handlers in the table are: sub_8111B70, ai_tickCharge, ai_setCurAnimAndHitElementOnFlag,
+  ai_resetAnimOnFrameFlag, and genericAI_exitAttackStateAfterDelay_81097BA. r2/r5/r7/r10 are passed through
+  untouched as AI state. The table base is loaded via off_8111B58 pointing at off_8111B5C. r0 and r2-r4,
+  r6, r7 and flags are clobbered by the dispatch path; the element byte itself also ends up in r0/r1 for
+  the handler.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8111B4A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8111B4A
+
+    ./wf verify --function sub_8111B4A --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8111B4A
+
+    ./wf verify --function sub_8111B4A --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 28 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8111B4A
+
+    ./wf verify --function sub_8111B4A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111b4a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8111B4A -> ai_dispatchHitElementAttack_8111B4A
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the stored HitElement values (whether they are element IDs already shifted by 2, or
+  a state index) is not verified against the writers of oAIAttackVars_HitElement.
+- Which enemy/AI routines share this dispatcher (all callers) is not enumerated here.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8111B4A

@@ -1,0 +1,81 @@
+name: ai_attackDispatchHitElementStep_81120E4
+address: '0x081120E4'
+kind: function
+status: confirmed
+summary: Tail-styles a jump table dispatch in the AI attack state machine, picking the follow-up handler
+  by which element the attack connected with.
+interface: void ai_attackDispatchHitElementStep(u32 r5 /*AI state*/, u32 r7 /*attack vars*/, u32 r10 /*AI
+  state*/); // r0 in = element byte reloaded by callee; r1, r5, r8-r12 out = whatever the dispatched handler
+  leaves; clobbers flags and r0-r7,lr
+details: 'Tiny trampoline in the battle AI attack flow. It reads the oAIAttackVars_HitElement byte from
+  the attack variable block at r7 and uses it unscaled as an index into the three-word table at off_81120F8:
+  entry 0 is ai_attackChargeLineStep, entry 1 is ai_falzarAttackSpawnStep (Falzar-specific follow-up),
+  entry 2 is genericAI_exitAttackStateAfterDelay_81097BA (cleanly end the attack state after a delay).
+  It then tail-calls the selected Thumb handler via "mov lr, pc; bx r1", so the handler''s register results
+  (r1, r5, r8-r12) flow straight through to the caller. The element byte is also re-passed in r0 as the
+  handler''s argument, and the table entry stays live in r1. HitElement is presumably zero for non-element
+  hits, which makes the plain charge-line step the default path.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_81120E4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81120E4
+
+    ./wf verify --function sub_81120E4 --snapshots build-snapshots'
+  result: 'captured calls: 29 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81120E4
+
+    ./wf verify --function sub_81120E4 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 14 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81120E4
+
+    ./wf verify --function sub_81120E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081120e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81120E4 -> ai_attackDispatchHitElementStep_81120E4
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the HitElement values (which element IDs map to which table slot, and why a Falzar-specific
+  handler occupies slot 1)
+- whether any HitElement value above 2 can occur (the table has no bounds check; larger bytes would fetch
+  garbage and crash)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_81120E4

@@ -1,0 +1,96 @@
+name: battle_setObjectToArmAnchorPos_8110D18
+address: '0x08110D18'
+kind: function
+status: confirmed
+summary: Repositions a battle object at the fixed-point coordinates of its "part 5" arm/anchor position
+  derived from its name ID, alliance, and facing.
+interface: void sub_8110D18(u32 object /* r5 = battle object struct */); outputs r5/r6/r7 unchanged (entry
+  values), r4 preserved; flags clobbered
+details: 'Reads the battle object at r5: halfword oBattleObject_NameID, byte
+
+  oBattleObject_Alliance, byte oBattleObject_DirectionFlip. Passes these plus
+
+  part ID 5 to getBattleArmPositionMaybe_8018810 (getBattleArmPositionMaybe_8018810
+
+  returns the anchor x in r0, y in r1, and a value in r5 that is carried on).
+
+  Then calls sub_80E8124 with the position as fixed point: r1 = x << 16,
+
+  r3 = y << 16, r2 = 0, r4 = 0, r5 = the value left by the position routine;
+
+  sub_80E8124 returns something in r3 which is discarded. Net effect: the
+
+  object''s drawn/position state is snapped to where its buster-shot anchor
+
+  (arm position, part 5) sits for its current identity and facing. The
+
+  push/pop {r4-r7,lr} is pure register preservation — r5/r6/r7 are returned
+
+  exactly as entered, so callers see this as a no-op on registers besides
+
+  flags; r4 is handed to sub_80E8124 as 0 and still restored on exit.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8110D18
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8110D18
+
+    ./wf verify --function sub_8110D18 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8110D18
+
+    ./wf verify --function sub_8110D18 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 74 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8110D18
+
+    ./wf verify --function sub_8110D18 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110d18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8110D18 -> battle_setObjectToArmAnchorPos_8110D18
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_80E8124
+open_questions:
+- exact semantics of sub_80E8124 (position updater?) and which struct/fields it writes
+- whether part ID 5 is specifically the buster-shot anchor or another sprite part
+- what the r5 value returned by getBattleArmPositionMaybe_8018810 represents when forwarded to sub_80E8124
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8110D18

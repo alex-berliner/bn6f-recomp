@@ -1,0 +1,84 @@
+name: object_filterRebasedPanelRefs_8112426
+address: '0x08112426'
+kind: function
+status: confirmed
+summary: Rewrites a list of packed panel-reference bytes, rebasing each relative direction against the
+  object's facing and dropping entries whose adjusted panel is invalid.
+interface: (int count in r0, void *object in r5, u8 *srcList in r7) -> int writtenCount in r0
+details: 'Each source byte packs a panel reference: high nibble (bits 4-7) is a type/flags nibble, low
+  3 bits (bits 0-2) are a direction index relative to the object. The routine first calls object_getFrontDirection
+  on the object (r5) and GetAllianceDependentPanelParamArgs with a lookup from table byte_81125E0 (indexed
+  via r3, set from the object) to get the side/alliance panel parameters (returned in r2/r3, stashed across
+  the loop via a pushed r7+0x10 pointer). It then walks the source list at r7 for count (r0) entries:
+  for each byte it splits flags and direction, subtracts the front direction from the direction (mod 8
+  via masking), and calls object_checkPanelParameters(direction, flags, side params); if it returns nonzero,
+  the byte is repacked as (flags << 4) | adjustedDirection and stored into the output list, which starts
+  at srcList + 0x10 (i.e. the filtered list is written in place right after the input region). Invalid
+  entries are skipped, compacting the list. Returns the number of bytes written (dst - dstStart). Quirks:
+  the loop is do/while with a pre-decrement counter, so count 0 wraps and processes 4G entries in principle;
+  r4-r7 are preserved but also appear in the contract''s outputs because the epilogue pops them back,
+  leaving them unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8112426
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8112426
+
+    ./wf verify --function sub_8112426 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    285 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8112426
+
+    ./wf verify --function sub_8112426 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 38 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8112426
+
+    ./wf verify --function sub_8112426 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08112426 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8112426 -> object_filterRebasedPanelRefs_8112426
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the flags nibble (bits 4-7) and the table byte_81125E0 entries passed to GetAllianceDependentPanelParamArgs.
+- Which caller-side structures own the source list and why the filtered output is fixed at src+0x10 (list
+  capacity of 16 bytes assumed).
+- Whether direction subtraction should wrap modulo 8 in all cases (code keeps full byte from the lsl/lsr
+  mask before subtraction).
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8112426

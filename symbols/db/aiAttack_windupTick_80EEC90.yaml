@@ -1,0 +1,82 @@
+name: aiAttack_windupTick_80EEC90
+address: '0x080EEC90'
+kind: function
+status: confirmed
+summary: Per-tick state machine for an enemy AI attack's charge-up and release, driving animations and
+  element/timer fields.
+interface: void sub_80EEC90(r5 battleObject, r7 aiAttackVars, r10 battleState); /* outputs r1 = leftover
+  from last callee, not meaningful; flags clobbered */
+details: 'Two-phase attack tick for an enemy object. Phase 1 (AttackElement == 0): play animation 0x12
+  (charge pose), reset the object''s counter to its default via object_setDefaultCounterTime, set the
+  object flag bit OBJECT_FLAGS_UNK_BIT_22_BIT (charging marker), store 0xE into oAIAttackVars_StepTimer
+  (14 ticks of wind-up), and set oAIAttackVars_AttackElement to 4 (charged) so later ticks take phase
+  2. Phase 2: decrement the halfword StepTimer each tick; while it stays >= 0 the function returns without
+  side effects. When it goes negative, play animation 0x13 (attack/release pose), reload StepTimer to
+  0x15 (21), and set oAIAttackVars_HitElement to 4, presumably telling the attack/hit handler which element
+  to apply. Touches only the AI attack-variable block fields AttackElement, StepTimer, HitElement plus
+  object-level animation, counter and flag state. Quirk: r1 on return is whatever the last called helper
+  left there; the function never assigns it itself, so callers that read r1 get garbage by design (typed
+  interface returns void).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80EEC90
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EEC90
+
+    ./wf verify --function sub_80EEC90 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    180 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EEC90
+
+    ./wf verify --function sub_80EEC90 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 86 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EEC90
+
+    ./wf verify --function sub_80EEC90 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080eec90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EEC90 -> aiAttack_windupTick_80EEC90
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- What element value 4 corresponds to (which attack this AI uses) is not identified from this function
+  alone.
+- Whether the 0x15 timer reload marks a cooldown/second phase after the release, or something else consumes
+  HitElement.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80EEC90

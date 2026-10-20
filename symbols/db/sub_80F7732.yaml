@@ -1,0 +1,81 @@
+name: sub_80F7732
+address: '0x080F7732'
+kind: function
+status: hypothesis
+summary: Zero-argument thunk that invokes sub_800FE28 with a fixed 4-byte parameter block (0x1212181E) and the caller's
+  r5, returning the callee's r0.
+interface: u32 sub_80F7732(u32 r5 /* passed through to sub_800FE28 */)
+details: 'Tail-less wrapper: pushes lr, loads r0 with the address of the constant dword_80F7740
+
+  (bytes 1E 18 12 12, likely small packed config values consumed by sub_800FE28), calls
+
+  sub_800FE28, then returns directly with pop {pc}. The caller''s r5 is forwarded untouched
+
+  as the callee''s second argument, so r5 is part of the effective interface even though this
+
+  wrapper itself never reads it. The wrapper''s own r0 output is simply whatever sub_800FE28
+
+  returns; its r2 output is discarded by this wrapper (though the wrapper-level contract lists
+
+  only r0 as an output). No other state is touched here; all actual behavior lives in
+
+  sub_800FE28, which is not yet typed, so the game-level purpose (possibly a palette/color or
+
+  effect setup given the small constant values) is unknown.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80F7732
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F7732
+
+    ./wf verify --function sub_80F7732 --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F7732
+
+    ./wf verify --function sub_80F7732 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 90 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F7732
+
+    ./wf verify --function sub_80F7732 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f7732 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what sub_800FE28 does with the parameter block at dword_80F7740 (values 0x1E, 0x18, 0x12, 0x12)
+- what the caller's r5 means to sub_800FE28
+- which subsystem calls this thunk, to pick a proper game-terms prefix
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

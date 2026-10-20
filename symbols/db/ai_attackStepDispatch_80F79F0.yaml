@@ -1,0 +1,83 @@
+name: ai_attackStepDispatch_80F79F0
+address: '0x080F79F0'
+kind: function
+status: confirmed
+summary: Dispatcher for the AI's attack routine - jumps to one of three attack-step handlers selected
+  by a state byte in the AI attack vars.
+interface: void ai_attackStepDispatch(r7 = AI attack vars ptr, r5/r6 = pass-through args); results returned
+  by the chosen handler in r1, r5, r8-r12
+details: "Tail-dispatch stub for the AI attack state machine. Reads a byte selector from the AI attack\
+  \ vars struct (labeled oAIAttackVars_HitElement in the disassembly, described as an attack-phase selector\
+  \ in the verified C) and indexes the three-entry table at off_80F7A04 with it:\n  0 -> ai_attackStepChoosePanel,\
+  \ 1 -> ai_attackStepAdvanceFuture8,\n  2 -> sub_80F7A98.\nIt loads the handler's thumb address into\
+  \ r1, passes the selector byte in r0, sets lr to the return address 0x080F79FC, and branches with bx\
+  \ r1. The handler returns straight to this function's caller, and its outputs (r1, r5, r8-r12) flow\
+  \ through in the register file - the stub itself only reads r7 and writes nothing. r5 and r6 are inputs\
+  \ that pass through to the handler untouched; r7 (the vars pointer) is preserved.\n\nRegister form kept\
+  \ (C call semantics could not work): in: r0 = selector byte, r1 = handler address; out: r1, r5, r8-r12\
+  \ per handler; the stub must be called in register form since the handler's results live in guest registers"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F79F0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F79F0
+
+    ./wf verify --function sub_80F79F0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F79F0
+
+    ./wf verify --function sub_80F79F0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 22 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F79F0
+
+    ./wf verify --function sub_80F79F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f79f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F79F0 -> ai_attackStepDispatch_80F79F0
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- the selector byte is labeled oAIAttackVars_HitElement in the struct but acts as an attack-step index
+  here; which label is correct needs checking against the other users of that field
+- what sub_80F7A98 (step index 2) does - it has not been analyzed yet
+- 'Calling-convention work: register form kept because in: r0 = selector byte, r1 = handler address; out:
+  r1, r5, r8-r12 per handler; the stub must be called in register form since the handler''s results live
+  in guest registers'
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F79F0

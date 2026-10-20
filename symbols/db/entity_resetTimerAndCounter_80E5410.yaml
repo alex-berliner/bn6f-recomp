@@ -1,0 +1,79 @@
+name: entity_resetTimerAndCounter_80E5410
+address: '0x080E5410'
+kind: function
+status: confirmed
+summary: Initializes two fields of an entity struct, setting the field at +8 to 8 and clearing the counter
+  at +0x60.
+interface: u32 entity_resetTimerAndCounter(u32 entity) // r0=entity ptr, returns 0 in r1; clobbers N/Z
+  flags
+details: 'Takes a pointer (or entity index/base) in r0 and writes two words into the structure it points
+  at: stores 8 at offset +8 and stores 0 at offset +0x60. The value 0 written to +0x60 is the last value
+  in r1, so the function returns 0 in r1 as a side effect of the store. No other registers are read or
+  written; only the N/Z flags are clobbered by the immediate loads. Given the offsets and the "8 then
+  0" pattern, this looks like a small state-reset helper for an entity/object: likely setting a timer/timeout
+  or counter of 8 units at +8 and zeroing a longer-lived counter or charge/tick field at +0x60. Callers
+  presumably use it when spawning or respawning an entity or entering a state that needs its timing fields
+  restarted.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E5410
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E5410
+
+    ./wf verify --function sub_80E5410 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    177 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E5410
+
+    ./wf verify --function sub_80E5410 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 90 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E5410
+
+    ./wf verify --function sub_80E5410 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e5410 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E5410 -> entity_resetTimerAndCounter_80E5410
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- Which subsystem's entity structure this is (battle object, NPC, GUI element) is unknown without checking
+  callers; the +8 and +0x60 field meanings are inferred only.
+- Whether the r1=0 return is intentional (a status/return value) or just an artifact of reusing r1 as
+  the scratch register.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E5410

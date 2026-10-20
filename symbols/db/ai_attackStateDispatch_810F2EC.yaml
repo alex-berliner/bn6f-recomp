@@ -1,0 +1,81 @@
+name: ai_attackStateDispatch_810F2EC
+address: '0x0810F2EC'
+kind: function
+status: confirmed
+summary: Trampoline that dispatches the current enemy AI attack-state byte to its per-state step handler
+  (setup/step/exit) via a jump table.
+interface: void sub_810F2EC(r5, r6, r7 /*AIAttackVars**/, r10); results passed through in r1/r5/r8-r12,
+  NZCV clobbered
+details: 'Tail-call trampoline in the enemy AI attack machinery. Reads the current attack-state byte from
+  the AI attack-vars block pointed to by r7 (oAIAttackVars_HitElement/Unk_00, a 1-byte field) and uses
+  that raw byte as an offset into the handler table at off_810F300 (valid states are 0, 4, 8, 0xC - one
+  word per entry, so the table is indexed by the state value itself, not state*4). It then calls the selected
+  Thumb handler with lr set via mov lr, pc / bx r1, passing r0 = state byte and r1 = table entry, with
+  r5/r6/r7/r10 forwarded untouched. The four handlers are sub_810F310 (state 0, likely attack-state entry/setup),
+  sub_810F33C (state 4, likely the main attack step), ai_beastAttackStepTick (state 8, the repeated attack
+  tick), and genericAI_exitAttackStateAfterDelay_81097BA (state 0xC, ending the attack after a delay).
+  Because this is a register-based trampoline, everything the handler leaves in r1/r5/r8-r12 flows straight
+  back to sub_810F2EC''s caller; r0/r2/r3/r4/r6/r7 and the flags are dead on the way back.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_810F2EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810F2EC
+
+    ./wf verify --function sub_810F2EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810F2EC
+
+    ./wf verify --function sub_810F2EC --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 31 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810F2EC
+
+    ./wf verify --function sub_810F2EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810f2ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810F2EC -> ai_attackStateDispatch_810F2EC
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the state byte values 0/4/8/0xC in the AIAttackVars block (naming of the states, and
+  of sub_810F310/sub_810F33C, follows from those handlers)
+- Which callers invoke this and whether the pass-through r1/r5/r8-r12 results are consumed or simply ignored
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_810F2EC

@@ -1,0 +1,85 @@
+name: battle_aiAttackWindupTick_80FEFFA
+address: '0x080FEFFA'
+kind: function
+status: confirmed
+summary: Runs one tick of an AI enemy's attack wind-up - starts the attack (element, charge animation,
+  timer) on the first call, then counts the timer down and flags the strike element when it runs out.
+interface: void sub_80FEFFA(r5 battle_object, r7 ai_attack_vars); no return value; clobbers r0 and flags
+details: 'Called per battle object each frame (r5 = oBattleObject struct, r7 = its oAIAttackVars block).
+
+  First call (AttackElement == 0): selects attack element 4, switches the object to animation 9
+
+  (the wind-up/charge pose) via oBattleObject_CurAnim, and loads oAIAttackVars_StepTimer with
+
+  0x17 (23) frames. On subsequent calls it decrements StepTimer; when it reaches 0 the branch''s
+
+  BGT is not taken and HitElement is set to 0x18 (24) - presumably the element the incoming hit
+
+  will use (or a "strike now" marker), which later code in the attack state machine reads.
+
+  Note the element fields are byte-sized but HitElement is written with STRH, touching its
+
+  neighbor in the struct as well.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FEFFA
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEFFA
+
+    ./wf verify --function sub_80FEFFA --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    186 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEFFA
+
+    ./wf verify --function sub_80FEFFA --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 71 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEFFA
+
+    ./wf verify --function sub_80FEFFA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080feffa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FEFFA -> battle_aiAttackWindupTick_80FEFFA
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what attack element 4 and hit element 0x18 map to in the element table (game terms not confirmed)
+- which enemy/AI state machine calls this and whether StepTimer is reloaded elsewhere
+- whether the STRH into HitElement intentionally writes an adjacent byte or is just size sloppiness
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FEFFA

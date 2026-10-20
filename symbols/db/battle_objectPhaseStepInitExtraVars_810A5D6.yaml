@@ -1,0 +1,80 @@
+name: battle_objectPhaseStepInitExtraVars_810A5D6
+address: '0x0810A5D6'
+kind: function
+status: confirmed
+summary: 'Per-phase step for a battle object: clears the object''s two extra phase variables on first
+  entry into the phase, then runs the shared init-and-run-AI handler.'
+interface: void step(r4 = battle object, r5 = battle object, r8 = battle object); outputs r1/r5/r8/r9/r10/r11/r12
+  are whatever battleObject_initAndRunAI_8016B02 leaves behind
+details: 'This is a thin wrapper used as a phase step routine for a battle object. On the very first call
+  of a phase (byte at obj_r5 + oBattleObject_PhaseInitialized == 0) it zero-initializes the 8-byte ExtraVars
+  area (two u32 words at oBattleObject_ExtraVars and +4) before doing anything else; on subsequent calls
+  within the same phase those variables persist. It then tail-dispatches (after saving lr only) to battleObject_initAndRunAI_8016B02
+  with r4, r5 and r8 unchanged, letting that shared handler initialize the phase and run the object''s
+  AI logic. The wrapper itself does not alter r10, which the callee preserves. All caller-visible outputs
+  (r1, r5, r8, r9, r10, r11, r12) are simply whatever the shared handler leaves in the registers, so this
+  acts as a pass-through with an extra first-entry variable reset. Note r4, r5 and r8 all appear to point
+  at the same battle object in the observed calling convention; r5 is the one dereferenced here.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_810A5D6
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810A5D6
+
+    ./wf verify --function sub_810A5D6 --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810A5D6
+
+    ./wf verify --function sub_810A5D6 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 55 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810A5D6
+
+    ./wf verify --function sub_810A5D6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810a5d6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810A5D6 -> battle_objectPhaseStepInitExtraVars_810A5D6
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which object kind(s) use this phase step instead of a more specialized one, since only ExtraVars clearing
+  distinguishes it from a plain tail call to battleObject_initAndRunAI_8016B02
+- exact meaning and layout of the 8-byte ExtraVars area for this object type
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_810A5D6

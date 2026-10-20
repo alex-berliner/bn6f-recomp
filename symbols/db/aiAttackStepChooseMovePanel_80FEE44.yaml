@@ -1,0 +1,92 @@
+name: aiAttackStepChooseMovePanel_80FEE44
+address: '0x080FEE44'
+kind: function
+status: confirmed
+summary: AI attack state step - picks a target panel for the attack move (or falls back to a stationary
+  attack) and counts down the attack timer.
+interface: void sub_80FEE44(BattleObject *obj /*r5*/, AIAttackVars *ai /*r7*/); returns r1 = last callee's
+  r1 (untouched on entry value along the timer path); clobbers r0-r4, r6, r7, lr and nzcv; r5 and r8-r12
+  pass through
+details: "Step handler for an AI-controlled BattleObject's attack phase, driven by the AIAttackVars\n\
+  block in r7 (obj pointer in r5).\n\nState 1 - AttackElement == 0 (attack not yet started):\n  Sets AttackElement\
+  \ = 4 to mark the object as attacking, then calls object_canMove(obj).\n  - If the object cannot move\
+  \ (Z set): stationary-attack fallback - writes\n    AttackDuration = 0x3C and HitElement = 0x18 (shock/electric\
+  \ hit element) into the\n    AIAttackVars, and returns.\n  - If it can move: reads oBattleObject_Alliance\
+  \ from the object, indexes byte_80FEEA8\n    (per-alliance 8-byte entries = two words, likely panel\
+  \ offsets/ranges) with\n    alliance*8, then indirect-calls ai->PanelChooseCallback with\n    r0 = ai->TargetObjectPtr,\
+  \ r1 = callback address (mov lr,pc; bx r1 long-call trick),\n    r2/r3 = the two table words. If the\
+  \ callback returns x == 0 (no panel chosen),\n    takes the same stationary-attack fallback. Otherwise\
+  \ writes the chosen x/y into\n    oBattleObject_FuturePanelX/Y, reserves that panel via object_reservePanel,\
+  \ sets\n    oBattleObject_CurAnim = 4 (move/charge animation), sets object flag\n    OBJECT_FLAGS_CANNOT_SLIDE\
+  \ via object_setFlag1, clears the collision region\n    (object_clearCollisionRegion - makes the moving\
+  \ attacker intangible), and loads\n    StepTimer = 5.\nState 2 - AttackElement != 0 (attack in progress):\n\
+  \  Decrements StepTimer; while it is still > 0 nothing else happens. When it reaches 0,\n  writes HitElement\
+  \ = 4 (ending the charge, switching to the hit element id 4).\n\nTouches: oAIAttackVars_{AttackElement,\
+  \ StepTimer, AttackDuration, HitElement,\nTargetObjectPtr, PanelChooseCallback}, oBattleObject_{Alliance,\
+  \ FuturePanelX,\nFuturePanelY, CurAnim}; data table byte_80FEEA8 (alliance*8 stride).\nQuirks: the \"\
+  4\" written to AttackElement/CurAnim/HitElement is named ANIM_IDLE in the\nverified C but is really\
+  \ the \"attack queued / step 4\" element id here; the callback\nuses the mov lr,pc;bx r1 pattern so\
+  \ the callback receives its own address in r1.\nr1 on exit is just leftover callee state, not a meaningful\
+  \ result.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FEE44
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEE44
+
+    ./wf verify --function sub_80FEE44 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    179 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEE44
+
+    ./wf verify --function sub_80FEE44 --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 72 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEE44
+
+    ./wf verify --function sub_80FEE44 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fee44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FEE44 -> aiAttackStepChooseMovePanel_80FEE44
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the per-alliance table words at byte_80FEEA8 passed as r2/r3 to the panel-choose callback
+- what element/anim id 4 means concretely in this AI's attack table
+- identity of the PanelChooseCallback implementations and whether 0x18 HitElement is the shared "shock"
+  element or AI-specific
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FEE44

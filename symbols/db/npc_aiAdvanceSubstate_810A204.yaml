@@ -1,0 +1,85 @@
+name: npc_aiAdvanceSubstate_810A204
+address: '0x0810A204'
+kind: function
+status: confirmed
+summary: Ticks the AI actor's sub-state counter, and once it has run 40 ticks fires script 0x0C and resets
+  the counter for the next phase.
+interface: void npc_aiAdvanceSubstate(AIState* r6) // r6 in only; clobbers r0 and flags
+details: 'r6 points to an AI state block for an actor (NPC/enemy). The function increments the
+
+  byte at oAIState_SubState and stores it back. While the counter is below 0x28 (40), it
+
+  simply returns — effectively a 40-tick (~2/3 s) wait step. Once the count reaches 0x28,
+
+  it writes 0x0C into oAIState_ScriptId (queuing/switching to AI script 12) and clears
+
+  oAIState_SubState as a halfword (16-bit store zeroes the counter field), so the next
+
+  phase can count from zero again. Tail-returns directly to the caller with pop {pc}.
+
+  Note the store-size quirk: the increment is byte-sized but the reset is a halfword store
+
+  on the same offset, zeroing SubState and the adjacent byte (likely a second counter byte
+
+  or padding).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_810A204
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810A204
+
+    ./wf verify --function sub_810A204 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810A204
+
+    ./wf verify --function sub_810A204 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810A204
+
+    ./wf verify --function sub_810A204 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0810a204 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810A204 -> npc_aiAdvanceSubstate_810A204
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of AI script 0x0C and which actor(s) use this wait step
+- whether the adjacent byte zeroed by the halfword store is intentional or padding
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_810A204

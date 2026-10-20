@@ -1,0 +1,83 @@
+name: ai_tryActionElsePickAdjacentPanel_8110F8C
+address: '0x08110F8C'
+kind: function
+status: confirmed
+summary: AI update step that tries one behavior first and, if it did nothing, falls back to picking an
+  adjacent neighbor panel for the object at r5.
+interface: void sub_8110F8C(u32 r5 /* object/entity pointer */) -> r0 = success/result flag of whichever
+  callee ran last; clobbers r2 r3 lr and flags; preserves r4-r7
+details: "Tiny dispatcher, almost certainly an AI-state update step for an enemy/custom\nobject whose\
+  \ pointer lives in r5 (the callees also take and update r5).\n\nOrder of operations:\n  1. Call sub_8110FA2(r5).\
+  \ If it returns nonzero in r0 (it \"handled\" the\n     update), return immediately with that result\
+  \ in r0/r1.\n  2. Otherwise call ai_pickAdjacentNeighborPanel(r5) with the r5 value the\n     first\
+  \ callee left behind (the callees may update the object pointer\n     they were given). Its r0/r1 become\
+  \ the function's result.\n\nThe function itself sets no return value: r0/r1 are simply whatever the\
+  \ last\ncallee left. The tst/bne and the trailing unconditional branch mean both\nexits converge on\
+  \ the same pop, so the branch structure is effectively\n\"run A, else run B\".\n\nsub_8110FA2 is not\
+  \ identified yet; only the fallback\n(ai_pickAdjacentNeighborPanel) has a known game meaning, hence\
+  \ the\n\"try something, else move to a neighboring panel\" reading. This matches the\ncommon BN6 enemy-AI\
+  \ pattern of attempting an attack/special action each\nturn and falling back to repositioning.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_8110F8C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8110F8C
+
+    ./wf verify --function sub_8110F8C --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8110F8C
+
+    ./wf verify --function sub_8110F8C --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 0 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8110F8C
+
+    ./wf verify --function sub_8110F8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110f8c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8110F8C -> ai_tryActionElsePickAdjacentPanel_8110F8C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_8110FA2
+open_questions:
+- What sub_8110FA2 does (its result decides whether the panel move happens); identifying it would pin
+  down the exact AI behavior.
+- Which AI state/agent type uses this step, i.e. what object r5 points at.
+- Whether callers interpret the returned r0 as 'acted' vs 'moved' or ignore it.
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_8110F8C

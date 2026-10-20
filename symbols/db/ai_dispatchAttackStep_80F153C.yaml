@@ -1,0 +1,82 @@
+name: ai_dispatchAttackStep_80F153C
+address: '0x080F153C'
+kind: function
+status: confirmed
+summary: AI attack step dispatcher - reads the current attack-phase byte from the AI attack-vars block
+  and jumps to the matching handler (start-attack or wait-for-attack-end).
+interface: void ai_dispatchAttackStep(u32 passR3, u32 passR5, u32 passR6, AIAttackVars* vars /* r7 */);
+  outputs r1 r5 r8-r12 come from the selected handler, flags and r0-r4/r6/lr clobbered
+details: 'Tiny trampoline for the AI''s attack sequence. The pointer to the AI attack-vars block is expected
+  in r7; the byte at offset oAIAttackVars_Unk_00 (named oAIAttackVars_HitElement in the asm listing) is
+  used as a routine selector, not an element id, despite its field name. The selector indexes the 2-entry
+  table at off_80F1550: entry 0 -> sub_80F1558 (begin/step the attack), entry 1 -> ai_attackWaitEnd (wait
+  until the attack finishes). Before the branch, r0 is loaded with the selector byte and r1 with the table
+  entry itself (the handler''s own address, thumb bit set), so handlers receive their address as an argument;
+  the ''mov lr, pc / bx r1'' pair makes the handler return back into this stub. r3, r5 and r6 are passed
+  through untouched to the handler. r7 is pushed before the call and popped after, so the vars pointer
+  survives whatever the handler does to r7; the handler''s results stay in guest registers (r1, r5, r8-r12)
+  and are returned as-is to sub_80F153C''s caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F153C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F153C
+
+    ./wf verify --function sub_80F153C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    295 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F153C
+
+    ./wf verify --function sub_80F153C --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 36 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F153C
+
+    ./wf verify --function sub_80F153C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080f153c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F153C -> ai_dispatchAttackStep_80F153C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- Whether oAIAttackVars_Unk_00/HitElement only ever holds 0 or 1, or whether further attack-step handlers
+  were cut from the dispatch table
+- What the pass-through values in r3/r5/r6 mean at the handler side (sub_80F1558 and ai_attackWaitEnd)
+- Exact meaning of the selector byte's field name - it reads as 'HitElement' in the asm offset list but
+  is used as a step index here
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F153C

@@ -1,0 +1,85 @@
+name: battle_destroyObjectClearExtraVars_80D4464
+address: '0x080D4464'
+kind: function
+status: confirmed
+summary: 'Tears down a battle object: clears the first word of its extra-variable list, then destroys
+  the object.'
+interface: void sub_80D4464(r5 = battle object pointer); r5 passes through unchanged; clobbers r0-r3,
+  lr, flags
+details: 'Called with the battle object pointer in r5 (Thumb BL callers won''t set r5 directly, so callers
+
+  arrange r5 before branching — typical of this codebase''s object routines that keep the object in r5).
+
+  Loads the oBattleObject_ExtraVars field from the object, which is a pointer to the object''s
+
+  extra-variable list, and stores 0 into the first word at that address (clearing the list head /
+
+  first extra var). Then calls object_genericDestroy(r5) to run the generic object teardown.
+
+  Returns with r5 still holding the object pointer, since the original never reloads or modifies it;
+
+  callers can rely on that but likely don''t. This looks like the standard "destroy with extra vars"
+
+  exit path for battle objects whose ExtraVars list must be reset before/while destruction happens.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80D4464
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D4464
+
+    ./wf verify --function sub_80D4464 --snapshots build-snapshots'
+  result: 'captured calls: 31 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D4464
+
+    ./wf verify --function sub_80D4464 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D4464
+
+    ./wf verify --function sub_80D4464 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4464 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D4464 -> battle_destroyObjectClearExtraVars_80D4464
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of the ExtraVars field (pointer to a list head vs. first var) not confirmed
+- whether callers use the returned r5 or it is just an artifact of the original code
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80D4464

@@ -1,0 +1,83 @@
+name: battle_spawnObject6B_linkRelated_80E8124
+address: '0x080E8124'
+kind: function
+status: confirmed
+summary: Spawns battle object type 0x6B via object_spawnType4 and, if one was created, stores the caller's
+  battle object (r5) into the new object's RelatedObject1Ptr slot.
+interface: void sub_80E8124(u32 r1, u32 r2, u32 r3, u32 r4, BattleObject* related /* r5 */); outputs r2,
+  r3, r5 (restored related object), r6, r7 left as the spawner returned them; flags clobbered
+details: 'Saves lr and r5, then calls object_spawnType4 with r0 = 0x6B (object type ID) and r1-r4 passed
+  through untouched as spawner arguments. The spawner reports the newly created object in its r5 result.
+  The wrapper moves that result back into r0 and branches over the store if it is 0, so on spawn failure
+  nothing is written. On success it stores the caller''s original r5 value (an existing battle object)
+  into the new object''s oBattleObject_RelatedObject1Ptr field, making it the "related object 1" of the
+  freshly spawned 0x6B object. r5 is restored from the saved copy via the odd pop {r5} arrangement (r5
+  was pushed above lr after the push {lr}), so the caller''s input r5 value is also what the caller sees
+  afterwards; the spawner''s other results (r2, r3, r6, r7) are simply left in place. Which in-game object
+  type 0x6B corresponds to (a helper/effect entity tied to a specific attack or NPC) is not determined
+  from this function alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E8124
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E8124
+
+    ./wf verify --function sub_80E8124 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E8124
+
+    ./wf verify --function sub_80E8124 --snapshots build-snapshots'
+  result: 62 compared, 0 differed, 34 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E8124
+
+    ./wf verify --function sub_80E8124 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e8124 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E8124 -> battle_spawnObject6B_linkRelated_80E8124
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_8110D18
+open_questions:
+- what game entity object type 0x6B actually is
+- which callers use this and what they pass in r1-r4 (spawner arguments untyped here)
+- whether RelatedObject1Ptr has a more specific semantic than "related object 1"
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E8124

@@ -1,0 +1,70 @@
+name: sub_80FFA8C
+address: '0x080FFA8C'
+kind: function
+status: hypothesis
+summary: Trivial wrapper that calls sub_800FE28 with a pointer to a 4-byte constant table {30,28,26,20} and forwards
+  the caller's r5, returning its r0.
+interface: 'u32 sub_80FFA8C(u32 r5 /* forwarded */); // in: r5, lr; out: r0; clobbers r1, r2, lr, flags'
+details: 'Pushes lr, loads the address of byte_80FFA9C into r0, calls sub_800FE28, and returns with pop {pc}. The
+  only data is a 4-entry byte table at 0x080FFA9C holding 0x1E, 0x1C, 0x1A, 0x14 (30, 28, 26, 20). The caller''s
+  r5 is passed through untouched to the callee, so this is a curried/thunk form of sub_800FE28 with a fixed first
+  argument. The meaning of the values depends entirely on sub_800FE28''s semantics (e.g. a timer/step/scale table
+  consumed element by element), which is not established here; the decreasing sequence could be durations, sizes,
+  or fade steps. No other registers or memory are touched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FFA8C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFA8C
+
+    ./wf verify --function sub_80FFA8C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFA8C
+
+    ./wf verify --function sub_80FFA8C --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFA8C
+
+    ./wf verify --function sub_80FFA8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffa8c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What does sub_800FE28 do with the table pointer and r5 (timer sequence, animation frames, sound params)?
+- Which callers use this wrapper instead of calling sub_800FE28 directly, and in what game context?
+- Are the byte values indices, durations, or raw counts?
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

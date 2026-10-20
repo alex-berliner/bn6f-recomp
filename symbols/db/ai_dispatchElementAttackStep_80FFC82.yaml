@@ -1,0 +1,76 @@
+name: ai_dispatchElementAttackStep_80FFC82
+address: '0x080FFC82'
+kind: function
+status: confirmed
+summary: AI attack dispatcher that reads the AI's hit-element byte and jumps to the matching attack step
+  routine from a 5-entry table.
+interface: void ai_dispatchElementAttackStep(u32 r2, u32 r3, u32 r5, AIAttackVars *r7, u32 r6, u32 r10);
+  // tail-calls step in r1; outputs (r1 r5 r8 r9 r10 r11 r12) are whatever the dispatched step leaves
+details: "r7 points at an AIAttackVars struct; the byte at oAIAttackVars_HitElement selects one of\nfive\
+  \ attack step routines from the jump table at off_80FFC94:\n  0 ai_panelTargetAttackStep\n  1 sub_80FFD20\n\
+  \  2 sub_80FFD6A\n  3 ai_chargeShotAttackStep\n  4 ai_chipAttackTick\nThe element is loaded into r0\
+  \ and the selected table entry into r1, then the step is\ninvoked via mov lr, pc; bx r1 so it runs in\
+  \ ARM state (table entries are +1 Thumb\npointers) and returns straight back to this function's caller.\
+  \ r7 is pushed before the\ncall and popped after, so the step can clobber r7 freely while the original\
+  \ caller still\nsees its own r7. All other inputs (r2 r3 r5 r6 r10) are passed through untouched; the\n\
+  function's \"outputs\" are entirely whatever the dispatched step leaves in the registers.\nFlags nzcv\
+  \ are clobbered by the dispatched step.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80FFC82
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFC82
+
+    ./wf verify --function sub_80FFC82 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFC82
+
+    ./wf verify --function sub_80FFC82 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 25 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFC82
+
+    ./wf verify --function sub_80FFC82 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffc82 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FFC82 -> ai_dispatchElementAttackStep_80FFC82
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions: []
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80FFC82

@@ -1,0 +1,95 @@
+name: ai_attackDispatchStep_80F7EA6
+address: '0x080F7EA6'
+kind: function
+status: confirmed
+summary: Battle AI attack dispatcher — reads the enemy's current attack-step slot from its AI variable
+  block and tail-calls the matching attack handler from an 8-entry jump table.
+interface: void sub_80F7EA6(r5, r6, r7 = AI attack vars ptr, r10) — tail-call; results (r1, r5, r8-r12,
+  flags) are whatever the selected handler leaves behind; r7 is reloaded unchanged after the handler
+details: 'Trampoline/jump-table dispatcher for the enemy AI''s attack routine. It loads a slot byte from
+
+  the AI variable block at [r7 + oAIAttackVars_Unk_00] (labeled oAIAttackVars_HitElement in the
+
+  readable C, but here it selects the attack step, not an element) and uses it directly as a
+
+  BYTE offset into the handler table at off_80F7EB8 — no *4 scaling — then does the classic
+
+  "mov lr, pc / bx r1" long-call into the handler. Handlers (one of 8: sub_80F7ED8,
+
+  ai_attackTryClaimTargetPanel, sub_80F7F7C, sub_80F7FA2, sub_80F7FC2, sub_80F8014,
+
+  sub_80F803E, sub_80F8094) receive r0 = slot byte, r1 = table entry, and r5/r6/r7/r10 passed
+
+  through. Because the dispatcher only pushes {r7, lr} and pops immediately after the handler
+
+  returns, the handler''s outputs ARE this function''s outputs; r7 alone is guaranteed preserved
+
+  (saved/restored around the call). Quirk: indexing without *4 means the stored slot byte is
+
+  effectively a byte offset into the table (0,4,8,... for the 8 handlers); any other value
+
+  would land mid-entry.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F7EA6
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F7EA6
+
+    ./wf verify --function sub_80F7EA6 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    295 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F7EA6
+
+    ./wf verify --function sub_80F7EA6 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 30 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F7EA6
+
+    ./wf verify --function sub_80F7EA6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f7ea6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F7EA6 -> ai_attackDispatchStep_80F7EA6
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the slot byte at oAIAttackVars_Unk_00 (attack phase counter vs. selected attack id)
+  — needs the writers of that field
+- what each of the 7 unnamed handlers does; only ai_attackTryClaimTargetPanel is identified so far
+- whether the "HitElement" label on the slot field is a mislabel from an earlier analysis
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F7EA6

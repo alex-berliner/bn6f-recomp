@@ -1,0 +1,82 @@
+name: battle_objectMirrorRelatedAndFlinchStep_80E7142
+address: '0x080E7142'
+kind: function
+status: confirmed
+summary: Per-tick update for a battle object that syncs fields from its related object and then runs the
+  flinch step, switching to the destroy state when the battle is over or the related object's action is
+  invalid.
+interface: void sub_80E7142(r5=battle object ptr, r10=battle context, lr=return); no return value, flags
+  and r0-r3/lr clobbered
+details: 'Battle object per-tick handler (r5 = oBattleObject, r10 = battle context used by callees). First
+  calls battle_isBattleOver; if the battle is over, it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and returns. Otherwise it copies three words (+0x34..+0x3F) from [r5+oBattleObject_RelatedObject1Ptr]+0x34
+  onto the same offsets of the object itself, keeping its own position/data mirrored to the related object.
+  If oBattleObject_Param1 is nonzero, the object must flinch this tick: battle_objectFlinchStep is called
+  unconditionally. If Param1 is zero, the related object''s oBattleObject_CurAction is checked: action
+  0xA is only allowed when time is NOT stopped (battle_isTimeStop returns with Z set when time is stopped;
+  the code returns without flinching in that case), and any other action value destroys this object via
+  CUR_STATE_DESTROY. Note the ldmia/stmia advance r0 past the copied block, so +0x34..+0x3F of the object
+  are scratch/mirrored fields rather than the state word.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E7142
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E7142
+
+    ./wf verify --function sub_80E7142 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E7142
+
+    ./wf verify --function sub_80E7142 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 58 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E7142
+
+    ./wf verify --function sub_80E7142 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080e7142 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E7142 -> battle_objectMirrorRelatedAndFlinchStep_80E7142
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of oBattleObject_Param1 (flinch request flag?) and action value 0xA in the related object
+- which fields at +0x34..+0x3F are mirrored (position vs sprite data) and which battle_objectFlinchStep
+  consumes
+- why action 0xA specifically is gated on battle_isTimeStop while other actions destroy the object
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E7142

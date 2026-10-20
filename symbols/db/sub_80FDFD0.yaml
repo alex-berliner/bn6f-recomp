@@ -1,0 +1,78 @@
+name: sub_80FDFD0
+address: '0x080FDFD0'
+kind: function
+status: hypothesis
+summary: Tiny thunk that calls sub_800FE28 with a pointer to a one-word constant table (0x14141414) and passes r5
+  through, returning the callee's r0.
+interface: 'u32 sub_80FDFD0(u32 arg5 /* r5 */); // out: r0 = result of sub_800FE28'
+details: 'Pushes lr, loads the address of dword_80FDFE0 into r0, then tail-calls sub_800FE28 via
+
+  bl sub_800FE28 and pops pc. The only data it supplies is the pointer to the constant
+
+  table at 0x080FDFFE0, whose single word is 0x14141414; the caller''s r5 is forwarded
+
+  unchanged as the second argument. No state of its own is read or written, so its game
+
+  meaning is entirely inherited from sub_800FE28 (unknown here). Note that despite the
+
+  "dword" label, the callee is only ever handed the table''s address, so it may read a
+
+  variable-length list starting at that word rather than a single value. Flags nz c v
+
+  and r1/r2/lr are clobbered only as far as the callee''s own contract implies.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c sub_80FDFD0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FDFD0
+
+    ./wf verify --function sub_80FDFD0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FDFD0
+
+    ./wf verify --function sub_80FDFD0 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 87 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FDFD0
+
+    ./wf verify --function sub_80FDFD0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fdfd0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_800FE28 does and what r5 means to it (r5 is not a standard argument register, so it likely carries state
+  or a context pointer)
+- what the constant 0x14141414 (four bytes 0x14) represents and how far into the table sub_800FE28 reads
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a

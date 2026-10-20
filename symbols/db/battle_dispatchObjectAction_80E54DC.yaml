@@ -1,0 +1,79 @@
+name: battle_dispatchObjectAction_80E54DC
+address: '0x080E54DC'
+kind: function
+status: confirmed
+summary: Battle-object action dispatcher — reads the object's CurAction byte and jumps to the matching
+  per-action handler via a jump table.
+interface: void battle_dispatchObjectAction(BattleObject* obj /*r5*/); tail-calls one of three handlers
+  with (r0 = action byte, r1 = handler address, r5 = obj); outgoing r5/r8-r12 and flags come straight
+  from the chosen handler
+details: 'A tiny trampoline: loads the battle object''s oBattleObject_CurAction byte from [r5], indexes
+  the table at off_80E54F0 with the raw byte, and performs `mov lr, pc; bx r1` so the handler returns
+  to this function, which then `pop {pc}`s back to the original caller. Table entries (thumb+1 addresses):
+  action 0x00 -> object_slideXAndCheckPanel (sub_80E54FC), action 0x04 -> battle_introAnimPhaseHandler
+  (sub_80E5546), action 0x08 -> object_destroyIfExtraVarTargetNull (sub_80E557A). Since the raw byte indexes
+  the 4-byte-stride table, only action values 0/4/8 land on valid entries — any other CurAction would
+  jump to garbage, so callers are expected to keep CurAction within that set. All register effects are
+  simply whatever the selected handler leaves behind; this routine itself preserves nothing.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80E54DC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E54DC
+
+    ./wf verify --function sub_80E54DC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E54DC
+
+    ./wf verify --function sub_80E54DC --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 40 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E54DC
+
+    ./wf verify --function sub_80E54DC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e54dc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E54DC -> battle_dispatchObjectAction_80E54DC
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which battle entities/scripts use this dispatcher (vs the other action tables in the ROM)
+- whether CurAction is guaranteed to be 0/4/8 for all callers or other values are possible
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80E54DC

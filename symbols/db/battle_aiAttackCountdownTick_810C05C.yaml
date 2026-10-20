@@ -1,0 +1,80 @@
+name: battle_aiAttackCountdownTick_810C05C
+address: '0x0810C05C'
+kind: function
+status: confirmed
+summary: Ticks one AI attack object's step countdown each frame; when it expires, reloads the interval
+  and flags the attack ready to fire (step 8).
+interface: void battle_aiAttackCountdownTick_810C05C(AIAttackVars* vars /* r7 */); // clobbers r0 and
+  flags, no outputs
+details: "Part of the enemy AI attack scheduling state machine. The object's vars block\n(r7) holds oAIAttackVars_HitElement\
+  \ at +0x00, the repeat interval (byte,\noAIAttackVars_AttackBoost2) at +0x0c, and the step countdown\n\
+  (oAIAttackVars_StepTimer, half-word) at +0x10.\nEach call decrements the countdown half-word. As long\
+  \ as the result is still\n>= 0 (signed bge), nothing else happens. Once the countdown goes negative:\n\
+  \  * the countdown is reloaded from the byte at oAIAttackVars_AttackBoost2\n    (the attack's repeat\
+  \ interval), so the timer starts over, and\n  * oAIAttackVars_HitElement is set to 8, which downstream\
+  \ AI code reads as\n    \"attack ready / advance to step 8\".\nQuirk: the countdown is loaded with ldrh\
+  \ (zero-extended) but tested with a\nsigned bge, so a stored 0xFFFF (sentinel for \"inactive\"?) would\
+  \ wrap to a\nlarge positive value and keep the timer running rather than firing; the\nverified C must\
+  \ preserve this unsigned-load/signed-test combination.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_810C05C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810C05C
+
+    ./wf verify --function sub_810C05C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    184 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810C05C
+
+    ./wf verify --function sub_810C05C --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 66 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810C05C
+
+    ./wf verify --function sub_810C05C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810c05c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810C05C -> battle_aiAttackCountdownTick_810C05C
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the value 8 stored into HitElement (which AI step/state it selects)
+- whether oAIAttackVars_AttackBoost2 is truly a repeat interval or a shared field repurposed for this
+  attack type
+- whether a 0xFFFF stored in the timer is a deliberate "disabled" sentinel given the unsigned load
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_810C05C

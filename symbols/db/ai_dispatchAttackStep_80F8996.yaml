@@ -1,0 +1,97 @@
+name: ai_dispatchAttackStep_80F8996
+address: '0x080F8996'
+kind: function
+status: confirmed
+summary: Trampoline that dispatches the battle AI's current attack step to one of six per-element/state
+  handlers chosen by a byte in the AI attack variable block.
+interface: 'void ai_dispatchAttackStep(void); // in: r7 = pointer to AI attack variable block (plus r5,
+  r6, r10 as live caller context); out: r0/r1/r5/r8-r12 = whatever the selected handler leaves; flags
+  clobbered'
+details: 'Pure dispatcher/trampoline for the battle AI attack state machine. Reads the selector byte at
+
+  oAIAttackVars_HitElement from the variable block in r7, indexes the jump table at
+
+  off_80F89A8 (six Thumb handler entries: sub_80F89C0, ai_attackStepLand, ai_attackTimerStep,
+
+  sub_80F8A66, sub_80F8A9C, ai_updateAttackHoldState), then does the classic `mov lr, pc;
+
+  bx r1` sequence to tail-call the handler in Thumb mode. Because the selector byte is not
+
+  reloaded and lr is set from pc, the handler returns directly to this function''s caller
+
+  (after the pop {r7,pc}), so the dispatch is transparent to callers: r0, r1 and every other
+
+  clobbered register afterwards are simply whatever the chosen handler left behind. The
+
+  handler is entered with r0 = selector value and r1 = handler address (a side effect of the
+
+  bx sequence). No state is modified here itself; only r7 is preserved across the trampoline.
+
+  The HitElement-named field is evidently being reused as a generic attack-state/step index
+
+  for this AI, not literally the element of a hit.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F8996
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F8996
+
+    ./wf verify --function sub_80F8996 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F8996
+
+    ./wf verify --function sub_80F8996 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 35 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F8996
+
+    ./wf verify --function sub_80F8996 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f8996 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F8996 -> ai_dispatchAttackStep_80F8996
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Whether oAIAttackVars_HitElement doubles as the attack-state selector for this AI or whether the lifter's
+  field naming is misleading
+- Which AI entity/objects call this dispatcher (callers not enumerated here)
+- Precise semantics of the six handlers (e.g. sub_80F89C0, sub_80F8A66, sub_80F8A9C still unnamed)
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F8996

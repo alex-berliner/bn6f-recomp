@@ -1,0 +1,80 @@
+name: battle_aiAttackWindupStepWood_80F17E4
+address: '0x080F17E4'
+kind: function
+status: confirmed
+summary: AI attack step handler that starts an element-4 (wood) attack on its first call — sets the attack
+  element, plays animation 0xF on the battle object, and loads the wind-up timer from AttackBoost2 — then
+  ticks that timer until it expires, at which point it writes element 4 into HitElement to trigger the
+  attack's hit phase.
+interface: 'void battle_aiAttackWindupStepWood_80F17E4(u32 obj /*r5: battle object*/, u32 atk /*r7: AI
+  attack vars*/); // clobbers r0 and nzcv, preserves r4/r6'
+details: 'Per-call state machine over the AI attack vars block (r7). If oAIAttackVars_AttackElement is
+  still 0, the attack is initialized: AttackElement is set to 4, oBattleObject_CurAnim on the battle object
+  (r5) is set to animation 0xF (wind-up pose), and oAIAttackVars_StepTimer is seeded (as a halfword) from
+  the single byte oAIAttackVars_AttackBoost2, which thus acts as the wind-up delay in frames. On every
+  later call the StepTimer is decremented; when it counts down to 0 (subtraction sets Z or the borrow
+  flag; the bgt uses the signed comparison), oAIAttackVars_HitElement is written with 4, which downstream
+  code reads as the signal that the attack now connects. Element 4 corresponds to the wood element in
+  the battle engine''s element numbering. The handler is a pure step function: it returns immediately
+  after either initializing or ticking, and the hit flag is polled by the caller rather than returned.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-142756);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 99' --file leaves_farm_99.c
+    sub_80F17E4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F17E4
+
+    ./wf verify --function sub_80F17E4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    178 out of domain (verify run convert-20261020-142756-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F17E4
+
+    ./wf verify --function sub_80F17E4 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-142756-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F17E4
+
+    ./wf verify --function sub_80F17E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-142756-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f17e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp de04b2a
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d0391176
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F17E4 -> battle_aiAttackWindupStepWood_80F17E4
+  where: bn6f 5cdd5c2c
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact identity of animation 0xF on the battle object (assumed wind-up/charge pose)
+- which boss/attack script dispatches to this step handler and how HitElement=4 is consumed downstream
+- whether AttackBoost2 is the only source of the wind-up delay or other steps share it
+sources:
+- tools/wf run convert-20261020-142756
+- recomp de04b2a
+previous_names:
+- sub_80F17E4
