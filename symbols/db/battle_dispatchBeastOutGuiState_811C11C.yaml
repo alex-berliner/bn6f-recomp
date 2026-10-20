@@ -1,0 +1,78 @@
+name: battle_dispatchBeastOutGuiState_811C11C
+address: '0x0811C11C'
+kind: function
+status: confirmed
+summary: State dispatcher for a BeastOut-related battle/overworld GUI object that jumps to one of three
+  per-state handlers selected by the byte at object+8.
+interface: void battle_dispatchBeastOutGuiState_811C11C(Object* r5 /* object */); // tail-calls handler
+  via mov lr,pc/bx r0; handler's outputs surface as r2 r3 r5 r10 r11
+details: "Tiny trampoline-style dispatcher: reads the state byte at r5+8 and uses it\nUNSCALED as a word-offset\
+  \ into the handler table at off_811C130 (so the\nstored value must be 0/4/8, not 0/1/2 — it is a byte\
+  \ offset, not an index).\nThe selected thumb handler is entered with mov lr,pc / bx r0, which makes\n\
+  the call appear to return straight to this function's own caller (pop {pc}),\neffectively a tail call.\
+  \ r0 still holds the handler address and r1 the raw\nstate byte when the callee starts. Handler table:\n\
+  \  0 -> battleObject_initBeastOutOverworldGui_811C13C (state init/draw of the\n       Beast Out overworld\
+  \ GUI)\n  4 -> sub_811C18C\n  8 -> sub_811C1A4\nOutputs (r2 r3 r5 r10 r11) are produced by whichever\
+  \ handler runs, not by\nthis function itself; nzcv, r0-r1, r4, r6-r9, r12 and lr are clobbered\ndownstream.\
+  \ Object pointer arrives in r5, matching the project's usual\nper-object worker convention.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_811C11C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811C11C
+
+    ./wf verify --function sub_811C11C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811C11C
+
+    ./wf verify --function sub_811C11C --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 36 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811C11C
+
+    ./wf verify --function sub_811C11C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0811c11c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811C11C -> battle_dispatchBeastOutGuiState_811C11C
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- exact roles of sub_811C18C and sub_811C1A4 (likely update/draw phases of the same GUI object)
+- which structure type r5 points to and what other fields besides +8 it uses
+- whether the raw-offset convention (values 0/4/8) is shared by sibling dispatchers
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_811C11C

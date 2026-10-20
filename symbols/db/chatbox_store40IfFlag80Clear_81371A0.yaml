@@ -1,0 +1,75 @@
+name: chatbox_store40IfFlag80Clear_81371A0
+address: '0x081371A0'
+kind: function
+status: confirmed
+summary: Tests chatbox eFlags bit 0x80 and writes 0x40 to a caller-supplied byte only when that flag is
+  clear.
+interface: void chatbox_store40IfFlag80Clear_81371A0(u8* dest /* r5 */)
+details: 'Calls chatbox_mask_eFlags2009F38(0x80) to test the chatbox extended-flags word against bit 0x80
+  (likely a "textbox already open/pending" state). If the masked value is zero (Z set, i.e. the flag is
+  clear), the byte pointed to by r5 is set to 0x40 — a chatbox-style state/phase value. If the flag is
+  set, the function returns without touching *r5. Always writes to r5''s target on the store path via
+  strb, so r5 must be a valid byte pointer. No return value is meaningful: r0 and the NZ flags are clobbered
+  either way (r0 ends as the mask-test result on the early-return path and as 0x40 on the store path),
+  and only r1 is preserved among scratch registers. This looks like a small helper that primes a per-context
+  state byte for the chatbox unless the chatbox is already in the 0x80-flagged condition.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_81371A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81371A0
+
+    ./wf verify --function sub_81371A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    101 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81371A0
+
+    ./wf verify --function sub_81371A0 --snapshots build-snapshots'
+  result: 52 compared, 0 differed, 44 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81371A0
+
+    ./wf verify --function sub_81371A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081371a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81371A0 -> chatbox_store40IfFlag80Clear_81371A0
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- Meaning of eFlags bit 0x80 in chatbox_mask_eFlags2009F38 not confirmed
+- What structure the r5 byte belongs to (chatbox context? message-request slot?) not identified from this
+  snippet alone
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_81371A0

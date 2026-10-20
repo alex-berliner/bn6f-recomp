@@ -1,0 +1,90 @@
+name: ai_attackLungeStep_811523C
+address: '0x0811523C'
+kind: function
+status: confirmed
+summary: One step of an AI-controlled enemy's lunge/dash attack - counts down a wind-up timer, then launches the
+  object forward onto its current panel with a sound and element tag.
+interface: sub_811523C(r5 = battle object, r7 = oAIAttackVars state block) -> r1, r5 from sub_8115492; r10 as left
+  by PlaySoundEffect on the lunge path
+details: "Per-frame update for one phase of an enemy attack (probably shared by several AI users via\nthe AIAttackVars\
+  \ state block in r7). Calls ai_attackVarsTimerTick16 first (some timers in the\nblock tick every frame regardless\
+  \ of phase), then decrements oAIAttackVars_StepTimer.\nWhile the timer is still >= 0 nothing else happens this\
+  \ frame. Once it expires:\n  - reads oAIAttackVars_ScratchVar as a stride multiplier, computes\n    XVelocity\
+  \ = object_getFrontDirection(r5) * ScratchVar and stores it into\n    oBattleObject_XVelocity - i.e. the object\
+  \ suddenly dashes toward the player at a\n    configured speed/direction.\n  - copies the object's current PanelX/PanelY\
+  \ into its FuturePanelX/FuturePanelY fields,\n    so the engine treats the panel it stands on as the one it is\
+  \ moving into (it lunges\n    onto the panel it occupies / the one ahead, depending on how the engine resolves\n\
+  \    future panels).\n  - calls object_reservePanel with panelX/panelY to reserve that panel (preventing the\n\
+  \    player from using it / registering the incoming body), then plays sound 0x187\n    (SFX_PANEL_LUNGE, encoded\
+  \ in code as mov #0x88, add #0xff), passing reservePanel's\n    leftover r2 as PlaySoundEffect's r2.\n  - stores\
+  \ HitElement = 8 into oAIAttackVars_HitElement, tagging the damage type for the\n    strike that follows the lunge.\n\
+  On both paths (timer still counting and lunge fired) it tail-calls sub_8115492, which\nreturns r1/r5 that are\
+  \ propagated to the caller.\nQuirk: PlaySoundEffect is called with r2 straight from object_reservePanel's leftover\n\
+  register output - an untyped argument whose meaning depends on reservePanel's ABI.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_811523C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811523C
+
+    ./wf verify --function sub_811523C --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 239 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811523C
+
+    ./wf verify --function sub_811523C --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 42 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811523C
+
+    ./wf verify --function sub_811523C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811523c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811523C -> ai_attackLungeStep_811523C
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9d4f87b1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_8115492
+open_questions:
+- which enemy/attack(s) use this step and what HitElement = 8 corresponds to (element/effect id table)
+- what object_getFrontDirection returns exactly (signed +/-1 for facing?) and how ScratchVar scales the lunge speed
+- meaning of the r2 value PlaySoundEffect receives from object_reservePanel
+- role of sub_8115492 (common post-step handler for AI attack states?)
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_811523C

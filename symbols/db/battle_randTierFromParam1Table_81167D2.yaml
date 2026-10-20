@@ -1,0 +1,98 @@
+name: battle_randTierFromParam1Table_81167D2
+address: '0x081167D2'
+kind: function
+status: confirmed
+summary: Rolls a random 0-15 value, combines it with a battle object's Param1 to index a 4x16 tier table
+  (values 0-4), used to pick a randomized effect strength for that object.
+interface: int battle_randTierFromParam1Table_81167D2(BattleObject* object /*r5*/); // returns tier value
+  in r0; r7 is passed through from the RNG callees to the caller
+details: 'Takes a battle object pointer in r5. First calls battle_conditionalRngRoll(object);
+
+  if it returns 4, that value is returned unchanged (the table is never consulted) — 4
+
+  evidently means "no roll / no effect" in this context. Otherwise it calls
+
+  GetPositiveSignedRNG, takes the low 4 bits (0-15) as the column, shifts the object''s
+
+  oBattleObject_Param1 left by 4 as the row offset, and reads byte_81167F4[row*16 + col].
+
+  The table has 4 rows of 16 bytes: row 0 is all 0; row 1 is 0x1 x8 then 0x0 x8; row 2 is
+
+  0x2 x8, 0x1 x4, 0x0 x4; row 3 is 0x3 x8, 0x2 x4, 0x1 x3, 0x0. So higher Param1 gives a
+
+  higher base tier, and the random roll decides how much the tier decays from that base
+
+  (a "strength fades over the roll" shape rather than a plain d16). Values are 0-4, which
+
+  looks like a tier/level selector (e.g. attack power step, panel-break tier, or similar
+
+  graded effect) consumed by the caller. r7 is not used by this routine itself but both
+
+  callees leave a value in it, and the caller apparently expects it passed through.
+
+  Preserves r4, r6; clobbers r1-r3, lr and flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_81167D2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81167D2
+
+    ./wf verify --function sub_81167D2 --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81167D2
+
+    ./wf verify --function sub_81167D2 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 70 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81167D2
+
+    ./wf verify --function sub_81167D2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081167d2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81167D2 -> battle_randTierFromParam1Table_81167D2
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What gameplay value Param1 encodes for the objects that reach this routine (attack stage, charge level,
+  etc.)
+- What the returned 0-4 tier drives in the caller (damage step, panel state, animation variant)
+- What battle_conditionalRngRoll's r7 output means and why the caller wants it forwarded
+- Exact semantics of the 4 short-circuit result from battle_conditionalRngRoll
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_81167D2

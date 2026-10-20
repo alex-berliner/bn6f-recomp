@@ -1019,7 +1019,7 @@ Next battle_objectUpdate_8133400(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133540 ── */
+/* ── battle_dispatchModeHandler_8133540 ── */
 /* Mode dispatcher for a battle object: the word at [objectPtr + 0x68] selects
  * one of four handlers in the table at off_8133554 (offset 0, 4, 8 or 12).
  * The selected handler runs with r0 = its own address and r1 = the mode index,
@@ -1042,9 +1042,9 @@ static void dispatch_mode_handler(u32 objectPtr) {
     call_mode_handler(handler, modeIndex);
 }
 
-/* sub_8133540: dispatch on [r5+0x68]; outputs r5, r8-r12 are whatever the
+/* battle_dispatchModeHandler_8133540: dispatch on [r5+0x68]; outputs r5, r8-r12 are whatever the
  * chosen handler leaves in those registers (r0 is a clobber, not a result). */
-Next sub_8133540(void) {
+Next battle_dispatchModeHandler_8133540(void) {
     dispatch_mode_handler(R5);
     RETURN_TO_CALLER();
 }
@@ -3165,7 +3165,7 @@ Next registerBattleStartScript_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813676C ── */
+/* ── battle_copyWorkBlockToBattleWork_813676C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool v; } call_CopyBytes_result_sub_813676C;
 /* register form: generated wrapper: CopyBytes has no typed C interface yet */
@@ -3183,8 +3183,8 @@ static void copy_work_block(void) {
     call_CopyBytes_sub_813676C(A_unk_2000090, A_unk_2022B70, 8);
 }
 
-/* sub_813676C() -> void */
-Next sub_813676C(void) {
+/* battle_copyWorkBlockToBattleWork_813676C() -> void */
+Next battle_copyWorkBlockToBattleWork_813676C(void) {
     copy_work_block();
     RETURN_TO_CALLER();
 }
@@ -3375,7 +3375,7 @@ Next battle_refreshPETNaviStats_8136C24(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8136EE4 ── */
+/* ── npc_tickTimerPhaseEnd4_8136EE4 ── */
 /* Increment the 16-bit phase timer at [r5+0xE]. Once the incremented count
  * reaches 0x14 (the 21st tick of this phase), store state 4 into the object's
  * state byte at [r5] to end the phase. */
@@ -3389,12 +3389,12 @@ static void sub_8136EE4_typed(u32 obj) {
         ST8(obj, 4);
 }
 
-Next sub_8136EE4(void) {
+Next npc_tickTimerPhaseEnd4_8136EE4(void) {
     sub_8136EE4_typed(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81370C4 ── */
+/* ── chatbox_writeState30IfFlag80Clear_81370C4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81370C4;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3415,12 +3415,12 @@ static void store_30_when_chatbox_flag_clear(u32 destAddr) {
     ST8(destAddr, 0x30);
 }
 
-Next sub_81370C4(void) {
+Next chatbox_writeState30IfFlag80Clear_81370C4(void) {
     store_30_when_chatbox_flag_clear(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81371A0 ── */
+/* ── chatbox_store40IfFlag80Clear_81371A0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_81371A0;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3440,13 +3440,13 @@ static void store_40h_if_chatbox_flag_clear(u32 dest) {
         ST8(dest, 0x40);
 }
 
-/* sub_81371A0(r5 = destination byte pointer) -> nothing (r0/nz clobbered) */
-Next sub_81371A0(void) {
+/* chatbox_store40IfFlag80Clear_81371A0(r5 = destination byte pointer) -> nothing (r0/nz clobbered) */
+Next chatbox_store40IfFlag80Clear_81371A0(void) {
     store_40h_if_chatbox_flag_clear(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813725C ── */
+/* ── chatbox_setState50IfFlag80Clear_813725C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_813725C;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3464,13 +3464,13 @@ static void set_state_byte_if_flag_clear(u32 target) {
         ST8(target, 0x50);
 }
 
-/* sub_813725C(r5 = target byte address) -> nothing (r1 preserved, r0/nz clobbered) */
-Next sub_813725C(void) {
+/* chatbox_setState50IfFlag80Clear_813725C(r5 = target byte address) -> nothing (r1 preserved, r0/nz clobbered) */
+Next chatbox_setState50IfFlag80Clear_813725C(void) {
     set_state_byte_if_flag_clear(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8137368 ── */
+/* ── chatbox_resetCounterIfFlag80Clear_8137368 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_sub_8137368;
 /* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
@@ -3491,7 +3491,7 @@ static void reset_counter_if_flag_clear(u32 ptr) {
     }
 }
 
-Next sub_8137368(void) {
+Next chatbox_resetCounterIfFlag80Clear_8137368(void) {
     reset_counter_if_flag_clear(R5);
     RETURN_TO_CALLER();
 }

@@ -2872,9 +2872,9 @@ Next sub_811BED4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811C11C ── */
+/* ── battle_dispatchBeastOutGuiState_811C11C ── */
 /* Battle-state dispatcher: the byte at object+8 selects one of three handlers
- * (battleObject_initBeastOutOverworldGui_811C13C / sub_811C18C / sub_811C1A4) from the table at off_811C130,
+ * (battleObject_initBeastOutOverworldGui_811C13C / reqBBS_updateFrame_811C18C / sub_811C1A4) from the table at off_811C130,
  * which is then called. The handler's results (r2 r3 r5 r10 r11) are left
  * behind in the guest registers by the callee itself, so nothing is passed
  * back through return values here. */
@@ -2894,13 +2894,13 @@ static void run_state_handler(u32 object) {
     call_state_handler_sub_811C11C(handler, index);
 }
 
-/* sub_811C11C(r5 = object, lr = return address) -> r2 r3 r5 r10 r11 from callee */
-Next sub_811C11C(void) {
+/* battle_dispatchBeastOutGuiState_811C11C(r5 = object, lr = return address) -> r2 r3 r5 r10 r11 from callee */
+Next battle_dispatchBeastOutGuiState_811C11C(void) {
     run_state_handler(R5);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811C18C ── */
+/* ── reqBBS_updateFrame_811C18C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: reqBBS_81406FC has no typed C interface yet */
 static inline void call_reqBBS_81406FC(u32 r5) {
@@ -2916,7 +2916,7 @@ static inline call_sprite_update_result_sub_811C18C call_sprite_update_sub_811C1
     return (call_sprite_update_result_sub_811C18C){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_811C18C — per-frame update of the request BBS screen.
+/* reqBBS_updateFrame_811C18C — per-frame update of the request BBS screen.
  *
  * The original swaps r5 for eReqBBSGui around the reqBBS_81406FC call
  * (its one argument), then pops the caller's r5 back so sprite_update
@@ -2931,7 +2931,7 @@ static void sub_811C18C_body(u32 r5)
     call_sprite_update_sub_811C18C(r5);
 }
 
-Next sub_811C18C(void)
+Next reqBBS_updateFrame_811C18C(void)
 {
     sub_811C18C_body(R5);
     RETURN_TO_CALLER();

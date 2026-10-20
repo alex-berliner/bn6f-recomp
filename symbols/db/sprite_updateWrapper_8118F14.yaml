@@ -1,0 +1,80 @@
+name: sprite_updateWrapper_8118F14
+address: '0x08118F14'
+kind: function
+status: confirmed
+summary: Trivial wrapper that tail-invokes sprite_update on the object pointer passed in r5 and returns
+  its results unchanged.
+interface: 'void sprite_updateWrapper(u32 object /* r5 */) — but it is a pure passthrough: r0-r5 and the
+  NZCV flags as sprite_update leaves them are all returned to its caller.'
+details: 'The function does nothing on its own: it pushes lr, BLs sprite_update (which receives the
+
+  caller''s r5 untouched — an object/sprite pointer per the wrapper''s naming), then pops pc to
+
+  return. Because sprite_update is called with BL and the wrapper returns via pop {pc}, every
+
+  register and flag the callee leaves in place (r0-r3 outputs, clobbered r0/r1, NZCV) flows
+
+  straight through to the wrapper''s own caller; r4 and r5 are preserved by the callee. This is
+
+  effectively an adapter/thunk so some caller can indirect through this address to sprite_update.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_8118F14
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8118F14
+
+    ./wf verify --function sub_8118F14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8118F14
+
+    ./wf verify --function sub_8118F14 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 81 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8118F14
+
+    ./wf verify --function sub_8118F14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08118f14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8118F14 -> sprite_updateWrapper_8118F14
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- why the game indirection-wraps sprite_update here instead of calling it directly — possibly a vtable
+  or callback target slot
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_8118F14

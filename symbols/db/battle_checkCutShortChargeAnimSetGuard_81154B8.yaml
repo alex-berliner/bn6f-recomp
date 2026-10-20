@@ -1,0 +1,105 @@
+name: battle_checkCutShortChargeAnimSetGuard_81154B8
+address: '0x081154B8'
+kind: function
+status: confirmed
+summary: Per-frame check that cuts a battle object's charge/release animation short at a marked frame, forcing it
+  into the follow-up animation and raising the object's guard flag.
+interface: void sub_81154B8(battleObject* r5)  /* r1 passes through to the return value; clobbers r0-r3, lr, flags
+  */
+details: 'Takes the battle object in r5. Reads oBattleObject_CurAnim; if it is not
+
+  animation 2 (the charge-release attack animation) the function does nothing
+
+  and returns, leaving the incoming r1 untouched. Otherwise it calls
+
+  sprite_getFrameParameters for the current animation frame and tests bit
+
+  0x80 of the result, a per-frame "cut short now" marker embedded in the
+
+  animation data. When the bit is set it stores animation 3 into
+
+  oBattleObject_CurAnim (ending the attack animation early, snapping the
+
+  object into its post-attack/idle-like animation) and calls
+
+  object_setFlag1 with flag OBJECT_FLAGS_GUARD on the object, so the rest of
+
+  the battle object logic treats the object as guarding from that point.
+
+  Note r1 is not a real parameter: the thunk-style wrapper preserves it and
+
+  returns whatever the original leaves there (incoming r1 untouched on the
+
+  early path, 0x80 left over from the tst mask on the failed-check path,
+
+  object_setFlag1''s r1 otherwise). Data after the function (allianceDependentPanelFlags_8115330
+
+  pointer, dispatch table off_81154F0, and per-frame byte tables) belongs to
+
+  neighbouring state data, not to this routine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_81154B8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81154B8
+
+    ./wf verify --function sub_81154B8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81154B8
+
+    ./wf verify --function sub_81154B8 --snapshots build-snapshots'
+  result: 55 compared, 0 differed, 41 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81154B8
+
+    ./wf verify --function sub_81154B8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081154b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81154B8 -> battle_checkCutShortChargeAnimSetGuard_81154B8
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9d4f87b1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which sprite animations carry the 0x80 cutoff bit in practice
+- exact gameplay effect of OBJECT_FLAGS_GUARD downstream (guard vs. generic busy flag)
+- which caller(s) invoke this and whether r1 pass-through matters to them
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_81154B8

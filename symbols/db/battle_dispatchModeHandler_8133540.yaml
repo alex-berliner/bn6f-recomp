@@ -1,0 +1,80 @@
+name: battle_dispatchModeHandler_8133540
+address: '0x08133540'
+kind: function
+status: confirmed
+summary: Battle-side mode dispatcher that calls one of four per-mode handlers (submenu input, spawn-panel
+  confirm, or two local routines) selected by [r5+0x68].
+interface: 'void battle_dispatchModeHandler_8133540(void); // in: r4 (passed through), r5 = object pointer,
+  r10 (passed through), lr = return; out: r5, r8-r12 as left by the selected handler; clobbers r0-r3,
+  r6, r7, nzcv'
+details: "Trampoline/dispatcher for a battle-mode state machine. Loads the object pointer from r5,\nreads\
+  \ the mode/state index from [r5+0x68], and indexes the 4-entry table at off_8133554:\n  0: submenu_handleConfirmOrExitInput\n\
+  \  1: battle_confirmSpawnPanelWrap\n  2: sub_81335C0\n  3: sub_81335D8\nThe selected Thumb handler is\
+  \ invoked via `mov lr, pc; bx r0`, with r0 = the handler's\nown address and r1 = the mode index. Because\
+  \ the handler is reached through a computed\naddress and whatever registers it leaves in r5 and r8-r12\
+  \ are this function's outputs,\nthe call must stay in register form (a typed wrapper cannot pass those\
+  \ through).\nThe extra 2 bytes of padding after `pop {pc}` align the handler table to a word boundary.\n\
+  The mode index presumably doubles as an argument to the handlers (r1), and the handlers\nare expected\
+  \ to keep or update the state themselves (e.g. write a new value to [r5+0x68]).\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_8133540
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8133540
+
+    ./wf verify --function sub_8133540 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8133540
+
+    ./wf verify --function sub_8133540 --snapshots build-snapshots'
+  result: 35 compared, 0 differed, 4 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8133540
+
+    ./wf verify --function sub_8133540 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08133540 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8133540 -> battle_dispatchModeHandler_8133540
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the mode index stored at [r5+0x68] and what object structure r5 points to (not directly
+  identifiable from this thunk)
+- what the two local handlers sub_81335C0 and sub_81335D8 do, to confirm which game screen/state machine
+  this dispatcher belongs to
+- whether r4 and r10 are consumed by any of the handlers or merely passed through unused
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_8133540

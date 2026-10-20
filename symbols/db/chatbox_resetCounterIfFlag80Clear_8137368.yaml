@@ -1,0 +1,88 @@
+name: chatbox_resetCounterIfFlag80Clear_8137368
+address: '0x08137368'
+kind: function
+status: confirmed
+summary: If chatbox flag 0x80 in eFlags2009F38 is clear, resets the byte counter at *r5 to 100.
+interface: void sub_8137368(u8* counter /* r5 */)
+details: 'Tiny conditional-reset helper. Tests bit 0x80 of the shared flags word at
+
+  0x0209F38 via chatbox_mask_eFlags2009F38 (non-zero result = flag set).
+
+  When the flag is clear (test returns zero, Z set), it stores 0x64 (100) into
+
+  the single byte pointed to by r5, presumably a frame/wait counter that the
+
+  chatbox code decrements elsewhere. When the flag is set it returns immediately
+
+  without touching the byte. Takes the target pointer in r5 (not r0), preserves
+
+  r1, and produces no outputs; clobbers r0, lr and flags. The value 100 as a
+
+  starting counter suggests a ~1.6-second delay at 60fps, e.g. a text-pause or
+
+  auto-advance timer.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_8137368
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8137368
+
+    ./wf verify --function sub_8137368 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 100 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8137368
+
+    ./wf verify --function sub_8137368 --snapshots build-snapshots'
+  result: 54 compared, 0 differed, 42 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8137368
+
+    ./wf verify --function sub_8137368 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08137368 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8137368 -> chatbox_resetCounterIfFlag80Clear_8137368
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9d4f87b1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- what structure the r5 pointer belongs to (only the single byte at offset 0 is touched)
+- the exact meaning of flag 0x80 in eFlags2009F38
+- what the 100-count counter is used for downstream (text speed / pause timer?)
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_8137368

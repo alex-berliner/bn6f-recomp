@@ -1,0 +1,103 @@
+name: ai_attackStepHighlightFrontPanel_8115492
+address: '0x08115492'
+kind: function
+status: confirmed
+summary: Advances an enemy AI attack-step counter every tick and, on the attacking steps (3 of every 8), highlights
+  the panel directly in front of the battle object.
+interface: void sub_8115492(r5 battleObject, r7 aiAttackVars) -> r1 (status from the highlight call, or 4 on off-steps);
+  r5 returned from highlightPanelIfSomeCondition_8109660 on the attacking path
+details: 'r5 is a battle object and r7 its AI attack variable block. Increments the byte at
+
+  oAIAttackVars_AttackStepIndex and stores it back; if the new counter has bit 2 set
+
+  (step & 4 != 0), it returns immediately with r1 = 4 (the leftover test mask), so the
+
+  attack only runs on 4 of every 8 steps of the counter. On attacking steps it calls
+
+  object_getFrontDirection (r5 passes through) to get the direction in front of the
+
+  object, then builds a target panel: x = frontDirection + oBattleObject_FuturePanelX,
+
+  y = oBattleObject_PanelY, side = oBattleObject_Alliance XOR oBattleObject_DirectionFlip.
+
+  Passes these with r2 = oAIAttackVars_AiAttackParam (appearance/parameter block for the
+
+  highlight) into highlightPanelIfSomeCondition_8109660, which marks/telegraphs the panel
+
+  in front of the enemy before an attack lands there. This is a typical boss/enemy AI
+
+  attack-script step: one entry in an AI attack routine that telegraphs a front panel hit.
+
+  r4-r7 preserved; nzcv and r0/r2/r3/lr clobbered. The odd r5 output comes from the
+
+  highlight callee leaving its own r5 in place; on the early-exit path r5 is unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_8115492
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8115492
+
+    ./wf verify --function sub_8115492 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 250 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8115492
+
+    ./wf verify --function sub_8115492 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 44 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8115492
+
+    ./wf verify --function sub_8115492 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115492 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8115492 -> ai_attackStepHighlightFrontPanel_8115492
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9d4f87b1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- sub_811523C
+open_questions:
+- exact semantics of highlightPanelIfSomeCondition_8109660 (what condition gates the highlight and what its r1/r5
+  return values mean)
+- whether oBattleObject_FuturePanelX is an offset already incorporated by callers or adjusted elsewhere in the same
+  AI script
+- what the oAIAttackVars_AiAttackParam block encodes (sprite/colour/timing of the panel highlight)
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_8115492

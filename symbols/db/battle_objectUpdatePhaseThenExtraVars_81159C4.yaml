@@ -1,0 +1,95 @@
+name: battle_objectUpdatePhaseThenExtraVars_81159C4
+address: '0x081159C4'
+kind: function
+status: confirmed
+summary: Runs one update-dispatch phase for the selected battle object, then invokes the extra-var handler
+  if the object ended at phase 8 with extra vars still pending.
+interface: void battle_objectUpdatePhaseThenExtraVars(battleObject r5 /*object, updated in place*/, ...
+  /*r2-r4, r6-r9, r11-r12 forwarded to the dispatch callee*/); outputs r1, r5, r8-r12 from callees; entry
+  carry/overflow pass through untouched
+details: 'Thin per-object step wrapper. It first calls battle_objectUpdateDispatchPhase_80165C2,
+
+  which advances the battle object selected in r5 through its current state/action
+
+  update phase; r5 comes back as the (possibly reallocated or next) object it worked on.
+
+  It then reads oBattleObject_CurStateActionPhaseAndPhaseInitialized: when the low phase
+
+  value is 8 (a specific late state-action phase) and oBattleObject_ExtraVars is nonzero,
+
+  it calls sub_80B87A6 with that extra-var bitfield in r0 — the handler that resolves
+
+  remaining pending extra variables before the phase-8 state finishes. All observable
+
+  register outputs (r1, r5, r8-r12) are produced by the two callees; this routine itself
+
+  computes nothing and only sequences the two calls behind the phase-8/extra-vars guard.
+
+  Entry carry and overflow flags reach the dispatch callee untouched (push {lr} does not
+
+  modify flags); r10 passes through the dispatch callee unmodified and so is effectively
+
+  preserved end-to-end.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c
+    sub_81159C4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81159C4
+
+    ./wf verify --function sub_81159C4 --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81159C4
+
+    ./wf verify --function sub_81159C4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 55 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81159C4
+
+    ./wf verify --function sub_81159C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081159c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81159C4 -> battle_objectUpdatePhaseThenExtraVars_81159C4
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of update phase 8 and of the oBattleObject_ExtraVars bitfield depends on sub_80B87A6,
+  which is not yet typed
+- why the extra-var handler is gated to phase 8 only (whether other phases handle extra vars elsewhere)
+  is unknown
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_81159C4

@@ -1,0 +1,76 @@
+name: setFlagByteTrue_8118424
+address: '0x08118424'
+kind: function
+status: confirmed
+summary: Writes 1 to the flag byte pointed to by r5, acting as a tiny "set to true" callback.
+interface: void sub_8118424(u8 *flag /* in r5 */) // returns r0 = 1, nz flags set from the mov r0,
+details: 'Pushes lr, stores the immediate value 1 to the byte at [r5], and returns. R5 is treated as a pointer to
+  a single flag/boolean byte rather than a struct field, so the function is likely used as a generic "mark done
+  / set true" callback passed to some dispatcher (e.g. a menu, dialogue, or cutscene controller) that keeps the
+  target byte in r5 across the call. It also leaves r0 = 1 and the nz flags set from the same mov, so callers that
+  fall through to conditional branches afterwards see a "true/1" result; whether any caller relies on that side
+  effect is unverified.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261020-145905);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 100' --file leaves_farm_100.c sub_8118424
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8118424
+
+    ./wf verify --function sub_8118424 --snapshots build-snapshots'
+  result: 'captured calls: 33 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 180 out
+    of domain (verify run convert-20261020-145905-verify-2)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8118424
+
+    ./wf verify --function sub_8118424 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-145905-verify-2)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8118424
+
+    ./wf verify --function sub_8118424 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-145905-verify-2)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08118424 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 4f4c60d
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 083f1e58
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8118424 -> setFlagByteTrue_8118424
+  where: bn6f 8bbfff15
+  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9d4f87b1
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- which dispatcher stores the target byte in r5 and calls this as a callback
+- whether callers actually use the r0=1 / nz return value or only the stored byte
+sources:
+- tools/wf run convert-20261020-145905
+- recomp 4f4c60d
+previous_names:
+- sub_8118424
