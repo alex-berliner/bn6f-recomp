@@ -1493,6 +1493,27 @@ def run_reconcile(limit: int | None) -> None:
         print(f"  {candidate.name}  {original}  {revised}  {dec}  {reason[:120]}")
 
 
+_PORT_IDENTIFIERS: frozenset[str] | None = None
+
+
+def port_identifiers() -> frozenset[str]:
+    """Every identifier in the port's own C (cport/src, cport/host, cport/include except the generated
+    lifted.h). A rename to one of them breaks the port build, which only the record run's verify sees."""
+    global _PORT_IDENTIFIERS
+    if _PORT_IDENTIFIERS is None:
+        import glob
+        token = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+        found: set[str] = set()
+        for pattern in ("cport/src/game/*.c", "cport/src/*.c", "cport/host/*.c", "cport/include/*.h"):
+            for path in glob.glob(os.path.join(ROOT, pattern)):
+                if path.endswith("lifted.h"):
+                    continue
+                with open(path, errors="replace") as handle:
+                    found.update(token.findall(handle.read()))
+        _PORT_IDENTIFIERS = frozenset(found)
+    return _PORT_IDENTIFIERS
+
+
 def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
     """The rescued candidates into symbols/db and bn6f, the way land does, the record workflow
     once per batch of at most BATCH_SIZE. A record failure is reported, never retried. Reads
@@ -1520,6 +1541,8 @@ def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
             why = "its name is also an asm include file: the rename would rewrite the include path, not the file"
         elif row.new in syms or row.new in names or row.new in seen_new:
             why = f"the name {row.new} is already taken"
+        elif row.new in port_identifiers():
+            why = f"the port's own C already uses the name {row.new} (record-20261019-225651 failed on start_cutscene)"
         elif (problem := style_problem(row.new, allowed)) is not None:
             why = f"naming style: {problem}"
         elif (problem := address_digit_problem(row.new, row.address)) is not None:
