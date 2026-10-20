@@ -1,30 +1,75 @@
 name: weatherComp_checkTrigger70_8090004
 address: '0x08090004'
 kind: function
-previous_names:
-- sub_8090004
-status: probable
-summary: 'Mr. Weather comp: if MegaMan''s tile trigger (reqBBS_81409E4) is 0x70..0x79, stores it - 0x70
-  at eWeatherCompState+0xE and returns 1 (Z clear).'
-interface: r5 = eWeatherCompState -> r0 = 0/1, Z
+status: confirmed
+summary: Checks the active BBS request ID and, if it is one of the ten weather requests (0x70-0x79), selects the
+  matching weather (0-9) on a weather object.
+interface: bool weatherComp_checkBbsRequestWeather(void* weatherObj /*r5*/, u32 extra /*r10*/); sets NZ flags on
+  the bool result
+details: 'Part of the weather-component subsystem. It calls reqBBS_81409E4 (fed r10,
+
+  presumably part of the BBS request context) to obtain the current request
+
+  board request ID in r0. If the ID lies in the range 0x70..0x79 inclusive,
+
+  it subtracts 0x70 to get a weather index 0..9 and stores it as a byte at
+
+  [r5+0xE] (the selected-weather field of the weather object passed in r5),
+
+  setting a local success flag. Any other request ID leaves the field
+
+  untouched. Returns the success flag in r0 for the caller, which tests the
+
+  Z flag. r4-r9/r12 are preserved across the helper call; r1-r3 and r10-r11
+
+  carry through the helper''s own outputs.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: As summarized.
-  reproduce: grep -n -A16 '^weatherComp_checkTrigger70_8090004:' bn6f/asm/asm25.s
-related:
-- weatherComp_checkTrigger60_8090020
-- weatherComp_pickScript_8090104
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c weatherComp_checkTrigger70_8090004
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function weatherComp_checkTrigger70_8090004
+
+    ./wf verify --function weatherComp_checkTrigger70_8090004 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function weatherComp_checkTrigger70_8090004
+
+    ./wf verify --function weatherComp_checkTrigger70_8090004 --snapshots build-snapshots'
+  result: 82 compared, 0 differed, 14 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function weatherComp_checkTrigger70_8090004
+
+    ./wf verify --function weatherComp_checkTrigger70_8090004 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08090004 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_8090004 -> weatherComp_checkTrigger70_8090004
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the r10 argument passed to reqBBS_81409E4
+- whether reqBBS_81409E4 returns the currently accepted request ID or a pending/selected one
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

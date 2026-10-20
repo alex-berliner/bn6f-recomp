@@ -1,0 +1,67 @@
+name: t3_0x50_80CE530
+address: '0x080CE530'
+kind: function
+status: confirmed
+summary: 'Per-frame update for the type-3 battle object in state 0x50 (a fast-lunge attack): dispatches the object''s
+  state handler, then refreshes its sprite.'
+interface: void update(r5=battleObject /* also r4, r7, r8, r10 live inputs */) -> outputs r5, r8-r12 (object pointer
+  possibly advanced); clobbers r0-r4, r6, r7, lr and nzcv
+details: 'State-machine step for a battle object (r5) whose CurState byte is 0x50-range; the routine loads oBattleObject_CurState,
+  indexes the jump table at off_80CE548 with it, and tail-calls the handler with the state byte in r0 and the table
+  entry in r1. Handlers: state 0 -> battleObject_initFastLunge_80CE554 (begins the lunge), state 1 -> battleObject_finishAndDespawn_80CE5F0,
+  state 2 -> object_genericDestroy. Whatever the handler leaves in r5 is then passed to object_updateSprite, so
+  the handler may advance or swap the object pointer before the sprite refresh. The handler''s r8-r12 results stay
+  live in the register file and are what callers read back — this routine is essentially an adapter around the per-state
+  handler plus the common sprite update.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x50_80CE530
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x50_80CE530
+
+    ./wf verify --function t3_0x50_80CE530 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x50_80CE530
+
+    ./wf verify --function t3_0x50_80CE530 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 45 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x50_80CE530
+
+    ./wf verify --function t3_0x50_80CE530 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ce530 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact gameplay identity of the "fast lunge" (which enemy/NCP attack spawns this type-3 state 0x50 object) is inferred
+  only from the handler name
+- what battleObject_finishAndDespawn_80CE5F0 does with the object in its "finish" state is not verified here
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

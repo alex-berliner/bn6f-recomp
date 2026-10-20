@@ -1,0 +1,65 @@
+name: sub_813CDC0
+address: '0x0813CDC0'
+kind: function
+status: hypothesis
+summary: Thin fixed-argument wrapper that invokes sub_813CDD8 with r4 = 10 and r6 = 2 and passes the callee's r2
+  result back to the caller.
+interface: u32 wrapper(u32 r10); returns r2 (result of sub_813CDD8); r6 is read back unchanged by callers; preserves
+  r4-r7; clobbers r0, r1, r3, lr and flags nzcv
+details: The function saves r4-r7 and lr, sets r4 = 0xA and r6 = 2, tail-calls into sub_813CDD8 (which presumably
+  consumes r10 plus these two constants), then pops r4-r7 before returning. The only visible effect to the caller
+  is r2 left by the callee (and r6 restored to the caller's original value, which the register contract reports
+  as an "output"). r10 is neither clobbered nor reloaded here, so it is forwarded to the callee untouched. Nothing
+  in this body itself touches any game structure, string, or hardware register - all meaning lives in sub_813CDD8,
+  which has no typed interface yet. The constants 10 and 2 most likely select a mode/page/index for whatever sub_813CDD8
+  implements; sibling wrappers around sub_813CDD8 with different constant pairs would confirm that pattern.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c sub_813CDC0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813CDC0
+
+    ./wf verify --function sub_813CDC0 --snapshots build-snapshots'
+  result: 'captured calls: 21 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813CDC0
+
+    ./wf verify --function sub_813CDC0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813CDC0
+
+    ./wf verify --function sub_813CDC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813cdc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- beastsp
+open_questions:
+- what sub_813CDD8 actually does (its game purpose, and what its r2 result means)
+- what the constants r4 = 10 and r6 = 2 mean to the callee (mode id? page count? entity/sprite index?)
+- why callers need r6 echoed back - possibly a calling-convention artifact rather than a meaningful result
+- whether sibling fixed-argument wrappers of sub_813CDD8 exist, which would suggest a dispatch family
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,65 @@
+name: t3_0x5_80C55B0
+address: '0x080C55B0'
+kind: function
+status: confirmed
+summary: Per-frame step for a Beast Out battle object — dispatches a state handler from a jump table by the object's
+  CurState, then runs the common sprite update.
+interface: void t3_0x5_80C55B0(r5 = battle object ptr) -> r5 = (possibly updated) battle object ptr; trashes r0-r4,
+  r6, r7, flags NZCV, lr
+details: "Battle object state dispatcher for Beast Out objects. r5 holds the battle object; the byte\noBattleObject_CurState\
+  \ ([r5]) indexes a byte-scaled jump table at off_80C55C8 with three\nhandlers:\n  0: battleObject_initBeastOut_80C55E4\
+  \ (state 0 = init/enter Beast Out)\n  4: battleObject_beastOutUpdate_80C5654 (state 1 = per-frame Beast Out update)\n\
+  \  8: sub_80C55D4 (state 2, purpose unknown)\nThe handler is tail-called with the original \"mov lr, pc; bx r1\"\
+  \ pattern, so the handler's\nreturn lands back in this function; the handler receives the state in r0 and the\
+  \ object in r5\nand may revise r5. After the handler returns, object_updateSprite is called (object still in\n\
+  r5) to refresh the object's sprite, and r5 is left in place for the caller. This matches the\nstandard battle\
+  \ object state-machine + sprite-update pattern used elsewhere in the battle engine.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x5_80C55B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x5_80C55B0
+
+    ./wf verify --function t3_0x5_80C55B0 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 4 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x5_80C55B0
+
+    ./wf verify --function t3_0x5_80C55B0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 38 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x5_80C55B0
+
+    ./wf verify --function t3_0x5_80C55B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c55b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what state 2 (sub_80C55D4) does — likely a cleanup/end-of-Beast-Out handler but unverified
+- whether the handler's return value in r0 carries meaning (discarded here)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

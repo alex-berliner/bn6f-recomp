@@ -1,30 +1,80 @@
 name: weatherComp_checkTrigger60_8090020
 address: '0x08090020'
 kind: function
-previous_names:
-- sub_8090020
-status: probable
-summary: 'Mr. Weather comp: if MegaMan''s tile trigger is 0x60..0x69, stores it - 0x60 at eWeatherCompState+0xE
-  and returns 1 (Z clear).'
-interface: r5 = eWeatherCompState -> r0, Z
+status: confirmed
+summary: Polls a request/BBS result code; if it is in the 0x60-0x69 trigger range, stores code-0x60 as the weather
+  component's new state and reports a hit.
+interface: u32 weatherComp_checkTrigger60(u32 flag /*in/out r4*/, void* stateObj /*in r5*/) -> nz on r4 (1 = trigger
+  hit, else incoming flag); clobbers r0-r3, r9-r12 via callee
+details: 'Weather-component trigger check, one of a family of per-trigger handlers. Calls
+
+  reqBBS_81409E4 (no typed interface yet) to obtain a result code in r0. If the
+
+  code, compared signed (blt/bgt), lies in the inclusive range 0x60..0x69, it is
+
+  treated as a trigger hit: the component''s state byte at [r5 + 0x0E] is written
+
+  with (code - 0x60), i.e. trigger slot 0-9, and the return flag is set to 1.
+
+  Otherwise the incoming r4 is passed through unchanged ("no trigger"). r4 and r5
+
+  are preserved across the call (r4 pushed, r5 kept by the callee). The caller
+
+  tests the returned value with tst to branch on Z/N. r1/r2/r3 and r9-r12 are
+
+  whatever reqBBS_81409E4 leaves in them, not meaningful outputs of this routine.
+
+  Note the incoming r4 is the default return value, so callers seed it with the
+
+  "not triggered" result beforehand.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-13'
-  detail: As summarized (r4 is not cleared first, so the miss result is the caller's r4).
-  reproduce: grep -n -A16 '^weatherComp_checkTrigger60_8090020:' bn6f/asm/asm25.s
-related:
-- weatherComp_checkTrigger70_8090004
-- weatherComp_pickScript_8090104
-open_questions: []
-sources:
-- vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
-- Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c weatherComp_checkTrigger60_8090020
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function weatherComp_checkTrigger60_8090020
+
+    ./wf verify --function weatherComp_checkTrigger60_8090020 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function weatherComp_checkTrigger60_8090020
+
+    ./wf verify --function weatherComp_checkTrigger60_8090020 --snapshots build-snapshots'
+  result: 86 compared, 0 differed, 10 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function weatherComp_checkTrigger60_8090020
+
+    ./wf verify --function weatherComp_checkTrigger60_8090020 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08090020 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: rename sub_8090020 -> weatherComp_checkTrigger60_8090020
-  where: bn6f e40ea42f
-  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of reqBBS_81409E4's return codes 0x60-0x69 (which in-game event each maps to)
+- layout of the component state object beyond the state byte at offset 0x0E
+- whether the 0x60-0x69 range encodes weather selection slots for the WeatherComp scenario
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,66 @@
+name: t3_0x51_80CE70C
+address: '0x080CE70C'
+kind: function
+status: confirmed
+summary: 'Per-frame tick for battle object type 0x51 (the snake-arm/serpent attack part): dispatches on the object''s
+  CurState via a small jump table, then runs the paused-aware sprite update.'
+interface: void battleObject_tickType51_snakeArm_80CE70C(void); // object ptr in r5, battle context in r10
+details: "Standard battle-object tick whose object pointer arrives in r5 and whose battle context\npointer arrives\
+  \ in r10. It reads the object's CurState byte at [r5,#oBattleObject_CurState]\nand uses it (unscaled, as a word\
+  \ index) into the jump table at off_80CE724:\n  state 0 -> battleObject_initSnakeArm_80CE730 (spawns/starts the\
+  \ snake-arm attack)\n  state 1 -> object_destroyStep_80CE782 (play-out destroy step)\n  state 2 -> object_genericDestroy\
+  \ (free the object)\nEach handler is called with r0 = state byte, r1 = its own address (the code leaves the\n\
+  handler pointer in r1), and the object still in r5; the returned r0 is ignored.\nAfter the state handler returns,\
+  \ it tail-calls into the shared object_updateSpritePaused\nwhich consumes r10 itself, then returns to the caller\
+  \ via the pushed lr.\nThe jump-table word for state 0 is battleObject_initSnakeArm_80CE730+1 (Thumb), so the\n\
+  table stores handler addresses with the Thumb bit already set.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x51_80CE70C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x51_80CE70C
+
+    ./wf verify --function t3_0x51_80CE70C --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x51_80CE70C
+
+    ./wf verify --function t3_0x51_80CE70C --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 16 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x51_80CE70C
+
+    ./wf verify --function t3_0x51_80CE70C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ce70c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact in-game identity of object type 0x51 beyond the init handler's name (which attack/EnemySnakeArm variant
+  uses this tick)
+- whether states beyond 2 are ever assigned to this object (table has only three entries)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

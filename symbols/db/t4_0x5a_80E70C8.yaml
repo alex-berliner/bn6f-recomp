@@ -1,0 +1,69 @@
+name: t4_0x5a_80E70C8
+address: '0x080E70C8'
+kind: function
+status: confirmed
+summary: Per-frame update for a battle object — dispatches its state handler, then advances (or freezes) its sprite
+  animation for this frame.
+interface: void t4_0x5a_80E70C8(BattleObject* object /* r5 */) -> r5 = object; r8-r12 = whatever the state handler
+  leaves; clobbers r0-r4, r6, r7, flags
+details: 'Trampoline-style per-frame step for one battle object, reached as a task (task type 4, id 0x5a). Loads
+  the object''s oBattleObject_CurState byte and uses it directly (unscaled) as an index into the word table at off_80E70EC,
+  which holds three handlers: battle_restoreBaseSprite (state 0 — reset the sprite back to its base graphic), sub_80E7142
+  (state 1 — object-specific behavior, not yet named), and object_freeMemory (state 2 — free the object, likely
+  its death/cleanup state). The call is made with the state byte in r0 and the table entry in r1, r5 still holding
+  the object pointer. After the handler returns, it re-reads the object and checks oBattleObject_Param1: if zero
+  it calls object_updateSpritePaused (sprite animation advances normally for this frame), otherwise object_updateSpriteTimestop
+  (animation is stepped under timestop rules, i.e. frozen while time is stopped). r5 (the object pointer) is preserved
+  through the whole function, which is how the contract reports it as both an input and an output.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0x5a_80E70C8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x5a_80E70C8
+
+    ./wf verify --function t4_0x5a_80E70C8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x5a_80E70C8
+
+    ./wf verify --function t4_0x5a_80E70C8 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 32 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x5a_80E70C8
+
+    ./wf verify --function t4_0x5a_80E70C8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080e70c8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What sub_80E7142 (the state-1 handler) actually does — it decides which object kind(s) use this task.
+- Semantics of oBattleObject_Param1 here — treated as a "timestop/freezes sprite animation" flag, but its writer
+  is unknown.
+- Whether other object types share this task slot or each type has its own trampoline with a different handler table.
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

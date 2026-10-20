@@ -1,0 +1,72 @@
+name: sub_81418AA
+address: '0x081418AA'
+kind: function
+status: confirmed
+summary: Writes 1 to the "event struct active" flag byte (0x200101D, eStruct2001010+0xD) and returns 0 with the
+  Z flag set.
+interface: 'void sub_81418AA(void); // in: lr only; out: r0=0, Z set / N clear; r4-r7 preserved'
+details: 'Tiny setter: loads the address of eStruct2001010 (a fixed work area at 0x2001010),
+
+  stores 1 into offset 0xD (the second byte of dword_200101C, i.e. absolute 0x200101D),
+
+  then executes "mov r0,#0" so it returns 0 with Z set and N clear. The push/pop of
+
+  r4-r7 is purely to keep the caller''s registers intact; r5 is used only as the
+
+  scratch pointer for the store. No other fields of the struct are touched, and no
+
+  game state beyond this one flag byte is modified. Since the return value and flags
+
+  are always the same, any caller branching on Z or testing r0 will always take the
+
+  "success/zero" path.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c sub_81418AA
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81418AA
+
+    ./wf verify --function sub_81418AA --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81418AA
+
+    ./wf verify --function sub_81418AA --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81418AA
+
+    ./wf verify --function sub_81418AA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081418aa ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- which game system reads 0x200101D (event/battle struct "in use" marker?) and what clears it back to 0
+- whether the constant Z-set return is relied on by callers or is incidental to the "mov r0,#0" idiom
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

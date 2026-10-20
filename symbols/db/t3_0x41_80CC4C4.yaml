@@ -1,0 +1,71 @@
+name: t3_0x41_80CC4C4
+address: '0x080CC4C4'
+kind: function
+status: confirmed
+summary: Per-frame step for a battle object type — dispatches its current-state handler from a 3-entry table, then
+  runs the shared blind-render and sprite-update passes.
+interface: void battleObject_runStateStepAndRender_80CC4C4(BattleObject *obj /* r5 */); outputs r5 r8 r9 r10 r11
+  r12 are whatever the state handler leaves; flags nz c v clobbered
+details: "Battle object state-machine driver. r5 holds the object pointer throughout.\nReads the object's current\
+  \ state byte (obj + oBattleObject_CurState), which is not a\nplain state index but the byte offset of the handler's\
+  \ entry within the table at\noff_80CC4E0, so it is used directly as an index into that table (states 0, 4, 8).\n\
+  Dispatches via the game's usual mov lr,pc / bx r1 tail-call-with-return trick so the\nhandler returns straight\
+  \ back into this function; r0 (state byte) and r1 (handler\naddress) plus the other entry registers are passed\
+  \ through untouched.\nThe three handlers are:\n  0 -> battleObject_initFromPanelSpriteAndCollision_80CC4EC (state\
+  \ 0: initialize from\n       panel sprite and collision data)\n  4 -> object_dieOrUpdateCollision_80CC562 (state\
+  \ 1: die / update collision)\n  8 -> object_genericDestroy (state 2: generic destroy)\nAfter the handler returns,\
+  \ it calls handleRenderBlindForSpecificObjectsMaybe_80169BE\n(blind/darkness render handling for specific objects)\
+  \ and then object_updateSprite,\nboth with the same r5 object pointer. r4, r7, r8, r10 are inputs consumed/passed\n\
+  through; r0-r3, r6, r7 and the flags are scratch.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x41_80CC4C4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x41_80CC4C4
+
+    ./wf verify --function t3_0x41_80CC4C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x41_80CC4C4
+
+    ./wf verify --function t3_0x41_80CC4C4 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 40 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x41_80CC4C4
+
+    ./wf verify --function t3_0x41_80CC4C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc4c4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what object type(s) use this state table and what each state means in game terms beyond the init/die/destroy guesses
+  implied by the handler names
+- exact role of handleRenderBlindForSpecificObjectsMaybe_80169BE (only the "blind render" name is inferred)
+- whether the state byte offset encoding (0/4/8) is shared by all battle-object dispatchers or unique to this table
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

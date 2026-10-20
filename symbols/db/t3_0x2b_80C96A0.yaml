@@ -1,0 +1,70 @@
+name: t3_0x2b_80C96A0
+address: '0x080C96A0'
+kind: function
+status: confirmed
+summary: Per-frame tick handler for the Shield battle object - dispatches its current-state handler, then refreshes
+  the sprite unless time stop is active.
+interface: void shield_tick(battleobject* obj /* r5 */, battlectx* ctx /* r10 */); returns r5 = obj as the state
+  handler left it (r8-r12 also carry handler state)
+details: "Task/frame handler for the shield object (r5 = battle object). Reads the\nobject's CurState byte (oBattleObject_CurState)\
+  \ and indexes a 3-entry\njump table at off_80C96BC:\n  state 0 -> battleObject_initElement_80C96C8 (init/spawn\
+  \ state)\n  state 1 -> sub_80C9726 (main behaviour)\n  state 2 -> object_freeMemory (self-destruct / free object)\n\
+  Dispatch is done with the classic 'mov lr, pc; bx r1' tail-call into\nthumb handlers, passing r0 = state and r1\
+  \ = handler; the handler's\noutputs are left in r8-r12 plus an updated r5, which this routine\npropagates to its\
+  \ own caller.\nAfter the handler runs it calls battle_isTimeStop; if time stop is NOT\nactive (Z set) it calls\
+  \ object_updateSprite(r5) to advance the object's\nsprite frame/animation; during time stop the sprite update\
+  \ is skipped so\nshields freeze with the rest of the battlefield.\nInputs per contract: r5 (object), r10 (battle\
+  \ context) and lr; the\nhandler chain clobbers r0-r7 and flags and passes back r5, r8-r12.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x2b_80C96A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x2b_80C96A0
+
+    ./wf verify --function t3_0x2b_80C96A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x2b_80C96A0
+
+    ./wf verify --function t3_0x2b_80C96A0 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 34 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x2b_80C96A0
+
+    ./wf verify --function t3_0x2b_80C96A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, beastsp, story8, story9.'
+  reproduce: grep -l '^080c96a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battles1
+- battles2
+- beastsp
+- story8
+- story9
+open_questions:
+- exact gameplay role of sub_80C9726 (main shield behaviour) and whether state 0 init also spawns child objects
+- which object ID(s) select this handler and how long the shield persists before reaching state 2
+- what the r8-r12 values left by the handlers mean to the caller
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

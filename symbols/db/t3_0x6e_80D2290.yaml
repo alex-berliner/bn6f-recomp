@@ -1,0 +1,65 @@
+name: t3_0x6e_80D2290
+address: '0x080D2290'
+kind: function
+status: confirmed
+summary: Per-state dispatcher that jumps to the battle object's handler for its CurState (init/run/destroy).
+interface: void battleObject_stateDispatcher(battleObject* obj /* r5 */, ... /* r2, r4, r8-r12 passed through */);
+  handlers entered with r0 = CurState, r1 = handler address
+details: "Reads obj->CurState (byte at r5+oBattleObject_CurState), indexes the table at\noff_80D22A4 with it, and\
+  \ tail-dispatches to the matching handler as a plain\ncall (mov lr, pc; bx r1):\n  state 0 -> battleObject_initObstacle_80D22B0\
+  \ (first-time setup of an obstacle-type object)\n  state 1 -> battleObject_runUpdateActionsAndCollisions_80D2320\
+  \ (per-frame action update + collision processing)\n  state 2 -> object_genericDestroy (standard removal path)\n\
+  The object pointer lives in r5 and is passed through untouched; handlers are\nentered mid-function with the guest's\
+  \ live r2/r4/r8-r12 argument registers,\nso whatever the handler leaves in r5/r8-r12 becomes this function's outputs.\n\
+  r0 holds the current state and r1 the table entry when the handler begins.\nTable has exactly 3 entries; a CurState\
+  \ >= 3 would read garbage and jump wild.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x6e_80D2290
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x6e_80D2290
+
+    ./wf verify --function t3_0x6e_80D2290 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x6e_80D2290
+
+    ./wf verify --function t3_0x6e_80D2290 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 20 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x6e_80D2290
+
+    ./wf verify --function t3_0x6e_80D2290 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, maps.'
+  reproduce: grep -l '^080d2290 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- maps
+open_questions:
+- which object kind(s) use this dispatcher (obstacle-flavored per the state-0 handler)
+- whether any code path can set CurState outside 0..2
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

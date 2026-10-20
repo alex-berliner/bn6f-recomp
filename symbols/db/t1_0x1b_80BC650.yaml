@@ -1,0 +1,65 @@
+name: t1_0x1b_80BC650
+address: '0x080BC650'
+kind: function
+status: confirmed
+summary: State dispatcher for a battle object template (t1 0x1b, the beast-over leap/change object) that jumps to
+  the handler selected by the object's CurState byte.
+interface: void battle_beastLeapStateDispatch(u32 r2, BattleObject* r5, u32 r10); /* tail-results in r5, r8-r12;
+  flags clobbered; calls handler with its own return address so incoming lr is unused */
+details: 'Reads BattleObject.CurState (byte at oBattleObject_CurState) from r5 and indexes the jump table off_80BC664
+  with it directly (states are already stored as word offsets, e.g. 0, 4, 8). Three states exist: 0 -> battleObject_beastSpecial_init_80BC670,
+  4 -> battleObject_beastChangeLeapUpdate_80BC78C, 8 -> object_freeMemory. The handler is invoked with lr = current
+  pc (mov lr, pc; bx r1) so it receives this dispatcher''s return address and the dispatcher''s saved lr is only
+  used for pop {pc}; the handler effectively tail-returns to the original caller. Arguments r2 and r10 are passed
+  straight through to each handler, and handler results come back in r5 and r8-r12. The dispatcher itself touches
+  no other object fields or globals. Template id 0x1b corresponds to the beast/Beast-Out transformation leap object
+  given the handler names.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t1_0x1b_80BC650
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x1b_80BC650
+
+    ./wf verify --function t1_0x1b_80BC650 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x1b_80BC650
+
+    ./wf verify --function t1_0x1b_80BC650 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 12 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x1b_80BC650
+
+    ./wf verify --function t1_0x1b_80BC650 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080bc650 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- beastsp
+open_questions:
+- exact gameplay meaning of the beastSpecial_init vs beastChangeLeapUpdate split (likely setup frame vs per-frame
+  leap update)
+- which in-game entity instantiates template t1 0x1b
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

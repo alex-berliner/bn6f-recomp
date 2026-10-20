@@ -1,0 +1,86 @@
+name: t4_0x3c_80E4A1C
+address: '0x080E4A1C'
+kind: function
+status: confirmed
+summary: Per-frame tick for the arm-attack battle object — runs the current state's handler via a jump table, then
+  advances the object's sprite animation.
+interface: u32 battle_armAttackObject_tick_80E4A1C(BattleObject* obj /* r5 */); r10 also read by callees; returns/propagates
+  r5 (possibly updated by the state handler), clobbers r0-r4, r6-r12, lr and flags.
+details: 'Entered with r5 = the battle object (and r10 passed through to the animation callees).
+
+  Reads BattleObject.CurState (byte at oBattleObject_CurState) and indexes the handler
+
+  table at off_80E4A40 with the RAW byte value ("ldr r1,[r1,r0]", no *4 scaling) — so the
+
+  table is byte-packed. Then does "mov lr,pc / bx r1" to dispatch; the handler is entered
+
+  with r0 = CurState, r1 = its own table entry, r5 = the object, and may change the state
+
+  and/or r5 (the updated object pointer is what comes back).
+
+  Handlers: state 0 = battle_spawnArmAttackObject (spawn/init the arm attack), state 1 =
+
+  battleObject_updateAttachedArmCoords_80E4AAE (keep the arm sprite attached to its owner),
+
+  state 2 = sub_80E4A4C.
+
+  After the handler returns, CurState is re-read (it may have changed): state 8 gets
+
+  battleObject_updateSpriteAnimIfChanged_801BCD0 (full animation restart on frame change),
+
+  any other state gets battleObject_tickSpriteAnim_801BC24 (plain animation tick).
+
+  Part of the battle-object tick family (name t4_0x3c suggests a shared tick slot);
+
+  all state changes go through the handlers, this wrapper only dispatches and animates.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0x3c_80E4A1C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x3c_80E4A1C
+
+    ./wf verify --function t4_0x3c_80E4A1C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x3c_80E4A1C
+
+    ./wf verify --function t4_0x3c_80E4A1C --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 51 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x3c_80E4A1C
+
+    ./wf verify --function t4_0x3c_80E4A1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e4a1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact in-game identity of the "arm attack" (which chip/attack spawns it) and what sub_80E4A4C does for state 2
+- whether state 8 has a special meaning beyond "use the restart-if-changed animation update"
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

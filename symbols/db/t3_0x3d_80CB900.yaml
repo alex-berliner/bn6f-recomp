@@ -1,0 +1,66 @@
+name: t3_0x3d_80CB900
+address: '0x080CB900'
+kind: function
+status: confirmed
+summary: State-machine dispatcher for a battle effect object (beast SP-out template 3, state 0x3D) that jumps to
+  one of three per-state handlers and then runs the shared paused-sprite update.
+interface: void t3_0x3d_80CB900(r5=battleObject*); passes r0=CurState to the selected handler; object pointer persists
+  in r5 through the handler and the sprite-update tail
+details: "Reads the object's CurState byte at r5+oBattleObject_CurState and uses it as\nan unscaled byte index into\
+  \ the jump table off_80CB918:\n  state 0 -> battleObject_beastSpOut_init_80CB964 (initialization)\n  state 1 ->\
+  \ battleObject_handleCollisionFrame_80CB9E2 (per-frame collision handling)\n  state 2 -> battle_effectPlaySoundThenDestroy\
+  \ (play sound, then destroy the effect object)\nDispatch uses the mov lr, pc / bx r1 trick, so the handler returns\
+  \ straight\nback into this function with the object pointer still in r5. After the\nhandler returns, control falls\
+  \ into object_updateSpritePaused on the same\nobject before popping pc. This matches the standard battle-effect\
+  \ object\npattern: state 0 spawns/initializes the effect, state 1 tracks it each frame\n(collision/hit detection),\
+  \ and state 2 is the teardown state. The three\nhandlers are only reachable through this table, and their register\
+  \ side\neffects (notably r5/r9/r11/r12) persist to the caller.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x3d_80CB900
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x3d_80CB900
+
+    ./wf verify --function t3_0x3d_80CB900 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x3d_80CB900
+
+    ./wf verify --function t3_0x3d_80CB900 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 22 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x3d_80CB900
+
+    ./wf verify --function t3_0x3d_80CB900 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080cb900 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which in-game effect/beast-SP animation exactly maps to this object template and its three states
+- whether state values beyond 0-2 can occur and what the table's behavior would be
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

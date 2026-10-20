@@ -1,0 +1,67 @@
+name: t1_0x2_80B85E0
+address: '0x080B85E0'
+kind: function
+status: confirmed
+summary: Battle-object state dispatcher - reads the object's CurState and tail-calls the matching handler (init
+  visuals, sync visuals, or free the object).
+interface: void battleObject_dispatchCurState_80B85E0(BattleObject* obj /*r5*/, u32 passthrough /*r10*/); clobbers
+  r0-r7,r12,lr and nzcv; outputs r5,r8-r12 as left by the invoked handler; returns to the original caller.
+details: "A tiny trampoline for a battle object type (the t1_0x2 tag): the object's\nbyte at oBattleObject_CurState\
+  \ indexes a 3-entry jump table at off_80B85F4:\n  0 -> battleObject_initVisualsFromRelatedObject  (first-time\
+  \ visual setup)\n  1 -> battleObject_syncVisualStateFromRelatedObject_80B863A (refresh visuals)\n  2 -> object_freeMemory\
+  \ (release the object's memory)\nThe dispatch is done with a manual long-call trick: lr is loaded with pc\n(so\
+  \ the handler's lr points just past the 'bx r1', i.e. the pop {pc}), the\ntable entry is called via bx r1, and\
+  \ on handler return this routine just\npops pc to return straight to its own caller. Handlers are entered with\n\
+  r0 = CurState, r1 still holding the table entry, r5 = object pointer, and\nr10 passed through untouched. Whatever\
+  \ r5/r8-r12 the handler leaves are\neffectively this routine's outputs, since the wrapper returns directly.\n\
+  The two bytes of padding after 'pop {pc}' are part of the Thumb alignment.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t1_0x2_80B85E0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x2_80B85E0
+
+    ./wf verify --function t1_0x2_80B85E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x2_80B85E0
+
+    ./wf verify --function t1_0x2_80B85E0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 28 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x2_80B85E0
+
+    ./wf verify --function t1_0x2_80B85E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b85e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact identity of the object type the t1_0x2 tag corresponds to (the two visual handlers suggest an object that
+  mirrors another object's appearance)
+- what r10 carries semantically for the handlers
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

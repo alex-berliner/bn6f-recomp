@@ -1,0 +1,80 @@
+name: sub_81420B0
+address: '0x081420B0'
+kind: function
+status: confirmed
+summary: Looks up a per-enemy byte from a small table (indexed by the enemy index derived from the map group in
+  r10) and returns it shifted left by 16 so it lands in bits 16-23 of r0.
+interface: 'u32 battle_getShiftedEnemyTableByte(void /* index source in r10 */); // in: r10 (passed through to sub_8142080),
+  lr; out: r0 = table_byte << 16; clobbers r1, lr, flags; preserves r4-r7'
+details: 'Tail-style helper: pushes r4-r7,lr, calls battle_getEnemyIndexFromMapGroup_8142080
+
+  (which consumes r10, presumably a map-group/world value) to get an enemy index in r0,
+
+  then reads a byte from a lookup table at dword_81420C4 (0x081420c4) at that index and
+
+  lsls it by 16 before returning. The table''s only defined word is 0x404080, i.e. bytes
+
+  {0x80, 0x40, 0x40, 0x00} for indices 0-3, so the result values are 0x800000, 0x400000,
+
+  0x400000, 0x000000 for those entries. The <<16 shift strongly suggests the caller ORs
+
+  the result into a 32-bit word whose upper byte holds this per-enemy attribute (the
+
+  values 0x80/0x40 look like bit flags or an alpha/blend-style field), but the consumer
+
+  is not in this function. r4-r7 are pushed/popped purely as a preserved-register
+
+  courtesy; they are never used. The table has room for 4 entries as currently known;
+
+  behavior for larger enemy indices depends on what follows dword_81420C4 in ROM.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c sub_81420B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81420B0
+
+    ./wf verify --function sub_81420B0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81420B0
+
+    ./wf verify --function sub_81420B0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81420B0
+
+    ./wf verify --function sub_81420B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081420b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- what consumes the returned upper byte (which caller ORs this into a wider word)
+- full contents of the table past the single known word 0x404080
+- exact meaning of the r10 value that battle_getEnemyIndexFromMapGroup_8142080 interprets (map group id?)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

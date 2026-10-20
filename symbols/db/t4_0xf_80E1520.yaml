@@ -1,0 +1,64 @@
+name: t4_0xf_80E1520
+address: '0x080E1520'
+kind: function
+status: confirmed
+summary: State dispatcher for the snake-arm battle object — reads the object's CurState byte and tail-jumps to that
+  state's handler (init, per-frame tick, or shared cleanup).
+interface: void snakearm_stateDispatcher_80E1520(BattleObject *obj /* r5 */); returns whatever the selected state
+  handler returns in r5 r8 r9 r10 r11 r12; clobbers flags and r0-r4/r6/r7/lr
+details: "r5 points to a battle object; the byte at oBattleObject_CurState indexes a\n3-entry handler table at off_80E1534:\n\
+  \  state 0 = snakearm_initObject      (first-tick setup)\n  state 1 = battleObject_snakeArmTick_80E1566 (per-frame\
+  \ behaviour)\n  state 2 = sub_8016C9C              (shared cleanup/destroy stub)\nThe dispatch is done with `mov\
+  \ lr, pc; bx r1`, a ARM/Thumb hybrid trick:\nlr becomes the address of the `pop {pc}` +1 bit pattern, so the handler's\n\
+  own return path pops this function's saved pc and returns straight to the\noriginal caller — it is a tail call,\
+  \ not a nested call. The handler\nreceives the full live register file with only r0 (state byte) and r1\n(table\
+  \ entry) overwritten, so all other arguments are passed through\nuntouched. The .word table entries are +1 Thumb\
+  \ pointers.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0xf_80E1520
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0xf_80E1520
+
+    ./wf verify --function t4_0xf_80E1520 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0xf_80E1520
+
+    ./wf verify --function t4_0xf_80E1520 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 44 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0xf_80E1520
+
+    ./wf verify --function t4_0xf_80E1520 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e1520 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- exact caller context (which battle update loop invokes this object's tick) not traced
+- whether sub_8016C9C is the generic "destroy object" stub used by other objects too
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

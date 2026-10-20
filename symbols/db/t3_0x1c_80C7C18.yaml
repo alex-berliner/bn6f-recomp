@@ -1,0 +1,71 @@
+name: t3_0x1c_80C7C18
+address: '0x080C7C18'
+kind: function
+status: confirmed
+summary: Per-frame step routine for a battle object (apparently the panel-shaker) that dispatches through a CurState-indexed
+  jump table (init / update collisions / destroy) and then refreshes its sprite.
+interface: void t3_0x1c_80C7C18(void); // r5 = battle object; callers also carry r4, r7, r8, r10 and lr; resulting
+  r5, r8-r12 are left in the guest register file for the caller
+details: "Standard \"task type 3\" battle-object step function. Reads the object's\nCurState byte (oBattleObject_CurState\
+  \ off r5) and uses it as a *byte*\noffset into the word table at off_80C7C30 (so only states 0/4/8 are valid\n\
+  word slots, or the table is only 3 entries and larger states read garbage).\nThe three handlers are:\n  state\
+  \ 0: battleObject_panelShaker_init_80C7C3C (state/init handler)\n  state 1: battle_updateObjectCollisions (per-frame\
+  \ update)\n  state 2: object_genericDestroy (self-destruct path)\nThe handler is invoked with mov lr, pc; bx r1,\
+  \ so the handler returns to\nthe instruction right after bx and r5 may be replaced by the handler (the\ndestroy\
+  \ path swaps in another object). Afterwards it unconditionally calls\nobject_updateSpritePaused with the (possibly\
+  \ new) r5, which updates the\nobject's sprite but skips animation advance while the battle is paused.\nThis r5-after-handler\
+  \ behaviour is why the sprite call must see the\nhandler's r5 rather than the original object pointer.\nTrampolines\
+  \ via lr with push {lr} / pop {pc}; no other registers are\nsaved, matching the game's register-based calling\
+  \ convention for these\nobject step callbacks.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x1c_80C7C18
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x1c_80C7C18
+
+    ./wf verify --function t3_0x1c_80C7C18 --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x1c_80C7C18
+
+    ./wf verify --function t3_0x1c_80C7C18 --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 13 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x1c_80C7C18
+
+    ./wf verify --function t3_0x1c_80C7C18 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c7c18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- why state 1 dispatches to battle_updateObjectCollisions rather than an object-specific update — is the panel shaker's
+  update literally just the shared collision update?
+- what CurState values the spawner can set; whether values other than 0/1/2 (byte offsets 0/4/8) ever occur and
+  what misaligned table reads would do
+- which object struct/owner actually points here (task type 3 slot at 0x1c) to confirm the panel-shaker identification
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

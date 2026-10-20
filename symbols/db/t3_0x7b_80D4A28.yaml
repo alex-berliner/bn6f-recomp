@@ -1,0 +1,65 @@
+name: t3_0x7b_80D4A28
+address: '0x080D4A28'
+kind: function
+status: confirmed
+summary: Battle-object phase dispatcher that reads the object's current state and jumps to the matching handler
+  (init, destroy-phase, or generic destroy).
+interface: void battleObject_runStatePhase_80D4A28(BattleObject* obj /* r5 */); dispatches via `mov lr, pc; bx r1`
+  into the selected handler, which returns directly to this function's caller
+details: 'Standard t3 "phase dispatcher" thunk for one battle object type. Loads oBattleObject_CurState from the
+  object passed in r5, indexes the state table at off_80D4A3C with it, and tail-dispatches using the classic `mov
+  lr, pc; bx r1` trick so the callee''s return goes straight back to this function''s caller. The table has three
+  entries: state 0 -> battleObject_initializePhase_80D4A48 (freshly spawned), state 1 -> object_destroyPhase_80D4A98
+  (marked for deletion), state 2 -> object_genericDestroy (already destroyed). Because the callee runs with this
+  handler''s register file, whatever r5/r8-r12 the phase handler leaves become this function''s observed outputs
+  per the callers'' contract. The three-state table (spawn/destroy/destroyed) suggests this object has no ongoing
+  behavior phases beyond one-time initialization.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x7b_80D4A28
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x7b_80D4A28
+
+    ./wf verify --function t3_0x7b_80D4A28 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x7b_80D4A28
+
+    ./wf verify --function t3_0x7b_80D4A28 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 8 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x7b_80D4A28
+
+    ./wf verify --function t3_0x7b_80D4A28 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4a28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

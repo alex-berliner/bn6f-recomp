@@ -1,0 +1,71 @@
+name: t4_0x42_80E5470
+address: '0x080E5470'
+kind: function
+status: confirmed
+summary: Per-tick update for a type-0x42 battle object — dispatches to its state handler (init panel mover / per-state
+  behaviour / free), then updates the object's sprite.
+interface: void battle_type42Tick_80E5470(r5=battleObject, r10=callerContext) — object pointer in/out via r5 (as
+  left by object_updateSprite); state handler's r0 return propagates implicitly
+details: "Standard per-tick \"type\" dispatcher for a battle object of type 0x42 whose\npointer is kept in r5. It\
+  \ reads the object's CurState byte\n(oBattleObject_CurState) and uses it directly as a byte offset into the\n\
+  handler table at off_80E5488 — the game stores state values 0/4/8 in\nCurState so they index a table of 32-bit\
+  \ Thumb addresses without a shift.\nThree states exist:\n  state 0 -> battle_initPanelMover (spawn/initialise\
+  \ the panel-mover behaviour)\n  state 4 -> sub_80E54DC (the active per-tick behaviour, not yet named)\n  state\
+  \ 8 -> object_freeMemory (release the object)\nThe chosen handler is tail-called via bx with lr set to pc so the\
+  \ handler\ncan return; the handler runs with r0 = CurState and r5 = object and keeps\nthe object pointer in r5.\
+  \ When the handler returns, object_updateSprite is\ncalled with r5 = object to run the shared sprite animation\
+  \ update, and this\nfunction then returns to its caller. r10 is passed in and left untouched\n(caller context);\
+  \ r8-r12 on exit are whatever the callees left, so callers\ntreat them as scratch.\nQuirk: CurState doubles as\
+  \ both the state identifier and a byte offset into\nthe word-sized handler table (states are spaced 4 apart),\
+  \ so any new state\nmust be stored as 0/4/8 rather than 0/1/2.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0x42_80E5470
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x42_80E5470
+
+    ./wf verify --function t4_0x42_80E5470 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x42_80E5470
+
+    ./wf verify --function t4_0x42_80E5470 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 9 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x42_80E5470
+
+    ./wf verify --function t4_0x42_80E5470 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e5470 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_80E54DC (the state-4 active behaviour) actually does per tick; naming the function as a generic type-0x42
+  tick until that is known
+- which in-battle entity or effect uses object type 0x42 (the battle_initPanelMover state suggests a panel-moving
+  object, but the spawning site hasn't been confirmed)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

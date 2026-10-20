@@ -1,0 +1,67 @@
+name: t4_0x28_80E32B8
+address: '0x080E32B8'
+kind: function
+status: confirmed
+summary: Task step for battle-object task type 0x28 that dispatches to the object's current-state handler via a
+  small state table (init sprite / update mystery data / despawn).
+interface: void t4_0x28_80E32B8(battle object in r5, pass-through u32 in r10); clobbers r0-r4, r6, r7, lr and flags;
+  r5/r8-r12 outputs come from the dispatched handler (tail-call style pop {pc});
+details: 'A per-tick "step" entry for one kind of battle object task (type 0x28). Reads the object''s CurState byte
+  at [r5,#oBattleObject_CurState] and uses it as an index into the table at off_80E32CC, then calls the selected
+  handler with r0 = state and r1 = handler address (the handler address is passed in r1, presumably so the handler
+  knows its own identity or for a shared trampoline convention). The object pointer stays in r5 and a caller value
+  in r10 is passed through untouched, so handlers read their arguments from the register file rather than the stack.
+  The three states are: 0 = battleObject_initSpriteFromRelatedOrParam2_80E32D8 (first step: build the object''s
+  sprite, likely from a related object or param2), 1 = battleObject_updateMysteryData_80E336E (ongoing update, mystery-data/unknown-object
+  behavior), 2 = battle_despawnEnemyObject (tear-down / remove the object). The call is a tail call (mov lr,pc;
+  bx r1 ... pop {pc} returns straight to this routine''s caller), so register results depend entirely on which handler
+  ran. State values beyond 2 would read garbage from the table (no bounds check).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0x28_80E32B8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x28_80E32B8
+
+    ./wf verify --function t4_0x28_80E32B8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x28_80E32B8
+
+    ./wf verify --function t4_0x28_80E32B8 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 22 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x28_80E32B8
+
+    ./wf verify --function t4_0x28_80E32B8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e32b8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the r10 pass-through value and which task type 0x28 corresponds to
+- whether the r1 = handler address convention is a general dispatcher pattern in this subsystem
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,69 @@
+name: t4_0x6b_80E807C
+address: '0x080E807C'
+kind: function
+status: confirmed
+summary: Dispatches a battle object to its per-state handler (init/update/free) selected from a jump table by the
+  object's current-state byte, as a tail call.
+interface: void battle_objectDispatchState(battleObject *object /* r5 */); handler outputs (r5, r8-r12) pass through
+  to caller
+details: 'Entry point for the "type 4, state 0x6b" battle object. r5 holds the object pointer. Reads the object''s
+  state byte at oBattleObject_CurState, uses it directly as a word offset into the jump table at off_80E8090 (three
+  entries, no scaling since ldr r1,[r1,r0] uses the raw byte as the offset), and invokes the handler with the state
+  byte in r0 while the object pointer stays in r5. States: 0 -> battle_initSpriteObj (spawn the object''s sprite),
+  1 -> battle_updateAttachedSprite (per-frame sprite update), 2 -> object_freeMemory (release the object''s memory).
+  The call is a classic ARM/Thumb trampoline: push {lr}, mov lr, pc / bx r1, so the handler''s own pop {pc} returns
+  straight to this function''s caller; the handler''s results in r5 and r8-r12 therefore flow through as this function''s
+  outputs (this routine itself only touches r0, r1 and lr). This is the "0x6b" update entry invoked from the battle
+  object task table, giving this object class a simple init/step/despawn lifecycle.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0x6b_80E807C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0x6b_80E807C
+
+    ./wf verify --function t4_0x6b_80E807C --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0x6b_80E807C
+
+    ./wf verify --function t4_0x6b_80E807C --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 30 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0x6b_80E807C
+
+    ./wf verify --function t4_0x6b_80E807C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e807c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact game identity of the 0x6b/6b object class (what sprite it draws) not determined from this function alone
+- whether state values above 2 occur in practice; the table has no bounds check so a bad state byte would index
+  past off_80E8090
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,61 @@
+name: sub_8142178
+address: '0x08142178'
+kind: function
+status: confirmed
+summary: Increments the scenario effect step counter (byte at 0x200078E) by one.
+interface: void sub_8142178(void); // no meaningful register inputs; r4-r7 preserved, r0 and flags (nzcvq) clobbered
+details: 'Loads the byte at 0x200078E, which lives inside the scenario effect state structure pointed to by eScenarioEffectState2000780
+  (field at offset 0xE), adds 1, and stores it back. The u8 store wraps at 8 bits, so the counter rolls over 0xFF
+  -> 0x00. This is a textbook "advance to next step/frame of the scripted effect" helper, presumably called each
+  tick by a scenario effect handler that then dispatches on the counter value. It touches nothing else and preserves
+  r4-r7 purely by pushing/popping them for alignment/convention; it is effectively a leaf thunk.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c sub_8142178
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8142178
+
+    ./wf verify --function sub_8142178 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8142178
+
+    ./wf verify --function sub_8142178 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8142178
+
+    ./wf verify --function sub_8142178 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142178 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- Not verified where the counter is read/dispatched on; the consuming switch or step table was not checked.
+- Whether callers rely on the 8-bit wraparound or reset the counter before 0xFF is unknown.
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

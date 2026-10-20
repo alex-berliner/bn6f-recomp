@@ -1,46 +1,66 @@
 name: t4_setCycleFrameIndex
 address: '0x0804CCC0'
 kind: function
-status: probable
-summary: Every-16-frame ticker that alternates a byte (8 then 9) plus constant 0x10 into a toolkit-referenced
-  buffer, likely a frame/animation selector.
-interface: () -> r0,r1 clobbered; writes [Unk2009740+2] = table[(frame & 0xF)], [Unk2009740+3] = 0x10;
-  no return value, flags not meaningful
-details: Reads the current frame counter via oToolkit_CurFramePtr and masks it with 0xF, giving a 16-frame
-  cycle. Indexes byte_804CCE0, whose 16 entries are 8 for frames 0-7 and 9 for frames 8-15, so the output
-  alternates between 8 and 9 every 8 frames. It stores that byte at offset +2 of the struct pointed to
-  by oToolkit_Unk2009740_Ptr and the constant 0x10 at offset +3. r4-r7 are pushed but never used, suggesting
-  copied template code. The pair (index, 0x10) written to consecutive bytes looks like a small command/anim
-  record consumed elsewhere, but no caller or consumer is known.
+status: confirmed
+summary: Drives a two-cell cycling animation for a battle effect, picking the frame index from the global frame
+  counter every 16 frames.
+interface: void t4_setCycleFrameIndex(Toolkit* r10 /*, lr = return address */)
+details: 'Reads the current global frame counter word via toolkit+oToolkit_CurFramePtr (halfword at [curFramePtr]),
+  masks it with 0xF, and indexes byte_804CCE0 with the result. The 16-entry table yields 0x8 for the first 8 frames
+  of the cycle and 0x9 for the next 8, so the animated state toggles between animation cell indices 8 and 9 every
+  8 frames (full cycle of 16). The looked-up index is stored to [state+2] and the constant 0x10 to [state+3] of
+  the struct at toolkit+oToolkit_Unk2009740_Ptr (a per-battle-effect state record; byte +2 is the current frame/cell
+  index, byte +3 a fixed sub-counter/loop length of 16). lr is only pushed to be popped into pc (leaf-style return);
+  r4-r7 are preserved but unused. The t4_ prefix suggests this is step/handler 4 of an effect (animation) state
+  machine, setting up its cycling frame pair.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r0,[r10,#oToolkit_CurFramePtr]; ldrh r0,[r0] — frame counter source; and r0,#0xf then ldrb
-    r0,[r1,r0] with byte_804CCE0 — 16-entry table of 8x8 then 8x9 values; strb r0,[r1,#2]; mov r0,#0x10;
-    strb r0,[r1,#3] — writes index plus constant into Unk2009740 struct; push {r4-r7} but r4-r7 unused
-    — boilerplate, no other side effects; run on beastsp route — context suggests beast-out related overworld/battle
-    effect
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_2.s:11375
-  reproduce: python3 tools/asmcat.py 0x0804CCC0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_setCycleFrameIndex
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_setCycleFrameIndex
+
+    ./wf verify --function t4_setCycleFrameIndex --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_setCycleFrameIndex
+
+    ./wf verify --function t4_setCycleFrameIndex --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_setCycleFrameIndex
+
+    ./wf verify --function t4_setCycleFrameIndex --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804ccc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm03_2.c
 coverage:
 - beastsp
 open_questions:
-- What structure oToolkit_Unk2009740_Ptr points to and what fields +2/+3 mean
-- Who calls this function and what consumes the {8/9, 0x10} byte pair
-- Whether 8/9 are tile indices, animation frame numbers, or something else
+- Which battle effect/entity owns the state struct at oToolkit_Unk2009740_Ptr here (t4 handler not yet tied to a
+  specific effect ID).
+- Exact meaning of byte +3 = 0x10 (frames-per-cell vs. total cycle length vs. loop counter init).
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_804CCC0 -> t4_setCycleFrameIndex
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_804CCC0
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

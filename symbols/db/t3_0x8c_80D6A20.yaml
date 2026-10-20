@@ -1,0 +1,67 @@
+name: t3_0x8c_80D6A20
+address: '0x080D6A20'
+kind: function
+status: confirmed
+summary: Per-frame update for the snake-arm battle object; dispatches a state handler from CurState and then runs
+  the common sprite update.
+interface: void t3_0x8c_80D6A20(r5 = battle object pointer); trashes r0-r4,r6,r7,r12,flags; returns via pop {pc}
+  (state handlers are dispatched with mov lr,pc; bx r1 so they return through this epilogue)
+details: 'Battle-object tick for what the state table names "snake arm" (likely the snake/SnakeArm chip attack entity).
+  Reads oBattleObject_CurState from the object at r5, uses the raw byte as a byte-offset index into the jump table
+  off_80D6A38 (so the valid state values are spaced 4 apart), and calls the handler with r0 = state index and r1
+  = handler address via mov lr,pc; bx r1 — the handler''s "return" lands on the bl object_updateSprite that follows,
+  so every state handler ends by falling into the shared sprite update with whatever r5 it left (handlers may retarget
+  r5 to a different object). Table entries: state 0 -> battleObject_snakeArmSpawn_80D6A44 (spawn/ advance the arm
+  segments), state 4 -> snakearm_hitUpdate (active arm, collision/damage handling), state 8 -> object_genericDestroy
+  (kill the object). After the handler, object_updateSprite refreshes the entity''s sprite/animation from the object
+  struct.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x8c_80D6A20
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x8c_80D6A20
+
+    ./wf verify --function t3_0x8c_80D6A20 --snapshots build-snapshots'
+  result: 'captured calls: 19 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x8c_80D6A20
+
+    ./wf verify --function t3_0x8c_80D6A20 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 33 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x8c_80D6A20
+
+    ./wf verify --function t3_0x8c_80D6A20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080d6a20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions: []
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

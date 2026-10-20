@@ -1,0 +1,67 @@
+name: sub_8142990
+address: '0x08142990'
+kind: function
+status: confirmed
+summary: Returns the map tile index for the overworld player's current position (reads the player object's coords,
+  then converts them via the cursor-tile-index helper).
+interface: u32 ow_getPlayerTileMapIndex(void /* r10 = overworld context */)
+details: 'A tiny two-call wrapper. It first calls ReadOWPlayerObjectCoords, which fills r0/r1 with the player overworld
+  object''s tile coordinates (the function takes its context from r10, which the caller supplies and this tail of
+  code does not touch). It then immediately calls ow_getCursorMapTileIndex (the generated C wrapper lists this target
+  under its raw name sub_8142816, but the disassembly branch target is the named symbol) with those two coordinates
+  in r0/r1, and returns its r0 result: the tile index in the current map corresponding to the player''s position.
+  r4-r7 are pushed and popped only to satisfy the AAPCS-style prologue around the calls; their values are unchanged
+  on return. No flags are meaningful; nzcv are clobbered by the calls.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c sub_8142990
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8142990
+
+    ./wf verify --function sub_8142990 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8142990
+
+    ./wf verify --function sub_8142990 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8142990
+
+    ./wf verify --function sub_8142990 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142990 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+open_questions:
+- Whether ReadOWPlayerObjectCoords returns pixel or tile coordinates, and whether ow_getCursorMapTileIndex treats
+  r0/r1 as tile coords directly or as a 'cursor' position shared with the crosscursor UI.
+- Whether the r10 context register is consumed by ReadOWPlayerObjectCoords only, or also implicitly by ow_getCursorMapTileIndex.
+- No caller analysis beyond the register contract, so exact gameplay use (e.g. tile-trigger checks, warp lookups)
+  is unconfirmed.
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

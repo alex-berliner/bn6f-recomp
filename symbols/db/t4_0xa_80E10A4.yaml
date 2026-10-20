@@ -1,0 +1,78 @@
+name: t4_0xa_80E10A4
+address: '0x080E10A4'
+kind: function
+status: confirmed
+summary: Dispatcher (trampoline) that tail-calls one of two battle flash-effect update routines chosen by the battle
+  object's Param1 (0 = palette flash, 1 = white flash).
+interface: void battle_dispatchFlashUpdate_80E10A4(void) — no typed C signature is possible; r5 = battle object,
+  r10 = update context on entry, with r5/r10 passed unchanged to the selected routine and its r5, r8–r12 results
+  returned untouched (flags clobbered, lr consumed).
+details: 'Pure two-entry dispatch table trampoline. Reads the battle object''s Param1 byte
+
+  (oBattleObject_Param1 at r5), multiplies it by 4, and indexes a table at off_80E10B8:
+
+  entry 0 = battle_flashPaletteObjectUpdate+1 (palette flash), entry 1 = battle_whiteFlashUpdate+1
+
+  (white flash). The call is made with lr loaded from pc (a LONG_CALL-style handoff in thumb via
+
+  bx), so the selected routine runs with the caller''s live registers: r5 still points at the
+
+  battle object and r10 carries the update context. Anything the callee writes into r5 or
+
+  r8–r12 flows straight through to this function''s caller. Only Param1 values 0/1 are handled;
+
+  any other index reads a garbage pointer out of the table. This function is itself reached via
+
+  a task/thread-type table (t4 type 0xa) elsewhere in the battle engine.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t4_0xa_80E10A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t4_0xa_80E10A4
+
+    ./wf verify --function t4_0xa_80E10A4 --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t4_0xa_80E10A4
+
+    ./wf verify --function t4_0xa_80E10A4 --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 25 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t4_0xa_80E10A4
+
+    ./wf verify --function t4_0xa_80E10A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e10a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Whether values of Param1 other than 0 or 1 ever occur in practice (out-of-range indices would jump through an
+  undefined table entry).
+- What exactly r10 points to (probably a battle-update context shared by all t4_0xa handlers).
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

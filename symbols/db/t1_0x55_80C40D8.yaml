@@ -1,0 +1,67 @@
+name: t1_0x55_80C40D8
+address: '0x080C40D8'
+kind: function
+status: confirmed
+summary: 'State dispatcher for battle object template 0x55 (a beast-related object): jumps to the state 0 init /
+  state 1 update / state 2 free handler selected by the object''s CurState byte.'
+interface: void battle_object55_stateDispatch(BattleObject* r5 object, u32 r10 passThrough); // tail-dispatches
+  via guest call, results carried in r5 r8 r9 r10 r11 r12
+details: "Reads the object's oBattleObject_CurState byte from the BattleObject at r5, then uses it as a\nraw word\
+  \ offset into the handler table at off_80C40EC (no bounds check, matching the original):\n  state 0 -> battle_object_spawnBeast_80C40F8+1\
+  \ (state init, spawns the beast)\n  state 1 -> t1_0x55_updateFromRelatedObject_80C4146+1 (per-frame update, apparently\
+  \ driven by a related object)\n  state 2 -> object_freeMemory+1 (frees the object)\nEnters the chosen handler\
+  \ with r0 = CurState value, r1 = the handler's own entry address\n(from the table), r5 = object pointer and r10\
+  \ passed through untouched. The dispatch is done\nwith mov lr, pc / bx r1 so the handler's final r5/r8/r9/r10/r11/r12\
+  \ land directly in the\nregister file before the pop {pc} returns to the caller; nothing is explicitly copied\
+  \ back.\nFlags nz/c/v are clobbered by the handler.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t1_0x55_80C40D8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x55_80C40D8
+
+    ./wf verify --function t1_0x55_80C40D8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x55_80C40D8
+
+    ./wf verify --function t1_0x55_80C40D8 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 44 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x55_80C40D8
+
+    ./wf verify --function t1_0x55_80C40D8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080c40d8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what battle entity template 0x55 corresponds to in game terms (handler name suggests a "beast" spawn)
+- what r10 carries on entry and how the update handler uses it
+- whether callers rely on the returned r8/r9/r11/r12 or just ignore them
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

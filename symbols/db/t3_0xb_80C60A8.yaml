@@ -1,0 +1,67 @@
+name: t3_0xb_80C60A8
+address: '0x080C60A8'
+kind: function
+status: confirmed
+summary: Per-frame dispatcher for a battle "train arrow" object - runs the current state's handler from a 3-entry
+  table, then updates the object's sprite.
+interface: void battle_trainArrow_stateDispatch_80C60A8(u32 r5 /*battle object*/); callers also pass r4, r7, r8,
+  r10, lr; out r5, r8, r9, r10, r11, r12, nz c v clobbered
+details: 'Task-3 battle object tick routine. Loads the object''s current state byte from [r5 + oBattleObject_CurState]
+  and uses it to index the handler table at off_80C60C0: state 0 -> battleObject_initTrainArrowVariant_80C60CC (setup/initialization),
+  state 1 -> trainArrow_80C619C (the arrow''s main per-frame behavior), state >=2 -> object_genericDestroy (kill
+  the object). The handler is entered with lr via "mov lr, pc; bx r1", receiving r0 = current state, r1 = handler
+  address, and r5 = object pointer; handlers are expected to return into this routine via LR. After the handler
+  returns, it calls object_updateSprite(r5) to refresh the object''s sprite, then returns. The routine itself touches
+  no other fields; all real work happens in the state handlers. r8-r12 pass through untouched (outputs are just
+  the values the callee/ callers leave behind).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0xb_80C60A8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0xb_80C60A8
+
+    ./wf verify --function t3_0xb_80C60A8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0xb_80C60A8
+
+    ./wf verify --function t3_0xb_80C60A8 --snapshots build-snapshots'
+  result: 11 compared, 0 differed, 24 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0xb_80C60A8
+
+    ./wf verify --function t3_0xb_80C60A8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080c60a8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- beastsp
+open_questions:
+- exact gameplay meaning of the "train arrow" object (targeting indicator vs. rail/track arrow) depends on the unexamined
+  handlers at 80C60CC and 80C619C
+- whether callers rely on r8-r12 surviving unchanged or merely ignore them (contract lists them as outputs)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

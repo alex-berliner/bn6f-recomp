@@ -1,0 +1,70 @@
+name: t3_0x6c_80D1C20
+address: '0x080D1C20'
+kind: function
+status: confirmed
+summary: Per-frame state tick for a battle object — dispatches the handler for the object's current state via a
+  jump table, then refreshes its paused-sprite bookkeeping.
+interface: void (r5 = battle object ptr; r4/r6/r7/r8/r10 = live caller state carried through the state handler)
+  -> r5/r8-r12 = handler-modified object/state values (caller-visible high-register results), flags clobbered
+details: 'Battle-object tick dispatcher. Reads the object''s CurState byte at r5+oBattleObject_CurState and indexes
+  the jump table at off_80D1C38 with the raw byte (entries are already Thumb code addresses, i.e. pre-scaled to
+  the 4-byte stride, not a state-index-times-4 computation). This table belongs to a "HP 50 enemy"-style battle
+  object: entry 0 = battleObject_stateInitHp50Enemy, entry 1 = object_runCollisionState_80D1D14, entry 2 = sub_80D1C44.
+  Dispatches with the thumb tail-call-in-place idiom "mov lr, pc; bx r1", so the handler returns back into this
+  function; the handler is entered with r0 = CurState, r1 = its own table entry, r5 = object, and the tick''s other
+  registers live. Handlers keep their locals in high registers, so their r5/r8-r12 results are what this tick''s
+  callers observe afterwards — the wrapper preserves/propagates them. After the handler returns, calls object_updateSpritePaused
+  with whatever object pointer the handler left in r5, then returns via "pop {pc}" to the original caller. lr is
+  used purely as the dispatch return address, so lr is listed as an input but is clobbered internally. Flags nzcv
+  are clobbered by the handler and the sprite update.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x6c_80D1C20
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x6c_80D1C20
+
+    ./wf verify --function t3_0x6c_80D1C20 --snapshots build-snapshots'
+  result: 'captured calls: 29 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x6c_80D1C20
+
+    ./wf verify --function t3_0x6c_80D1C20 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 50 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x6c_80D1C20
+
+    ./wf verify --function t3_0x6c_80D1C20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1c20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact role of sub_80D1C44 (third state handler) is unnamed
+- which battle object types use this specific table vs. other state tables with the same dispatch pattern
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,71 @@
+name: t3_0x29_80C91A0
+address: '0x080C91A0'
+kind: function
+status: confirmed
+summary: Per-frame state dispatcher for a battle object — runs the handler for the object's CurState via a 3-entry
+  jump table, then updates its sprite animation.
+interface: u32 battleObject_runStateHandler_80C91A0(u32 r2, u32 r4, BattleObject* r5, u32 r6, u32 r7); /* also reads
+  r10; returns object ptr in r5, clobbers r8-r12 and flags */
+details: 'Standard battle-object update thunk (naming suggests object type 3 / task 0x29). Loads the object''s CurState
+  byte at [r5,#oBattleObject_CurState] and indexes the jump table at off_80C91B8 with the raw state value (ldr r1,[r1,r0],
+  so state >= 3 would read garbage — states are assumed bounded at 2). Uses the classic "mov lr, pc; bx r1" long-call
+  dispatch, so the handler runs as guest code with the object pointer still in r5 and may modify r5 (the follow-up
+  call must see the updated pointer). Handlers: state 0 -> sub_80C91C4 (likely init/idle for this object type),
+  state 1 -> battleObject_dispatchActionByParam1_80C91FE (dispatches based on a parameter field), state 2 -> object_genericDestroy
+  (frees/removes the object). When the handler returns, calls object_updateSpritePaused to advance the object''s
+  sprite animation, which does nothing while the battle is paused. Returns with the object pointer in r5 as the
+  handler left it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x29_80C91A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x29_80C91A0
+
+    ./wf verify --function t3_0x29_80C91A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x29_80C91A0
+
+    ./wf verify --function t3_0x29_80C91A0 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 13 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x29_80C91A0
+
+    ./wf verify --function t3_0x29_80C91A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c91a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What battle entity this belongs to (type 3 / task 0x29 in the caller's dispatch table) — need the table entry
+  that points here.
+- What sub_80C91C4 does in its state 0 role.
+- Which object field battleObject_dispatchActionByParam1_80C91FE reads as its action parameter.
+- Whether states above 2 can ever occur (no bounds check on the table index).
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

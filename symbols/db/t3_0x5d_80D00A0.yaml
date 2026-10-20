@@ -1,0 +1,70 @@
+name: t3_0x5d_80D00A0
+address: '0x080D00A0'
+kind: function
+status: confirmed
+summary: Battle object "t3" per-frame step — dispatches to the object's current-state handler and then updates its
+  sprite.
+interface: void t3_stateStep(BattleObject* r5, u32 r2 passthrough, u32 r10 passthrough); returns r5 (possibly updated
+  object pointer), r8-r12 as left by callees; clobbers r0-r4, r6-r7, lr, NZCV
+details: 'Reads the battle object''s CurState byte (oBattleObject_CurState off r5) and uses it directly as a byte
+  index into the handler table at off_80D00B8, which has three entries: object_initLoadSprite (state 0), object_stateStep
+  (state 1), and sub_80D01BC (state 2). The handler is reached via mov lr, pc / bx r1, so it runs in ARM state (table
+  entries are +1 Thumb pointers but lr=pc lands at an ARM BX sequence... actually the dispatch keeps Thumb via the
+  standard lr=pc trick) and receives r0 = current state, r1 = table entry, with r2, r5 (object pointer) and r10
+  passed through untouched. When the handler returns, this routine unconditionally calls object_updateSpritePaused
+  on the object, so the sprite is refreshed even in the init/load state. The r5 the handler leaves behind is both
+  what the sprite update sees and what this routine''s caller receives; r8-r12 are likewise whatever the callees
+  leave. Only three states are covered by the table — a CurState value >= 3 would index past off_80D00B8+0xC into
+  garbage, so t3 objects must never be set to higher states (or the table relies on the state byte staying within
+  range).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x5d_80D00A0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x5d_80D00A0
+
+    ./wf verify --function t3_0x5d_80D00A0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x5d_80D00A0
+
+    ./wf verify --function t3_0x5d_80D00A0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 40 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x5d_80D00A0
+
+    ./wf verify --function t3_0x5d_80D00A0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d00a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact role of state-2 handler sub_80D01BC (not analyzed here)
+- whether any code can set CurState >= 3 for this object type, which would read past the 3-entry table
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,0 +1,63 @@
+name: t3_0x71_80D2A94
+address: '0x080D2A94'
+kind: function
+status: confirmed
+summary: State dispatcher for a type-3 battle object; calls one of three per-state handlers (init/attack pulse/destroy)
+  based on the object's CurState byte.
+interface: void battle_type3ObjectStateDispatch(void) /* r5 = battle object; tail-calls handler in r0=CurState,
+  r1=handler addr; caller-visible results are the handler's r5/r8-r12 */
+details: "r5 holds a pointer to a battle object. Its byte at oBattleObject_CurState indexes a\n3-entry table at\
+  \ off_80D2AA8:\n  0: battle_initSpawnObjectCollision\n  1: battle_objectUpdatePulsingAttacker\n  2: object_genericDestroy\n\
+  The selected handler is tail-called via blx-style mov lr,pc / bx r1 with r0 = CurState\nand r1 = the handler's\
+  \ own address (Thumb bit set). Because lr is set to the return\naddress of this function's caller, the handler\
+  \ returns directly past this function,\nso it behaves as if the caller had invoked the handler itself: r4/r7/r8/r10\
+  \ pass\nthrough untouched and whatever the handler leaves in r5/r8-r12 is what reaches the\ncaller. Registers\
+  \ r4, r5, r7, r8, r10 are meaningful to the handlers (r5 is the\nobject pointer); the dispatcher itself only reads\
+  \ r5 and the CurState byte and\ntouches no object fields beyond it. The register contract (inputs r4 r5 r7 r8\
+  \ r10 lr,\noutputs r5 r8 r9 r10 r12) reflects this pass-through dispatch rather than any\ncomputation done here.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x71_80D2A94
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x71_80D2A94
+
+    ./wf verify --function t3_0x71_80D2A94 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x71_80D2A94
+
+    ./wf verify --function t3_0x71_80D2A94 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 40 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x71_80D2A94
+
+    ./wf verify --function t3_0x71_80D2A94 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2a94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

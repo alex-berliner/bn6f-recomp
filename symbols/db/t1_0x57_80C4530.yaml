@@ -1,0 +1,66 @@
+name: t1_0x57_80C4530
+address: '0x080C4530'
+kind: function
+status: confirmed
+summary: Task/state-machine step for a battle object that dispatches to the handler selected by the object's CurState
+  byte.
+interface: void t1_0x57_80C4530(r5=battleObject, r10=forwarded_arg); effects in r5/r8-r12 come from the invoked
+  handler, no registers preserved beyond what the callee leaves
+details: 'Thin dispatcher (likely a task/tick callback, hence r5/r10 calling convention): reads [r5 + oBattleObject_CurState]
+  and indexes the 3-entry table at off_80C4544 with the raw byte (no bounds clamp). The selected handler is tail-called
+  via bx with r0 = object (mov lr, pc / bx r1 pattern, thumb bit set in table entries). Handlers: state 0 = battleObject_initFromRelatedAndLoadSprite_80C4550,
+  state 1 = battleObject_copyStateAndSyncSpriteFromRelated_80C458C, state 2 = object_freeMemory. So the object appears
+  to spawn from a related object, mirror its state/sprite, and then free itself - a short-lived derived/spawned-object
+  lifecycle. r10 is passed through untouched for the handler''s use; r5/r8-r12 afterwards are whatever the handler
+  left, so this wrapper imposes no contract of its own.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t1_0x57_80C4530
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x57_80C4530
+
+    ./wf verify --function t1_0x57_80C4530 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x57_80C4530
+
+    ./wf verify --function t1_0x57_80C4530 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 26 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x57_80C4530
+
+    ./wf verify --function t1_0x57_80C4530 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c4530 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what battle object(s) use this task and what the 'related' object is
+- whether state values >2 can occur (index is unclamped)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

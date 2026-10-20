@@ -1,0 +1,67 @@
+name: t3_0x49_80CD2EC
+address: '0x080CD2EC'
+kind: function
+status: confirmed
+summary: 'Task for battle object type 0x49 (snake-arm head): dispatches on the object''s CurState (init / step /
+  destroy) and then refreshes its sprite.'
+interface: 'void t3_0x49_80CD2EC(void); // in: r4,r5(object),r7,r8,r10,lr resident state; out: r5,r8-r12 updated
+  state; clobbers nzcv,r0-r7,lr'
+details: "Per-frame task for battle object type 0x49, the head of the snake-arm attack. It reads\nthe object's CurState\
+  \ byte (oBattleObject_CurState at r5+off), indexes the jump table at\noff_80CD304 with it, and tail-jumps into\
+  \ that handler with r0 = state byte and r1 = the\nhandler address (the table entry):\n  state 0 -> battleObject_initSnakeArmHead_80CD310\
+  \ (spawn/init of the head)\n  state 1 -> snakearm_headStateHandler (advance/step the snake-arm head)\n  state\
+  \ 2 -> object_genericDestroy (free the object)\nThe handlers keep the object's live state in the high registers\
+  \ and return updated\nr5/r8-r12, so the trampoline uses mov lr, pc + bx r1 to return here. Afterwards it calls\n\
+  object_updateSprite with the (possibly moved) object pointer in r5 so the sprite matches\nthe state the handler\
+  \ left.\nQuirk: r1 still holds the table entry when the handler is entered; handlers receive the\nstate number\
+  \ in r0. Unknown states beyond 2 would read garbage from past the table.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x49_80CD2EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x49_80CD2EC
+
+    ./wf verify --function t3_0x49_80CD2EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 4 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x49_80CD2EC
+
+    ./wf verify --function t3_0x49_80CD2EC --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 32 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x49_80CD2EC
+
+    ./wf verify --function t3_0x49_80CD2EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cd2ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact boss/attack that spawns this snake-arm head object
+- behavior of snakearm_headStateHandler and battleObject_initSnakeArmHead_80CD310 not yet documented here
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

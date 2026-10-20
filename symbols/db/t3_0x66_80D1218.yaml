@@ -1,0 +1,68 @@
+name: t3_0x66_80D1218
+address: '0x080D1218'
+kind: function
+status: confirmed
+summary: Per-frame update for a bomb-type battle object; runs the state handler for the object's current state,
+  then refreshes its sprite (including the paused/frozen handling).
+interface: void battle_bombObject_perFrameUpdate_80D1218(BattleObject* obj /* r5, may be replaced */); returns the
+  possibly-updated object pointer in r5
+details: "Called with the battle object in r5 (other input registers r4, r6, r7, r8, r10 are ignored; r8-r12 are\
+  \ simply preserved through to the outputs). Reads the object's CurState byte (oBattleObject_CurState) and uses\
+  \ it as a raw index into the handler table at off_80D1230, which has exactly three entries:\n  state 0 = battle_initSpawnState\
+  \ (spawn/initialise),\n  state 1 = object_bombUpdate_80D12CA (live bomb behaviour),\n  state 2 = battle_destroyWithRelatedUnlink\
+  \ (self-destruct and unlink related objects).\nThe dispatch is a tail-style computed jump (mov lr, pc; bx r1)\
+  \ with the state in r0 and the table word still in r1, so the handlers can re-enter this dispatcher or return;\
+  \ handlers receive and may replace the object pointer in r5. After the handler returns, object_updateSpritePaused\
+  \ is always called with that r5 (updates the object's sprite and handles paused objects), and the final r5 is\
+  \ returned. This looks like the update routine for the bomb object class (e.g. enemy bomb projectiles) in the\
+  \ battle subsystem.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x66_80D1218
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x66_80D1218
+
+    ./wf verify --function t3_0x66_80D1218 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x66_80D1218
+
+    ./wf verify --function t3_0x66_80D1218 --snapshots build-snapshots'
+  result: 23 compared, 0 differed, 24 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x66_80D1218
+
+    ./wf verify --function t3_0x66_80D1218 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1218 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact gameplay identity of the object class (which attack/enemy spawns objects of this type)
+- whether handlers can change r5 to a different object, and what that means for the caller
+- full semantics of battle_initSpawnState and object_bombUpdate_80D12CA for this class
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

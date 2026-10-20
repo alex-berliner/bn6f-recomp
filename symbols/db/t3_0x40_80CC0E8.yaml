@@ -1,0 +1,93 @@
+name: t3_0x40_80CC0E8
+address: '0x080CC0E8'
+kind: function
+status: confirmed
+summary: Per-frame update for the laser-shot battle object type, dispatching its state machine (init laser shot
+  / collision phase / destroy) and then updating its sprite.
+interface: (r4=work?, r5=battle object, r7, r8, r10) -> void; leaves r5/r8/r9/r10/r11/r12 as set by the callees;
+  clobbers flags nzcv
+details: 'Frame-update routine (Thumb, tail-call style: push {lr} ... pop {pc}) for a battle
+
+  object whose state table is off_80CC104. Reads the object''s CurState byte at
+
+  obj+oBattleObject_CurState, indexes the table with it, and jumps to the handler with
+
+  mov lr, pc; bx r1 — so the handler returns to just after the branch (the two bl calls).
+
+  The three states are: battleObject_initLaserShot_80CC110 (state 0), object_dispatchCollisionPhase_80CC1A0
+
+  (state 1), and object_clearExtraBackrefAndDestroy (state 2, i.e. the object despawns).
+
+  The state handler sees the object pointer in r5 plus the caller''s r4, r7, r8, r10
+
+  unchanged; the object pointer it leaves in r5 feeds the calls that follow.
+
+  After the state dispatch it calls handleRenderBlindForSpecificObjectsMaybe_80169BE
+
+  (the blind/hidden-object render hook, again with the object in r5), then
+
+  object_updateSpritePaused, the pause-aware sprite animation/position update.
+
+  This function itself returns whatever r5/r8-r12 the callees leave, contributing
+
+  nothing of its own. Given the init handler name, this object type is a laser/beam
+
+  projectile fired in battle; the state machine runs init -> collision phase each
+
+  frame -> destroy when done.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c t3_0x40_80CC0E8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x40_80CC0E8
+
+    ./wf verify --function t3_0x40_80CC0E8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x40_80CC0E8
+
+    ./wf verify --function t3_0x40_80CC0E8 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 42 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x40_80CC0E8
+
+    ./wf verify --function t3_0x40_80CC0E8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc0e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the r4/r7/r8/r10 inputs (shared battle-update working registers; the type-3/0x40 label suggests
+  one of several similar object update variants)
+- whether state indices above 2 are reachable (table has only three entries, so any higher CurState would read garbage
+  from off_80CC10C onward)
+- what handleRenderBlindForSpecificObjectsMaybe_80169BE actually gates (assumed a blind/invisibility render check
+  based on its name)
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4

@@ -1,41 +1,63 @@
 name: weatherComp_findRingCapture_80901EC
 address: '0x080901EC'
 kind: function
-previous_names:
-- sub_80901EC
-status: probable
-summary: 'Mr. Weather comp: the first tornado i (0..2) with flag 0xBEC+i set goes to eWeatherCompState+0xC
-  and returns 1: weatherComp_pickScript_8090104 then starts byte_808F748, the capture cutscene ("The Rainbow
-  Power washed the typhoon away.").'
-interface: r5 = eWeatherCompState -> r0 = 1 / 0, Z
+status: confirmed
+summary: Checks the three ring-capture event flags and reports which one (0-2) is set, or none.
+interface: u32 weatherComp_findRingCapture(u8* state /* r5 */) -> u32 found (r0); writes found index (0..2, or 0
+  when none) to state[0x0C]; N/Z set from r0
+details: Scans the halfword table at byte_8090220 containing the three "ring captured" event flags (0xBEC, 0xBED,
+  0xBEE). Clears state[0x0C] first, then loops i = 0..2 calling TestEventFlag on each halfword flag; the first set
+  flag stores its index into state[0x0C] and sets the found result (r6 = 1), breaking out early. If no flag is set,
+  state[0x0C] remains 0 and 0 is returned. Note that when none is set, index 0 is indistinguishable from "not found"
+  in the state byte except via the return value. A second table at byte_8090226 (flags 0xBE9, 0xBEA, 0xBEB) is present
+  in the literal pool data but is not referenced by this function (likely a sibling variant's table). Part of the
+  weather computer (weatherComp) subsystem.
 evidence:
-- method: assembly-reading
-  date: '2026-10-16'
-  detail: Read in full for this entry.
-  reproduce: awk 'index($0,"sub_80901EC:")==1{p=1} p{print} p&&/thumb_func_end/{exit}' bn6f/asm/asm25.s
-- method: runtime
-  date: '2026-10-16'
-  detail: 'After flag 0xBED sets at 435932 the capture cutscene runs as in the video: the camera on the
-    tornado (sub_808FBC0, from +0x40/+0x46 of instance +0xC), the text "The Rainbow Power washed the typhoon
-    away." at ~435976 (video 444050).'
-  reproduce: 'FILL_A=2 bash tools/vidsync/remote/py.sh probes/tornfit.py data/auto/run7x.0/loss_435876.json
-    data/auto/run7x.0/w_435758.state 435800 436010 build/repro/fit.json - 3 build/repro/fit.png 435920
-    4   # the pictures: ours | the video'
-  result: 'the pictures build/repro/fit_1.png: the text box opens at 435976-435980 in both, "The Rainbow
-    Power washed the typhoon away." from 435980'
-related:
-- eWeatherCompState
-- weatherComp_pickScript_8090104
-- sub_80A9658
-open_questions: []
-sources:
-- 'Claude session_01MV9x1XXyanCy3FkvpEo7b7 (vidsync loss 435876: the Mr. Weather comp 2 tornado captures)'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261020-154316);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 101' --file leaves_farm_101.c weatherComp_findRingCapture_80901EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function weatherComp_findRingCapture_80901EC
+
+    ./wf verify --function weatherComp_findRingCapture_80901EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-154316-verify-1)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function weatherComp_findRingCapture_80901EC
+
+    ./wf verify --function weatherComp_findRingCapture_80901EC --snapshots build-snapshots'
+  result: 48 compared, 0 differed, 48 out of domain (verify run convert-20261020-154316-verify-1)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function weatherComp_findRingCapture_80901EC
+
+    ./wf verify --function weatherComp_findRingCapture_80901EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-154316-verify-1)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080901ec ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-16'
-  what: doc comment (symdb block) at the definition
-  where: bn6f e61054c2
-  tool: tools/symdoc.py
-- date: '2026-10-16'
-  what: rename sub_80901EC -> weatherComp_findRingCapture_80901EC
-  where: bn6f 0b2a8a49
-  tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 78cacb4
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What gameplay the three flags correspond to (which rings/events capture them) is not shown here; needs cross-reference
+  to where state[0x0C] is consumed.
+- Whether the sibling table byte_8090226 belongs to an adjacent variant function.
+sources:
+- tools/wf run convert-20261020-154316
+- recomp 78cacb4
