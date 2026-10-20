@@ -1,49 +1,70 @@
 name: ai_beastSpAtkInit
 address: '0x08011E1C'
 kind: function
-status: probable
-summary: 'Initializes the AI attack-vars block for the Beast-SP charged attack: clears its state, sets
-  damage from the beast-power formula, and returns a cycle/timer value.'
-interface: (no args; entity AI struct in r7) -> r0 = 0x52 (value stored by caller, likely a countdown/interval);
-  sets InitFlag=0, ChargeCycles=2, ChargeReadyFlag=0, ChipUseDelay=0, AttackBoost=0, ExtraDamage=0x9E,
-  Damage=scaled base
-details: Zeros the charge-ready flag, chip-use delay and attack boost, writes fixed ExtraDamage 0x9E (158),
-  then calls battle_beastPwrAtk_addScaledBase_8012642 with base 0x32 (50) and multiplier argument 0xA;
-  the returned (base*mult, mult clamped to 5) value is stored into oAIAttackVars_Damage. It clears the
-  init flag and sets ChargeCycles=2 so the attack recharges over two cycles before becoming ready again.
-  The constant 0x52 (82) returned in r0 is presumably a duration/cooldown the caller stores. Runs on the
-  beastsp recorded route, so this is one of the BeastOut/BeastSP AI enemy attack initializers; the oAIAttackVars_*
-  field offsets are already known in the project.
+status: confirmed
+summary: AI-script handler that initialises the Beast-Out special attack of an enemy AI, resetting its charge bookkeeping
+  and computing base damage.
+interface: void ai_beastSpAtkInit(r5 basePower, r7 aiAttackVars, r10 helperInput); returns r0 = next script opcode
+  (0x52), r5 = value left by battle_beastPwrAtk_addScaledBase_8012642; flags clobbered
+details: 'One opcode of the enemy AI scripting VM. r7 points at the AI''s attack-vars structure (oAIAttackVars_*
+  fields). The handler clears the charge-ready flag, the chip-use delay and the attack boost (all zeroed), stores
+  a fixed extra-damage seed of 0x9E into oAIAttackVars_ExtraDamage, then calls battle_beastPwrAtk_addScaledBase_8012642
+  with r0=0x32 (50) and r1=0xA (10) plus the incoming base power in r5 (the helper also consumes r10 on its own)
+  to scale the attack off the AI''s power, and stores the result into oAIAttackVars_Damage. Finally it writes 0
+  to oAIAttackVars_InitFlag (marking the attack state as initialised) and sets oAIAttackVars_ChargeCycles to 2,
+  then returns the next script opcode 0x52 in r0. r4/r6 are preserved; r5 out is whatever the damage helper left,
+  not the incoming value.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: stores 0/0x9E/2 into oAIAttackVars_ChargeReadyFlag/ExtraDamage/ChargeCycles, matching per-attack
-    state init; bl battle_beastPwrAtk_addScaledBase_8012642 with r0=0x32, r1=0xA, result stored to oAIAttackVars_Damage;
-    returns constant 0x52 in r0 after pop, so the caller consumes a fixed timer; executed by the beastsp
-    route, matching a Beast-SP AI attack setup
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:6893
-  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
-  reproduce: python3 tools/asmcat.py 0x08011E1C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_beastSpAtkInit
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_beastSpAtkInit
+
+    ./wf verify --function ai_beastSpAtkInit --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_beastSpAtkInit
+
+    ./wf verify --function ai_beastSpAtkInit --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_beastSpAtkInit
+
+    ./wf verify --function ai_beastSpAtkInit --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011e1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of the returned 0x52 (frames, cooldown or attack id) — needs the caller
-- what the 0xA argument to addScaledBase represents (mult index vs level) — needs that helper's other
-  callers
+- exact meaning of the 0x32/0xA scaling arguments and the r10 input to battle_beastPwrAtk_addScaledBase_8012642
+- which script opcode/state (0x52) follows this handler and how ChargeCycles=2 drives the charge behaviour
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8011E1C -> ai_beastSpAtkInit
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8011E1C
+- tools/wf run convert-20261020-101942
+- recomp 486adde

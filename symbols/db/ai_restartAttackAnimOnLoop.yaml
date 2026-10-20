@@ -1,50 +1,66 @@
 name: ai_restartAttackAnimOnLoop
 address: '0x081135A4'
 kind: function
-status: probable
-summary: When the current attack animation reaches its end frame, rewind it to frame 0 and reload the
-  AI attack timer/hit element so the attack repeats.
-interface: (r5 = battle object, r7 = AI attack vars; sprite_getFrameParameters args already set) -> void;
-  sets oBattleObject_CurAnim=0, oAIAttackVars_StepTimer=AttackDuration, oAIAttackVars_HitElement=0xC when
-  anim-end flag set
-details: Calls sprite_getFrameParameters and tests bit 0x80 of the attribute byte, the animation-end/loop
-  marker. If clear, it returns without touching state, so this runs every frame of the attack. On end,
-  it zeroes the object's current animation index so the animation restarts, copies oAIAttackVars_AttackDuration
-  into oAIAttackVars_StepTimer to re-arm the per-step delay, and writes 0xC (12) into oAIAttackVars_HitElement,
-  re-declaring the attack's hit element. This produces a looping attack animation with periodic hit windows
-  for beast-form AI attacks (routes battlesweep and beastsp).
+status: confirmed
+summary: If an AI attacker's current animation frame has the "loop end" bit set, restarts the attack animation from
+  frame 0 and reloads the attack timers.
+interface: 'void ai_restartAttackAnimOnLoop(battleObject* obj /*r5*/, AIAttackVars* aiVars /*r7*/); out: r1 = 0x80;
+  clobbers r0-r3, flags (C/V), lr'
+details: 'Calls sprite_getFrameParameters with the battle object in r5, tests the returned frame parameters against
+  0x80 (the loop-end/end-of-animation flag), and if set: stores 0 to obj->oBattleObject_CurAnim (restarts the animation
+  at its first frame), copies aiVars->oAIAttackVars_AttackDuration into aiVars->oAIAttackVars_StepTimer (rewinds
+  the step timer to the attack''s full duration), and stores 0xC into aiVars->oAIAttackVars_HitElement (resets the
+  hit element to its default value). Does nothing otherwise. Quirk: r1 is always left holding the test mask 0x80
+  on return, matching the original''s register usage. The data words/bytes after the function (jump tables and per-entry
+  timing tables like 0x14/0x28/0x50... and 0xC/0xA/0xA...) belong to adjacent AI attack routines, not this one.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'tst r0, #0x80 after sprite_getFrameParameters gates all writes: only fires on the animation-end
-    frame attribute; strb r0,[r5,#oBattleObject_CurAnim] with r0=0 restarts the object''s animation from
-    the first frame; ldrh/strh pair copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer,
-    re-arming the attack step delay; strh #0xC into oAIAttackVars_HitElement re-applies the attack''s
-    element for the next pass; recorded routes battlesweep/beastsp (Beast Over forms) match a looping
-    repeated-hit beast attack helper'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:11096
-  - 0x08002DEA sprite_getFrameParameters
-  reproduce: python3 tools/asmcat.py 0x081135A4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_restartAttackAnimOnLoop
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_restartAttackAnimOnLoop
+
+    ./wf verify --function ai_restartAttackAnimOnLoop --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_restartAttackAnimOnLoop
+
+    ./wf verify --function ai_restartAttackAnimOnLoop --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_restartAttackAnimOnLoop
+
+    ./wf verify --function ai_restartAttackAnimOnLoop --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081135a4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
-open_questions:
-- Which attack state/jump-table entry invokes this (callers unknown), and what HitElement value 0xC maps
-  to in the element table
-- Exact semantics of attribute bit 0x80 in sprite_getFrameParameters (anim end vs. loop flag)
+open_questions: []
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81135A4 -> ai_restartAttackAnimOnLoop
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81135A4
+- tools/wf run convert-20261020-101942
+- recomp 486adde

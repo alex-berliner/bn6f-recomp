@@ -1,73 +1,78 @@
 name: battleObject_beastOutUpdate_80C5654
 address: '0x080C5654'
 kind: function
-previous_names:
-- sub_80C5654
-status: probable
-summary: 'Per-frame update for a beast-out (cross fuse) battle object: tears down collision, dispatches
-  to per-action handlers, or schedules its own destruction when the battle ends.'
-interface: (r5 = this BattleObject) -> void ; may set nz/c/v and trash r0-r3/r12; saves lr and callee-saved
-  regs implicitly via the caller
-details: '- Starts by calling object_removeCollisionData(r5) to clear the prior frame''s collision entry,
-  then object_spawnCollisionEffect(r5) so that any lingering hit effect is emitted for this frame.
-
-  - Calls battle_isBattleOver(); if true (r0!=0), jumps to the destroy branch.
-
-  - Calls battle_isTimeStop(); if true (time is stopped), jumps to loc_80C5682, which calls object_presentCollisionData
-  and returns via `pop {pc}`.
-
-  - Otherwise reads CollisionDataPtr (oBattleObject_CollisionDataPtr) and its oCollisionData_FlagsFromCollision
-  word; if non-zero, calls object_clearCollisionRegion(r5).
-
-  - Then loads CurAction (oBattleObject_CurAction), uses it to index a 2-entry dispatch table at off_80C56AC
-  containing battleObject_tossUpdate_80C56B4+1 and sub_80C5760+1, and bx''es into the chosen handler with
-  lr=pc.
-
-  - Destroy branch (battle over): reads the three coords at r5+0x34 (Coords X/Y/Z 16.16 fixed-point),
-  ldmia''s them into r1-r3, sets r4=0x14 and calls spawn_t1_0x0_EffectObject, which spawns a type-4 battle
-  object (effect type 0) returning the new pointer in r0. Then it clears the OBJECT_FLAG_VISIBLE bit (0x02)
-  in oObjectHeader_Flags, calls object_clearCollisionRegion(r5), and sets CurStateActionPhaseAndPhaseInitialized
-  = CUR_STATE_DESTROY (0x08) so the object is destroyed next frame.
-
-  '
+status: confirmed
+summary: 'Per-frame update for a battle object (toss/bomb-fuse style): refreshes its collision data, dispatches
+  the current action''s handler, and destroys the object with an effect when the battle is over.'
+interface: battleObject_beastOutUpdate_80C5654(r4, r5=obj, r7, r8, r10) -> r5=obj, r8; clobbers r0-r4,r6,r7,lr and
+  NZCV
+details: "Battle-object update step (r5 = battle object). Sequence:\n1. object_removeCollisionData drops last frame's\
+  \ collision region data, then\n   object_spawnCollisionEffect spawns the hit flash effect for the object.\n2.\
+  \ If battle_isBattleOver() is nonzero, the object is torn down: three effect\n   parameters are copied from obj+0x34..0x3C\
+  \ into r1-r3 (r4 = 0x14, effect\n   type parameter) and spawn_t1_0x0_EffectObject spawns a destruction effect;\n\
+  \   the \"active\" bit (bit 1) of oObjectHeader_Flags is cleared;\n   object_clearCollisionRegion frees the collision\
+  \ region; and the object's\n   combined state/action/phase word (oBattleObject_CurStateActionPhaseAndPhaseInitialized)\n\
+  \   is set to CUR_STATE_DESTROY.\n3. Otherwise, if battle_isTimeStop() reports Z=0 (time stopped), the object's\n\
+  \   action handler is skipped this frame and only object_presentCollisionData runs.\n4. While time runs: if the\
+  \ collision data at oBattleObject_CollisionDataPtr has a\n   nonzero oCollisionData_FlagsFromCollision, object_clearCollisionRegion\
+  \ is called\n   before the update; then the per-action handler is dispatched via the jump table\n   at off_80C56AC\
+  \ indexed by oBattleObject_CurAction:\n   entry 0 = battleObject_tossUpdate_80C56B4, entry 1 = object_bombFuseUpdate.\n\
+  \   Handlers are entered with the mov lr,pc; bx r1 idiom (r0 = CurAction,\n   r1 = own jump-table entry) and return\
+  \ r1/r5/r8, which are passed straight to\n   object_presentCollisionData to publish this frame's collision region.\n\
+  Callers pass r4/r5/r7/r8/r10; r5 (object) and r8 (collision work pointer) are the\nmeaningful results handed back.\
+  \ The two jump-table targets suggest this shared\nupdate serves a tossed object whose actions are \"toss\" and\
+  \ \"bomb fuse\".\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl object_removeCollisionData` then `bl object_spawnCollisionEffect` at the head of the
-    function set up/clear collision each frame. - `bl battle_isBattleOver` + `bne loc_80C5688` shows a
-    battle-over short-circuit. - `bl battle_isTimeStop` + `bne loc_80C5682` shows time-stop is a separate
-    branch that just calls object_presentCollisionData. - `ldr r0, [r5,#oBattleObject_CollisionDataPtr];
-    ldr r0, [r0,#oCollisionData_FlagsFromCollision]` reads the collision flags at the documented offset
-    0x70; non-zero causes `bl object_clearCollisionRegion`. - `ldrb r0, [r5,#oBattleObject_CurAction];
-    ldr r1, off_80C56A8; ldr r1, [r1,r0]; mov lr, pc; bx r1` is the classic Thumb switch-table dispatch
-    keyed by CurAction. - Destroy path `mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3}` pulls 12 bytes
-    starting at oBattleObject_Coords (X/Y/Z) into r1-r3; `mov r4, #0x14; bl spawn_t1_0x0_EffectObject`
-    then forwards r4=0x14 (effect type / param) into the type-4 spawner. - `ldrb r0, [r5,#oObjectHeader_Flags];
-    mov r1, #2; bic r0, r1; strb r0, [r5,#oObjectHeader_Flags]` clears OBJECT_FLAG_VISIBLE (0x02). - `mov
-    r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` stores
-    0x08 at offset 0x8 (CUR_STATE_DESTROY). - Only one caller: battleObject_initBeastOut_80C55E4 (the
-    beast-out initializer), consistent with this being the beast-out''s per-frame update.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080C5654
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_beastOutUpdate_80C5654
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_beastOutUpdate_80C5654
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_beastOutUpdate_80C5654
+    ./wf verify --function battleObject_beastOutUpdate_80C5654 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_beastOutUpdate_80C5654
 
-    '
-open_questions:
-- Exact semantic difference between the two dispatched handlers (battleObject_tossUpdate_80C56B4 vs sub_80C5760)
-  and what CurAction values select each; the function is clearly an update loop for the beast-out form,
-  but the per-action split is opaque without seeing those callees.
-sources:
-- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_beastOutUpdate_80C5654 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 85 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_beastOutUpdate_80C5654
+
+    ./wf verify --function battleObject_beastOutUpdate_80C5654 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c5654 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d779321
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C5654 -> battleObject_beastOutUpdate_80C5654
-  where: bn6f 7ddd2238
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which in-game attack/object uses this update (the "beastOut" label predates full identification); confirm from
+  spawn sites of the object that carries CurAction values 0/1.
+- Exact meaning of the effect parameters at obj+0x34/0x38/0x3C and the r4=0x14 effect-type argument to spawn_t1_0x0_EffectObject.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

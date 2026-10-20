@@ -1,60 +1,70 @@
 name: battleObject_dispatchCurPhaseByJumpTable_80D4570
 address: '0x080D4570'
 kind: function
-previous_names:
-- sub_80D4570
-status: probable
-summary: Trampoline that jumps through a 2-entry table using the BattleObject's CurPhase to select sub_80D458C or
-  sub_80D45AE, then returns
-interface: (r5 = BattleObjectPtr) -> r0 = ... ; no fixed return contract, side effect is jumping to one of two phase
-  handlers based on CurPhase
-details: "- Saves lr via `push {lr}` so the indirect jump can later restore PC via `pop {pc}`, making this a single-level\
-  \ trampoline rather than a real BL/return pair.\n  - Loads the address of `off_80D4584` into r1, then reads the\
-  \ object's `CurPhase` (offset 0xa per BattleObject.inc) via `ldrb r0, [r5,#oBattleObject_CurPhase]`.\n  - Indexes\
-  \ `[r1, r0]` to fetch a function pointer (so the table has exactly one entry per CurPhase value, with only values\
-  \ 0 and 1 actually populated).\n  - Performs an interworking switch via `mov lr, pc; bx r1` so the caller of sub_80D458C/sub_80D45AE\
-  \ sees the original `push {lr}`'d lr and returns correctly.\n  - The two targets are stored as `sub_80D458C+1`\
-  \ and `sub_80D45AE+1` (Thumb bit set), confirming both are Thumb and the table lives at ROM address 0x080d4584.\n\
-  \  - The \".byte 0, 0\" after `pop {pc}` plus the explicit `off_80D4580` word are alignment/reloc fixups for the\
-  \ in-function table.\n  - r5 in / r5 out is a contract artifact: this function is a tail-call dispatcher and does\
-  \ not itself touch r5.\n"
+status: confirmed
+summary: Reads the battle object's current phase byte and tail-jumps to that phase's tick handler via a two-entry
+  table next to the code.
+interface: void battleObject_dispatchCurPhaseHandler_80D4570(r5 battleObject) — in r5=battle object, lr=return;
+  out r1/r5/r8-r12+flags are whatever the dispatched handler leaves (passed through); clobbers r0-r7,lr
+details: 'Tiny trampoline for battle objects. Loads the object''s oBattleObject_CurPhase byte from [r5+oBattleObject_CurPhase],
+  uses it directly as a word offset into the inline table off_80D4584 (so phase 0 -> battleObject_phaseTickToNext_80D458C,
+  phase 1 -> sub_80D45AE), then does the classic "mov lr, pc; bx r1" trick to enter the Thumb handler and return
+  via pop {pc}. The handler is entered with r0 = phase value and r1 = the table entry (handler address) it was dispatched
+  through, matching the original register state before bx. Because it tail-calls the handler, everything the handler
+  leaves behind (r1, r5, r8-r12, NZCV) is effectively this function''s output contract. The table only covers phase
+  values 0 and 1; any larger phase byte would read past off_80D4584 into whatever follows.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {lr}` / `pop {pc}` at battleObject_dispatchCurPhaseByJumpTable_80D4570/0x080d4574 establishes the trampoline frame. - `ldrb r0, [r5,#oBattleObject_CurPhase]`
-    is the only data load and uses BattleObject offset 0xa. - `ldr r1, off_80D4580` then `ldr r1, [r1,r0]` is a
-    2-entry 32-bit pointer table indexed by CurPhase. - `off_80D4584` contains `.word sub_80D458C+1` and `.word
-    sub_80D45AE+1`, giving exactly two CurPhase cases (0 and 1). - `mov lr, pc; bx r1` performs the interworking
-    tail call back to the saved lr.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080D4570
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_dispatchCurPhaseByJumpTable_80D4570
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_dispatchCurPhaseByJumpTable_80D4570
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_dispatchCurPhaseByJumpTable_80D4570 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_dispatchCurPhaseByJumpTable_80D4570
+
+    ./wf verify --function battleObject_dispatchCurPhaseByJumpTable_80D4570 --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 9 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_dispatchCurPhaseByJumpTable_80D4570
+
+    ./wf verify --function battleObject_dispatchCurPhaseByJumpTable_80D4570 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080d4570 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What semantic CurPhase 0 vs 1 corresponds to (only one BattleObject byte field, so the two handlers are likely
-  "phase A / phase B" sub-states of the same CurState/CurAction).
-- Whether sub_80D458C/sub_80D45AE themselves recurse through this trampoline or share further state.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4570 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f ebaed976
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D4570 -> battleObject_dispatchCurPhaseByJumpTable_80D4570
-  where: bn6f 438cfa55
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the two phases (entry vs. running) depends on battleObject_phaseTickToNext_80D458C and sub_80D45AE
+- whether other battle object types reuse this dispatcher with larger phase values (table would need extending)
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

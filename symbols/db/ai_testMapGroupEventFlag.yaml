@@ -1,48 +1,70 @@
 name: ai_testMapGroupEventFlag
 address: '0x0808CF34'
 kind: function
-status: probable
-summary: Returns whether the event flag associated with the current map group's AI mode is set.
-interface: () -> r0 = 1 if event flag table[aiMode] is set, else 0; ZF clobbered by TestEventFlag
-details: Calls ai_getAIModeForMapGroup_808D084 to get the current map group's AI mode selector, shifts
-  it left once (u16 stride), and indexes the halfword table at byte_808CF84 to obtain a flag ID. Passes
-  that ID to TestEventFlag and returns 1 in r0 if the flag is set, otherwise 0; r4-r7 are preserved. The
-  table at 0x808CF84 maps AI modes/map groups to story-flag IDs, so this is a per-map conditional check.
-  Its only known caller, init_beastSpScenario, uses it as part of deciding how to initialize the Beast+
-  special-scenario mode.
+status: confirmed
+summary: Tests the event flag assigned to the current map group's AI mode and returns 1 if it is set, 0 otherwise.
+interface: 'int ai_testMapGroupEventFlag(void); /* in: r10 = map group context used by ai_getAIModeForMapGroup_808D084,
+  lr = return; out: r0 = 1 if the group''s event flag is set else 0; r7 passed through unchanged; clobbers r1, r3,
+  flags */'
+details: 'Calls ai_getAIModeForMapGroup_808D084 to get an AI mode index (doubled via lsl #1 to index u16 entries),
+  loads a u16 flag id from a table at byte_808CF84 selected by that index, then calls TestEventFlag with that flag
+  id. Sets the result to 1 when TestEventFlag returns with Z clear (flag set), 0 otherwise. The flag table byte_808CF84
+  holds one event flag per AI mode, so this answers "has this map group''s AI-mode event happened yet?". r4-r7 are
+  saved; r4 is the result accumulator, r7 is untouched and effectively a passthrough for callers that keep a value
+  there. No error handling for out-of-range mode indices.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl ai_getAIModeForMapGroup_808D084 then lsl r0,r0,#1 and ldrh r1,[r1,r0]: AI mode indexes a
-    u16 table at off_808CF78->byte_808CF84; bl TestEventFlag with the loaded halfword, then beq/mov r4,#1:
-    returns flag state as 0/1; Caller init_beastSpScenario (0x0808CA68) invokes it during Beast+ scenario
-    setup, fitting a story-flag condition test; Callee ai_getAIModeForMapGroup_808D084 returns 3 for map
-    group 0x85 else MapNumber, tying the flag to the current map'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm24.s:1702
-  - 0x0808CA68 init_beastSpScenario
-  - 0x0802F168 TestEventFlag
-  - 0x0808D084 ai_getAIModeForMapGroup_808D084
-  reproduce: python3 tools/asmcat.py 0x0808CF34
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_testMapGroupEventFlag
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_testMapGroupEventFlag
+
+    ./wf verify --function ai_testMapGroupEventFlag --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_testMapGroupEventFlag
+
+    ./wf verify --function ai_testMapGroupEventFlag --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_testMapGroupEventFlag
+
+    ./wf verify --function ai_testMapGroupEventFlag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808cf34 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm24.c
 coverage:
 - beastsp
 - maps
+related:
+- ai_getAIModeForMapGroup_808D084
 open_questions:
-- Contents of the flag table at byte_808CF84 (which flag IDs map to which map groups) not shown
-- How init_beastSpScenario branches on the return value — a full caller listing would confirm the exact
-  scenario effect
+- What the AI mode indices returned by ai_getAIModeForMapGroup_808D084 correspond to in game terms, and thus which
+  events each table entry gates
+- Whether r10 is a map group id or a pointer to a context struct
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_808CF34 -> ai_testMapGroupEventFlag
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_808CF34
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,0 +1,66 @@
+name: GetNaviStatsHword
+address: '0x08013740'
+kind: function
+status: confirmed
+summary: Reads a halfword field from one of the two Navi stats records indexed off the toolkit's NaviStatsPtr.
+interface: 'u16 naviStats_readHword(u32 record /* r0: 0 = first, nonzero = second */, u32 field_offset /* r1: byte
+  offset within oNaviStats */, Toolkit* toolkit /* r10 */)'
+details: 'Normalizes the record selector to 0/1 (any nonzero r0 selects the second record), multiplies it by oNaviStats_Size,
+  loads the base pointer from toolkit + oToolkit_NaviStatsPtr, then returns the halfword at base + record*oNaviStats_Size
+  + field_offset. r10 (the toolkit) must already be set up by the caller; the function only returns r0 and clobbers
+  r3 and flags.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c GetNaviStatsHword
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function GetNaviStatsHword
+
+    ./wf verify --function GetNaviStatsHword --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function GetNaviStatsHword
+
+    ./wf verify --function GetNaviStatsHword --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function GetNaviStatsHword
+
+    ./wf verify --function GetNaviStatsHword --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08013740 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What the two records represent (likely current vs. base/max navi stats) is not determined here.
+- No bounds check on field_offset; callers are expected to pass valid oNaviStats offsets.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

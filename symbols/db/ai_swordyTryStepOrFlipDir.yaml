@@ -1,50 +1,94 @@
 name: ai_swordyTryStepOrFlipDir
 address: '0x0810B62E'
 kind: function
-status: probable
-summary: 'Swordy AI movement probe: validates the panel in the object''s current direction; if blocked,
-  flips the stored direction and revalidates, returning 0 if both fail.'
-interface: (r5 = battle object) -> r0 = nonzero if a valid panel exists (direction left flipped if it
-  was reversed), 0 if blocked in both directions
-details: Calls battle_checkAlliancePanelAtObjectPos to test the panel one step ahead per the object's
-  stored direction field (oBattleObject_ExtraVars+8, a signed step/direction value). If the check succeeds
-  the function returns that nonzero result immediately. On failure it negates ExtraVars+8 — flipping the
-  object's horizontal direction — and calls the panel check again. If the second check also fails it returns
-  0, leaving the direction flipped. The caller (Swordy attack step at 0x0810B436) uses the result to decide
-  whether to advance toward the target or fall back to other move logic.
+status: confirmed
+summary: Swordy AI step helper — tries the panel ahead via its stored step offset, flipping the direction and retrying
+  once if blocked, and reports 0 in r0 when neither direction is open.
+interface: 'int ai_swordyTryStepOrFlipDir(BattleObject* obj /* r5 */) — out: r0 (0 when both directions blocked,
+  otherwise the last battle_checkAlliancePanelAtObjectPos result), r1/r4 (last check''s values; r4 preserved), r5
+  preserved; clobbers r2, r3, flags'
+details: 'Battle AI helper (Swordy-type enemy movement). The object''s step offset for the
+
+  direction it wants to move is stored at oBattleObject_ExtraVars+8; it reads that
+
+  value. Calls battle_checkAlliancePanelAtObjectPos(r5), which inspects the panel
+
+  the object would step onto (based on that offset) and returns nonzero with Z
+
+  clear if the panel is open to the object''s alliance. If the check passes, the
+
+  callee''s registers are passed straight through and the function returns.
+
+  If the panel is blocked (Z set), it negates the value at oBattleObject_ExtraVars+8
+
+  (0 - offset), i.e. flips the movement direction, and calls
+
+  battle_checkAlliancePanelAtObjectPos again with the same object pointer. If the
+
+  second check passes, its result is returned; if it also fails, r0 is set to 0
+
+  (no step possible in either direction) and the function returns.
+
+  Quirks: on failure paths the flags and r1 from the last check are still live in
+
+  r1 per the register contract; lr is pushed/popped only to allow the bl calls.
+
+  r4 is clobbered/returned by the callee chain but preserved from this function''s
+
+  own callers'' point of view.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl battle_checkAlliancePanelAtObjectPos then bne locret: success returns the panel-check result
-    unchanged; ldr r0,[r5,#oBattleObject_ExtraVars+8]; neg r0,r0; str r0,...: flips a signed direction/step
-    field on first-check failure; second bl battle_checkAlliancePanelAtObjectPos with mov r0,#0 fallback:
-    returns 0 only if both directions are blocked; caller 0x0810B436 ai_swordyTryStartAttack uses this
-    before launching attack 0xC, fitting a pre-approach step check'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:176759
-  - 0x0810B436 ai_swordyTryStartAttack
-  - 0x0810B3E4 sub_810B3E4
-  - 0x0810B646 battle_checkAlliancePanelAtObjectPos
-  reproduce: python3 tools/asmcat.py 0x0810B62E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_swordyTryStepOrFlipDir
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_swordyTryStepOrFlipDir
+
+    ./wf verify --function ai_swordyTryStepOrFlipDir --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 176 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_swordyTryStepOrFlipDir
+
+    ./wf verify --function ai_swordyTryStepOrFlipDir --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_swordyTryStepOrFlipDir
+
+    ./wf verify --function ai_swordyTryStepOrFlipDir --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b62e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact semantics of the alliance-indexed panel requirement used by the callee (which panel flags qualify
-  as valid)
-- whether ExtraVars+8 is a direction flag or a velocity magnitude and who else reads the flipped value
+- exact meaning of r1/r4 returned by battle_checkAlliancePanelAtObjectPos (likely panel coordinates or the check's
+  target position)
+- which AI routine(s) call this and how r0==0 is interpreted (stay in place vs. pick a new action)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_810B62E -> ai_swordyTryStepOrFlipDir
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_810B62E
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,69 +1,74 @@
 name: battleObject_getDamageElementOrPalette_80C46CC
 address: '0x080C46CC'
 kind: function
-previous_names:
-- sub_80C46CC
-status: probable
-summary: Returns the element/element-like damage code for an attacking battle object, or falls back to
-  its sprite palette.
-interface: (r5 = attacker BattleObject*) -> r0 = element byte (0xff when not applicable) ; reads attacker
-  ExtraVars[4..8], no side effects on caller-visible state
-details: "Entry: r5 holds the attacking BattleObject. Loads oBattleObject_ExtraVars+4 (= ExtraVars[4])\
-  \ into r0 and compares with 0xff.\n  - If equal to 0xff: there is no attacker-side override, so it falls\
-  \ back to reading oBattleObject_RelatedObject1Ptr and calls sprite_getPalette on that related object;\
-  \ that palette byte is returned verbatim.\n  - Otherwise: ExtraVars[4] is the attacker's element slot,\
-  \ and oBattleObject_ExtraVars+8 (ExtraVars[8]) must be non-zero; otherwise r0 (the previously loaded\
-  \ ExtraVars[4]) is returned.\n  - When ExtraVars[8] != 0, the function calls GetBattleNaviStatsByte_AllianceFromBattleObject(r5,\
-  \ 0x0e). The \"AllianceFromBattleObject\" wrapper indexes the NaviStats of the *attacker's side*; field\
-  \ 0x0E is the byte that BN5/GNL expose at offset 0xE of NaviStats (which holds a value that, in this\
-  \ caller, decides whether the attacker should use the visual-element code 0xff).\n  - If that call returns\
-  \ 0xff the function returns 0xc (a fixed damage-element code held in r4), else the originally loaded\
-  \ ExtraVars[4] byte is returned (after being stashed in r4).\n  The role for callers is therefore: \"\
-  decide which element/element-like byte should drive the next damage calc - usually the attacker's pre-computed\
-  \ element, but if the attacker's navi stats have a sentinel byte use 0xc instead, and if no element\
-  \ slot was set use the related object's sprite palette\".\n"
+status: confirmed
+summary: Resolves a battle object's damage-element/palette selector, deferring to a related object's sprite palette
+  or a Navi's alliance stat when overrides apply.
+interface: u32 battleObject_getDamageElementOrPalette_80C46CC(oBattleObject* r5) -> u32 r0
+details: "Reads the object's ExtraVars+4 field as a base selector value (element or palette index used\nfor damage\
+  \ handling). Three cases:\n\n1. If ExtraVars+4 == 0xFF, the object has no own value and instead delegates: it\
+  \ loads\n   RelatedObject1Ptr and returns sprite_getPalette(relatedObject), i.e. the partner/linked\n   object's\
+  \ current sprite palette index.\n\n2. Otherwise, if ExtraVars+8 (a Navi ID / related-Navi field) is 0, the base\
+  \ value from\n   ExtraVars+4 is returned unchanged.\n\n3. If ExtraVars+8 is nonzero, the object is tied to a Navi:\
+  \ it calls\n   GetBattleNaviStatsByte_AllianceFromBattleObject with selector byte 0x0E (r1 = 0x0E, r5 =\n   this\
+  \ object preserved). If that returns 0xFF (entry not found / invalid Navi), the result\n   becomes 0x0C (a fallback\
+  \ index, likely the \"neutral/unknown\" palette); otherwise the base\n   value from ExtraVars+4 is returned as-is.\n\
+  \nUses r5 as the object pointer (caller-provided), preserves r4/r6 of the caller apart from\nusing r4 internally\
+  \ as scratch. Flags clobbered. Returns in r0. Trailing dword constants\n(0x10000, 0x100800) belong to the next\
+  \ function's pool, not this one.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r0, [r5,#oBattleObject_ExtraVars+4]` then `cmp r0, #0xff` / `bne loc_80C46DC` shows
-    r0 is the "default element" read out of ExtraVars, with 0xff meaning "no element configured". - `ldr
-    r0, [r5,#oBattleObject_RelatedObject1Ptr]` + `bl sprite_getPalette` on the ==0xff branch shows the
-    "no element" fallback is the sprite palette of the related object (project confirms sprite_getPalette
-    returns the palette-id byte). - `ldr r1, [r5,#oBattleObject_ExtraVars+8]` + `cmp r1, #0` + `beq locret_80C46F2`
-    shows ExtraVars[8] is a "has-element" gate; if zero the function returns the default element verbatim.
-    - `mov r1, #0xe` + `bl GetBattleNaviStatsByte_AllianceFromBattleObject` queries NaviStats offset 0xE
-    on the attacker''s side; project confirms the helper takes `(r5, r1)`. - `cmp r0, #0xff` / `bne loc_80C46F0`
-    and `mov r4, #0xc` / `mov r0, r4` shows the sentinel overrides the element to a fixed 0xc, otherwise
-    the previously loaded default element is returned.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080C46CC
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_getDamageElementOrPalette_80C46CC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_getDamageElementOrPalette_80C46CC
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_getDamageElementOrPalette_80C46CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 244 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_getDamageElementOrPalette_80C46CC
+
+    ./wf verify --function battleObject_getDamageElementOrPalette_80C46CC --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 52 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_getDamageElementOrPalette_80C46CC
+
+    ./wf verify --function battleObject_getDamageElementOrPalette_80C46CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080c46cc '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- The exact semantics of ExtraVars[4] (element vs damage-element code) is inferred from the surrounding
-  code path being a damage setup; would settle by checking callers (sub_80C4550, sub_80C458C) and what
-  they do with the returned byte.
-- NaviStats offset 0xE semantics is not described by the project; whether 0xff means "use visual element"
-  vs "force damage code 0xc" needs caller confirmation.
-- Whether ExtraVars[8] is "set" bit, "counter", or "pointer that is non-null" is not clear from this function
-  alone.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c46cc ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C46CC -> battleObject_getDamageElementOrPalette_80C46CC
-  where: bn6f d34dcc4e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- battleObject_initFromRelatedAndLoadSprite_80C4550
+open_questions:
+- Exact game meaning of byte 0x0E in the Navi stats table (named alliance here but could be a palette/team index).
+- What ExtraVars+4 and +8 precisely represent in oBattleObject (element id? palette override? related Navi slot?).
+- Whether 0x0C is a specific palette index (e.g. default/invisible) or an element constant.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

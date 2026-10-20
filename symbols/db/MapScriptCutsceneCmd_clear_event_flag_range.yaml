@@ -1,0 +1,67 @@
+name: MapScriptCutsceneCmd_clear_event_flag_range
+address: '0x08035E16'
+kind: function
+status: confirmed
+summary: Cutscene/map-script command that clears a run of event flags, reading a count byte and a start-index halfword
+  from the script stream.
+interface: void MapScriptCutsceneCmd_clear_event_flag_range(u32 cursor /*r7*/, u32 scriptCtx /*r10*/); // returns
+  updated cursor in r7, leftover r2/r5 from ClearEventFlagRange, always returns with N=0 Z=0 (r0=1)
+details: 'Map script / cutscene command handler. Reads one byte operand (reader mode 1 in r6) via ReadMapScriptByte,
+  which yields the number of flags to clear in r4, then one halfword operand (reader mode 2 in r6) via ReadMapScriptHalfword,
+  which yields the first flag index in r1/r4. Calls ClearEventFlagRange(start, count) to clear the flag range start..start+count-1,
+  using the r10 script context. Afterwards advances the script cursor r7 by 4 on top of whatever the two readers
+  consumed, returns 1 ("keep running script") in r0, and leaves the flags set by `mov r0, #1` (always N=0, Z=0)
+  for the dispatcher. r2 and r5 are pass-through leftovers from ClearEventFlagRange, not meaningful outputs.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c MapScriptCutsceneCmd_clear_event_flag_range
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_clear_event_flag_range
+
+    ./wf verify --function MapScriptCutsceneCmd_clear_event_flag_range --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_clear_event_flag_range
+
+    ./wf verify --function MapScriptCutsceneCmd_clear_event_flag_range --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_clear_event_flag_range
+
+    ./wf verify --function MapScriptCutsceneCmd_clear_event_flag_range --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08035e16 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- The verified C comment states the cursor advances 6 bytes total (1+2+3 via the +4), but the readers' own advances
+  plus the explicit add r7,#4 need confirmation against ReadMapScriptByte/ReadMapScriptHalfword to pin down the
+  exact on-disk operand layout (possible padding byte in the stream).
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

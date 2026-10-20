@@ -1,47 +1,71 @@
 name: ai_circusManPickAttackOffset
 address: '0x080FE9B0'
 kind: function
-status: probable
-summary: Picks a random target offset (row/column position) for a CircusMan attack, shifted by 0x3C when
-  a panel/object flag is set.
-interface: (r5 = CircusMan battle object) -> r0 = computed position offset; flags clobbered by calls
-details: Draws two random values with sub_800FE28 over the small tables at byte_80FE9DC (word of 0xE,
-  then word of 0), adds the second draw multiplied by the object's field at oBattleObject_ExtraVars+8
-  to the first, then tests the object's flag word (object_getFlag) against 0xA000 and adds 0x3C (a 3-panel
-  step) if set. The result is a position offset for the attack chosen by ai_circusManAttackInit, which
-  then stores it in the per-attack state and enters attack state 0xA.
+status: confirmed
+summary: CircusMan battle AI picks the index of the attack to use via two weighted random draws, with an alternate
+  attack set when a state flag is set.
+interface: u32 ai_circusManPickAttackOffset(u32 object /* r5 = battle object */); returns r0 = attack-table offset;
+  clobbers r1-r2 and flags, preserves r4
+details: 'Computes an offset into a CircusMan attack table. It performs two weighted-random draws with sub_800FE28
+  over the weight table byte_80FE9DC = {14,14,14,14,0,0,0,0}: the first draw uses the first half (entries 0-3, all
+  weight 14) to get a base offset, the second uses the second half (entries 4-7, all weight 0) to get a value multiplied
+  by the object''s ExtraVars[+8] counter (loaded from [r5, oBattleObject_ExtraVars+8]) and added to the base. It
+  then calls object_getFlag on the object; if any of the flag bits 0xA000 are set, 0x3C (60) is added, shifting
+  the result into an alternate attack group. Returns the final offset in r0. The second weight half being all-zero
+  makes that draw degenerate unless sub_800FE28 treats 0-weight entries specially.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: two bl sub_800FE28 calls with byte_80FE9DC and byte_80FE9DC+4 are random draws (tables hold
-    0xE,0xE,0xE,0xE then zeros); mul r0, r1 with [r5,#oBattleObject_ExtraVars+8] scales one draw by a
-    per-object field; tst r0, 0xa000 on object_getFlag result gates the +0x3C displacement; sole caller
-    0x080FEB20 ai_circusManAttackInit sets up CircusMan's attack state and uses this result
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:150224
-  - 0x080FEB20 ai_circusManAttackInit
-  - 0x0801A166 object_getFlag
-  - 0x0800FE28 sub_800FE28
-  reproduce: python3 tools/asmcat.py 0x080FE9B0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_circusManPickAttackOffset
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_circusManPickAttackOffset
+
+    ./wf verify --function ai_circusManPickAttackOffset --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_circusManPickAttackOffset
+
+    ./wf verify --function ai_circusManPickAttackOffset --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_circusManPickAttackOffset
+
+    ./wf verify --function ai_circusManPickAttackOffset --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fe9b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact semantics of sub_800FE28 (weighted pick vs rand-below-N) and what the +4 zero table contributes
-- meaning of the 0xA000 flag bit and the object field multiplied in; exact position encoding (what unit
-  0x3C represents)
+- exact semantics of sub_800FE28's weighted-random draw (arg layout, handling of zero weights)
+- which CircusMan state the object flag bits 0xA000 represent and when they get set
+- what structure the returned offset indexes (attack table contents not shown here)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FE9B0 -> ai_circusManPickAttackOffset
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FE9B0
+- tools/wf run convert-20261020-101942
+- recomp 486adde

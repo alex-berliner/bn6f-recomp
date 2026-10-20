@@ -1,0 +1,87 @@
+name: CutsceneCmd_kill_cutscene_process
+address: '0x080378EE'
+kind: function
+status: confirmed
+summary: 'Map-script cutscene command "kill cutscene process": replaces one cutscene process slot''s script with
+  the dummy (immediately-ending) script, identified by an operand byte in the script.'
+interface: 'void CutsceneCmd_kill_cutscene_process(u32 processTable /*r5*/, u32 scriptPos /*r7*/, void* lr); //
+  out: r4 = slot index read from the script, r7 = scriptPos+2 (past the operand), r0 = 1 with NZ flags set from
+  it; clobbers r0, r6, lr, C, V'
+details: 'Implements the cutscene-script opcode that stops a running cutscene process.
+
+  Calls ReadMapScriptByte with the fixed selector 1 in r6 and the current script
+
+  position in r7; ReadMapScriptByte returns the operand byte in r4 (the index of
+
+  the cutscene process slot to kill) and the position after it in r7. The function
+
+  then stores the address of DummyCutsceneScript (a script that ends at once) at
+
+  processTable + slotIndex, i.e. [r5,r4] — pointing that process''s script pointer
+
+  at a no-op script so the process stops running on its next tick. Finally r7 is
+
+  advanced by 2 more (past the operand byte, making the total advance 2 bytes for
+
+  the one-byte operand''s record) and r0 = 1 is returned with NZ flags describing it.
+
+  Touches: DummyCutsceneScript (pooled literal at 8037900), the process table at r5,
+
+  and the script read position in r7.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c CutsceneCmd_kill_cutscene_process
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_kill_cutscene_process
+
+    ./wf verify --function CutsceneCmd_kill_cutscene_process --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 267 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_kill_cutscene_process
+
+    ./wf verify --function CutsceneCmd_kill_cutscene_process --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_kill_cutscene_process
+
+    ./wf verify --function CutsceneCmd_kill_cutscene_process --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080378ee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- Exact layout of the process table at r5 (element size is implied 4 by the word store, but the struct itself is
+  undocumented here).
+- Why r7 is advanced by 2 after ReadMapScriptByte already returned the position after the operand (possibly the
+  command's total length is 2 bytes).
+- Whether other callers use a selector other than 1 in r6 for ReadMapScriptByte.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

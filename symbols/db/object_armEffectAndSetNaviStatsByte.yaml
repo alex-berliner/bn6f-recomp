@@ -2,57 +2,52 @@ name: object_armEffectAndSetNaviStatsByte
 address: '0x080E9714'
 kind: function
 status: probable
-summary: Battle-object handler that on first call spawns a type-4 effect (effect word 0x5C | Param3<<16)
-  at the related object's arm attachment offset, copies Param2 into byte 5 of that navi's NaviStats record
-  (twice, via the alliance wrapper and the index wrapper), calls sub_80E97BE, plays sound 77 at timer
-  0x28, decrements Timer to 0 over 0x3C frames, then sets CurAction=0xC and clears CurPhaseAndPhaseInitialized.
-interface: (r0-r3 unused; r4 = battle object, r5 = battle object this handler runs on) -> r0 clobbered;
-  object CurTimer/CurPhase/CurAction updated
-details: On the first call (phase 0) it bumps CurPhase to 1, sets Timer to 0x3C, then reads three words
-  at RelatedObject1Ptr+0x34 and computes the arm/part attachment offset via getBattleArmPositionMaybe_8018810
-  (passing the related object's NameID, this object's Alliance and DirectionFlip). It spawns a type-4
-  effect object whose effect word is 0x5C | (Param3 << 16) at the arm offset, then writes Param2 to byte
-  5 of the NaviStats record both via SetBattleNaviStatsByte_AllianceFromBattleObject and directly via
-  GetBattleNaviStatsAddr (redundant duplicate write to the same field), and calls sub_80E97BE. While the
-  timer runs it plays sound 77 (SOUND_LOG_IN) when 0x28 frames remain, decrements Timer, and when it goes
-  negative sets CurAction to 0xC and clears CurPhase/phase-init so the object returns to idle/default
-  handling.
+summary: Battle-object handler that on first call spawns a type-4 effect (effect word 0x5C | Param3<<16) at the
+  related object's arm attachment offset, copies Param2 into byte 5 of that navi's NaviStats record (twice, via
+  the alliance wrapper and the index wrapper), calls sub_80E97BE, plays sound 77 at timer 0x28, decrements Timer
+  to 0 over 0x3C frames, then sets CurAction=0xC and clears CurPhaseAndPhaseInitialized.
+interface: (r0-r3 unused; r4 = battle object, r5 = battle object this handler runs on) -> r0 clobbered; object CurTimer/CurPhase/CurAction
+  updated
+details: On the first call (phase 0) it bumps CurPhase to 1, sets Timer to 0x3C, then reads three words at RelatedObject1Ptr+0x34
+  and computes the arm/part attachment offset via getBattleArmPositionMaybe_8018810 (passing the related object's
+  NameID, this object's Alliance and DirectionFlip). It spawns a type-4 effect object whose effect word is 0x5C
+  | (Param3 << 16) at the arm offset, then writes Param2 to byte 5 of the NaviStats record both via SetBattleNaviStatsByte_AllianceFromBattleObject
+  and directly via GetBattleNaviStatsAddr (redundant duplicate write to the same field), and calls sub_80E97BE.
+  While the timer runs it plays sound 77 (SOUND_LOG_IN) when 0x28 frames remain, decrements Timer, and when it goes
+  negative sets CurAction to 0xC and clears CurPhase/phase-init so the object returns to idle/default handling.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
   detail: 'phase-0 block spawns effect: ldmia at +0x34, getBattleArmPositionMaybe_8018810, r4=0x5C|(Param3<<16),
     bl spawn_t1_0x0_EffectObject; ldrb r1,[r5,#oBattleObject_Param2]; bl SetBattleNaviStatsByte_AllianceFromBattleObject
-    plus direct GetBattleNaviStatsAddr/strb r1,[r0,#5] both write field 5; cmp timer,0x28 followed by
-    PlaySoundEffect(SOUND_LOG_IN_77) mid-countdown; timer expiry writes CurAction=0xC and clears CurPhaseAndPhaseInitialized,
-    standard end-of-action pattern'
+    plus direct GetBattleNaviStatsAddr/strb r1,[r0,#5] both write field 5; cmp timer,0x28 followed by PlaySoundEffect(SOUND_LOG_IN_77)
+    mid-countdown; timer expiry writes CurAction=0xC and clears CurPhaseAndPhaseInitialized, standard end-of-action
+    pattern'
   refs:
   - bn6f/asm/asm31.s:107658
   - 0x08013682 GetBattleNaviStatsAddr
   - 0x080005CC PlaySoundEffect
   - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
   reproduce: python3 tools/asmcat.py 0x080E9714
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal is mostly accurate: phase 0 sets CurPhase=1, Timer=0x3C, spawns a type-4 effect with
-    effect word 0x5C|(Param3<<16), writes Param2 to NaviStats byte 5 twice, plays SOUND_LOG_IN_77 at timer
-    0x28, decrements Timer, and on underflow sets CurAction=0xC with CurPhaseAndPhaseInitialized=0. However
-    the input registers are not ''unused'': the spawn_t1_0x0_EffectObject call uses r1,r3 from the ldmia
-    of RelatedObject1Ptr+0x34 (xy position) and the computed arm offset is added into both r1 and r3.
-    Also CurPhase/phase-init at the end is stored as a halfword zero, not separately cleared. A better
-    prefix-aligned name would be ''object_armEffectAndSetNaviStatsByte''.; run wf investigate investigate-20261018-230610;
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal
+    is mostly accurate: phase 0 sets CurPhase=1, Timer=0x3C, spawns a type-4 effect with effect word 0x5C|(Param3<<16),
+    writes Param2 to NaviStats byte 5 twice, plays SOUND_LOG_IN_77 at timer 0x28, decrements Timer, and on underflow
+    sets CurAction=0xC with CurPhaseAndPhaseInitialized=0. However the input registers are not ''unused'': the spawn_t1_0x0_EffectObject
+    call uses r1,r3 from the ldmia of RelatedObject1Ptr+0x34 (xy position) and the computed arm offset is added
+    into both r1 and r3. Also CurPhase/phase-init at the end is stored as a halfword zero, not separately cleared.
+    A better prefix-aligned name would be ''object_armEffectAndSetNaviStatsByte''.; run wf investigate investigate-20261018-230610;
     proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
     reconcile)'
 open_questions:
-- what game event this action represents (effect id 0x5C and stats byte 5 semantics unknown; no caller
-  known)
+- what game event this action represents (effect id 0x5C and stats byte 5 semantics unknown; no caller known)
 - what sub_80E97BE does
 - what the three words at RelatedObject1Ptr+0x34 are exactly (position/offsets of the related object)
-- 'The proposal is mostly accurate: phase 0 sets CurPhase=1, Timer=0x3C, spawns a type-4 effect with effect
-  word 0x5C|(Param3<<16), writes Param2 to NaviStats byte 5 twice, plays SOUND_LOG_IN_77 at timer 0x28,
-  decrements Timer, and on underflow sets CurAction=0xC with CurPhaseAndPhaseInitialized=0. However the
-  input registers are not ''unused'': the spawn_t1_0x0_EffectObject call uses r1,r3 from the ldmia of
-  RelatedObject1Ptr+0x34 (xy position) and the computed arm offset is added into both r1 and r3. Also
-  CurPhase/phase-init at the end is stored as a halfword zero, not separately cleared. A better prefix-aligned
-  name would be ''object_armEffectAndSetNaviStatsByte''.'
+- 'The proposal is mostly accurate: phase 0 sets CurPhase=1, Timer=0x3C, spawns a type-4 effect with effect word
+  0x5C|(Param3<<16), writes Param2 to NaviStats byte 5 twice, plays SOUND_LOG_IN_77 at timer 0x28, decrements Timer,
+  and on underflow sets CurAction=0xC with CurPhaseAndPhaseInitialized=0. However the input registers are not ''unused'':
+  the spawn_t1_0x0_EffectObject call uses r1,r3 from the ldmia of RelatedObject1Ptr+0x34 (xy position) and the computed
+  arm offset is added into both r1 and r3. Also CurPhase/phase-init at the end is stored as a halfword zero, not
+  separately cleared. A better prefix-aligned name would be ''object_armEffectAndSetNaviStatsByte''.'
 sources:
 - wf investigate investigate-20261018-230610
 changes:
@@ -64,5 +59,9 @@ changes:
   what: rename sub_80E9714 -> object_armEffectAndSetNaviStatsByte
   where: bn6f cfc4da77
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
 previous_names:
 - sub_80E9714

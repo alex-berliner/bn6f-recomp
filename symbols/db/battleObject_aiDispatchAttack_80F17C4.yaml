@@ -1,53 +1,77 @@
 name: battleObject_aiDispatchAttack_80F17C4
 address: '0x080F17C4'
 kind: function
-previous_names:
-- sub_80F17C4
-status: probable
-summary: AI attack dispatch table for SnakeArm — branches on AIAttackVars[0] via ThumbBX
-interface: (r7 = pointer to AIData, lr = return) -> r0..r3 overwritten by the chosen handler; tail-calls into sub_80F17E4
-  / battleObject_aiSpawnSnakeArmAttack_80F1808 / sub_80F1888
-details: "Reads r7 + oAIAttackVars (0xa0 within AIData) → AIAttackVars.Unk_00 byte used as an index into\n  the\
-  \ 3-entry table at off_80F17D8 (= sub_80F17E4+1, battleObject_aiSpawnSnakeArmAttack_80F1808+1,\n  sub_80F1888+1).\
-  \ Loads the entry, sets lr=pc and BXs into it; the routine never returns\n  itself — it tail-calls one of the\
-  \ three handlers and the chosen handler does `pop {r7,pc}`\n  under the shared prologue/epilogue. So this is essentially\
-  \ a three-way dispatch table for\n  AIAttackVars[0] within the SnakeArm family of attacks.\n"
+status: confirmed
+summary: Trampoline that dispatches a battle object's AI attack step to one of three handlers chosen by the object's
+  HitElement byte.
+interface: 'void battleObject_aiDispatchAttackByHitElement_80F17C4(void /* r7 = battle object, r2/r5/r6 = extra
+  args passed through */); Reads oAIAttackVars_HitElement from the object, jumps table[HitElement] with r0 = HitElement,
+  r1 = handler address, r2/r5/r6/r7 passed through unchanged; caller-visible outputs (r1, r5, r8-r12) and NZCV are
+  whatever the chosen handler leaves.
+
+  '
+details: 'Reads the byte at object+oAIAttackVars_HitElement (object pointer in r7) and uses it unscaled as an index
+  into the 3-entry handler table at off_80F17D8 (ldr r1, [table, element]), so element values step 4 bytes per unit:
+  0 = sub_80F17E4, 1 = battleObject_aiSpawnSnakeArmAttack_80F1808, 2 = battleObject_attackVars_tickExitTimer_80F1888.
+  The branch is via mov lr, pc + bx r1, so it is a plain call, not a tail call: the handler returns here and this
+  routine then pop {r7,pc} restores the caller''s r7. Because the call goes through bx into thumb code, each table
+  entry is stored +1 (Thumb address). Quirk: no bounds check on HitElement, and r1 doubles as both the table-load
+  destination and the handler''s first-style argument (the handler''s own address), matching how the original game
+  calls these attack handlers. The three targets suggest this object cycles AI states: element 0 does nothing yet
+  (sub_80F17E4), element 1 spawns a snake-arm attack, element 2 ticks an exit timer to leave the attack state.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_00]` at the entry obtains the index byte from AIData - `ldr r1, off_80F17D4
-    ; ldr r1, [r1,r0]` implements `[off_80F17D8][r0]` lookup - off_80F17D8 lists exactly three function pointers
-    (+1 set for ThumbBX) - `mov lr, pc ; bx r1` is a Thumb tail-call; the chosen handler exits via the `pop {r7,pc}`
-    shared with the prologue here, which is why both have the same push/pop pair'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080F17C4
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_aiDispatchAttack_80F17C4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_aiDispatchAttack_80F17C4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_aiDispatchAttack_80F17C4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_aiDispatchAttack_80F17C4
+
+    ./wf verify --function battleObject_aiDispatchAttack_80F17C4 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 30 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_aiDispatchAttack_80F17C4
+
+    ./wf verify --function battleObject_aiDispatchAttack_80F17C4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080f17c4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Exact semantics of each of the three handlers (sub_80F17E4, snakeArm spawn, sub_80F1888) and
-- which AIAttackVars[0] values select them; visible values 0..2 map to the three entries but
-- what each does is not shown in this small dispatch
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f17c4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80F17C4 -> battleObject_aiDispatchAttack_80F17C4
-  where: bn6f 57a30947
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the three HitElement values (0 = idle/setup?) beyond the target names
+- what arguments r2/r5/r6 carry into the handlers from the dispatch's caller
+- whether sub_80F17E4 is a no-op setup handler or a different attack
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

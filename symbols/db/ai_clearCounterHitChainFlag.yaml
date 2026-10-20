@@ -1,46 +1,65 @@
 name: ai_clearCounterHitChainFlag
 address: '0x0801443C'
 kind: function
-status: probable
-summary: Resets the battle object's AI counter-hit chain field to the 0xFFFF 'none' sentinel.
-interface: (r5 = battle object) -> void; writes 0xFFFF to oAIData_CounterHitChainFlag of the object's
-  AI data; no return value, no flags
-details: Loads the battle object's AI data pointer from oBattleObject_AIDataPtr and stores the halfword
-  0xFFFF into oAIData_CounterHitChainFlag, using 0xFFFF as an invalid/none marker. It is a one-field setter
-  with no other state touched and no calls. Callers in navi AI tick and the beast-out eligibility check
-  use it to clear a stale counter-hit chain before evaluating AI state, which fits 0xFFFF meaning 'no
-  chain active'. r5 must already hold the battle object pointer on entry.
+status: confirmed
+summary: Clears a battle object's counter-hit chain flag by writing 0xFFFF to the CounterHitChainFlag field of its
+  AIData.
+interface: void ai_clearCounterHitChainFlag(battleObject *obj in r5); returns AIData pointer in r3; clobbers r0
+details: 'Reads the object''s AIData pointer from battle object field oBattleObject_AIDataPtr (r5-based), then stores
+  the halfword 0xFFFF to oAIData_CounterHitChainFlag. The value 0xFFFF presumably means "no counter-hit chain" /
+  inactive rather than a valid chain index or timer. Handy quirk of the compiled code: it returns the AIData pointer
+  in r3, so the caller can keep working with the AI data without reloading it. Uses r5 as the object pointer and
+  does not touch flags.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r3,[r5,#oBattleObject_AIDataPtr] then strh 0xFFFF into oAIData_CounterHitChainFlag (only
-    body instructions); called from battle_naviAI_tick_8013DA0 and canBattleObjectBeastOut_80159C6, both
-    AI-state contexts
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:12722
-  - 0x08013DA0 battle_naviAI_tick_8013DA0
-  - 0x080159C6 canBattleObjectBeastOut_80159C6
-  - 0x08013892 sub_8013892
-  reproduce: python3 tools/asmcat.py 0x0801443C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_clearCounterHitChainFlag
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_clearCounterHitChainFlag
+
+    ./wf verify --function ai_clearCounterHitChainFlag --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_clearCounterHitChainFlag
+
+    ./wf verify --function ai_clearCounterHitChainFlag --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_clearCounterHitChainFlag
+
+    ./wf verify --function ai_clearCounterHitChainFlag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801443c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact semantics of 0xFFFF vs other values in oAIData_CounterHitChainFlag (whether it counts chain hits
-  or is just a flag)
-- which caller site passes which object in r5, to confirm it always targets the acting navi
+- Exact meaning of 0xFFFF vs other values for CounterHitChainFlag (active counter-hit chain id, countdown, etc.)
+  not determined from this function alone
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_801443C -> ai_clearCounterHitChainFlag
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_801443C
+- tools/wf run convert-20261020-101942
+- recomp 486adde

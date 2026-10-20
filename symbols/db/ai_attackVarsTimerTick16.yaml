@@ -1,47 +1,74 @@
 name: ai_attackVarsTimerTick16
 address: '0x08115432'
 kind: function
-status: probable
-summary: '16-frame periodic tick for an AI attack state: counts down a timer and calls a helper each time
-  it elapses.'
-interface: (r7 = AI attack-state struct) -> void; timer field [r7+TimerOrCycles] decremented and reloaded
-details: Reads the byte at oAIAttackVars_TimerOrCycles, decrements it, stores it back, and returns unless
-  it hit zero. On zero it reloads the timer with 0x10 (0x11 frames per cycle counting the zero pass) and
-  tail-calls sub_8115446, so that helper runs once every 16 frames. It preserves all registers except
-  r0 and lr; r7 is the shared AI attack-vars context used by the move-step and throw-object handlers.
+status: confirmed
+summary: Ticks a 16-frame countdown in an AI attack-vars block and, when it wraps, respawns the "hop rear" effect
+  for the enemy AI.
+interface: 'void ai_attackVarsTickTimer16_spawnHopRearFx(r5, r7 /*attack vars*/); // in: r5 forwarded to ai_spawnHopRearEffect,
+  r7 = oAIAttackVars*; out: r1/r5/r7 updated only on the wrap path (r1 returned unchanged otherwise); clobbers r0-r3,
+  lr, flags'
+details: 'Each call decrements the byte at r7+oAIAttackVars_TimerOrCycles and stores it back. If the result is nonzero,
+  the timer is simply still counting and the function returns, leaving r1, r5 and r7 untouched (r1 is just carried
+  through for the ABI). When the counter reaches zero it is reloaded with 0x10 (16 ticks per cycle) and ai_spawnHopRearEffect
+  is called, which spawns the rear-hop visual/movement effect and may modify r1, r5 and r7. Only the timer field
+  of the attack-vars struct is touched; the struct pointer lives in r7 and is preserved by the callee contract (r4-r7
+  preserved). Thumb, push {lr} / pop {pc} leaf-with-call structure.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb/strb on [r7,#oAIAttackVars_TimerOrCycles] with sub #1: classic frame-countdown timer;
-    mov r0,#0x10; strb reload only on the bne fallthrough: fixed 16-frame period; bl sub_8115446 executes
-    solely on timer expiry, so it is the periodic action; callers 0x8115272 (AI panel-move step) and 0x8115340
-    (throw step) are both AI attack-state handlers sharing the r7 struct'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:14522
-  - 0x08115272 ai_attackVars_runMoveStep_8115272
-  - 0x08115340 ai_throwObjectStep
-  - 0x0811523C sub_811523C
-  - 0x08115446 sub_8115446
-  reproduce: python3 tools/asmcat.py 0x08115432
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackVarsTimerTick16
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackVarsTimerTick16
+
+    ./wf verify --function ai_attackVarsTimerTick16 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 174 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackVarsTimerTick16
+
+    ./wf verify --function ai_attackVarsTimerTick16 --snapshots build-snapshots'
+  result: 37 compared, 0 differed, 59 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackVarsTimerTick16
+
+    ./wf verify --function ai_attackVarsTimerTick16 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115432 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
+related:
+- ai_spawnHopRearEffect
 open_questions:
-- what sub_8115446 actually does (spawn/sound/state advance) — no callees or data for it were provided
-- whether other AI attack states reuse this tick with different reload values
+- what the "hop rear effect" actually shows in-game (movement of the enemy, a dust/afterimage sprite, or an AI repositioning
+  cue) is decided inside ai_spawnHopRearEffect, not here
+- which caller sets the initial timer value and whether 0x10 (16) is the only reload value used in practice
+- exact role of r5 as forwarded into ai_spawnHopRearEffect (likely an AI/enemy context pointer)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8115432 -> ai_attackVarsTimerTick16
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8115432
+- tools/wf run convert-20261020-101942
+- recomp 486adde

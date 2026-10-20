@@ -1,61 +1,70 @@
 name: battleObject_chipSelectAnimTick_802770C
 address: '0x0802770C'
 kind: function
-previous_names:
-- sub_802770C
-status: probable
-summary: Dispatches the chip-select animation tick for a BattleObject based on its S20364C0 sub-state
-  (JumpOffset00)
-interface: (r5 = * S20364C0 self) -> ()
-details: "- Pushes lr, then reads u8 at [r5,#2] (S20364C0.Unk_02 per the S20364C0 struct) and uses it\
-  \ as an index into the dispatch table at off_8027724.\n  - The table contains 5 entries (`sub_8027738+1`,\
-  \ `sub_802774C+1`, `sub_802777C+1`, `sub_8027796+1`, `sub_8027806+1`), each a Thumb function pointer\
-  \ with the +1 thumb-bit set, so they cover sub-states 0..4.\n  - Loads `r0 = *(table + (Unk_02<<2))`,\
-  \ sets lr=pc, and `bx r1` to tail-call the dispatch target (return jumps straight to the popped pc —\
-  \ note `pop {pc}` is the only epilogue, so this is a thin dispatcher).\n  - After the bx, the asm has\
-  \ an unreachable `bl battleObject_chipSelectAnimTick_8029C08` line that the decompiler kept; the contract\
-  \ shows the only true direct `bl` callee is sub_8029C08, which `sub_8027738..sub_8027806` presumably\
-  \ call themselves.\n  - `off_8027720` is itself a pointer to `off_8027724`, so the table address is\
-  \ loaded one indirection extra (a small quirk from the original ROM layout).\n  - Callee contract `sub_8029C08:\
-  \ (self: * S20364C0 $r5) -> ()` and the function's use of r5 as the BattleObject-style `self` strongly\
-  \ suggest this entire routine is the chip-select screen animation tick (the S20364C0 fields — ChipSelectCursorPos\
-  \ at +7, NumChipsSelected at +8 — match the post-battle chip-selection UI).\n"
+status: confirmed
+summary: Runs one tick of the chip-select screen animation state machine for a battle object, dispatching through
+  a per-step handler table and then running the shared animation tick.
+interface: void battleObject_chipSelectAnimTick_802770C(self r5 /* * S20364C0 */, r10); returns r2-r6 and passes
+  r8-r12 through from the state handler; clobbers r0, r1, r7, lr and flags
+details: 'Per-frame driver for the chip-select animation on a battle object (struct S20364C0 in r5). The animation
+  step/state lives in the byte at self+2; the byte is used as an index into the jump table off_8027724, whose entries
+  are Thumb addresses reached via the mov lr, pc / bx r1 pattern with r0 = step and r5 = object pointer. The table
+  has five states: sub_8027738, sub_802774C, sub_802777C, sub_8027796, and battle_advanceScriptStateOnFadeDone (the
+  last state hands off to the script/advance-on-fade handler, i.e. the animation ends by triggering the usual fade-complete
+  state advance). After the state handler returns (it may update r5), the shared per-object tick battleObject_chipSelectAnimTick_8029C08
+  runs on the object and its r2-r6 results are propagated to callers; r8-r12 are written by the state handler and
+  preserved through 8029C08, living only in the guest register file.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#2]` reads Unk_02 of the S20364C0 struct passed via r5 — instruction at 0x08027710.
-    - `ldr r1, [r1,r0]` indexes a 4-byte-stride table — confirms dispatch by sub-state — instruction at
-    0x08027714. - `mov lr, pc; bx r1` tail-calls the chosen handler — instructions at 0x08027716-0x08027718.
-    - `pop {pc}` epilogue (no `pop {lr}; bx lr`) shows this is a thin dispatcher preserving lr — instruction
-    at 0x0802771A. - off_8027724 lists exactly 5 handlers indexed 0..4, consistent with a chip-select
-    animation having ~5 phases. - The preserved callee name `battleObject_chipSelectAnimTick_8029C08`
-    confirms this is a tick driver, not an init.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0802770C
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_chipSelectAnimTick_802770C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_chipSelectAnimTick_802770C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_chipSelectAnimTick_802770C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_chipSelectAnimTick_802770C
+
+    ./wf verify --function battleObject_chipSelectAnimTick_802770C --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 10 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_chipSelectAnimTick_802770C
+
+    ./wf verify --function battleObject_chipSelectAnimTick_802770C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0802770c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Which S20364C0.Unk_02 value maps to which handler (need each sub_* to inspect).
-- Whether the unreachable `bl battleObject_chipSelectAnimTick_8029C08` was actually emitted in ROM or
-  is a stray emitted by the disassembler after the bx — no callers are listed, so calling context is also
-  unknown.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0802770c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_802770C -> battleObject_chipSelectAnimTick_802770C
-  where: bn6f 48692679
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- exact game meaning of each of the four leading states (sub_8027738..sub_8027796) not yet read
+- what r10 carries in/out (consumed by the 8029C08 call) is not determined
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

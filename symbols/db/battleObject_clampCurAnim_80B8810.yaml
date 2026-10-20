@@ -1,55 +1,82 @@
 name: battleObject_clampCurAnim_80B8810
 address: '0x080B8810'
 kind: function
-previous_names:
-- sub_80B8810
-status: probable
-summary: Clamps the related-object's CurAnim to <=3 and stores the result back into the calling BattleObject's
-  CurAnim.
-interface: (r5 = battleObject *) -> r0 = clamped value, NZ/C/V flags reflect the final value ; no side
-  effects beyond the store
-details: "Loads the first related object pointer from offset oBattleObject_RelatedObject1Ptr (0x4c) into\
-  \ r0,\n  reads the byte at oBattleObject_CurAnim (0x10) on that related object, and clamps it to a maximum\n\
-  \  of 3 via a signed compare against immediate 3 plus a `mov r0,#3` fallback. The clamped byte is\n\
-  \  then written back into the calling BattleObject's own oBattleObject_CurAnim field (r5+0x10).\n  Likely\
-  \ used to mirror/restrict an animation state from a \"primary\" related BattleObject onto\n  its partner\
-  \ (e.g. counter-hit, formation, or sync animation). No other registers touched;\n  returns through `mov\
-  \ pc, lr`.\n"
+status: confirmed
+summary: Copies the related battle object's current animation index into this object's CurAnim field, clamped to
+  a maximum of 3.
+interface: void battleObject_copyClampedAnimFromRelated_80B8810(battleObject *self /* r5 */)
+details: 'Loads the pointer at self+oBattleObject_RelatedObject1Ptr, reads the byte
+
+  oBattleObject_CurAnim from that related object, clamps it to at most 3
+
+  (values 0-3 pass through, anything above becomes 3), and stores the result
+
+  into this object''s own oBattleObject_CurAnim byte. No other registers,
+
+  memory, or flags are touched; it is a trivial tail (returns via mov pc, lr).
+
+  Note the asymmetry: the source value comes from the related object while
+
+  the clamped value is written to the object passed in r5, so the two objects''
+
+  animation indices are synced with a cap of 3 (likely a 4-frame/pose anim set).
+
+  Callsite analysis shows r5 is the only meaningful argument and nothing is
+
+  returned; nzcv are clobbered by the cmp but callers ignore them.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]` then `ldrb r0, [r0,#oBattleObject_CurAnim]`
-    reads CurAnim of the object pointed at by RelatedObject1Ptr (struct offsets 0x4c and 0x10). - `cmp
-    r0, #3` / `ble loc_80B881A` / `mov r0, #3` performs a signed clamp to max 3. - `strb r0, [r5,#oBattleObject_CurAnim]`
-    writes the clamped value into the caller''s CurAnim. - Contract `in=[''r5'',''lr'']` confirms r5 is
-    the BattleObject pointer, no other args used. - No callees (no `bl` instructions); two callers both
-    pass a BattleObject in r5.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080B8810
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_clampCurAnim_80B8810
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_clampCurAnim_80B8810
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_clampCurAnim_80B8810 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_clampCurAnim_80B8810
+
+    ./wf verify --function battleObject_clampCurAnim_80B8810 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 91 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_clampCurAnim_80B8810
+
+    ./wf verify --function battleObject_clampCurAnim_80B8810 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080b8810 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What "RelatedObject1Ptr" semantically represents for the calling sites (the two callers share
-- the same contract, suggesting both operate on a battle-object pair); whether the clamp is also
-- applied to negative values (signed BLE means values <=3 pass through, including negatives),
-- and what animation values 0..3 mean here. Inspecting the callers' context would settle it.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b8810 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 90fa2c5c
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80B8810 -> battleObject_clampCurAnim_80B8810
-  where: bn6f f043a75e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what animation index values 0-3 represent for this object type, and why the clamp limit is 3 rather than a field-driven
+  maximum
+- whether RelatedObject1Ptr is guaranteed non-null at all call sites (no check here)
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

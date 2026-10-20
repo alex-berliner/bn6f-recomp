@@ -1,65 +1,83 @@
 name: ai_attackTelegraphStep
 address: '0x080ED764'
 kind: function
-status: probable
-summary: 'Per-frame AI attack step: on first call (AttackElement==0) it starts animation 0xE, clears the
-  AI attack variable, sets ObjectFlags1 bit 22, zeroes StepTimer, and marks AttackElement=4; on the next
-  frame it plays sound 0xF8; once StepTimer exceeds 4 it writes 4 into HitElement to arm the attack.'
-interface: (r0 = unused/scratch; r7 = battle object with AIData) -> void; no meaningful return
-details: This is an AI attack state-machine step using oAIAttackVars fields as state. If AttackElement
-  is 0 (attack not yet started), it starts animation 0xE via object_setAnimation, clears the AI attack
-  variable, sets ObjectFlags1 bit 22 (probably making the object an active hitbox), zeroes StepTimer,
-  and stores 4 into AttackElement to mark the attack as started. On subsequent frames it skips init, plays
-  sound 0xF8 exactly once when StepTimer reaches 1, and increments StepTimer. Once StepTimer exceeds 4,
-  it writes 4 into HitElement, which likely assigns the hitbox its element/type and arms it after the
-  telegraph delay.
+status: confirmed
+summary: Runs the wind-up/telegraph phase of an enemy AI attack, playing the charge animation and sound before arming
+  the hit element.
+interface: void ai_attackTelegraphStep(u32 *attackVars /* r7 */, void *object /* r5 */, u32 soundArg /* r2 */);
+  no return value
+details: 'r7 points at the acting object''s AI attack variable block (oAIAttackVars) and r5 at the
+
+  object itself. On the first call (AttackElement == 0) it kicks off the telegraph:
+
+  plays the charge animation (object_setAnimation with anim id 0xE), clears the AI attack
+
+  state via ai_clearAttackVar, sets the object''s "charging attack" flag bit
+
+  (1 << OBJECT_FLAGS_UNK_BIT_22_BIT) via object_setFlag1, zeroes StepTimer and writes
+
+  AttackElement = 4 to mark the telegraph state. On every call (including the first),
+
+  it reads the 16-bit StepTimer; when the timer reads 1 it plays sound effect 0xF8
+
+  (the charge-up sound). It then increments StepTimer, and once the timer exceeds 4 it
+
+  writes HitElement = 4, arming the element so the next AI attack step can fire. The
+
+  timer is left above 4 so the telegraph does not restart.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips init on later frames (attack already
-    started); init block: object_setAnimation(0xE), ai_clearAttackVar, object_setFlag1(bit 22), AttackElement=4;
-    PlaySoundEffect(0xF8) guarded by ''StepTimer == 1'', so it plays once on the frame after startup;
-    after ''StepTimer > 4'', strh 4 into oAIAttackVars_HitElement, arming the hit late by design'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:114885
-  - 0x080005CC PlaySoundEffect
-  - 0x080EB562 ai_clearAttackVar
-  - 0x0800F2B6 object_setAnimation
-  reproduce: python3 tools/asmcat.py 0x080ED764
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code matches the proposal''s structure: init block at 0x080ED76A-0x080ED784 (animation 0xE,
-    ai_clearAttackVar, object_setFlag1 with bit 22, zero StepTimer, set AttackElement=4), sound 0xF8 at
-    0x080ED78E when StepTimer==1, and HitElement=4 written at 0x080ED79C when StepTimer>4. However, the
-    summary says ''after a 4-frame telegraph the hitbox element is set'' — the sound actually plays at
-    StepTimer=1 (just one frame after init), and HitElement is set when StepTimer reaches 5, so there
-    are roughly 4 frames between sound and hit activation, not 4 frames of telegraph before sound. The
-    ''charging'' connotation is also unsupported: nothing in the code shows a charge buildup, just init
-    → wait → activate.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackTelegraphStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackTelegraphStep
+
+    ./wf verify --function ai_attackTelegraphStep --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 184 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackTelegraphStep
+
+    ./wf verify --function ai_attackTelegraphStep --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 83 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackTelegraphStep
+
+    ./wf verify --function ai_attackTelegraphStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080ed764 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - beastsp
 open_questions:
-- which enemy/boss uses this state (no callers captured), and what animation 0xE and sound 0xF8 correspond
-  to
-- exact meaning of ObjectFlags1 bit 22 and whether HitElement=4 means wood element or an internal attack-state
-  id
-- 'The code matches the proposal''s structure: init block at 0x080ED76A-0x080ED784 (animation 0xE, ai_clearAttackVar,
-  object_setFlag1 with bit 22, zero StepTimer, set AttackElement=4), sound 0xF8 at 0x080ED78E when StepTimer==1,
-  and HitElement=4 written at 0x080ED79C when StepTimer>4. However, the summary says ''after a 4-frame
-  telegraph the hitbox element is set'' — the sound actually plays at StepTimer=1 (just one frame after
-  init), and HitElement is set when StepTimer reaches 5, so there are roughly 4 frames between sound and
-  hit activation, not 4 frames of telegraph before sound. The ''charging'' connotation is also unsupported:
-  nothing in the code shows a charge buildup, just init → wait → activate.'
+- exact meaning of AttackElement/HitElement value 4 (presumably a "telegraph/armed" pseudo-element marker, not a
+  game element)
+- what OBJECT_FLAGS_UNK_BIT_22_BIT is used for downstream (likely suppresses movement/other actions while charging)
+- whether sound 0xF8 differs per enemy; the ID is hardcoded here
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80ED764 -> ai_attackTelegraphStep
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80ED764
+- tools/wf run convert-20261020-101942
+- recomp 486adde

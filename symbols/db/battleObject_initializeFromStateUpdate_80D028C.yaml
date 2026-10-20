@@ -1,73 +1,75 @@
 name: battleObject_initializeFromStateUpdate_80D028C
 address: '0x080D028C'
 kind: function
-previous_names:
-- sub_80D028C
-status: probable
-summary: 'BattleObject "CUR_STATE_UPDATE" entry hook: sets Z to 0, loads sprite bank 0x80/anim 0x0e, picks
-  animation 0x3e, palette 0, facing from object_getFlip, reserves the panel under (PanelX,PanelY) and
-  bumps CurState/CurAction/Phase to CUR_STATE_UPDATE (0x4)/0/0.'
-interface: '(r5 = battle object) -> void ; side effects: writes the object''s Z, sprite, animation, palette,
-  flip and reserves its panel'
-details: '1. object_setCoordinatesFromPanels(r5) so X/Y pixels match current panel coords.
-
-  2. Z (16.16 at oBattleObject_Z = 0x3c) is cleared to 0.
-
-  3. sprite_load(0x80, 8, 0x0e) — sprite bank 0x80, sub 8, param 0x0e.
-
-  4. sprite_noShadow() disables shadow attribute bits.
-
-  5. OR''s OBJECT_FLAG_VISIBLE (0x02) into oObjectHeader_Flags via ldrb/orr/strb.
-
-  6. Writes CurAnim (0x10) and CurAnimCopy (0x11) to 0x3e, calls sprite_setAnimation(0x3e) then sprite_loadAnimationData().
-
-  7. sprite_setPalette(0), then object_getFlip()''s result is passed to sprite_setFlip().
-
-  8. object_reservePanel(PanelX, PanelY) reserves the panel under the object.
-
-  9. Stores CUR_STATE_UPDATE (0x04) into oBattleObject_CurStateActionPhaseAndPhaseInitialized (a u32 at
-  +0x8), zeroing CurAction/CurPhase/PhaseInitialized implicitly because only the low byte is written with
-  0x04? Actually a u32 store with value 4 sets all 4 bytes to 0 except the lowest; the assembly uses `mov
-  r0,#CUR_STATE_UPDATE` then `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`, so the
-  top three bytes of the slot are zeroed — CurAction/CurPhase/PhaseInitialized all become 0, only the
-  CurState byte becomes 0x04. Ends with `pop {pc}`.
-
-  '
+status: confirmed
+summary: Re-initializes a battle object from its stored state - places it on its panels, reloads its sprite, plays
+  animation 0x3E, and switches it to the update state.
+interface: battleObject_restoreFromSavedState_80D028C(r5 = battle object) -> r5 (object pointer returned unchanged);
+  clobbers r0-r3, lr, flags
+details: "Takes a battle object in r5 (pointer to a battle object / object header struct) and\nperforms the full\
+  \ \"come back from stored state\" sequence:\n- object_setCoordinatesFromPanels(): recomputes the object's pixel\
+  \ position from\n  oBattleObject_PanelX/oBattleObject_PanelY.\n- Zeroes oBattleObject_Z (puts the object on the\
+  \ ground).\n- sprite_load(0x80, 8, 0xE): loads sprite resource set 0x80 with palette 8 and\n  graphic slot 0xE\
+  \ for this object; then sprite_noShadow() removes its shadow.\n- Sets bit 1 (value 2) of oObjectHeader_Flags,\
+  \ marking the sprite as loaded.\n- Sets oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 0x3E, calls\n \
+  \ sprite_setAnimation(0x3E) and sprite_loadAnimationData() to load that animation's\n  frame data; then sprite_setPalette(0)\
+  \ and applies the object's facing via\n  object_getFlip()/sprite_setFlip().\n- object_reservePanel(panelX, panelY)\
+  \ re-reserves the panel the object stands on,\n  so occupancy state matches the restored position.\n- Finally\
+  \ stores CUR_STATE_UPDATE into\n  oBattleObject_CurStateActionPhaseAndPhaseInitialized, so the object's next step\n\
+  \  runs its normal per-frame update logic.\nThe single fixed sprite set (0x80/8/0xE) and fixed animation 0x3E\
+  \ suggest this is\nused for one specific object or class of objects being restored/respawned from a\nsaved state\
+  \ record rather than being a generic object initializer.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0,#CUR_STATE_UPDATE / str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
-    at the bottom is exactly the CUR_STATE_UPDATE transition. - `sprite_load(0x80, 8, 0x0e)` followed
-    by animation 0x3e (writing both CurAnim and CurAnimCopy) shows this is a fixed initialization sprite/animation
-    choice. - `bl object_setCoordinatesFromPanels` then `str r0,[r5,#oBattleObject_Z]` (=0x3c by struct
-    definition) zeroes Z. - `ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY] /
-    bl object_reservePanel` reserves the panel under the object. - `bl object_getFlip / bl sprite_setFlip`
-    mirrors by alliance+direction-flip. - ORing 0x02 into oObjectHeader_Flags sets OBJECT_FLAG_VISIBLE;
-    the routine never touches OBJECT_FLAG_ACTIVE, so the object is expected to already have been activated
-    by an outer constructor.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080D028C
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_initializeFromStateUpdate_80D028C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initializeFromStateUpdate_80D028C
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initializeFromStateUpdate_80D028C
+    ./wf verify --function battleObject_initializeFromStateUpdate_80D028C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initializeFromStateUpdate_80D028C
 
-    '
-open_questions:
-- Sprite bank 0x80 + sub 8 + anim 0x3e (also palette 0) is meaningful in-game but we have no caller to
-  tell us which chip/object this is — could be any "summon slot" battle object initialiser.
-- The function takes only r5 in its contract and produces no caller-observable value, so it's clearly
-  an init hook called from a jumptable (probably oBattleObject+0x8's state-action jumptable on CurState=CUR_STATE_UPDATE
-  entry), but no callers are listed in the captured data here.
-sources:
-- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initializeFromStateUpdate_80D028C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initializeFromStateUpdate_80D028C
+
+    ./wf verify --function battleObject_initializeFromStateUpdate_80D028C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d028c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f ae9cb8d5
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D028C -> battleObject_initializeFromStateUpdate_80D028C
-  where: bn6f 0823ec4c
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which object(s) call this - the fixed sprite resource 0x80 and animation 0x3E are not identified here.
+- Exact meaning of the sprite_load arguments (0x80, 8, 0xE) and of CUR_STATE_UPDATE in the state field.
+- Whether the "restore from state" reading is right vs. a first-spawn initializer for this object type.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

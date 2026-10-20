@@ -1,0 +1,86 @@
+name: airspinAttack_80EDCC0
+address: '0x080EDCC0'
+kind: function
+status: confirmed
+summary: 'Dispatcher for the AI''s "air spin" attack: reads the element of the last hit from the AI attack variable
+  block and tail-calls the matching per-element handler.'
+interface: void aiAirspinAttackDispatch(AIAttackVars* r7 /* attack var block */, pass-through r5, r6, r10; handler
+  outputs r1, r5, r8-r12)
+details: 'r7 points at the AI attack variable block used by the AI''s attack routines. The byte at
+
+  oAIAttackVars_HitElement (the element of the hit being processed) indexes the two-entry
+
+  table at off_80EDCD4: element 0 dispatches to ai_beastSpAttackStep (the shared
+
+  beast-over/special-attack step handler), any other element value dispatches to
+
+  sub_80EDD5C. The handler address is loaded into r1 and invoked with
+
+  "mov lr, pc; bx r1" followed by "pop {pc}", so this is a plain call that returns here
+
+  (the +1 Thumb bit is present on both table entries). The element value is also passed to
+
+  the handler in r0, and r1 must still hold the handler address on entry — the handlers
+
+  are expected to preserve r1 (or use it as their own input), which is why r1 shows up in
+
+  this function''s outputs. r5, r6 and r10 from the callers are simply forwarded to the
+
+  handler, and the handler''s register results (r1, r5, r8-r12) flow straight back out.
+
+  There is a 2-byte .byte 0,0 padding before the literal pool.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c airspinAttack_80EDCC0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function airspinAttack_80EDCC0
+
+    ./wf verify --function airspinAttack_80EDCC0 --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function airspinAttack_80EDCC0
+
+    ./wf verify --function airspinAttack_80EDCC0 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 24 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function airspinAttack_80EDCC0
+
+    ./wf verify --function airspinAttack_80EDCC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080edcc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of non-zero oAIAttackVars_HitElement values (only entries 0 and 1 exist; anything >= 2 would read
+  past the table into sub_80EDD5C's vicinity — presumably element is always 0/1 here)
+- what sub_80EDD5C does differently from ai_beastSpAttackStep for non-neutral elements
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

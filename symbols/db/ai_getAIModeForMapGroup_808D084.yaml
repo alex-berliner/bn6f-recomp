@@ -1,51 +1,77 @@
 name: ai_getAIModeForMapGroup_808D084
 address: '0x0808D084'
 kind: function
-previous_names:
-- sub_808D084
-status: probable
-summary: Returns the AI mode selector for the current map group (3 for map group 0x85, otherwise MapNumber
-  byte).
-interface: () -> r0 = AI mode index (3 if MapGroup==0x85, else oToolkit_GameStatePtr->MapNumber)
-details: "Loads r10 (toolkit) and dereferences the GameStatePtr at oToolkit_GameStatePtr (offset 0x3c).\n\
-  \  Reads the MapGroup byte at oGameState_MapGroup (offset 0x4).\n  If MapGroup == 0x85, returns 3 in\
-  \ r0 (tail-call via `pop {pc}`).\n  Otherwise falls through to `ldrb r0, [r0,#5]`, returning the MapNumber\
-  \ byte at oGameState_MapNumber (offset 0x5).\n  Pure thumb-leaf (push {lr} then pop {pc}), no callees,\
-  \ no side effects beyond reading GameState.\n  Used heavily by surrounding sub_808CC.. range functions,\
-  \ suggesting AI sub-mode dispatch by location.\n"
+status: confirmed
+summary: Returns the AI mode to use for the current map group — 3 for special map group 0x85, otherwise the AI-mode
+  byte stored in the game state.
+interface: u32 ai_getAIModeForMapGroup(Toolkit* r10); reads r10, returns r0; clobbers r1 and NZCV flags
+details: 'Follows the toolkit''s GameState pointer (r10 + oToolkit_GameStatePtr) and reads the current
+
+  map group (oGameState_MapGroup). If the map group is 0x85 (a special/undernet-style area),
+
+  the function returns the fixed AI mode 3; otherwise it returns the byte at gamestate+5,
+
+  which callers treat as the current AI mode setting. r10 is used directly as the toolkit
+
+  register (not r0 as is more common for toolkits), so callers pass the toolkit in r10.
+
+  The game-state AI-mode byte at offset 5 is presumably written when the mode is changed
+
+  elsewhere; this function only reads it.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0, r10` then `ldr r0, [r0,#oToolkit_GameStatePtr]` (oToolkit_GameStatePtr = 0x3c) loads
-    GameState. - `ldrb r1, [r0,#oGameState_MapGroup]` reads offset 0x4 of GameState (matches oGameState_MapGroup).
-    - `cmp r1, #0x85` compared against immediate 0x85. - `mov r0, #3` taken on equality, then `pop {pc}`
-    returns 3. - Fallthrough `ldrb r0, [r0,#5]` reads oGameState_MapNumber at offset 0x5. - Contract:
-    only r10 and lr read on entry; only r0 returned; no callees, no memory writes.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808D084
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_getAIModeForMapGroup_808D084
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_getAIModeForMapGroup_808D084
 
-    '
-  result: the body read as described above
+    ./wf verify --function ai_getAIModeForMapGroup_808D084 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_getAIModeForMapGroup_808D084
+
+    ./wf verify --function ai_getAIModeForMapGroup_808D084 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_getAIModeForMapGroup_808D084
+
+    ./wf verify --function ai_getAIModeForMapGroup_808D084 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp, maps'
-  reproduce: 'grep -l ''^0808d084 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp, maps
-open_questions:
-- The semantic meaning of returning 3 for map group 0x85 versus the MapNumber byte is unclear; whether
-  this is an "AI mode", "battle variant", or "subsystem selector" requires checking the surrounding sub_808CC..
-  callers' switch tables.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0808d084 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808D084 -> ai_getAIModeForMapGroup_808D084
-  where: bn6f 1bd2afd1
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+- maps
+related:
+- ai_testMapGroupEventFlag
+open_questions:
+- Which AI modes correspond to which numeric values (0..3) and what each drives downstream
+- Whether gamestate+5 has a named oGameState_ offset (AI mode field) that should be formalized
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

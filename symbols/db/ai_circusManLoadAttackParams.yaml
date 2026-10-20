@@ -1,52 +1,84 @@
 name: ai_circusManLoadAttackParams
 address: '0x080FEBE4'
 kind: function
-status: probable
-summary: Loads two per-difficulty CircusMan attack parameters from the AI version tables into the attack
-  state's damage word.
-interface: (r0 = attack/index selector, r5 = battle object) -> r0 = combined params word; stores word
-  at AIData+0xA0 (oAIAttackVars_Damage)
-details: Takes an index in r0 (per caller, the difficulty tier/attack slot), multiplies it by 8, and reads
-  a halfword from two parallel parameter tables (byte_80FEC44 and byte_80FEC68) via battle_aiGetVersionedTableEntry,
-  so the values are AI-version dependent (with the special v4 scaled entry). The first halfword is kept
-  as the low word and the second is shifted left 16 and ORRed in, forming one 32-bit value that is stored
-  at battleObject->AIData+0xA0, the oAIAttackVars_Damage field (its upper half covering the adjacent attack-var
-  halfword). Both CircusMan attack-init callers invoke it right after filling per-attack state, so this
-  word is the attack's parameters (e.g. damage plus a companion counter/variant value).
+status: confirmed
+summary: Loads a CircusMan AI attack's version-dependent damage and attack-id pair from data tables and stores the
+  packed pair into the battle object's AI attack variables.
+interface: void ai_circusManLoadAttackParams(u32 attackIndex /* r0 */, u32 battleObject /* r5 */)
+details: 'Called with r0 = attack index and r5 = battle object. For each of two tables it computes
+
+  entryPtr = table + attackIndex*8 and calls battle_aiGetVersionedTableEntry_800FE12 with
+
+  r0 = entryPtr and r5 = battleObject; that callee returns the entry''s first halfword in r0
+
+  (and the second in r2, ignored here). Table byte_80FEC44 supplies the damage value; table
+
+  byte_80FEC68 supplies a second value which is shifted left by 16 and OR-ed with the damage,
+
+  forming the packed u32 damage | (value2 << 16). The result is stored to
+
+  [battleObject+oBattleObject_AIDataPtr] + 0xA0 + oAIAttackVars_Damage, i.e. the AI attack
+
+  variables'' Damage field of the object''s AI data. The versioned-table call suggests the
+
+  values differ between the Falzar/Gregar game versions. r4 and r6 are scratch here (r4
+
+  holds attackIndex across the calls, r6 accumulates the packed pair) and r5 must remain
+
+  intact because it is re-read by the callee on each call.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: mul r0,#8 + two calls to battle_aiGetVersionedTableEntry_800FE12 with different table bases
-    = versioned param lookup; lsl r0,#0x10; orr r6 packs two halfwords into one word before the store;
-    str r6,[r3,#oAIAttackVars_Damage] with r3 = [r5,#oBattleObject_AIDataPtr]+0xA0; both callers (ai_circusManAttackInit,
-    ai_circusmanInitAttackState) run it while setting up CircusMan attack state 0xA / 0xC
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:150249
-  - 0x080FEB20 ai_circusManAttackInit
-  - 0x080FEB9E ai_circusmanInitAttackState
-  - 0x080FEB64 sub_80FEB64
-  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
-  reproduce: python3 tools/asmcat.py 0x080FEBE4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_circusManLoadAttackParams
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_circusManLoadAttackParams
+
+    ./wf verify --function ai_circusManLoadAttackParams --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_circusManLoadAttackParams
+
+    ./wf verify --function ai_circusManLoadAttackParams --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_circusManLoadAttackParams
+
+    ./wf verify --function ai_circusManLoadAttackParams --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080febe4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What the upper halfword of the stored word means (second field at AIData+0xA2) — needs the code that
-  consumes the attack vars
-- Whether r0 is exactly the difficulty tier or an attack-variant index — callers pass it from the tier
-  read but the table layout (stride 8) isn't dumped
+- exact meaning of the second table's value (comment names it attackId2; could be a kind/element or target parameter
+  packed into the upper halfword)
+- which callers set r0 (attack index) and whether it indexes a fixed set of CircusMan attack variants
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FEBE4 -> ai_circusManLoadAttackParams
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FEBE4
+- tools/wf run convert-20261020-101942
+- recomp 486adde

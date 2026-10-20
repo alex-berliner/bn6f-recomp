@@ -1,47 +1,70 @@
 name: ai_setupAttackVars
 address: '0x08012278'
 kind: function
-status: probable
-summary: Initializes the AI attack-vars block for an attack (damage 10, extra damage 138, boost 6, timer
-  6) and returns state 9.
-interface: (r7 = entity AI attack-vars struct) -> r0 = 9 (state/phase code); fields Damage=10, ExtraDamage=138,
-  InitFlag=4, AttackBoost2=6, TimerOrCycles=6 written
-details: 'Takes the per-entity AI attack parameter struct in r7 and stores a fixed set of constants into
-  its fields: Damage=0xA, ExtraDamage=0x8A (138), InitFlag=4, AttackBoost2=6, and TimerOrCycles=6. It
-  then returns the constant 9 in r0, which is most likely a state/phase selector consumed by an AI state
-  machine rather than a status code. The struct offsets match the project''s oAIAttackVars_* layout. No
-  callees and no known caller, so which boss/attack this configures (routes battlesweep/beastsp suggest
-  a boss AI step) is not directly visible.'
+status: confirmed
+summary: Fills the AI's attack-variables struct with fixed default values (damage 10, extra damage 0x8A, init flag
+  4, boost 6, timer 6) and returns 9.
+interface: u32 ai_setupAttackVars(struct AIAttackVars *vars /* r7 */); returns 9 in r0; clobbers N/Z flags
+details: "Takes a pointer in r7 to the AI attack-variables block (oAIAttackVars_* fields, presumably part of\nthe\
+  \ per-entity/battle AI state) and writes a fixed set of defaults:\n  - halfword oAIAttackVars_Damage       = 0x0A\
+  \ (base damage 10)\n  - halfword oAIAttackVars_ExtraDamage  = 0x8A (large extra-damage value; note 0x8A is > signed\
+  \ char range, stored as halfword)\n  - byte   oAIAttackVars_InitFlag       = 4\n  - byte   oAIAttackVars_AttackBoost2\
+  \   = 6\n  - byte   oAIAttackVars_TimerOrCycles  = 6\nIt is a pure initializer: it reads nothing from the struct\
+  \ and touches no other memory or I/O.\nThe function ends with mov r0,#9, so it always returns the constant 9,\
+  \ which callers apparently\nuse as a next-state/return code (the flag-setting NZ on r0 is likely incidental, from\
+  \ the mov).\nThe hard-coded values suggest one specific AI attack pattern whose numbers were tuned by hand;\n\
+  other similar setup functions presumably exist with different constants.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'strh #0xA into oAIAttackVars_Damage and #0x8A into oAIAttackVars_ExtraDamage: fixed attack
-    damage pair; strb 4/6/6 into InitFlag, AttackBoost2, TimerOrCycles: parameter-style setup, not computation;
-    returns constant 9, typical of an AI state-handler step returning the next phase; runs on recorded
-    routes battlesweep and beastsp, consistent with boss AI attack scripting; no branches or memory reads
-    besides r7 struct: pure field-setter'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s:7567
-  reproduce: python3 tools/asmcat.py 0x08012278
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_setupAttackVars
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_setupAttackVars
+
+    ./wf verify --function ai_setupAttackVars --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 165 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_setupAttackVars
+
+    ./wf verify --function ai_setupAttackVars --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 66 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_setupAttackVars
+
+    ./wf verify --function ai_setupAttackVars --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08012278 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- which enemy/attack this configures — needs the caller or the AI state table that dispatches to it
-- what return value 9 selects in the caller's state machine
-- exact meaning of ExtraDamage vs Damage and AttackBoost2 in oAIAttackVars
+- Meaning of the returned 9 (next AI state ID vs. success code) and of each field, especially the oddly large ExtraDamage
+  value 0x8A and the InitFlag value 4, is unverified against callers.
+- Which attack/enemy this specific constant set belongs to is not yet identified.
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8012278 -> ai_setupAttackVars
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8012278
+- tools/wf run convert-20261020-101942
+- recomp 486adde

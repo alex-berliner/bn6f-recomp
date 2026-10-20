@@ -1,58 +1,72 @@
 name: battleObject_decrementChipHeldAndClearChip_800F322
 address: '0x0800F322'
 kind: function
-previous_names:
-- sub_800F322
-status: probable
-summary: Consume one chip from the battle object's queue and clear the current chip ID when the queue
-  empties
-interface: '(r5 = BattleObject*) -> ; side effects: writes r5->ChipsHeld, conditionally writes r5->Chip;
-  clobbers r0 and NZCV'
-details: "Reads `BattleObject.ChipsHeld` (offset 0x1a) via `ldrb r0, [r5, #oBattleObject_ChipsHeld]`.\n\
-  \  If it is already 0, returns immediately. Otherwise decrements it by 1 (`sub r0,#1` / `strb r0,[r5,#oBattleObject_ChipsHeld]`).\n\
-  \  If after the decrement the count is still non-zero (BNE), the chip ID is left intact.\n  When the\
-  \ post-decrement count is zero (falls through), the function decrements r0 once more (so r0 = 0xFF as\
-  \ u8 = -1), then stores that 16-bit value into `BattleObject.Chip` (`strh r0, [r5, #oBattleObject_Chip]`,\
-  \ offset 0x2a), effectively clearing the selected chip entry once no chips remain queued.\n  Caller\
-  \ contract: in=r5 (BattleObject*), out=void-like (only r0 scratch and flags).\n  Used inside the CustomGauge\
-  \ / chip-selection flow: every frame the cursor is on a chip this routine spends one; once the queue\
-  \ is fully used the currently-selected chip ID slot is reset to 0xFFFF.\n"
+status: confirmed
+summary: Decrements a battle object's held-chip count, and when the last held chip is dropped, clears the selected-chip
+  slot to the "no chip" marker (0xFFFF).
+interface: void battleObject_decrementChipsHeldAndClearChipIfEmpty_800F322(struct BattleObject* obj /* r5 */)
+details: 'Reads obj->ChipsHeld (byte at oBattleObject_ChipsHeld). If it is 0, returns without
+
+  touching anything. Otherwise decrements the count and stores it back. If the count
+
+  reached exactly 0 (meaning it was 1 before the call), it writes 0xFFFF (via a second
+
+  sub r0,#1 on the now-zero value) to obj->Chip (halfword at oBattleObject_Chip),
+
+  marking that no chip is currently held/selected by the object. The object pointer is
+
+  taken in r5 rather than r0, matching the battle-object helper convention. r0 and all
+
+  flags are clobbered; nothing is returned.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0,[r5,#oBattleObject_ChipsHeld]` at 0x0800f322 reads offset 0x1a, matching `BattleObject.ChipsHeld`.
-    - First `beq locret_800F332` early-returns when the counter is already 0. - `sub r0,#1`/`strb r0,[r5,#oBattleObject_ChipsHeld]`
-    decrements and rewrites the same field. - `bne locret_800F332` skips the chip-clear when more chips
-    remain queued. - Fallthrough path''s final `sub r0,#1` plus `strh r0,[r5,#oBattleObject_Chip]` (offset
-    0x2a) zeros the `BattleObject.Chip` slot once the count reaches zero. - Tall call site list (sub_810A126,
-    sub_810A6F4, sub_810B54C, sub_810BDC4, sub_810C282, sub_810C820, sub_810CF4A, sub_810DAF0, sub_810E34A,
-    sub_810F1B6, sub_8111FAE, sub_8112600, sub_81131D8) all live in the 0x0810xxxx range that the chip-queue
-    display subsystem uses (consistent with `oBattleObject.Chip`/`ChipsHeld` semantics).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0800F322
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_decrementChipHeldAndClearChip_800F322
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_decrementChipHeldAndClearChip_800F322
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_decrementChipHeldAndClearChip_800F322 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_decrementChipHeldAndClearChip_800F322
+
+    ./wf verify --function battleObject_decrementChipHeldAndClearChip_800F322 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_decrementChipHeldAndClearChip_800F322
+
+    ./wf verify --function battleObject_decrementChipHeldAndClearChip_800F322 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0800f322 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Exact game-domain meaning of the write to `Chip` after the queue empties (e.g. is 0xFFFF used as a sentinel
-  "no chip selected"?). Settled by checking how callers read BattleObject.Chip after they invoke this
-  routine.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0800f322 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f eb748819
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_800F322 -> battleObject_decrementChipHeldAndClearChip_800F322
-  where: bn6f c2454a87
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

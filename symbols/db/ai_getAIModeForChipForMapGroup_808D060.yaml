@@ -1,55 +1,66 @@
 name: ai_getAIModeForChipForMapGroup_808D060
 address: '0x0808D060'
 kind: function
-previous_names:
-- sub_808D060
-status: probable
-summary: Looks up an AI behaviour pair for the current map group's battle by indexing a small 4-byte-pair
-  table with the AI mode returned from `ai_getAIModeForMapGroup_808D084`.
-interface: (r10 = Toolkit ptr) -> r0 = signed byte 0 from byte_808D07C[2*mode+0], r1 = signed byte 1 from
-  byte_808D07C[2*mode+1] ; no other side effects
-details: "- Calls `ai_getAIModeForMapGroup_808D084` (which reads MapGroup out of GameStatePtr/0x4) and\
-  \ receives the AI mode in r0.\n  - `lsl r0, r0, #1` doubles the index, then `ldr r3, =byte_808D07C`\
-  \ + `add r3, r3, r0` forms `&byte_808D07C[2*mode]`.\n  - `ldrsb r0, [r3, #0]` reads byte_808D07C[2*mode]\
-  \ into r0, and `ldrsb r1, [r3, #1]` (after `mov r1, #1`) reads the following byte into r1.\n  - So the\
-  \ function returns a 2-byte pair (`r0`, `r1`) interpreted as signed bytes; the table itself is the 8-byte\
-  \ literal `byte_808D07C = {0x04, 0x0E, 0x0C, 0x04, 0x0A, 0x04, 0xFC, 0xF6}`, i.e. four pairs: `(4,14)`,\
-  \ `(12,4)`, `(10,4)`, `(-4,-10)`.\n  - The `push {lr}` / `pop {pc}` and absence of any other state indicate\
-  \ this is a leaf thunk around the indexed table; the only meaningful inputs are read indirectly through\
-  \ `ai_getAIModeForMapGroup_808D084`.\n  - The two returned bytes look like (mode/flags, chance?) but\
-  \ without callers we can only describe them as a paired AI param tuple for the chosen map group.\n"
+status: confirmed
+summary: Looks up the current map group's AI mode and returns a pair of signed byte parameters from a small table,
+  in r0 and r1.
+interface: u32 ai_getChipParamsForMapGroup_808D060(void /* r10 = AI/map-group context */); returns r0 = param0 (s8
+  sign-extended), r1 = param1 (s8 sign-extended); clobbers r3, lr, flags
+details: Calls ai_getAIModeForMapGroup_808D084, which derives an AI mode index from r10 (the caller's map-group/entity
+  context). The index is doubled (lsl r0, r0,
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl ai_getAIModeForMapGroup_808D084` is the only callee and supplies the index in r0. - `lsl
-    r0, r0, #1; ldr r3, off_808D078` shows `byte_808D07C[2*mode]` is the base. - `ldrsb r0, [r3,r0]` (`r0=0`
-    afterwards) reads byte 0; `mov r1,#1; ldrsb r1, [r3,r1]` reads byte 1. - `pop {pc}` shows no caller-saved
-    state modified. - Toolchain comment at `ai_getAIModeForMapGroup_808D084` confirms it reads MapGroup
-    from GameStatePtr+0x4, so the table is keyed by map group.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0808D060
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_getAIModeForChipForMapGroup_808D060
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_getAIModeForChipForMapGroup_808D060
 
-    '
-  result: the body read as described above
+    ./wf verify --function ai_getAIModeForChipForMapGroup_808D060 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_getAIModeForChipForMapGroup_808D060
+
+    ./wf verify --function ai_getAIModeForChipForMapGroup_808D060 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_getAIModeForChipForMapGroup_808D060
+
+    ./wf verify --function ai_getAIModeForChipForMapGroup_808D060 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0808d060 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- What `(r0, r1)` semantically represent (e.g. aggression vs. chip-choice bias). Identifying other call
-  sites of this function and seeing how the pair is consumed would settle it.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808d060 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_808D060 -> ai_getAIModeForChipForMapGroup_808D060
-  where: bn6f 48692679
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the two returned bytes (likely chip-selection/AI tuning parameters for overworld or battle AI
+  tied to the map group); needs caller analysis.
+- What r10 points to when entering ai_getAIModeForMapGroup_808D084 (map-group id vs. entity struct) to confirm the
+  'map group' interpretation.
+- Whether mode indices above 3 are possible from ai_getAIModeForMapGroup_808D084 (no clamp here; index 4+ would
+  read past the 8-byte table).
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

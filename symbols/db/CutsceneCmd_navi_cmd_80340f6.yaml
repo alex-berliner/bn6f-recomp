@@ -1,0 +1,85 @@
+name: CutsceneCmd_navi_cmd_80340f6
+address: '0x080382F2'
+kind: function
+status: confirmed
+summary: Cutscene command handler that runs the "NaviSetup" end-of-section handler on the script state, then advances
+  the script pointer to the next command and reports success.
+interface: void CutsceneCmd_navi_cmd_80340f6(void) — takes the cutscene script state in r4-r12 (r7 = script pointer);
+  returns the callee's r2..r12 passthrough with r7 incremented, sets r0 = 1, and NZ flags from that value
+details: 'One-command stub in the cutscene-script interpreter''s command table. It performs
+
+  exactly three steps: (1) tail-ish call to endOfSection_NaviSetup_80340F6, which
+
+  processes the current cutscene/script state and returns its working registers
+
+  (r2-r12) to the interpreter loop; (2) r7 += 1, advancing the cutscene script
+
+  pointer past this command''s byte in the script stream; (3) mov r0, #1, so the
+
+  dispatcher sees a nonzero "command handled / continue" result whose NZ flags the
+
+  caller reads. All callee register outputs are passed through unchanged except
+
+  r7 (incremented) and r0/flags (overwritten with 1). r6 is preserved through the
+
+  whole stub, so it is not part of the script-state contract here. Which concrete
+
+  NaviSetup action runs depends entirely on the state r4-r12 describe; the stub
+
+  itself is stateless.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c CutsceneCmd_navi_cmd_80340f6
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_navi_cmd_80340f6
+
+    ./wf verify --function CutsceneCmd_navi_cmd_80340f6 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_navi_cmd_80340f6
+
+    ./wf verify --function CutsceneCmd_navi_cmd_80340f6 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_navi_cmd_80340f6
+
+    ./wf verify --function CutsceneCmd_navi_cmd_80340f6 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080382f2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- what the various states handled by endOfSection_NaviSetup_80340F6 correspond to in game terms (which Navi/Setup
+  is being placed or configured)
+- whether other CutsceneCmd_* handlers share this exact call-and-advance pattern, which would suggest a common wrapper
+  name
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,0 +1,69 @@
+name: BGScrollCB_BG3FastLeftScroll
+address: '0x08001A6A'
+kind: function
+status: confirmed
+summary: Background scroll callback that scrolls the BG3 layer steadily to the left, decrementing a shared scroll
+  counter by 8 each frame.
+interface: void BGScrollCB_BG3FastLeftScroll(u32 toolkit /* r10 */); // returns via lr; clobbers r1, r2 and flags
+details: 'One of the BGScrollCB callbacks (probably registered as a per-frame toolkit/render callback, hence the
+  toolkit pointer arriving in r10). It reads the shared scroll counter at eBGScrollCBCounters.Counter0, subtracts
+  8 (a fixed-point scroll amount, e.g. 8/16 = 0.5 pixel per frame of leftward motion), and stores the updated value
+  back. It then takes counter >> 4 (the integer pixel part, top 16 bits of the 20.12-style fixed point) and writes
+  it as a halfword into RenderInfo.Unk_18, the BG3 horizontal scroll field, via the RenderInfo pointer held in the
+  toolkit struct (oToolkit_RenderInfoPtr). Net effect: BG3 scrolls left half a pixel per frame, i.e. a "fast" leftward
+  parallax. No other state is touched.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c BGScrollCB_BG3FastLeftScroll
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function BGScrollCB_BG3FastLeftScroll
+
+    ./wf verify --function BGScrollCB_BG3FastLeftScroll --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function BGScrollCB_BG3FastLeftScroll
+
+    ./wf verify --function BGScrollCB_BG3FastLeftScroll --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function BGScrollCB_BG3FastLeftScroll
+
+    ./wf verify --function BGScrollCB_BG3FastLeftScroll --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^08001a6a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_0.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_0.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- exact field semantics of RenderInfo.Unk_18 (BG3 scroll X) not independently confirmed
+- which callers/systems register this callback and for which maps
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

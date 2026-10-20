@@ -1,49 +1,90 @@
 name: ai_spawnHopRearEffect
 address: '0x08115446'
 kind: function
-status: probable
-summary: Spawns an effect-object (effect type 0) 14 px behind the AI battle object's facing direction,
-  likely the dust/puff of a hop.
-interface: (r5 = battle object ptr) -> r0 = spawned effect object ptr; flags clobbered
-details: Reads the object's facing via object_getFrontDirection and computes a 14-pixel X offset (0xe
-  << 16) scaled by that direction, i.e. opposite to where the object faces. Loads the object's position
-  triple from [r5+0x34] (X, Y, Z) with ldmia, applies X -= 14*dir and Z += byte_81154E8 (currently 0,
-  a tweakable Z offset), then calls spawn_t1_0x0_EffectObject to create a type-4/effect-0 battle object
-  at that spot and returns its pointer. No other fields of the object are touched.
+status: confirmed
+summary: Spawns an effect object (kind 1) one hop-step behind an actor, offset backward by 14 fixed-point units
+  from its facing direction.
+interface: void ai_spawnHopRearEffect(actor in r5); out r1, r5, r7 as left by the effect spawner (clobbers r0-r3,
+  lr, flags; preserves r4)
+details: 'r5 is an actor/object whose position triple lives at object+0x34 (x at +0x34,
+
+  y at +0x38, third field, likely elevation/height, at +0x3C). Calls
+
+  object_getFrontDirection(actor) to get the facing sign (+1/-1), computes
+
+  (14 << 16) * facing as a fixed-point step, subtracts it from the actor''s x so
+
+  the effect appears one tile-step *behind* the actor, and passes the adjusted
+
+  (x, y, extra) triple to spawn_t1_0x0_EffectObject with kind = 1 in r4 — a
+
+  hop/dust-type rear effect used by AI actors. The third position field is also
+
+  bumped before spawning (per the verified C, += 0x80000, though the literal pool
+
+  annotation for byte_81154E8 reads 0x0 — see open questions). The caller-visible
+
+  r1/r5/r7 outputs are simply whatever spawn_t1_0x0_EffectObject leaves behind;
+
+  the wrapper around r4 exists only to keep it preserved across the calls.
+
+  Naming/behavior suggest a hop or rear-hop attack/motion accompanying effect.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl object_getFrontDirection; mul r4, r0 with r4=0xe<<16 gives a signed 14px offset following
-    facing (asm lines 2-5); ldmia r0! with r0=r5+0x34 loads three words, matching the object position
-    struct at +0x34 (asm lines 6-7); sub r1,r1,r4 and ldr r4,byte_81154E8 (=0) applied to r3 are position
-    adjustments before spawning (asm lines 8-10); bl spawn_t1_0x0_EffectObject with mov r4,#1 returns
-    the new effect object (asm lines 11-12); sole game caller ai_hopStepUpdate is a hop/leap update, matching
-    a hop dust effect behind the mover
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:14536
-  - 0x08115398 ai_hopStepUpdate
-  - 0x08115432 sub_8115432
-  - 0x0800E2CA object_getFrontDirection
-  - 0x080E05F6 spawn_t1_0x0_EffectObject
-  reproduce: python3 tools/asmcat.py 0x08115446
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_spawnHopRearEffect
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_spawnHopRearEffect
+
+    ./wf verify --function ai_spawnHopRearEffect --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_spawnHopRearEffect
+
+    ./wf verify --function ai_spawnHopRearEffect --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 67 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_spawnHopRearEffect
+
+    ./wf verify --function ai_spawnHopRearEffect --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115446 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
+related:
+- ai_attackVarsTimerTick16
 open_questions:
-- exact visual of effect type 0 (dust vs generic puff) not confirmable from this function
-- byte_81154E8's constant is 0 here; whether other build sites use nonzero Z offsets is unknown
+- literal pool entry byte_81154E8 is annotated =0x0 but the verified C adds 0x80000 to the third position field
+  — confirm the actual constant (possibly a partial-literal-pool annotation issue)
+- exact meaning of the third position field at object+0x3C (elevation/height?) and of the added constant
+- which AI routines/moves call this (kind 1 effect identity not independently confirmed)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8115446 -> ai_spawnHopRearEffect
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8115446
+- tools/wf run convert-20261020-101942
+- recomp 486adde

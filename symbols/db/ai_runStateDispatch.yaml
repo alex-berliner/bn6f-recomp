@@ -1,48 +1,72 @@
 name: ai_runStateDispatch
 address: '0x08112278'
 kind: function
-status: probable
-summary: 'Per-frame AI update: tries to start a chip attack, otherwise dispatches to the AI state handler
-  selected by the object''s ScriptId field.'
-interface: (r6 = AI battle object ptr) -> r0 = tryStartChipAttack result (1 if chip attack started, else
-  handler's return); flags clobbered
-details: 'Takes the AI object in r6 (no arguments in r0-r3). First calls battleObject_tryStartChipAttack_8112600;
-  if it returns nonzero the chip-attack startup was performed and the function returns immediately. Otherwise
-  it reads the object''s oAIState_ScriptId byte, indexes the jump table at off_8112294, and tail-calls
-  that handler with lr set via ''mov lr, pc'' (ARM/Thumb interwork dispatch, handlers are Thumb+1). The
-  table has three states: battleObject_aiSetupCombatInit_81122A0 (combat init), ai_prepareTargetedAttack,
-  and sub_811239A. r4 is preserved but never used inside, suggesting it was live in the original caller
-  or a leftover.'
+status: confirmed
+summary: Per-tick AI dispatch for a battle object — tries to start a queued chip attack, otherwise jumps to the
+  object's AI state handler selected by its script id.
+interface: void ai_runStateDispatch(battleobj* r6 /* object */, r4, r5, r7, r10 /* passthrough state */); tail-dispatches
+  handler(r0 = script_id) and returns its outputs (r1, r5, r8-r12); r0 nonzero from the chip-attack attempt means
+  the tick is done
+details: 'Entry point of a battle object''s AI tick. First calls battleObject_tryStartChipAttack_8112600 (preserving
+  r4/r6 around it); if it returns nonzero in r0, a queued chip attack was started and the function returns immediately,
+  passing that callee''s outputs (r1, r5, r8-r12) through to its own caller. Otherwise it reads the AI script id
+  byte at r6+oAIState_ScriptId, indexes the 3-entry jump table at off_8112294 (0 = battleObject_aiSetupCombatInit_81122A0,
+  1 = ai_prepareTargetedAttack, 2 = sub_811239A), and tail-calls the selected handler via mov lr,pc / bx r1 with
+  the script id in r0 and its own address in r1; all other registers (r4-r12) reach the handler as the chip-attack
+  call left them. r4/r6 are saved and restored around the whole dispatch, so they are preserved to the caller. Quirk:
+  the handler address is loaded from the jump table at run time, so the call needs an indirect dispatch; script
+  ids beyond 2 would read past the table.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl battleObject_tryStartChipAttack_8112600; cmp r0,#0; bne locret — chip attack preempts normal
-    AI state; ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — state-indexed tail dispatch;
-    off_8112294 table: aiSetupCombatInit, ai_prepareTargetedAttack, sub_811239A — exactly three AI states;
-    Called from recorded battle routes (battlesweep, beastsp) with no known direct callers, consistent
-    with a per-frame battle AI tick invoked indirectly'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:8636
-  - 0x08112600 battleObject_tryStartChipAttack_8112600
-  reproduce: python3 tools/asmcat.py 0x08112278
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_runStateDispatch
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_runStateDispatch
+
+    ./wf verify --function ai_runStateDispatch --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_runStateDispatch
+
+    ./wf verify --function ai_runStateDispatch --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 34 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_runStateDispatch
+
+    ./wf verify --function ai_runStateDispatch --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112278 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What sub_811239A (third state) does
-- Which AI archetype uses this dispatch — the object layout of r6 and who sets oAIState_ScriptId to 0..2
+- What sub_811239A (script id 2) does — it is the only unanalyzed handler in the table
+- Semantics of the outputs r1/r5/r8-r12 produced by the chip-attack path (they are passed straight through)
+- Whether the jump table is ever extended for other AI script ids in this build
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8112278 -> ai_runStateDispatch
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8112278
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,62 +1,75 @@
 name: battleObject_computeMoveTargetPanel_80E16CC
 address: '0x080E16CC'
 kind: function
-previous_names:
-- sub_80E16CC
-status: probable
-summary: Decides a target panel (high byte = direction, low byte = column) for a battle object's step/move toward
-  a chosen enemy/ally.
-interface: (r0 = actorType, r1 = battleObject ptr, r2 = unknown) -> r0 = result of sub_80E1704 ; side effects (BattleObject->PanelX
-  read/written via path constants)
-details: "Saves r4/r6/r7/lr. r6 = r1 (the BattleObject), r7 = r2.\n  Branches on r0 == 2 (ACTOR_TYPE_PLAYER per\
-  \ AIData.ActorType): packs the object's current\n  PanelX into a u16 whose high byte is PanelX and low byte is\
-  \ PanelX (`lsl r1,r4,#8; orr r4,r1`\n  gives r4 = (PanelX<<8)|PanelX), so the target column equals the current\
-  \ column.\n  Otherwise reads BattleObject.Alliance and BattleObject.DirectionFlip, XORs them with r0 to\n  decide\
-  \ which side of the field is \"behind\": if `Alliance ^ DirectionFlip ^ r0 == 0` the\n  target is one panel to\
-  \ the right of PanelX with high byte = 6 (`0x600 | (PanelX+1)`); else\n  one panel to the left with high byte\
-  \ = 1 (`((PanelX-1)<<8) | 1`).\n  Then unconditionally tail-calls sub_80E1704(r4, r6, r7) which actually applies\
-  \ the move.\n  Returns whatever sub_80E1704 returns in r0. r4 is left as the chosen (dir<<8|column) value\n  (caller-saved\
-  \ by the callee-restored r4 in this function's contract).\n"
+status: confirmed
+summary: Builds a packed panel/row target for a battle object's movement (own panel, one ahead, or one behind depending
+  on requested side vs. effective alliance) and hands it to the battle-object row iterator.
+interface: u32 battle_computeMoveTargetPanelAndIterateRow_80E16CC(u32 mode /*r0*/, BattleObject* object /*r1*/,
+  u32 arg2 /*r2*/); r4 pass-through (pushed/popped, returned unchanged); r6/r7 preserved; flags clobbered; returns
+  iterator result in r0
+details: "Computes a packed target specifier and immediately calls battle_aiIterateOverBattleObjectsByRow_80E1704\
+  \ with it in r4, the battle object pointer in r6, and the caller's third argument in r7 (all three are effectively\
+  \ the iterator's arguments; r6/r7 are saved and restored around the call). The packed specifier depends on mode\
+  \ (r0): - mode == 2: \"stay put\" - PanelX is packed into BOTH bytes of the specifier (PanelX | PanelX<<8),\n\
+  \  so the object targets its own panel.\n- otherwise: the object's effective side is read as Alliance ^ DirectionFlip\
+  \ (a direction-flipped\n  object counts as the opposite alliance). If mode == effective side, the specifier is\n\
+  \  (PanelX + 1) | (6 << 8) - one panel forward with row selector 6 in the high byte. If mode differs,\n  the specifier\
+  \ is ((PanelX - 1) << 8) | 1 - one panel back with selector 1 in the low byte.\nNote the asymmetric byte packing\
+  \ between the two non-neutral branches: in the \"same side\" case the column is in the low byte and the selector\
+  \ in the high byte, while in the \"opposite side\" case the column is in the high byte and the selector in the\
+  \ low byte. Fields touched: oBattleObject_PanelX, oBattleObject_Alliance, oBattleObject_DirectionFlip. This looks\
+  \ like part of battle AI/ movement target selection feeding the row iteration helper.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `cmp r0,#2 / bne loc_80E16DE` (asm31.s:88367-88368): switch keyed on the actor-type tag. - `ldrb r4,[r6,#oBattleObject_PanelX];
-    lsl r1,r4,#8; orr r4,r1` (88369-88371): player path packs PanelX into both bytes. - `ldrb r1,[r6,#oBattleObject_Alliance];
-    ldrb r2,[r6,#oBattleObject_DirectionFlip]; eor r1,r2; eor r0,r1; bne loc_80E16F4` (88373-88378): XOR test vs
-    Alliance/DirectionFlip to pick side. - `add r4,#1; mov r1,#6; lsl r1,r1,#8; orr r4,r1` (88381-88384): forward
-    move r4 = 0x600 | (PanelX+1). - `sub r4,#1; lsl r4,r4,#8; mov r1,#1; orr r4,r1` (88387-88390): backward move
-    r4 = ((PanelX-1)<<8) | 1. - `bl sub_80E1704; pop {r4,r6,r7,pc}` (88392-88394): tail-call to the actual step
-    applier; r0 returned through to caller.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080E16CC
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_computeMoveTargetPanel_80E16CC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_computeMoveTargetPanel_80E16CC
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_computeMoveTargetPanel_80E16CC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_computeMoveTargetPanel_80E16CC
+
+    ./wf verify --function battleObject_computeMoveTargetPanel_80E16CC --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 29 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_computeMoveTargetPanel_80E16CC
+
+    ./wf verify --function battleObject_computeMoveTargetPanel_80E16CC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080e16cc '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- What r2/r7 carries (likely a column mask / object reference passed straight to the callee); what the high-byte
-  constants 6 and 1 encode (probably movement direction flags the callee interprets); and whether 2 really means
-  the human player or some other actor-type enumerator — settling it needs the AIIndex / ActorType usage in nearby
-  AI code and the body of sub_80E1704.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e16cc ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E16CC -> battleObject_computeMoveTargetPanel_80E16CC
-  where: bn6f 25419b15
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the packed specifier's two bytes for battle_aiIterateOverBattleObjectsByRow_80E1704 (why the
+  byte order flips between the ahead and behind cases).
+- What mode values other than 2 mean at call sites (only the ==2 and ==/!= comparisons are distinguished).
+- What the third argument passed through to the iterator is used for.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

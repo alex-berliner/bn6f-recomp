@@ -1,47 +1,68 @@
 name: ai_attackStepTick
 address: '0x081128DA'
 kind: function
-status: probable
-summary: 'Per-frame update for one AI attack step: initializes attack element/animation, then counts down
-  a timer and switches to the hit animation and hit element when it expires.'
-interface: (r0 = init/attack flag (nonzero skips init), r5 = battle object, r7 = AI attack vars) -> r0
-  clobbered; flags from timer decrement
-details: 'If r0 is zero, the function initializes the attack: stores 1 into oAIAttackVars_AttackElement
-  (r7) and 1 into oBattleObject_CurAnim (r5), i.e. the attack''s windup/swing animation. It then decrements
-  oAIAttackVars_StepTimer; while it is nonzero nothing else happens. When the timer reaches 0, it sets
-  oBattleObject_CurAnim to 2 (recovery/end animation) and oAIAttackVars_HitElement to 4, marking the step
-  as landed. This is a helper for an element-based AI attack state machine; it has no calls of its own,
-  so its meaning rests entirely on the AI-attack-vars fields it writes.'
+status: confirmed
+summary: Ticks one step of an AI enemy's attack, switching the battle object from wind-up animation to hit animation
+  when the step timer expires.
+interface: 'void ai_attackStepTick(u32 attackStarted /*r0: 0 = first step*/, struct BattleObject *obj /*r5*/, struct
+  AIAttackVars *vars /*r7*/); clobbers r0 and flags (n, z, c, v); no return value.'
+details: 'Called once per step of the AI''s attack routine. On the first step (r0 == 0) it stores 1 into vars+oAIAttackVars_AttackElement
+  (a neutral/none element for the wind-up) and sets obj+oBattleObject_CurAnim to 1 (attack wind-up pose). Every
+  call it decrements the 16-bit vars+oAIAttackVars_StepTimer; when it reaches 0 the attack lands: obj+oBattleObject_CurAnim
+  is set to 2 (hit/impact animation) and vars+oAIAttackVars_HitElement is set to 4 (the element applied by the hit).
+  Note the element fields differ in width (AttackElement is a byte, HitElement is a halfword). The function is timer-driven
+  with no early exit, so it relies on callers scheduling it and removing it once the timer hits zero.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: cmp r0,#0 / bne skips the init block that writes oAIAttackVars_AttackElement=1 and oBattleObject_CurAnim=1;
-    ldrh/sub/strh on oAIAttackVars_StepTimer shows a per-call countdown; on timer expiry stores CurAnim=2
-    and oAIAttackVars_HitElement=4, ending the attack step; no callee calls; pure field manipulation on
-    the battle object and its AI attack vars; runs on recorded AI-controlled routes (battlesweep, beastsp),
-    consistent with an AI attack helper
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:9603
-  reproduce: python3 tools/asmcat.py 0x081128DA
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackStepTick
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackStepTick
+
+    ./wf verify --function ai_attackStepTick --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 190 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackStepTick
+
+    ./wf verify --function ai_attackStepTick --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 71 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackStepTick
+
+    ./wf verify --function ai_attackStepTick --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081128da ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No caller is captured, so the meaning of r0 (object pointer, attack-started flag, or result of a previous
-  step) is unconfirmed
-- Which AI attack/element this belongs to (values 1 and 4) is not identifiable from this function alone
+- exact meaning of element values 1 (AttackElement on start) and 4 (HitElement on impact) in the AI element enum
+- who clears/resets oAIAttackVars_StepTimer between attacks and what happens if this tick runs again after the timer
+  already hit 0 (it wraps to 0xFFFF)
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81128DA -> ai_attackStepTick
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81128DA
+- tools/wf run convert-20261020-101942
+- recomp 486adde

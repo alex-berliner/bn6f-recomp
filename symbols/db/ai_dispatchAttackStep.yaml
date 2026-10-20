@@ -1,46 +1,90 @@
 name: ai_dispatchAttackStep
 address: '0x08111A00'
 kind: function
-status: probable
-summary: Dispatches the per-enemy AI attack state machine to one of five handlers based on the current
-  attack-step byte in the AI attack vars.
-interface: (r7 = AI attack vars struct) -> jumps to handler from off_8111A14[state]; no return value of
-  its own
-details: 'Loads the byte at oAIAttackVars_HitElement from the r7 AI attack vars struct and uses it as
-  a table index (bounds implicitly limited to 0-4 by the writers). It then tail-calls the matching handler:
-  0 = ai_commitMoveAttack, 1 = sub_8111A72, 2 = battleObject_performMovementStep, 3 = sub_8111AEC, 4 =
-  aiAttack_tickAiAttackVarsTimer. It is a pure trampoline with no other state manipulation. The reused
-  HitElement field here evidently serves as the attack sequence''s state/step counter.'
+status: confirmed
+summary: Trampolines to the per-step handler for the AI's current attack state, chosen by the AI attack vars' HitElement
+  field via a jump table.
+interface: void ai_dispatchAttackStep(void); // r7 = pointer to AI attack vars (oAIAttackVars struct), r5/r6/r10
+  forwarded to the handler; lr clobbered, tail-pops to the handler instead of returning to the caller
+details: 'Reads the byte at [r7, oAIAttackVars_HitElement] and uses it as an index into the jump
+
+  table at off_8111A14 (built from the pointer stored at off_8111A10), then branches to the
+
+  selected handler with lr = pc so the handler''s own return goes straight back to
+
+  ai_dispatchAttackStep''s caller (pop {pc} on the handler''s side, effectively). The five
+
+  entries are: ai_commitMoveAttack, sub_8111A72,
+
+  battleObject_performMovementStep_8111A8C, ai_animEndResetAttack, and
+
+  aiAttack_tickAiAttackVarsTimer_81097DC - i.e. the states of an enemy AI attack
+
+  (committing a move attack, an unknown step, a movement step, attack animation end/reset,
+
+  and a timer tick for attack vars). Quirk: the handler is entered with r0 = HitElement and
+
+  r1 = the handler''s own address (left over from the "ldr r1, [table, r0]" load), and with
+
+  the caller''s r5/r6/r7/r10 still live; outputs r1/r5/r8-r12 are produced by the chosen
+
+  handler, not by this function. The two padding bytes after pop {pc} keep the table aligned.
+
+  Because it is an indirect dispatch, the register contract is really the union of the five
+
+  targets'' contracts.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0] with table off_8111A14: index-driven
-    dispatch on the AI attack vars struct; jump table entries are all AI attack handlers (ai_commitMoveAttack,
-    battleObject_performMovementStep, aiAttack_tickAiAttackVarsTimer); only caller ai_setupAttackPlan
-    runs it each AI turn after filling the AI attack variables, consistent with kicking/ticking the attack
-    sequence'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:7618
-  - 0x08111E14 ai_setupAttackPlan
-  reproduce: python3 tools/asmcat.py 0x08111A00
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_dispatchAttackStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_dispatchAttackStep
+
+    ./wf verify --function ai_dispatchAttackStep --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_dispatchAttackStep
+
+    ./wf verify --function ai_dispatchAttackStep --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 25 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_dispatchAttackStep
+
+    ./wf verify --function ai_dispatchAttackStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111a00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact semantics of each of the five states (sub_8111A72 and sub_8111AEC are unanalyzed)
-- who writes the state byte and with what values/range
+- what sub_8111A72 (entry 1) does
+- whether the HitElement field doubles as a plain step/state index or element semantics matter for some handlers
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8111A00 -> ai_dispatchAttackStep
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8111A00
+- tools/wf run convert-20261020-101942
+- recomp 486adde

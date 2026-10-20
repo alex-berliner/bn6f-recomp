@@ -1,57 +1,78 @@
 name: ai_aimRowTargetStartAttack
 address: '0x0811072C'
 kind: function
-status: probable
-summary: 'AI attack step: lock the closest enemy standing on this object''s row ahead of it, copy its
-  coords, and switch the AI to attack script 8; otherwise advance to attack step 9.'
-interface: '(r0-r4 = AI attack context: r5 = BattleObject, r6 = AIState, r7 = AIAttackVars) -> r0 = 1
-  if a target was locked, else 0; on success AIState_ScriptId = 8, SubState = 0, target X/Y stored at
-  r5+0x80/0x81, ExtraVars+0xC = 1; on failure AIAttackVars_StepTimer = AttackDuration and setAttack0(9).'
-details: This is one step of a battle AI attack routine. It searches with alliance flipped (r5's Alliance
-  XOR 1) for the closest enemy object, requires it to be alive (field 0x24 != 0) and on the same panel
-  row as r5 (enemy 0x13 == r5.PanelY). It then computes (enemyX - selfX) * frontDirection and aborts unless
-  positive, i.e. the enemy must be in front. The target pointer is saved in AIAttackVars_TargetObjectPtr;
-  if FindBattleActorsWithNonzeroParam(0x6c, 0x67, 0x6c) reports none (path clear of some actor type),
-  it sets a 'target locked' flag at r5.ExtraVars+0xC, calls sub_8110D18 (unknown, likely pre-attack setup),
-  copies the target's panel X/Y into r5+0x80/0x81, and switches the AI state to script 8, substate 0,
-  tearing down the current attack via object_exitAttackState. If any check fails, it reloads the attack
-  duration into the step timer and calls object_setAttack0(9), moving to the next attack step.
+status: confirmed
+summary: AI attack aiming step — locks onto the closest enemy on the AI's own row directly in front of it and starts
+  the attack script (script 8), otherwise resets the timer and falls back to attack 0.
+interface: void ai_aimRowTargetStartAttack(BattleObject* r5 obj, AIState* r6 aiState, AIAttackVars* r7 attackVars);
+  returns r1 left by the final state-change call, r5 preserved
+details: 'r5 = battle object, r6 = AI state block, r7 = AI attack vars (all three preserved). Finds the closest
+  battle object on the opposite alliance (battleObject_findClosestEnemyBattleObject_80103F8 with alliance^1). The
+  candidate must pass three checks or the routine bails: alive (halfword at +0x24 nonzero), same row (target PanelY
+  at +0x13 == obj PanelY), and in front of the AI (object_getFrontDirection(obj) * (targetPanelX +0x12 - objPanelX)
+  > 0, signed 32-bit). If a target passes, it is stored in attackVars->TargetObjectPtr, but the lock is aborted
+  if FindBattleActorsWithNonzeroParam_ReturnCountAndSum(0x6C, 0x67, 0x6C, obj) returns a nonzero count (another
+  actor already matching the 0x6C/0x67 param criteria). On success: sets obj->ExtraVars+0xC = 1 (locked-on flag),
+  calls sub_8110D18(obj), copies the target''s panel X/Y (+0x12/+0x13) into obj +0x80/+0x81, sets aiState->ScriptId
+  = 8 and aiState->SubState = 0, and commits via object_exitAttackState_801171C. On any failure (shared bail-out
+  path): reloads attackVars->AttackDuration into StepTimer and switches to attack 0 with value 9 via object_setAttack0.
+  Note the assembly computes (targetX - ourX) but the product uses the value in r2 before the mul (sub r2, r3, r2;
+  mul r1, r2 — r1=facing, r2=xDiff), matching the C.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r5,#Alliance]; eor r0,#1; bl battleObject_findClosestEnemyBattleObject — searches
-    for the opposing side''s nearest object; ldrb r1,[r0,#0x13]; cmp r1,[r5,#PanelY]; bne — target must
-    share the caller''s panel row; sub r2,r3,r2; mul r1,r2; ble fail with object_getFrontDirection — target
-    must lie ahead of the attacker; str r0,[r7,#oAIAttackVars_TargetObjectPtr] ... strb r1,[r5,#0x80];
-    strb r2,[r5,#0x81]; mov r0,#8; strb r0,[r6,#oAIState_ScriptId] — locks target and jumps to AI script
-    8; loc_8110794: ldrh r0,[r7,#AttackDuration]; strh r0,[r7,#StepTimer]; mov r0,#9; bl object_setAttack0
-    — failure path advances to attack step 9'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:5285
-  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
-  - 0x0801171C object_exitAttackState_801171C
-  - 0x0800E2CA object_getFrontDirection
-  reproduce: python3 tools/asmcat.py 0x0811072C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_aimRowTargetStartAttack
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_aimRowTargetStartAttack
+
+    ./wf verify --function ai_aimRowTargetStartAttack --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 1 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_aimRowTargetStartAttack
+
+    ./wf verify --function ai_aimRowTargetStartAttack --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_aimRowTargetStartAttack
+
+    ./wf verify --function ai_aimRowTargetStartAttack --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811072c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What sub_8110D18 does (likely pre-attack or panel setup before script 8)
-- Which actor type the FindBattleActorsWithNonzeroParam(0x6c,0x67,0x6c) check clears the path of
-- What AI script 8 performs once entered (the actual attack), and which boss/enemy attack routine calls
-  this step
+- sub_8110D18 is unnamed; it is called only with the battle object, purpose unknown (probably side-effect bookkeeping
+  when the lock is set)
+- exact meaning of the 0x6C/0x67/0x6C parameters to FindBattleActorsWithNonzeroParam_ReturnCountAndSum (which actor
+  type/param this deconflicts with)
+- whether +0x24 is HP-like aliveness or a generic active flag
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_811072C -> ai_aimRowTargetStartAttack
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811072C
+- tools/wf run convert-20261020-101942
+- recomp 486adde

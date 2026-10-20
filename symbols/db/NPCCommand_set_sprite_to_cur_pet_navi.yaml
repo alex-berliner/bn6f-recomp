@@ -1,0 +1,77 @@
+name: NPCCommand_set_sprite_to_cur_pet_navi
+address: '0x0809EFFC'
+kind: function
+status: confirmed
+summary: NPC script command that changes an overworld NPC's sprite to the current PET Navi's NPC sprite and reattaches
+  its shadow.
+interface: void NPCCommand_set_sprite_to_cur_pet_navi(OverworldNPCObject* npc /*r5*/, u32 counter /*r6*/); // reads
+  r10 (via callee GetCurPETNavi); returns r6 = counter+1; clobbers r0,r1,r3,lr and NZCV
+details: 'Script-command handler for overworld NPC objects (r5 = object pointer, r6 = command
+
+  counter, incremented by 1 at the end). Calls GetCurPETNavi() to get the Navi currently
+
+  loaded in the PET, then translates that Navi id through PETNaviToNPCSpriteTable to an
+
+  NPC sprite id. Stores the sprite id (halfword) into npc->NPCSprite and sets
+
+  npc->NPCSpriteCategory to 0x18 (the overworld NPC sprite set category). Also reads
+
+  npc->UnkFlags_60, clears bit 0x80 (OW_NPC_UNK_FLAGS_60_SHADOW_FLAG_0x80, the shadow
+
+  attached flag), and writes it back so a fresh shadow gets attached to the NPC.
+
+  Used by NPC scripts where an NPC should appear as the player''s currently equipped Navi.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c NPCCommand_set_sprite_to_cur_pet_navi
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_set_sprite_to_cur_pet_navi
+
+    ./wf verify --function NPCCommand_set_sprite_to_cur_pet_navi --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_set_sprite_to_cur_pet_navi
+
+    ./wf verify --function NPCCommand_set_sprite_to_cur_pet_navi --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_set_sprite_to_cur_pet_navi
+
+    ./wf verify --function NPCCommand_set_sprite_to_cur_pet_navi --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809effc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning of UnkFlags_60 bit 0x80 (named SHADOW_FLAG here; presumed to control shadow attachment/hiding)
+- what r3 returned from GetCurPETNavi represents (unused here)
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,55 +1,77 @@
 name: battleObject_phaseTickToNext_80D458C
 address: '0x080D458C'
 kind: function
-previous_names:
-- sub_80D458C
-status: probable
-summary: 'BattleObject phase tick: if not yet initialized, seed Timer from Param2; each call decrements
-  Timer and on reaching zero, reset Timer to 8 and set CurPhaseAndPhaseInitialized to 4.'
-interface: (r5 = BattleObject*) -> r0 = leftover Timer; side effects writes BattleObject->PhaseInitialized,
-  Timer, CurPhaseAndPhaseInitialized
-details: 'Pushes {lr}, no callee-saved spills. Reads PhaseInitialized (oBattleObject+0xb); if 0, sets
-  it to 1 and copies Param2 (oBattleObject+0x5, byte) into Timer (oBattleObject+0x20, u16). Always decrements
-  Timer; if result > 0 returns. Otherwise reloads Timer with 8 and writes 4 into the u16 CurPhaseAndPhaseInitialized
-  (oBattleObject+0xa) which sets CurState=UPDATE (0x4) and PhaseInitialized=0, advancing the object to
-  its update phase next frame. Returns the post-decrement Timer in r0 (and flags).
+status: confirmed
+summary: Ticks a battle object's phase timer and, when it expires, resets it to 8 and moves the object to phase
+  4.
+interface: void battleObject_phaseTickToNext_80D458C(struct BattleObject* obj /* r5 */)
+details: 'Operates on the BattleObject in r5 using the standard struct offsets. On the first
+
+  invocation for a phase (oBattleObject_PhaseInitialized == 0) it sets the initialized
+
+  byte to 1 and seeds oBattleObject_Timer (16-bit) from oBattleObject_Param2 (read as a
+
+  byte, so the seed is 0-255). Each call then decrements the timer; while it remains
+
+  positive the call returns without further effect. Once the timer reaches 0 (or wraps
+
+  below), the timer is reloaded with 8 and oBattleObject_CurPhaseAndPhaseInitialized is
+
+  written as 16-bit value 4 — writing the phase also clears the PhaseInitialized bit
+
+  packed into the same field, so the next cycle re-seeds the timer from Param2 again.
+
+  No other state is touched; r0 and the NZCV flags are clobbered, no results returned.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#oBattleObject_PhaseInitialized]` at 0x80d458e and the `bne loc_80D459C` skip
-    the seed block - `mov r0, #1; strb r0, [r5,#oBattleObject_PhaseInitialized]` matches bool8 PhaseInitialized
-    at oBattleObject+0xb - `ldrb r0, [r5,#oBattleObject_Param2]; strh r0, [r5,#oBattleObject_Timer]` (0x80d4594–0x80d4598)
-    seeds Timer at oBattleObject+0x20 from Param2 at +0x5 - `ldrh r0, [r5,#oBattleObject_Timer]; sub r0,
-    #1; strh r0, [r5,#oBattleObject_Timer]; bgt locret_80D45AC` is a countdown that exits while positive
-    - `mov r0, #8; strh r0, [r5,#oBattleObject_Timer]; mov r0, #4; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
-    reloads to 8 frames and writes CurState=CUR_STATE_UPDATE (0x4) with PhaseInitialized bit cleared (0x4
-    low byte at offset 0xa) - `pop {pc}` is a Thumb tail-return idiom (bx lr via pop)'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080D458C
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_phaseTickToNext_80D458C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_phaseTickToNext_80D458C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_phaseTickToNext_80D458C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 179 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_phaseTickToNext_80D458C
+
+    ./wf verify --function battleObject_phaseTickToNext_80D458C --snapshots build-snapshots'
+  result: 51 compared, 0 differed, 45 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_phaseTickToNext_80D458C
+
+    ./wf verify --function battleObject_phaseTickToNext_80D458C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080d458c '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What phase this tick belongs to (i.e. which initializer or action owns Param2) is unknown; callers would
-  tell us. The contract says callers section is empty here, so we can't anchor the role from call sites.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d458c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D458C -> battleObject_phaseTickToNext_80D458C
-  where: bn6f 25419b15
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,46 +1,71 @@
 name: ai_dispatchAttackHandlerByElement
 address: '0x08110714'
 kind: function
-status: probable
-summary: Dispatches an AI attack handler chosen by the element of the AI's pending hit/attack, using a
-  per-element jump table.
-interface: (r7 = AI attack vars struct, [r7+oAIAttackVars_HitElement] = element index) -> jumps to handler
-  = table[element], returns to caller after handler returns; r0 clobbered
-details: Loads the HitElement byte from the AI attack-vars struct at r7 and uses it as an index into a
-  jump table at off_8110728 (entries like ai_aimRowTargetStartAttack+1). It sets lr to the instruction
-  after the branch (mov lr, pc before bx in Thumb), so the selected handler returns here and the function
-  then returns to its own caller — a classic computed-call trampoline. The table is the per-element handler
-  list; only the first entry (element 0, likely Normal/aim-row-target attack) is visible in the dump.
-  No register arguments are forwarded, so the handlers must operate on the shared r7 struct or globals.
+status: confirmed
+summary: Battle AI trampoline that looks up the element-specific attack handler for the hit element stored in the
+  AI's variable block and tail-calls it.
+interface: void ai_dispatchAttackHandlerByElement(void) — uses r7 as pointer to the AI attack variable block; passes
+  r0 = HitElement byte and r1 = handler table entry into the callee; r5, r6, r7, r10 pass through untouched; outputs
+  are whatever the element handler leaves in r1, r5, r8-r12; flags nzcv clobbered.
+details: Tail-call dispatch for the battle AI's attack processing. Reads the byte at r7+oAIAttackVars_HitElement
+  (the element of the hit currently being handled), uses it unshifted as an index into the handler table at off_8110728,
+  then performs the classic ARM/Thumb interwork trampoline `mov lr, pc; bx r1` so the handler returns through `pop
+  {pc}` back to this function's caller. r5/r6/r7/r10 are deliberately not saved or restored — the caller's live
+  context (including the AI variable block pointer in r7) must still be intact inside the handler. Because the target
+  comes from a table and the handler's "return value" is the set of live registers r1/r5/r8-r12 it leaves behind,
+  this can only be represented as a register-form helper, not a normal C call.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] indexes the handler table (asm lines 3-4); ldr r1,[r1,r0];
-    mov lr,pc; bx r1 is a computed call that keeps the caller's return path; table entry ai_aimRowTargetStartAttack+1
-    confirms handlers are AI attack routines; called in recorded battle routes (battlesweep, beastsp),
-    matching in-battle AI attack execution
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:5375
-  reproduce: python3 tools/asmcat.py 0x08110714
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_dispatchAttackHandlerByElement
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_dispatchAttackHandlerByElement
+
+    ./wf verify --function ai_dispatchAttackHandlerByElement --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 1 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_dispatchAttackHandlerByElement
+
+    ./wf verify --function ai_dispatchAttackHandlerByElement --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 16 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_dispatchAttackHandlerByElement
+
+    ./wf verify --function ai_dispatchAttackHandlerByElement --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110714 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- full contents of the jump table off_8110728 (one entry per element) to confirm the per-element handler
-  set
-- which caller invokes this and what r7 points to at that point
+- full extent of the handler table at off_8110728 (only the first entry, ai_aimRowTargetStartAttack, is labeled
+  here)
+- whether HitElement is a standard game element enum or an AI-internal attack-type index, given the raw unshifted
+  table index
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8110714 -> ai_dispatchAttackHandlerByElement
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8110714
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,56 +1,71 @@
 name: battleObject_copyCoordsFromRelatedObject_80B8800
 address: '0x080B8800'
 kind: function
-previous_names:
-- sub_80B8800
-status: probable
-summary: Copies the 0x34 coord triple (X, Y, Z) from this object's RelatedObject1Ptr into its own
-interface: '(r5 = oBattleObject) -> r1 = oRelated->X, r2 = oRelated->Y, r3 = oRelated->Z ; side effects:
-  writes oBattleObject+0x34..0x3F with the same three u32s'
-details: "Reads r5 (a BattleObject pointer). Loads its RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr\
-  \ = 0x4C) into r1,\n  then takes the address r1+0x34 (Coords.X) and ldmia-populates r1,r2,r3 with the\
-  \ three u32s at 0x34..0x3F\n  (XVelocity-adjacent coords in the object struct).\n  Sets r0 to r5+0x34\
-  \ and stmia-writes r1,r2,r3 back into oBattleObject[0x34..0x3F], copying the related object's\n  X/Y/Z\
-  \ triple verbatim into this object's own Coords slot.\n  Tail-returns via `mov pc, lr`. Because the\
-  \ struct defines the same 0x34 region as `Coords` (X, Y, Z), this\n  is a teleport/sync helper: snap\
-  \ this object's position to its related object's position.\n  Callers (sub_80B86A4 / sub_80B86C4) both\
-  \ use r5+offset 0x34 immediately after as well, consistent with\n  the function being called during\
-  \ animation states that need to overwrite local coords.\n"
+status: confirmed
+summary: Copies three coordinate words at offset 0x34 from the object's RelatedObject1 into this battle object.
+interface: void battleObject_copyCoordsFromRelatedObject_80B8800(r5 battleObject *this) /* clobbers r0-r3, nzcv
+  */
+details: 'Reads the RelatedObject1Ptr field (oBattleObject_RelatedObject1Ptr) from the battle object in r5,
+
+  then copies three consecutive words (offsets 0x34, 0x38, 0x3C within the object — likely the
+
+  x/y/other position or coordinate triple) from the related object to the same offsets in this
+
+  object. Implemented as ldmia/stmia of {r1-r3} from related+0x34 to this+0x34. The related
+
+  pointer is not validated; a null pointer would fault. No other state, flags, or fields touched.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]` — fetches the related-object pointer at offset
-    0x4C. - `add r0, r0, r1` with r0=0x34, then `ldmia r0!, {r1-r3}` — loads three u32s starting at oRelated+0x34.
-    - `add r0, r0, r5` with r0=0x34, then `stmia r0!, {r1-r3}` — stores the same three u32s into oSelf+0x34.
-    - Struct shows oBattleObject Coords begin at 0x34 (X, Y, Z as 16.16), and the loop loads 12 bytes
-    = 3 u32s. - r5 contract: function only consumes r5 (the BattleObject) and returns in r1/r2/r3 the
-    new X/Y/Z it just wrote.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080B8800
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_copyCoordsFromRelatedObject_80B8800
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_copyCoordsFromRelatedObject_80B8800
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_copyCoordsFromRelatedObject_80B8800 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_copyCoordsFromRelatedObject_80B8800
+
+    ./wf verify --function battleObject_copyCoordsFromRelatedObject_80B8800 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 94 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_copyCoordsFromRelatedObject_80B8800
+
+    ./wf verify --function battleObject_copyCoordsFromRelatedObject_80B8800 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080b8800 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Whether the bytes at 0x34 are really position or velocity — Coords is documented at 0x34, but the next
-- declared field is XVelocity at 0x40. Three u32s from 0x34..0x3F is exactly the Coords triple, so it's
-  a
-- coord copy, not a velocity copy, but watching the callers' context would confirm the semantic role.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b8800 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 90fa2c5c
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80B8800 -> battleObject_copyCoordsFromRelatedObject_80B8800
-  where: bn6f f043a75e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the three words at offset 0x34 (x/y position plus one more field?)
+- which callers set up RelatedObject1Ptr and in what situations this sync is used
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

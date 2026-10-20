@@ -1,50 +1,90 @@
 name: ai_attackHitElementBranchTable
 address: '0x080FFE26'
 kind: function
-status: probable
-summary: Battle-AI dispatcher that jumps to a per-element handler selected by the AI attack struct's HitElement
+status: confirmed
+summary: AI attack-state dispatcher that tail-calls one of four handlers selected by the attack work area's HitElement
   byte.
-interface: (r7 = pointer to AI attack vars struct) -> r0 = HitElement value passed to selected handler
-  (r1 clobbered); tail-returns handler result
-details: 'Reads the byte at [r7,#oAIAttackVars_HitElement] and uses it as an index into the four-entry
-  table at off_80FFE38, then tail-calls the selected routine (lr=pc, bx). Entries: three element-specific
-  subs (sub_80FFE48, sub_80FF72, sub_80FFEC0) and ai_attackTimerTick as the fourth/default slot, so an
-  element value of 3 falls back to the normal attack-timer tick. The callee receives the element value
-  in r0 while r7 still points at the vars struct, so handlers can read further AI attack fields. This
-  is a plain branch-table dispatch; it holds no state of its own.'
+interface: void ai_attackHitElementBranchTable(r5, r6, r7 = AI attack vars ptr, r10); returns via chosen handler
+  (r1,r5,r8,r9,r10,r11,r12 whatever the handler leaves; r7 preserved); clobbers r0-r6, nzcv, lr
+details: 'Reads the HitElement byte from the AI attack work area at [r7+oAIAttackVars_HitElement] and
+
+  uses it as a byte offset (not a shifted index) into the branch table at off_80FFE38, which
+
+  holds four handler entry points (thumb, +1): ai_attackDelayHit, sub_80FFE72, sub_80FFEC0,
+
+  ai_attackTimerTick. It then performs a hand-rolled tail call: `mov lr, pc` followed by
+
+  `bx r1` jumps to the handler with lr pointing just after the branch, so the handler''s own
+
+  `pop {r7,pc}` epilogue returns directly to this function''s caller — a classic THUMB
+
+  dispatch idiom that also keeps this frame''s saved r7 live. Because the handlers keep
+
+  working state in r5-r12 across the call, those registers are effectively live in/out
+
+  (contract shows r1,r5,r8-r12 as outputs); typed C cannot express this call. HitElement is
+
+  also left in r0 for the handler, and the table pointer stays in r1 at the moment of the
+
+  branch. Effectively this is the per-element/per-hit-variant state router for the AI''s
+
+  attack sequence: the "HitElement" byte tracks which attack-hit stage/element state the AI
+
+  is in, and each of the four states advances the attack differently.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0]: table index is the hit-element
-    field; table off_80FFE38 mixes three unnamed element subs with known ai_attackTimerTick, implying
-    element-specific attack behavior vs default; mov lr,pc / bx r1 is a Thumb-mode tail-call dispatch,
-    no state kept in this stub; recorded routes battlesweep/beastsp/chips are all battle-AI execution
-    contexts, matching the ai_ prefix of the known callee'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:153746
-  reproduce: python3 tools/asmcat.py 0x080FFE26
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121; the run''s proposed name ai_attackHitElementDispatch
-    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
-    minimax/MiniMax-M3 agreed)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackHitElementBranchTable
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackHitElementBranchTable
+
+    ./wf verify --function ai_attackHitElementBranchTable --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackHitElementBranchTable
+
+    ./wf verify --function ai_attackHitElementBranchTable --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 28 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackHitElementBranchTable
+
+    ./wf verify --function ai_attackHitElementBranchTable --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffe26 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- what sub_80FFE48/sub_80FF72/sub_80FFEC0 each do, and which element values 0-2 map to (fire/aqua/elec
-  or other)
-- exact layout of the AI attack vars struct beyond oAIAttackVars_HitElement and how r7 is set up by callers
+- exact game meaning of each HitElement value 0-3 (delay-hit, two unnamed mid-states, timer tick) awaits renaming
+  of sub_80FFE72 and sub_80FFEC0
+- whether HitElement is ever set to values outside 0-3 (would index past the table)
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 960a2fd2
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80FFE26 -> ai_attackHitElementBranchTable
-  where: bn6f ffbdad58
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FFE26
+- tools/wf run convert-20261020-101942
+- recomp 486adde

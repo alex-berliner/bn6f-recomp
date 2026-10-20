@@ -1,48 +1,71 @@
 name: ai_getTargetObjectPos
 address: '0x080E164A'
 kind: function
-status: probable
-summary: AI helper returning two byte fields (likely coordinates) of the battle object currently targeted
-  by the caller's AI data.
-interface: (r5 = battle object) -> r0 = targetObject field 0x12, r1 = targetObject field 0x13; flags not
-  meaningful
-details: Reads the battle object's AIData pointer at oBattleObject_AIDataPtr, then the AIData's TargetObjectPtr
-  at oAIData_TargetObjectPtr, and returns bytes 0x12 and 0x13 of that target object in r0/r1 (tail-call
-  style via mov pc, lr, no stack use). It is a pure two-byte accessor with no side effects. Field pair
-  0x12/0x13 in a battle object is plausibly an x/y position pair used by AI targeting logic, but the struct
-  layout beyond the known AIData offsets is not confirmed. Callers at 0x0802D358, 0x0802D4F0 and 0x080EEFBC
-  would need disassembly to confirm the fields' meaning.
+status: confirmed
+summary: Returns the x/y position bytes of the AI battle object's current target object.
+interface: (r5 = battle object*) -> (r0 = target x, r1 = target y); lr is the return address, no flags read or written
+details: 'Follows the battle object''s AI data pointer (oBattleObject_AIDataPtr at r5),
+
+  then the AI data''s target object pointer (oAIData_TargetObjectPtr), and reads
+
+  two bytes from the target: offset 0x12 into r0 (x) and offset 0x13 into r1 (y).
+
+  These look like the target''s tile/byte-precision position coordinates. No
+
+  null checks: if the target pointer is unset the result is garbage/crash.
+
+  Pure read; preserves nothing but also clobbers nothing besides r0/r1.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldr r1,[r5,#oBattleObject_AIDataPtr]; ldr r1,[r1,#oAIData_TargetObjectPtr] — navigates battle
-    object -> AI data -> target object; ldrb r0,[r1,#0x12]; ldrb r1,[r1,#0x13] — returns two separate
-    byte fields of the target object; mov pc, lr with no stack save — leaf accessor returning two values
-    in registers; called from three sites (0x0802D358, 0x0802D4F0, 0x080EEFBC) and recorded on beastsp
-    routes, matching AI-executed code
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:88981
-  - 0x0802D358 sub_802D358
-  - 0x0802D4F0 sub_802D4F0
-  - 0x080EEFBC sub_80EEFBC
-  reproduce: python3 tools/asmcat.py 0x080E164A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_getTargetObjectPos
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_getTargetObjectPos
+
+    ./wf verify --function ai_getTargetObjectPos --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_getTargetObjectPos
+
+    ./wf verify --function ai_getTargetObjectPos --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_getTargetObjectPos
+
+    ./wf verify --function ai_getTargetObjectPos --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e164a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 open_questions:
-- meaning of fields 0x12/0x13 in the battle object struct (position? panel coords? HP?)
-- what the three callers do with r0/r1 — disassembling 0x0802D358/0x0802D4F0/0x080EEFBC would confirm
+- exact meaning of target object bytes 0x12/0x13 (pixel x/y vs tile x/y)
+- behavior when the target object pointer is null or stale
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80E164A -> ai_getTargetObjectPos
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80E164A
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,52 +1,72 @@
 name: battleObject_initVisualsFromRelatedObject
 address: '0x080B8600'
 kind: function
-status: probable
-summary: Sets up a battle object's sprite with fixed resource IDs and mirrors palette and animation state
-  from its linked related object.
-interface: (r5 = battle object) -> r0 = destroyed; sets CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE
-details: 'Loads a sprite for the object with hardcoded parameters (0x80, 0x10, 0x30), loads its animation
-  data and disables its shadow. It then reads the linked RelatedObject1Ptr: copies that object''s palette
-  ID into its own sprite via sprite_setPalette, and copies that object''s CurAnim byte into its own CurAnimAndCurAnimCopy
-  halfword, applying it with sprite_setAnimation and refreshing with sprite_loadAnimationData/sprite_update.
-  Finally it writes CUR_STATE_UPDATE into the object''s state-action phase field and calls battleObject_syncVisualStateFromRelatedObject_80B863A
-  to copy the remaining visual state (flags, shader, palette/mosaic/alpha, flip) from the related object
-  and dispatch the sub-action handler. Net effect: this object takes on the related object''s appearance
-  while running its own fixed sprite resource.'
+status: confirmed
+summary: Sets up a battle object's sprite visuals by cloning the sprite resource, palette and current animation
+  from its related object, then advances it to the update state.
+interface: battleObject_initVisualsFromRelatedObject(r5 = battle object, r10 passthrough) -> r5 = battle object,
+  r8-r12 = callee register image; clobbers r0-r4, r6, lr and flags; preserves r7
+details: Runs on a battle object whose visuals should mirror a related object (oBattleObject_RelatedObject1Ptr).
+  Loads the standard battle sprite resource (sprite_load with args 0x80, 0x10, 0x30), loads its animation data,
+  and marks the sprite as casting no shadow (sprite_noShadow). It then reads the related object's palette via sprite_getPalette
+  and applies it to this object with sprite_setPalette, copies the related object's oBattleObject_CurAnim byte into
+  this object's oBattleObject_CurAnimAndCurAnimCopy (value/copy pair written as a halfword), applies that animation
+  with sprite_setAnimation, reloads animation data, and calls sprite_update to apply the frame. Finally it stores
+  CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized to advance the object's state machine,
+  and tail-calls battleObject_syncVisualStateFromRelatedObject_80B863A to finish the remaining visuals from the
+  related object's state. The object pointer lives in r5 throughout and is chained through every sprite helper call
+  since those helpers may replace it; r10 is only passed through to the sync helper.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: sprite_load called with immediate (0x80, 0x10, 0x30) — fixed sprite resource parameters, not
-    caller-supplied; ldrb r0,[r0,#oBattleObject_CurAnim] from RelatedObject1Ptr then strh into oBattleObject_CurAnimAndCurAnimCopy
-    — animation copied from related object; sprite_getPalette on RelatedObject1Ptr feeding sprite_setPalette
-    — palette mirrored from related object; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
-    — transitions the object into its per-frame update phase; tail call battleObject_syncVisualStateFromRelatedObject_80B863A
-    copies flag bits/shader/palette/alpha/flip from the related object
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:571
-  - 0x080B863A battleObject_syncVisualStateFromRelatedObject_80B863A
-  - 0x08002D8C sprite_getPalette
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080B8600
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_initVisualsFromRelatedObject
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initVisualsFromRelatedObject
+
+    ./wf verify --function battleObject_initVisualsFromRelatedObject --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initVisualsFromRelatedObject
+
+    ./wf verify --function battleObject_initVisualsFromRelatedObject --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 53 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initVisualsFromRelatedObject
+
+    ./wf verify --function battleObject_initVisualsFromRelatedObject --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080b8600 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No caller is recorded, so the gameplay context (which enemy/object uses this) and the meaning of the
-  hardcoded load parameters (0x80, 0x10, 0x30) are unknown
+- exact meaning of the sprite_load arguments 0x80/0x10/0x30 (sprite resource id, palette count, tile base?)
+- which callers set up RelatedObject1Ptr before calling this
+- whether the CurAnim value/copy halfword split (value in low byte, copy in high byte) is exactly as assumed
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 960a2fd2
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80B8600 -> battleObject_initVisualsFromRelatedObject
-  where: bn6f ffbdad58
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80B8600
+- tools/wf run convert-20261020-101942
+- recomp 486adde

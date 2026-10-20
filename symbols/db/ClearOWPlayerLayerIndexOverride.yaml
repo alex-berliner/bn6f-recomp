@@ -1,0 +1,64 @@
+name: ClearOWPlayerLayerIndexOverride
+address: '0x0809E26A'
+kind: function
+status: confirmed
+summary: Clears the overworld player object's layer-index override so the player renders at its default layer again.
+interface: u32 ClearOWPlayerLayerIndexOverride(u32 toolkit /* r10 */); returns r3 = overworld player object pointer
+details: 'Takes the toolkit pointer in r10 (this routine is part of a group that receives context in a nonstandard
+  register), loads GameState via oToolkit_GameStatePtr, then the overworld player object via oGameState_OverworldPlayerObjectPtr,
+  and stores 0 as a byte into oOWPlayerObject_LayerIndexOverride, disabling the forced layer index. Unusually for
+  a "clear" helper, it leaves the player object pointer in r3 as an output; the C model treats that as the return
+  value. Flags are clobbered (writes set no meaningful flags here, but nz is marked dirty). lr is used as a plain
+  return (mov pc, lr), so it must not be tail-called from code needing a preserved lr.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/ow_player.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ClearOWPlayerLayerIndexOverride
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ClearOWPlayerLayerIndexOverride
+
+    ./wf verify --function ClearOWPlayerLayerIndexOverride --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ClearOWPlayerLayerIndexOverride
+
+    ./wf verify --function ClearOWPlayerLayerIndexOverride --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ClearOWPlayerLayerIndexOverride
+
+    ./wf verify --function ClearOWPlayerLayerIndexOverride --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809e26a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/ow_player.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/ow_player.c
+coverage:
+- beastsp
+open_questions: []
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

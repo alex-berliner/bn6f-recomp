@@ -1,48 +1,70 @@
 name: ai_checkNextPanelFlags
 address: '0x08110D58'
 kind: function
-status: probable
-summary: Tests whether the object's next vertical-movement position lands on a panel whose status flags
-  match a fixed mask, returning 1/0.
-interface: (r5 = battle object, reads oBattleObject_X/Y/YVelocity/Z) -> r0 = 1 if panel flags & byte_8110DB0
-  nonzero, else 0; flags clobbered
-details: Takes the object's current X/Y, adds YVelocity to Y (the next step of the motion), and uses the
-  object's Z, converting that screen position to field panel coordinates with convertXYToPanelXY_800E258.
-  It then fetches the panel status word via object_getPanelParameters and ANDs it with the constant mask
-  byte_8110DB0. If any masked flag is set it returns 1, otherwise 0. This is a boolean 'is the panel I'm
-  about to reach flagged' test used by attack AIs; the mask byte itself is data at 8110DB0 (snapshot shows
-  0).
+status: confirmed
+summary: Returns 1 if the panel an AI battle object is about to move onto (position plus Y velocity) has occupied/blocked
+  panel flags set, else 0.
+interface: bool ai_checkNextPanelFlags(BattleObject* obj /* r5 */); returns r0 = 1 when blocked, 0 otherwise; r5
+  and r7 preserved
+details: 'Reads the object''s X, Y and YVelocity (oBattleObject_X/Y/YVelocity) from the battle object in r5, computes
+  the next Y position as Y + YVelocity, converts that screen-space (X, Y) coordinate to a panel coordinate with
+  convertXYToPanelXY_800E258, then fetches the panel''s parameter word with object_getPanelParameters. The parameter
+  word is masked with the literal-pool value at 0x8110DB0 (0x03800000 - bits that mark a panel as occupied, e.g.
+  holes/obstacles), and r0 is set to 1 if any of those bits are set, 0 if not. The object''s Z is loaded into r2
+  before the convert call but the converter only consumes x/y, so the Z load is effectively dead in this routine.
+  Note the panel is looked up at X unchanged and Y+YVelocity, so this predicts the panel after a one-frame movement
+  along Y.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'adds r2=YVelocity to Y before convertXYToPanelXY_800E258 — testing the next position, not current;
-    bl object_getPanelParameters then ''and r0, r1'' with byte_8110DB0 — masked panel-flag test; returns
-    only 0 or 1 (mov #0 / mov #1) — pure boolean predicate; callers ai_lungeAttackUpdate and ai_updateDiveAttack
-    both move/dive an object and need to validate the target panel'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:6138
-  - 0x08110B70 ai_lungeAttackUpdate
-  - 0x081109F6 ai_updateDiveAttack
-  - 0x0800E258 convertXYToPanelXY_800E258
-  - 0x0800C8F8 object_getPanelParameters
-  reproduce: python3 tools/asmcat.py 0x08110D58
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_checkNextPanelFlags
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_checkNextPanelFlags
+
+    ./wf verify --function ai_checkNextPanelFlags --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 187 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_checkNextPanelFlags
+
+    ./wf verify --function ai_checkNextPanelFlags --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_checkNextPanelFlags
+
+    ./wf verify --function ai_checkNextPanelFlags --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08110d58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - beastsp
 open_questions:
-- actual value/meaning of mask byte_8110DB0 (hole/broken/occupied?) — data not shown
-- exact panel-flag bit meanings in object_getPanelParameters result
+- exact meaning of each bit within the 0x03800000 flag mask (hole, broken panel, occupied?) not independently confirmed
+- whether callers expect additional panel states (e.g. off-field coordinates) to map to "blocked"
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8110D58 -> ai_checkNextPanelFlags
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8110D58
+- tools/wf run convert-20261020-101942
+- recomp 486adde

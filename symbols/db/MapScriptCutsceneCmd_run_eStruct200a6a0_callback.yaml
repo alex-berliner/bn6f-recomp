@@ -1,0 +1,70 @@
+name: MapScriptCutsceneCmd_run_eStruct200a6a0_callback
+address: '0x0803821E'
+kind: function
+status: confirmed
+summary: Map-script command handler that invokes the current cutscene callback, advances the script counter past
+  the command, and always returns "keep running" (r0 = 1).
+interface: 'u32 mapScript_cmd_runCutsceneCallback(u32 scriptCounter /* r7 in, dead */, u32 *out /* r7 out */); //
+  tail-branchless: sets NZ flags from r0'
+details: 'Tail of a map-script command dispatch: calls run_eStruct200a6a0_Callback_8002484 (the cutscene/eStruct-200a6a0
+  callback runner), which leaves its own state and its returned script-counter value in r7 (the caller''s incoming
+  r7 is ignored/dead). This wrapper then does add r7, #1 to step the script program counter past this command word,
+  sets r0 = 1 (status "keep running script"), and returns. All other registers and the final NZ flags visible to
+  the caller come from the callee and the mov r0, #1 (always non-zero, non-negative; c flags carry over from the
+  callee). Preserves r4-r6 as the map-script ABI requires; clobbers r0, r1, lr and passes through clobber of r2,
+  r3, r8-r12 from the callee.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c MapScriptCutsceneCmd_run_eStruct200a6a0_callback
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback
+
+    ./wf verify --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback
+
+    ./wf verify --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback
+
+    ./wf verify --function MapScriptCutsceneCmd_run_eStruct200a6a0_callback --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0803821e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- exact semantics of the eStruct at 0x200a6a0 and what the callback may do to other script state
+- whether any caller inspects the c flag carried through from the callee (contract lists c as clobbered, so likely
+  not)
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

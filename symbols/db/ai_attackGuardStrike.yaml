@@ -1,53 +1,78 @@
 name: ai_attackGuardStrike
 address: '0x08110EF8'
 kind: function
-status: probable
-summary: 'AI attack action: raises the object''s Guard flag, then (unless some actor already has the checked
-  parameter) launches attack 0xA with per-version timing and resets the AI script state.'
-interface: (r4 = AI data struct, r5 = battle object, r6 = AI state struct, r7 = AI attack-vars struct)
-  -> r0 = 0; resets oAIState_ScriptId and oAIState_SubState to 0
-details: Clears oBattleObject_ExtraVars+0xC on its own object (r5) and ORs OBJECT_FLAGS_GUARD into the
-  object's ObjectFlags1, so the actor guards while this action runs. It then scans battle actors via FindBattleActorsWithNonzeroParam_ReturnCountAndSum
-  with parameters (0x6C, 0x67, 0x6C), looking for actors whose field 0x6C equals 0x67; if any are found
-  (count != 0) the attack setup is skipped entirely. Otherwise it indexes two byte tables (byte_8110E40,
-  byte_8110E48) by oAIData_Version_16 to load a step timer and attack duration into oAIAttackVars_StepTimer
-  / oAIAttackVars_AttackDuration, sets oAIAttackVars_TargetObjectPtr to r5+0x74 (a field inside its own
-  object, likely a projectile/anchor slot), and starts attack id 0xA via object_setAttack0. Finally it
-  zeroes the AI state's script id and substate, ending the AI script step. The guard-then-attack pattern
-  and version-dependent timings suggest a scripted boss attack from the Beast+ AI scripts.
+status: confirmed
+summary: AI attack handler for a guard-strike counterattack — raises the GUARD flag on the acting object, and if
+  no strike target is lined up yet, arms the strike with version-specific timings and attack id 0xA before resetting
+  the AI state.
+interface: void ai_attackGuardStrike(r4=AIData*, r5=battleObject*, r6=AIState*, r7=AIAttackVars*, r10=passthrough)
+  -> r1 (callee leftover), r5 (battleObject, preserved); flags nzcv clobbered
+details: "Starts by zeroing the battle object's ExtraVars slot +0xC and setting the OBJECT_FLAGS_GUARD bit via object_setFlag1,\
+  \ so the object visibly enters a guarding state this turn. It then scans the battle with FindBattleActorsWithNonzeroParam_ReturnCountAndSum\
+  \ looking for actors whose field 0x6C equals 0x67 (an existing strike-target mark, 0x6C being the field and 0x67\
+  \ the value searched). If any match is found (r0 != 0) the setup is skipped entirely and control falls through\
+  \ to the state reset — a strike is already queued. Otherwise:\n  - reads AIData's version byte (oAIData_Version_16,\
+  \ offset 0x10) and indexes two\n    per-game-version tables, byte_8110E40 -> StepTimer and byte_8110E48 ->\n \
+  \   AttackDuration, stored as halfwords into the AIAttackVars block;\n  - stores battleObject + 0x74 (the object's\
+  \ target-link field address) into\n    oAIAttackVars_TargetObjectPtr, i.e. the strike targets the guarded opponent;\n\
+  \  - calls object_setAttack0 with attack id 0xA to queue the guard-strike attack.\nFinally it always resets the\
+  \ AI state block: oAIState_ScriptId = 0 and oAIState_SubState = 0, ending this AI action. The returned r1/r5 pair\
+  \ is just whatever the last callee happened to leave in those registers and carries no meaningful contract. Note\
+  \ the two data tables are shared with sibling AI attack handlers (indexing is by AIData version byte, so Falzar/other-version\
+  \ timings differ).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl object_setFlag1 with r0=OBJECT_FLAGS_GUARD sets the guard flag on the acting object; bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
-    (0x6C,0x67,0x6C); 'bne loc_8110F2C' skips the attack when a matching actor exists; ldrb from byte_8110E40/byte_8110E48
-    indexed by oAIData_Version_16 fill StepTimer/AttackDuration, showing version-specific attack timing;
-    TargetObjectPtr = r5+0x74 and object_setAttack0(0xA) arm the attack on the object's own subfield;
-    stores of 0 to oAIState_ScriptId and oAIState_SubState reset the AI script, typical of an AI attack
-    action entry point
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:6310
-  - 0x0801A152 object_setFlag1
-  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
-  - 0x08011680 object_setAttack0
-  reproduce: python3 tools/asmcat.py 0x08110EF8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackGuardStrike
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackGuardStrike
+
+    ./wf verify --function ai_attackGuardStrike --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 2 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackGuardStrike
+
+    ./wf verify --function ai_attackGuardStrike --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackGuardStrike
+
+    ./wf verify --function ai_attackGuardStrike --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08110ef8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Exact meaning of the 0x6C/0x67 actor scan (which actor type or state it avoids attacking), and which
-  boss/AI script invokes this, since no callers are recorded
+- exact gameplay semantics of field 0x6C == 0x67 (which actor set marks a pending guard-strike target) not independently
+  verified
+- which attack id 0xA corresponds to visually (assumed guard-strike from context)
+- why the target object pointer stores object+0x74 rather than the object pointer itself (offset vs. pointer semantics
+  of oAIAttackVars_TargetObjectPtr)
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8110EF8 -> ai_attackGuardStrike
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8110EF8
+- tools/wf run convert-20261020-101942
+- recomp 486adde

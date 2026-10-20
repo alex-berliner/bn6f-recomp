@@ -1,49 +1,73 @@
 name: ai_attackTimerStep
 address: '0x080F8A48'
 kind: function
-status: probable
-summary: 'Per-frame tick of an AI attack step: counts down a frame timer and, when it expires, transitions
-  the object into its moving/attacking state with a fixed hit element.'
-interface: (r7 = battle object AI attack vars) -> void; flags from the timer subtraction
-details: Runs each frame against r7 = the current battle object's AI attack variable block. It decrements
-  oAIAttackVars_StepTimer and returns immediately if the result is still positive. When the timer reaches
-  zero it clears ObjectFlags1 bit 0x40 (likely an attack-charge/telegraph flag set while waiting), sets
-  the OBJECT_FLAGS_CURRENTLY_MOVING_1 bit so the object's movement/attack logic activates, and writes
-  HitElement = 0xC into oAIAttackVars_HitElement for the hit that the attack will deal.
+status: confirmed
+summary: Counts down the AI attack-step timer each tick and, once it expires, resets the attack state (clears the
+  0x40 attack flag, marks the object as currently moving, resets the hit element to 0xC).
+interface: void ai_attackTimerStep(u32 object /*r5*/, AiAttackVars* vars /*r7*/); returns r1 passthrough (unchanged
+  on early path, caller-callee garbage from object_setFlag1 otherwise); flags clobbered
+details: "Decrement-and-reload step for the AI attack sequence. r7 points to an AI attack\nvars structure: the halfword\
+  \ at oAIAttackVars_StepTimer is decremented every\ncall (one tick). While the value is still positive (> 0, signed\
+  \ compare via\nbgt), nothing else happens. When the timer reaches 0 (or has underflowed, since\nthe check is signed),\
+  \ the attack step ends:\n  - object_clearFlag(0x40, object) clears bit 0x40 on the battle object\n    (r5 = owning\
+  \ object; likely the \"attacking/in attack step\" flag),\n  - object_setFlag1(1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT,\
+  \ object) sets the\n    object's currently-moving flag (likely so it can move again after attacking),\n  - the\
+  \ halfword at oAIAttackVars_HitElement is reset to 0xC (default/neutral\n    hit element for the next attack).\n\
+  Quirks: r1 is returned unchanged on the timer-still-positive path but holds\nwhatever object_setFlag1 left in\
+  \ it on the reset path, so callers presumably\nignore r1. The decrement is not clamped, so a step that keeps running\
+  \ past 0\nwould re-trigger the reset every tick until something reloads StepTimer.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] with 'bgt locret' = frame-countdown gate, asm
-    lines 2-5; object_clearFlag(0x40) drops a standing flag only on timer expiry; object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)
-    marks the object as now moving/attacking; strh 0xC into oAIAttackVars_HitElement assigns a fixed element
-    to the upcoming hit; uses only r7-relative fields, matching AI attack script step handlers that receive
-    no r0 args
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:137710
-  - 0x0801A15C object_clearFlag
-  - 0x0801A152 object_setFlag1
-  reproduce: python3 tools/asmcat.py 0x080F8A48
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-182231'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackTimerStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackTimerStep
+
+    ./wf verify --function ai_attackTimerStep --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 174 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackTimerStep
+
+    ./wf verify --function ai_attackTimerStep --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackTimerStep
+
+    ./wf verify --function ai_attackTimerStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f8a48 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- Which attack or enemy uses this step (no callers found in snapshots; dispatched via AI attack script
-  tables)
-- What ObjectFlags1 bit 0x40 means in this context
-- Which element value 0xC (HitElement = 12) corresponds to
+- exact meaning of the 0x40 flag cleared on the battle object
+- whether 0xC in oAIAttackVars_HitElement is a "no element"/default constant used elsewhere
+- whether callers ever rely on the r1 passthrough
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f edd8d9a9
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80F8A48 -> ai_attackTimerStep
-  where: bn6f 5155625d
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80F8A48
+- tools/wf run convert-20261020-101942
+- recomp 486adde

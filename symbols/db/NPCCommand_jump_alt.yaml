@@ -1,0 +1,68 @@
+name: NPCCommand_jump_alt
+address: '0x0809F3E8'
+kind: function
+status: confirmed
+summary: NPC script opcode handler that jumps execution to a 16-bit target read from the script, storing the new
+  script position in r6.
+interface: 'u32 npc_jumpAlt(u32 script_ptr_r6); // in: r6 = NPC script pointer, lr = return; out: r6 = new script
+  position (word read at ptr+5), r2 = passthrough from ReadNPCScriptWord; clobbers r0, r1, r3, lr and NZCV flags'
+details: One of the NPC script interpreter's command handlers. On entry r6 holds the NPC script pointer. It computes
+  pointer+5 and calls ReadNPCScriptWord to fetch the jump argument (the word stored 5 bytes into the command), then
+  writes the fetched word back into r6, effectively relocating the script pointer to the jump target. ReadNPCScriptWord
+  leaves additional results in r1-r3; r2 survives as an output of this routine unchanged, while r0/r1/r3 are dead.
+  No other registers or memory are touched; the routine is a tail-like wrapper (push lr / pop pc) around the read-and-reassign.
+  The "_alt" name presumably distinguishes it from the regular jump command, likely by its argument offset (+5)
+  or encoding variant.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c NPCCommand_jump_alt
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_jump_alt
+
+    ./wf verify --function NPCCommand_jump_alt --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 181 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_jump_alt
+
+    ./wf verify --function NPCCommand_jump_alt --snapshots build-snapshots'
+  result: 30 compared, 0 differed, 66 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_jump_alt
+
+    ./wf verify --function NPCCommand_jump_alt --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809f3e8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc.c
+coverage:
+- beastsp
+open_questions:
+- exact difference from the main NPC jump command (encoding/argument placement)
+- why the jump argument sits at offset +5 (command size/layout of this opcode)
+- meaning of the extra results r1-r3 left by ReadNPCScriptWord
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

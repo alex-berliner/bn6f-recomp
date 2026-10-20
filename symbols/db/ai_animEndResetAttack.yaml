@@ -1,50 +1,68 @@
 name: ai_animEndResetAttack
 address: '0x08111AEC'
 kind: function
-status: probable
-summary: Checks the current animation frame's attribute for the 'last frame' flag and, when set, resets
-  the object's animation and reloads its AI attack timers.
-interface: (r0 = battle object ptr, r5 = battle object (CurAnim), r7 = AI attack vars ptr) -> r0 = clobbered;
-  flags from tst
-details: Calls sprite_getFrameParameters on the object and tests bit 0x80 of the returned attribute byte,
-  which marks the animation's end/loop frame. If the flag is clear the function does nothing and just
-  returns. When the flag is set it stores 0 into oBattleObject_CurAnim (restarting the animation at frame
-  0), copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer (re-arming the step/attack countdown),
-  and writes 0x10 into oAIAttackVars_HitElement, apparently a neutral/default element value. Effectively
-  this is a per-frame tick that reinitializes an AI attack cycle once its animation finishes. r5 and r7
-  are not set inside, so callers must provide object and attack-vars pointers.
+status: confirmed
+summary: When an AI-controlled battle object's animation reaches its end frame, resets the attack state (idle anim,
+  restart step timer, element back to normal).
+interface: void ai_animEndResetAttack(battleObject* r5, aiAttackVars* r7); // returns r1 = 0x80 always
+details: 'Calls sprite_getFrameParameters with the object in r5 and checks bit 0x80 (the "animation end" flag) of
+  the returned frame parameters. If the current animation has not ended, nothing else happens. Otherwise it: stores
+  0 to oBattleObject_CurAnim (back to the idle/default animation), reloads oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer
+  (restarting the attack/step countdown), and stores 0x10 into oAIAttackVars_HitElement (0x10 being the "normal/none"
+  element). r1 is left holding 0x80 (the mask value loaded before the tst), which callers apparently ignore or accept.
+  Presumably used as an animation-end callback for AI attack routines.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl sprite_getFrameParameters; tst r0,#0x80 gates the whole body — only the animation-end attribute
-    bit triggers the reset; strb r0,[r5,#oBattleObject_CurAnim] with r0=0 restarts the sprite animation;
-    ldrh/strh pair copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer, re-arming the AI
-    attack countdown; HitElement is set to the constant 0x10, a reset/default element rather than a passed-in
-    value; 13-instruction leaf with no other calls; runs in battle routes (battlesweep, beastsp) where
-    AI attack state ticks
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:7746
-  - 0x08002DEA sprite_getFrameParameters
-  reproduce: python3 tools/asmcat.py 0x08111AEC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_animEndResetAttack
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_animEndResetAttack
+
+    ./wf verify --function ai_animEndResetAttack --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 187 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_animEndResetAttack
+
+    ./wf verify --function ai_animEndResetAttack --snapshots build-snapshots'
+  result: 54 compared, 0 differed, 42 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_animEndResetAttack
+
+    ./wf verify --function ai_animEndResetAttack --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111aec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No known caller, so which object/attack this resets and what element 0x10 denotes is unconfirmed
-- The exact meaning of attribute bit 0x80 in sprite_getFrameParameters (end-of-animation vs loop marker)
-  needs a second usage to pin down
+- Why r1 = 0x80 is returned at all; no observed caller seems to consume it
+- Whether 0x10 is indeed the 'normal' element value or something else in the element enum
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8111AEC -> ai_animEndResetAttack
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8111AEC
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,72 +1,78 @@
 name: battleObject_initFromPanelSpriteAndCollision_80CC4EC
 address: '0x080CC4EC'
 kind: function
-previous_names:
-- sub_80CC4EC
-status: probable
-summary: Initialises a battle object's panel coordinates, sprite/animation, and collision block, then
-  sets its state-action field to advance out of the init state.
-interface: (r5 = BattleObject*) -> void ; writes object fields including oBattleObject_Z, oBattleObject_Y,
-  oBattleObject_CurAnim, oBattleObject_CurStateActionPhaseAndPhaseInitialized; on collision-data allocation
-  failure frees the object and skips collision work
-details: '1. Calls object_setCoordinatesFromPanels so X/Y pixel coords match PanelX/PanelY.
-
-  2. Sets Z = 0 then adds 1 (so Z = 1), and adds 1 to the Y pixel coord, raising the object one pixel
-  above its panel (likely a hill/anomaly pixel offset).
-
-  3. Loads sprite id 0x29 with priority 0x10 from archive 0x80 via sprite_load, calls sprite_noShadow,
-  sets oObjectHeader_Flags |= 0x02 (OBJECT_FLAG_VISIBLE), zeroes CurAnim/CurAnimCopy, sets anim index
-  to 0 via sprite_setAnimation, loads the per-object animation data, advances one sprite frame, sets palette
-  0, and applies the object''s horizontal flip via object_getFlip + sprite_setFlip.
-
-  4. Allocates a CollisionData slot with object_createCollisionData; on failure it tears the object down
-  with object_freeMemory and returns.
-
-  5. On success, calls object_setupCollisionData(r0=slot, r1=0x29, r2=r3=0), sets the collision hit-effect
-  to 0xFF, then object_presentCollisionData to run the per-frame collision handler.
-
-  6. Final step writes 4 to oBattleObject_CurStateActionPhaseAndPhaseInitialized — that''s the CUR_STATE_UPDATE
-  (0x4) field encoded into the u32 at 0x8, advancing the state machine past CUR_STATE_INITIALIZE.
-
-  Distinctive constants (sprite 0x29, archive 0x80) are the function''s fingerprint and likely identify
-  the specific battle object type this init phase belongs to.
-
-  '
+status: confirmed
+summary: 'Stands a freshly created battle object up on its panel: positions it, loads the shared standing sprite
+  (bank 0x80, index 0x10, size 0x29), restarts its animation and attaches a collision box, freeing the object if
+  the collision data cannot be allocated.'
+interface: void battleObject_spawnStandingOnPanel_80CC4EC(battle_object* r5, u32 r8); callers pass the object pointer
+  in r5 and one extra value in r8 (forwarded to object_presentCollisionData); clobbers r0-r3, r5-r8, lr and nz/c/v;
+  preserves r4, r5-r7.
+details: 'r5 is the battle object header. First calls object_setCoordinatesFromPanels to derive its position from
+  its panel coordinates, then zeroes oBattleObject_Z and adds 1 to both oBattleObject_Z and oBattleObject_Y (single-panel
+  forward/height step in fixed-point). Loads sprite (0x80, 0x10, 0x29) via sprite_load and suppresses its shadow
+  with sprite_noShadow. Sets bit 1 (0x2) of oObjectHeader_Flags to mark the object as owning a loaded sprite, resets
+  oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 0, and applies animation 0 with sprite_setAnimation / sprite_loadAnimationData
+  / sprite_update. Selects palette 0 and copies the object''s horizontal flip (object_getFlip) onto the sprite.
+  object_createCollisionData returns the collision pointer or null on allocation failure; on failure the whole object
+  is released via object_freeMemory and the routine returns without setting the state phase. On success it fills
+  the collision box with object_setupCollisionData (extent 0x29, shape 0, type 0), sets the standard white-flash
+  hit effect (object_setCollisionHitEffect with 0xFF), publishes it with object_presentCollisionData, and stores
+  4 into oBattleObject_CurStateActionPhaseAndPhaseInitialized to mark the object as entering state/phase 4. Quirk:
+  the final "mov r1, #4" means callers observe r1 = 4 and cleared N/Z on the success path; on the failure path r0-r3/flags
+  are whatever object_freeMemory left. r8 is untouched by this function itself but must be live for object_presentCollisionData.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl object_setCoordinatesFromPanels` then `str r0,[r5,#oBattleObject_Z]` (Z=0) followed by
-    add+store and a +1 to Y pixel (`add r1,r1,r0; str r1,[r5,#oBattleObject_Y]`) — explicit Z/Y init from
-    panels. - `mov r0,#0x80 / mov r1,#0x10 / mov r2,#0x29; bl sprite_load` and the trailing `mov r1,#0x29;
-    bl object_setupCollisionData` show the sprite id 0x29 + archive 0x80 are the object''s identity. -
-    `orr r0,r1` with `mov r1,#2` against oObjectHeader_Flags sets the visible bit; immediately followed
-    by zeroing CurAnim/CurAnimCopy and `bl sprite_setAnimation`/`sprite_loadAnimationData`/`sprite_update`/`sprite_setPalette`/flip
-    sequence — standard sprite bring-up. - `bl object_createCollisionData` then `tst r0,r0; bne loc_80CC548`
-    with the failure path calling `object_freeMemory` and bailing out — exactly the "couldn''t allocate
-    collision -> destroy object" pattern used by other object inits. - `str r1,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
-    with `mov r1,#4` matches CUR_STATE_UPDATE = 0x4 in oBattleObject.CurState, finishing the init phase.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080CC4EC
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_initFromPanelSpriteAndCollision_80CC4EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initFromPanelSpriteAndCollision_80CC4EC
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initFromPanelSpriteAndCollision_80CC4EC
+    ./wf verify --function battleObject_initFromPanelSpriteAndCollision_80CC4EC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initFromPanelSpriteAndCollision_80CC4EC
 
-    '
-open_questions:
-- Which concrete battle-object type uses sprite 0x29 / archive 0x80 / hit-effect 0xFF; only the caller's
-  identity would settle it. sub_80CC584 is its sole caller and remains unnamed.
-- Whether the +1 to Y pixel is an intentional "rest one pixel above panel" quirk shared with other init
-  helpers.
-sources:
-- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initFromPanelSpriteAndCollision_80CC4EC --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 81 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initFromPanelSpriteAndCollision_80CC4EC
+
+    ./wf verify --function battleObject_initFromPanelSpriteAndCollision_80CC4EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc4ec ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 391e53d9
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80CC4EC -> battleObject_initFromPanelSpriteAndCollision_80CC4EC
-  where: bn6f f491ae79
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact meaning of the r8 argument forwarded to object_presentCollisionData (some battle-context pointer?).
+- What sprite 0x80/0x10 depicts in-game (the "standing on panel" visual) and which object kinds use this initializer.
+- Semantics of the state phase value 4 written to oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

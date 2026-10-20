@@ -1,0 +1,101 @@
+name: CutsceneCameraCmd_auto_scroll_to_player
+address: '0x08037104'
+kind: function
+status: confirmed
+summary: Cutscene-camera command that auto-scrolls the overworld camera toward the player on X, Y and Z each tick,
+  returning 1 while it has not yet arrived; on arrival it clears the command's wait fields and advances the cutscene
+  counter.
+interface: void CutsceneCameraCmd_autoScrollToPlayer_8037104(u32 r1_counter, u32 r5_cmdState, u32 r10_toolkit);
+  returns r0=1; live-out r1 (counter, +1 on arrival), r2 (first differing player coord, 0 on arrival), r3 (camera
+  Z), r6 (camera obj ptr), r7 (player obj ptr); flags = CMP(camera, player-X) for axis 0, else CMP(camera, player)
+  on the first still-differing axis, else CMP(0, ~counter) from the ADDS-counter+1 path; clobbers nz,c,v,r2-r4,r6-r7,lr.
+details: 'Pulls camera object from toolkit+oToolkit_CameraPtr (r6) and the overworld
+
+  player object from toolkit->oGameState_OverworldPlayerObjectPtr (r7). For
+
+  each of X/Y/Z it reads camera+oCamera_{X,Y,Z} and player+oOWPlayerObject_
+
+  {X,Y,Z}, computes (target - camera), and adds the result of
+
+  CutsceneCamera_GetAutoScrollDeltaForCoord into the camera coord, storing
+
+  it back. Then it compares the new camera X/Y/Z to the player''s X/Y/Z in
+
+  order; if all three match the command finishes, otherwise it keeps
+
+  returning 1. On finish it writes 0 to cmdState+6 (byte) and cmdState+4
+
+  (halfword) - clearing the cutscene command''s wait/active fields - and
+
+  returns r1 incremented by 1 so the cutscene dispatcher advances to the
+
+  next script step. r0 is hard-coded to 1 either way (command consumed).
+
+  Quirks: the per-axis order matters because the loop exits at the first
+
+  differing axis and the original assembly only sets r0/r1 once after that
+
+  single CMP, so the exit flags are always the compare of the first
+
+  non-matching (camera, player) pair (or the final ADDS of counter+1 when
+
+  the camera is already on the player).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c CutsceneCameraCmd_auto_scroll_to_player
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCameraCmd_auto_scroll_to_player
+
+    ./wf verify --function CutsceneCameraCmd_auto_scroll_to_player --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCameraCmd_auto_scroll_to_player
+
+    ./wf verify --function CutsceneCameraCmd_auto_scroll_to_player --snapshots build-snapshots'
+  result: 62 compared, 0 differed, 34 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCameraCmd_auto_scroll_to_player
+
+    ./wf verify --function CutsceneCameraCmd_auto_scroll_to_player --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, beastsp, maps, story2.'
+  reproduce: grep -l '^08037104 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- battles1
+- beastsp
+- maps
+- story2
+open_questions:
+- Exact semantics of CutsceneCamera_GetAutoScrollDeltaForCoord (clamp per tick? ease curve?). Not profiled.
+- Which byte at cmdState+6 vs halfword at cmdState+4 corresponds to in the cutscene command struct (active flag
+  vs wait timer vs step?).
+- Whether r1 is truly a script instruction counter or a per-command tick counter the dispatcher increments.
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

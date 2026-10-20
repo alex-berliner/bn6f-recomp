@@ -1,0 +1,80 @@
+name: MapScriptCutsceneCmd_init_scenario_effect
+address: '0x0803827A'
+kind: function
+status: confirmed
+summary: Map-script cutscene command handler that reads a one-byte scenario-effect id from the script and initializes
+  that scenario effect.
+interface: u32 MapScriptCutsceneCmd_init_scenario_effect(u32 script_pos /* r7 */); returns advanced script pointer
+  in r7; sets flags NZ from "mov r0,
+details: 'Handler for one cutscene command in the map script interpreter. It sets r6=1 (a read-mode
+
+  flag the other cutscene command handlers also pass), calls ReadMapScriptByte to fetch the
+
+  single operand byte of the command — the scenario effect id, returned in r4 with the script
+
+  pointer tracked in r7 — then calls initScenarioEffect_8003914 with that id in r0. The callee
+
+  inherits the script pointer in r7 and leaves r2/r3/r4/r5/r7 behind; r2, r3 and r5 pass through
+
+  unchanged. Finally the handler does "add r7, #2" to skip past the 2-byte command (opcode byte
+
+  plus effect id) in the script and returns "mov r0, #1", which leaves N and Z clear so the
+
+  dispatcher sees a nonzero/success result. Touches only the map-script cursor (r7) and the
+
+  scenario-effect state via initScenarioEffect_8003914.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c MapScriptCutsceneCmd_init_scenario_effect
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_init_scenario_effect
+
+    ./wf verify --function MapScriptCutsceneCmd_init_scenario_effect --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 184 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_init_scenario_effect
+
+    ./wf verify --function MapScriptCutsceneCmd_init_scenario_effect --snapshots build-snapshots'
+  result: 56 compared, 0 differed, 40 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_init_scenario_effect
+
+    ./wf verify --function MapScriptCutsceneCmd_init_scenario_effect --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0803827a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- exact meaning/encoding of the scenario-effect ids consumed by initScenarioEffect_8003914
+- whether the r6=1 argument to ReadMapScriptByte is a read-mode/advance flag or an interpreter state selector (it
+  matches the sibling cutscene handlers)
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

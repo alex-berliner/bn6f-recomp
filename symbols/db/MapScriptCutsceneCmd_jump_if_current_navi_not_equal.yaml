@@ -1,0 +1,91 @@
+name: MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+address: '0x080379A0'
+kind: function
+status: confirmed
+summary: Cutscene script command that jumps to a script address if the navi currently installed in the PET differs
+  from a given navi id operand.
+interface: u32 MapScriptCutsceneCmd_jump_if_current_navi_not_equal(u32 cursor /* r7 */, u32 r10, lr); returns new
+  script cursor in r7; sets NZ from constant 1; clobbers r0 r3 r4 r6 lr, C/V
+details: 'Map script cutscene command handler. The script cursor in r7 points at a
+
+  1-byte navi id operand followed by a 4-byte jump target word. It calls
+
+  ReadMapScriptByte (with a mode byte 1 in r6 and the cursor in r7) to read
+
+  the navi id; the callee returns the byte''s value in r4 and the post-byte
+
+  cursor in r7. It then calls GetCurPETNavi (using r10 as context) to get the
+
+  navi currently installed in the PET, returned in r0. If the two ids differ,
+
+  it sets r6=2 and calls ReadMapScriptWord to read the 4-byte jump target
+
+  (target in r4, updated cursor in r6/r7), then returns with r7 = target,
+
+  i.e. script execution continues at the target address. If the ids are
+
+  equal, it falls through by advancing the cursor past the id byte and the
+
+  word: r7 += 6. Both paths load r0 = 1 before returning (NZ flags reflect
+
+  that constant), and the return is a plain pop {pc} back into the script
+
+  interpreter dispatch. The cursor/return-value passing through r7 matches
+
+  the other cutscene script command handlers.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 60 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal
+
+    ./wf verify --function MapScriptCutsceneCmd_jump_if_current_navi_not_equal --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080379a0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- exact meaning of the mode bytes (1, 2) passed in r6 to ReadMapScriptByte/ReadMapScriptWord
+- which structure r10 points into for GetCurPETNavi (PET/save context pointer?)
+- whether the navi id values match the standard navi enum ordering used elsewhere
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,45 +1,71 @@
 name: ai_beginNewTurn
 address: '0x08111DF0'
 kind: function
-status: probable
-summary: 'AI turn-start handler: restarts the object''s turn counter and clears its current action/phase.'
-interface: (no args read; r6 = battle object/AI state pointer) -> r0 = 0 (from callee); r6->oAIState_TurnCounter
-  = 1
-details: 'Stores the halfword 1 into r6''s oAIState_TurnCounter field, then tail-calls battle_ResetObjectActionState_80165B8,
-  which sets the object''s action to 8 (idle/none) and clears its current phase and phase-initialized
-  flag, returning 0. Together this re-initializes the enemy AI for a fresh turn: counter back at 1, no
-  action queued. r6 must be set up by the caller (typical AI dispatch keeps the object in r6), since the
-  function never sets it itself. Runs in battle AI context per the recorded battlesweep/beastsp routes.'
+status: confirmed
+summary: Starts a new AI turn for a battle object, resetting its AI turn counter to 1 and clearing its current action
+  state.
+interface: void ai_beginNewTurn(AIState* r6 ai_state, BattleObject* r5 battle_object)
+details: 'Called at the start of an AI-controlled object''s turn. Writes 1 (halfword) to
+
+  ai_state->TurnCounter (oAIState_TurnCounter, offset in the AI state struct addressed via r6),
+
+  then calls battle_ResetObjectActionState_80165B8 with the battle object pointer in r5, which
+
+  clears the object''s queued/current action so the AI can decide a fresh action this turn.
+
+  Only r6 (AI state) and r5 (battle object) are used; return value and flags are ignored by callers.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8111DF0: ''mov r0, #1; strh r0, [r6,#oAIState_TurnCounter]'' resets the turn counter to
-    1; sub_8111DF0: ''bl battle_ResetObjectActionState_80165B8'' — callee sets action to 8 and clears
-    current phase/phase-initialized flag; callee returns 0 in r0 and sub_8111DF0 just pops {pc}, so the
-    function effectively returns 0; r6 is the only struct pointer used and is caller-provided, matching
-    an AI dispatcher keeping the object in r6'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:8153
-  - 0x080165B8 battle_ResetObjectActionState_80165B8
-  reproduce: python3 tools/asmcat.py 0x08111DF0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_beginNewTurn
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_beginNewTurn
+
+    ./wf verify --function ai_beginNewTurn --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 252 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_beginNewTurn
+
+    ./wf verify --function ai_beginNewTurn --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 86 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_beginNewTurn
+
+    ./wf verify --function ai_beginNewTurn --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111df0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No caller is known, so we cannot confirm when this is invoked (per-turn dispatch vs. specific AI state)
-  or what r0/r1 originally carry
+- exact semantics of battle_ResetObjectActionState_80165B8 once it has a typed interface
+- whether TurnCounter counts up each turn elsewhere (value 1 here suggests reset-to-first-turn rather than clear-to-zero)
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8111DF0 -> ai_beginNewTurn
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8111DF0
+- tools/wf run convert-20261020-101942
+- recomp 486adde

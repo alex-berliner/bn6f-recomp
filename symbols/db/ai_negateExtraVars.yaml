@@ -1,48 +1,73 @@
 name: ai_negateExtraVars
 address: '0x08115668'
 kind: function
-status: probable
-summary: Boss AI helper that, on a failed check, flips the sign of the battle object's ExtraVars field
-  (e.g. toggling a direction/offset for the next attack).
-interface: (r0 = battle object, r5 = battle object) -> r0 clobbered by calls; no meaningful return
-details: Calls sub_811567E and returns immediately if it yields nonzero (a success/probability check,
-  given the pattern of an immediate retake). Otherwise it loads the signed 32-bit value at oBattleObject_ExtraVars,
-  stores its negation back into the same field, and calls sub_811567E a second time whose result is discarded
-  — suggesting that callee has side effects (e.g. consuming/advancing a random or timer state). The sole
-  visible effect is sign-flipping ExtraVars, consistent with toggling left/right or mirror positioning
-  between boss actions. r0 is passed unchanged into the first callee call.
+status: confirmed
+summary: Negates a battle object's ExtraVars word (AI state value), but only when a row-shift destination check
+  says it is still needed, then re-runs that check for the caller.
+interface: void ai_negateExtraVars(r5 battleObject*) -> r0,r1 from battle_checkRowShiftDestination; r4-r6 passed
+  through from the helper; clobbers r2,r3,flags,lr
+details: "Entry point for an AI routine that flips the sign of the battle object's\nExtraVars field (oBattleObject_ExtraVars\
+  \ at [r5]). Flow:\n1. Calls battle_checkRowShiftDestination (sub_811567E) with r5 = the\n   battle object; its\
+  \ r0 result gates the work.\n2. If the check returns nonzero, the function does nothing and returns\n   the helper's\
+  \ r0/r1 (and pass-through r4-r6) directly.\n3. If the check returns zero, it loads ExtraVars, negates it\n   (r0\
+  \ = 0 - ExtraVars), stores it back, then calls the same check a\n   second time so the caller sees the post-negation\
+  \ state in r0/r1.\nThe function itself never touches r4-r6; those values (including the\npossibly-updated r5 object\
+  \ pointer) come straight out of the helper call\nand are forwarded to the caller. Flags are clobbered by the cmp/bl\
+  \ chain.\nExtraVars appears to be a signed scratch/state word used by AI logic;\nnegating it is presumably how\
+  \ an AI effect reverses some direction or\npolarity stored in that word.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8115668: bl sub_811567E; cmp r0,#0; bne locret — early exit on nonzero check; ldr r0,[r5,#oBattleObject_ExtraVars];
-    neg r0,r0; str r0,[r5,#oBattleObject_ExtraVars] — negates the known ExtraVars field in place; second
-    bl sub_811567E before locret with r0 unused afterwards — call made only for side effects; called from
-    0x08115598 ai_selectAttack (boss AI attack selection), fitting a per-turn setup tweak'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:14880
-  - 0x08115598 ai_selectAttack
-  - 0x0811567E sub_811567E
-  reproduce: python3 tools/asmcat.py 0x08115668
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_negateExtraVars
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_negateExtraVars
+
+    ./wf verify --function ai_negateExtraVars --snapshots build-snapshots'
+  result: 'captured calls: 8 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 156 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_negateExtraVars
+
+    ./wf verify --function ai_negateExtraVars --snapshots build-snapshots'
+  result: 56 compared, 0 differed, 40 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_negateExtraVars
+
+    ./wf verify --function ai_negateExtraVars --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115668 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- what sub_811567E actually checks (probability vs. timer/state), which would pin down the in-game meaning
-  of the negated ExtraVars value
-- what ExtraVars holds for this boss (direction offset? charge accumulator?) — needs cross-referencing
-  other users of the field
+- What battle_checkRowShiftDestination (sub_811567E) actually tests; its name suggests row-shift destination validity,
+  but its exact condition and why "returns 0" gates the negation is unverified.
+- What ExtraVars semantically holds for the AI objects that use this (position offset, direction flag, or generic
+  scratch).
+- Whether the second check call is semantically required by callers or just a convenient way to refresh r0/r1.
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8115668 -> ai_negateExtraVars
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8115668
+- tools/wf run convert-20261020-101942
+- recomp 486adde

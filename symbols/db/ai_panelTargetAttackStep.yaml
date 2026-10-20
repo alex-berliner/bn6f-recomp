@@ -1,55 +1,85 @@
 name: ai_panelTargetAttackStep
 address: '0x080FFCA8'
 kind: function
-status: probable
-summary: 'AI attack step: picks a target panel via a per-alliance callback, reserves it, animates the
-  attacker onto it, then sets the hit element after a short delay.'
-interface: (r0 = ignored (reloaded from oAIAttackVars_AttackElement), r5 = attacker object, r7 = AI attack
-  vars) -> r0 = scratch/exit value; sets FuturePanelX/Y, HasMoved, StepTimer, HitElement
-details: Two-phase step function. On entry (AttackElement==0) it writes element 4 into AttackElement,
-  checks object_canMove, then indexes a table at byte_80FFD10 by alliance*8 to get two arguments and calls
-  the callback stored in oAIAttackVars_PanelChooseCallback with the target object pointer; the callback
-  returns panel coords in r0/r1, which are stored to oBattleObject_FuturePanelX/Y. It then claims the
-  panel with object_reservePanel, sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, plays animation
-  4, clears ScratchVar, sets HasMoved=1 and StepTimer=2. On the follow-up step (AttackElement!=0) it decrements
-  StepTimer and when it hits 0 writes element 4 into oAIAttackVars_HitElement. If movement is blocked
-  or the callback returns no panel, it clears HasMoved and bails via object_exitAttackState.
+status: confirmed
+summary: 'One step of the AI''s "walk onto the target''s panel and strike" attack: reserves a destination panel
+  via the alliance''s panel-choose callback, then counts down a short wind-up before the hit fires.'
+interface: void ai_panelTargetAttackStep(battleobject *r5, int r6 /*attack phase*/, aiattackvars *r7); clobbers
+  r0-r4, r6, r7, lr and nzcv; leaves r1/r5/r8-r12 as the callees leave them
+details: "Per-frame step routine for an AI attack whose motion is \"move to the target's\npanel\". r5 = battle object,\
+  \ r6 = phase argument (unused here), r7 = AI attack\nvariables block.\n\nFirst invocation (oAIAttackVars_AttackElement\
+  \ == 0):\n  * Latches element id 4 into oAIAttackVars_AttackElement so later steps take\n    the timer path.\n\
+  \  * Calls object_canMove; if the object cannot move, clears\n    oAIAttackVars_HasMoved and calls object_exitAttackState\
+  \ to abandon the attack.\n  * Otherwise reads an 8-byte descriptor entry from the table at byte_80FFD10,\n   \
+  \ indexed by oBattleObject_Alliance << 3 (four alliances, entries are pairs of\n    words passed in r2/r3).\n\
+  \  * Calls the routine stored in oAIAttackVars_PanelChooseCallback with\n    r0 = oAIAttackVars_TargetObjectPtr\
+  \ and r1 = the callback itself; it returns\n    the chosen panel in r0 (x) and r1 (y).\n  * If the callback returns\
+  \ 0 in r0 (no usable panel), clears HasMoved and exits\n    the attack state via object_exitAttackState.\n  *\
+  \ Otherwise stores the chosen panel into oBattleObject_FuturePanelX/Y, calls\n    object_reservePanel with (x,\
+  \ y, object), sets flag OBJECT_FLAGS_CANNOT_SLIDE\n    via object_setFlag1 so the object can't be pushed off the\
+  \ reserved panel,\n    sets oBattleObject_CurAnim to 4 (wind-up/attack animation), clears\n    oAIAttackVars_ScratchVar,\
+  \ sets oAIAttackVars_HasMoved to 1 and starts\n    oAIAttackVars_StepTimer at 2.\n\nSubsequent invocations (AttackElement\
+  \ != 0): decrements the 16-bit\noAIAttackVars_StepTimer; while it is still > 0 (signed compare via bgt on the\n\
+  full 32-bit decremented value, so only a timer of 0 or 1 counts as expired) it\njust returns. When the timer runs\
+  \ out it stores 4 into the 16-bit\noAIAttackVars_HitElement, telling the next attack step to fire the actual hit.\n\
+  \nTable byte_80FFD10 (per-alliance panel-choose descriptors): alliance 0 =\n0x10,0x00000 0A0,0x0F88 word pair;\
+  \ alliance 1 = 0x30,0x00000 0F88 word pair\n(byte data: 0x10 0x00 0x00 0x00 0xA0 0x00 0x88 0x0F / 0x30 0x00 0x00\
+  \ 0x00 0x80\n0x00 0x88 0x0F).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: tst r0,r0 / bne on oAIAttackVars_AttackElement makes the two-phase (start vs. follow-up) structure
-    explicit; ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; bx r1 with table args from byte_80FFD10[alliance*8]
-    returns target panel coords in r0/r1; strb r0/[r5,#oBattleObject_FuturePanelX/Y] followed by bl object_reservePanel
-    shows it claims the chosen panel; object_setFlag1 with OBJECT_FLAGS_CANNOT_SLIDE and CurAnim=4 shows
-    the attacker locks in place with an attack animation; StepTimer countdown ending in strh r0,[r7,#oAIAttackVars_HitElement]
-    with element 4 shows the delayed hit assignment
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:151913
-  - 0x0800E5E2 object_canMove
-  - 0x0801BB1C object_reservePanel
-  - 0x0801A152 object_setFlag1
-  reproduce: python3 tools/asmcat.py 0x080FFCA8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_panelTargetAttackStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_panelTargetAttackStep
+
+    ./wf verify --function ai_panelTargetAttackStep --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 182 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_panelTargetAttackStep
+
+    ./wf verify --function ai_panelTargetAttackStep --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 75 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_panelTargetAttackStep
+
+    ./wf verify --function ai_panelTargetAttackStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffca8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- No caller is known, so which enemy/AI uses this attack and what element 4 denotes here is unconfirmed
-- The per-alliance table at byte_80FFD10 reads as words 0x10/0x0F8800A0 and 0x30/0x0F880080, which look
-  odd as callback arguments; the actual semantics of the PanelChooseCallback arguments need the callback's
-  code
+- What the two-word descriptor entries in byte_80FFD10 actually encode (function pointer plus parameter? two pointers?)
+  and which panel-choose routines they select for each alliance.
+- The meaning of element id 4 (both in AttackElement and HitElement) - presumably a "normal/physical melee" element
+  id in the AI attack tables.
+- What animation id 4 (oBattleObject_CurAnim) corresponds to visually.
+- Whether oAIAttackVars_ScratchVar is used by a later step of this same attack.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FFCA8 -> ai_panelTargetAttackStep
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FFCA8
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,49 +1,74 @@
 name: ai_attackChargeHandler
 address: '0x080FF174'
 kind: function
-status: probable
-summary: 'AI attack sub-step: if no attack element is charged, start a charge (element 4, anim 0xA, timer
-  from AttackBoost2); otherwise count it down and fire the attack when the charge expires'
-interface: (r7 = battle object AI attack vars struct, r5 = battle object) -> r0 = object id passed to
-  object_setCounterTime; no return value
-details: Reads oAIAttackVars_AttackElement in the r7 AI-attack struct; when it is 0, stores element 4
-  into AttackElement, plays animation 0xA on the object at r5 (oBattleObject_CurAnim), and seeds oAIAttackVars_StepTimer
-  from AttackBoost2 (the charge duration). On subsequent calls it decrements StepTimer each frame and
-  returns while it is still positive. Once the timer hits zero it resets AttackStepIndex to 0, calls object_setCounterTime
-  with 0x12 (18 counter ticks, presumably invuln/wind-up time), and sets oAIAttackVars_HitElement to 0xC,
-  which selects the attack's hit element for the follow-up step.
+status: confirmed
+summary: Drives the charge-up phase of an enemy AI attack, then releases it into the attack step with a counter
+  delay and hit element.
+interface: void ai_attackChargeHandler(BattleObject* r5 object, AIAttackVars* r7 ai /*, r10 in, unused by the code
+  shown; r1 returned as-is except after the counter call */)
+details: 'Part of the enemy AI attack state machine. r5 is a battle object and r7 points at that object''s oAIAttackVars
+  block. If oAIAttackVars_AttackElement is still 0 (charge not started), it sets AttackElement to 4, switches the
+  object''s animation (oBattleObject_CurAnim) to 10 - the charging pose - and arms oAIAttackVars_StepTimer with
+  the byte value of oAIAttackVars_AttackBoost2 (so the boost stat scales how long the charge lasts). On subsequent
+  calls it decrements StepTimer each frame; while it is still positive the handler just returns. When the timer
+  runs out it resets oAIAttackVars_StepIndex to 0, calls object_setCounterTime(0x12 /* 18 frames */, r5) to request
+  an 18-frame counter window from the object layer, and stores HitElement = 0xC (12) as a halfword. r1 is only defined
+  after the object_setCounterTime call (whatever that callee returns in r1); on every other path the function leaves
+  the incoming r1 untouched, so callers effectively get r1 passed through. r10 is listed in the contract but never
+  referenced by the code. Flags nz/c/v are clobbered by the tst/sub and inside the callee.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits idle-start vs countdown phases (sub_80FF174+4);
-    strb #4 into AttackElement and strh AttackBoost2 into StepTimer on first entry = starting a charge
-    of configured length; ldrh StepTimer, sub #1, strh, bgt exit = per-frame countdown until charge completes;
-    bl object_setCounterTime with r0=0x12 and strh #0xC to HitElement after the timer expires = firing/resolving
-    the attack; r7 fields all oAIAttackVars_* and r5 gets oBattleObject_CurAnim, matching AI attack-step
-    handlers called from the object AI step dispatch'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:151245
-  - 0x0800E9DC object_setCounterTime
-  reproduce: python3 tools/asmcat.py 0x080FF174
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-203615'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackChargeHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackChargeHandler
+
+    ./wf verify --function ai_attackChargeHandler --snapshots build-snapshots'
+  result: 'captured calls: 22 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 174 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackChargeHandler
+
+    ./wf verify --function ai_attackChargeHandler --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackChargeHandler
+
+    ./wf verify --function ai_attackChargeHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ff174 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No direct caller was captured, so it is unclear which boss/AI attack table invokes this or which attack
-  (element 4 charge) it belongs to
-- Meaning of the 0x12 counter time and HitElement value 0xC for the subsequent attack step not confirmed
+- what object_setCounterTime returns in r1 and how callers use it here
+- role of the r10 input (never read in this function)
+- exact semantics of AttackElement 4 and HitElement 12 (which element/type ids they denote)
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FF174 -> ai_attackChargeHandler
-  where: bn6f 4619f7d4
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FF174
+- tools/wf run convert-20261020-101942
+- recomp 486adde

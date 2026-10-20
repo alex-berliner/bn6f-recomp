@@ -1,47 +1,75 @@
 name: battleObject_rollingCannonPhaseDispatch
 address: '0x080CC23E'
 kind: function
-status: probable
-summary: Runs the current-phase handler of the rolling-cannon battle object by indexing a phase jump table
-  with oBattleObject_CurPhase.
-interface: (r5 = battle object) -> calls handler table[CurPhase] (r1) via lr=pc trick, returns to caller;
-  r0 outcome depends on handler
-details: 'Reads the object''s current phase byte at oBattleObject_CurPhase, loads a thumb handler pointer
-  from table off_80CC250 indexed by that phase, and calls it (mov lr,pc / bx r1) so control returns to
-  the pop {pc}. The table has four entries: phase 0 = sub_80CC260, phase 1 = battleObject_rollingCannonPhase_Init_80CC29E,
-  phase 2 = loc_80CC320, phase 3 = sub_80CC36C. Since one entry is already named battleObject_rollingCannonPhase_Init,
-  this routine is that object''s per-frame phase dispatcher. It uses r5 as the object pointer, so callers
-  must set r5 before calling. No flags or other registers are touched besides r0/r1/lr.'
+status: confirmed
+summary: Tail-calls the per-phase handler for a rolling-cannon battle object, dispatching on the object's current
+  phase via a 4-entry jump table.
+interface: 'void battleObject_rollingCannonPhaseDispatch(r2 arg, r5 obj, r10 arg) — tail-dispatch: handler at table[obj->CurPhase]
+  runs with r0=phase, r1=handler addr, r2/r5/r10 passed through; handler''s results (r1 r5 r8-r12) are this function''s
+  results'
+details: "Reads the battle object's current phase from [r5 + oBattleObject_CurPhase] (byte), uses it\nto index the\
+  \ table at off_80CC250, and invokes the selected handler via the classic\n`mov lr, pc; bx r1; pop {pc}` thunk:\
+  \ the handler returns directly to this function's\ncaller, making the whole thing a tail call. The handler is\
+  \ entered with r0 = phase,\nr1 = handler address (still live from the table load), r2/r5/r10 forwarded unchanged,\n\
+  so the dispatcher itself is stateless and its \"outputs\" are whatever the handler leaves\nbehind. Phase table\
+  \ (off_80CC250, 4 entries, thumb+1 addresses):\n  phase 0 -> sub_80CC260 (idle/unnamed main handler)\n  phase\
+  \ 1 -> battleObject_rollingCannonPhase_Init_80CC29E (initialization phase)\n  phase 2 -> loc_80CC320 (unnamed\
+  \ phase 2 body)\n  phase 3 -> battle_phaseAppear (shared \"object appears\" phase, presumably used by\n      \
+  \       all spawned battle objects)\nNo flags are meaningful on exit (handler-clobbered). Phase count is exactly\
+  \ 4; any\nphase byte >= 4 would read past the table, so callers are expected to keep CurPhase\nin range.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0] indexes table by phase byte; table off_80CC250
-    entry 1 is battleObject_rollingCannonPhase_Init_80CC29E, naming the owning object; mov lr,pc / bx
-    r1 / pop {pc} makes it a call-through dispatcher that returns to its own caller; recorded on battlesweep/beastsp/chips
-    routes, consistent with a battle object updated during fights
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:43861
-  reproduce: python3 tools/asmcat.py 0x080CC23E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
-    style-fix (the run''s proposal broke the naming style)'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_rollingCannonPhaseDispatch
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_rollingCannonPhaseDispatch
+
+    ./wf verify --function battleObject_rollingCannonPhaseDispatch --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 297 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_rollingCannonPhaseDispatch
+
+    ./wf verify --function battleObject_rollingCannonPhaseDispatch --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 9 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_rollingCannonPhaseDispatch
+
+    ./wf verify --function battleObject_rollingCannonPhaseDispatch --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cc23e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- exact behavior of phase handlers sub_80CC260, loc_80CC320, sub_80CC36C
-- which caller sets r5 and schedules this object (no caller captured)
+- exact in-game role of phases 0 and 2 (sub_80CC260 / loc_80CC320 not yet analyzed)
+- whether r2 and r10 carry standard battle-object-update arguments (e.g. tick count, parent/context pointers) common
+  to this dispatcher family
+- whether the rolling-cannon object ever sets CurPhase outside 0-3 (out-of-range dispatch behavior unverified)
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ccfbf27f
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80CC23E -> battleObject_rollingCannonPhaseDispatch
-  where: bn6f 014443cc
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80CC23E
+- tools/wf run convert-20261020-101942
+- recomp 486adde

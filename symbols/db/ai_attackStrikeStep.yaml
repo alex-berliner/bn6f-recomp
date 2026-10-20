@@ -1,51 +1,77 @@
 name: ai_attackStrikeStep
 address: '0x080FFC18'
 kind: function
-status: probable
-summary: 'AI attack step: commits the enemy onto its targeted panel (with move animation and flags) and,
-  after a 2-frame timer, arms the attack hit as element 8.'
-interface: (r0 = unused/scratch, r5 = battle object, r7 = oAIAttackVars) -> r0 = clobbered; flags from
-  subs
-details: This is one step of an enemy AI attack state machine keyed off oAIAttackVars_AttackElement. On
-  first entry (element 0) it sets element to 4, plays animation 3, copies FuturePanelX/Y into PanelX/Y,
-  releases the panel reserve, recomputes pixel coordinates and collision panels, clears flag 0x40, and
-  sets the 'currently moving' ObjectFlags1 bit, with StepTimer = 2. On later calls it decrements StepTimer
-  and, when it reaches 0, writes HitElement = 8, which presumably triggers the actual hit/effect on the
-  following step. The r5/r7 registers are inherited from the caller's AI attack context rather than passed
-  explicitly.
+status: confirmed
+summary: One AI step of a melee "strike" attack — on the first call it steps the battle object onto its reserved
+  panel and starts the attack animation, then counts down a short timer before flagging that the strike's hit should
+  connect.
+interface: void ai_attackStrikeStep(battleObject* obj /* r5 */, aiAttackVars* vars /* r7 */); outputs r1 only as
+  a leftover from object_setFlag1 on the start path; no flags guaranteed
+details: "r5 is the battle object and r7 points into that object's AI attack variables\n(oAIAttackVars). Behavior\
+  \ is split on vars->AttackElement:\n\nStart path (AttackElement == 0, strike not yet begun):\n  - Sets vars->AttackElement\
+  \ = 4 (strike-in-progress marker).\n  - Sets obj->CurAnim = 3 (attack animation).\n  - Copies obj->FuturePanelX/FuturePanelY\
+  \ (the panel reserved on earlier\n    AI frames) into obj->PanelX/PanelY, i.e. the object lunges onto the\n  \
+  \  pre-reserved target panel.\n  - Calls object_removePanelReserve(x, y, obj) to free that reservation,\n    object_setCoordinatesFromPanels(obj)\
+  \ to sync pixel coordinates,\n    object_updateCollisionPanels(obj) to refresh hitboxes,\n    object_clearFlag(0x40,\
+  \ obj), and\n    object_setFlag1(1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT, obj) to mark\n    the object as currently\
+  \ moving.\n  - Sets vars->StepTimer = 2.\n\nCountdown path (AttackElement != 0):\n  - Decrements vars->StepTimer\
+  \ (halfword). While the result is > 0 it just\n    returns (bgt). When the timer reaches 0 it stores HitElement\
+  \ = 8, which\n    a later damage/hit step reads to actually apply the strike's damage.\n\nConstants: strike AttackElement\
+  \ = 4, initial StepTimer = 2, HitElement\nwritten = 8. Quirk: on the start path r1 on return is whatever\nobject_setFlag1\
+  \ left there (the function never computes its own r1\nresult); on countdown frames r1 is untouched.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] / bne loc_80FFC50 — state machine keyed on attack element;
-    strb FuturePanelX/Y -> PanelX/Y + object_removePanelReserve + object_setCoordinatesFromPanels — commits
-    the planned move; object_setFlag1 with bit (1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) — marks the object
-    as moving; strh #2 -> StepTimer then decrement-until-zero branch — short timed delay; strh #8 -> oAIAttackVars_HitElement
-    at timer expiry — final hit setup'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:151835
-  - 0x0801A15C object_clearFlag
-  - 0x0801BB46 object_removePanelReserve
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x080FFC18
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackStrikeStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackStrikeStep
+
+    ./wf verify --function ai_attackStrikeStep --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 186 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackStrikeStep
+
+    ./wf verify --function ai_attackStrikeStep --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackStrikeStep
+
+    ./wf verify --function ai_attackStrikeStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffc18 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- Which enemy/attack uses this handler and what element 4 / hit element 8 correspond to in game terms
-- Who calls it and how the AIAttackVars struct dispatches between step handlers
+- Exact in-game attack(s) that use this step (element constant 4 / HitElement 8 not yet mapped to named elements
+  in the AI attack table).
+- What flag bit 0x40 in object_clearFlag represents (a collision/idle-state bit presumably cleared so the lunge
+  registers).
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FFC18 -> ai_attackStrikeStep
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FFC18
+- tools/wf run convert-20261020-101942
+- recomp 486adde

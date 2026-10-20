@@ -1,49 +1,69 @@
 name: ai_attackDelayHit
 address: '0x080FFE48'
 kind: function
-status: probable
-summary: 'AI attack state step: arms attack element 4 with a 5-frame delay, then applies it as the hit
-  element'
-interface: (r7 = AI attack vars object) -> r0 = hit element (4) written to oAIAttackVars_HitElement after
-  timer expires; no return value
-details: Reads oAIAttackVars_AttackElement from the r7 object; if it is still 0 (unarmed), it sets AttackElement
-  = 4, loads oAIAttackVars_StepTimer with 5, and if the pointer in oAIAttackVars_ScratchVar points at
-  a nonzero value, calls sub_80D29B2 (possibly spawning/queueing the attack visual). Each call then decrements
-  StepTimer; once it reaches 0 it writes 4 into oAIAttackVars_HitElement, ending the delayed hit. Element
-  4 is a fixed constant here, so this is a specific attack's state handler rather than a generic helper.
-  The ScratchVar check makes the sub_80D29B2 call conditional on some external state (target/obstacle
-  presence).
+status: confirmed
+summary: AI attack state that delays a few steps then makes the attack's hit element (4) come out.
+interface: 'u32 ai_attackDelayHit(u32 r1, AIAttackVars* r7); // out: r1; clobbers r0, flags, lr'
+details: 'Part of the enemy AI attack state machine; r7 points to the AI attack variable block. On the first entry
+  (oAIAttackVars_AttackElement == 0) it arms the attack: sets AttackElement to 4, loads oAIAttackVars_StepTimer
+  with 5, and if the pointer in oAIAttackVars_ScratchVar is non-null (dereferences to non-zero), calls sub_80D29B2
+  with that value, propagating its r1 result. Every call then decrements the 16-bit StepTimer; while it is still
+  >0 the function just returns r1. When the timer reaches 0 (or below, via signed compare), it stores element 4
+  into oAIAttackVars_HitElement, i.e. the delayed hit lands on that step. Flags (nz c v) are clobbered but callers
+  ignore them. r1 is read on entry and returned unchanged except on the sub_80D29B2 path.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne skip — only initializes when element unset;
-    strb #4 to AttackElement and strh #5 to StepTimer — arm attack with 5-frame fuse; ldr r0,[r7,#oAIAttackVars_ScratchVar];
-    ldr r0,[r0]; beq skip; bl sub_80D29B2 — conditional side effect on attack start; StepTimer countdown
-    with bgt exit, then strh #4 to oAIAttackVars_HitElement — delayed hit lands; Run under recorded routes
-    battlesweep/beastsp/chips, consistent with boss/AI attack stepping'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:153764
-  - 0x080D29B2 sub_80D29B2
-  reproduce: python3 tools/asmcat.py 0x080FFE48
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-222121'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_attackDelayHit
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackDelayHit
+
+    ./wf verify --function ai_attackDelayHit --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 174 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackDelayHit
+
+    ./wf verify --function ai_attackDelayHit --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackDelayHit
+
+    ./wf verify --function ai_attackDelayHit --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffe48 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- What sub_80D29B2 does (attack effect spawn vs. damage application) is unknown
-- Which boss/AI attack uses element 4 and what the ScratchVar points to are not shown without callers
+- What element value 4 means concretely (likely a generic/normal hit element id used by this AI attack).
+- Purpose of sub_80D29B2 notification (probably signals the attack launcher that the hit is coming).
 sources:
-- wf investigate investigate-20261018-222121
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80FFE48 -> ai_attackDelayHit
-  where: bn6f 2b224b6a
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80FFE48
+- tools/wf run convert-20261020-101942
+- recomp 486adde

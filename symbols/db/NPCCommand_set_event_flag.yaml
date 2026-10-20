@@ -1,0 +1,67 @@
+name: NPCCommand_set_event_flag
+address: '0x0809EDEE'
+kind: function
+status: confirmed
+summary: NPC script command that sets an event flag whose id is read from the script.
+interface: 'u32 NPCCommand_set_event_flag(u32 r6_script_ptr) // r10: script context, lr: return; returns updated
+  script pointer in r6'
+details: 'Implements the NPC script opcode "set event flag". r6 points at the opcode byte of the running NPC script;
+  the callee reads the halfword at r6+1 via ReadNPCScriptHalfword (which handles unaligned/halfword fetching from
+  the script byte stream), passes that value to SetEventFlag to mark the corresponding game event/flag as done,
+  and advances r6 by 3 (opcode byte + 2-byte flag id) before returning to the script interpreter. The 16-bit flag
+  id is read as an unsigned halfword; SetEventFlag may clobber r0/r1/r3 but only r6 needs to be preserved/returned
+  to the interpreter loop.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/npc.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c NPCCommand_set_event_flag
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function NPCCommand_set_event_flag
+
+    ./wf verify --function NPCCommand_set_event_flag --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function NPCCommand_set_event_flag
+
+    ./wf verify --function NPCCommand_set_event_flag --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 70 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function NPCCommand_set_event_flag
+
+    ./wf verify --function NPCCommand_set_event_flag --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809edee ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/npc.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/npc.c
+coverage:
+- beastsp
+open_questions:
+- exact semantics of SetEventFlag's flag id space (shared with battle/other subsystems?) not verified here
+- whether the halfword is big- or little-endian depends on ReadNPCScriptHalfword's implementation
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

@@ -1,60 +1,102 @@
 name: battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
 address: '0x080E0F5E'
 kind: function
-previous_names:
-- sub_80E0F5E
-status: probable
-summary: Plays the buster-charge SFX at the right charge stage for a charge-shot object, or stays silent
-  if the controller does not own the charge input.
-interface: '(r5 = ChargeShotBattleObjectPtr) -> (no return used by caller); side effects: may call PlaySoundEffect
-  for SOUND_BUSTER_CHARGE or SOUND_UNK_72'
-details: "Reads r5's RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr, 0x4c) and that object's AIDataPtr\
-  \ (0x58), then looks at AIData.PwrAtkButton (0x1e). If PwrAtkButton is 1 (A button) or 2 (B button),\
-  \ it fetches RelatedObject1's Alliance (0x16) and XORs it via battle_networkInvert. If the resulting\
-  \ \"network-inverted\" value is non-zero (i.e. the local controller does not own this charge), the routine\
-  \ returns without playing a sound.\n  Otherwise (or when PwrAtkButton is not 1/2) it consults the charge\
-  \ object's own ExtraVars (0x60+): word at ExtraVars+0x14 acts as a charge stage. If stage==1 and ExtraVars+0x18==0,\
-  \ it plays SOUND_BUSTER_CHARGE. If stage==2 and ExtraVars+0x18==1, it plays SOUND_UNK_72. Any other\
-  \ combination just returns. Because it uses `pop {pc}` and never writes r0 into anything the caller\
-  \ reads, it behaves void-like.\n"
+status: confirmed
+summary: Plays the buster charge-up sound for a BattleObject that is currently charging its shot, gated by which
+  button is held and which side the object is on.
+interface: void battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E(BattleObject* r5 /*, r10 */)
+details: 'r5 is the charging BattleObject. The function follows r5->RelatedObject1Ptr to the
+
+  controlling entity and reads its AIData''s PwrAtkButton byte to see which attack button
+
+  is held. If the button is 2, the sound plays unconditionally; for any other value it
+
+  calls battle_networkInvert on the related object''s Alliance byte and bails out silently
+
+  when the result is nonzero (i.e. only the owning/player side gets charge sounds).
+
+  It then inspects the object''s charge state in ExtraVars: field +0x14 is the charge phase
+
+  and +0x18 is a tick counter within that phase. Phase 1 with counter 0 plays
+
+  SOUND_BUSTER_CHARGE (the start-of-charge loop cue); phase 2 with counter 1 plays
+
+  SOUND_UNK_72 (presumably the fully-charged cue). All other phase/counter combinations
+
+  play nothing. Note r2 passed to PlaySoundEffect is a leftover: the AIData pointer, or
+
+  whatever battle_networkInvert left in r2 when the alliance check ran. r4, r5 and r10 are
+
+  preserved; flags are clobbered.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {lr}` / `pop {pc}` at 0x80e0f5e and 0x80e0f9e show a leaf void-like helper. - `ldrb
-    r0, [r2, #oAIData_PwrAtkButton]` reads offset 0x1e from AIData (per AIData struct). - `cmp r0, #1
-    / #2` and the `beq loc_80E0F6E` chain gate the controller-ownership check to A/B. - `ldrb r0, [r1,
-    #oBattleObject_Alliance]` reads offset 0x16 of RelatedObject1, passed to battle_networkInvert; `tst
-    r0, r0; bne locret_80E0F9E` makes the non-local case silent. - `ldr r0, [r5, #oBattleObject_ExtraVars+0x14]`
-    and `ExtraVars+0x18` index into the charge object''s ExtraVars (0x60). - `cmp r0, #1 / #2` plus the
-    second-level `cmp r0, #0` / `#1` against ExtraVars+0x18 match the two SFX branches: SOUND_BUSTER_CHARGE
-    and SOUND_UNK_72. - Only caller listed is chargeShotChargeObject_update_80E0E20, which is invoked
-    from the charge-shot object update path.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080E0F5E
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+
+    ./wf verify --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+
+    ./wf verify --function battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
-    story2, story4, story5, story6, story7, story8, story9'
-  reproduce: 'grep -l ''^080e0f5e '' tools/traces/coverage/*.prof
-
-    '
-  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
-    story5, story6, story7, story8, story9
-open_questions:
-- The exact meaning of the ExtraVars+0x14 stage and ExtraVars+0x18 sub-state fields of the charge object
-  is inferred; a struct definition for that battle object would settle it.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9.'
+  reproduce: grep -l '^080e0f5e ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d574411
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E0F5E -> battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
-  where: bn6f 4ab63ce3
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of PwrAtkButton values (only 1/2 are explicitly tested
+- other values fall through to the alliance check)
+- what SOUND_UNK_72 actually is (likely the full-charge jingle)
+- whether the stale r2 argument to PlaySoundEffect is meaningful
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde

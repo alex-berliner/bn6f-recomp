@@ -1,49 +1,67 @@
 name: ai_highlightTargetPanel
 address: '0x081000F6'
 kind: function
-status: probable
-summary: Highlights the AI enemy's targeted attack panel region on the battle field
-interface: (r5 = battle object, r7 = AI attack vars) -> r0 = result of object_highlightPanelRegion; calls
-  with r0 = targetPanelX, r1 = 2, r2 = 5, r3 = object alliance
-details: Thin wrapper around object_highlightPanelRegion. It loads the AI's target panel X from oAIAttackVars_TargetPanelX
-  (r7) and the owning object's alliance/direction word from oBattleObject_AllianceAndDirectionFlip (r5),
-  then calls object_highlightPanelRegion with fixed constants r1=2 and r2=5, so it always highlights the
-  same shape anchored at the target X, on the side matching the object's alliance. This matches the telegraph
-  highlight the game draws before an enemy's panel-based attack fires. Runs during recorded battlesweep/beastsp/chips
-  routes, i.e. normal battle AI behavior.
+status: confirmed
+summary: Flashes the panel at the column the AI's pending attack is aimed at, using the battle object's alliance/flip
+  word for the highlight side.
+interface: (u32 battleObject in r5, u32 aiAttackVars in r7) -> u32 out r1; clobbers r0-r3, flags, lr; preserves
+  r4
+details: Thin wrapper over object_highlightPanelRegion. Loads TargetPanelX (byte at oAIAttackVars_TargetPanelX)
+  from the AI attack state in r7, passes constant width 2 and height 5 as the highlighted region's size, and reads
+  oBattleObject_AllianceAndDirectionFlip (halfword) from the battle object in r5 to select which side of the field
+  gets highlighted. Returns whatever object_highlightPanelRegion leaves in r1, the only output callers consume.
+  No branches or state changes of its own.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r7,#oAIAttackVars_TargetPanelX] supplies the anchor panel from the AI attack-variable
-    block; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip] passes the calling object's alliance so
-    the highlight lands on the correct field side; tail call to object_highlightPanelRegion (0x0800CCD4)
-    is the entire body apart from the constants r1=2, r2=5; single caller sub_80FFE72 at 0x080FFE72 runs
-    in battle routes, consistent with AI attack telegraphing
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:153282
-  - 0x080FFE72 sub_80FFE72
-  - 0x0800CCD4 object_highlightPanelRegion
-  reproduce: python3 tools/asmcat.py 0x081000F6
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-200615'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c ai_highlightTargetPanel
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_highlightTargetPanel
+
+    ./wf verify --function ai_highlightTargetPanel --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 262 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_highlightTargetPanel
+
+    ./wf verify --function ai_highlightTargetPanel --snapshots build-snapshots'
+  result: 28 compared, 0 differed, 68 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_highlightTargetPanel
+
+    ./wf verify --function ai_highlightTargetPanel --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^081000f6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48ac3277
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- exact meaning of the constants 2 and 5 in object_highlightPanelRegion (row vs height vs width) needs
-  that function's signature
-- which AI attack types invoke this path
+- exact meaning of object_highlightPanelRegion's r1 return value
+- whether the 2x5 region is in panel or pixel units
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9f60ad10
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81000F6 -> ai_highlightTargetPanel
-  where: bn6f 35a9b5b5
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81000F6
+- tools/wf run convert-20261020-101942
+- recomp 486adde

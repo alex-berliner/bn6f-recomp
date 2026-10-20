@@ -1,58 +1,72 @@
 name: battleObject_attackVars_tickExitTimer_80F1888
 address: '0x080F1888'
 kind: function
-previous_names:
-- sub_80F1888
-status: probable
-summary: Ticks an AIAttackVars countdown and exits the attack state when it elapses, else plays the victory/finish
-  anim on first entry.
-interface: '(r5 = battleObject*, r7 = AIData*) -> void ; side effects: writes AIData->AIAttackVars[].Unk_01
-  / Unk_10, BattleObject->CurAnim'
-details: "Operates on per-attack scratch space at AIData->AIAttackVars[0] (accessed via r7). On first\n\
-  \  call (Unk_01 == 0), sets Unk_01 = 4 to mark the \"started\" phase, sets CurAnim = 7 on the\n  battle\
-  \ object (the standard attack/victory finish animation, matching the AnimateVictoryAnim\n  0x7 used\
-  \ by the attack-exit path), and initialises the Unk_10 counter from AIData->Unk_0d\n  (latched via the\
-  \ Unk_0d field that AIData exposes at 0x0d). On subsequent calls it\n  decrements Unk_10; once the counter\
-  \ reaches 0 (BGT falls through) it calls\n  object_exitAttackState to leave the attack phase. Pops {pc}\
-  \ — no other return value\n  beyond the flags implied by the decrement/test.\ndetails-extra: |\n  The\
-  \ \"first call\" branch writes Unk_01=4 to suppress re-entry, the same hand-off used by\n  the attack-state\
-  \ exit chain, and the \"subsequent\" branch only decrements. Naming\n  captures the role: it is the\
-  \ per-frame \"end of attack\" tick living on AIAttackVars.\n"
+status: confirmed
+summary: Ticks an AI attack's wind-down exit timer, setting up the exit pose (element 4, anim 7) on the first tick
+  and returning the object to object_exitAttackState when the countdown expires.
+interface: void battleObject_attackVars_tickExitTimer_80F1888(battleObject *r5, ctx *r6, AIAttackVars *r7) -> u32
+  r1 (passthrough or whatever object_exitAttackState leaves in r1); flags clobbered, callers ignore them
+details: 'Called with r5 = battle object, r6 = object context (passed through untouched), r7 = AI attack vars. Two-phase
+  behavior keyed on oAIAttackVars_AttackElement: on the first tick of the wind-down (AttackElement == 0) it selects
+  exit element 4 (strb #4 to oAIAttackVars_AttackElement), switches the object''s current animation to 7 (oBattleObject_CurAnim),
+  and initializes the 16-bit oAIAttackVars_StepTimer from the byte oAIAttackVars_TimerOrCycles (attack cycle count).
+  On subsequent ticks it decrements oAIAttackVars_StepTimer and stores it back; while the result is > 0 it does
+  nothing further. When the timer reaches 0 it tail-calls object_exitAttackState(r5, r6, r7) to hand the object
+  back out of its attack state. r1 is only meaningful if the caller wants object_exitAttackState''s return value;
+  otherwise it is preserved input. r0, r2, r3, flags and lr are clobbered; r5 and r6 are preserved.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- ldrb r0, [r7,#oAIAttackVars_Unk_01] / tst r0,r0 / bne loc_80F189E: first-call gate - mov
-    r0,#4 ; strb r0,[r7,#oAIAttackVars_Unk_01]: marks Unk_01=4 on first frame - mov r0,#7 ; strb r0,[r5,#oBattleObject_CurAnim]:
-    sets CurAnim=7 (attack finish anim) - ldrb r0,[r7,#oAIAttackVars_Unk_0d] ; strh r0,[r7,#oAIAttackVars_Unk_10]:
-    copies Unk_0d into u16 timer Unk_10 - ldrh r0,[r7,#oAIAttackVars_Unk_10] ; sub r0,#1 ; strh r0,[r7,#oAIAttackVars_Unk_10]
-    ; bgt locret: tick - bl object_exitAttackState only when counter reached 0 - pop {pc}: tail return,
-    no caller-visible value'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (3 attempt(s), run convert-20261020-101942);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080F1888
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 92' --file leaves_farm_92.c battleObject_attackVars_tickExitTimer_80F1888
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_attackVars_tickExitTimer_80F1888
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_attackVars_tickExitTimer_80F1888 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 193 out
+    of domain (verify run convert-20261020-101942-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_attackVars_tickExitTimer_80F1888
+
+    ./wf verify --function battleObject_attackVars_tickExitTimer_80F1888 --snapshots build-snapshots'
+  result: 19 compared, 0 differed, 77 out of domain (verify run convert-20261020-101942-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_attackVars_tickExitTimer_80F1888
+
+    ./wf verify --function battleObject_attackVars_tickExitTimer_80F1888 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-101942-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080f1888 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- What semantics Unk_0d carries (likely a per-attack duration pulled from the chip/attack
-- table) and what Unk_01=4 means in the wider attack-state machine; cross-referencing the
-- callers of object_exitAttackState and any sibling handlers that share the AIAttackVars[0]
-- layout would confirm.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f1888 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 486adde
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f 48ac3277
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80F1888 -> battleObject_attackVars_tickExitTimer_80F1888
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of exit element 4 and anim 7 for enemy objects (generic wind-down pose?)
+- which callers rely on the r1 passthrough from object_exitAttackState
+- what oAIAttackVars_TimerOrCycles represents besides the exit delay source
+sources:
+- tools/wf run convert-20261020-101942
+- recomp 486adde
