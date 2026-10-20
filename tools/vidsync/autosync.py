@@ -1452,7 +1452,10 @@ def kill_try(D, back, foes, vD, side, tmpl, cands):
         # (a close match only: a deletion that cuts short a battle the video goes on with scrapes by at 1.7-2.0;
         # the right ones were 0.7-1.2)
         # (and clearly past the loss: in a strict window a deletion that only reaches the loss 'held', run9z 1083358)
-        ok = [t for t in tasks if res[t[3]][0] >= max(gR + 120, D + 60) and res[t[3]][1] < kill_cost()]
+        # (up to 1.7 when the video's result screen itself was found: its end is the video's then, and a MegaMan
+        # HP box that differs adds to the cost, run10h 1244287 at 1.58)
+        cap = max(kill_cost(), 1.7) if how.startswith('result') else kill_cost()
+        ok = [t for t in tasks if res[t[3]][0] >= max(gR + 120, D + 60) and res[t[3]][1] < cap]
         if not ok:
             log(f'  {"kill" if side else "die"}: no deletion time holds (furthest {max(r[0] for r in res.values())}, want {gR + 120}, best mean cost {min(r[1] for r in res.values()):.2f})')
             if how.startswith('black') and W0 >= D:
