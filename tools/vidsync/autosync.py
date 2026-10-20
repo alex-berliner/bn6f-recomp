@@ -1602,7 +1602,10 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         log(f'  {who} through black: deleting at {Wd}, the sync from {J} reaches {r[0]} (mean cost {r[1]:.3f})')
         # (a loss asked for: the black lined up is the battle's end, and what differs on the map after it is the next
         # handlers' (run10l 1278083: our black on the video's frame, the map then off at J + 45))
-        if (r[0] >= J + 300 and r[1] < kill_cost()) or (FORCED_NOW[0] and abs(black - gB) <= 3 and r[0] >= J + 40):
+        # (or the black lined up and the map after it held a while: run10n 1286911, our black at 1287241 for the
+        # video's 1287240, the sync 136 frames past J at 1.96; the map's differences go to the next handlers)
+        if (r[0] >= J + 300 and r[1] < kill_cost()) or (FORCED_NOW[0] and abs(black - gB) <= 3 and r[0] >= J + 40) \
+                or (abs(black - gB) <= 3 and r[0] >= J + 100 and r[1] < 2.2):
             FREE.append((D, J))
             return w3, ([hold] if hold else []) + [[Wd, kill]]
     return None
