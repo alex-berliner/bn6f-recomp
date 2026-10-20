@@ -1495,7 +1495,12 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         wD = state_at(D)
         if wD is None: return None
         b.e.load(wD[1]); foes = enemies_alive(side)
-        if foes: hold = [D + 1, ','.join(f'{a + 0x24:#x}=0x270f/2' for a in foes)]   # (a poke at D is before D's state)
+        # (MegaMan too, when the stretch is long: run10c 1111700, 5250 frames of the video's keys against held
+        # enemies and ours was deleted; his HP at the loss comes back with the deletion)
+        mine = enemies_alive(1 - side) if side == 1 else []
+        if foes:
+            hold = [D + 1, ','.join(f'{a + 0x24:#x}=0x270f/2' for a in foes + mine)]   # (a poke at D is before D's state)
+            if mine: kill = kill + ',' + ','.join(f'{a + 0x24:#x}={int.from_bytes(b.e.read(a + 0x24, 2), "little"):#x}/2' for a in mine)
     def play(Wd, to):
         wD = state_at(D)
         if wD is None: return None, None, None
