@@ -87,6 +87,88 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_813BB00 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r8, r9, r10, r11, r12; } call_sub_813B790_result;
+/* register form: generated wrapper: ai_dispatchFromGlobalByte has no typed C interface yet */
+static inline call_sub_813B790_result call_sub_813B790(u32 r0, u32 r5, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R0 = r0;
+    R5 = r5;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(ai_dispatchFromGlobalByte);
+    return (call_sub_813B790_result){ R0, R8, R9, R10, R11, R12 };
+}
+
+#define PANEL_SCAN_SIZE 7
+#define GRID_STRIDE     0xF
+#define TABLE_STRIDE    7
+#define WINDOW_OFFSET   2
+
+struct scan_result {
+    u32 r0;
+    u32 r8;
+    u32 r9;
+    u32 r11;
+    u32 r12;
+};
+
+/* Scan a 7×7 window of the 15×15 battle grid centred on the target cell.
+ * ai_dispatchFromGlobalByte resolves an occupancy table; each non-zero table entry must
+ * sit on a grid cell whose value is 3 (passable).  A zero grid cell aborts
+ * the scan immediately ("blocked"), otherwise the all-clear flag is cleared
+ * on any mismatch.  Result is 1 when blocked or fully clear, 0 otherwise. */
+static struct scan_result scan_panel_window(u32 panel_id, u32 grid_ptr,
+                                            u32 row, u32 col,
+                                            u32 in_r5, u32 in_r8, u32 in_r9,
+                                            u32 in_r11, u32 in_r12) {
+    call_sub_813B790_result callee = call_sub_813B790(panel_id, in_r5,
+                                                       in_r8, in_r9,
+                                                       in_r11, in_r12);
+
+    u32 table = callee.r0;
+    u32 grid  = grid_ptr + (row + WINDOW_OFFSET) + (col + WINDOW_OFFSET) * GRID_STRIDE;
+
+    u32 all_clear = 1;
+    u32 blocked   = 0;
+
+    for (u32 r = 0; r < PANEL_SCAN_SIZE && !blocked; r++) {
+        for (u32 c = 0; c < PANEL_SCAN_SIZE; c++) {
+            if (LD8(table + c) == 0)
+                continue;
+            u32 gv = LD8(grid + c);
+            if (gv == 0) {
+                blocked = 1;
+                break;
+            }
+            if (gv != 3)
+                all_clear = 0;
+        }
+        table += TABLE_STRIDE;
+        grid  += GRID_STRIDE;
+    }
+
+    struct scan_result out;
+    out.r0  = blocked ? 1u : all_clear;
+    out.r8  = callee.r8;
+    out.r9  = callee.r9;
+    out.r11 = callee.r11;
+    out.r12 = callee.r12;
+    return out;
+}
+
+/* sub_813BB00(r0=panel_id, r1=grid_ptr, r2=row, r3=col, r5,r8,r9,r10,r11,r12)
+ *   -> r0, r8, r9, r10, r11, r12; flags nz */
+Next sub_813BB00(void) {
+    struct scan_result res = scan_panel_window(R0, R1, R2, R3, R5, R8, R9, R11, R12);
+    R0 = res.r0;
+    R8 = res.r8; R9 = res.r9; R11 = res.r11; R12 = res.r12;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── navicust_checkPieceOverlap ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r8, r9, r10, r11, r12; } call_ai_dispatchFromGlobalByte_result_navicust_checkPieceOverlap;

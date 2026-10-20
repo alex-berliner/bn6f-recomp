@@ -499,6 +499,75 @@ Next spawnOverworldMapObjects_808CBA0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_808CBD8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r4, r6; } call_SpawnOverworldMapObject_result;
+/* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
+static inline call_SpawnOverworldMapObject_result call_SpawnOverworldMapObject(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(SpawnOverworldMapObject);
+    return (call_SpawnOverworldMapObject_result){ R2, R4, R6 };
+}
+
+/* register form: generated wrapper: reqBBS_setFlag_e17b0f7_8140A00 has no typed C interface yet */
+static inline void call_reqBBS_setFlag_e17b0f7_8140A00(void) {
+    GUEST_CALL(reqBBS_setFlag_e17b0f7_8140A00);
+}
+
+typedef struct { u32 r3; } call_gameState_setUnk09_8001172_result;
+/* register form: generated wrapper: gameState_setUnk09_8001172 has no typed C interface yet */
+static inline call_gameState_setUnk09_8001172_result call_gameState_setUnk09_8001172_sub_808CBD8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(gameState_setUnk09_8001172);
+    return (call_gameState_setUnk09_8001172_result){ R3 };
+}
+
+typedef struct { u32 r3, r10; bool c, v; } call_sound_8000672_result;
+/* register form: generated wrapper: sound_8000672 has no typed C interface yet */
+static inline call_sound_8000672_result call_sound_8000672(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(sound_8000672);
+    return (call_sound_8000672_result){ R3, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Leaving an area: spawn overworld map object 0x11 (the caller's r4 is the
+ * fifth argument), set the BBS flag, switch game state to 3, and play
+ * sound 0x1F/0x13B unless the current map group is 0x85.
+ *
+ * SpawnOverworldMapObject clobbers r5 (not exposed in its wrapper result)
+ * and returns r4/r6, so the adapter must restore those three to their
+ * entry values, mirroring the original's push/pop of {r5} and the outer
+ * pop of {r4-r7}. */
+static u32 leave_area_event(u32 callerR4, u32 toolkit) {
+    call_SpawnOverworldMapObject_result spawn =
+        call_SpawnOverworldMapObject(0x11, 0, 0, 0, callerR4);
+
+    call_reqBBS_setFlag_e17b0f7_8140A00();
+    call_gameState_setUnk09_8001172_sub_808CBD8(3);
+
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    if (LD8(gameState + oGameState_MapGroup) != 0x85)
+        call_sound_8000672(0x1F, 0x13B, spawn.r2);
+
+    return 0;
+}
+
+/* sub_808CBD8(r4 = passed to SpawnOverworldMapObject, r10 = toolkit) -> r0=0, nz.
+ * Preserved: r4 r5 r6 r7 r10. Outputs from callees: r2 (Spawn), r3 (gameState/sound). */
+Next sub_808CBD8(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
+    u32 r0val = leave_area_event(saved_r4, R10);
+    R4 = saved_r4, R5 = saved_r5, R6 = saved_r6;
+    SET_FLAGS_NZ(r0val);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_checkPlayerActorStoryFlag_808CC10 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battle_checkPlayerActorStoryFlag_808CC10;
@@ -591,6 +660,55 @@ static void store_player_pos(u32 playerObj) {
 /* ow_storePlayerPosDup(r5 = player object, r10 = coords source) -> no outputs */
 Next ow_storePlayerPosDup(void) {
     store_player_pos(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_808CCAC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: GetOWPlayerFacingDirection has no typed C interface yet */
+static inline u32 call_GetOWPlayerFacingDirection(void) {
+    GUEST_CALL(GetOWPlayerFacingDirection);
+    return R0;
+}
+
+typedef struct { u32 r0, r1; } call_ReadOWPlayerObjectCoords_result_sub_808CCAC;
+/* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
+static inline call_ReadOWPlayerObjectCoords_result_sub_808CCAC call_ReadOWPlayerObjectCoords_sub_808CCAC(void) {
+    GUEST_CALL(ReadOWPlayerObjectCoords);
+    return (call_ReadOWPlayerObjectCoords_result_sub_808CCAC){ R0, R1 };
+}
+
+#define FACING_TILE_OFFSET 0x18
+
+/* Shift the player's tile coords by one tile in the facing direction and
+ * store the result (as signed halfwords) into the given object's fields
+ * at +0x1A (x) and +0x1C (y).  Directions 0–7 map to the eight cardinal/
+ * diagonal facing values; anything ≥ 7 falls into the default (−y) case. */
+static void set_facing_adjusted_coords(u32 obj) {
+    s32 facing = (s32)call_GetOWPlayerFacingDirection();
+
+    call_ReadOWPlayerObjectCoords_result_sub_808CCAC coords = call_ReadOWPlayerObjectCoords_sub_808CCAC();
+    s32 x = (s32)coords.r0 >> 16;
+    s32 y = (s32)coords.r1 >> 16;
+
+    switch (facing) {
+    case 0: x += FACING_TILE_OFFSET; y -= FACING_TILE_OFFSET; break;
+    case 1: x += FACING_TILE_OFFSET; break;
+    case 2: x += FACING_TILE_OFFSET; y += FACING_TILE_OFFSET; break;
+    case 3: y += FACING_TILE_OFFSET; break;
+    case 4: x -= FACING_TILE_OFFSET; y += FACING_TILE_OFFSET; break;
+    case 5: x -= FACING_TILE_OFFSET; y -= FACING_TILE_OFFSET; break;
+    case 6: x -= FACING_TILE_OFFSET; y -= FACING_TILE_OFFSET; break;
+    default: y -= FACING_TILE_OFFSET; break;
+    }
+
+    ST16(obj + 0x1A, (u16)(s16)x);
+    ST16(obj + 0x1C, (u16)(s16)y);
+}
+
+/* sub_808CCAC(r5 = object pointer, r10 = player context) -> r5 (preserved) */
+Next sub_808CCAC(void) {
+    set_facing_adjusted_coords(R5);
     RETURN_TO_CALLER();
 }
 

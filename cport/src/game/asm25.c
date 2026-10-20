@@ -382,6 +382,94 @@ Next ow_startBeastOutHit(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_808FD1C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; } call_ReadOWPlayerObjectCoords_result_sub_808FD1C;
+/* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
+static inline call_ReadOWPlayerObjectCoords_result_sub_808FD1C call_ReadOWPlayerObjectCoords_sub_808FD1C(void) {
+    GUEST_CALL(ReadOWPlayerObjectCoords);
+    return (call_ReadOWPlayerObjectCoords_result_sub_808FD1C){ R0, R1 };
+}
+
+typedef struct { u32 r3, r7; } call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result_sub_808FD1C;
+/* register form: generated wrapper: owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188 has no typed C interface yet */
+static inline call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result_sub_808FD1C call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_sub_808FD1C(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188);
+    return (call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result_sub_808FD1C){ R3, R7 };
+}
+
+/* sub_808FD1C: Advance the overworld player one step.
+ * Decrements a per-move counter; if it reaches zero the player stops.
+ * Otherwise reads the player's current (x,y), shifts them by the step
+ * distance in the facing direction, and commits the new position via
+ * the copyCoords routine.
+ *
+ * Outputs: nz (moved 0/1), r2 (copy flag), r3/r7 (from callee).
+ * r4/r5 are scratch in the original (restored by pop → preserved). */
+
+#define OW_STEP_DISTANCE   (8u << 16)    /* 0x00080000 coordinate shift */
+#define OW_COPY_FLAG       (0x40u << 16) /* 0x00400000 passed as r2 to callee */
+#define OW_COUNTER_OFF     0x17          /* move-remaining byte in state block */
+#define OW_DIRECTION_OFF   0x18          /* facing-direction byte in state block */
+
+struct OWMoveResult {
+    u32 moved;   /* 0 = stopped (nz → Z set), 1 = stepped */
+    u32 r2;      /* OW_COPY_FLAG on move, else entry value */
+    u32 r3;      /* from callee on move, else entry value */
+    u32 r7;      /* from callee on move, else entry value */
+};
+
+static struct OWMoveResult ow_player_step(u32 r2_in, u32 r3_in, u32 r7_in) {
+    struct OWMoveResult res = { 0, r2_in, r3_in, r7_in };
+
+    /* Load the state-block pointer from the global indirection. */
+    u32 state = LD32(A_off_808F5D4);
+
+    /* Decrement the remaining-move counter; stop when it hits zero. */
+    u8 counter = LD8(state + OW_COUNTER_OFF);
+    counter -= 1;
+    ST8(state + OW_COUNTER_OFF, counter);
+    if (counter == 0)
+        return res;
+
+    /* Read current world coordinates (r10 is the implicit player context). */
+    call_ReadOWPlayerObjectCoords_result_sub_808FD1C coords = call_ReadOWPlayerObjectCoords_sub_808FD1C();
+    u32 x = coords.r0;
+    u32 y = coords.r1;
+
+    /* Offset by step distance in the facing direction:
+     * 1 → +x,  3 → +y,  5 → −x,  other → −y */
+    u8 dir = LD8(state + OW_DIRECTION_OFF);
+    if (dir == 1)      x += OW_STEP_DISTANCE;
+    else if (dir == 3) y += OW_STEP_DISTANCE;
+    else if (dir == 5) x -= OW_STEP_DISTANCE;
+    else               y -= OW_STEP_DISTANCE;
+
+    res.moved = 1;
+    res.r2 = OW_COPY_FLAG;
+
+    /* Commit the new position (returns r3, r7 used as status). */
+    call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result_sub_808FD1C out =
+        call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_sub_808FD1C(x, y, res.r2);
+
+    res.r3 = out.r3;
+    res.r7 = out.r7;
+    return res;
+}
+
+/* sub_808FD1C(r10, lr) → nz, r2, r3, r7 */
+Next sub_808FD1C(void) {
+    struct OWMoveResult res = ow_player_step(R2, R3, R7);
+    R2 = res.r2;
+    R3 = res.r3;
+    R7 = res.r7;
+    SET_FLAGS_NZ(res.moved);
+    RETURN_TO_CALLER();
+}
+
 /* ── weather_requestMapParams_808FD64 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: req_setFourParams has no typed C interface yet */
@@ -842,6 +930,200 @@ static void bbs_request_scene(void) {
  * Flags are clobbered only, so nothing has to be set explicitly here. */
 Next bbs_requestOnEventBE4_809003C(void) {
     bbs_request_scene();
+    RETURN_TO_CALLER();
+}
+
+/* ── weatherComp_layOrbTrail_809005C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C call_TestEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { bool z, n; } call_sub_808FF8C_result;
+/* register form: generated wrapper: checkObjectField20Zero_808FF8C has no typed C interface yet */
+static inline call_sub_808FF8C_result call_sub_808FF8C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(checkObjectField20Zero_808FF8C);
+    return (call_sub_808FF8C_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3; } call_ClearEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C;
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline call_ClearEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C call_ClearEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+    return (call_ClearEventFlagFromImmediate_result_weatherComp_layOrbTrail_809005C){ R3 };
+}
+
+/* register form: generated wrapper: clearWorkArea_808FE64 has no typed C interface yet */
+static inline void call_sub_808FE64(void) {
+    GUEST_CALL(clearWorkArea_808FE64);
+}
+
+typedef struct { u32 r4; bool z, n; } call_sub_8090308_result;
+/* register form: generated wrapper: sub_8090308 has no typed C interface yet */
+static inline call_sub_8090308_result call_sub_8090308(void) {
+    GUEST_CALL(sub_8090308);
+    return (call_sub_8090308_result){ R4, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Event flag bank/offset pairs (from movflag expansions) */
+#define EVENT_BE4_BANK  0xB
+#define EVENT_BE4_OFF   0xE4
+#define EVENT_BE5_BANK  0xB
+#define EVENT_BE5_OFF   0xE5
+#define EVENT_PET_DISABLED_BANK  0x17
+#define EVENT_PET_DISABLED_OFF   7
+#define EVENT_1739_BANK  0x17
+#define EVENT_1739_OFF   0x39
+
+/*
+ * Orb trail component logic.
+ * Returns the value that becomes the caller's r0 / sets nz on return:
+ *   0  = trail not completed (various early-exit conditions)
+ *   1  = trail fully completed (all decrements used up)
+ *   other = value returned by sub_8090308 on partial completion
+ */
+static u32 orb_trail_logic(u32 battle_ptr, u32 toolkit) {
+    /* Must have the BE4 "trail ready" event flag set */
+    if (call_TestEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(EVENT_BE4_BANK, EVENT_BE4_OFF).z)
+        return 0;
+
+    /* Additional per-battle gate check */
+    if (call_sub_808FF8C(battle_ptr).z)
+        return 0;
+
+    u16 timer = LD16(battle_ptr + 6);
+
+    /*
+     * If the timer has expired (>= 250) or the B/A button (bit 0) is not
+     * pressed, take the "reset / start trail" path.
+     */
+    if (timer >= 0xFA ||
+        !(LD16(LD32(toolkit + oToolkit_JoypadPtr)) & 1)) {
+        ST8(battle_ptr + 8, 1);          /* trail active */
+
+        if (LD16(battle_ptr + 6) == 0)   /* nothing to reset */
+            return 0;
+
+        ST16(battle_ptr + 6, 0);         /* clear the countdown timer */
+        call_ClearEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(EVENT_BE5_BANK, EVENT_BE5_OFF);
+        call_ClearEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(EVENT_PET_DISABLED_BANK, EVENT_PET_DISABLED_OFF);
+        call_ClearEventFlagFromImmediate_weatherComp_layOrbTrail_809005C(EVENT_1739_BANK, EVENT_1739_OFF);
+        call_sub_808FE64();              /* commit state */
+        return 0;
+    }
+
+    /* Button pressed while timer active → decrement the trail counter */
+    call_sub_8090308_result sub_res = call_sub_8090308();
+    if (sub_res.z)
+        return 0;                        /* sub_8090308 signalled failure */
+
+    u32 result = sub_res.r4;
+
+    u32 decremented = LD8(battle_ptr + 8) - 1;
+    ST8(battle_ptr + 8, decremented);
+
+    if (decremented != 0)
+        return result;                   /* more trail frames remaining */
+
+    /* All frames used up – reset counter and signal completion */
+    ST8(battle_ptr + 8, 5);
+    return 1;
+}
+
+/* weatherComp_layOrbTrail_809005C(r5 = battle ptr, r10 = toolkit) -> nz */
+Next weatherComp_layOrbTrail_809005C(void) {
+    R0 = orb_trail_logic(R5, R10);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── weatherComp_checkRingCapture_809019C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_weatherComp_checkRingCapture_809019C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_weatherComp_checkRingCapture_809019C call_TestEventFlagFromImmediate_weatherComp_checkRingCapture_809019C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_weatherComp_checkRingCapture_809019C){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6; bool z, n; } call_weatherComp_isTornadoInRing_809022C_result;
+/* register form: generated wrapper: weatherComp_isTornadoInRing_809022C has no typed C interface yet */
+static inline call_weatherComp_isTornadoInRing_809022C_result call_weatherComp_isTornadoInRing_809022C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(weatherComp_isTornadoInRing_809022C);
+    return (call_weatherComp_isTornadoInRing_809022C_result){ R4, R5, R6, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { bool z, n; } call_TestEventFlag_result_weatherComp_checkRingCapture_809019C;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_weatherComp_checkRingCapture_809019C call_TestEventFlag_weatherComp_checkRingCapture_809019C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_weatherComp_checkRingCapture_809019C){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: SetEventFlag has no typed C interface yet */
+static inline void call_SetEventFlag(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetEventFlag);
+}
+
+/* Check if any tornado in a ring has not yet been captured.
+ * For each ring with a tornado whose "processed" flag is clear, set its
+ * "captured" flag and decrement the remaining-capture counter.
+ * Returns 1 if a capture occurred, 0 otherwise. */
+static u32 check_ring_capture(u32 weather_comp_ptr, u32 event_flag_base) {
+    /* Gate: only act when event flag 0xBE8 is set. */
+    call_TestEventFlagFromImmediate_result_weatherComp_checkRingCapture_809019C gate =
+        call_TestEventFlagFromImmediate_weatherComp_checkRingCapture_809019C(0xB, 0xE8);
+    if (gate.z)
+        return 0;
+
+    u32 found = 0;
+    for (u32 ring = 0; ring < LD8(weather_comp_ptr + 0xA); ring++) {
+        /* Skip rings with no tornado. */
+        call_weatherComp_isTornadoInRing_809022C_result t =
+            call_weatherComp_isTornadoInRing_809022C(ring, weather_comp_ptr);
+        if (t.z)
+            continue;
+
+        /* Skip rings whose "processed" event flag is already set. */
+        u32 processed_flag = LD16(A_byte_8090226 + ring * 2);
+        call_TestEventFlag_result_weatherComp_checkRingCapture_809019C pf = call_TestEventFlag_weatherComp_checkRingCapture_809019C(processed_flag);
+        if (!pf.z)
+            continue;
+
+        /* Capture this ring: set its "captured" event flag. */
+        u32 captured_flag = LD16(A_byte_8090220 + ring * 2);
+        call_SetEventFlag(captured_flag);
+        found = 1;
+
+        /* Decrement remaining captures; stop when exhausted. */
+        u32 remaining = LD8(weather_comp_ptr + 0xB) - 1;
+        ST8(weather_comp_ptr + 0xB, remaining);
+        if (remaining == 0)
+            break;
+    }
+
+    return found;
+}
+
+/* weatherComp_checkRingCapture_809019C(r5 = weather comp ptr, r10) -> r5, nz */
+Next weatherComp_checkRingCapture_809019C(void) {
+    u32 found = check_ring_capture(R5, R10);
+    R5 = R5;
+    SET_FLAGS_NZ(found);
     RETURN_TO_CALLER();
 }
 

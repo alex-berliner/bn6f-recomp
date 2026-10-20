@@ -1648,6 +1648,64 @@ Next sub_8034E3C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8034E88 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_sub_8034E88;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_8034E88 call_TestEventFlagFromImmediate_sub_8034E88(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_8034E88){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Check if a menu entry (by index and category) is selectable given the current alliance.
+ * Returns: result in r1 (1 = selectable, 0 = not, or the raw byte on mismatch),
+ *          the byte-table pointer in r2, and a value for flag setting in flags_sub. */
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 flags_sub;
+} EntryCheckResult;
+
+static EntryCheckResult check_entry_selectable(u32 entry, u32 category, u32 alliance) {
+    u32 byte_table = LD32(A_off_8034EDC + (category << 2));
+
+    /* Category 0 has special shortcut checks before the byte-table lookup. */
+    if (category == 0) {
+        if (entry == 6) {
+            /* Flag EVENT_E00 (0xE00) not set → entry 6 is selectable. */
+            if (call_TestEventFlagFromImmediate_sub_8034E88(0xE, 0).z)
+                return (EntryCheckResult){ 1, byte_table, 0 };
+        }
+        if (entry == 0xA)
+            return (EntryCheckResult){ 1, byte_table, 0 };
+    }
+
+    /* General path: look up the required alliance byte for this entry. */
+    u8 table_byte = LD8(byte_table + (entry >> 1));
+    if (table_byte != alliance)
+        return (EntryCheckResult){ table_byte, byte_table, alliance };
+
+    /* Alliance matches; entry 8 additionally requires flag 0x0084 NOT set. */
+    if (entry == 8) {
+        if (!call_TestEventFlagFromImmediate_sub_8034E88(0, 0x84).z)
+            return (EntryCheckResult){ 0, byte_table, 0 };
+        return (EntryCheckResult){ 1, byte_table, 0 };
+    }
+
+    return (EntryCheckResult){ 0, byte_table, 0 };
+}
+
+/* sub_8034E88(r0 = entry, r1 = category, r4 = alliance) -> r1 = result, r2 = table ptr */
+Next sub_8034E88(void) {
+    EntryCheckResult res = check_entry_selectable(R0, R1, R4);
+    R1 = res.r1;
+    R2 = res.r2;
+    SET_FLAGS_CMP(R1, res.flags_sub);
+    RETURN_TO_CALLER();
+}
+
 /* ── HandleCoordinateInteractionCutscene ── */
 /* register form: calls IsNotSlipRunningAndNotInCutscene outside this file, which has no typed C interface yet */
 static bool not_slipping_and_not_in_cutscene(void) {
@@ -2326,6 +2384,69 @@ static void spawn_selected_object_list(u32 list_index, u32 spawn_arg) {
 /* battle_spawnObjectListByIndex_8035450(r0 = list index, r5 = spawn argument) -> r2 r3 r5 r7 r8 r9 r10 r11 r12 */
 Next battle_spawnObjectListByIndex_8035450(void) {
     spawn_selected_object_list(R0, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── testSetClearFlags_803553c ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_clearSetFlags_80355a8_result;
+/* register form: generated wrapper: clearSetFlags_80355a8 has no typed C interface yet */
+static inline call_clearSetFlags_80355a8_result call_clearSetFlags_80355a8(void) {
+    GUEST_CALL(clearSetFlags_80355a8);
+    return (call_clearSetFlags_80355a8_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_testSetClearFlags_803553c;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_testSetClearFlags_803553c call_TestEventFlagFromImmediate_testSetClearFlags_803553c(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_testSetClearFlags_803553c){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: SetEventFlagFromImmediate has no typed C interface yet */
+static inline void call_SetEventFlagFromImmediate_testSetClearFlags_803553c(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+}
+
+typedef struct { u32 r1, r3; } call_ClearEventFlagFromImmediate_result_testSetClearFlags_803553c;
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline call_ClearEventFlagFromImmediate_result_testSetClearFlags_803553c call_ClearEventFlagFromImmediate_testSetClearFlags_803553c(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+    return (call_ClearEventFlagFromImmediate_result_testSetClearFlags_803553c){ R1, R3 };
+}
+
+/* Helper: if the given event flag is set, set the paired derived flag. */
+static void set_if_tested(u32 page, u32 test_index,
+                          u32 set_page, u32 set_index) {
+    if (!call_TestEventFlagFromImmediate_testSetClearFlags_803553c(page, test_index).z)
+        call_SetEventFlagFromImmediate_testSetClearFlags_803553c(set_page, set_index);
+}
+
+/* testSetClearFlags: refresh five "if TEST then SET" event-flag pairs, then
+ * unconditionally clear EVENT_120.  R4-R7 are left by clearSetFlags_80355a8
+ * (also the preserved values), R3 by the trailing ClearEventFlagFromImmediate. */
+static void do_test_set_clear_flags(void) {
+    call_clearSetFlags_80355a8();
+
+    set_if_tested(6,   0x7B, 6,   0x82);  /* EVENT_67B -> EVENT_682 */
+    set_if_tested(8,   0x56, 8,   0x5F);  /* EVENT_856 -> EVENT_85F */
+    set_if_tested(0xA, 0x44, 0xA, 0xBA);  /* EVENT_A44 -> EVENT_ABA */
+    set_if_tested(0xC, 0x6D, 0xC, 0xDC);  /* EVENT_C6D -> EVENT_CDC */
+    set_if_tested(0xC, 0xA7, 0xC, 0xE0);  /* EVENT_CA7 -> EVENT_CE0 */
+
+    call_ClearEventFlagFromImmediate_testSetClearFlags_803553c(1, 0x20);  /* clear EVENT_120 */
+}
+
+/* testSetClearFlags_803553c(r10, lr) -> r3 r4 r5 r7 */
+Next testSetClearFlags_803553c(void) {
+    do_test_set_clear_flags();
+    R0 = 0;
     RETURN_TO_CALLER();
 }
 

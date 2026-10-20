@@ -164,6 +164,40 @@ Next sound_dispatchSoundRequest_8000642(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sound_8000672 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n, c, v; } call_sound_8000808_result_sound_8000672;
+/* register form: generated wrapper: sound_8000808 has no typed C interface yet */
+static inline call_sound_8000808_result_sound_8000672 call_sound_8000808_sound_8000672(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sound_8000808);
+    return (call_sound_8000808_result_sound_8000672){ ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Dispatch a sound-effect parameter: use r0 as an index into the
+ * sound-table at off_8000704, then call sound_8000808 with the
+ * looked-up value (r0), the caller's r1/r2, and the SmashFactor
+ * handler (r3).  The callee's C/V flags propagate to the return
+ * because the subsequent pop/mov leave no flag-setting instruction. */
+
+static void sound_8000672_impl(u32 r0, u32 r1, u32 r2) {
+    u32 table_entry = LD32(A_off_8000704 + (r0 << 2));
+    call_sound_8000808_sound_8000672(table_entry, r1, r2, A_object_setSmashFactor + 1);
+    /* c and v are set by the wrapper's guest execution; pop {r3} and
+     * mov r10,r3 in the original do not update flags. */
+}
+
+/* sound_8000672(r0 = sound-table index, r1 = param1, r2 = param2)
+ * -> c, v, r3 (= entry r10), r4-r7/r10/lr preserved */
+Next sound_8000672(void) {
+    sound_8000672_impl(R0, R1, R2);
+    R3 = R10;
+    RETURN_TO_CALLER();
+}
+
 /* ── sound_dispatchCueHandler_800068A ── */
 /* sound_dispatchCueHandler_800068A(r0 = sound cue index, r1 = argument, r10 = context):
  * Look up the handler word for a sound cue in the cue table at off_8000704

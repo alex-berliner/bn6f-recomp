@@ -590,6 +590,47 @@ Next initWorkArea5Entries_80467D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80468BA ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_sub_8046900_result;
+/* register form: generated wrapper: sub_8046900 has no typed C interface yet */
+static inline call_sub_8046900_result call_sub_8046900(void) {
+    GUEST_CALL(sub_8046900);
+    return (call_sub_8046900_result){ R2, R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_initWorkArea5Entries_80467D8_result;
+/* register form: generated wrapper: initWorkArea5Entries_80467D8 has no typed C interface yet */
+static inline call_initWorkArea5Entries_80467D8_result call_initWorkArea5Entries_80467D8(void) {
+    GUEST_CALL(initWorkArea5Entries_80467D8);
+    return (call_initWorkArea5Entries_80467D8_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initialize work area 5:
+ * sub_8046900 sets up the entries (leaves r2/r3), then
+ * initWorkArea5Entries_80467D8 fills them (returns r0-r3 + flags). */
+typedef struct {
+    u32 r0, r1, r2, r3;
+    bool n, z, c, v;
+} work_area_init_result;
+
+static work_area_init_result do_work_area_init(void) {
+    (void)call_sub_8046900();
+    call_initWorkArea5Entries_80467D8_result res = call_initWorkArea5Entries_80467D8();
+    return (work_area_init_result){ res.r0, res.r1, res.r2, res.r3,
+                                    res.n, res.z, res.c, res.v };
+}
+
+/* sub_80468BA(r4-r7,lr saved; calls two initializers) -> r0-r3 + nzcv */
+Next sub_80468BA(void) {
+    work_area_init_result res = do_work_area_init();
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R3 = res.r3;
+    RETURN_TO_CALLER();
+}
+
 /* ── sprite_clearScaleAndMakeUnscalable_80468E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_makeUnscalable_result_sub_80468E0;
@@ -2262,6 +2303,151 @@ Next shop_copyItemTableToShopData_8048C98(void) {
 
     R2 = bytesLeft;
     R3 = lastLoaded;
+    RETURN_TO_CALLER();
+}
+
+/* ── shop_addItemStockEntry ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_CopyBytes_result;
+/* register form: generated wrapper: CopyBytes has no typed C interface yet */
+static inline call_CopyBytes_result call_CopyBytes(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyBytes);
+    return (call_CopyBytes_result){ R2, R3 };
+}
+
+/* Add 8-byte item entries from a source array into the shop stock list
+ * for a given table index.  If an entry matches an existing stock item,
+ * its quantity is added (clamped to 255); otherwise it is copied into the
+ * first empty slot. */
+typedef struct {
+    u32 r0, r1, r2, r3;
+    u32 cmpA, cmpB; /* final CMP r0 vs r5 values for flags */
+} StockAddResult;
+
+#define STOCK_TABLE_ENTRY_SIZE  0x10
+#define STOCK_TABLE_COUNT_OFF   0xC
+#define STOCK_TABLE_OFFSET_OFF  0x8
+#define STOCK_ENTRY_SIZE        8
+#define STOCK_ID_OFF            0
+#define STOCK_QTY_OFF           1
+#define STOCK_SUB2_OFF          2
+#define STOCK_FLAG_OFF          4
+#define STOCK_QTY_MAX           255
+
+static StockAddResult addItemStockEntries(u32 tableIndex, u32 sourceList,
+                                          u32 toolkit, u32 initR2) {
+    StockAddResult res;
+    u32 r0, r1, r2, r3;
+    u32 slotCount, stockBase, source, slot;
+
+    /* Locate the stock table entry for this index. */
+    u32 tableEntry = A_dword_8046B98 + tableIndex * STOCK_TABLE_ENTRY_SIZE;
+    r1 = STOCK_TABLE_ENTRY_SIZE;          /* original: mov r1, #0x10; mul r0, r1 */
+    r0 = tableIndex * STOCK_TABLE_ENTRY_SIZE;
+    slotCount = LD32(tableEntry + STOCK_TABLE_COUNT_OFF);
+    stockBase = LD32(tableEntry + STOCK_TABLE_OFFSET_OFF)
+              + LD32(toolkit + oToolkit_ShopDataPtr);
+
+    source = sourceList;
+    r1 = STOCK_TABLE_ENTRY_SIZE;
+    r2 = initR2;
+    r0 = 0;
+
+    /* Outer do-while: process at most slotCount source entries. */
+    for (;;) {
+        r3 = LD8(source + STOCK_ID_OFF);
+        if (r3 == 0)
+            goto nextSource;              /* empty source entry – skip */
+
+        /* ---- Inner loop 1: search for an existing matching item ---- */
+        r1 = 0;
+        slot = stockBase;
+        for (;;) {
+            u32 existId = LD8(slot + STOCK_ID_OFF);
+            if (existId == 0)
+                goto nextSlot1;           /* empty stock slot – skip */
+
+            /* Compare item ID (byte 0) */
+            r3 = LD8(source + STOCK_ID_OFF);
+            if (r3 != existId)
+                goto nextSlot1;
+
+            /* Compare sub-identifiers (bytes 2-3) */
+            r3 = LD16(source + STOCK_SUB2_OFF);
+            if (r3 != LD16(slot + STOCK_SUB2_OFF))
+                goto nextSlot1;
+
+            /* Compare type/flag (byte 4) */
+            r3 = LD8(source + STOCK_FLAG_OFF);
+            if (r3 != LD8(slot + STOCK_FLAG_OFF))
+                goto nextSlot1;
+
+            /* Match found – add quantities with overflow clamp */
+            r3 = LD8(source + STOCK_QTY_OFF);
+            u32 newQty = LD8(slot + STOCK_QTY_OFF) + r3;
+            if ((s32)newQty > STOCK_QTY_MAX)
+                newQty = STOCK_QTY_MAX;
+            ST8(slot + STOCK_QTY_OFF, newQty);
+            goto nextSource;
+
+        nextSlot1:
+            slot += STOCK_ENTRY_SIZE;
+            r1++;
+            if (r1 < slotCount)
+                continue;
+            break;
+        }
+
+        /* ---- Inner loop 2: find an empty slot and copy the entry ---- */
+        r1 = 0;
+        slot = stockBase;
+        for (;;) {
+            u32 existId = LD8(slot + STOCK_ID_OFF);
+            if (existId == 0) {
+                /* CopyBytes(source, slot, 8); only r2/r3 survive the call */
+                call_CopyBytes_result cb = call_CopyBytes(
+                    (u32)source, (u32)slot, STOCK_ENTRY_SIZE);
+                r2 = cb.r2;
+                r3 = cb.r3;
+                goto nextSource;
+            }
+            slot += STOCK_ENTRY_SIZE;
+            r1++;
+            if (r1 < slotCount)
+                continue;
+            break;                      /* stock full – drop the entry */
+        }
+
+    nextSource:
+        source += STOCK_ENTRY_SIZE;
+        r0++;
+        if (r0 < slotCount)
+            continue;
+        break;
+    }
+
+    res.r0 = r0;
+    res.r1 = r1;
+    res.r2 = r2;
+    res.r3 = r3;
+    res.cmpA = r0;                      /* flags from CMP r0, r5 */
+    res.cmpB = slotCount;
+    return res;
+}
+
+/* shop_addItemStockEntry(tableIndex = r0, sourceList = r1)
+ * Uses toolkit from r10; preserves r4-r7, r8, r9, r12 via callee-saved.
+ * Outputs r0-r3 and N/Z/C/V flags. */
+Next shop_addItemStockEntry(void) {
+    StockAddResult out = addItemStockEntries(R0, R1, R10, R2);
+    R0 = out.r0;
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    SET_FLAGS_CMP(out.cmpA, out.cmpB);
     RETURN_TO_CALLER();
 }
 

@@ -233,3 +233,44 @@ Next sprite_setCoordinates(void) {
     SET_FLAGS_ADD(entry, R5);
     RETURN_TO_CALLER();
 }
+
+/* ── sprite_getShadowOffsetForFrame_80030BA ── */
+/* Shadow offset entry is a 5-byte record: flag byte + signed X/Y at +1, +2.
+ * A flag of 0xFF terminates the list. */
+
+struct ShadowOffset { s32 x; s32 y; };
+
+/* Walk the per-frame shadow offset table for the given sprite object
+ * and return the (X,Y) shadow at target_frame, or (0,0) at the sentinel. */
+static struct ShadowOffset get_shadow_offset(u32 sprite_object, u32 target_frame) {
+    /* Sprite data starts at object + (type & 0xF0). */
+    u32 type_byte = LD8(sprite_object + oObjectHeader_TypeAndSpriteOffset);
+    u32 sprite_data = sprite_object + (type_byte & 0xF0);
+
+    /* Index into the animation-resource table by current anim frame. */
+    u32 frame_data = LD32(sprite_data + oObjectSprite_AnimFrameDataPtr);
+    u32 frame_idx  = LD8(frame_data) << 2;  /* byte → word-array offset */
+
+    /* Base address = resource_ptr + subframe offset + frame entry (relative ptr). */
+    u32 subframe  = LD32(sprite_data + oObjectSprite_AnimationSubFramePtr);
+    u32 sub_off   = LD32(subframe + 0xC);
+    u32 resource  = LD32(sprite_data + oObjectSprite_AnimationResourcePtr) + sub_off;
+    u32 entry     = resource + LD32(resource + frame_idx);
+
+    /* Each shadow record is 5 bytes; scan until sentinel or target frame. */
+    for (u32 i = 0; ; i++, entry += 5) {
+        u8 flag = LD8(entry);
+        if (flag == 0xFF)
+            return (struct ShadowOffset){ 0, 0 };
+        if (i == target_frame)
+            return (struct ShadowOffset){ (s32)LDS8(entry + 1), (s32)LDS8(entry + 2) };
+    }
+}
+
+/* sprite_getShadowOffsetForFrame_80030BA(r0 = sprite object, r1 = frame index) -> r0, r1 */
+Next sprite_getShadowOffsetForFrame_80030BA(void) {
+    struct ShadowOffset res = get_shadow_offset(R0, R1);
+    R0 = (u32)res.x;
+    R1 = (u32)res.y;
+    RETURN_TO_CALLER();
+}

@@ -204,6 +204,35 @@ Next battleObject_getUnk_0cPtr_811CC68(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_811DF1C ── */
+/* Jump-table offsets (selector byte at object+8 is a direct byte offset into this table) */
+#define WEATHER_TABLE_ENTRY_COUNT 3
+
+/* Dispatch to a weather-compensation handler via jump table at off_811DF30.
+ * The selector byte (object+8) indexes by byte offset: 0, 4, or 8 selects
+ * entry 0, 1, or 2 respectively.  The handler receives r1 = selector and
+ * r6 = &eWeatherCompState, and returns its results in r2, r3, r5, r10, r11
+ * which the caller reads directly from the register state. */
+static void call_weather_handler(u32 handler, u32 selector) {
+    /* register form: r1 and r6 are argument registers consumed by the handler
+     * reached through a jump-table address; C cannot express these guest ABI args */
+    R1 = selector;
+    R6 = A_eWeatherCompState;
+    GUEST_CALL_ADDR(handler);
+}
+
+static void sub_811DF1C_run(u32 object) {
+    u32 selector = LD8(object + 8);
+    u32 handler  = LD32(A_off_811DF30 + selector);
+    call_weather_handler(handler, selector);
+}
+
+/* sub_811DF1C(r5 = battle object) -> r2,r3,r5,r10,r11 set by handler */
+Next sub_811DF1C(void) {
+    sub_811DF1C_run(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_initNaviRosterEntry_811DF40 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
@@ -324,6 +353,114 @@ Next battleObject_initNaviRosterEntry_811DF40(void) {
     R2 = res.r2;
     R3 = res.r3;
     R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_811DF94 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result call_sprite_loadAnimationData(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result){ R2, R4, R5 };
+}
+
+typedef struct { u32 r1; } call_sprite_noShadow_result;
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline call_sprite_noShadow_result call_sprite_noShadow(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+    return (call_sprite_noShadow_result){ R1 };
+}
+
+typedef struct { u32 r1; bool z, n; } call_TestEventFlagFromImmediate_result_sub_811DF94;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_sub_811DF94 call_TestEventFlagFromImmediate_sub_811DF94(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_sub_811DF94){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: battle_rosterIconSetShade has no typed C interface yet */
+static inline void call_battle_rosterIconSetShade(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(battle_rosterIconSetShade);
+}
+
+typedef struct { u32 r5; } call_sprite_playAltAnimationOnce_result;
+/* register form: generated wrapper: sprite_playAltAnimationOnce has no typed C interface yet */
+static inline call_sprite_playAltAnimationOnce_result call_sprite_playAltAnimationOnce(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_playAltAnimationOnce);
+    return (call_sprite_playAltAnimationOnce_result){ R5 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_sprite_update_result;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result call_sprite_update(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* EVENT_BF2 flag constants (disassembled from "movflag EVENT_BF2"). */
+#define FLAG_BF2_GROUP  0xB
+#define FLAG_BF2_VALUE  0xF2
+
+/*
+ * Update a battle roster icon sprite.
+ *
+ * Reads the animation-state byte at state+0xB:
+ *   0 → reset to idle: mark slot empty (state+4 = 0xFF), set animation 0,
+ *       load data, clear shadow, then apply shade.
+ *   ≠0 → check EVENT_BF2:
+ *         flag set   → play the alternate animation once
+ *         flag clear → apply shade
+ *
+ * Finally, update the sprite and return its post-update registers.
+ */
+static call_sprite_update_result update_roster_icon(u32 sprite, u32 state) {
+    u32 anim_state = LD8(state + 0xB);
+
+    if (anim_state == 0) {
+        ST8(state + 4, 0xFF);              /* mark roster slot as empty/idle */
+        call_sprite_setAnimation(0, sprite);
+        call_sprite_loadAnimationData_result data = call_sprite_loadAnimationData(sprite);
+        sprite = data.r5;
+        call_sprite_noShadow(sprite);
+        call_battle_rosterIconSetShade(sprite, state);
+    } else {
+        call_TestEventFlagFromImmediate_result_sub_811DF94 flag =
+            call_TestEventFlagFromImmediate_sub_811DF94(FLAG_BF2_GROUP, FLAG_BF2_VALUE);
+        if (flag.z) {
+            /* EVENT_BF2 not set – just shade the icon */
+            call_battle_rosterIconSetShade(sprite, state);
+        } else {
+            /* EVENT_BF2 is set – play the alternate (reaction) animation */
+            call_sprite_playAltAnimationOnce_result alt = call_sprite_playAltAnimationOnce(sprite);
+            sprite = alt.r5;
+        }
+    }
+
+    return call_sprite_update(sprite);
+}
+
+/* sub_811DF94(r5 = sprite ptr, r6 = roster-entry ptr) -> r2, r3, r5 */
+Next sub_811DF94(void) {
+    call_sprite_update_result result = update_roster_icon(R5, R6);
+    R2 = result.r2;
+    R3 = result.r3;
+    R5 = result.r5;
     RETURN_TO_CALLER();
 }
 
@@ -3257,6 +3394,77 @@ Next sub_8120B54(void) {
     style_result_t result = compute_style_override(R2, R3);
     R0 = result.r0;
     R3 = result.r3;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8120BE4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; bool c, v; } call_GetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_GetCurPETNaviStatsByte_result call_GetCurPETNaviStatsByte(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (call_GetCurPETNaviStatsByte_result){ R0, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result_sub_8120BE4;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_sub_8120BE4 call_GetCurPETNavi_sub_8120BE4(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_sub_8120BE4){ R0, R3 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_SetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: SetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_SetCurPETNaviStatsByte_result call_SetCurPETNaviStatsByte(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+    return (call_SetCurPETNaviStatsByte_result){ R1, R2, R3 };
+}
+
+/* Copy five PET navi stat bytes (offsets 0x09, 0x2D..0x30) from the default
+ * PET (slot 0) to the currently selected navi (as returned by GetCurPETNavi).
+ * Outputs r2/r3 come from the last SetCurPETNaviStatsByte wrapper call. */
+static void copy_pet_navi_stats(void) {
+    u32 saved[5];
+
+    /* Read stat bytes from PET slot 0.
+     * register form: GetCurPETNaviStatsByte takes its byte-offset in R1, which
+     * the generated wrapper's single-parameter signature (PET slot only) cannot
+     * express; R1 must be assigned directly before each wrapper call. */
+    R1 = 0x09;
+    saved[0] = call_GetCurPETNaviStatsByte(0).r0;
+    R1 = 0x2D;
+    saved[1] = call_GetCurPETNaviStatsByte(0).r0;
+    R1 = 0x2E;
+    saved[2] = call_GetCurPETNaviStatsByte(0).r0;
+    R1 = 0x2F;
+    saved[3] = call_GetCurPETNaviStatsByte(0).r0;
+    R1 = 0x30;
+    saved[4] = call_GetCurPETNaviStatsByte(0).r0;
+
+    /* Target navi slot (result of GetCurPETNavi). */
+    u32 target = call_GetCurPETNavi_sub_8120BE4().r0;
+
+    /* Write the five saved bytes to the target navi.
+     * register form: SetCurPETNaviStatsByte reads offset from R1 and value from
+     * R2; the wrapper only passes R0 (target slot), so the remaining two inputs
+     * must be set through the register file. */
+    R1 = 0x09; R2 = saved[0];
+    call_SetCurPETNaviStatsByte(target);
+    R1 = 0x2D; R2 = saved[1];
+    call_SetCurPETNaviStatsByte(target);
+    R1 = 0x2E; R2 = saved[2];
+    call_SetCurPETNaviStatsByte(target);
+    R1 = 0x2F; R2 = saved[3];
+    call_SetCurPETNaviStatsByte(target);
+    R1 = 0x30; R2 = saved[4];
+    call_SetCurPETNaviStatsByte(target);
+}
+
+/* sub_8120BE4() -> r2, r3 (from last SetCurPETNaviStatsByte callee) */
+Next sub_8120BE4(void) {
+    copy_pet_navi_stats();
     RETURN_TO_CALLER();
 }
 

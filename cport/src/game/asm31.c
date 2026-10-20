@@ -2798,6 +2798,188 @@ Next t1_0x55_80C40D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── t1_0x55_updateFromRelatedObject_80C4146 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_getPalette has no typed C interface yet */
+static inline u32 call_sprite_getPalette_t1_0x55_updateFromRelatedObject_80C4146(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getPalette);
+    return R0;
+}
+
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_t1_0x55_updateFromRelatedObject_80C4146(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+/* register form: generated wrapper: sprite_getColorShader has no typed C interface yet */
+static inline u32 call_sprite_getColorShader_t1_0x55_updateFromRelatedObject_80C4146(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getColorShader);
+    return R0;
+}
+
+/* register form: generated wrapper: sprite_setColorShader has no typed C interface yet */
+static inline void call_sprite_setColorShader_t1_0x55_updateFromRelatedObject_80C4146(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setColorShader);
+}
+
+typedef struct { u32 r1; } call_sprite_getFinalPalette_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: sprite_getFinalPalette has no typed C interface yet */
+static inline call_sprite_getFinalPalette_result_t1_0x55_updateFromRelatedObject_80C4146 call_sprite_getFinalPalette_t1_0x55_updateFromRelatedObject_80C4146(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getFinalPalette);
+    return (call_sprite_getFinalPalette_result_t1_0x55_updateFromRelatedObject_80C4146){ R1 };
+}
+
+typedef struct { u32 r0, r2; } call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: obj_getSpriteFlag10AndRenderInfoHigh_8002F3E has no typed C interface yet */
+static inline call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result_t1_0x55_updateFromRelatedObject_80C4146 call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_t1_0x55_updateFromRelatedObject_80C4146(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(obj_getSpriteFlag10AndRenderInfoHigh_8002F3E);
+    return (call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result_t1_0x55_updateFromRelatedObject_80C4146){ R0, R2 };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_t1_0x55_updateFromRelatedObject_80C4146 call_object_getFlip_t1_0x55_updateFromRelatedObject_80C4146(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_t1_0x55_updateFromRelatedObject_80C4146){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_t1_0x55_updateFromRelatedObject_80C4146(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r0, r2; } call_sprite_getMosaicScalingParameters_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: sprite_getMosaicScalingParameters has no typed C interface yet */
+static inline call_sprite_getMosaicScalingParameters_result_t1_0x55_updateFromRelatedObject_80C4146 call_sprite_getMosaicScalingParameters_t1_0x55_updateFromRelatedObject_80C4146(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+    return (call_sprite_getMosaicScalingParameters_result_t1_0x55_updateFromRelatedObject_80C4146){ R0, R2 };
+}
+
+typedef struct { u32 r2, r3, r7; bool c, v; } call_sprite_setAlpha_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: sprite_setAlpha has no typed C interface yet */
+static inline call_sprite_setAlpha_result_t1_0x55_updateFromRelatedObject_80C4146 call_sprite_setAlpha_t1_0x55_updateFromRelatedObject_80C4146(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_setAlpha);
+    return (call_sprite_setAlpha_result_t1_0x55_updateFromRelatedObject_80C4146){ R2, R3, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isTimeStop_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result_t1_0x55_updateFromRelatedObject_80C4146 call_battle_isTimeStop_t1_0x55_updateFromRelatedObject_80C4146(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result_t1_0x55_updateFromRelatedObject_80C4146){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isPaused_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: battle_isPaused has no typed C interface yet */
+static inline call_battle_isPaused_result_t1_0x55_updateFromRelatedObject_80C4146 call_battle_isPaused_t1_0x55_updateFromRelatedObject_80C4146(void) {
+    GUEST_CALL(battle_isPaused);
+    return (call_battle_isPaused_result_t1_0x55_updateFromRelatedObject_80C4146){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_updateSprite_result_t1_0x55_updateFromRelatedObject_80C4146;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result_t1_0x55_updateFromRelatedObject_80C4146 call_object_updateSprite_t1_0x55_updateFromRelatedObject_80C4146(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result_t1_0x55_updateFromRelatedObject_80C4146){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Helper: sprite_setFinalPalette has no generated wrapper; reads r1 (palette) and r5 (target). */
+static void call_sprite_setFinalPalette(u32 target, u32 palette) {
+    /* register form: no generated wrapper for sprite_setFinalPalette */
+    R5 = target;
+    R1 = palette;
+    GUEST_CALL(sprite_setFinalPalette);
+}
+
+/* Helper: loc_8002F02 applies sprite flag 10 / render-info-high to the destination.
+ * Called through a code address (local label, no public symbol or generated wrapper). */
+static void call_8002F02(u32 flag_info, u32 render_high) {
+    /* register form: call through code address to local label */
+    R0 = flag_info;
+    R2 = render_high;
+    GUEST_CALL_ADDR(0x8002F02);
+}
+
+/* Mirror sprite and render state from RelatedObject1 onto the battle object (r5).
+ * Returns r5 (possibly modified by object_updateSprite). */
+static u32 update_from_related_object(u32 r5) {
+    u32 src = LD32(r5 + oBattleObject_RelatedObject1Ptr);
+
+    /* Copy the 3-dword sprite data block at offset 0x34 */
+    ST32(r5 + 0x34,     LD32(src + 0x34));
+    ST32(r5 + 0x34 + 4, LD32(src + 0x34 + 4));
+    ST32(r5 + 0x34 + 8, LD32(src + 0x34 + 8));
+
+    /* Merge active flag (bit 1) from source, preserving other bits */
+    u8 flags = LD8(r5) & ~0x02;
+    flags |= LD8(src) & 0x02;
+    ST8(r5, flags);
+
+    /* Copy palette */
+    call_sprite_setPalette_t1_0x55_updateFromRelatedObject_80C4146(call_sprite_getPalette_t1_0x55_updateFromRelatedObject_80C4146(src), r5);
+
+    /* Copy color shader */
+    call_sprite_setColorShader_t1_0x55_updateFromRelatedObject_80C4146(call_sprite_getColorShader_t1_0x55_updateFromRelatedObject_80C4146(src), r5);
+
+    /* Copy final palette */
+    call_sprite_setFinalPalette(r5, call_sprite_getFinalPalette_t1_0x55_updateFromRelatedObject_80C4146(src).r1);
+
+    /* Copy sprite flag 10 / render info high */
+    {
+        call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_result_t1_0x55_updateFromRelatedObject_80C4146 info =
+            call_obj_getSpriteFlag10AndRenderInfoHigh_8002F3E_t1_0x55_updateFromRelatedObject_80C4146(src);
+        call_8002F02(info.r0, info.r2);
+    }
+
+    /* Copy direction flip */
+    ST8(r5 + oBattleObject_DirectionFlip, LD8(src + oBattleObject_DirectionFlip));
+
+    /* Copy horizontal flip */
+    call_sprite_setFlip_t1_0x55_updateFromRelatedObject_80C4146(call_object_getFlip_t1_0x55_updateFromRelatedObject_80C4146(r5).r0, r5);
+
+    /* Copy mosaic scaling / alpha settings */
+    {
+        call_sprite_getMosaicScalingParameters_result_t1_0x55_updateFromRelatedObject_80C4146 ms =
+            call_sprite_getMosaicScalingParameters_t1_0x55_updateFromRelatedObject_80C4146(src);
+        call_sprite_setAlpha_t1_0x55_updateFromRelatedObject_80C4146(ms.r0, ms.r2, r5);
+    }
+
+    /* If no custom extra vars, derive Z-depth from the related object's animation index */
+    if (LD32(r5 + oBattleObject_ExtraVars) == 0) {
+        u8 anim = LD8(src + oBattleObject_CurAnim);
+        ST16(r5 + oBattleObject_Z16, anim != 0 ? 0xFF : 0);
+    }
+
+    /* Update sprite visuals only when neither time-stop nor pause is active */
+    if (call_battle_isTimeStop_t1_0x55_updateFromRelatedObject_80C4146().z && call_battle_isPaused_t1_0x55_updateFromRelatedObject_80C4146().z) {
+        r5 = call_object_updateSprite_t1_0x55_updateFromRelatedObject_80C4146(r5).r5;
+    }
+
+    return r5;
+}
+
+/* t1_0x55_updateFromRelatedObject_80C4146(r5 = battle object) -> r5 */
+Next t1_0x55_updateFromRelatedObject_80C4146(void) {
+    R5 = update_from_related_object(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_setupSprite_80C4368 ── */
 /* CUR_STATE_UPDATE_sub_80C4368 is the value used by the original when priming the state machine. */
 #define CUR_STATE_UPDATE_sub_80C4368 4

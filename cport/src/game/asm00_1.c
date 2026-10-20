@@ -1604,6 +1604,60 @@ Next npc_clearOverworldNpcStateWord_8004702(void)
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8004822 ── */
+/* Scan the overworld map object pool from slot 55 down to 0, looking for a
+ * free bit in eActiveOverworldMapObjectsBitfield.  If found, claim the bit,
+ * initialise the 0x78-byte object struct at the matching address, and return
+ * that address.  If all slots are taken, return 0.
+ *
+ * Object layout (written only on success):
+ *   [0x00] = 9  (type tag)
+ *   [0x01] = r0_arg
+ *   [0x04] = r4_arg
+ *   [0x08] = 0
+ *   [0x0C] = r1_arg
+ *   [0x10] = r2_arg
+ *   [0x14] = r3_arg
+ * The original pops r0-r4,r6 off the stack before writing these fields, so
+ * the values stored are the caller's originals, not the loop-modified ones. */
+static u32 alloc_overworld_map_object(u32 r0_arg, u32 r1_arg,
+                                      u32 r2_arg, u32 r3_arg,
+                                      u32 r4_arg) {
+    u32 bitfield = A_eActiveOverworldMapObjectsBitfield;
+
+    for (s32 slot = 0x37; slot >= 0; slot--) {
+        u32 bit     = 0x80000000u >> (slot & 0x1F);
+        u32 woff    = (u32)(slot >> 5) * 4;
+        u32 word    = LD32(bitfield + woff);
+
+        if ((word & bit) == 0) {
+            /* Claim the bit */
+            ST32(bitfield + woff, word | bit);
+
+            /* Object base: start at slot 55, step back 0x78 per decrement */
+            u32 obj = A_eOverworldMapObject55
+                      - (u32)(0x37 - slot) * 0x78;
+
+            ST8(obj + 0x00, 9);
+            ST8(obj + 0x01, (u8)r0_arg);
+            ST32(obj + 0x04, r4_arg);
+            ST32(obj + 0x08, 0);
+            ST32(obj + 0x0C, r1_arg);
+            ST32(obj + 0x10, r2_arg);
+            ST32(obj + 0x14, r3_arg);
+            return obj;
+        }
+    }
+
+    return 0;
+}
+
+/* sub_8004822(r0..r4 = init data) -> r5 = object address or 0 */
+Next sub_8004822(void) {
+    R5 = alloc_overworld_map_object(R0, R1, R2, R3, R4);
+    RETURN_TO_CALLER();
+}
+
 /* ── FreeOverworldMapObject ── */
 /* FreeOverworldMapObject(r5 = overworld map object):
  * Releases one overworld map object: clears its "active" bit in the global

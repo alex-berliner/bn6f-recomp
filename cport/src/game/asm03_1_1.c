@@ -1748,6 +1748,56 @@ Next gameState_getProtectedBugfrags_803D0F4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_803D138 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_803D148_result;
+/* register form: generated wrapper: sub_803D148 has no typed C interface yet */
+static inline call_sub_803D148_result call_sub_803D148(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sub_803D148);
+    return (call_sub_803D148_result){ R0, R2, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; } call_CheckKeyItem_result;
+/* register form: generated wrapper: CheckKeyItem has no typed C interface yet */
+static inline call_CheckKeyItem_result call_CheckKeyItem(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(CheckKeyItem);
+    return (call_CheckKeyItem_result){ R0, R1, R2, R3, R5, R6, R7 };
+}
+
+/* Result of the key-item check sequence: only r0 and r2 are computed.
+ * r3–r7 are preserved by the callees; r4 is restored by the adapter. */
+typedef struct {
+    u32 r0;
+    u32 r2;
+} sub_803D138_out;
+
+/* sub_803D138 trampoline: calls sub_803D148(r0, r1) then CheckKeyItem(r0).
+ * R4 has been pre-set to the original R2 by the adapter before entering. */
+static sub_803D138_out do_key_item_sequence(u32 r0, u32 r1) {
+    call_sub_803D148_result s148 = call_sub_803D148(r0, r1);
+    call_CheckKeyItem_result ck = call_CheckKeyItem(s148.r0);
+
+    sub_803D138_out out;
+    out.r0 = ck.r0;
+    out.r2 = ck.r2;
+    return out;
+}
+
+/* sub_803D138(r0 = id, r1 = ?, r2 = pointer, r10 = toolkit, lr)
+ * -> r0, r2  (r3–r7 preserved via pop {r4} and callee behaviour) */
+Next sub_803D138(void) {
+    u32 saved_r4 = R4;
+    R4 = R2;  /* original: mov r4, r2 – stash pointer for callee sequence */
+    sub_803D138_out out = do_key_item_sequence(R0, R1);
+    R0 = out.r0;
+    R2 = out.r2;
+    R4 = saved_r4;  /* original: pop {r4, pc} – restore callee-saved r4 */
+    RETURN_TO_CALLER();
+}
+
 /* ── logoScreen_dispatch_803D1CA ── */
 /* logoScreen_dispatch_803D1CA:
  * Logo screen state machine tick. Reads the current state from

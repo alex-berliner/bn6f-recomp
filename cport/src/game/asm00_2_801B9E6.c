@@ -2697,6 +2697,69 @@ Next setupBattleBackground_801DDF6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_801DE82 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result call_QueueEightWordAlignedGFXTransfer(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result){ R6, R7 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; bool c, v; } call_CopyBackgroundTiles_result;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result call_CopyBackgroundTiles_sub_801DE82(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result){ R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; bool z, n; } call_flagSetBits_eStruct2035280_801BEB8_result_sub_801DE82;
+/* register form: generated wrapper: flagSetBits_eStruct2035280_801BEB8 has no typed C interface yet */
+static inline call_flagSetBits_eStruct2035280_801BEB8_result_sub_801DE82 call_flagSetBits_eStruct2035280_801BEB8_sub_801DE82(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);
+    return (call_flagSetBits_eStruct2035280_801BEB8_result_sub_801DE82){ R1, R2, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Load background tileset graphics into VRAM and mark the page as loaded.
+ * The tileset page is selected by the byte at offset 0x18 of the scene struct (r5). */
+static void load_background_tileset(u32 scene) {
+    u32 page = LD8(scene + 0x18);
+
+    /* Page 0 is invalid; subtract 2 so the later (page-1)*32 yields a wrapped
+       negative offset into the tileset table. */
+    if (page == 0)
+        page -= 2;
+
+    /* Queue one 32-byte row from the page table into the tile transfer buffer. */
+    u32 src = (page - 1) * 0x20 + A_byte_86E1CD8;
+    call_QueueEightWordAlignedGFXTransfer(src, A_unk_3001A80, 0x20);
+
+    /* Blit a 6×2 grid of 32×32 tile blocks into VRAM block 3. */
+    call_CopyBackgroundTiles_sub_801DE82(6, 0, 3, A_word_801EDB4, 0x12, 2);
+
+    /* Record that tileset page 17 has been loaded. */
+    call_flagSetBits_eStruct2035280_801BEB8_sub_801DE82(1u << 0x11);
+}
+
+/* sub_801DE82(r5 = scene struct pointer) -> preserves r4, r5; sets r0-r3, r6, r7 via callees */
+Next sub_801DE82(void) {
+    u32 saved_r4 = R4, saved_r5 = R5;
+    load_background_tileset(R5);
+    R4 = saved_r4;
+    R5 = saved_r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── custGauge_Init_801DED0 ── */
 /* custGauge_Init_801DED0: reset the custom gauge and reload its graphics.
  * Clears the gauge state, queues the gauge tiles from ROM into VRAM,

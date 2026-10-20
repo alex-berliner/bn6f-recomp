@@ -343,6 +343,85 @@ Next snakearm_initObject(void)
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80E1620 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_object_spawnType4_result_sub_80E1620;
+/* register form: generated wrapper: object_spawnType4 has no typed C interface yet */
+static inline call_object_spawnType4_result_sub_80E1620 call_object_spawnType4_sub_80E1620(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType4);
+    return (call_object_spawnType4_result_sub_80E1620){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+/* Spawn a type-0xF object via object_spawnType4, then link the caller's
+ * battle object (r5) to it: store r5 as RelatedObject1Ptr, store the
+ * spawned object's ExtraVars (r7) and back-pointer, copy alliance/
+ * direction, and set bit 2 of the object header flags byte.
+ * Returns r0 (spawned ptr), r1, r2, r5, and a flags_val from which the
+ * adapter derives N/Z/C/V with SET_FLAGS_ADD(flags_val, 0). */
+
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r2;
+    u32 r5;
+    u32 flags_val;
+} SpawnLinkResult;
+
+static SpawnLinkResult spawn_and_link(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r7) {
+    /* Call the spawner with type 0xF; caller's r5 is still live for the callee */
+    call_object_spawnType4_result_sub_80E1620 spawn = call_object_spawnType4_sub_80E1620(0xF, r1, r2, r3, r4);
+
+    u32 obj = spawn.r5;          /* spawned object address */
+    r1 = spawn.r1;
+    r2 = spawn.r2;
+    r7 = spawn.r7;               /* extra-vars pointer for the new object */
+
+    /* mov r0, r5 then pop r5: r0 holds the spawned ptr; r5 goes back to the caller's value */
+    if (obj == 0) {
+        /* beq taken – return early; flags from ADDS(0, 0) */
+        SpawnLinkResult res = { 0, r1, r2, r5, 0 };
+        return res;
+    }
+
+    /* Store the caller's original object pointer into the new object's related slot */
+    ST32(obj + oBattleObject_RelatedObject1Ptr, r5);
+    /* Link the new object's extra-vars block to the spawner's r7 */
+    ST32(obj + oBattleObject_ExtraVars, r7);
+    /* Back-pointer: store the new object at the head of the extra-vars list */
+    ST32(r7, obj);
+
+    /* Copy alliance and direction-flip from the caller's object */
+    r1 = LD16(r5 + oBattleObject_AllianceAndDirectionFlip);
+    ST16(obj + oBattleObject_AllianceAndDirectionFlip, r1);
+
+    /* Set bit 2 of the object header flags */
+    r1 = LD8(obj + oObjectHeader_Flags);
+    r2 = 4;
+    r1 = r1 | r2;               /* ORR sets N/Z; C and V remain 0 */
+    ST8(obj + oObjectHeader_Flags, r1);
+
+    SpawnLinkResult res = { obj, r1, r2, r5, r1 };
+    return res;
+}
+
+/* sub_80E1620(r1 = spawn param, r2 = spawn param, r3 = spawn param,
+ *             r4 = spawn param, r5 = battle object, r7 = extra vars)
+ * -> r0 = spawned object (or 0), r1, r2, r3, r4, r5, r6, flags */
+Next sub_80E1620(void) {
+    SpawnLinkResult res = spawn_and_link(R1, R2, R3, R4, R5, R7);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    R5 = res.r5;
+    SET_FLAGS_ADD(res.flags_val, 0);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_getTargetObjectPos ── */
 /* ai_getTargetObjectPos: read the target object's x/y position bytes through
  * the battle object's AI data block. r5 = battle object -> returns r0 = byte

@@ -3577,6 +3577,131 @@ Next sub_81254FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_81255F8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r10; } call_menu_confirmExitAndFade_812580C_result_sub_81255F8;
+/* register form: generated wrapper: menu_confirmExitAndFade_812580C has no typed C interface yet */
+static inline call_menu_confirmExitAndFade_812580C_result_sub_81255F8 call_menu_confirmExitAndFade_812580C_sub_81255F8(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(menu_confirmExitAndFade_812580C);
+    return (call_menu_confirmExitAndFade_812580C_result_sub_81255F8){ R10 };
+}
+
+typedef struct { u32 r10; } call_playSoundEffect_7A_81258E8_result_sub_81255F8;
+/* register form: generated wrapper: playSoundEffect_7A_81258E8 has no typed C interface yet */
+static inline call_playSoundEffect_7A_81258E8_result_sub_81255F8 call_playSoundEffect_7A_81258E8_sub_81255F8(u32 r2) {
+    R2 = r2;
+    GUEST_CALL(playSoundEffect_7A_81258E8);
+    return (call_playSoundEffect_7A_81258E8_result_sub_81255F8){ R10 };
+}
+
+typedef struct { u32 r5, r7, r9, r10, r12; } call_sub_8125820_result_sub_81255F8;
+/* register form: generated wrapper: submenu_moveListCursor has no typed C interface yet */
+static inline call_sub_8125820_result_sub_81255F8 call_sub_8125820_sub_81255F8(u32 r0, u32 r1, u32 r2, u32 r5, u32 r8) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(submenu_moveListCursor);
+    return (call_sub_8125820_result_sub_81255F8){ R5, R7, R9, R10, R12 };
+}
+
+/* sub_81255F8 — menu input tick.
+ * Checks pressed L/R and held L/R, plus a pending navigation operation stored at
+ * state+0x5C.  When the operation is set the cursor word at +0x1C is temporarily
+ * overwritten with it so that submenu_moveListCursor can switch the menu layout; afterwards the
+ * original cursor is restored.
+ *
+ * Arguments follow the guest calling convention (r0, r2, r5, r10 are the input regs).
+ * Returns the r8 output (= input r0, which the original copies in the prologue).
+ */
+
+/* Joypad button bitmasks used as raw immediates in the original. */
+#define BTN_L_HELD   0x10
+#define BTN_R_HELD   0x20
+#define BTN_LR_MASK  0x300
+#define BTN_SELECT_START_MASK 0xC0
+
+/* State-block field offsets. */
+#define oMenuState_Kind        0x02
+#define oMenuState_Cursor      0x1C
+#define oMenuState_PendingOp   0x5C
+#define oMenuState_LastJoypad  0x70
+
+/* Menu exit confirmation kind value. */
+#define CONFIRM_KIND_START_B  0x38
+
+static u32 tick_menu_input(u32 r0_in, u32 r2_in, u32 state, u32 toolkit) {
+    /* r8 = r0_in — set once in the prologue and preserved throughout. */
+
+    u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+
+    /* Start or B freshly pressed → open the "confirm exit and fade" menu. */
+    u32 pressed = LD16(joypad + oJoypad_Pressed);
+    if (pressed & (JOYPAD_START | JOYPAD_B)) {
+        call_menu_confirmExitAndFade_812580C_sub_81255F8(CONFIRM_KIND_START_B, r2_in, state);
+        return r0_in;
+    }
+
+    /* L held → set kind to 0x10 and play the page-turn sound. */
+    u32 held = LD16(joypad + 4);
+    if (held & BTN_L_HELD) {
+        ST8(state + oMenuState_Kind, BTN_L_HELD);
+        call_playSoundEffect_7A_81258E8_sub_81255F8(r2_in);
+        return r0_in;
+    }
+
+    /* R held → set kind to 0x08 and play the page-turn sound. */
+    if (held & BTN_R_HELD) {
+        ST8(state + oMenuState_Kind, 0x08);
+        call_playSoundEffect_7A_81258E8_sub_81255F8(r2_in);
+        return r0_in;
+    }
+
+    /* Pending navigation operation in the state block? */
+    u32 pending_op = LD32(state + oMenuState_PendingOp);
+    if (pending_op == 0)
+        return r0_in;
+
+    /* Temporarily overwrite the cursor index with the target operation,
+       let submenu_moveListCursor react to the shoulder buttons, then restore. */
+    u16 saved_cursor = LD16(state + oMenuState_Cursor);
+    ST16(state + oMenuState_Cursor, (u16)pending_op);
+
+    /* Re-read joypad because the cursor change may have altered the layout. */
+    u32 held_now    = LD16(joypad + 4);
+    u32 pressed_now = LD16(joypad);
+
+    if (held_now & BTN_LR_MASK) {
+        /* L or R is held: strip the SELECT/START bits and switch layout. */
+        call_sub_8125820_sub_81255F8(held_now & ~BTN_SELECT_START_MASK, 7, 0, state, r0_in);
+        ST32(state + oMenuState_LastJoypad, joypad);
+    } else {
+        /* No fresh L/R press and at least one SELECT/START bit held
+           → same layout switch but with the full held value. */
+        if ((pressed_now & BTN_LR_MASK) == 0 && (held_now & BTN_SELECT_START_MASK)) {
+            call_sub_8125820_sub_81255F8(held_now, 7, 0, state, r0_in);
+            ST32(state + oMenuState_LastJoypad, joypad);
+        }
+    }
+
+    ST16(state + oMenuState_Cursor, saved_cursor);
+
+    return r0_in;
+}
+
+/* sub_81255F8(r0=?, r2=?, r5=menu-state, r10=toolkit, lr=return)
+ *   outputs: r8, r9, r12   (r5, r10 preserved)
+ *   clobbers: r0-r3, flags, lr
+ */
+Next sub_81255F8(void) {
+    R8 = tick_menu_input(R0, R2, R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_input_tick_8125784 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r10; } call_menu_confirmExitAndFade_812580C_result;

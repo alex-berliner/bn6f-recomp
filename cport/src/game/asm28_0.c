@@ -1058,6 +1058,46 @@ Next e_setEventFlagFromStruct(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_809CA84 ── */
+struct TileLookupResult {
+    u32 value;   /* r0: byte from tile data + 1, or 0 if no tile data */
+    u32 stride;  /* r2: 0x18 if tile data found, else unchanged */
+};
+
+/* Look up a byte in the current map's tile data table at the player's
+ * position index (offset 0x83 of the overworld player object).
+ * Returns 0 when the tile has no entry; otherwise the byte at offset 0xD
+ * in the tile record for the player's slot, plus 1.
+ * The caller also uses r2 as the record stride (0x18) when a hit occurs. */
+static struct TileLookupResult tile_lookup(u32 toolkit, u32 prev_stride) {
+    struct TileLookupResult res;
+    res.value  = 0;
+    res.stride = prev_stride;
+
+    u32 player_index = LD8(A_eOWPlayerObject + 0x83);
+    u32 game_state   = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 group_index  = (LD8(game_state + oGameState_MapGroup) - 0x90) << 2;
+    u32 map_index    = LD8(game_state + oGameState_MapNumber) << 2;
+
+    u32 table_row = LD32(A_off_809C0F0 + group_index);
+    u32 tile_ptr  = LD32(table_row + map_index);
+
+    if (tile_ptr != 0) {
+        res.stride = 0x18;
+        res.value  = LD8(tile_ptr + (player_index - 0x30) * 0x18 + 0xD) + 1;
+    }
+
+    return res;
+}
+
+/* sub_809CA84(r10 = toolkit) -> r0, r2; preserves r4-r7 */
+Next sub_809CA84(void) {
+    struct TileLookupResult res = tile_lookup(R10, R2);
+    R0 = res.value;
+    R2 = res.stride;
+    RETURN_TO_CALLER();
+}
+
 /* ── tryStartBbsGuiCutscene_809CF2C ── */
 /* tryStartBbsGuiCutscene_809CF2C: try to start the BBS GUI cutscene.
  * If the player can advance forward and a BBS request is pending, start the

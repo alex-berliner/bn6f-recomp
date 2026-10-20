@@ -1237,6 +1237,117 @@ Next battle_dispatchModeHandler_8133540(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_handleConfirmOrExitInput ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_submenu_handleConfirmOrExitInput call_chatbox_mask_eFlags2009F38_submenu_handleConfirmOrExitInput(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_submenu_handleConfirmOrExitInput){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r12; bool c, v; } call_menu_adjustCursorOrValue_811F7F8_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: menu_adjustCursorOrValue_811F7F8 has no typed C interface yet */
+static inline call_menu_adjustCursorOrValue_811F7F8_result_submenu_handleConfirmOrExitInput call_menu_adjustCursorOrValue_811F7F8_submenu_handleConfirmOrExitInput(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
+    return (call_menu_adjustCursorOrValue_811F7F8_result_submenu_handleConfirmOrExitInput){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_submenu_handleConfirmOrExitInput call_IsButtonPressed_submenu_handleConfirmOrExitInput(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_submenu_handleConfirmOrExitInput){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r7, r10; } call_PlaySoundEffect_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_submenu_handleConfirmOrExitInput call_PlaySoundEffect_submenu_handleConfirmOrExitInput(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_submenu_handleConfirmOrExitInput){ R2, R3, R5, R6, R7, R10 };
+}
+
+typedef struct { bool z, n; } call_submenu_isOpen_81355D8_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: submenu_isOpen_81355D8 has no typed C interface yet */
+static inline call_submenu_isOpen_81355D8_result_submenu_handleConfirmOrExitInput call_submenu_isOpen_81355D8_submenu_handleConfirmOrExitInput(void) {
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return (call_submenu_isOpen_81355D8_result_submenu_handleConfirmOrExitInput){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r5, r6, r7; bool c, v; } call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result_submenu_handleConfirmOrExitInput;
+/* register form: generated wrapper: chatbox_runScript_803FD9C_on_eTextScript2028A20 has no typed C interface yet */
+static inline call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result_submenu_handleConfirmOrExitInput call_chatbox_runScript_803FD9C_on_eTextScript2028A20_submenu_handleConfirmOrExitInput(u32 r0, u32 r4, u32 r5) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript2028A20);
+    return (call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result_submenu_handleConfirmOrExitInput){ R1, R2, R3, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Handle A/B input on an open submenu.
+ *
+ *  If chatbox flag 0x80 is active, nothing happens (bne -> return).
+ *  Otherwise feed the low-sensitivity held mask to the cursor/value adjuster;
+ *  if it signals a pending adjustment (non-zero r0), also return.
+ *  A pressed: store 4 at state+0x68 (defer to main loop), return.
+ *  B pressed: play exit sound, choose script (0x1B if submenu is open, else 0x0A),
+ *  run the chatbox script, clear state+3 (u8) and state+0x68 (u32).
+ */
+static void submenu_confirm_or_exit(u32 r5, u32 r10) {
+    /* bne after chatbox_mask: Z clear means flag present -> return */
+    if (!call_chatbox_mask_eFlags2009F38_submenu_handleConfirmOrExitInput(0x80).z)
+        return;
+
+    /* Read the low-sensitivity held-button mask from the toolkit's joypad struct */
+    u32 joypad = LD32(r10 + oToolkit_JoypadPtr);
+    u32 held = LD16(joypad + oJoypad_LowSensitivityHeld);
+
+    /* Let the menu adjuster process held keys against this submenu */
+    call_menu_adjustCursorOrValue_811F7F8_result_submenu_handleConfirmOrExitInput cursor =
+        call_menu_adjustCursorOrValue_811F7F8_submenu_handleConfirmOrExitInput(held, 7, 0, 0, r5);
+    if (cursor.r0 != 0)
+        return;
+
+    /* A pressed? (Z clear means pressed) */
+    if (!call_IsButtonPressed_submenu_handleConfirmOrExitInput(JOYPAD_A).z) {
+        ST32(r5 + 0x68, 4);
+        return;
+    }
+
+    /* B pressed?  beq -> Z set means not pressed, return */
+    if (call_IsButtonPressed_submenu_handleConfirmOrExitInput(JOYPAD_B).z)
+        return;
+
+    /* B held: exit the submenu */
+    call_PlaySoundEffect_submenu_handleConfirmOrExitInput(SOUND_EXIT_SUBMENU, cursor.r2);
+
+    /* Pick the closing script: 0x0A if submenu closed, 0x1B if still open */
+    u32 script = 0xA;
+    if (!call_submenu_isOpen_81355D8_submenu_handleConfirmOrExitInput().z)
+        script = 0x1B;
+
+    call_chatbox_runScript_803FD9C_on_eTextScript2028A20_submenu_handleConfirmOrExitInput(script, script, r5);
+
+    /* Clear the "input pending" byte and the deferred-action word */
+    ST8(r5 + 3, 0);
+    ST32(r5 + 0x68, 0);
+}
+
+/* submenu_handleConfirmOrExitInput(r5 = submenu state ptr, r10 = toolkit) */
+Next submenu_handleConfirmOrExitInput(void) {
+    submenu_confirm_or_exit(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_81337C4 ── */
 /* Folder-edit menu state dispatcher (0x081337C4).
  *
@@ -4317,6 +4428,206 @@ Next navicust_handleBoardInput(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── submenu_updateScroll ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_submenu_updateScroll;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_submenu_updateScroll call_chatbox_mask_eFlags2009F38_submenu_updateScroll(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_submenu_updateScroll){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_chatbox_GetState_8045F4C_result_submenu_updateScroll;
+/* register form: generated wrapper: chatbox_GetState_8045F4C has no typed C interface yet */
+static inline call_chatbox_GetState_8045F4C_result_submenu_updateScroll call_chatbox_GetState_8045F4C_submenu_updateScroll(void) {
+    GUEST_CALL(chatbox_GetState_8045F4C);
+    return (call_chatbox_GetState_8045F4C_result_submenu_updateScroll){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r5; bool z, n; } call_chatbox_8040818_result;
+/* register form: generated wrapper: chatbox_8040818 has no typed C interface yet */
+static inline call_chatbox_8040818_result call_chatbox_8040818(void) {
+    GUEST_CALL(chatbox_8040818);
+    return (call_chatbox_8040818_result){ R0, R1, R2, R5, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0; } call_toolkit_getUnk2004190EntryPtr_813B9FC_result;
+/* register form: generated wrapper: toolkit_getUnk2004190EntryPtr_813B9FC has no typed C interface yet */
+static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result call_toolkit_getUnk2004190EntryPtr_813B9FC(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_getUnk2004190EntryPtr_813B9FC);
+    return (call_toolkit_getUnk2004190EntryPtr_813B9FC_result){ R0 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_81366F4_result;
+/* register form: generated wrapper: sub_81366F4 has no typed C interface yet */
+static inline call_sub_81366F4_result call_sub_81366F4(u32 r0, u32 r1, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(sub_81366F4);
+    return (call_sub_81366F4_result){ R4, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: sub_813B9C4 has no typed C interface yet */
+static inline void call_sub_813B9C4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813B9C4);
+}
+
+/* register form: generated wrapper: sub_813BA48 has no typed C interface yet */
+static inline void call_sub_813BA48(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813BA48);
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; } call_submenu_rebuildKeyItemList_result_submenu_updateScroll;
+/* register form: generated wrapper: submenu_rebuildKeyItemList has no typed C interface yet */
+static inline call_submenu_rebuildKeyItemList_result_submenu_updateScroll call_submenu_rebuildKeyItemList_submenu_updateScroll(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(submenu_rebuildKeyItemList);
+    return (call_submenu_rebuildKeyItemList_result_submenu_updateScroll){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_813660C_result;
+/* register form: generated wrapper: sub_813660C has no typed C interface yet */
+static inline call_sub_813660C_result call_sub_813660C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813660C);
+    return (call_sub_813660C_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_navicust_drawBoardTilemap_result;
+/* register form: generated wrapper: navicust_drawBoardTilemap has no typed C interface yet */
+static inline call_navicust_drawBoardTilemap_result call_navicust_drawBoardTilemap(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(navicust_drawBoardTilemap);
+    return (call_navicust_drawBoardTilemap_result){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2; } call_sub_8135DF8_result;
+/* register form: generated wrapper: sub_8135DF8 has no typed C interface yet */
+static inline call_sub_8135DF8_result call_sub_8135DF8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_8135DF8);
+    return (call_sub_8135DF8_result){ R0, R1, R2 };
+}
+
+/* submenu_updateScroll: 0x08135A44
+ * Updates the submenu scroll state. Gates on two chatbox event flags, mirrors the
+ * substate byte, iterates toolkit entries, rebuilds the key-item list, draws the
+ * board tilemap, and clamps the 2D scroll window when substate == 4. */
+
+#define SUBMENU_TOOLKIT_ENTRY_COUNT 0x19
+
+static void submenu_updateScroll_impl(u32 r5, u32 r6, u32 r7) {
+    /* Bail if either chatbox event gate flag is absent. */
+    if (call_chatbox_mask_eFlags2009F38_submenu_updateScroll(0x80).z)
+        return;
+    if (call_chatbox_mask_eFlags2009F38_submenu_updateScroll(0x20).z)
+        return;
+
+    /* Mirror substate byte (+0x16) into scratch slot (+0x2). */
+    ST8(r5 + 0x2, LD8(r5 + 0x16));
+
+    /* Non-idle chatbox: just refresh and leave. */
+    if (!call_chatbox_GetState_8045F4C_submenu_updateScroll().z) {
+        call_chatbox_8040818();
+        return;
+    }
+
+    /* Idle chatbox: enter the chip-list rebuild flow. */
+    call_chatbox_8040818_result chat = call_chatbox_8040818();
+    r5 = chat.r5;
+
+    ST8(r5 + 0xc, 0x10);
+    ST8(r5 + 0x10, 0);
+
+    /* Clear all toolkit 0x2004190 entries. */
+    u32 r4 = 0;
+    for (;;) {
+        u32 entryPtr = call_toolkit_getUnk2004190EntryPtr_813B9FC(r4).r0;
+        call_sub_81366F4_result s = call_sub_81366F4(
+            LD16(entryPtr), r4, r4, r5, r6, r7);
+        r4 = s.r4; r5 = s.r5; r6 = s.r6; r7 = s.r7;
+
+        call_sub_813B9C4(r4);
+        call_sub_813BA48(r4);
+
+        r4++;
+        if ((s32)r4 >= SUBMENU_TOOLKIT_ENTRY_COUNT)
+            break;
+    }
+
+    /* Rebuild key-item list, draw board tilemap. */
+    call_submenu_rebuildKeyItemList_result_submenu_updateScroll rl =
+        call_submenu_rebuildKeyItemList_submenu_updateScroll(r5);
+    r5 = rl.r5;
+
+    call_sub_813660C(1);
+
+    call_navicust_drawBoardTilemap_result nd1 =
+        call_navicust_drawBoardTilemap(1);
+    r5 = nd1.r5;
+
+    /* Branch on substate: != 4 redraws with scroll=1; == 4 clamps the scroll window. */
+    if (LD8(r5 + 0x16) != 4) {
+        call_sub_813660C(1);
+        call_navicust_drawBoardTilemap(1);
+        return;
+    }
+
+    /* Substate == 4: adjust scroll offset. */
+    call_sub_813660C_result c2 = call_sub_813660C(0);
+    r5 = c2.r5;
+
+    call_navicust_drawBoardTilemap_result nd2 =
+        call_navicust_drawBoardTilemap(0);
+    r5 = nd2.r5;
+
+    call_sub_8135DF8_result df = call_sub_8135DF8(LD16(r5 + 0x1a));
+    s32 scrollVal = (s32)df.r0;
+
+    if (scrollVal <= 3) {
+        /* Entire content fits: offset = scrollVal, top = 0. */
+        ST16(r5 + 0x20, (u16)scrollVal);
+        ST16(r5 + 0x24, 0);
+        return;
+    }
+
+    /* Content taller than viewport: compute overflow. */
+    s32 viewportH = (s32)(u16)LD16(r5 + 0x1e);
+    s32 curOffset = (s32)(u16)LD16(r5 + 0x20);
+    s32 remaining = viewportH - scrollVal + curOffset;
+
+    if (remaining < 4) {
+        /* Underflow: store deficit at +0x24, shrink +0x20. */
+        s32 top = viewportH - 4;
+        ST16(r5 + 0x24, (u16)top);
+        ST16(r5 + 0x20, (u16)(scrollVal - top));
+        return;
+    }
+
+    ST16(r5 + 0x24, (u16)(scrollVal - curOffset));
+}
+
+/* submenu_updateScroll(r5, r6, r7, r10) → r5 (restored via pop)
+ * Preserves r4-r7; clobbers r0-r3, lr, nz, c, v. */
+Next submenu_updateScroll(void) {
+    /* register form: callee wrappers (chatbox_8040818, sub_81366F4,
+     * submenu_rebuildKeyItemList, sub_813660C, navicust_drawBoardTilemap)
+     * write R4-R7 as part of their return protocol; the original's
+     * push/pop restores caller values. Save and restore in the adapter. */
+    u32 sv4 = R4, sv5 = R5, sv6 = R6, sv7 = R7;
+    submenu_updateScroll_impl(R5, R6, R7);
+    R4 = sv4; R5 = sv5; R6 = sv6; R7 = sv7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_loadNaviCustomizerGfx ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_getKeyedTableEntry_811FB84_result_battle_loadNaviCustomizerGfx;
@@ -4611,6 +4922,41 @@ static void do_confirm_part_placement(u32 navicust_state) {
 /* navicust_confirmPartPlacement(r5 = state ptr) -> r8 r9 r10 r11 r12 (callee side-effects) */
 Next navicust_confirmPartPlacement(void) {
     do_confirm_part_placement(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sprite_writeBeastOutOamAttr0 ── */
+/* Write six u16 OAM attribute values for a Beast Out sprite.
+ * For each entry i (0..5), read the index byte from unk_2022B70[i],
+ * then fetch the corresponding u16 from the lookup table selected by mode.
+ * If i >= 4 and the index byte is 0, a special "empty" entry at table offset
+ * 0xE is used instead. The result is stored into unk_30019E0 at a position
+ * given by byte_81366C8[i]. */
+static void write_beast_oam_attr0(u32 mode) {
+    /* mode selects which table pointer to use from off_81366A0 */
+    u32 table_ptr = LD32(A_off_81366A0 + mode * 4);
+
+    for (u32 i = 0; i < 6; i++) {
+        u8 idx = LD8(A_unk_2022B70 + i);
+        u16 value;
+
+        if (i >= 4 && idx == 0) {
+            /* Empty-slot path: fixed offset 0xE into the table */
+            value = LD16(table_ptr + 0xE);
+        } else {
+            /* Normal path: index*2 byte offset into the table */
+            value = LD16(table_ptr + (u16)idx * 2);
+        }
+
+        /* Output slot index from the constant table at byte_81366C8 */
+        u8 slot = LD8(A_byte_81366C8 + i);
+        ST16(A_unk_30019E0 + (u16)slot * 2, value);
+    }
+}
+
+/* sprite_writeBeastOutOamAttr0(r0 = mode) -> r4-r7 preserved */
+Next sprite_writeBeastOutOamAttr0(void) {
+    write_beast_oam_attr0(R0);
     RETURN_TO_CALLER();
 }
 
@@ -5140,6 +5486,33 @@ static void sub_81375CC_impl(u32 addr) {
 /* sub_81375CC(r5 = address) -> nothing (r0 and flags clobbered, not preserved) */
 Next sub_81375CC(void) {
     sub_81375CC_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_81375F4 ── */
+/* Register form: loc_8001048 has no generated wrapper; we must set r2–r5
+ * for the callee and restore r4/r5 for our caller (original push/pop). */
+static void jump_table_dispatch(u32 table_index) {
+    u32 saved_r4 = R4;
+    u32 saved_r5 = R5;
+
+    /* index into the u32 array at byte_813760C (entry 0 → 0x40000000,
+     * entry 1 → 0x50000000) */
+    R2 = LD32(A_byte_813760C + (table_index << 2));
+    R3 = 0x2E40;
+    R4 = 1;
+    R5 = 2;
+
+    GUEST_CALL(loc_8001048);
+
+    R4 = saved_r4;
+    R5 = saved_r5;
+}
+
+/* sub_81375F4(r0, r1, r2 = index into byte_813760C table)
+ * → calls loc_8001048(r0, r1, table[index], 0x2E40, 1, 2); r4–r7, r10 preserved. */
+Next sub_81375F4(void) {
+    jump_table_dispatch(R2);
     RETURN_TO_CALLER();
 }
 

@@ -455,6 +455,101 @@ Next battle_getObjectAllianceTeam_800F49E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── setFieldBattleObject_800F614 ── */
+/* Place a battle-object pointer into a slot in the battle state.
+ *
+ * type == 0  → main slot: a 2-entry FIFO queue (evicts oldest, zeroes its HP).
+ * type != 0  → sub slot:  a single pointer (replaces in place, zeroes old HP).
+ *
+ * alliance  selects the per-alliance row (stride 0xC).
+ * type      selects the slot within that row (stride 8).
+ */
+struct BattleSlotResult {
+    u32 address;   /* slot base pointer (r1 on exit) */
+    u32 reg2;      /* r2 on exit */
+    u32 reg3;      /* r3 on exit */
+    u32 pre_add;   /* r1 before the final address ADDS (for C/V flags) */
+};
+
+static struct BattleSlotResult place_battle_object(
+    u32 new_object, u32 alliance, u32 type, u32 toolkit)
+{
+    struct BattleSlotResult out;
+
+    /* r3 = 0xC * alliance  (per-alliance row stride) */
+    u32 offset = 0xC * alliance;
+
+    /* r1 = toolkit → battle-state pointer */
+    u32 state = LD32(toolkit + oToolkit_BattleStatePtr);
+
+    /* Advance to the correct alliance row, then the correct 8-byte slot */
+    state += offset;
+    state += type << 3;
+
+    /* Record pre-add value so the adapter can derive C/V from the ADDS */
+    out.pre_add = state;
+
+    /* r1 = &BattleObjectList[alliance][type] */
+    u32 slot = state + oBattleState_BattleObjectList;
+    out.address = slot;
+
+    if (type == 0) {
+        /* Main slot: two-entry queue (entry0 at [slot], entry1 at [slot+4]) */
+        u32 existing0 = LD32(slot);
+        u32 existing1 = LD32(slot + 4);
+
+        if (existing0 == 0) {
+            /* First slot empty: place directly */
+            ST32(slot, new_object);
+            out.reg2 = 0;
+            out.reg3 = existing1;
+        } else if (existing1 == 0) {
+            /* Second slot empty: append */
+            ST32(slot + 4, new_object);
+            out.reg2 = existing0;
+            out.reg3 = 0;
+        } else {
+            /* Both occupied: shift queue, evict oldest (kill its HP) */
+            ST32(slot, existing1);
+            ST32(slot + 4, new_object);
+            ST16(existing0 + oBattleObject_HP, 0);
+            out.reg2 = existing0;
+            out.reg3 = 0;
+        }
+    } else {
+        /* Sub slot: single pointer, replace in place */
+        u32 existing = LD32(slot);
+        ST32(slot, new_object);
+
+        if (existing != 0) {
+            /* Zero the evicted object's HP */
+            ST16(existing + oBattleObject_HP, 0);
+            out.reg2 = existing;
+            out.reg3 = 0;
+        } else {
+            /* No eviction; r3 retains the slot offset (type << 3) */
+            out.reg2 = 0;
+            out.reg3 = type << 3;
+        }
+    }
+
+    return out;
+}
+
+/* setFieldBattleObject_800F614(r0 = object ptr, r1 = alliance, r2 = type,
+ *                              r10 = toolkit) → r1 addr, r2, r3, flags */
+Next setFieldBattleObject_800F614(void) {
+    struct BattleSlotResult out = place_battle_object(R0, R1, R2, R10);
+    R1 = out.address;
+    R2 = out.reg2;
+    R3 = out.reg3;
+    /* C and V originate from the ADDS of oBattleState_BattleObjectList;
+     * N and Z are always from the final TST/MOVS of 0 (Z=1, N=0). */
+    SET_FLAGS_ADD(out.pre_add, oBattleState_BattleObjectList);
+    SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
 /* ── clearEntryOfBattleStateBattleObjectList_800F656 ── */
 /* Walk the six slots of the current battle state's BattleObjectList and
  * zero any slot that still points at the given object. Reports the final
@@ -2323,6 +2418,139 @@ static u32 clear_attack_vars(u32 vars) {
 Next ai_clearAttackVars(void) {
     R0 = clear_attack_vars(R7);
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8011AF2 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_computeBeastDamageCap_801265A_result;
+/* register form: generated wrapper: computeBeastDamageCap_801265A has no typed C interface yet */
+static inline call_computeBeastDamageCap_801265A_result call_computeBeastDamageCap_801265A(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(computeBeastDamageCap_801265A);
+    return (call_computeBeastDamageCap_801265A_result){ R0, R2, R3, R4, R5, R6 };
+}
+
+typedef struct { u32 r0, r6; bool c, v; } call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2;
+/* register form: generated wrapper: GetBattleNaviStatsByte_AllianceFromBattleObject has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2 call_GetBattleNaviStatsByte_AllianceFromBattleObject_sub_8011AF2(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2){ R0, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4; bool z, n; } call_battle_testFlag0x40_800A8F8_result;
+/* register form: generated wrapper: battle_testFlag0x40_800A8F8 has no typed C interface yet */
+static inline call_battle_testFlag0x40_800A8F8_result call_battle_testFlag0x40_800A8F8(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return (call_battle_testFlag0x40_800A8F8_result){ R4, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r7; } call_battle_getAllianceEntryStatus_802E4B8_result;
+/* register form: generated wrapper: battle_getAllianceEntryStatus_802E4B8 has no typed C interface yet */
+static inline call_battle_getAllianceEntryStatus_802E4B8_result call_battle_getAllianceEntryStatus_802E4B8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_getAllianceEntryStatus_802E4B8);
+    return (call_battle_getAllianceEntryStatus_802E4B8_result){ R0, R7 };
+}
+
+/* sub_8011AF2: Set up AI attack variables for the current enemy.
+ * Clamps beast damage to 5, zeroes auxiliary fields, queries navi stats,
+ * and determines whether this is a special sub-step (status 0xD or
+ * navi-ID 0x18) with timer 8 versus the normal timer 0.
+ * Returns state 0x1E, timer in r1, and flag operands for the caller. */
+struct sub_8011AF2_ret {
+    u32 r0;     /* next battle state, always 0x1E */
+    u32 r1;     /* timer value stored to TimerOrCycles */
+    u32 cmp_a;  /* operand for SET_FLAGS_CMP (reconstructs C, V) */
+    u32 cmp_b;
+};
+
+static struct sub_8011AF2_ret setup_ai_attack_vars(u32 battle_obj, u32 ai_vars) {
+    /* Compute beast damage cap and clamp to 5 */
+    call_computeBeastDamageCap_801265A_result cap = call_computeBeastDamageCap_801265A(battle_obj);
+    u32 damage = cap.r0;
+    if ((s32)damage > 5)
+        damage = 5;
+    ST16(ai_vars + oAIAttackVars_Damage, damage);
+
+    /* Clear auxiliary attack fields */
+    ST16(ai_vars + oAIAttackVars_ExtraDamage, 0);
+    ST8(ai_vars + oAIAttackVars_InitFlag, 0);
+    ST8(ai_vars + oAIAttackVars_ChargeReadyFlag, 0);
+    ST16(ai_vars + oAIAttackVars_AttackBoost, 0);
+    ST8(ai_vars + oAIAttackVars_ChipUseDelay, 0);
+
+    /* Query navi stat 0x4D for attack boost */
+    call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2 boost =
+        call_GetBattleNaviStatsByte_AllianceFromBattleObject_sub_8011AF2(0x4D, battle_obj);
+    ST32(ai_vars + oAIAttackVars_AttackBoost2, boost.r0);
+    ST8(ai_vars + oAIAttackVars_AiDifficultyTier, 0);
+    ST32(ai_vars + oAIAttackVars_ScratchVar, 0);
+
+    /* Determine sub-step and timer: if alliance flag 0x40 is set, check
+     * whether the entry status is 0xD; otherwise check navi stat 0x2C == 0x18. */
+    bool special = false;
+    u32 timer = 0;
+    u32 cmp_a, cmp_b;
+
+    call_battle_testFlag0x40_800A8F8_result flag_test = call_battle_testFlag0x40_800A8F8();
+    if (flag_test.z) {
+        /* Flag not present (Z=1 → beq taken): go directly to navi stat check */
+        call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2 stat =
+            call_GetBattleNaviStatsByte_AllianceFromBattleObject_sub_8011AF2(0x2C, battle_obj);
+        cmp_a = stat.r0;
+        cmp_b = 0x18;
+        if (stat.r0 == 0x18) {
+            special = true;
+            timer = 8;
+        }
+    } else {
+        /* Flag present (Z=0 → beq not taken): check alliance entry status */
+        call_battle_getAllianceEntryStatus_802E4B8_result status =
+            call_battle_getAllianceEntryStatus_802E4B8(battle_obj);
+        if (status.r0 == 0xD) {
+            special = true;
+            timer = 8;
+            cmp_a = 0xD;
+            cmp_b = 0xD;
+        } else {
+            /* Not 0xD: fall through to navi stat 0x2C check */
+            call_GetBattleNaviStatsByte_AllianceFromBattleObject_result_sub_8011AF2 stat =
+                call_GetBattleNaviStatsByte_AllianceFromBattleObject_sub_8011AF2(0x2C, battle_obj);
+            cmp_a = stat.r0;
+            cmp_b = 0x18;
+            if (stat.r0 == 0x18) {
+                special = true;
+                timer = 8;
+            }
+        }
+    }
+
+    if (special)
+        ST8(ai_vars + oAIAttackVars_SubStepIndex, 1);
+    ST8(ai_vars + oAIAttackVars_TimerOrCycles, timer);
+
+    /* Clear temp attack object pointer in AI data */
+    u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
+    ST32(ai_data + oAIData_TempAttackObjectPtr, 0);
+
+    struct sub_8011AF2_ret ret;
+    ret.r0 = 0x1E;
+    ret.r1 = timer;
+    ret.cmp_a = cmp_a;
+    ret.cmp_b = cmp_b;
+    return ret;
+}
+
+/* sub_8011AF2(r5 = battle object, r7 = AI attack vars, r10 = alliance ctx) -> r0=0x1E, r1=timer */
+Next sub_8011AF2(void) {
+    struct sub_8011AF2_ret result = setup_ai_attack_vars(R5, R7);
+    R0 = result.r0;
+    R1 = result.r1;
+    SET_FLAGS_CMP(result.cmp_a, result.cmp_b);
+    SET_FLAGS_NZ(result.r0);
     RETURN_TO_CALLER();
 }
 

@@ -1911,6 +1911,75 @@ Next initBackgroundTilemap(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8027A58 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_sub_8029C08_result;
+/* register form: generated wrapper: battleObject_chipSelectAnimTick_8029C08 has no typed C interface yet */
+static inline call_sub_8029C08_result call_sub_8029C08_sub_8027A58(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
+    return (call_sub_8029C08_result){ R1, R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_802899C_result;
+/* register form: generated wrapper: sub_802899C has no typed C interface yet */
+static inline call_sub_802899C_result call_sub_802899C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_802899C);
+    return (call_sub_802899C_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Dispatch to the per-kind update handler for this battle object (table at
+ * off_8027A74, indexed directly by the kind byte at self+2), then run the
+ * two standard post-update passes (battleObject_chipSelectAnimTick_8029C08, sub_802899C).
+ *
+ * The kind byte is pre-scaled (0/4/8/12) so the table load is word-aligned.
+ * After the handler returns, R5 may have been modified; the wrappers for
+ * battleObject_chipSelectAnimTick_8029C08 and sub_802899C pick up the current R10 from the register file.
+ * R8-R12 and R10 pass through from the handler unchanged by the outer code.
+ */
+
+/* register form: jump-table dispatch via GUEST_CALL_ADDR; the handler may
+ * write R5 (the object pointer), so we must read it back after the call. */
+static u32 run_kind_handler(u32 self, u32 kind) {
+    u32 handler = LD32(A_off_8027A74 + kind);
+    R0 = kind;
+    R1 = handler;
+    R5 = self;
+    GUEST_CALL_ADDR(handler);
+    return R5;
+}
+
+typedef struct {
+    u32 r2, r3, r4, r5, r6;
+} Sub8027A58Result;
+
+static Sub8027A58Result sub_8027A58_body(u32 self) {
+    u32 kind = LD8(self + 2);
+    u32 r5_after_handler = run_kind_handler(self, kind);
+    call_sub_8029C08_result s1 = call_sub_8029C08_sub_8027A58(r5_after_handler);
+    call_sub_802899C_result s2 = call_sub_802899C(s1.r5);
+
+    Sub8027A58Result res;
+    res.r2 = s2.r2;
+    res.r3 = s2.r3;
+    res.r4 = s2.r4;
+    res.r5 = s2.r5;
+    res.r6 = s2.r6;
+    return res;
+}
+
+/* sub_8027A58(r4, r5 = self, r6, r10) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
+Next sub_8027A58(void) {
+    Sub8027A58Result res = sub_8027A58_body(R5);
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    R5 = res.r5;
+    R6 = res.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8027A84 ── */
 /* Reset the battle-actor's [r5+0x40] counter to 0 and its [r5+2] halfword field to 4. */
 static void reset_actor_fields(u32 actor) {
@@ -3362,6 +3431,55 @@ Next sub_802899C(void) {
 
     R4 = savedR4;
     R5 = savedR5;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80289E4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r6, r7; } call_fifo_pushRecord16_8009FF8_result;
+/* register form: generated wrapper: fifo_pushRecord16_8009FF8 has no typed C interface yet */
+static inline call_fifo_pushRecord16_8009FF8_result call_fifo_pushRecord16_8009FF8(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(fifo_pushRecord16_8009FF8);
+    return (call_fifo_pushRecord16_8009FF8_result){ R4, R6, R7 };
+}
+
+/* Push a strip of 18 sixteen-bit OAM FIFO records describing a sprite
+ * animation for the object at r5. The strip's tile base shifts by one
+ * after the 5th entry (i == 0x10), and the XY origin is computed from
+ * the object's column byte and a bank-select flag. */
+static void push_sprite_strip(u32 r5) {
+    u32 obj_col   = LD8(r5 + 0x1B);
+    u32 obj_flags = LD32(r5 + 0x40);
+
+    /* Base XY offset: ((8-3) << 16) + (8 + obj_col*0x10 - 3) */
+    u32 base_xy = ((8 - 3) << 16) + (8 + obj_col * 0x10 - 3);
+
+    /* Tile-bank base: 0xE792 + 2 * bit3 of obj_flags */
+    u32 flag = (obj_flags >> 3) & 1;
+    u32 tile_base = 0xE792 + flag + flag;
+
+    /* Walk the 0x48-byte table (18 u32 entries), one record per entry. */
+    for (u32 i = 0; i < 0x48; i += 4) {
+        u32 attr = LD32(A_byte_8028A30 + i) + base_xy;
+
+        /* After the 5th entry the tile index shifts up by one row. */
+        if (i == 0x10)
+            tile_base += 1;
+
+        call_fifo_pushRecord16_8009FF8(attr, tile_base, 1, 0);
+    }
+}
+
+/* sub_80289E4(r5 = object state ptr) -> r2 r3 r4 r5 r6
+ * r4-r6 are preserved via push/pop; only r2=1, r3=0 are real outputs. */
+Next sub_80289E4(void) {
+    push_sprite_strip(R5);
+    R2 = 1;
+    R3 = 0;
     RETURN_TO_CALLER();
 }
 

@@ -503,6 +503,74 @@ Next initNaviStats_WithDefaultStatsMaybe_8013438(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_8013554 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline void call_ZeroFillByWord(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+}
+
+/* register form: generated wrapper: GetNaviStatsHword has no typed C interface yet */
+static inline u32 call_GetNaviStatsHword(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(GetNaviStatsHword);
+    return R0;
+}
+
+/* Initialize a Navi/battle-object struct: zero-fill 100 bytes, write default
+ * byte fields, query a Navi stat hword into three adjacent slots, then fill
+ * two byte ranges with 0xFF sentinel markers.
+ * All writes target the block at 'base' (originally r0 held into r4). */
+static void init_navi_struct(u32 base) {
+    call_ZeroFillByWord(base, 0x64);
+
+    /* Fixed byte fields */
+    ST8(base + 0x04, 0x46);   /* navi identity */
+    ST8(base + 0x05, 0xFF);
+    ST8(base + 0x07, 0xFF);
+    ST8(base + 0x08, 0x00);
+    ST8(base + 0x09, 0x04);
+    ST8(base + 0x0A, 0x05);
+    ST8(base + 0x0B, 0x05);
+    ST8(base + 0x0C, 0x01);
+    ST8(base + 0x0D, 0x00);
+    ST8(base + 0x0E, 0x99);
+    ST8(base + 0x12, 0xFF);
+    ST8(base + 0x18, 0x00);
+    ST8(base + 0x19, 0x00);
+    ST8(base + 0x26, 0x00);
+    ST8(base + 0x27, 0x1F);
+    ST8(base + 0x28, 0x00);
+
+    /* One stat query fills three hword slots */
+    u32 stat = call_GetNaviStatsHword(1, 0x42);
+    ST16(base + 0x40, stat);
+    ST16(base + 0x42, stat);
+    ST16(base + 0x3E, stat);
+
+    /* Remaining byte fields */
+    ST8(base + 0x29, 0x07);
+    ST8(base + 0x2C, 0x00);
+    ST8(base + 0x2D, 0x00);
+
+    /* Sentinel range 0x2E..0x30 = 0xFF */
+    for (u32 off = 0x2E; off <= 0x30; off++)
+        ST8(base + off, 0xFF);
+
+    /* Sentinel range 0x56..0x5B = 0xFF */
+    for (u32 off = 0x56; off <= 0x5B; off++)
+        ST8(base + off, 0xFF);
+}
+
+/* sub_8013554(r0 = navi struct base, r10 for stats call) -> preserved r4 */
+Next sub_8013554(void) {
+    init_navi_struct(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── GetBattleNaviStatsAddr ── */
 /* GetBattleNaviStatsAddr(r0 = navi index):
  * Returns the address of the given navi's entry in the battle navi stats
@@ -1638,6 +1706,150 @@ static u32 clear_object_status_unless_phase1(u32 object_r5, u32 toolkit, u32 r3)
  * -> r3; nz/c/v and r0-r2/lr are clobbered, callers ignore them. */
 Next battle_clearObjectStatusUnlessPhase1(void) {
     R3 = clear_object_status_unless_phase1(R5, R10, R3);
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_8014606 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_object_setFlag1_result_sub_8014606;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result_sub_8014606 call_object_setFlag1_sub_8014606(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result_sub_8014606){ R2 };
+}
+
+typedef struct { u32 r3; } call_battle_IsNoCustomPlusActive_80107C0_result;
+/* register form: generated wrapper: battle_IsNoCustomPlusActive_80107C0 has no typed C interface yet */
+static inline call_battle_IsNoCustomPlusActive_80107C0_result call_battle_IsNoCustomPlusActive_80107C0(void) {
+    GUEST_CALL(battle_IsNoCustomPlusActive_80107C0);
+    return (call_battle_IsNoCustomPlusActive_80107C0_result){ R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r6; } call_object_updateCollisionData_result_sub_8014606;
+/* register form: generated wrapper: object_updateCollisionData has no typed C interface yet */
+static inline call_object_updateCollisionData_result_sub_8014606 call_object_updateCollisionData_sub_8014606(u32 r1, u32 r2, u32 r3, u32 r5) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionData);
+    return (call_object_updateCollisionData_result_sub_8014606){ R1, R2, R3, R4, R6 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; bool z, n, c, v; } call_sub_80E1620_result;
+/* register form: generated wrapper: sub_80E1620 has no typed C interface yet */
+static inline call_sub_80E1620_result call_sub_80E1620(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r7) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(sub_80E1620);
+    return (call_sub_80E1620_result){ R0, R1, R2, R3, R4, R5, R6, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * sub_8014606: set collision flag 0x30 on the current object, rebuild its
+ * collision geometry, and if the object's status dword (at base+0x40) reads
+ * as zero, delegate to the secondary collision handler sub_80E1620.
+ *
+ * Inputs:  r4 = (unused on entry but forwarded to sub_80E1620 on the zero path)
+ *          r5 = object reference
+ *          r6 = base pointer of the object block
+ *          r10, lr = standard context
+ * Outputs: r0-r6 from the callees, r7 restored, lr = original return,
+ *          nz/c/v from CMP r0,#0 (non-zero path) or sub_80E1620 (zero path).
+ * r4, r5, r6, r7 end in the same state as the original assembly produces
+ * (r4/r6 from callees, r5/r7 unchanged from entry).
+ */
+
+typedef struct {
+    u32 r0, r1, r2, r3, r5, r6;
+    u32 nz_val;   /* value whose SET_FLAGS_NZ reproduces N and Z */
+    bool c, v;
+} sub_8014606_result;
+
+static sub_8014606_result sub_8014606_impl(u32 r4, u32 r5, u32 r6) {
+    sub_8014606_result out;
+
+    /* Mark the object with status flag 0x30 */
+    call_object_setFlag1_sub_8014606(0x30, r5);
+
+    /* Query whether NoCustom+ is active; result lands in the r3 we pass to the next call */
+    u32 r3 = call_battle_IsNoCustomPlusActive_80107C0().r3;
+
+    /* Rebuild collision geometry: r1 = 0x10, r2 = 2 */
+    call_object_updateCollisionData_result_sub_8014606 col =
+        call_object_updateCollisionData_sub_8014606(0x10, 2, r3, r5);
+
+    /* r7 = 0x40 + r6 (object status pointer), then load the status dword */
+    u32 status_addr = 0x40 + col.r6;
+    u32 status = LD32(status_addr);
+
+    if (status != 0) {
+        /* Status non-zero: return immediately.
+         * Flags mirror "cmp r0, #0": N = top bit, Z = 0, C = 1, V = 0 */
+        out.r0 = status;
+        out.r1 = col.r1;
+        out.r2 = col.r2;
+        out.r3 = col.r3;
+        out.r5 = r5;
+        out.r6 = col.r6;
+        out.nz_val = status;    /* SET_FLAGS_NZ(status): N=(status>>31), Z=(status==0)=false */
+        out.c = true;
+        out.v = false;
+    } else {
+        /* Status zero: delegate to the secondary collision handler */
+        call_sub_80E1620_result h =
+            call_sub_80E1620(col.r1, col.r2, col.r3, col.r4, r5, status_addr);
+
+        out.r0 = h.r0;
+        out.r1 = h.r1;
+        out.r2 = h.r2;
+        out.r3 = h.r3;
+        out.r5 = h.r5;
+        out.r6 = h.r6;
+
+        /* Encode h.n and h.z into a value that SET_FLAGS_NZ reproduces:
+         *   z=1  → 0          (forces N=0, Z=1; N=1&&Z=1 impossible on ARM)
+         *   n=0,z=0 → 1
+         *   n=1,z=0 → 0x80000001 */
+        if (h.z)
+            out.nz_val = 0;
+        else if (h.n)
+            out.nz_val = 0x80000001u;
+        else
+            out.nz_val = 1;
+
+        out.c = h.c;
+        out.v = h.v;
+    }
+
+    /* r4 is a register output (modified by callees). We return it through
+     * the implicit R4 already set by the wrapper; the adapter does not need
+     * to re-write it because the convention says "the wrapper's call already
+     * left it there".  Same for R5 on the non-zero path (unchanged) and R6
+     * from updateCollisionData.  We only explicitly write what the typed
+     * function itself computes beyond the last wrapper's effect. */
+    return out;
+}
+
+/* sub_8014606(r4, r5, r6, r10, lr) -> {r0..r7, lr, nz, c, v}
+ * register form: the four condition flags arise from either "cmp r0,#0"
+ * (non-zero status) or the return of sub_80E1620 (zero status).  No single
+ * guest instruction reproduces both cases, so the adapter writes them
+ * directly rather than through one SET_FLAGS_* call.  R7 is merely restored
+ * from the original value held in the saved-stack slot (push {r7}). */
+Next sub_8014606(void) {
+    u32 saved_r7 = R7;
+    sub_8014606_result res = sub_8014606_impl(R4, R5, R6);
+    R0 = res.r0; R1 = res.r1; R2 = res.r2; R3 = res.r3;
+    R5 = res.r5; R6 = res.r6; R7 = saved_r7;
+    SET_FLAGS_NZ(res.nz_val);
+    cpu.c = res.c; cpu.v = res.v;
     RETURN_TO_CALLER();
 }
 

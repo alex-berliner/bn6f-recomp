@@ -688,6 +688,83 @@ Next reqBBS_anim_814004C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_renderRankStars ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_TestEventFlag_result_reqBBS_renderRankStars;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_reqBBS_renderRankStars call_TestEventFlag_reqBBS_renderRankStars(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_reqBBS_renderRankStars){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: call_sub_3005EBA has no typed C interface yet */
+static inline void call_call_sub_3005EBA(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(call_sub_3005EBA);
+}
+
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline void call_CopyBackgroundTiles_reqBBS_renderRankStars(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* reqBBS_renderRankStars: render rank-star overlays on the request BBS page.
+ * For each of the 8 request slots on the current page, if the slot's event flag
+ * is set, prepare a 32×32 tile block and fill it with one star tile column per
+ * earned rank star. The star count comes from byte_813F380 indexed by the
+ * request-entry id; the tile id block is the constant dword_81402C8.
+ * Input: gui (r5) – pointer to reqBBS GUI state. */
+static void render_rank_stars(u32 gui) {
+    /* register form: wrappers pass arguments through R4-R7, which callees may
+     * clobber; the contract lists all four as preserved, so save and restore. */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    u32 page_pos = LD16(gui + oReqBBSGui_PagePos);
+
+    for (u32 slot = 0; slot < 8; slot++) {
+        u32 text_ptrs = LD32(gui + 0x28);           /* reqBBS_textualPointers */
+        u32 event_base = LD32(text_ptrs + 8);
+        u32 entry_id   = LD8(A_reqBBS_eRequestEntriesIDs + page_pos + slot);
+        u32 flag       = entry_id + event_base;
+
+        if (!call_TestEventFlag_reqBBS_renderRankStars(flag).z) {
+            /* Prepare tile block 2 at column 0x16, row (2*slot + 3). */
+            call_call_sub_3005EBA(0x16, 2 * slot + 3, 2, 0, 5, 2);
+
+            /* stars = rank byte for this request + 1 (always >= 1). */
+            u32 stars = (u32)LD8(A_byte_813F380 + entry_id) + 1;
+            for (u32 j = 0; j < stars; j++) {
+                call_CopyBackgroundTiles_reqBBS_renderRankStars(0x1a - j, 2 * slot + 3, 2,
+                                         A_dword_81402C8, 1, 2);
+            }
+        }
+
+        /* Restore preserved registers after any wrapper clobbering. */
+        R4 = saved_r4;
+        R5 = saved_r5;
+        R6 = saved_r6;
+        R7 = saved_r7;
+    }
+}
+
+/* reqBBS_renderRankStars(r5 = gui) -> r5 (unchanged) */
+Next reqBBS_renderRankStars(void) {
+    render_rank_stars(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_8140358 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r10; } call_reqBBS_81403A8_result;

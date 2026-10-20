@@ -4405,6 +4405,45 @@ Next sprite_setUnk2cToE000000_80A93D8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80A93E8 ── */
+#define oBattleObject_AnimPhase    6
+#define oBattleObject_AnimCounter  7
+#define oBattleObject_AnimPosition 0x14
+#define ANIM_PHASE_COUNT           0x18
+#define ANIM_STEP                  (1 << 14)
+
+/* Oscillate a fixed-point position back and forth over 24 steps per phase.
+ * Phase byte toggles 0→1→0 each time the counter wraps at 24. */
+static void animate_oscillation(u32 obj) {
+    u32 phase = LD8(obj + oBattleObject_AnimPhase);
+    u32 counter = LD8(obj + oBattleObject_AnimCounter) + 1;
+    ST8(obj + oBattleObject_AnimCounter, counter);
+
+    if (phase == 0) {
+        if (counter < ANIM_PHASE_COUNT) {
+            ST32(obj + oBattleObject_AnimPosition,
+                 LD32(obj + oBattleObject_AnimPosition) - ANIM_STEP);
+        } else {
+            ST8(obj + oBattleObject_AnimPhase, 1);
+            ST8(obj + oBattleObject_AnimCounter, 0);
+        }
+    } else {
+        if (counter < ANIM_PHASE_COUNT) {
+            ST32(obj + oBattleObject_AnimPosition,
+                 LD32(obj + oBattleObject_AnimPosition) + ANIM_STEP);
+        } else {
+            ST8(obj + oBattleObject_AnimPhase, 0);
+            ST8(obj + oBattleObject_AnimCounter, 0);
+        }
+    }
+}
+
+/* sub_80A93E8(r5 = battle object pointer) */
+Next sub_80A93E8(void) {
+    animate_oscillation(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── weatherMapObjectStateDispatch_80A9430 ── */
 /* Weather map-object dispatcher.
  *
@@ -6258,6 +6297,69 @@ Next isEventFlag216Set(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── sub_80AA824 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_enemy_getStruct2_result;
+/* register form: generated wrapper: enemy_getStruct2 has no typed C interface yet */
+static inline call_enemy_getStruct2_result call_enemy_getStruct2(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(enemy_getStruct2);
+    return (call_enemy_getStruct2_result){ R0, R3 };
+}
+
+/* Result of the enemy-icon walk: final accumulator (→r0) and last ORR term (→r2). */
+struct enemy_icon_walk_result {
+    u32 r0;
+    u32 r2;
+};
+
+/* Walk the per-enemy state entry list, accumulating icon bits.
+ *   Seed: if byte at obj+7 == 2, start flags at 0x40.
+ *   Each entry's first byte & 0xF0 selects:
+ *     0xF0 → terminator; return accumulated flags.
+ *     0x10 → enemy_getStruct2 lookup; OR (1 << nibble) into flags.
+ *            If struct byte[2] >= 4, short-circuit return 0x20.
+ *     else → advance entry by 4, keep scanning.
+ * r2 tracks the most recent `1 << shift` value (unchanged from input if
+ * the 0x10 case is never reached). */
+static struct enemy_icon_walk_result sub_80AA824_impl(u32 obj, u32 r2_in) {
+    u32 flags = (LD8(obj + 7) == 2) ? 0x40u : 0u;
+    u32 entry = LD32(obj + 0xC);
+    u32 r2 = r2_in;
+
+    for (;;) {
+        u32 kind = LD8(entry) & 0xF0u;
+        if (kind == 0xF0u)
+            return (struct enemy_icon_walk_result){ flags, r2 };
+
+        if (kind != 0x10u) {
+            entry += 4;
+            continue;
+        }
+
+        /* Build struct index: byte[+2] + (nibble from byte[+3]) << 8 */
+        u32 idx = LD8(entry + 2) + (((u32)LD8(entry + 3) << 28) >> 20);
+        u32 e   = call_enemy_getStruct2(idx).r0;
+
+        u32 shift = (LD16(e) >> 12) & 0xFu;
+        r2 = 1u << shift;
+        flags |= r2;
+
+        if ((s32)LD8(e + 2) >= 4)
+            return (struct enemy_icon_walk_result){ 0x20u, r2 };
+
+        entry += 4;
+    }
+}
+
+/* sub_80AA824(r0 = enemy object ptr, r2 = in/out flag word) -> r0, r2 */
+Next sub_80AA824(void) {
+    struct enemy_icon_walk_result res = sub_80AA824_impl(R0, R2);
+    R0 = res.r0;
+    R2 = res.r2;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_rollRandomItemDrops_80AA88C ── */
 /* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */
 static u32 get_positive_rng(void) {
@@ -6363,6 +6465,191 @@ Next sub_80AA8E0(void) {
 
     R0 = setupResult;
     R1 = battleFlag;
+    RETURN_TO_CALLER();
+}
+
+/* ── sub_80AA910 ── */
+/* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
+static u32 call_navi_stats_byte(u32 navi, u32 index) {
+    R0 = navi;
+    R1 = index;
+    GUEST_CALL(GetBattleNaviStatsByte);
+    return R0;
+}
+
+/* register form: calls sub_80AAA3C outside this file, which has no typed C interface yet */
+static u32 call_select_navi(u32 a0, u32 a1, u32 mode) {
+    R0 = a0;
+    R1 = a1;
+    R2 = mode;
+    GUEST_CALL(sub_80AAA3C);
+    return R0;
+}
+
+/* register form: calls sub_80AAE98 outside this file, which has no typed C interface yet */
+static u32 call_get_navi_base(void) {
+    GUEST_CALL(sub_80AAE98);
+    return R0;
+}
+
+/* register form: calls sub_80AAB04 outside this file, which has no typed C interface yet */
+static u32 call_apply_chip(u32 base, u32 a1, u32 a2) {
+    R0 = base;
+    R1 = a1;
+    R2 = a2;
+    GUEST_CALL(sub_80AAB04);
+    return R0;
+}
+
+/* register form: calls damage_jitter_80AAA98 outside this file, which has no typed C interface yet;
+ * R4 must carry base (caller's r4 is preserved by GUEST_CALL, set it for the callee) */
+static u32 call_attr_offset(u32 a0, u32 a1, u32 a2, u32 mode, u32 base) {
+    u32 saved_r4 = R4;
+    R0 = a0;
+    R1 = a1;
+    R2 = a2;
+    R3 = mode;
+    R4 = base;
+    GUEST_CALL(damage_jitter_80AAA98);
+    u32 result = R0;
+    R4 = saved_r4;
+    return result;
+}
+
+/* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet;
+ * R7 carries the offset parameter the RNG uses */
+static u32 call_positive_rng(u32 offset) {
+    u32 saved_r7 = R7;
+    R7 = offset;
+    GUEST_CALL(GetPositiveSignedRNG);
+    u32 result = R0;
+    R7 = saved_r7;
+    return result;
+}
+
+/* register form: BIOS SWI 6 (divide R0 by R1; remainder in R1) */
+static u32 call_divmod_remainder(u32 numerator, u32 modulus) {
+    R0 = numerator;
+    R1 = modulus;
+    swi_call(6);
+    return R1;
+}
+
+/* Scan two consecutive u16 entries at (base + byte_off) stepping back by 2.
+ * An entry is valid if bits 15:14 are zero. Valid entries collected into pool[].
+ * Returns how many were found (0, 1, or 2). */
+static u32 scan_attr_pair(u32 base, u32 byte_off, u16 pool[2]) {
+    u32 count = 0;
+    u32 addr = base + byte_off;
+    for (u32 i = 0; i < 2; i++) {
+        u16 val = LD16(addr);
+        if ((val >> 14) == 0)
+            pool[count++] = val;
+        addr -= 2;
+    }
+    return count;
+}
+
+typedef struct {
+    u32 value;
+    u32 flag_a;
+    u32 flag_b;
+} ChipAttrResult;
+
+/*
+ * sub_80AA910: pick a chip attribute for the active navi based on stats byte 0x26.
+ *
+ * Bit 0 → mode A: apply chip via sub_80AAB04.
+ * Bit 1 clear → mode B: read one attribute by computed offset.
+ * Bit 1 set → mode C: scan attribute table columns for valid entries (bits 15:14 == 0),
+ *   then pick one at random via GetPositiveSignedRNG + SWI divide.
+ */
+static ChipAttrResult pick_chip_attr(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5) {
+    ChipAttrResult res;
+    res.flag_a = 0;
+    res.flag_b = 0;
+
+    u32 stats = call_navi_stats_byte(a5, 0x26);
+
+    /* Mode A: apply chip directly */
+    if (stats & 1) {
+        call_select_navi(a0, a1, 0);
+        u32 base = call_get_navi_base();
+        res.value = call_apply_chip(base, a3, a4);
+        return res;
+    }
+
+    /* Mode B: single attribute by computed offset */
+    if (!(stats & 2)) {
+        call_select_navi(a0, a1, 0);
+        u32 base = call_get_navi_base();
+        u32 off = call_attr_offset(a2, a3, a4, 0, base);
+        res.value = LD16(base + off);
+        return res;
+    }
+
+    /* Mode C: random attribute selection via column scan */
+    if (call_select_navi(a0, a1, 1) == 0) {
+        res.value = (u32)-1;
+        return res;
+    }
+
+    u32 base = call_get_navi_base();
+    u32 offset = call_attr_offset(a2, a3, a4, 2, base);
+
+    if ((s32)offset >= 0x14) {
+        base += 0x14;
+        offset -= 0x14;
+    }
+
+    u16 pool[2];
+    u32 saved_offset = offset;
+    u32 found_count = 0;
+
+    /* Backward scan: from offset down by 4 while (col - 4) >= 0, i.e. col >= 4.
+     * Original: "sub r2, #4; bge" tests the result of r2-4, so the last
+     * scanned col satisfies col >= 4; cols 0..3 are not scanned here. */
+    for (u32 col = saved_offset; col >= 4; col -= 4) {
+        found_count = scan_attr_pair(base, col, pool);
+        if (found_count > 0)
+            break;
+    }
+
+    if (found_count == 0) {
+        /* Backward scan exhausted: if saved_offset >= 0x12, give up */
+        if ((s32)saved_offset >= 0x12) {
+            res.value = (u32)-1;
+            return res;
+        }
+
+        /* Forward scan: from saved_offset up by 4 while < 0x14 */
+        for (u32 col = saved_offset; (s32)col < 0x14; col += 4) {
+            found_count = scan_attr_pair(base, col, pool);
+            if (found_count > 0)
+                break;
+        }
+
+        if (found_count == 0) {
+            res.value = (u32)-1;
+            return res;
+        }
+    }
+
+    /* Pick a random entry from the pool */
+    u32 rng = call_positive_rng(saved_offset);
+    u32 remainder = call_divmod_remainder(rng, found_count);
+
+    res.value = pool[remainder];
+    res.flag_a = remainder;
+    res.flag_b = remainder;
+    return res;
+}
+
+/* sub_80AA910(r0=a0, r1=a1, r2=a2, r3=a3, r4=a4, r5=a5) -> r0; outputs c,v; clobbers nz,r1-r3,lr */
+Next sub_80AA910(void) {
+    ChipAttrResult cr = pick_chip_attr(R0, R1, R2, R3, R4, R5);
+    R0 = cr.value;
+    SET_FLAGS_ADD(cr.flag_a, cr.flag_b);
     RETURN_TO_CALLER();
 }
 
