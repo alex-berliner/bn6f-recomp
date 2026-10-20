@@ -13,6 +13,9 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf investigate [--count N] [--only NAME]... [--retry-unnamed RUN_ID] [--model M] [--checker M] [--jobs N]
                        # cheap models propose candidate symbols/db entries for placeholder functions;
                        # the candidates (for review, nothing installed) go to build/investigate/RUN_ID
+  python -m wf investigate-data [--count N] [--only NAME]... [--model M] [--checker M] [--jobs N]
+                       # the same for placeholder DATA labels (byte_203F750, unk_2017A00): the code
+                       # that uses the label is the evidence; candidates go to build/investigate_data/RUN_ID
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
   python -m wf convert --subsystem WHAT --file NAME.c [--model P/M]... [--rounds N] [--snapshots DIR]
                        [--candidate FILE | --farm-model P/M [--prompt old]] [--defer-record] [--battle-code] FUNCTION...
@@ -64,6 +67,7 @@ from wf.graphs.queue import QueueState, ledger_summary, queue_graph, request_sto
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
 from wf.graphs.investigate import InvestigateState, run_investigate
+from wf.graphs.investigate_data import InvestigateDataState, run_investigate_data
 from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence, JUDGE_MODE_DEFAULT
 from wf.tools.runtime_evidence import DEFAULT_COUNT as DEFAULT_RE_COUNT
 from wf.tools.runtime_evidence import DEFAULT_MODEL as DEFAULT_RE_MODEL
@@ -75,10 +79,15 @@ from wf.graphs.vidsync_run import VidsyncRunState, vidsync_run_graph
 from wf.graphs.vidsync_tick import VidsyncTickState, note_waiting, vidsync_tick_graph
 from wf.tools.sources import TIERS, Tier
 from wf.tools import investigate
+from wf.tools import investigate_data
 from wf.tools.vidsync import driver_status
 from wf.tools.investigate import DEFAULT_CHECKER as DEFAULT_INVESTIGATE_CHECKER
 from wf.tools.investigate import DEFAULT_MODEL as DEFAULT_INVESTIGATE_MODEL
 from wf.tools.investigate import DEFAULT_COUNT as DEFAULT_INVESTIGATE_COUNT
+from wf.tools.investigate_data import DEFAULT_CHECKER as DEFAULT_INVESTIGATE_DATA_CHECKER
+from wf.tools.investigate_data import DEFAULT_COUNT as DEFAULT_INVESTIGATE_DATA_COUNT
+from wf.tools.investigate_data import DEFAULT_MODEL as DEFAULT_INVESTIGATE_DATA_MODEL
+from wf.tools.investigate_data import DEFAULT_JOBS as DEFAULT_INVESTIGATE_DATA_JOBS
 from wf.repo import REPO, RUNS, SNAPSHOTS
 from wf.tools.archive import ARCHIVE, archive_cited_runs
 from wf.tools.locks import freeze_installs, install_freeze, thaw_installs
@@ -144,6 +153,15 @@ class InvestigateCommand(BaseModel):
     count: int
     only: tuple[FunctionName, ...] = Field(alias="only")
     retry_unnamed: str | None = None
+    model: ModelSpec
+    checker: ModelSpec
+    jobs: int
+
+
+class InvestigateDataCommand(BaseModel):
+    command: Literal["investigate-data"]
+    count: int
+    only: tuple[SymbolName, ...] = Field(alias="only")
     model: ModelSpec
     checker: ModelSpec
     jobs: int
@@ -263,8 +281,8 @@ class DocsCommand(BaseModel):
     out_dir: Path
 
 
-Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand | InvestigateCommand
-           | RuntimeEvidenceCommand
+Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand
+           | InvestigateCommand | InvestigateDataCommand | RuntimeEvidenceCommand
            | ConvertCommand | RecordCommand
            | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncTickCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
@@ -285,6 +303,8 @@ def main() -> None:
             start_drafts(command)
         case InvestigateCommand():
             start_investigate(command)
+        case InvestigateDataCommand():
+            start_investigate_data(command)
         case RuntimeEvidenceCommand():
             start_runtime_evidence(command)
         case ConvertCommand():
@@ -402,6 +422,18 @@ def start_investigate(command: InvestigateCommand) -> None:
         spent = before - after
         per = f", {spent / report.selected:.2f} per function" if report.selected else ""
         print(f"hyper units spent: {spent:.2f} ({before:.2f} -> {after:.2f}){per}")
+
+
+def start_investigate_data(command: InvestigateDataCommand) -> None:
+    """The data-label run of `wf investigate`: the candidates go to build/investigate_data/RUN_ID."""
+    run_id, _ = new_run("investigate-data")
+    run_dir = investigate_data.INVESTIGATE_DATA / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    start = InvestigateDataState(run_dir=run_dir, count=command.count, only=command.only,
+                                 model=command.model, checker=command.checker, jobs=command.jobs)
+    report = run_investigate_data(start, run_id)
+    print_json(report)
+    print(report.totals())
 
 
 def start_runtime_evidence(command: RuntimeEvidenceCommand) -> None:
@@ -646,6 +678,19 @@ def parse_command() -> Command:
     look.add_argument("--checker", default=DEFAULT_INVESTIGATE_CHECKER,
                       help="who cross-checks (default hyper/qwen3.8-flash)")
     look.add_argument("--jobs", type=int, default=16)
+
+    data = commands.add_parser("investigate-data",
+                               help="cheap models propose candidate symbols/db entries for "
+                                    "placeholder DATA labels, read from the code that uses them")
+    data.add_argument("--count", type=int, default=DEFAULT_INVESTIGATE_DATA_COUNT,
+                      help=f"how many labels to take (default {DEFAULT_INVESTIGATE_DATA_COUNT})")
+    data.add_argument("--only", action="append", default=[],
+                      help="investigate these data labels, whatever else")
+    data.add_argument("--model", default=DEFAULT_INVESTIGATE_DATA_MODEL,
+                      help=f"who proposes (default {DEFAULT_INVESTIGATE_DATA_MODEL})")
+    data.add_argument("--checker", default=DEFAULT_INVESTIGATE_DATA_CHECKER,
+                      help=f"who cross-checks (default {DEFAULT_INVESTIGATE_DATA_CHECKER})")
+    data.add_argument("--jobs", type=int, default=DEFAULT_INVESTIGATE_DATA_JOBS)
 
     runtime = commands.add_parser("runtime-evidence",
                                   help="gather runtime evidence for the names `wf investigate` proposed "
